@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900 text-white">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <title>Sensocto | LiveView</title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
+    <script src="https://cdn.rawgit.com/fnando/sparkline/master/dist/sparkline.js"></script>
+    
+  </head>
+  <body class="h-full text-white font-mono">
+    <header class="bg-gray-800 p-4 flex justify-between items-center">
+      <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto" />
+      <div>
+        <a href="#" class="text-gray-300 hover:text-white mr-4">Home</a>
+        <a href="#" class="text-gray-300 hover:text-white">About</a>
+      </div>
+    </header>
+    {@inner_content}
+  </body>
+</html>

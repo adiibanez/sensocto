@@ -1,0 +1,29 @@
+
+--socket_url ws://192.168.1.64:4000/socket/websocket
+--socket_url wss://sensocto.fly.dev/socket/websocket
+
+
+# high intensity: 
+
+python3 test-simulator-vici.py Vicumulator ecg --duration 10 --sampling_rate 20 --heart_rate 160
+python3 test-simulator-vici.py Vicumulator rsp --duration 10 --sampling_rate 20 --respiratory_rate 30
+
+# chilling:
+python3 test-simulator-vici.py Vicumulator ecg --duration 10 --sampling_rate 20 --heart_rate 60
+python3 test-simulator-vici.py Vicumulator rsp --duration 10 --sampling_rate 20 --respiratory_rate 12
+
+# Pathological Issues (Example - Tachycardia or Bradycardia):
+
+# Tachycardia
+python3 test-simulator-vici.py Vicumulator ecg --duration 10 --sampling_rate 20 --heart_rate 180
+# Bradycardia
+python3 test-simulator-vici.py Vicumulator ecg --duration 10 --sampling_rate 20 --heart_rate 45 
+ # High number of SCRs
+python3 test-simulator-vici.py Vicumulator eda --duration 10 --sampling_rate 20 --scr_number 20
+
+# EDA/EMG
+python3 test-simulator-vici.py Vicumulator5 eda --duration 10 --sampling_rate 20 --scr_number 15  
+
+# High number of SCRs
+# frequent muscle bursts
+python3 test-simulator-vici.py Vicumulator emg --duration 10 --sampling_rate 20 --burst_number 10   

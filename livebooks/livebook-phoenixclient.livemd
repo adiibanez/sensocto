@@ -1,0 +1,310 @@
+# PhoenixClient sensocto
+
+```elixir
+Mix.install([
+  {:phoenix_client, "~> 0.11.1"},
+  {:phoenix_pubsub, "~> 2.1"},
+  {:jason, "~> 1.4"},
+  {:uuid, "~> 1.1"},
+  {:kino, "~> 0.12.0"}
+])
+```
+
+## Configuration
+
+```elixir
+form =
+  Kino.Control.form(
+    [
+      name: Kino.Input.text("Name"),
+      socket:
+        Kino.Input.select("socket",
+          local: "ws://localhost:4000/socket/websocket",
+          test: "wss://sensocto.fly.dev/socket/websocket"
+        )
+    ],
+    submit: "Submit"
+  )
+
+Kino.listen(form, fn event ->
+  IO.inspect(event)
+end)
+
+form
+```
+
+## Section
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+defmodule SensorSimulatorGenServer do
+  use GenServer
+  # require uuid
+
+  alias PhoenixClient.{Socket, Channel, Message}
+
+  @socket_opts [
+    url: "ws://localhost:4000/socket/websocket"
+    # url: "wss://sensocto.fly.dev/socket/websocket"
+  ]
+
+  # Max interval in milliseconds for sending messages
+  @interval 2000
+
+  # List of UUID attributes to select from
+  @_uuid_attributes [
+    # pressure
+    "453b02b0-71a1-11ea-ab12-0800200c9a66",
+    "heart_rate",
+    "battery_service",
+    # general sensor
+    "61353090-8231-49cc-b57a-886370740041",
+    # oximeter
+    "a688bc90-09e2-4643-8e9a-ff3076703bc3",
+    # UART
+    "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
+    # flexsense
+    "897fdb8d-dec3-40bc-98e8-2310a58b0189"
+  ]
+
+  @uuid_attributes [
+    "61d20a90-71a1-11ea-ab12-0800200c9a66",
+    "00002a37-0000-1000-8000-00805f9b34fb",
+    "feb7cb83-e359-4b57-abc6-628286b7a79b",
+    "00002a19-0000-1000-8000-00805f9b34fb"
+  ]
+
+  # Public API
+
+  def start_link(sensor_id) do
+    # GenServer.start_link(__MODULE__, %{}, name: sensor_id)
+    GenServer.start_link(__MODULE__, sensor_id, name: via_tuple(sensor_id))
+  end
+
+  defp via_tuple(sensor_id), do: {:via, Registry, {SensorSimulatorRegistry, sensor_id}}
+
+  # GenServer Callbacks
+
+  @impl true
+  def init(_) do
+    case PhoenixClient.Socket.start_link(@socket_opts) do
+      {:ok, socket} ->
+        wait_until_connected(socket)
+
+        sensor_id = generate_random_sensor_id()
+        # UUID.uuid1()#Enum.random(@uuid_attributes)
+        uuid = generate_random_sensor_id()
+        topic = "sensor_data:" <> sensor_id
+
+        case PhoenixClient.Channel.join(socket, topic, %{device_name: sensor_id}) do
+          {:ok, _response, channel} ->
+            IO.puts("Joined channel successfully for sensor #{sensor_id}")
+            # Schedule the first message
+            schedule_send_message(sensor_id, channel, uuid)
+            {:ok, %{socket: socket, channel: channel, sensor_id: sensor_id}}
+
+          {:error, reason} ->
+            IO.puts("Failed to join channel: #{inspect(reason)}")
+            {:stop, reason}
+        end
+
+      {:error, reason} ->
+        IO.puts("Failed to connect to socket: #{inspect(reason)}")
+        {:stop, reason}
+    end
+  end
+
+  @impl true
+  def handle_info({:send_message, sensor_id, channel, uuid}, state) do
+    formated_number = :erlang.float_to_binary(:rand.uniform(500) * 0.3, decimals: 2)
+
+    message = %{
+      "payload" => formated_number,
+      "timestamp" => System.system_time(:millisecond),
+      "uuid" => uuid
+    }
+
+    PhoenixClient.Channel.push_async(channel, "measurement", message)
+
+    # IO.puts("Sent data for sensor #{sensor_id}: #{inspect(message)}")
+
+    # Schedule the next message
+    schedule_send_message(sensor_id, channel, uuid)
+
+    {:noreply, state}
+  end
+
+  def handle_info(%Message{event: message, payload: payload}, state) do
+    # IO.puts("Incoming Message: #{message} #{inspect(payload)}")
+    {:noreply, state}
+  end
+
+  # A helper function to interact with the GenServer
+  def get_data(sensor_id) do
+    GenServer.call(via_tuple(sensor_id), :get_data)
+  end
+
+  # Private Functions
+
+  defp wait_until_connected(socket) do
+    unless PhoenixClient.Socket.connected?(socket) do
+      Process.sleep(100)
+      wait_until_connected(socket)
+    end
+  end
+
+  defp schedule_send_message(sensor_id, channel, uuid) do
+    Process.send_after(
+      self(),
+      {:send_message, sensor_id, channel, uuid},
+      :rand.uniform(@interval)
+    )
+  end
+
+  defp generate_random_sensor_id do
+    # :crypto.strong_rand_bytes(8)
+    # |> Base.encode64()
+    # Shorten for simplicity
+    # |> binary_part(0, 8)
+
+    uuid_fragment = Enum.take(String.split(UUID.uuid1(), "-"), 1) |> List.last()
+    "Sim:" <> uuid_fragment
+  end
+end
+```
+
+```elixir
+defmodule SensorSimulatorSupervisor do
+  use DynamicSupervisor
+
+  # Start the DynamicSupervisor
+  def start_link(_) do
+    DynamicSupervisor.start_link(__MODULE__, :ok, name: __MODULE__)
+  end
+
+  @impl true
+  def init(:ok) do
+    DynamicSupervisor.init(strategy: :one_for_one)
+  end
+
+  # Function to start a new SensorDataGenServer dynamically
+  def start_sensor(sensor_id) do
+    spec = {SensorSimulatorGenServer, sensor_id}
+    DynamicSupervisor.start_child(__MODULE__, spec)
+  end
+
+  # Stop a sensor using its sensor_id
+  def stop_sensor(sensor_id) do
+    case Registry.lookup(SensorRegistry, sensor_id) do
+      [{pid, _value}] ->
+        DynamicSupervisor.terminate_child(__MODULE__, pid)
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
+
+  def get_children() do
+    DynamicSupervisor.which_children(__MODULE__)
+  end
+
+  # Nice utility method to check which processes are under supervision
+  def count_children() do
+    DynamicSupervisor.count_children(__MODULE__)
+  end
+end
+
+# Start the Registry
+Registry.start_link(keys: :unique, name: SensorSimulatorRegistry)
+# Start the DynamicSupervisor
+sensor_supervisor_pid = SensorSimulatorSupervisor.start_link([])
+```
+
+```elixir
+keep_running = 0
+
+ramp_up_delay = 300
+ramp_down_delay = 1
+
+processes_running = Enum.count(SensorSimulatorSupervisor.get_children())
+IO.inspect(SensorSimulatorSupervisor.get_children())
+
+IO.puts("keep: #{keep_running}, running: #{processes_running}")
+
+if processes_running < keep_running do
+  IO.puts("start servers")
+
+  sensor_numbers = 1..keep_running
+
+  Enum.each(sensor_numbers, fn number ->
+    # Convert the number to a sensor name string (e.g., "sensor1", "sensor2", ...)
+    sensor_name = "sensor" <> Integer.to_string(number)
+
+    # Convert the string to an atom
+    sensor_atom = String.to_atom(sensor_name)
+
+    # Start the sensor by calling start_sensor on the SensorSupervisor
+    SensorSimulatorSupervisor.start_sensor(sensor_atom)
+    Process.sleep(:rand.uniform(ramp_up_delay))
+  end)
+
+  SensorSimulatorSupervisor.get_children()
+else
+  IO.puts("keep or stop servers")
+
+  Enum.take(SensorSimulatorSupervisor.get_children(), processes_running - keep_running)
+  |> Enum.each(fn {_, pid, _, _type} ->
+    IO.inspect(pid)
+    DynamicSupervisor.terminate_child(SensorSimulatorSupervisor, pid)
+    Process.sleep(:rand.uniform(ramp_down_delay))
+  end)
+
+  SensorSimulatorSupervisor.get_children()
+end
+```
+
+```elixir
+SensorSimulatorSupervisor.get_children()
+```
+
+```elixir
+defmodule Test do
+  def sensor_name_for_uuid(uuid) do
+    case uuid do
+      "61d20a90-71a1-11ea-ab12-0800200c9a66" -> "Pressure"
+      "00002a37-0000-1000-8000-00805f9b34fb" -> "Heart Rate"
+      "feb7cb83-e359-4b57-abc6-628286b7a79b" -> "Flexsense"
+      "00002a19-0000-1000-8000-00805f9b34fb" -> "Battery"
+      # Default for unknown UUIDs
+      _ -> "Unknown Sensor"
+    end
+  end
+end
+
+"Test" <> Test.sensor_name_for_uuid("61d20a90-71a1-11ea-ab12-0800200c9a66")
+```
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiIiLCJjb2RlIjoiYWxpYXMgU2Vuc29jdG8uRGV2aWNlU3VwZXJ2aXNvclxuRGV2aWNlU3VwZXJ2aXNvci5nZXRfZGV2aWNlX25hbWVzKClcblxuIiwiY29va2llIjoiIiwiY29va2llX3NlY3JldCI6IkNPT0tJRSIsIm5vZGUiOiJub2RlQGxvY2FsaG9zdCIsIm5vZGVfc2VjcmV0IjoiIiwibm9kZV9zZWNyZXRfdmFsdWUiOm51bGwsInVzZV9jb29raWVfc2VjcmV0Ijp0cnVlLCJ1c2Vfbm9kZV9zZWNyZXQiOmZhbHNlfQ","chunks":null,"kind":"Elixir.Kino.RemoteExecutionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+require Kino.RPC
+node = :node@localhost
+Node.set_cookie(node, String.to_atom(System.fetch_env!("LB_COOKIE")))
+
+Kino.RPC.eval_string(
+  node,
+  ~S"""
+  alias Sensocto.DeviceSupervisor
+  DeviceSupervisor.get_device_names()
+
+
+  """,
+  file: __ENV__.file
+)
+```
+
+```elixir
+uuid_fragment = Enum.take(String.split(UUID.uuid1(), "-"), 1) |> List.last()
+"Sim " <> uuid_fragment
+```

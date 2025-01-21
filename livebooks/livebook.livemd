@@ -1,0 +1,139 @@
+# Domain Documentation
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.12.0"}
+])
+```
+
+## Domain Sensocto.Accounts
+
+### Class Diagram
+
+```mermaid
+classDiagram
+    class Token {
+        UUID id
+        String jti
+        String purpose
+        Map extra_data
+        store_confirmation_changes(String token, Map extra_data, String purpose)
+        get_confirmation_changes(String jti)
+        read_expired()
+        read()
+        expired()
+        get_token(String token, String jti, String purpose)
+        revoked?(String token, String jti)
+        revoke_token(String token, Map extra_data)
+        store_token(String token, Map extra_data, String purpose)
+        expunge_expired()
+    }
+    class User {
+        UUID id
+        CiString email
+        confirm(String confirm, CiString email)
+        read()
+        get_by_subject(String subject)
+        get_by_email(CiString email)
+        sign_in_with_magic_link(String token)
+        request_magic_link(CiString email)
+        change_password(String current_password, String password, String password_confirmation)
+        sign_in_with_password(CiString email, String password)
+        sign_in_with_token(String token)
+        register_with_password(CiString email, String password, String password_confirmation)
+        request_password_reset_token(CiString email)
+        reset_password_with_token(String reset_token, String password, String password_confirmation)
+    }
+```
+
+### ER Diagram
+
+```mermaid
+erDiagram
+    Token {
+        UUID id
+        String jti
+        String purpose
+        Map extra_data
+    }
+    User {
+        UUID id
+        CiString email
+    }
+```
+
+### Resources
+
+* [Token](#token)
+* [User](#user)
+
+### Token
+
+#### Attributes
+
+| Name            | Type            | Description |
+| --------------- | --------------- | ----------- |
+| **created_at**  | UtcDatetimeUsec |             |
+| **id**          | UUID            |             |
+| **jti**         | String          |             |
+| **subject**     | String          |             |
+| **expires_at**  | UtcDatetime     |             |
+| **purpose**     | String          |             |
+| **extra_data**  | Map             |             |
+| **inserted_at** | UtcDatetimeUsec |             |
+| **updated_at**  | UtcDatetimeUsec |             |
+
+#### Actions
+
+| Name                           | Type      | Input                                                                                                                                       | Description                                                                     |
+| ------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **store_confirmation_changes** | _create_  | <ul><li><b>token</b> <i>String</i> </li><li><b>extra_data</b> <i>Map</i> attribute</li><li><b>purpose</b> <i>String</i> attribute</li></ul> |                                                                                 |
+| **get_confirmation_changes**   | _read_    | <ul><li><b>jti</b> <i>String</i> </li></ul>                                                                                                 |                                                                                 |
+| **read_expired**               | _read_    | <ul></ul>                                                                                                                                   |                                                                                 |
+| **read**                       | _read_    | <ul></ul>                                                                                                                                   |                                                                                 |
+| **expired**                    | _read_    | <ul></ul>                                                                                                                                   | Look up all expired tokens.                                                     |
+| **get_token**                  | _read_    | <ul><li><b>token</b> <i>String</i> </li><li><b>jti</b> <i>String</i> </li><li><b>purpose</b> <i>String</i> </li></ul>                       | Look up a token by JTI or token, and an optional purpose.                       |
+| **revoked?**                   | _action_  | <ul><li><b>token</b> <i>String</i> </li><li><b>jti</b> <i>String</i> </li></ul>                                                             | Returns true if a revocation token is found for the provided token              |
+| **revoke_token**               | _create_  | <ul><li><b>token</b> <i>String</i> </li><li><b>extra_data</b> <i>Map</i> attribute</li></ul>                                                | Revoke a token. Creates a revocation token corresponding to the provided token. |
+| **store_token**                | _create_  | <ul><li><b>token</b> <i>String</i> </li><li><b>extra_data</b> <i>Map</i> attribute</li><li><b>purpose</b> <i>String</i> attribute</li></ul> | Stores a token used for the provided purpose.                                   |
+| **expunge_expired**            | _destroy_ | <ul></ul>                                                                                                                                   | Deletes expired tokens.                                                         |
+
+### User
+
+#### Attributes
+
+| Name                | Type            | Description |
+| ------------------- | --------------- | ----------- |
+| **confirmed_at**    | UtcDatetimeUsec |             |
+| **id**              | UUID            |             |
+| **email**           | CiString        |             |
+| **hashed_password** | String          |             |
+
+#### Actions
+
+| Name                             | Type     | Input                                                                                                                                                                                                                                                      | Description                                               |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **confirm**                      | _update_ | <ul><li><b>confirm</b> <i>String</i> </li><li><b>email</b> <i>CiString</i> attribute</li></ul>                                                                                                                                                             |                                                           |
+| **read**                         | _read_   | <ul></ul>                                                                                                                                                                                                                                                  |                                                           |
+| **get_by_subject**               | _read_   | <ul><li><b>subject</b> <i>String</i> </li></ul>                                                                                                                                                                                                            | Get a user by the subject claim in a JWT                  |
+| **get_by_email**                 | _read_   | <ul><li><b>email</b> <i>CiString</i> </li></ul>                                                                                                                                                                                                            | Looks up a user by their email                            |
+| **sign_in_with_magic_link**      | _create_ | <ul><li><b>token</b> <i>String</i> The token from the magic link that was sent to the user</li></ul>                                                                                                                                                       | Sign in or register a user with magic link.               |
+| **request_magic_link**           | _action_ | <ul><li><b>email</b> <i>CiString</i> </li></ul>                                                                                                                                                                                                            |                                                           |
+| **change_password**              | _update_ | <ul><li><b>current_password</b> <i>String</i> </li><li><b>password</b> <i>String</i> </li><li><b>password_confirmation</b> <i>String</i> </li></ul>                                                                                                        |                                                           |
+| **sign_in_with_password**        | _read_   | <ul><li><b>email</b> <i>CiString</i> The email to use for retrieving the user.</li><li><b>password</b> <i>String</i> The password to check for the matching user.</li></ul>                                                                                | Attempt to sign in using a email and password.            |
+| **sign_in_with_token**           | _read_   | <ul><li><b>token</b> <i>String</i> The short-lived sign in token.</li></ul>                                                                                                                                                                                | Attempt to sign in using a short-lived sign in token.     |
+| **register_with_password**       | _create_ | <ul><li><b>email</b> <i>CiString</i> </li><li><b>password</b> <i>String</i> The proposed password for the user, in plain text.</li><li><b>password_confirmation</b> <i>String</i> The proposed password for the user (again), in plain text.</li></ul>     | Register a new user with a email and password.            |
+| **request_password_reset_token** | _action_ | <ul><li><b>email</b> <i>CiString</i> </li></ul>                                                                                                                                                                                                            | Send password reset instructions to a user if they exist. |
+| **reset_password_with_token**    | _update_ | <ul><li><b>reset_token</b> <i>String</i> </li><li><b>password</b> <i>String</i> The proposed password for the user, in plain text.</li><li><b>password_confirmation</b> <i>String</i> The proposed password for the user (again), in plain text.</li></ul> |                                                           |
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiIiLCJjb2RlIjoiU2Vuc29jdG8uQWNjb3VudHMuVXNlci5kZWZhdWx0X3Nob3J0X25hbWUoKSIsImNvb2tpZSI6IiIsImNvb2tpZV9zZWNyZXQiOiJFUkxfQ09PS0lFIiwibm9kZSI6Im5vZGVAbG9jYWxob3N0Iiwibm9kZV9zZWNyZXQiOiIiLCJub2RlX3NlY3JldF92YWx1ZSI6bnVsbCwidXNlX2Nvb2tpZV9zZWNyZXQiOnRydWUsInVzZV9ub2RlX3NlY3JldCI6ZmFsc2V9","chunks":null,"kind":"Elixir.Kino.RemoteExecutionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+require Kino.RPC
+node = :node@localhost
+Node.set_cookie(node, String.to_atom(System.fetch_env!("LB_ERL_COOKIE")))
+
+Kino.RPC.eval_string(node, ~S"Sensocto.Accounts.User.default_short_name()", file: __ENV__.file)
+```
+
+<!-- livebook:{"offset":11618,"stamp":{"token":"XCP.MHAGlRprxIOq4Ubzg8llATn-s0WJb9LzX1ToBIjr-Ik4dFbAB_TJu_07YZCurKq6ckI4EP91skDidAN7FhRorrUr1dLvm802HPanMECQjkRDqSQ9kg","version":2}} -->

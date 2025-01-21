@@ -16,12 +16,11 @@
 
     <script src="https://www.arction.com/lightningchart-js-unique/dist/bundle/lightningchart.min.js"></script>
 
-
   </head>
   <body>
     <header>
       <section class="container">
-          <!--<nav><h3 style="float:left; padding:0 10px 0 10px"><a href="/">Schnuufi</a></h3></nav>-->
+
       </section>
     </header>
     <main role="main" class="container">

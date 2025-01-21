@@ -56,6 +56,8 @@ defmodule SensoctoWeb do
       use Phoenix.LiveView,
         layout: {SensoctoWeb.Layouts, :app}
 
+      import LiveSvelte
+
       unquote(html_helpers())
     end
   end

@@ -8,24 +8,44 @@ defmodule SensoctoWeb.SensorDataChannel do
 
   # Store the device ID in the socket's assigns when joining the channel
   @impl true
-  def join("sensor_data:" <> sensor_id, params, socket) do
+  def join(
+        "sensor_data:" <> sensor_id,
+        %{
+          "connector_id" => _connector_id,
+          "connector_name" => _connector_name,
+          "sensor_id" => _sensor_id,
+          "sensor_name" => _sensor_name,
+          "sensor_type" => _sensor_type,
+          "sampling_rate" => _sampling_rate,
+          "bearer_token" => _bearer_token,
+          "batch_size" => _batch_size
+        } = params,
+        socket
+      ) do
     if authorized?(params) do
       send(self(), :after_join)
       Logger.debug("socket join #{sensor_id}", params)
+      IO.inspect(params)
 
       DeviceSupervisor.add_device(sensor_id)
 
-      socket = assign(socket, :sensor_id, sensor_id)
+      '''
+
+      %{
+      "batch_size" => 1,
+      "connector_id" => "00000000-0000-0000-0000-82305b3f150e",
+      "connector_name" => "Vicumulator1",
+      "sampling_rate" => 10,
+      "sensor_id" => "Vicumulator1:heartrate",
+      "sensor_name" => "Movesense 007",
+      "sensor_type" => "heartrate"
+      }
+      '''
 
       {:ok,
-       socket
-       |> assign(:sensor_id, sensor_id)}
-
-      # {:ok,
-      # socket
-      # |> assign(:user_type, payload["type"])
-      # |> assign(:user_id, payload["device_id"])
-      # |> assign(:device_description, payload["device_description"])}
+       socket =
+         assign(socket, :sensor_id, sensor_id)
+         |> assign(:sensor_params, params)}
     else
       {:error, %{reason: "unauthorized"}}
     end
@@ -91,35 +111,15 @@ defmodule SensoctoWeb.SensorDataChannel do
         socket
       ) do
     # Logger.debug inspect(sensor_data)
-    # Broadway.Producer.produce(Counter, payload)
-    # Logger.debug(socket.assigns.sensor_id)
 
-    # GenServer.call(Sensocto.Broadway.BufferingProducer, {:new_message, payload})
-    # GenServer.cast({:via, GenStage.Supervisor, Sensocto.Broadway.BufferingProducer}, {:new_message, payload})
-
-    ~S"""
-    case Sensocto.Broadway.Counter2.get_producer_pid() do
-      {:ok, producer_pid} ->
-        GenStage.cast(producer_pid, {:new_message, payload})
-        {:noreply, socket}
-      :error ->
-        {:reply, {:error, "Producer not found"}, socket}
-    end
-    """
-
-    # updated_payload = Map.put(payload, "sensor_id", "#{socket.assigns.sensor_id}:#{payload["uuid"]}")
-    # IO.inspect(updated_payload)
-    # Logger.debug("sensor_id: #{socket.assigns.sensor_id} payload.sensor_id: #{payload["uuid"]}")
-    # PubSub.broadcast(:my_pubsub, "user:123", {:user_update, %{id: 123, name: "Shane"}})
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "measurement",
       {:measurement,
        sensor_data
+       |> Map.put("sensor_params", socket.assigns.sensor_params)
        |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")}
     )
-
-    # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
 
     {:noreply, socket}
   end

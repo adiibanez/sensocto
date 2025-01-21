@@ -1,16 +1,20 @@
-<svelte:options customElement="sparkline-test" />
-<svelte:window on:dataupdate={handleTestEvent} />
+<svelte:options customElement="sensocto-sparkline" />
 
 <script>
     import {
         getContext,
         createEventDispatcher,
         onDestroy,
-        onMount
+        onMount,
     } from "svelte";
     import Canvas from "./Canvas.svelte";
     import ScaledPoints from "./ScaledPoints.svelte";
     import Point from "./Point.svelte";
+
+    export let id;
+    export let sensor_id;
+    export let is_loading = true;
+    export let live;
 
     export let debugFlag = false;
     export let canvas;
@@ -49,39 +53,105 @@
             );
     }
 
-    $: if(scaledPoints?.points) {
+    $: if (scaledPoints?.points) {
         console.log("Sparkline scaledPoints changed");
     }
 
     onMount(() => {
-        console.log("Sparkline: onMount", canvas);
+        console.log("Sparkline: onMount", window.livesocket, live);
+        //LiveSocket.pushEvent("request-seed", sensor_id);
     });
 
-    const handleTestEvent = (e) => {
-        console.log("Sparkline: test event received", e);
+    const transformEventData = (data) => {
+        let transformedData = [];
+
+        if (data && Array.isArray(data)) {
+            // Verify data format.
+            data.forEach((item) => {
+                // Loop through each item in the array.
+                if (
+                    typeof item === "object" &&
+                    item !== null &&
+                    item.timestamp &&
+                    item.payload
+                ) {
+                    // Type checks
+                    transformedData.push({
+                        timestamp: item.timestamp,
+                        value: item.payload.value,
+                    });
+                } else {
+                    // Output error for any malformed data
+                    console.warn(
+                        "Sparkline: malformed data detected, skipping item",
+                        item,
+                    );
+                }
+            });
+
+            return transformedData;
+        } else {
+            console.warn(
+                "Sparkline: Invalid data format or data is missing:",
+                data,
+            );
+        }
+    };
+
+    const handleStorageWorkerEvent = (e) => {
+        //const {type, eventData} = e.detail;
+        console.log(
+            "Sparkline: handleStorageWorkerEvent",
+            sensor_id,
+            e.detail.type,
+            e.detail.data,
+        );
+
+        if (sensor_id === e?.detail?.data.id) {
+            if (e?.detail?.type == "append-read-data-result") {
+                data = transformEventData(e.detail.data.result);
+                console.log("Sparkline: Data transformed", data.length, id); // Log processed data.
+                if (data.length > 1) is_loading = false;
+            }
+
+            if (e?.detail?.type == "updated-read-data") {
+            }
+        }
     };
 </script>
 
-<div on:dataupdate={handleTestEvent} {width} {height}>
-    <ScaledPoints
-        bind:this={scaledPoints}
-        bind:data
-        bind:scaledPoints={test}
-        {width}
-        {height}
-        {timeMode}
-        {timeWindow}
-        {yPadding}
-        {debugFlag}
-    ></ScaledPoints>
+<svelte:window on:storage-worker-event={handleStorageWorkerEvent} />
 
-    <Canvas bind:this={canvas} bind:points={test} {width} {height} {debugFlag}></Canvas>
+<div {width} {height} style="text-align:center">
+    {#if is_loading}
+        <img
+            {height}
+            alt="loading spinner"
+            src="https://raw.githubusercontent.com/n3r4zzurr0/svg-spinners/refs/heads/main/svg-css/12-dots-scale-rotate.svg"
+        /> Waiting for data ...
+    {:else}
+        <ScaledPoints
+            bind:this={scaledPoints}
+            bind:data
+            bind:scaledPoints={test}
+            {width}
+            {height}
+            {timeMode}
+            {timeWindow}
+            {yPadding}
+            {debugFlag}
+        ></ScaledPoints>
 
-    <ul>
-        {#each points as { x, y } (id)}
-            <li><Point {x} {y} /></li>
-        {/each}
-    </ul>
-
-    {#if true  }<p>Sparkline DATA: maxLength: {maxlength} {data.length} Points: {test.length}</p>{/if}
+        <Canvas
+            bind:this={canvas}
+            bind:points={test}
+            {width}
+            {height}
+            {debugFlag}
+        ></Canvas>
+        {#if true}<p>
+                Sparkline DATA: maxLength: {maxlength}
+                {data.length} Points: {test.length}
+            </p>{/if}
+    {/if}
 </div>

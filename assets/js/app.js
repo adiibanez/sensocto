@@ -65,7 +65,7 @@ Hooks.ResizeDetection = {
         if (debug) console.log('Resizeendt: ', this.document.getElementById("main").classList);
 
         // redraw sparklines
-        new SimpleSparkLineChart('.sparkline');
+        //new SimpleSparkLineChart('.sparkline');
       }
 
     }, { passive: true });
@@ -85,84 +85,25 @@ Hooks.ResizeDetection = {
 }
 
 Hooks.SensorDataAccumulator = {
+
   workerEventListener(event) {
+    const { type, data } = event;
+    console.log("Worker event", type, data);
 
-    const updateSparkLineNew = function (id, values) {
-      const sparkLineNewId = "sparkline_element-" + id;
-      const loadingElementId = "loading-" + id;
-      const sparklineNewElement = document.getElementById(sparkLineNewId);
-
-      if (sparklineNewElement) {
-        if (debug) console.log('updateSparkLineNew', sparkLineNewId, sparklineNewElement.dataset.length);
-        if (Array.isArray(values) && values.length > 0) {
-          sparklineNewElement.setAttribute("data", JSON.stringify(values));
-          //sparklineNewElement.setAttribute("appenddata", JSON.stringify(values));
-
-          loadingElementClassElement = document.getElementById(loadingElementId);
-          if(loadingElementClassElement && !loadingElementClassElement.classList.contains("hidden")){
-            loadingElementClassElement.classList.add("hidden");
-          }
-
-          sparklineNewElement.classList.remove("hidden");
-
-          const updateEvent = new CustomEvent('dataupdate', { id: id, detail: values });
-          window.dispatchEvent(updateEvent);
-        }
-      } else {
-        //console.warn("Sparkline element not found: ", id, "sparklineElementSelector: #" + sparkLineNewId);
-      }
-    }
-
-    const updateSparkLine = function (id, values) {
-      //const sparklineElementSelector = `[data-sensor_id="${id}"] .sparkline`
-      const sparkLineId = "sparkline-" + id;
-      if (debug) console.log('updateSparkLine', sparkLineId);
-      const sparklineElement = document.getElementById(sparkLineId);
-
-      if (sparklineElement) {
-        if (Array.isArray(values) && values.length > 0) {
-          sparklineElement.dataset.values = JSON.stringify(values);
-          new SimpleSparkLineChart("#" + sparkLineId)
-          sparklineElement.classList.remove("hidden");
-        }
-      } else {
-        //console.warn("Sparkline not found: ", id, "sparklineElementSelector: #" + sparkLineId);
-      }
-    }
-
-    const { type, data } = event.data;
-
-    if (event.data.type === 'updated-data') {
-      if (debug) console.log('workerStorage Updated data result: ', event.data);
-      if (Array.isArray(data.result)) {
-
-        updateSparkLine(data.id, data.result);
-        updateSparkLineNew(data.id, data.result)
-
-        //const updateEvent = new CustomEvent('sparkline-update', { detail: { id: data.id, result: data.result } });
-        //window.dispatchEvent(updateEvent);
-      }
-    }
-
-    if (event.data.type === 'append-data-result') {
-      if (debug) console.log('workerStorage Append data result: ', event);
-    }
-
-    if (event.data.type === 'append-data-error') {
-      console.log('workerStorage Append data error: ', event);
-    }
-
-    if (event.data.type === 'clear-data-result') {
-      const sensorId = event.data.data.id;
-    } else if (event.data.type === 'clear-data-error') {
-      console.error('workerStorage Clear data error: ', event);
-    }
-
+    const workerEvent = new CustomEvent('storage-worker-event', { id: data.id, detail: event.data });
+    window.dispatchEvent(workerEvent);
   },
 
   mounted() {
     const sensorId = this.el.getAttribute("id");
     workerStorage.postMessage({ type: 'clear-data', data: { id: sensorId } });
+
+    if ('pushEvent' in this) {
+      this.pushEvent("request-seed-data", {"id": this.el.getAttribute('id')});
+    } else {
+      console.log('liveSocket', liveSocket);
+    }
+
   },
 
   destroyed() {
@@ -173,61 +114,23 @@ Hooks.SensorDataAccumulator = {
   updated() {
     const sensorId = this.el.getAttribute("id");
 
-    if (debug) console.log("DIV sensor updated", this.el.dataset);
-
     const sparklineNewId = 'sparkline_element-' + sensorId;
     let sparkLineNew = document.getElementById(sparklineNewId);
-    if (sparkLineNew && sparkLineNew.dataset.append != undefined) {
 
-      if (debug) console.log("sparkline append message starting", sparkLineNew.maxlength);
-      workerStorage.postMessage({ type: 'append-data', data: { id: sensorId, payload: JSON.parse(sparkLineNew.dataset.append), maxLength: sparkLineNew.maxlength } });
+    if (debug) console.log("DIV sensor updated", this.el.dataset.append);
+    if (sparkLineNew && this.el.dataset.append != undefined) {
 
-      var el = this.el;
-      function updateWidth() {
-        const newWidth = Math.floor(el.offsetWidth * 0.9);
-        //console.log("resize: ", sparkLineId, sparkLine);
-        sparkLineNew = document.getElementById(sparklineNewId);
-        if (sparkLineNew) {
-          sparkLineNew.setAttribute("width", newWidth);//("data-width", newWidth);
-          sparkLineNew.maxlength = newWidth;
+      const isLoading = sparkLineNew.getAttribute("is_loading");
 
-          console.log("resize: ", sparkLineNew.width, sparkLineNew.dataset.maxlength);
-          // sparkLineNew.setAttribute("data-width", newWidth);//("data-width", newWidth);
-        }
+      appendDataArray = JSON.parse(this.el.dataset.append);
+      const requestType = (isLoading) ? 'append-read-data' : 'append-data';
+
+      if (debug) console.log("Sparkline status", requestType, 'loading: ' + isLoading, typeof appendDataArray);
+
+      if (appendDataArray && appendDataArray.timestamp && appendDataArray.value) {
+        console.log("Going to request storage worker: ", requestType, appendDataArray);
+        workerStorage.postMessage({ type: requestType, data: { id: sensorId, payload: appendDataArray, maxLength: sparkLineNew.maxlength } });
       }
-
-      updateWidth() //initial update
-      window.addEventListener("resizeend", updateWidth);
-
-    }
-
-
-    const sparkLine = document.getElementById('sparkline-' + sensorId);
-
-    if (sparkLine && sparkLine.dataset.append != undefined) {
-
-      workerStorage.postMessage({ type: 'append-data', data: { id: sensorId, payload: JSON.parse(sparkLine.dataset.append), maxLength: sparkLine.dataset.maxlength } });
-
-      let sparkLineWidth = this.el.offsetWidth * 0.9;
-
-      const sparkLineId = "sparkline-" + sensorId;
-
-      let el = this.el;
-
-      function updateWidth() {
-        const newWidth = el.offsetWidth * 0.9;
-        let sparkLine = document.querySelector('#' + sparkLineId);
-        //console.log("resize: ", sparkLineId, sparkLine);
-        if (sparkLine) {
-          sparkLine.dataset.width = newWidth;//("data-width", newWidth);
-          new SimpleSparkLineChart('#' + sparkLineId);
-        }
-      }
-
-      updateWidth() //initial update
-      window.addEventListener("resizeend", updateWidth);
-
-      //this.el.dataset.accumulated.push(this.el.dataset.append);
     }
   }
 }

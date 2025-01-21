@@ -1,6 +1,8 @@
 defmodule SensoctoWeb.IndexLive do
   use SensoctoWeb, :live_view
   require Logger
+  use LiveSvelte.Components
+  alias SensoctoWeb.Components.SensorTypes.{ECGSensor, Default}
 
   # https://dev.to/ivor/how-to-unsubscribe-from-all-topics-in-phoenixpubsub-dka
 
@@ -37,70 +39,25 @@ defmodule SensoctoWeb.IndexLive do
           id={id}
           class="bg-gray-800 p-6 rounded text-xs"
           phx-hook="SensorDataAccumulator"
+          data-append={sensor_data.append_data}
         >
-          <p class="font-bold">{sensor_data.sensor_name}</p>
-          <p class="mt-2">
-            <span id={"source_#{sensor_data.sensor_id}"}>
-              {sensor_data.payload}
-            </span>
+          <p class="font-bold">
+            {sensor_data.connector_name}:{sensor_data.sensor_name}:{sensor_data.sensor_type}
           </p>
-          <p class="text-sm text-gray-500">{sensor_data.timestamp}</p>
+          <p class="text-sm text-gray-500">{sensor_data.timestamp_formated}</p>
 
-          <div role="status" phx-update="ignore" id={ "loading-" <> id }>
-            <svg
-              aria-hidden="true"
-              class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
-              viewBox="0 0 100 101"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
-                fill="currentColor"
-              />
-              <path
-                d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
-                fill="currentFill"
-              />
-            </svg>
-            <span class="sr-only">Loading...</span>
-          </div>
-
-          <div
-            id={ "sparkline-disable-" <> id }
-            class="sparkline hidden"
-            phx-update="ignore"
-            data-append={sensor_data.append_data}
-            data-maxlength="200"
-            data-color-stroke="#ffc107"
-            data-color-filled="#ffc107"
-            data-filled="0.1"
-            data-values="[0]"
-            data-stroke-width="2"
-            data-tooltip="bottom"
-            data-aria-label="Tüderlidrü ... "
-          >
-          </div>
-
-    <!--<sparkline-element
+          <sensocto-sparkline
             width="200"
             height="50"
+            is_loading="true"
             id={ "sparkline_element-" <> id }
-            data-append={sensor_data.append_data}
-            data-maxlength="200"
-            phx-update="ignore"
-          >
-          </sparkline-element>-->
-
-          <sparkline-test
-            width="200"
-            height="50"
-            id={ "sparkline_element-" <> id }
-            data-append={sensor_data.append_data}
+            sensor_id={id}
             maxlength="400"
             phx-update="ignore"
+            class="loading"
           >
-          </sparkline-test>
+            <!-- socket={@socket} -->
+          </sensocto-sparkline>
         </div>
       </div>
 
@@ -128,6 +85,21 @@ defmodule SensoctoWeb.IndexLive do
       </div>
     </div>
     """
+  end
+
+  defp render_sensor_by_type(%{sensor_type: "ecg"} = sensor_data, id, assigns) do
+    ~H"""
+    <button class="css-framework-class" phx-click="click">
+      {@text}
+    </button>
+    """
+  end
+
+  @impl true
+  def handle_event("request-seed-data", %{"id" => sensor_id}, socket) do
+    IO.puts("request-seed_data #{sensor_id}")
+    # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
+    {:noreply, socket}
   end
 
   @impl true
@@ -170,49 +142,38 @@ defmodule SensoctoWeb.IndexLive do
            "payload" => payload,
            "timestamp" => timestamp,
            "uuid" => _uuid,
-           "sensor_id" => sensor_id
+           "sensor_id" => sensor_id,
+           "sensor_params" => sensor_params
          } =
            sensor_data},
         socket
       ) do
-    sensor_attribute = sensor_data["uuid"]
-
-    # IO.inspect(sensor_data)
+    IO.inspect(sensor_data)
 
     updated_sensor =
       %{
         # liveview streams id, remove : for document.querySelector compliance
         id: sanitize_sensor_id(sensor_id),
         payload: payload,
-        timestamp: DateTime.from_unix!(timestamp, :millisecond) |> DateTime.to_string(),
-        sensor_name: sensor_name_for_uuid(sensor_attribute),
-        sensor_id: sensor_id
+        timestamp: timestamp,
+        timestamp_formated: DateTime.from_unix!(timestamp, :millisecond) |> DateTime.to_string(),
+        sensor_id: sensor_params["sensor_id"],
+        sensor_name: sensor_params["sensor_name"],
+        sensor_type: sensor_params["sensor_type"],
+        connector_id: sensor_params["connector_id"],
+        connector_name: sensor_params["connector_name"],
+        sampling_rate: sensor_params["sampling_rate"],
+        append_data:
+          "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": #{sensor_data["payload"]}}"
       }
-      |> Map.update(
-        :append_data,
-        "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": #{sensor_data["payload"]}}",
-        fn existing_value -> existing_value end
-      )
 
-    # IO.inspect(updated_sensor)
+    # |> Map.update(
+    #  :append_data,
+    #  "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": #{sensor_data["payload"]}}",
+    #  fn existing_value -> existing_value end
+    # )
 
-    # case Map.update(updated_sensor, :append_data,  "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": " <> sensor_data["number"] <> "}", fn existing_value -> existing_value end) do
-    #  {:ok} -> IO.puts("Success:")
-    #  {:error, reason} -> IO.puts("Error: #{reason}")
-    # end
-
-    # Update or add the sensor data for the given UUID
-    # updated_sensor_data = Map.put(socket.assigns.sensor_data, sensor_attribute, updated_sensor)
-
-    # Re-assign the updated sensors to the socket and trigger re-render
-    # {:noreply, assign(socket, sensor_data: updated_sensor_data)}
     {:noreply, stream_insert(socket, :sensor_data, updated_sensor)}
-    # stream
-    # Process the payload (e.g., update the assigns)
-    # IO.inspect({number, timestamp, uuid}, label: "Received data")
-
-    # Update the socket state
-    # {:noreply, assign(socket, :number, number)}
   end
 
   @impl true

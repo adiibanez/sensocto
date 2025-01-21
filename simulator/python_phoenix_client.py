@@ -8,30 +8,47 @@ import websockets  # Correct library name
 logging.basicConfig(level=logging.INFO)
 
 class PhoenixChannelClient:
-    def __init__(self, socket_url, on_message_callback):
+    def __init__(self, socket_url, on_message_callback, on_connect_callback=None, on_disconnect_callback=None):
         self.socket_url = socket_url
         self.on_message_callback = on_message_callback
+        self.on_connect_callback = on_connect_callback
+        self.on_disconnect_callback = on_disconnect_callback
         self.channels = {}
         self.ws = None
         self.lock = asyncio.Lock()
         self.connected = False
         self.receiving_task = None  # Task for receiving messages
+        self.reconnect_delay = 2 # Default reconnect delay
 
     async def connect(self):
-        try:
-            self.ws = await websockets.connect(self.socket_url)
-            logging.info("WebSocket connection opened")
-            self.connected = True
-             # Now the channels are already in self.channels
-            await self._join_all_channels()
-            self.receiving_task = asyncio.create_task(self._receive_messages())
+        while True:
+            try:
+                self.ws = await websockets.connect(self.socket_url)
+                logging.info("WebSocket connection opened")
+                self.connected = True
+                if self.on_connect_callback:
+                    await self.on_connect_callback()
 
-        except websockets.ConnectionClosed as e:
-            logging.info(f"WebSocket connection closed: {e}")
-            self.connected = False
-        except Exception as e:
-            logging.error(f"An error occurred: {e}")
-            self.connected = False
+                await self._join_all_channels()
+                self.receiving_task = asyncio.create_task(self._receive_messages())
+                break  # Connection successful, exit loop
+            except websockets.ConnectionClosed as e:
+                logging.info(f"WebSocket connection closed: {e}")
+                self.connected = False
+                if self.on_disconnect_callback:
+                    await self.on_disconnect_callback()
+                await asyncio.sleep(self.reconnect_delay)  # Wait before retrying
+                logging.info(f"Attempting to reconnect in {self.reconnect_delay} seconds...")
+
+
+            except Exception as e:
+                #logging.error(f"An error occurred: {e}")
+                logging.error(e, exc_info=True)
+                self.connected = False
+                if self.on_disconnect_callback:
+                    await self.on_disconnect_callback()
+                await asyncio.sleep(self.reconnect_delay)  # Wait before retrying
+                logging.info(f"Attempting to reconnect in {self.reconnect_delay} seconds...")
 
     async def _join_all_channels(self):
         for topic, params in list(self.channels.items()):
@@ -52,6 +69,8 @@ class PhoenixChannelClient:
         except Exception as e:
             logging.error(f"Error receiving messages, closing connection: {e}")
             self.connected = False
+            if self.on_disconnect_callback:
+                await self.on_disconnect_callback()
             await self.close()
 
     async def _join_channel(self, topic, params):
@@ -81,7 +100,6 @@ class PhoenixChannelClient:
 
     async def push(self, topic, event, payload):
          async with self.lock:
-            #if self.ws and self.connected and self.ws.open:
             if self.ws and self.connected and not self.ws.closed:
                 try:
                    logging.info(f"Pushing event: {event} on topic: {topic}, with payload: {payload}")
@@ -102,10 +120,17 @@ class PhoenixChannelClient:
 def handle_message(topic, event, payload):
     logging.info(f"Received message on topic: {topic}, event: {event}, payload: {payload}")
 
+async def on_connect():
+    logging.info("Client connected to websocket.")
+
+
+async def on_disconnect():
+    logging.info("Client disconnected from websocket.")
+
 
 async def main():
     socket_url = "ws://localhost:4000/socket/websocket"
-    client = PhoenixChannelClient(socket_url, handle_message)
+    client = PhoenixChannelClient(socket_url, handle_message, on_connect, on_disconnect)
 
     logging.info(f"Before client init")
    # Subscribe to some channels, this will ensure that the channels exist before the client connects.
@@ -116,28 +141,6 @@ async def main():
     await client.connect()
     logging.info(f"After client init")
 
-    '''
-    time.sleep(1)  # simulate long running application
-    await client.push("sensor_data:sensor_1", "measurement", {"value": 123})
-    await client.push("sensor_data:sensor_2", "measurement", {"value": 321})
-    await client.push("sensor_data:sensor_3", "measurement", {"value": 456})
-    time.sleep(1)  # simulate long running application
-    await client.unsubscribe("sensor_data:sensor_2")
-    time.sleep(1)  # simulate long running application
-
-    for i in range(100):
-      await client.push("sensor_data:sensor_1", "measurement", {"value": random.randint(1, 100)})
-      await asyncio.sleep(random.randint(1, 2)/100)
-      await client.push("sensor_data:sensor_2", "measurement", {"value": random.randint(1, 100)})
-      await asyncio.sleep(random.randint(1, 2)/100)
-      await client.push("sensor_data:sensor_3", "measurement", {"value": random.randint(1, 100)})
-      await asyncio.sleep(random.randint(1, 2)/100)
-
-    # client.subscribe("sensor_data:sensor_4", {"device_name": "sensor_4"})
-    time.sleep(1)  # simulate long running application
-    await client.push("sensor_data:sensor_4", "measurement", {"value": 987})
-    time.sleep(1)
-    '''
     await client.close()
 
 

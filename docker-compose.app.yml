@@ -1,0 +1,19 @@
+services:
+  phoenix:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - "4000:4000"
+    environment:
+      SECRET_KEY_BASE: "schlarztheplfarz0887383_%"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: sensocto
+      PGHOST: db
+      PGPORT: 5432
+      DATABASE_URL: "ecto://postgres:postgres@localhost:5432/sensocto"
+    depends_on:
+      - db
+#    command:
+#      - "./entrypoint.sh"

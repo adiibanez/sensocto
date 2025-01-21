@@ -94,46 +94,48 @@ Hooks.SensorDataAccumulator = {
     window.dispatchEvent(workerEvent);
   },
 
+  workerRequestListener(event) {
+    const { type, data } = event;
+    console.log("Worker request event", type, data);
+  },
+
   mounted() {
-    const sensorId = this.el.getAttribute("id");
-    workerStorage.postMessage({ type: 'clear-data', data: { id: sensorId } });
+
+    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensorid } });
 
     if ('pushEvent' in this) {
-      this.pushEvent("request-seed-data", {"id": this.el.getAttribute('id')});
+      this.pushEvent("request-seed-data", { "id": this.el.dataset.sensorid });
     } else {
       console.log('liveSocket', liveSocket);
     }
-
   },
 
   destroyed() {
-    const sensorId = this.el.getAttribute("id");
-    workerStorage.postMessage({ type: 'clear-data', data: { id: sensorId } });
+    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensorid } });
   },
 
   updated() {
-    const sensorId = this.el.getAttribute("id");
 
-    const sparklineNewId = 'sparkline_element-' + sensorId;
-    let sparkLineNew = document.getElementById(sparklineNewId);
+    console.log("SensorDataAccumulator: Update event", typeof this.el.dataset.append, this.el.dataset.append);
 
-    if (debug) console.log("DIV sensor updated", this.el.dataset.append);
-    if (sparkLineNew && this.el.dataset.append != undefined) {
-
-      const isLoading = sparkLineNew.getAttribute("is_loading");
-
-      appendDataArray = JSON.parse(this.el.dataset.append);
-      const requestType = (isLoading) ? 'append-read-data' : 'append-data';
-
-      if (debug) console.log("Sparkline status", requestType, 'loading: ' + isLoading, typeof appendDataArray);
-
-      if (appendDataArray && appendDataArray.timestamp && appendDataArray.value) {
-        console.log("Going to request storage worker: ", requestType, appendDataArray);
-        workerStorage.postMessage({ type: requestType, data: { id: sensorId, payload: appendDataArray, maxLength: sparkLineNew.maxlength } });
+    if (this.el.dataset.append) {
+      try {
+        console.log("SensorDataAccumulator: About to send accumulator-data-event", this.el.dataset.sensorid);
+        appendData = JSON.parse(this.el.dataset.append);
+        // weird sparkline doesn't see the first id TODO debug resp, normalize with storage worker event
+        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: this.el.dataset.sensorid, detail: { data: appendData, id: this.el.dataset.sensorid } });
+        window.dispatchEvent(accumulatorEvent);
+      } catch (e) {
+        console.error('accumulator parsing error', this.el.dataset.append, e);
       }
     }
   }
 }
+// add one listener for all components
+window.addEventListener('storage-request-event', this.workerRequestListener, { passive: true });
+window.addEventListener('my-custom-window-event', function(event) {
+  console.log('my-custom-window-event', event);
+}, false);
 
 workerStorage.addEventListener('message', Hooks.SensorDataAccumulator.workerEventListener);
 

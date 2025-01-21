@@ -39,25 +39,10 @@ defmodule SensoctoWeb.IndexLive do
           id={id}
           class="bg-gray-800 p-6 rounded text-xs"
           phx-hook="SensorDataAccumulator"
+          data-sensorid={sensor_data.id}
           data-append={sensor_data.append_data}
         >
-          <p class="font-bold">
-            {sensor_data.connector_name}:{sensor_data.sensor_name}:{sensor_data.sensor_type}
-          </p>
-          <p class="text-sm text-gray-500">{sensor_data.timestamp_formated}</p>
-
-          <sensocto-sparkline
-            width="200"
-            height="50"
-            is_loading="true"
-            id={ "sparkline_element-" <> id }
-            sensor_id={id}
-            maxlength="400"
-            phx-update="ignore"
-            class="loading"
-          >
-            <!-- socket={@socket} -->
-          </sensocto-sparkline>
+          {render_sensor_by_type(sensor_data, assigns)}
         </div>
       </div>
 
@@ -87,11 +72,29 @@ defmodule SensoctoWeb.IndexLive do
     """
   end
 
-  defp render_sensor_by_type(%{sensor_type: "ecg"} = sensor_data, id, assigns) do
+  defp render_sensor_by_type(%{sensor_type: "ecg"} = sensor_data, assigns) do
     ~H"""
-    <button class="css-framework-class" phx-click="click">
-      {@text}
-    </button>
+    <.live_component
+      id={"live-" <> sensor_data.sensor_id}
+      module={SensoctoWeb.Components.SensorTypes.ECGComponent}
+      sensor_data={sensor_data}
+    />
+    """
+  end
+
+  defp render_sensor_by_type(%{sensor_type: "heartrate"} = sensor_data, assigns) do
+    ~H"""
+    <.live_component
+      id={"live-" <> sensor_data.sensor_id}
+      module={SensoctoWeb.Components.SensorTypes.HeartrateComponent}
+      sensor_data={sensor_data}
+    />
+    """
+  end
+
+  defp render_sensor_by_type(sensor_data, assigns) do
+    ~H"""
+    <div>Unknown sensor_type {sensor_data.sensor_type}</div>
     """
   end
 
@@ -148,7 +151,7 @@ defmodule SensoctoWeb.IndexLive do
            sensor_data},
         socket
       ) do
-    IO.inspect(sensor_data)
+    # IO.inspect(sensor_data)
 
     updated_sensor =
       %{

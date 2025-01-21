@@ -1,4 +1,8 @@
 <svelte:options customElement="sensocto-sparkline" />
+<svelte:window
+    on:storage-worker-event={handleStorageWorkerEvent}
+    on:accumulator-data-event={handleAccumulatorEvent}
+/>
 
 <script>
     import {
@@ -7,9 +11,12 @@
         onDestroy,
         onMount,
     } from "svelte";
+
     import Canvas from "./Canvas.svelte";
     import ScaledPoints from "./ScaledPoints.svelte";
     import Point from "./Point.svelte";
+
+    const eventDispatcher = createEventDispatcher();
 
     export let id;
     export let sensor_id;
@@ -59,6 +66,7 @@
 
     onMount(() => {
         console.log("Sparkline: onMount", window.livesocket, live);
+        eventDispatcher('my-custom-window-event', { someData: "This is my payload from onMount", moreData: 123456});
         //LiveSocket.pushEvent("request-seed", sensor_id);
     });
 
@@ -100,6 +108,7 @@
 
     const handleStorageWorkerEvent = (e) => {
         //const {type, eventData} = e.detail;
+
         console.log(
             "Sparkline: handleStorageWorkerEvent",
             sensor_id,
@@ -118,10 +127,66 @@
             }
         }
     };
+
+    const handleAccumulatorEvent = (e) => {
+        //console.log("Sparkline: handleAccumulatorEvent", sensor_id, e?.detail?.id, e);
+
+        eventDispatcher('my-custom-window-event', { someData: "This is my payload", moreData: 123456});
+        console.log(
+            "Sparkline: handleAccumulatorEvent",
+            sensor_id,
+            e.detail.id,
+        );
+
+        if (sensor_id === e?.detail?.id) {
+            if (true)
+                console.log(
+                    "Sparkline handleAccumulatorEvent",
+                    "loading: " + is_loading,
+                    typeof e.detail,
+                    e.detail,
+                );
+
+            if (e?.detail?.data?.timestamp && e?.detail?.data?.value) {
+                const requestType = is_loading
+                    ? "append-read-data"
+                    : "append-data";
+
+                console.log(
+                    "Going to request storage worker: ",
+                    requestType,
+                    e.detail,
+                    window.workerStorage,
+                );
+
+                eventDispatcher("storage-request-event", {
+                    type: requestType,
+                    data: {
+                        id: sensor_id,
+                        payload: e?.detail?.data,
+                        maxLength: maxlength,
+                    },
+                });
+
+                /*
+                window.workerStorage.postMessage({
+                    type: requestType,
+                    data: {
+                        id: sensor_id,
+                        payload: e.detail.data,
+                        maxLength: maxlength,
+                    },
+                });*/
+            } else {
+                console.warn(
+                    "Sparkline handleAccumulatorEvent",
+                    "something wrong",
+                    e,
+                );
+            }
+        }
+    };
 </script>
-
-<svelte:window on:storage-worker-event={handleStorageWorkerEvent} />
-
 <div {width} {height} style="text-align:center">
     {#if is_loading}
         <img

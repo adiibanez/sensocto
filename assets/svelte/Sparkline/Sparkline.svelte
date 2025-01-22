@@ -1,8 +1,4 @@
 <svelte:options customElement="sensocto-sparkline" />
-<svelte:window
-    on:storage-worker-event={handleStorageWorkerEvent}
-    on:accumulator-data-event={handleAccumulatorEvent}
-/>
 
 <script>
     import {
@@ -11,19 +7,21 @@
         onDestroy,
         onMount,
     } from "svelte";
+    import { logger } from "../logger.js";
 
     import Canvas from "./Canvas.svelte";
     import ScaledPoints from "./ScaledPoints.svelte";
     import Point from "./Point.svelte";
 
-    const eventDispatcher = createEventDispatcher();
+    const dispatch = createEventDispatcher();
+
+    let loggerCtxName = "Sparkline";
 
     export let id;
     export let sensor_id;
     export let is_loading = true;
     export let live;
 
-    export let debugFlag = false;
     export let canvas;
     export let scaledPoints;
 
@@ -43,30 +41,39 @@
     $: height = Math.floor(parseFloat(height));
 
     $: if (appenddata?.length) {
-        console.log("Sparkline: appenddata ", appenddata, typeof appenddata);
+        logger.log(
+            loggerCtxName,
+            "Sparkline: appenddata ",
+            appenddata,
+            typeof appenddata,
+        );
         appenddata = JSON.parse(appenddata);
     }
 
     $: if (points?.length) {
         //canvas.$set({ points: points });
-        console.log("Sparkline scaledPoints changed");
+        logger.log(loggerCtxName, "Sparkline scaledPoints changed");
     }
 
     $: if (data?.length) {
-        if (debugFlag)
-            console.log(
-                "Sparkline: data changed, redrawing sparkline...",
-                data,
-            );
+        logger.log(
+            loggerCtxName,
+            "Sparkline: data changed, redrawing sparkline...",
+            data,
+        );
     }
 
     $: if (scaledPoints?.points) {
-        console.log("Sparkline scaledPoints changed");
+        logger.log(loggerCtxName, "Sparkline scaledPoints changed");
     }
 
     onMount(() => {
-        console.log("Sparkline: onMount", window.livesocket, live);
-        eventDispatcher('my-custom-window-event', { someData: "This is my payload from onMount", moreData: 123456});
+        logger.log(
+            loggerCtxName,
+            "Sparkline: onMount",
+            window.livesocket,
+            live,
+        );
         //LiveSocket.pushEvent("request-seed", sensor_id);
     });
 
@@ -109,7 +116,8 @@
     const handleStorageWorkerEvent = (e) => {
         //const {type, eventData} = e.detail;
 
-        console.log(
+        logger.log(
+            loggerCtxName,
             "Sparkline: handleStorageWorkerEvent",
             sensor_id,
             e.detail.type,
@@ -117,10 +125,27 @@
         );
 
         if (sensor_id === e?.detail?.data.id) {
+            logger.log(
+                loggerCtxName,
+                "Sparkline: handleStorageWorkerEvent - data received",
+                e.detail.type,
+                e.detail.data,
+            );
+
             if (e?.detail?.type == "append-read-data-result") {
+                logger.log(loggerCtxName, "Sparkline: Before transformed", id); // Log processed data.
                 data = transformEventData(e.detail.data.result);
-                console.log("Sparkline: Data transformed", data.length, id); // Log processed data.
+
+                logger.log(
+                    loggerCtxName,
+                    "Sparkline: Data transformed",
+                    data.length,
+                    id,
+                ); // Log processed data.
                 if (data.length > 1) is_loading = false;
+            } else if (e?.detail?.type == "append-data-result") {
+                logger.log(loggerCtxName, "Sparkline: Before transformed", id); // Log processed data.
+                data = transformEventData(e.detail.data.result);
             }
 
             if (e?.detail?.type == "updated-read-data") {
@@ -129,44 +154,52 @@
     };
 
     const handleAccumulatorEvent = (e) => {
-        //console.log("Sparkline: handleAccumulatorEvent", sensor_id, e?.detail?.id, e);
+        //logger.log(loggerCtxName, "Sparkline: handleAccumulatorEvent", sensor_id, e?.detail?.id, e);
 
-        eventDispatcher('my-custom-window-event', { someData: "This is my payload", moreData: 123456});
-        console.log(
+        logger.log(
+            loggerCtxName,
             "Sparkline: handleAccumulatorEvent",
             sensor_id,
             e.detail.id,
         );
 
         if (sensor_id === e?.detail?.id) {
-            if (true)
-                console.log(
-                    "Sparkline handleAccumulatorEvent",
-                    "loading: " + is_loading,
-                    typeof e.detail,
-                    e.detail,
-                );
+            logger.log(
+                loggerCtxName,
+                "Sparkline handleAccumulatorEvent",
+                "loading: " + is_loading,
+                typeof e.detail,
+                e.detail,
+            );
 
             if (e?.detail?.data?.timestamp && e?.detail?.data?.value) {
                 const requestType = is_loading
                     ? "append-read-data"
                     : "append-data";
 
-                console.log(
+                logger.log(
+                    loggerCtxName,
                     "Going to request storage worker: ",
                     requestType,
                     e.detail,
                     window.workerStorage,
                 );
 
-                eventDispatcher("storage-request-event", {
-                    type: requestType,
-                    data: {
-                        id: sensor_id,
-                        payload: e?.detail?.data,
-                        maxLength: maxlength,
+                //const myCustomEvent = new CustomEvent("storage-request-event", {
+                const myCustomEvent = new CustomEvent(
+                    "worker-requesthandler-event",
+                    {
+                        detail: {
+                            type: requestType,
+                            data: {
+                                id: sensor_id,
+                                payload: e?.detail?.data,
+                                maxLength: maxlength,
+                            },
+                        },
                     },
-                });
+                ); // Send the timestamp as data.
+                window.dispatchEvent(myCustomEvent); // Dispatch on window
 
                 /*
                 window.workerStorage.postMessage({
@@ -187,6 +220,11 @@
         }
     };
 </script>
+
+<svelte:window
+    on:storage-worker-event={handleStorageWorkerEvent}
+    on:accumulator-data-event={handleAccumulatorEvent}
+/>
 <div {width} {height} style="text-align:center">
     {#if is_loading}
         <img
@@ -204,17 +242,10 @@
             {timeMode}
             {timeWindow}
             {yPadding}
-            {debugFlag}
         ></ScaledPoints>
 
-        <Canvas
-            bind:this={canvas}
-            bind:points={test}
-            {width}
-            {height}
-            {debugFlag}
-        ></Canvas>
-        {#if true}<p>
+        <Canvas bind:this={canvas} bind:points={test} {width} {height}></Canvas>
+        {#if false}<p>
                 Sparkline DATA: maxLength: {maxlength}
                 {data.length} Points: {test.length}
             </p>{/if}

@@ -6,7 +6,10 @@
         onMount,
     } from "svelte";
 
+    import {logger} from "./logger.js";
+
     let sensorService = getContext("sensorService");
+    let loggerCtxName = 'BluetoothClient';
 
     export let devices = [];
     export let deviceCharacteristics = {};
@@ -46,20 +49,31 @@
                     onDisconnected,
                 );
 
-                sensorService.setupChannel(getUniqueDeviceId(device));
+                const sensorIdentifier = getUniqueDeviceId(device);
+                const sensorType = getDeviceSensorType(device);
+                const sensorSamplingRate = getDeviceSamplingRate(device);
 
-                console.log("Connecting to GATT Server...");
+                const metadata = {
+                    sensor_name: getUniqueDeviceId(device),
+                    sensor_id: device.id,
+                    sensor_type: sensorType,
+                    sampling_rate: sensorSamplingRate,
+                };
+
+                sensorService.setupChannel(sensorIdentifier, metadata);
+
+                logger.log(loggerCtxName, "Connecting to GATT Server...");
                 return device.gatt.connect();
             })
             .then((server) => {
-                console.log("server", server);
+                logger.log(loggerCtxName, "server", server);
                 return server.getPrimaryServices();
             })
             .then((services) => {
                 //log('Getting Characteristics...');
                 let queue = Promise.resolve();
                 services.forEach((service) => {
-                    console.log("service", service);
+                    logger.log(loggerCtxName, "service", service);
 
                     queue = queue.then((_) =>
                         service.getCharacteristics().then((characteristics) => {
@@ -68,7 +82,7 @@
                                     undefined ==
                                     characteristic.startNotifications
                                 ) {
-                                    console.log(
+                                    logger.log(loggerCtxName, 
                                         "startNotifications not supported, requires polling fallback",
                                     );
                                 }
@@ -86,41 +100,41 @@
                 return queue;
             })
             .catch((error) => {
-                console.log("Argh! " + error);
+                logger.log(loggerCtxName, "Argh! " + error);
             });
     }
 
     function handleCharacteristic(characteristic) {
-        console.log("> Service UUID:", characteristic.service.uuid);
-        console.log("> Characteristic UUID:  " + characteristic.uuid);
-        console.log(
+        logger.log(loggerCtxName, "> Service UUID:", characteristic.service.uuid);
+        logger.log(loggerCtxName, "> Characteristic UUID:  " + characteristic.uuid);
+        logger.log(loggerCtxName, 
             "> Broadcast:            " + characteristic.properties.broadcast,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Read:                 " + characteristic.properties.read,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Write w/o response:   " +
                 characteristic.properties.writeWithoutResponse,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Write:                " + characteristic.properties.write,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Notify:               " + characteristic.properties.notify,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Indicate:             " + characteristic.properties.indicate,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Signed Write:         " +
                 characteristic.properties.authenticatedSignedWrites,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Queued Write:         " +
                 characteristic.properties.reliableWrite,
         );
-        console.log(
+        logger.log(loggerCtxName, 
             "> Writable Auxiliaries: " +
                 characteristic.properties.writableAuxiliaries,
         );
@@ -147,11 +161,11 @@
                         characteristic.service.device.id
                     ].push(characteristic);
 
-                    console.log(
+                    logger.log(loggerCtxName, 
                         "deviceCharacteristics",
                         deviceCharacteristics[characteristic.service.device.id],
                     );
-                    console.log(
+                    logger.log(loggerCtxName, 
                         "Subscribed to" + characteristic.uuid,
                         characteristic,
                     );
@@ -160,11 +174,11 @@
                 })
                 .then((characteristic) => {
                     if (characteristic.properties.read == true) {
-                        console.log("Reading" + characteristic.uuid + "...");
+                        logger.log(loggerCtxName, "Reading" + characteristic.uuid + "...");
                         return characteristic
                             .readValue()
                             .then((valueObj) => {
-                                console.log(
+                                logger.log(loggerCtxName, 
                                     "Characteristic value:",
                                     characteristic.uuid,
                                     valueObj,
@@ -182,7 +196,7 @@
                     }
                 })
                 .catch((error) => {
-                    console.log(
+                    logger.log(loggerCtxName, 
                         "Argh! " + characteristic.name + " error: " + error,
                     );
                 });
@@ -220,11 +234,11 @@
                 debounce = true;
                 break;
             default:
-                console.log("unknown characteristic", event.target.uuid, v);
+                logger.log(loggerCtxName, "unknown characteristic", event.target.uuid, v);
         }
 
         if (sensorValue !== null) {
-            console.log("sensorValue", event.target.uuid, sensorValue);
+            logger.log(loggerCtxName, "sensorValue", event.target.uuid, sensorValue);
 
             var payLoad = {
                 payload: sensorValue,
@@ -241,7 +255,7 @@
                     payLoad,
                 );
             } else {
-                //console.log("no change", event.target.uuid, sensorValue);
+                //logger.log(loggerCtxName, "no change", event.target.uuid, sensorValue);
             }
 
             characteristicValues[event.target.uuid] = sensorValue;
@@ -250,7 +264,7 @@
 
     async function onDisconnected(event) {
         var device = event.target;
-        console.log(
+        logger.log(loggerCtxName, 
             "> Bluetooth Device disconnected " + device.name,
             device.id,
         );
@@ -259,34 +273,50 @@
     }
 
     function ensureDeviceCleanup(device) {
-        if (Array.isArray(deviceCharacteristics[device.id])) {
-            deviceCharacteristics[device.id].forEach(function (characteristic) {
-                if (characteristic) {
-                    characteristic.removeEventListener(
-                        "characteristicvaluechanged",
-                        handleCharacteristicChanged,
-                    );
-                    //await characteristic.stopNotifications();
-                    console.log("Notifications stopped and listener removed.");
-                }
-            });
-            delete deviceCharacteristics[device.id];
+
+        logger.log(loggerCtxName, "Device disconnected", device?.id, device);
+        return;
+
+        try {
+            if (device?.id && deviceCharacteristics?.length && Array.isArray(deviceCharacteristics[device.id])) {
+                deviceCharacteristics[device.id].forEach(
+                    function (characteristic) {
+                        if (characteristic) {
+                            characteristic.removeEventListener(
+                                "characteristicvaluechanged",
+                                handleCharacteristicChanged,
+                            );
+                            //await characteristic.stopNotifications();
+                            logger.log(loggerCtxName, 
+                                "Notifications stopped and listener removed.",
+                            );
+                        }
+                    },
+                );
+                delete deviceCharacteristics[device.id];
+            }
+
+            var channelName = getUniqueDeviceId(device);
+            logger.log(loggerCtxName, "Leaving channel", channelName);
+            sensorService.leaveChannel(channelName);
+
+            devices = devices.filter((d) => d.id !== device.id);
+            logger.log(loggerCtxName, 
+                "Devices after cleanup: ",
+                devices,
+                deviceCharacteristics,
+            );
+        } catch (e) {
+            logger.log(loggerCtxName, "ensureDeviceCleanup error: ", e);
         }
-
-        var channelName = getUniqueDeviceId(device);
-        console.log("Leaving channel", channelName);
-        sensorService.leaveChannel(channelName);
-
-        devices = devices.filter((d) => d.id !== device.id);
-        console.log("Devices after cleanup: ", devices, deviceCharacteristics);
     }
 
     async function disconnectBLEDevice(device) {
         if (device.gatt.connected) {
-            console.log("Device still connected", device);
+            logger.log(loggerCtxName, "Device still connected", device);
             device.gatt.disconnect();
         } else {
-            console.log("Device is already disconnected.");
+            logger.log(loggerCtxName, "Device is already disconnected.");
         }
     }
 
@@ -295,6 +325,30 @@
             return device.name;
         }
         return sensorService.getDeviceId() + ":" + device.name;
+    }
+
+    function getDeviceSamplingRate(device) {
+        if (device.name.startsWith("Movesense")) {
+            return 1;
+        }
+
+        return 10;
+    }
+
+    function getDeviceSensorType(device) {
+        if (device.name.startsWith("Movesense")) {
+            return "heartrate";
+        }
+
+        if (device.name.startsWith("Flex")) {
+            return "flex";
+        }
+
+        if (device.name.startsWith("Pressure")) {
+            return "pressure";
+        }
+
+        return device.name;
     }
 
     onDestroy(() => {

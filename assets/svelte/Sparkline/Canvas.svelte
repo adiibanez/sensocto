@@ -69,6 +69,7 @@
             cancelAnimationFrame(renderId);
         } else {
             console.log("Canvas rendering", elapsed, renderId);
+            context.save();
             context.clearRect(0, 0, width, height); // Start with clearing.
             context.strokeStyle = color; // set color
             context.lineWidth = lineWidth; // set line width
@@ -83,14 +84,14 @@
                 }
             }
             context.stroke(); // stroke the path.
+            context.restore();
         }
 
         renderId = requestAnimationFrame(drawCanvas);
     }
 
     function drawCanvas() {
-
-        if(isDrawing === true) return;
+        if (isDrawing === true) return;
         // Draw using new data
         if (!context || !points?.length) {
             // validation
@@ -98,6 +99,7 @@
             return;
         }
 
+        context.save();
         context.clearRect(0, 0, width, height); // Start with clearing.
         context.strokeStyle = color; // set color
         context.lineWidth = lineWidth; // set line width
@@ -112,6 +114,7 @@
             }
         }
         context.stroke(); // stroke the path.
+        context.restore();
         console.log(
             "CanvasLayer: Drawing",
             lastRender,
@@ -139,7 +142,7 @@
         const { x, y } = start;
         context.strokeStyle = drawingColor; // set color
         context.lineWidth = drawingLineWidth; // set line width
-        
+
         context.beginPath();
         context.moveTo(x, y);
         context.lineTo(x1, y1);
@@ -183,7 +186,7 @@
         });
     }}
 ></canvas>
-{#if false }<p {elapsed}>
+{#if false}<p {elapsed}>
         Canvas: {points.length}, width: {width}, height: {height}, elapsed: {elapsed}
         {lastRender}
     </p>{/if}

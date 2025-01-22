@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)  # Set Logging Level
 save_path = "/home/jovyan"
 
 
-def generate_heart_rate(duration, sampling_rate, avg_heart_rate=70, variability=10, tidal_amplitude=15):
+def generate_heart_rate(duration, sampling_rate, avg_heart_rate=70, variability=3, tidal_amplitude=50):
     """Generates heart rate data with a tidal trend, sinusoidal variation, and random noise."""
     num_samples = int(duration * sampling_rate)
     time_points = np.linspace(0, duration, num_samples)
@@ -168,7 +168,7 @@ async def main():
     join_params = {
         "connector_id": connector_id,
         "connector_name": connector_name,
-        "sensor_name": "Movesense",
+        "sensor_name": sensor_id,
         "sensor_id": sensor_id_string,
         "sensor_type": sensor_type,
         "sampling_rate": sampling_rate,

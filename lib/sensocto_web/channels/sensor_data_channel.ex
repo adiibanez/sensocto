@@ -29,7 +29,7 @@ defmodule SensoctoWeb.SensorDataChannel do
 
       DeviceSupervisor.add_device(sensor_id)
 
-      '''
+      """
 
       %{
       "batch_size" => 1,
@@ -40,7 +40,7 @@ defmodule SensoctoWeb.SensorDataChannel do
       "sensor_name" => "Movesense 007",
       "sensor_type" => "heartrate"
       }
-      '''
+      """
 
       {:ok,
        socket =

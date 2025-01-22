@@ -24,7 +24,7 @@ python3 test-simulator-vici.py Vicumulator1 heartrate --heart_rate 160 --samplin
 # python3 test-simulator-vici.py Vicumulator3 eda --duration 30 --sampling_rate 20 --scr_number 20
 
 # EDA/EMG
-python3 test-simulator-vici.py Vicumulator4 eda --duration 30 --sampling_rate 20 --scr_number 15
+# python3 test-simulator-vici.py Vicumulator4 eda --duration 30 --sampling_rate 20 --scr_number 15
 
 # High number of SCRs
 # frequent muscle bursts

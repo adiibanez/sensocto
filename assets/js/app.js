@@ -88,15 +88,10 @@ Hooks.SensorDataAccumulator = {
 
   workerEventListener(event) {
     const { type, data } = event;
-    console.log("Worker event", type, data);
+    console.log("WORKER event", type, data);
 
     const workerEvent = new CustomEvent('storage-worker-event', { id: data.id, detail: event.data });
     window.dispatchEvent(workerEvent);
-  },
-
-  workerRequestListener(event) {
-    const { type, data } = event;
-    console.log("Worker request event", type, data);
   },
 
   mounted() {
@@ -108,6 +103,8 @@ Hooks.SensorDataAccumulator = {
     } else {
       console.log('liveSocket', liveSocket);
     }
+
+    resizeSparklines();
   },
 
   destroyed() {
@@ -132,10 +129,38 @@ Hooks.SensorDataAccumulator = {
   }
 }
 // add one listener for all components
-window.addEventListener('storage-request-event', this.workerRequestListener, { passive: true });
-window.addEventListener('my-custom-window-event', function(event) {
-  console.log('my-custom-window-event', event);
+window.addEventListener('worker-requesthandler-event', function (event) {
+  console.log('worker-requesthandler-event', event.type, event.detail);
+  workerStorage.postMessage({ type: event.detail.type, data: event.detail.data });
 }, false);
+
+
+
+function resizeSparklines() {
+  console.log('Resizeend detected!');
+  const allSparklines = document.querySelectorAll('sensocto-sparkline'); // Correct custom element tag.
+
+  allSparklines.forEach(element => {
+    const parentWidth = element.parentElement.offsetWidth;
+    const parentHeight = element.parentElement.offsetHeight;
+    console.log("Sparkline Resizer", element.id, parentWidth, parentHeight); // Log it.
+
+    element.setAttribute('width', parentWidth); // Use setAttribute to change width
+    //element.setAttribute('height', parentHeight); // Also set height to parent, if required.
+  });
+}
+
+window.addEventListener('resizeend', resizeSparklines, { passive: true });
+
+
+// Also set it up on DOMContentLoaded, for correct initial loading.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', resizeSparklines);
+} else {
+  resizeSparklines();
+}
+
+
 
 workerStorage.addEventListener('message', Hooks.SensorDataAccumulator.workerEventListener);
 

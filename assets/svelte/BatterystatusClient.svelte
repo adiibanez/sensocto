@@ -2,12 +2,19 @@
     import { getContext, onDestroy, onMount } from "svelte";
 
     let sensorService = getContext("sensorService");
-    let channelIdentifier = sensorService.getDeviceId() + ":BAT";
+    let channelIdentifier = sensorService.getDeviceId() + ":bat";
     let batteryData = null;
 
     const startBatterySensor = async () => {
         if ("getBattery" in navigator) {
-            sensorService.setupChannel(channelIdentifier);
+            const metadata = {
+                sensor_name: channelIdentifier,
+                sensor_id: sensorService.getDeviceId(),
+                sensor_type: "battery",
+                sampling_rate: 1,
+            };
+
+            sensorService.setupChannel(channelIdentifier, metadata);
             try {
                 const battery = await navigator.getBattery();
                 updateBatteryData(battery); // Initial data
@@ -35,8 +42,10 @@
         };
 
         let payload = {
-            payload:
-                batteryData.level + "," + (batteryData.charging ? "yes" : "no"),
+            payload: JSON.stringify({
+                level: batteryData.level,
+                charging: batteryData.charging ? "yes" : "no"
+            }),
             uuid: channelIdentifier,
             timestamp: batteryData.timestamp,
         };

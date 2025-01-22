@@ -2,7 +2,12 @@ defmodule SensoctoWeb.IndexLive do
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
-  alias SensoctoWeb.Components.SensorTypes.{ECGSensor, Default}
+
+  alias SensoctoWeb.Components.SensorTypes.{
+    GenericSensorComponent,
+    HeartrateComponent,
+    HighSamplingRateSensorComponent
+  }
 
   # https://dev.to/ivor/how-to-unsubscribe-from-all-topics-in-phoenixpubsub-dka
 
@@ -19,7 +24,8 @@ defmodule SensoctoWeb.IndexLive do
      socket
      |> assign(
        sensors_online: %{},
-       sensors_offline: %{}
+       sensors_offline: %{},
+       stream_div_class: ""
      )
      |> stream(:sensor_data, [])}
   end
@@ -29,54 +35,51 @@ defmodule SensoctoWeb.IndexLive do
   def render(assigns) do
     ~H"""
     <div>
-      <div
-        id="sensors"
-        phx-update="stream"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
-      >
+      <div id="sensors" phx-update="stream" class={assigns.stream_div_class}>
+        <div class="only:block hidden">
+          <p>No sensors online</p>
+        </div>
         <div
           :for={{id, sensor_data} <- @streams.sensor_data}
           id={id}
-          class="bg-gray-800 p-6 rounded text-xs"
+          class="bg-gray-800 text-xs m-0 p-1"
           phx-hook="SensorDataAccumulator"
           data-sensorid={sensor_data.id}
           data-append={sensor_data.append_data}
+          class="m-0 p-0"
         >
           {render_sensor_by_type(sensor_data, assigns)}
         </div>
       </div>
-
-      <div id="accumulated-data" class="hidden" phx-update="ignore"></div>
-
-      <%= if @sensors_offline != %{} do %>
-        <div>
-          <p class="text font-bold mt-8 mb-2">Recently disconnected sensors</p>
-          <ul class="list-disc list-inside ml-4">
-            <%= for sensor_id <- Map.keys(@sensors_offline) do %>
-              <li>{sensor_id}</li>
-            <% end %>
-          </ul>
-        </div>
-      <% end %>
-
-      <div
-        id="toolbar"
-        class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[50%] overflow-y-auto"
-      >
-        {live_render(@socket, SensoctoWeb.SenseLive,
-          id: "bluetooth",
-          session: %{"parent_id" => self()}
-        )}
+    </div>
+    <%= if @sensors_offline != %{} do %>
+      <div>
+        <p class="text font-bold mt-8 mb-2">Recently disconnected sensors</p>
+        <ul class="list-disc list-inside ml-4">
+          <%= for sensor_id <- Map.keys(@sensors_offline) do %>
+            <li>{sensor_id}</li>
+          <% end %>
+        </ul>
       </div>
+    <% end %>
+    <div
+      id="toolbar"
+      class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[50%] overflow-y-auto"
+    >
+      {live_render(@socket, SensoctoWeb.SenseLive,
+        id: "bluetooth",
+        session: %{"parent_id" => self()}
+      )}
     </div>
     """
   end
 
-  defp render_sensor_by_type(%{sensor_type: "ecg"} = sensor_data, assigns) do
+  defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
+       when sensor_type in ["ecg", "pressure", "flex", "eda", "emg", "rsp"] do
     ~H"""
     <.live_component
       id={"live-" <> sensor_data.sensor_id}
-      module={SensoctoWeb.Components.SensorTypes.ECGComponent}
+      module={HighSamplingRateSensorComponent}
       sensor_data={sensor_data}
     />
     """
@@ -86,7 +89,17 @@ defmodule SensoctoWeb.IndexLive do
     ~H"""
     <.live_component
       id={"live-" <> sensor_data.sensor_id}
-      module={SensoctoWeb.Components.SensorTypes.HeartrateComponent}
+      module={HeartrateComponent}
+      sensor_data={sensor_data}
+    />
+    """
+  end
+
+  defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns) do
+    ~H"""
+    <.live_component
+      id={"live-" <> sensor_data.sensor_id}
+      module={GenericSensorComponent}
       sensor_data={sensor_data}
     />
     """
@@ -94,7 +107,7 @@ defmodule SensoctoWeb.IndexLive do
 
   defp render_sensor_by_type(sensor_data, assigns) do
     ~H"""
-    <div>Unknown sensor_type {sensor_data.sensor_type}</div>
+    <div>Unknown sensor_type {sensor_data}</div>
     """
   end
 
@@ -121,11 +134,21 @@ defmodule SensoctoWeb.IndexLive do
         stream_delete_by_dom_id(socket, :sensor_data, sensor_dom_id)
       end)
 
+    sensors_online_count = min(2, Enum.count(sensors_online))
+    IO.puts(sensors_online_count)
+
+    div_class =
+      "grid gap-2 grid-cols-1 md:grid-cols-" <>
+        Integer.to_string(min(2, sensors_online_count)) <>
+        " lg:grid-cols-" <>
+        Integer.to_string(min(4, sensors_online_count))
+
     {
       :noreply,
       socket_to_return
       |> assign(:sensors_online, sensors_online)
       |> assign(:sensors_offline, payload.leaves)
+      |> assign(:stream_div_class, div_class)
     }
   end
 

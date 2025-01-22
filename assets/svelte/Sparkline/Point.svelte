@@ -3,4 +3,4 @@
     let y;
 </script>
 
-<p>x: {x}, y:{y}</p>
+<!--<p>x: {x}, y:{y}</p>-->

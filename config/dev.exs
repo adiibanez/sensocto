@@ -72,7 +72,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :info
+  level: :debug
 
 config :ash_authentication, debug_authentication_failures?: true
 

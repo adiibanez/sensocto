@@ -12,7 +12,24 @@ defmodule Sensocto.Application do
       SensoctoWeb.Telemetry,
       Sensocto.Repo,
       # Registry added here
-      {Registry, keys: :unique, name: Sensocto.Registry},
+      {Registry, keys: :unique, name: Sensocto.Sensors.Registry},
+      {Registry, keys: :unique, name: Sensocto.Sensors.SensorRegistry},
+      {Registry, keys: :unique, name: Sensocto.Sensors.SensorAttributeRegistry},
+      # Sensors
+      # Sensocto.Sensors.SensorRegistry,
+      # {Registry.Supervisor, [Sensocto.Sensors.SensorRegistry]},
+      # Sensocto.Sensors.SensorAttributeRegistry,
+      # {Registry.Supervisor, [Sensocto.Sensors.SensorAttributeRegistry]},
+      # Sensocto.Sensors.SensorSupervisor,
+
+      {Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
+      {Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
+      {Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
+      Sensocto.SensorsDynamicSupervisor,
+
+      # Sensors
+      # {Horde.DynamicSupervisor, [name: Sensocto.DistributedSupervisor, strategy: :one_for_one]},
+      # {Horde.Registry, [name: Sensocto.DistributedRegistry, keys: :unique]},
       {Sensocto.DeviceSupervisor, []},
       {DNSCluster, query: Application.get_env(:sensocto, :dns_cluster_query) || :ignore},
       # {Cluster.Supervisor, [Application.get_env(:libcluster, :topologies), [name: Sensocto.ClusterSupervisor]]},

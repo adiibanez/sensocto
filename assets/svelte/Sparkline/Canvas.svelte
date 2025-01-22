@@ -6,6 +6,9 @@
         onMount,
     } from "svelte";
 
+    import { logger } from "../logger.js";
+    let loggerCtxName = 'Canvas';
+
     export let width = 300;
     export let height = 300;
     export let color = "#ffc107";
@@ -14,8 +17,7 @@
     export let drawingLineWidth = 2;
 
     export let background = "transparent";
-    export let lineWidth = 1.5;
-    export let debugFlag = false;
+    export let lineWidth = 2;
 
     export let points = [];
     let canvas;
@@ -35,7 +37,7 @@
 
         handleSize();
 
-        console.log("Canvas: onMount", points);
+        logger.log(loggerCtxName, "Canvas: onMount", points);
     });
 
     $: if (context) {
@@ -43,7 +45,7 @@
     }
 
     $: if (points?.length) {
-        console.log("Canvas points changed", points.length);
+        logger.log(loggerCtxName, "Canvas points changed", points.length);
         // renderId = requestAnimationFrame(drawCanvas);
         drawCanvas();
         lastRender = Date.now();
@@ -51,24 +53,24 @@
 
     /*$: if(typeof lastRender === "number" && lastRender > 0) {
         elapsed = Date.now() - lastRender;
-        console.log("calculate elapsed", elapsed, lastRender, Date.now());
+        logger.log(loggerCtxName, "calculate elapsed", elapsed, lastRender, Date.now());
     }*/
 
     function drawCanvasRequestAnimationFrame() {
         // Draw using new data
         if (!context || !points?.length) {
             // validation
-            console.log("CanvasLayer: No context or data to draw", id);
+            logger.log(loggerCtxName, "CanvasLayer: No context or data to draw", id);
             return;
         }
 
         elapsed = Date.now() - lastRender;
 
         if (elapsed < 100) {
-            console.log("Canvas abort rendering", elapsed, renderId);
+            logger.log(loggerCtxName, "Canvas abort rendering", elapsed, renderId);
             cancelAnimationFrame(renderId);
         } else {
-            console.log("Canvas rendering", elapsed, renderId);
+            logger.log(loggerCtxName, "Canvas rendering", elapsed, renderId);
             context.save();
             context.clearRect(0, 0, width, height); // Start with clearing.
             context.strokeStyle = color; // set color
@@ -95,7 +97,7 @@
         // Draw using new data
         if (!context || !points?.length) {
             // validation
-            console.log("CanvasLayer: No context or data to draw", id);
+            logger.log(loggerCtxName, "CanvasLayer: No context or data to draw", id);
             return;
         }
 
@@ -115,7 +117,7 @@
         }
         context.stroke(); // stroke the path.
         context.restore();
-        console.log(
+        logger.log(loggerCtxName, 
             "CanvasLayer: Drawing",
             lastRender,
             Date.now(),

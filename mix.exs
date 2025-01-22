@@ -64,6 +64,7 @@ defmodule Sensocto.MixProject do
       {:gettext, "~> 0.26 and >= 0.26.1"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
+      {:horde, "~> 0.8.5"},
       # {:libcluster, "~> 3.3"},
       {:bandit, "~> 1.2"},
       # {:bandit, "~> 1.0", github: "mtrudel/bandit", branch: "gc_on_websocket"}

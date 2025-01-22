@@ -1,4 +1,5 @@
 defmodule SensoctoWeb.IndexLive do
+  alias Sensocto.SimpleSensor
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
@@ -34,6 +35,9 @@ defmodule SensoctoWeb.IndexLive do
   @spec render(any()) :: Phoenix.LiveView.Rendered.t()
   def render(assigns) do
     ~H"""
+    <div id="status" class="hidden" phx-disconnected={JS.show()} phx-connected={JS.hide()}>
+      Attempting to reconnect...
+    </div>
     <div>
       <div id="sensors" phx-update="stream" class={assigns.stream_div_class}>
         <div class="only:block hidden">
@@ -128,20 +132,19 @@ defmodule SensoctoWeb.IndexLive do
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", payload: payload}, socket) do
     sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
 
-    socket_to_return =
-      Enum.reduce(payload.leaves, socket, fn {id, metas}, socket ->
-        sensor_dom_id = "sensor_data-" <> sanitize_sensor_id(id)
-        stream_delete_by_dom_id(socket, :sensor_data, sensor_dom_id)
-      end)
-
     sensors_online_count = min(2, Enum.count(sensors_online))
-    IO.puts(sensors_online_count)
 
     div_class =
       "grid gap-2 grid-cols-1 md:grid-cols-" <>
         Integer.to_string(min(2, sensors_online_count)) <>
         " lg:grid-cols-" <>
         Integer.to_string(min(4, sensors_online_count))
+
+    socket_to_return =
+      Enum.reduce(payload.leaves, socket, fn {id, metas}, socket ->
+        sensor_dom_id = "sensor_data-" <> sanitize_sensor_id(id)
+        stream_delete_by_dom_id(socket, :sensor_data, sensor_dom_id)
+      end)
 
     {
       :noreply,
@@ -175,6 +178,15 @@ defmodule SensoctoWeb.IndexLive do
         socket
       ) do
     # IO.inspect(sensor_data)
+
+    case SimpleSensor.get_attributes(sensor_id) do
+      attributes ->
+        IO.inspect(attributes, label: " SimpleSensor data received")
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
+    end
 
     updated_sensor =
       %{

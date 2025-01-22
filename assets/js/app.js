@@ -21,12 +21,13 @@ import "phoenix_html"
 import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
+import logger from "./logger.js"
 // import Hooks from "./hooks"
 import { getHooks } from "live_svelte"
 import * as Components from "../svelte/**/*.svelte"
 
 window.workerStorage = new Worker('./assets/worker-storage.js?' + Math.random());
-const debug = true;
+const debug = false;
 
 let Hooks = {}
 
@@ -37,32 +38,32 @@ Hooks.ResizeDetection = {
     return mainElement.classList.contains('resizing');
   },
   mounted() {
-    console.log("ResizeDetection Mounted!");
+    logger.log("Hooks.ResizeDetection", "ResizeDetection Mounted!");
 
     let resizeStartTime = 0;
     let resizeTotalDuration = 0;
     let isResizing = false;
 
     window.addEventListener('resize', function () {
-      if (debug) console.log('Resize detected!');
+      logger.log("Hooks.ResizeDetection",'Resize detected!');
       if (!isResizing) {
         isResizing = true
         resizeStartTime = performance.now();
         this.document.getElementById("main").classList.add('resizing');
-        if (debug) console.log('Resize: ', this.document.getElementById("main").classList);
+        logger.log("Hooks.ResizeDetection", 'Resize: ', this.document.getElementById("main").classList);
       }
     }, { passive: true });
 
     window.addEventListener('resizeend', function () {
-      console.log('Resizeend detected!');
+      logger.log("Hooks.ResizeDetection", 'Resizeend detected!');
       if (isResizing) {
         isResizing = false
         const resizeEndTime = performance.now();
         const resizeDuration = resizeEndTime - resizeStartTime
         resizeTotalDuration += resizeDuration
-        if (debug) console.log(`Resize duration: ${resizeDuration.toFixed(2)}ms, Total duration: ${resizeTotalDuration.toFixed(2)}ms`);
+        logger.log("Hooks.ResizeDetection", `Resize duration: ${resizeDuration.toFixed(2)}ms, Total duration: ${resizeTotalDuration.toFixed(2)}ms`);
         this.document.getElementById("main").classList.remove('resizing');
-        if (debug) console.log('Resizeendt: ', this.document.getElementById("main").classList);
+        logger.log("Hooks.ResizeDetection", 'Resizeendt: ', this.document.getElementById("main").classList);
 
         // redraw sparklines
         //new SimpleSparkLineChart('.sparkline');
@@ -80,7 +81,7 @@ Hooks.ResizeDetection = {
 
   },
   destroyed() {
-    console.log("ResizeDetection Destroyed!");
+    logger.log("Hooks.ResizeDetection", "ResizeDetection Destroyed!");
   }
 }
 
@@ -88,7 +89,7 @@ Hooks.SensorDataAccumulator = {
 
   workerEventListener(event) {
     const { type, data } = event;
-    console.log("WORKER event", type, data);
+    logger.log("Hooks.SensorDataAccumulator", "WORKER event", type, data);
 
     const workerEvent = new CustomEvent('storage-worker-event', { id: data.id, detail: event.data });
     window.dispatchEvent(workerEvent);
@@ -101,7 +102,7 @@ Hooks.SensorDataAccumulator = {
     if ('pushEvent' in this) {
       this.pushEvent("request-seed-data", { "id": this.el.dataset.sensorid });
     } else {
-      console.log('liveSocket', liveSocket);
+      logger.log("Hooks.SensorDataAccumulator", 'liveSocket', liveSocket);
     }
 
     resizeSparklines();
@@ -113,37 +114,36 @@ Hooks.SensorDataAccumulator = {
 
   updated() {
 
-    console.log("SensorDataAccumulator: Update event", typeof this.el.dataset.append, this.el.dataset.append);
+    logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: Update event", typeof this.el.dataset.append, this.el.dataset.append);
 
     if (this.el.dataset.append) {
       try {
-        console.log("SensorDataAccumulator: About to send accumulator-data-event", this.el.dataset.sensorid);
+        logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: About to send accumulator-data-event", this.el.dataset.sensorid);
         appendData = JSON.parse(this.el.dataset.append);
         // weird sparkline doesn't see the first id TODO debug resp, normalize with storage worker event
         const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: this.el.dataset.sensorid, detail: { data: appendData, id: this.el.dataset.sensorid } });
         window.dispatchEvent(accumulatorEvent);
       } catch (e) {
-        console.error('accumulator parsing error', this.el.dataset.append, e);
+        logger.log("Hooks.SensorDataAccumulator", 'accumulator parsing error', this.el.dataset.append, e);
       }
     }
   }
 }
 // add one listener for all components
 window.addEventListener('worker-requesthandler-event', function (event) {
-  console.log('worker-requesthandler-event', event.type, event.detail);
+  logger.log("Hooks.SensorDataAccumulator", 'worker-requesthandler-event', event.type, event.detail);
   workerStorage.postMessage({ type: event.detail.type, data: event.detail.data });
 }, false);
 
 
 
 function resizeSparklines() {
-  console.log('Resizeend detected!');
   const allSparklines = document.querySelectorAll('sensocto-sparkline'); // Correct custom element tag.
 
   allSparklines.forEach(element => {
     const parentWidth = element.parentElement.offsetWidth;
     const parentHeight = element.parentElement.offsetHeight;
-    console.log("Sparkline Resizer", element.id, parentWidth, parentHeight); // Log it.
+    logger.log("Sparkline Resizer", element.id, parentWidth, parentHeight); // Log it.
 
     element.setAttribute('width', parentWidth); // Use setAttribute to change width
     //element.setAttribute('height', parentHeight); // Also set height to parent, if required.

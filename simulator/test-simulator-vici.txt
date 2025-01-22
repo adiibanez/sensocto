@@ -10,22 +10,22 @@ python3 test-simulator-vici.py Vicumulator1 rsp --duration 30 --sampling_rate 20
 python3 test-simulator-vici.py Vicumulator1 heartrate --heart_rate 160 --sampling_rate 10 --duration 30
 
 # chilling:
-#python3 test-simulator-vici.py Vicumulator2 ecg --duration 30 --sampling_rate 20 --heart_rate 60
-# python3 test-simulator-vici.py Vicumulator2 rsp --duration 30 --sampling_rate 20 --respiratory_rate 12
-#python3 test-simulator-vici.py Vicumulator2 heartrate --heart_rate 35 --sampling_rate 10 --duration 30
+python3 test-simulator-vici.py Vicumulator2 ecg --duration 30 --sampling_rate 20 --heart_rate 60
+ python3 test-simulator-vici.py Vicumulator2 rsp --duration 30 --sampling_rate 20 --respiratory_rate 12
+python3 test-simulator-vici.py Vicumulator2 heartrate --heart_rate 35 --sampling_rate 10 --duration 30
 
 # Pathological Issues (Example - Tachycardia or Bradycardia):
 
 # Tachycardia
-# python3 test-simulator-vici.py Vicumulator3 ecg --duration 30 --sampling_rate 20 --heart_rate 180
+ python3 test-simulator-vici.py Vicumulator3 ecg --duration 30 --sampling_rate 20 --heart_rate 180
 # Bradycardia
-# python3 test-simulator-vici.py Vicumulator3 ecg --duration 30 --sampling_rate 20 --heart_rate 45
+ python3 test-simulator-vici.py Vicumulator3 ecg --duration 30 --sampling_rate 20 --heart_rate 45
 # High number of SCRs
-# python3 test-simulator-vici.py Vicumulator3 eda --duration 30 --sampling_rate 20 --scr_number 20
+ python3 test-simulator-vici.py Vicumulator3 eda --duration 30 --sampling_rate 20 --scr_number 20
 
 # EDA/EMG
-# python3 test-simulator-vici.py Vicumulator4 eda --duration 30 --sampling_rate 20 --scr_number 15
+ python3 test-simulator-vici.py Vicumulator4 eda --duration 30 --sampling_rate 20 --scr_number 15
 
 # High number of SCRs
 # frequent muscle bursts
-# python3 test-simulator-vici.py Vicumulator4 emg --duration 30 --sampling_rate 20 --burst_number 10
+ python3 test-simulator-vici.py Vicumulator4 emg --duration 30 --sampling_rate 20 --burst_number 10

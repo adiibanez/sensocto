@@ -155,7 +155,7 @@ async def main():
     sensor_id = args.sensor_id
     sensor_type = args.sensor_type
     duration = args.duration
-    sampling_rate = args.sampling_rate
+    sampling_rate = 5# args.sampling_rate
     heart_rate = args.heart_rate
     respiratory_rate = args.respiratory_rate
     scr_number = args.scr_number

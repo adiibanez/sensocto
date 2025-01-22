@@ -36,9 +36,15 @@
     export let yPadding = 0.2;
     export let maxlength;
     export let points = [];
+    export let sampling_rate = 1;
 
     $: width = Math.floor(parseFloat(width));
     $: height = Math.floor(parseFloat(height));
+
+    $: if(width) {
+        maxLength = Math.floor(width / sampling_rate);
+        logger.log(loggerCtxName, "Changed maxLength to", maxLength, sampling_rate);
+    }
 
     $: if (appenddata?.length) {
         logger.log(

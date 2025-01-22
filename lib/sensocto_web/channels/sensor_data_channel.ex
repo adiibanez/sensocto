@@ -3,8 +3,11 @@ defmodule SensoctoWeb.SensorDataChannel do
   use SensoctoWeb, :channel
   require Logger
   # alias Sensocto.Broadway.BufferingProducer
+  alias Sensocto.Sensors.SensorAttributeAgent
+  alias Sensocto.Sensors.SensorSupervisor
   alias Sensocto.DeviceSupervisor
   alias SensoctoWeb.Sensocto.Presence
+  alias Sensocto.SimpleSensor
 
   # Store the device ID in the socket's assigns when joining the channel
   @impl true
@@ -27,7 +30,24 @@ defmodule SensoctoWeb.SensorDataChannel do
       Logger.debug("socket join #{sensor_id}", params)
       IO.inspect(params)
 
-      DeviceSupervisor.add_device(sensor_id)
+      # DeviceSupervisor.add_device(sensor_id)
+
+      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, %{:sensor_id => sensor_id}) do
+        {:ok, pid} when is_pid(pid) ->
+          Logger.debug("Added sensor #{sensor_id}")
+
+        {:ok, :already_started} ->
+          Logger.debug("Sensor already started #{sensor_id}")
+
+        {:error, reason} ->
+          Logger.debug("error adding sensor: #{inspect(reason)}")
+          # {:error, reason}
+      end
+
+      # SensorSupervisor.add_sensor(sensor_id, %{
+      #  :sampling_rate => params["sampling_rate"],
+      #  :batch_size => params["batch_size"]
+      # })
 
       """
 
@@ -55,8 +75,12 @@ defmodule SensoctoWeb.SensorDataChannel do
   @spec handle_info(:after_join | :disconnect, any()) :: {:noreply, any()}
   def handle_info(:disconnect, socket) do
     # Explicitly remove a sensor from presence when it disconnects
+
+    Logger.debug("Sensor disconnect #{socket.assigns.sensor_id}")
     DeviceSupervisor.remove_device(socket.assigns.sensor_id)
+    disconnect_sensor_supervisor(socket.assigns.sensor_id)
     Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+
     {:noreply, socket}
   end
 
@@ -91,6 +115,7 @@ defmodule SensoctoWeb.SensorDataChannel do
 
   def handle_in("disconnect", payload, socket) do
     Logger.info("Disconnect", payload)
+    disconnect_sensor_supervisor(socket.assigns.sensor_id)
     Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
     DeviceSupervisor.remove_device(socket.assigns.sensor_id)
 
@@ -104,13 +129,67 @@ defmodule SensoctoWeb.SensorDataChannel do
   def handle_in(
         "measurement",
         %{
-          "payload" => _payload,
-          "timestamp" => _timestamp,
-          "uuid" => _uuid
+          "payload" => payload,
+          "timestamp" => timestamp,
+          "uuid" => uuid
         } = sensor_data,
         socket
       ) do
     # Logger.debug inspect(sensor_data)
+
+    """
+
+    with {:ok, sensor_pid} <- SensorSupervisor.get_sensor_pid(socket.assigns.sensor_id) do
+    GenServer.cast(sensor_pid, {:new_sensor_attribute, uuid, timestamp, payload})
+    {:noreply, socket}
+    else
+    :error ->
+    IO.put("Error adding attribute, sensor not found")
+    {:noreply, socket}
+    end
+
+    with {:ok, sensor_pid} <- SensorSupervisor.get_sensor_pid(socket.assigns.sensor_id) do
+    {:ok, state} = GenServer.call(sensor_pid, {:get_sensor_data})
+    IO.inspect(state)
+    {:noreply, socket}
+    else
+    :error ->
+    IO.put("Error adding attribute, sensor not found")
+    {:noreply, socket}
+    end
+
+    case Registry.lookup(Sensocto.Sensors.SensorRegistry, socket.assigns.sensor_id) do
+    [{sensor_pid, _}] ->
+    case GenServer.call(sensor_pid, :get_sensor_data) do
+      {:ok, data} ->
+        IO.inspect(data, label: "data from sensor #{socket.assigns.sensor_id}")
+        {:noreply, socket}
+
+      {:error, _} ->
+        IO.put("Error gettting attribute data, sensor not found")
+        {:noreply, socket}
+    end
+
+    [] ->
+    IO.put("Error, sensor not found in registry")
+    {:noreply, socket}
+    end
+    """
+
+    case SimpleSensor.put_attribute(socket.assigns.sensor_id, uuid, timestamp, payload) do
+      _ ->
+        IO.puts("SimpleSensor data sent uuuid: #{uuid}, #{timestamp}, #{payload}")
+
+      # {:noreply, socket}
+      {:error, _} ->
+        IO.puts("SimpleSensor data error")
+        # {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
+    end
+
+    # GenServer.cast(
+    #  SensorSupervisor.get_sensor_pid(socket.assigns.sensor_datasensor_id),
+    #  {:new_sensor_attribute, uuid, timestamp, payload}
+    # )
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
@@ -140,5 +219,16 @@ defmodule SensoctoWeb.SensorDataChannel do
   # Add authorization logic here as required.
   defp authorized?(_payload) do
     true
+  end
+
+  defp disconnect_sensor_supervisor(sensor_id) do
+    case Sensocto.SensorsDynamicSupervisor.remove_sensor(sensor_id) do
+      :ok ->
+        Logger.debug("Removed sensor #{sensor_id}")
+
+      :error ->
+        Logger.debug("error removing sensor #{sensor_id}")
+        # {:error, reason}
+    end
   end
 end

@@ -1,12 +1,12 @@
 
-    let enabled = true;
+    let enabled = false;
 
     export function setLogging(value) {
         enabled = !!value;
     }
     // Added new argument to pass component Name
     export function log(componentName, message, ...args) {
-        if (enabled && componentName != 'Sparkline') {
+        if (enabled) {
             console.log(`[${componentName}]: ${message}`, ...args);
         }
     }

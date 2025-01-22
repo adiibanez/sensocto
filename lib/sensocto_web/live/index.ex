@@ -11,6 +11,7 @@ defmodule SensoctoWeb.IndexLive do
   }
 
   # https://dev.to/ivor/how-to-unsubscribe-from-all-topics-in-phoenixpubsub-dka
+  # https://hexdocs.pm/phoenix_live_view/bindings.html#js-commands
 
   @impl true
   @spec mount(any(), any(), any()) :: {:ok, any()}
@@ -49,6 +50,7 @@ defmodule SensoctoWeb.IndexLive do
           class="bg-gray-800 text-xs m-0 p-1"
           phx-hook="SensorDataAccumulator"
           data-sensorid={sensor_data.id}
+          data-sensorid_raw={sensor_data.sensor_id}
           data-append={sensor_data.append_data}
           class="m-0 p-0"
         >
@@ -116,8 +118,30 @@ defmodule SensoctoWeb.IndexLive do
   end
 
   @impl true
-  def handle_event("request-seed-data", %{"id" => sensor_id}, socket) do
+  def handle_event(
+        "request-seed-data",
+        %{"id" => sensor_id, "attribute_id" => attribute_id},
+        socket
+      ) do
     IO.puts("request-seed_data #{sensor_id}")
+    {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
+
+    case Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000) do
+      attribute_data ->
+        # IO.inspect(attribute_data, label: " SimpleSensor data received")
+
+        {:noreply,
+         push_event(socket, "seeddata", %{
+           sensor_id: sensor_id,
+           attribute_id: attribute_id,
+           data: attribute_data
+         })}
+
+      _ ->
+        Logger.error("Seed data SimpleSensor data error")
+        {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
+    end
+
     # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
     {:noreply, socket}
   end
@@ -179,14 +203,14 @@ defmodule SensoctoWeb.IndexLive do
       ) do
     # IO.inspect(sensor_data)
 
-    case SimpleSensor.get_attributes(sensor_id) do
-      attributes ->
-        IO.inspect(attributes, label: " SimpleSensor data received")
-        {:noreply, socket}
+    # case SimpleSensor.get_attributes(sensor_id) do
+    #  attributes ->
+    #    IO.inspect(attributes, label: " SimpleSensor data received")
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
-    end
+    ##    {:noreply, socket}
+    #  {:error, _} ->
+    #    {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
+    # end
 
     updated_sensor =
       %{

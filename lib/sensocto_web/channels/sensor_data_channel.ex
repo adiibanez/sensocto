@@ -176,7 +176,11 @@ defmodule SensoctoWeb.SensorDataChannel do
     end
     """
 
-    case SimpleSensor.put_attribute(socket.assigns.sensor_id, uuid, timestamp, payload) do
+    case SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
+           :id => uuid,
+           :timestamp => timestamp,
+           :payload => payload
+         }) do
       _ ->
         IO.puts("SimpleSensor data sent uuuid: #{uuid}, #{timestamp}, #{payload}")
 

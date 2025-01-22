@@ -25,11 +25,14 @@ defmodule Sensocto.Application do
       {Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
       {Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       {Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
+
+      #{Horde.DynamicSupervisor, [name: Sensocto.SensorsDynamicSupervisor, strategy: :one_for_one]},
       Sensocto.SensorsDynamicSupervisor,
 
       # Sensors
-      # {Horde.DynamicSupervisor, [name: Sensocto.DistributedSupervisor, strategy: :one_for_one]},
-      # {Horde.Registry, [name: Sensocto.DistributedRegistry, keys: :unique]},
+      #{Horde.DynamicSupervisor, [name: Sensocto.DistributedSupervisor, strategy: :one_for_one]},
+      #{Horde.Registry, [name: Sensocto.DistributedRegistry, keys: :unique]},
+
       {Sensocto.DeviceSupervisor, []},
       {DNSCluster, query: Application.get_env(:sensocto, :dns_cluster_query) || :ignore},
       # {Cluster.Supervisor, [Application.get_env(:libcluster, :topologies), [name: Sensocto.ClusterSupervisor]]},

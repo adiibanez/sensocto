@@ -20,8 +20,8 @@ defmodule Sensocto.SensorSupervisor do
     IO.puts("SensorSupervisor started #{inspect(configuration)}")
 
     children = [
-      {SimpleSensor, configuration},
-      {AttributeStore, configuration}
+      # {SimpleSensor, configuration},
+      # {AttributeStore, configuration}
       # %{
       #  id: :stack,
       #  start: {Stack, :start_link, []},
@@ -31,21 +31,21 @@ defmodule Sensocto.SensorSupervisor do
       #  type: :worker
       # }
 
-      # %{
-      #  id: :sensor,
-      # start: {SimpleSensor, :start_link, [configuration]},
-      # start: {SimpleSensor, :start_link, [{:via, Registry, {SimpleSensorRegistry, configuration.sensor_id}}]},
-      # shutdown: 5000,
-      # restart: :permanent,
-      # type: :worker
-      # },
-      # %{
-      #  id: :attribute_store,
-      #  start: {AttributeStore, :start_link, [configuration]},
-      #  shutdown: 5000,
-      #  restart: :permanent,
-      #  type: :worker
-      # }
+      %{
+        id: :sensor,
+        start: {SimpleSensor, :start_link, [configuration]},
+        # start: {SimpleSensor, :start_link, [{:via, Registry, {SimpleSensorRegistry, configuration.sensor_id}}]},
+        shutdown: 5000,
+        restart: :permanent,
+        type: :worker
+      },
+      %{
+        id: :attribute_store,
+        start: {AttributeStore, :start_link, [configuration]},
+        shutdown: 5000,
+        restart: :permanent,
+        type: :worker
+      }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

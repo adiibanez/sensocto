@@ -48,5 +48,43 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end
   end
 
+  # Registry.lookup(Registry.ViaTest, "agent")
+  def get_device_names do
+    Registry.select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+  end
+
+  # Function to extract device names (IDs) from the children list
+  def get_device_names2 do
+    IO.inspect(children())
+
+    Enum.map(children(), fn
+      {:undefined, pid, :worker, [Sensocto.SensorSupervisor]} ->
+        # You can extract device ID here based on how it's registered
+        # For example, assuming the device is registered with `{:via, Sensocto.Registry, device_id}`
+        case Process.info(pid, :registered_name) do
+          {:registered_name, device_id} ->
+            device_id
+
+          _ ->
+            Logger.debug("nope")
+        end
+
+      _ ->
+        Logger.debug("test")
+    end)
+    # Filter out nil values (if the process name is not found)
+    |> Enum.filter(& &1)
+  end
+
+  # Nice utility method to check which processes are under supervision
+  def children do
+    DynamicSupervisor.which_children(__MODULE__)
+  end
+
+  # Nice utility method to check which processes are under supervision
+  def count_children do
+    DynamicSupervisor.count_children(__MODULE__)
+  end
+
   defp via_tuple(sensor_id), do: {:via, Registry, {Sensocto.SensorPairRegistry, sensor_id}}
 end

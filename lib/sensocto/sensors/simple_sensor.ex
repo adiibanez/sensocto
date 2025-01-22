@@ -1,29 +1,15 @@
 defmodule Sensocto.SimpleSensor do
   use GenServer
+  require Logger
+  alias Sensocto.{AttributeStore, SimpleSensorRegistry}
 
   # defstruct [:attribute_store_pid]
 
-  # def start_link({:via, registry, device_id}) do
-  #  GenServer.start_link(__MODULE__, %{}, name: {:via, registry, device_id})
-  # end
-
-  # def start_link([%{:sensor_id => sensor_id} = configuration]) do
-  #  IO.puts("SimpleSensor start_link1: #{inspect(configuration)}")
-  #  # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
-  #  GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
-  # end
-
   def start_link(%{:sensor_id => sensor_id} = configuration) do
-    IO.puts("SimpleSensor start_link2: #{inspect(configuration)}")
+    IO.puts("SimpleSensor start_link: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
   end
-
-  # def start_link(test, args) do
-  #  IO.puts("SimpleSensor start_link3: #{inspect(args)}")
-  #  # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
-  #  GenServer.start_link(__MODULE__, args, name: via_tuple("sensor_XY"))
-  # end
 
   @impl true
   def init(state) do
@@ -31,58 +17,128 @@ defmodule Sensocto.SimpleSensor do
     {:ok, state}
   end
 
-  def child_spec_disabled(init_arg) do
-    %{
-      start: {__MODULE__, :start_link, init_arg}
-    }
+  # client
+  def put_attribute(sensor_id, attribute) do
+    try do
+      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+        [{pid, _}] ->
+          IO.puts("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
+          GenServer.cast(pid, {:put_attribute, attribute})
+
+        _ ->
+          IO.puts("Client: put_attribute ERROR #{inspect(attribute)}")
+      end
+    rescue
+      e ->
+        Logger.error(inspect(__STACKTRACE__))
+    end
   end
 
-  # client
-  def set_attribute(sensor_id, attribute) do
-    IO.puts("test")
-    [{pid, _}] = Registry.lookup(Sensocto.SimpleSensorRegistry, sensor_id)
-    IO.puts("Client: Set_attribute #{inspect(pid)} #{inspect(attribute)}")
-    GenServer.cast(pid, {:set_attribute, attribute})
+  def get_attribute(sensor_id, attribute_id, limit) do
+    try do
+      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+        [{pid, _}] ->
+          IO.puts("Client: Get attribute #{sensor_id}, #{attribute_id}, limit: #{limit}")
+          GenServer.call(pid, {:get_attribute, attribute_id, limit})
+        _ ->
+          IO.puts("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          :error
+      end
+    rescue
+      e ->
+        Logger.error(inspect(__STACKTRACE__))
+    end
+  end
 
-    # case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-    #      [{pid, _}] ->
-    #           IO.puts("Client: Set_attribute #{inspect(pid)} #{inspect(attribute)}")
-    #          GenServer.cast(pid, {:set_attribute, attribute})
-    #     _ ->
-    #        IO.puts("Client: Set_attribute ERROR #{inspect(attribute)}")
-    #     end
+  def get_attribute(sensor_id, attribute_id, from_timestamp, to_timestamp) do
+    try do
+      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+        [{pid, _}] ->
+          IO.puts(
+            "Client: Get attribute #{sensor_id}, #{attribute_id}, from: #{from_timestamp} to: #{to_timestamp}"
+          )
+
+          GenServer.call(pid, {:get_attribute, attribute_id, from_timestamp, to_timestamp})
+
+        _ ->
+          IO.puts("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          :error
+      end
+    rescue
+      e ->
+        Logger.error(inspect(__STACKTRACE__))
+    end
   end
 
   def get_attributes(sensor_id) do
-    [{pid, _}] = Registry.lookup(Sensocto.SimpleSensorRegistry, sensor_id)
-    IO.puts("Client: Get attributes #{inspect(pid)}")
-    GenServer.call(pid, :get_attributes)
+    try do
+      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+        [{pid, _}] ->
+          IO.puts("Client: Get attributes #{inspect(pid)}")
+          GenServer.call(pid, :get_attributes)
+
+        _ ->
+          IO.puts("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          :error
+      end
+    rescue
+      e ->
+        Logger.error(inspect(__STACKTRACE__))
+    end
   end
 
   # server
-
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, state, state}
   end
 
   @impl true
-  def handle_call(:get_attributes, _from, state) do
-    IO.puts("sensor_id #{state.sensor_id}")
-    attributes = Sensocto.AttributeStore.get_attributes(state.sensor_id)
-    IO.puts("Server: :get_attributes #{inspect(attributes)}")
+  def handle_call({:get_attribute, attribute_id, limit}, _from, %{sensor_id: sensor_id} = state) do
+    attributes = AttributeStore.get_attribute(sensor_id, attribute_id, limit)
+
+    IO.puts(
+      "Server: :get_attribute  #{attribute_id}  with limit #{limit}  from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
+    )
+
     {:reply, attributes, state}
   end
 
   @impl true
-  def handle_cast({:set_attribute, %{:id => attribute_id, :value => value} = attribute}, state) do
-    IO.puts("Server: :set_attribute #{inspect(attribute)} state: #{inspect(state)}")
-    # IO.puts("Server: :set_attribute registered_name #{inspect(sensor_id)}")
-    Sensocto.AttributeStore.put_attribute(state.sensor_id, attribute_id, value)
+  def handle_call(
+        {:get_attribute, attribute_id, from_timestamp, to_timestamp},
+        _from,
+        %{sensor_id: sensor_id} = state
+      ) do
+    attributes =
+      AttributeStore.get_attribute(sensor_id, attribute_id, from_timestamp, to_timestamp)
+
+    #IO.puts(
+    #  "Server: :get_attribute  #{attribute_id} from: #{from_timestamp} to: #{to_timestamp} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
+    #)
+    {:reply, attributes, state}
+  end
+
+  @impl true
+  def handle_call(:get_attributes, _from, %{sensor_id: sensor_id} = state) do
+    Logger.debug("{__MODULE__}:SRV :get_attributes  #{inspect(state)}")
+    attributes = AttributeStore.get_attributes(sensor_id)
+    #IO.puts("Server: :get_attributes #{inspect(attributes)}")
+    {:reply, attributes, state}
+  end
+
+  @impl true
+  def handle_cast(
+        {:put_attribute,
+         %{:id => attribute_id, :payload => payload, :timestamp => timestamp} = attribute},
+        %{sensor_id: sensor_id} = state
+      ) do
+    IO.puts("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
+    AttributeStore.put_attribute(sensor_id, attribute_id, payload, timestamp)
     {:noreply, state}
   end
 
   defp via_tuple(sensor_id) do
-    {:via, Registry, {Sensocto.SimpleSensorRegistry, sensor_id}}
+    {:via, Registry, {SimpleSensorRegistry, sensor_id}}
   end
 end

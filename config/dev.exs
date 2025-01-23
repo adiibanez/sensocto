@@ -72,7 +72,19 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :debug
+  level: :debug,
+  backends: [{FlexLogger, :logger_name}]
+
+config :logger, :logger_name,
+  logger: :console,
+  default_level: :debug, # this is the loggers default level
+  level_config: [ # override default levels
+    [module: Sensocto.SimpleSensor, level: :info],
+    [module: Sensocto.AttributeStorer, level: :info],
+    [module: SensoctoWeb.SensorDataChannel, level: :info],
+    [module: Phoenix.Logger, level: :info],
+  ],
+  format: "DEV $message" # backend specific configuration
 
 config :ash_authentication, debug_authentication_failures?: true
 

@@ -1,10 +1,16 @@
-defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
-  #use SensoctoWeb, :live_view
+defmodule SensoctoWeb.Components.SensorTypes.BaseComponent do
   use Phoenix.LiveComponent
+end
+
+defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
+  alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  # use SensoctoWeb, :live_view
+  use Phoenix.LiveComponent
+  require BaseComponent
   require Logger
 
   def mount(_params, _session, socket) do
-    IO.puts("test");
+    IO.puts("test")
   end
 
   def render(assigns) do
@@ -16,13 +22,16 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
         </p>
         <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
         <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
+        <button class="btn" phx-click="clear-attribute" phx-value-sensor_id={assigns.sensor_data.sensor_id} phx-value-attribute_id={assigns.sensor_data.attribute_id}>Clear</button>
       </div>
 
       <sensocto-sparkline
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
         sensor_id={assigns.sensor_data.sensor_id}
-        maxlength={assigns.sensor_data.sampling_rate * 5}
+        samplingrate={assigns.sensor_data.sampling_rate}
+        timewindow="500"
+        timemode="absolute"
         phx-update="ignore"
         class="loading w-full m-0 p-0"
       >
@@ -33,9 +42,11 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
-  #use SensoctoWeb, :live_view
+  alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
+  require BaseComponent
 
   def render(assigns) do
     ~H"""
@@ -46,17 +57,17 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
         </p>
         <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
         <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
+        <button class="btn" phx-click="clear-attribute" phx-value-sensor_id={assigns.sensor_data.sensor_id} phx-value-attribute_id={assigns.sensor_data.attribute_id}>Clear</button>
       </div>
 
       <sensocto-sparkline
-        width="200"
-        height="50"
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
         sensor_id={assigns.sensor_data.sensor_id}
-        maxlength={assigns.sensor_data.sampling_rate * 60}
+        samplingrate={assigns.sensor_data.sampling_rate}
+        timewindow="5000"
         phx-update="ignore"
-        class="loading"
+        class="loading w-full m-0 p-0"
       >
       </sensocto-sparkline>
     </div>
@@ -65,7 +76,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
-  #use SensoctoWeb, :live_view
+  # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
 

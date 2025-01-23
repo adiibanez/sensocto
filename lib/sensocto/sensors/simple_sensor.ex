@@ -6,14 +6,14 @@ defmodule Sensocto.SimpleSensor do
   # defstruct [:attribute_store_pid]
 
   def start_link(%{:sensor_id => sensor_id} = configuration) do
-    IO.puts("SimpleSensor start_link: #{inspect(configuration)}")
+    Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
   end
 
   @impl true
   def init(state) do
-    IO.puts("SimpleSensor state: #{inspect(state)}")
+    Logger.debug("SimpleSensor state: #{inspect(state)}")
     {:ok, state}
   end
 
@@ -22,11 +22,27 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          IO.puts("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
+          Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
           GenServer.cast(pid, {:put_attribute, attribute})
 
         _ ->
-          IO.puts("Client: put_attribute ERROR #{inspect(attribute)}")
+          Logger.debug("Client: put_attribute ERROR #{inspect(attribute)}")
+      end
+    rescue
+      e ->
+        Logger.error(inspect(__STACKTRACE__))
+    end
+  end
+
+  def clear_attribute(sensor_id, attribute_id) do
+    try do
+      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+        [{pid, _}] ->
+          Logger.debug("Client: clear_attribute #{inspect(pid)} #{inspect(attribute_id)}")
+          GenServer.cast(pid, {:clear_attribute, attribute_id})
+
+        _ ->
+          Logger.debug("Client: clear_attribute ERROR #{inspect(attribute_id)}")
       end
     rescue
       e ->
@@ -38,11 +54,11 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          IO.puts("Client: Get attribute #{sensor_id}, #{attribute_id}, limit: #{limit}")
+          Logger.debug("Client: Get attribute #{sensor_id}, #{attribute_id}, limit: #{limit}")
           GenServer.call(pid, {:get_attribute, attribute_id, limit})
 
         _ ->
-          IO.puts("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          Logger.debug("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
           :error
       end
     rescue
@@ -55,14 +71,14 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          IO.puts(
+          Logger.debug(
             "Client: Get attribute #{sensor_id}, #{attribute_id}, from: #{from_timestamp} to: #{to_timestamp}"
           )
 
           GenServer.call(pid, {:get_attribute, attribute_id, from_timestamp, to_timestamp})
 
         _ ->
-          IO.puts("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          Logger.debug("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
           :error
       end
     rescue
@@ -75,11 +91,11 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          IO.puts("Client: Get attributes #{inspect(pid)}")
+          Logger.debug("Client: Get attributes #{inspect(pid)}")
           GenServer.call(pid, :get_attributes)
 
         _ ->
-          IO.puts("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          Logger.debug("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
           :error
       end
     rescue
@@ -98,7 +114,7 @@ defmodule Sensocto.SimpleSensor do
   def handle_call({:get_attribute, attribute_id, limit}, _from, %{sensor_id: sensor_id} = state) do
     attributes = AttributeStore.get_attribute(sensor_id, attribute_id, limit)
 
-    IO.puts(
+    Logger.debug(
       "Server: :get_attribute  #{attribute_id}  with limit #{limit}  from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
     )
 
@@ -114,7 +130,7 @@ defmodule Sensocto.SimpleSensor do
     attributes =
       AttributeStore.get_attribute(sensor_id, attribute_id, from_timestamp, to_timestamp)
 
-    IO.puts(
+    Logger.debug(
       "Server: :get_attribute  #{attribute_id} from: #{from_timestamp} to: #{to_timestamp} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
     )
 
@@ -125,7 +141,7 @@ defmodule Sensocto.SimpleSensor do
   def handle_call(:get_attributes, _from, %{sensor_id: sensor_id} = state) do
     Logger.debug("{__MODULE__}:SRV :get_attributes  #{inspect(state)}")
     attributes = AttributeStore.get_attributes(sensor_id)
-    # IO.puts("Server: :get_attributes #{inspect(attributes)}")
+    # Logger.debug("Server: :get_attributes #{inspect(attributes)}")
     {:reply, attributes, state}
   end
 
@@ -135,8 +151,18 @@ defmodule Sensocto.SimpleSensor do
          %{:id => attribute_id, :payload => payload, :timestamp => timestamp} = attribute},
         %{sensor_id: sensor_id} = state
       ) do
-    IO.puts("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
+    Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
     AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(
+        {:clear_attribute, attribute_id},
+        %{sensor_id: sensor_id} = state
+      ) do
+    Logger.debug("Server: :clear_attribute #{sensor_id}:#{attribute_id} state: #{inspect(state)}")
+    AttributeStore.remove_attribute(sensor_id, attribute_id)
     {:noreply, state}
   end
 

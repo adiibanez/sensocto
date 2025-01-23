@@ -50,6 +50,7 @@ defmodule SensoctoWeb.IndexLive do
           class="bg-gray-800 text-xs m-0 p-1"
           phx-hook="SensorDataAccumulator"
           data-sensorid={sensor_data.id}
+          data-sensortype={sensor_data.sensor_type}
           data-sensorid_raw={sensor_data.sensor_id}
           data-append={sensor_data.append_data}
         >
@@ -69,7 +70,7 @@ defmodule SensoctoWeb.IndexLive do
     <% end %>
     <div
       id="toolbar"
-      class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[50%] overflow-y-auto"
+      class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[80%] overflow-y-auto"
     >
       {live_render(@socket, SensoctoWeb.SenseLive,
         id: "bluetooth",
@@ -116,17 +117,40 @@ defmodule SensoctoWeb.IndexLive do
     """
   end
 
+  def handle_event(
+        "clear-attribute",
+        %{"sensor_id" => sensor_id, "attribute_id" => attribute_id} = _params,
+        socket
+      ) do
+
+    # IO.puts("request-seed_data #{sensor_id}")
+    # {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
+
+    attribute_data = Sensocto.SimpleSensor.clear_attribute(sensor_id, attribute_id)
+    IO.inspect(attribute_data)
+
+    {:noreply,
+     push_event(socket, "seeddata", %{
+       sensor_id: sensor_id,
+       attribute_id: attribute_id,
+       data: []
+     })}
+
+    # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
+    # {:noreply, socket}
+  end
+
   @impl true
   def handle_event(
         "request-seed-data",
         %{"id" => sensor_id, "attribute_id" => attribute_id},
         socket
       ) do
-    IO.puts("request-seed_data #{sensor_id}")
-    #{:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
+    IO.puts("request-seed_data #{sensor_id}:#{attribute_id}")
+    # {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
 
     attribute_data = Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000)
-    IO.inspect(attribute_data)
+    IO.puts("Seed data available for attribute #{sensor_id}:#{attribute_id}: #{Enum.count(attribute_data)}")
 
     {:noreply,
      push_event(socket, "seeddata", %{
@@ -212,6 +236,7 @@ defmodule SensoctoWeb.IndexLive do
         payload: payload,
         timestamp: timestamp,
         timestamp_formated: DateTime.from_unix!(timestamp, :millisecond) |> DateTime.to_string(),
+        attribute_id: sensor_data["attribute_id"],
         sensor_id: sensor_params["sensor_id"],
         sensor_name: sensor_params["sensor_name"],
         sensor_type: sensor_params["sensor_type"],

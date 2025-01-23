@@ -1,0 +1,3 @@
+SensorSimulatorSupervisor.start_sensor("Device5", config)
+
+Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)

@@ -1,25 +1,27 @@
 <script>
     import { onDestroy, onMount } from "svelte";
 
+    let loggerCtxName = "ScaledPoints";
+
     export let data = [];
     export let width = 100;
     export let height = 50;
-    export let timeMode = "relative";
-    export let timeWindow = null;
-    export let maxLength;
+    export let timemode = "relative";
+    export let timewindow;
+    export let maxsamples;
     export let yPadding = 0.1;
     export let id = "sparkline";
     export let scaledPoints = []; // export, so that we can see it.
-    export let debug = false;
+    export let resolution;
 
     $: if (!data) {
         // Data must be array
-        console.warn("Points.svelte: No data is provided");
+        logger.log(loggerCtxName, "No data is provided");
         data = [];
     }
     $: if (Array.isArray(data)) {
         // Log when data changes
-        if (debug) console.log("Points: data changed", data);
+        logger.log(loggerCtxName, "data changed", data);
     }
 
     $: if (data?.length) {
@@ -29,23 +31,37 @@
                 data = JSON.parse(data);
             }
         } catch (e) {
-            console.warn("Points.svelte: Error parsing data", e);
+            logger.log(loggerCtxName, "Error parsing data", e);
         }
     }
 
     $: scaledPoints = (() => {
+        if (document.querySelector(`body.resizing`) != undefined) {
+            logger.log(loggerCtxName, "isResizing", id);
+            return;
+        }
 
-        slicedData = data.slice(-maxLength);
+        let maxPoints =
+            maxsamples > width ? Math.min(maxsamples, width) : maxsamples;
+
+        slicedData = [...data];
+        //slicedData.slice(-maxPoints);
 
         if (!slicedData?.length) {
             // Important check if the component gets valid data.
-            console.warn(
-                "Points.svelte: No data to calculate scaled points",
-                id,
-            );
+            logger.log(loggerCtxName, "No data to calculate scaled points", id);
             return [];
         }
-        if (debug) console.log("Points: Calculating scaled points:", id, slicedData);
+
+        logger.log(
+            loggerCtxName,
+            "Calculating scaled points:",
+            id,
+            maxsamples,
+            slicedData?.length,
+            data?.length,
+            maxPoints,
+        );
 
         const minValue = Math.min(...slicedData.map((item) => item.payload));
         const maxValue = Math.max(...slicedData.map((item) => item.payload));
@@ -55,14 +71,14 @@
         const yScale = (height - 2 * verticalPadding) / valueRange;
 
         let minTimestamp;
-        if (timeMode === "absolute" && timeWindow) {
-            minTimestamp = Date.now() - timeWindow;
+        if (timemode === "absolute" && timewindow) {
+            minTimestamp = Date.now() - timewindow;
         } else {
             minTimestamp = slicedData[0]?.timestamp || 0; // Prevent NaN values in relative mode.
         }
 
         const calculatedPoints = [];
-        for (let i = 0; i < Math.min(slicedData.length, maxLength); i++) {
+        for (let i = 0; i < Math.min(slicedData?.length, maxsamples); i++) {
             const item = slicedData[i];
 
             if (
@@ -71,8 +87,9 @@
                 !("timestamp" in item) ||
                 !("payload" in item)
             ) {
-                console.error(
-                    "Points.svelte: Invalid data point format detected",
+                logger.log(
+                    loggerCtxName,
+                    "Invalid data point format detected",
                     item,
                     id,
                     typeof item !== "object",
@@ -84,27 +101,36 @@
             }
 
             let x;
-            if (timeMode === "relative") {
+            
+            if (timemode === "relative") {
                 x = item.timestamp - (slicedData[0]?.timestamp || 0);
             } else {
                 x = item.timestamp - minTimestamp;
             }
 
+            origX = x;
+
             const scaledX =
                 (x /
                     (Math.max(...slicedData.map((item) => item.timestamp)) -
-                        minTimestamp || 1)) *
+                        minTimestamp || 1)) * 0.8 *
                 width; // Scale x to fit width.
+
+            if(scaledX < 0) {
+                logger.log(loggerCtxName, origX, x, scaledX, item.timestamp, minTimestamp, item.timestamp - minTimestamp );
+                continue; // Skip invalid item
+            }
+
+
+            
+
             const y =
                 height - (item.payload - minValue) * yScale - verticalPadding; // Scale y using min and max values
-            calculatedPoints.push({ x: scaledX, y: y });
 
-            if (debug)
-                console.log(
-                    `Points:  x: ${x.toFixed(2)}, scaledX: ${scaledX.toFixed(2)},  y: ${y.toFixed(2)}`,
-                    id,
-                    item,
-                );
+            let point = { x: Math.floor(scaledX), y: Math.floor(y) };
+
+            logger.log(loggerCtxName, "points", point, scaledX);
+            calculatedPoints.push(point);
         }
 
         return calculatedPoints;

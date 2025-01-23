@@ -29,7 +29,6 @@ defmodule SensoctoWeb.SensorDataChannel do
     if authorized?(params) do
       send(self(), :after_join)
       Logger.debug("socket join #{sensor_id}", params)
-      IO.inspect(params)
 
       # DeviceSupervisor.add_device(sensor_id)
 
@@ -148,46 +147,6 @@ defmodule SensoctoWeb.SensorDataChannel do
         } = sensor_data,
         socket
       ) do
-    # Logger.debug inspect(sensor_data)
-
-    """
-
-    with {:ok, sensor_pid} <- SensorSupervisor.get_sensor_pid(socket.assigns.sensor_id) do
-    GenServer.cast(sensor_pid, {:new_sensor_attribute, uuid, timestamp, payload})
-    {:noreply, socket}
-    else
-    :error ->
-    IO.put("Error adding attribute, sensor not found")
-    {:noreply, socket}
-    end
-
-    with {:ok, sensor_pid} <- SensorSupervisor.get_sensor_pid(socket.assigns.sensor_id) do
-    {:ok, state} = GenServer.call(sensor_pid, {:get_sensor_data})
-    IO.inspect(state)
-    {:noreply, socket}
-    else
-    :error ->
-    IO.put("Error adding attribute, sensor not found")
-    {:noreply, socket}
-    end
-
-    case Registry.lookup(Sensocto.Sensors.SensorRegistry, socket.assigns.sensor_id) do
-    [{sensor_pid, _}] ->
-    case GenServer.call(sensor_pid, :get_sensor_data) do
-      {:ok, data} ->
-        IO.inspect(data, label: "data from sensor #{socket.assigns.sensor_id}")
-        {:noreply, socket}
-
-      {:error, _} ->
-        IO.put("Error gettting attribute data, sensor not found")
-        {:noreply, socket}
-    end
-
-    [] ->
-    IO.put("Error, sensor not found in registry")
-    {:noreply, socket}
-    end
-    """
 
     case SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
            :id => uuid,
@@ -195,11 +154,11 @@ defmodule SensoctoWeb.SensorDataChannel do
            :payload => payload
          }) do
       _ ->
-        IO.puts("SimpleSensor data sent uuuid: #{uuid}, #{timestamp}, #{payload}")
+        Logger.debug("SimpleSensor data sent uuuid: #{uuid}, #{timestamp}, #{payload}")
 
       # {:noreply, socket}
       {:error, _} ->
-        IO.puts("SimpleSensor data error")
+        Logger.debug("SimpleSensor data error")
         # {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
     end
 
@@ -213,6 +172,7 @@ defmodule SensoctoWeb.SensorDataChannel do
       "measurement",
       {:measurement,
        sensor_data
+       |> Map.put("attribute_id", uuid)
        |> Map.put("sensor_params", socket.assigns.sensor_params)
        |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")}
     )

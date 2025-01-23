@@ -1,11 +1,7 @@
 from logging import lastResort
 
 import neurokit2 as nk
-import numpy as np
-import pandas as pd
-import asyncio
 
-import csv
 import time
 import random
 import numpy as np
@@ -84,11 +80,10 @@ def time_delta(samples, delta, noise_range_percentage=1):
     return dt_list, dt_list_noisy
 
 
-async def stream_sensor_data(client, sensor_id, events):
+async def stream_sensor_data(client, sensor_id, events, channel):
     for event in events:
         try:
 
-            # print(event)
             if not 'payload' in event:
                 event['payload'] = event['value']
 
@@ -99,11 +94,12 @@ async def stream_sensor_data(client, sensor_id, events):
             }
 
             print(payload)
-            await client.push(f"sensor_data:{sensor_id}", "measurement", payload)
+            print(sensor_id)
+            await client.push(channel, "measurement", payload)
         except Exception as e:
             logging.error(f"Error pushing message: {e}")
             return
-        await asyncio.sleep(event['delay'])
+        await asyncio.sleep(event['delay'] / 1000)
 
 
 def handle_message(topic, event, payload):
@@ -126,7 +122,7 @@ async def send_sensor_data(client, sensor_id, sensor_type, duration, sampling_ra
         for point in hr:
             if last_hr is None or abs(point['payload'] - last_hr) > 1:
                 current_time = time.time()
-                delay = random.uniform(0.9, 2.1)  # slightly randomize the delay
+                delay = random.uniform(900, 2100)  # slightly randomize the delay
                 events.append({'delay': delay, 'payload': point['payload'], 'timestamp': point['timestamp'],
                                'sensor_type': sensor_type})
                 last_hr = point['payload']
@@ -139,7 +135,7 @@ async def send_sensor_data(client, sensor_id, sensor_type, duration, sampling_ra
         for i, point in enumerate(data):
             events.append({'delay': time_deltas[i], 'payload': point['payload'], 'timestamp': point['timestamp'],
                            'sensor_type': sensor_type})
-
+    print(events)
     return events
 
 
@@ -175,6 +171,7 @@ async def main():
     burst_number = args.burst_number
 
     if mode == "phoenix":
+        logging.info(f"Start Phoenix {sensor_type} handshake")
         connector_id = str(uuid.UUID(int=uuid.getnode()))
         connector_name = sensor_id
         sensor_id_string = f"{sensor_id}:{sensor_type}"
@@ -193,7 +190,8 @@ async def main():
         client = PhoenixChannelClient(socket_url, handle_message)
         logging.info(f"Connecting to: {socket_url}")
 
-        await client.subscribe(f"sensor_data:{sensor_id_string}", join_params)
+        channel = f"sensor_data:{sensor_id_string}"
+        await client.subscribe(channel, join_params)
         await client.connect()
 
         while True:  # Loop indefinitely
@@ -202,10 +200,9 @@ async def main():
                                             respiratory_rate, scr_number,
                                             burst_number)
 
-            await stream_sensor_data(client, sensor_id, events)
-
+            logging.info(f"About to stream events {events} to channel {channel} ...")
+            await stream_sensor_data(client, sensor_id, events, channel)
             logging.info("Finished sending data")
-
 
 
     elif mode == "csv":

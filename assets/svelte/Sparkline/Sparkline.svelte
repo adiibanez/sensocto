@@ -23,7 +23,7 @@
     export let live;
 
     export let canvas;
-    export let scaledPoints;
+    $: scaledPoints = [];
 
     export let test = [];
 
@@ -31,69 +31,79 @@
     export let height = 50;
     $: data = [];
     export let appenddata;
-    export let timeMode = "relative";
-    export let timeWindow = 0.5 * 60 * 1000;
+    export let timemode = "relative";
+    export let timewindow;
+    // 0.5 * 60 * 1000
     export let yPadding = 0.2;
-    export let maxlength;
+
     export let points = [];
-    export let sampling_rate = 1;
+    export let samplingrate = 1;
+    let resolution;
 
-    export let newData = [];
+    //$: width = Math.floor(parseFloat(width));
+    //$: height = Math.floor(parseFloat(height));
 
-    $: width = Math.floor(parseFloat(width));
-    $: height = Math.floor(parseFloat(height));
+    $: isResizing = () => {
+        isResizing = document.querySelector(`body.resizing`) != "undefined";
+        return isResizing;
+    };
 
-    $: if (width) {
-        maxLength = Math.floor(width / sampling_rate);
-        logger.log(
-            loggerCtxName,
-            "Changed maxLength to",
-            maxLength,
-            sampling_rate,
-        );
+    $: if(width) {
+        if(timemode == 'absolute') {
+
+            if(data.length > width ) {
+                resolution = 1;
+            } else {
+                resolution = width / data.length;
+            }
+            // width / maxsamples;
+        } else {
+            if(data.length > width) {
+                resolution = (timewindow / 1000) / width;
+            } else {
+                resolution = width / data.length;
+            }
+            // Math.max(1,Math.round( maxsamples / width, 2));    
+        }
     }
 
-    $: if(newData?.length) {
-        console.log("NEWData", data.length, newData.length, newData);
-        data.push(...newData);
-        newData = [];
-    }
+    $: maxsamples = calculatemaxsamples({
+        width,
+        samplingrate,
+        timewindow,
+        timemode,
+    });
 
     $: if (appenddata?.length) {
-        logger.log(
-            loggerCtxName,
-            "Sparkline: appenddata ",
-            appenddata,
-            typeof appenddata,
-        );
+        logger.log(loggerCtxName, "appenddata ", appenddata, typeof appenddata);
         appenddata = JSON.parse(appenddata);
     }
 
     $: if (points?.length) {
         //canvas.$set({ points: points });
-        logger.log(loggerCtxName, "Sparkline scaledPoints changed");
+        logger.log(loggerCtxName, "scaledPoints changed");
     }
 
     $: if (data?.length) {
         logger.log(
             loggerCtxName,
-            "Sparkline: data changed, redrawing sparkline...",
-            data,
+            "data changed, redrawing sparkline...",
+            maxsamples,
+            data?.length,
         );
     }
 
     $: if (scaledPoints?.points) {
-        logger.log(loggerCtxName, "Sparkline scaledPoints changed");
+        logger.log(loggerCtxName, "scaledPoints changed");
     }
 
     onMount(() => {
-        logger.log(
-            loggerCtxName,
-            "Sparkline: onMount",
-            window.livesocket,
-            live,
-        );
+        logger.log(loggerCtxName, "onMount", window.livesocket, live);
         //LiveSocket.pushEvent("request-seed", sensor_id);
+
+        if (timewindow == undefined) {
+            timewindow = 0.5 * 60 * 1000;
+        }
     });
 
     const transformStorageEventData = (data) => {
@@ -117,7 +127,7 @@
                 } else {
                     // Output error for any malformed data
                     console.warn(
-                        "Sparkline: malformed data detected, skipping item",
+                        "malformed data detected, skipping item",
                         item,
                     );
                 }
@@ -125,84 +135,80 @@
 
             return transformedData;
         } else {
-            console.warn(
-                "Sparkline: Invalid data format or data is missing:",
-                data,
-            );
+            console.warn("Invalid data format or data is missing:", data);
         }
     };
 
     const handleStorageWorkerEvent = (e) => {
         //const {type, eventData} = e.detail;
-
-        logger.log(
-            loggerCtxName,
-            "Sparkline: handleStorageWorkerEvent",
-            sensor_id,
-            e.detail.type,
-            e.detail.data,
-        );
-
         if (sensor_id === e?.detail?.data.id) {
             logger.log(
                 loggerCtxName,
-                "Sparkline: handleStorageWorkerEvent - data received",
-                e.detail.type,
-                e.detail.data,
+                "handleStorageWorkerEvent",
+                sensor_id,
+                e?.detail?.type,
+                e?.detail?.data?.length,
             );
 
             if (e?.detail?.type == "append-read-data-result") {
-                logger.log(loggerCtxName, "Sparkline: Before transformed", id); // Log processed data.
-                data = transformStorageEventData(e.detail.data.result);
+                newData = transformStorageEventData(e.detail.data.result);
+                data = [];
+                data = [...newData];
 
                 logger.log(
                     loggerCtxName,
-                    "Sparkline: Data transformed",
-                    data.length,
+                    "handleStorageWorkerEvent: Data transformed",
+                    data?.length,
                     id,
                 ); // Log processed data.
-                if (data.length > 1) is_loading = false;
+                if (data?.length > 1) is_loading = false;
             } else if (e?.detail?.type == "append-data-result") {
-                logger.log(loggerCtxName, "Sparkline: Before transformed", id, typeof e.detail.data.result.payload, e.detail.data.result.payload); // Log processed data.
+                // TODO: clarify event handler
                 data.push(e.detail.data.result.payload);
-                logger.log(loggerCtxName, "Sparkline: Before transformed", data); // Log processed data.
+                logger.log(
+                    loggerCtxName,
+                    "handleStorageWorkerEvent: append-data-result. Nothing to do",
+                    data,
+                ); // Log processed data.
                 //data = transformEventData(e.detail.data.result);
-            }
-
-            if (e?.detail?.type == "updated-read-data") {
+            } else {
+                logger.log(
+                    loggerCtxName,
+                    "handleStorageWorkerEvent: Unknown storage event",
+                    sensor_id,
+                    e.detail,
+                ); // Log processed data.
             }
         }
     };
 
     const handleSeedDataEvent = (e) => {
-        if (e?.detail?.sensor_id == sensor_id) {
+        if (sensor_id == e?.detail?.sensor_id) {
             logger.log(
                 loggerCtxName,
-                "Sparkline: handleSeedDataEvent",
+                "handleSeedDataEvent",
                 sensor_id,
-                e?.detail?.id,
-                e,
+                e?.detail?.sensor_id,
+                e?.detail?.data?.length,
+                data?.length,
             );
 
-            e.detail.data.forEach( (d) => {
-                data.push(d);
+            newData = e.detail.data;
+            //newData = newData.slice(-maxsamples);
+            data = [];
+            newData.forEach((item) => {
+                data = [...data, item];
             });
 
-            data = [...e.detail.data];
-            //newData = e.detail.data;
-            is_loading = true;
+            is_loading = false;
         }
-
-        is_loading = false;
     };
 
     const handleAccumulatorEvent = (e) => {
-        logger.log(loggerCtxName, "Sparkline: handleAccumulatorEvent", sensor_id, e?.detail?.id, e);
-
         if (sensor_id === e?.detail?.id) {
             logger.log(
                 loggerCtxName,
-                "Sparkline handleAccumulatorEvent",
+                "handleAccumulatorEvent",
                 "loading: " + is_loading,
                 typeof e.detail,
                 e.detail,
@@ -212,56 +218,61 @@
             );
 
             if (e?.detail?.data?.timestamp && e?.detail?.data?.payload) {
-                data = [...data, e.detail.data]
-                
-                /*const requestType = is_loading
-                    ? "append-read-data"
-                    : "append-data";
-
                 logger.log(
                     loggerCtxName,
-                    "Going to request storage worker: ",
-                    requestType,
-                    e.detail,
-                    window.workerStorage,
+                    "handleAccumulatorEvent",
+                    sensor_id,
+                    e.detail.data,
+                    data?.length,
                 );
 
-                //const myCustomEvent = new CustomEvent("storage-request-event", {
-                const myCustomEvent = new CustomEvent(
-                    "worker-requesthandler-event",
-                    {
-                        detail: {
-                            type: requestType,
-                            data: {
-                                id: sensor_id,
-                                payload: e?.detail?.data,
-                                maxLength: maxlength,
-                            },
-                        },
-                    },
-                ); // Send the timestamp as data.
-                window.dispatchEvent(myCustomEvent); // Dispatch on window
-
-                */
-
-                /*
-                window.workerStorage.postMessage({
-                    type: requestType,
-                    data: {
-                        id: sensor_id,
-                        payload: e.detail.data,
-                        maxLength: maxlength,
-                    },
-                });*/
-            } else {
-                console.warn(
-                    "Sparkline handleAccumulatorEvent",
-                    "something wrong",
-                    e,
-                );
+                data = [...data, e.detail.data];
             }
         }
     };
+
+    function calculatemaxsamples({
+        width,
+        samplingrate,
+        timewindow,
+        timemode,
+    }) {
+        if (!width || !samplingrate) {
+            return 0; // Handle cases with missing information.
+        }
+
+        let maxsamples;
+
+        /*if(width < 300) {
+            timewindow = Math.min(2000, timewindow);
+        }*/
+
+        if (timemode === "absolute" && timewindow) {
+            const timewindowInSeconds = timewindow / 1000; // Convert to seconds.
+            maxsamples = Math.max(
+            1,
+                Math.floor(timewindowInSeconds * samplingrate * width),
+            ); // calculate based on provided window and rate.
+        } else {
+            // relative or no time window.
+            maxsamples = Math.max(1, Math.floor(width / resolution)); // Compute based on width, and also using a base resolution value.
+        }
+
+        //maxsamples = ((timewindow / 1000) * width) / samplingrate;
+
+        logger.log(
+            loggerCtxName,
+            "maxsamples:  width:",
+            width,
+            ", samplingrate:",
+            samplingrate,
+            ", timewindow:",
+            timewindow,
+            ", result:",
+            maxsamples,
+        );
+        return maxsamples;
+    }
 </script>
 
 <svelte:window
@@ -284,16 +295,27 @@
             bind:scaledPoints={test}
             {width}
             {height}
-            {timeMode}
-            {timeWindow}
+            {timemode}
+            {timewindow}
             {yPadding}
-            {maxLength}
+            {maxsamples}
+            {isResizing}
+            {resolution}
         ></ScaledPoints>
 
-        <Canvas bind:this={canvas} bind:points={test} {width} {height}></Canvas>
-        {#if true }<p>
-                Sparkline DATA: maxLength: {maxlength}
-                {data.length} Points: {test.length}
+        <Canvas
+            bind:this={canvas}
+            bind:points={test}
+            {width}
+            {height}
+            {isResizing}
+        ></Canvas>
+        {#if true}
+            <p>
+                Sparkline: width: {width} maxsamples: {maxsamples} timewindow: {timewindow}
+                timemode:{timemode} samplingrate: {samplingrate}
+
+                data: {data?.length} Points: {test?.length} Resolution: {resolution}
             </p>{/if}
     {/if}
 </div>

@@ -31,7 +31,9 @@ async def run_command(command):
 async def main():
     parser = argparse.ArgumentParser(
         description="Run multiple Python scripts concurrently based on a configuration file.")
-    parser.add_argument("config_file", type=str, help="Path to the configuration file.")
+    parser.add_argument("--config_file", type=str, default="sensocto-simulator.txt", help="Path to the configuration file.")
+    parser.add_argument("--mode", type=str, default="phoenix",
+                        help="Simulator mode")
     args = parser.parse_args()
     config_file = args.config_file
 

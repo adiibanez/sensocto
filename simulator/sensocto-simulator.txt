@@ -1,1 +1,10 @@
-python3 sensocto-simulator.py --sensor_id Vicumulator1 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 50
+
+# python3 sensocto-simulator.py --mode csv --sensor_id Vicumulator1 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 50
+# python3 sensocto-simulator.py --sensor_id Vicumulator1 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 50
+# python3 sensocto-simulator.py --mode phoenix --sensor_id Vicumulator1 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 50
+# python3 sensocto-simulator.py --mode phoenix --sensor_id Vicumulator2 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 100
+python3 sensocto-simulator.py --mode phoenix --sensor_id Vicumulator3 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 180
+
+python3 sensocto-simulator.py --mode phoenix --sensor_id Vicumulator1 --sensor_type ecg --duration 30 --sampling_rate 10 --heart_rate 50
+#python3 sensocto-simulator.py --mode phoenix --sensor_id Vicumulator2 --sensor_type ecg --duration 30 --sampling_rate 10 --heart_rate 100
+#python3 sensocto-simulator.py --mode phoenix --sensor_id Vicumulator3 --sensor_type ecg --duration 30 --sampling_rate 10 --heart_rate 180

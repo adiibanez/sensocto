@@ -20,6 +20,9 @@
     export let lineWidth = 2;
 
     export let points = [];
+
+    export let isResizing = false;
+
     let canvas;
     let context;
     let isDrawing;
@@ -93,6 +96,12 @@
     }
 
     function drawCanvas() {
+
+        if(document.querySelector(`body.resizing`) != undefined) {
+            logger.log(loggerCtxName, "CanvasLayer: isResizing", id);
+            return;
+        }
+
         if (isDrawing === true) return;
         // Draw using new data
         if (!context || !points?.length) {
@@ -101,8 +110,14 @@
             return;
         }
 
+        // freeze canvas
         context.save();
+
+        
         context.clearRect(0, 0, width, height); // Start with clearing.
+        //context.rect(20, 20, 150, 100);
+        //context.stroke();
+
         context.strokeStyle = color; // set color
         context.lineWidth = lineWidth; // set line width
         context.beginPath(); // Begin path
@@ -116,6 +131,8 @@
             }
         }
         context.stroke(); // stroke the path.
+
+        // restore canvas
         context.restore();
         logger.log(loggerCtxName, 
             "CanvasLayer: Drawing",

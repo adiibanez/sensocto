@@ -152,7 +152,7 @@ const handleSeedData = async (sensorId, seedData) => {
         const store = tx.objectStore(objectStoreName);
 
         try {
-            console.log("STORAGE", "seedData", sensorId, seedData);
+            console.log("STORAGE", "seedData", sensorId, seedData.length);
             const putRequest = store.put({ id: sensorId, dataPoints: seedData });
             putRequest.onsuccess = () => resolve();
             putRequest.onerror = event => reject(event.target.error);

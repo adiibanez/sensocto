@@ -3,7 +3,7 @@ defmodule Sensocto.AttributeStore do
   require Logger
 
   def start_link(%{:sensor_id => sensor_id} = configuration) do
-    IO.puts("SimpleSensor start_link2: #{inspect(configuration)}")
+    Logger.debug("SimpleSensor start_link2: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     Agent.start_link(fn -> %{} end, name: via_tuple(sensor_id))
   end
@@ -22,6 +22,7 @@ defmodule Sensocto.AttributeStore do
   @spec get_attribute(any(), any(), any()) :: any()
   def get_attribute(sensor_id, attribute_id, limit) do
     Logger.debug("Agent client get_attribute #{sensor_id}")
+
     Agent.get(via_tuple(sensor_id), fn state ->
       case Map.get(state, attribute_id) do
         nil -> []
@@ -46,14 +47,34 @@ defmodule Sensocto.AttributeStore do
 
   def remove_attribute(sensor_id, attribute_id) do
     Agent.update(via_tuple(sensor_id), fn state ->
-      Map.delete(state, attribute_id)
+      # 1. Delete attribute and capture the result
+      new_state = Map.delete(state, attribute_id)
+
+      # 2. Log based on the presence of the attribute after deletion
+      if Map.has_key?(new_state, attribute_id) do
+        Logger.debug("Map delete failed or did not exist: #{sensor_id}:#{attribute_id}")
+      else
+        Logger.debug("Map delete success: #{sensor_id}:#{attribute_id}")
+      end
+
+      # 3. Log the attribute history after deletion
+      case Map.get(new_state, attribute_id) do
+        nil ->
+          Logger.debug("Map get success, nil value after delete: #{sensor_id}:#{attribute_id}")
+
+        _ ->
+          Logger.debug("Map get failed, value still exists: #{sensor_id}:#{attribute_id}")
+      end
+
+      # 4. Return new state for Agent
+      new_state
     end)
   end
 
   defp srv_put_attribute_state(state, attribute_id, timestamp, payload) do
     new_attribute =
       case Map.get(state, attribute_id) do
-        #nil -> %{payloads: [], sampling_rate: sampling_rate}
+        # nil -> %{payloads: [], sampling_rate: sampling_rate}
         nil -> %{payloads: []}
         attribute -> attribute
       end

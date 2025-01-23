@@ -48,20 +48,21 @@ Hooks.ResizeDetection = {
       if (!isResizing) {
         isResizing = true
         resizeStartTime = performance.now();
-        this.document.getElementById("main").classList.add('resizing');
+        document.querySelector("body").classList.add('resizing');
         //logger.log("Hooks.ResizeDetection", 'Resize: ', this.document.getElementById("main").classList);
       }
     }, { passive: true });
 
     window.addEventListener('resizeend', function () {
       //logger.log("Hooks.ResizeDetection", 'Resizeend detected!');
+
       if (isResizing) {
         isResizing = false
         const resizeEndTime = performance.now();
         const resizeDuration = resizeEndTime - resizeStartTime
         resizeTotalDuration += resizeDuration
         //logger.log("Hooks.ResizeDetection", `Resize duration: ${resizeDuration.toFixed(2)}ms, Total duration: ${resizeTotalDuration.toFixed(2)}ms`);
-        this.document.getElementById("main").classList.remove('resizing');
+        document.querySelector("body").classList.remove('resizing');
         //logger.log("Hooks.ResizeDetection", 'Resizeendt: ', this.document.getElementById("main").classList);
 
         // redraw sparklines
@@ -108,19 +109,15 @@ Hooks.SensorDataAccumulator = {
     workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensorid } });
 
     if ('pushEvent' in this) {
-      const payload = { "id": this.el.dataset.sensorid_raw, "attribute_id": "heartrate" };
-      logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
+      const payload = { "id": this.el.dataset.sensorid_raw, "attribute_id": this.el.dataset.sensortype };
+      //logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
 
-      this.handleEvent("seeddata", (answer) => {
-        console.log("Hooks.SensorDataAccumulator", "seed-data", answer);
+      this.handleEvent("seeddata", (seed) => {
+        console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
 
-        workerStorage.postMessage({ type: 'seed-data', data: { id: answer.sensor_id, seedData: answer.data } });
-        const seedEvent = new CustomEvent('seeddata-event', { id: answer.sensor_id, detail: answer });
+        workerStorage.postMessage({ type: 'seed-data', data: { id: seed.sensor_id, seedData: seed.data } });
+        const seedEvent = new CustomEvent('seeddata-event', { id: seed.sensor_id, detail: seed });
         window.dispatchEvent(seedEvent);
-      });
-
-      this.handleEvent("scores", (answer) => {
-        console.log("Hooks.SensorDataAccumulator", "scores", answer);
       });
 
       this.pushEvent("request-seed-data", payload);
@@ -166,8 +163,7 @@ function resizeSparklines() {
   allSparklines.forEach(element => {
     const parentWidth = element.parentElement.offsetWidth;
     const parentHeight = element.parentElement.offsetHeight;
-    //logger.log("Sparkline Resizer", element.id, parentWidth, parentHeight); // Log it.
-
+    logger.log("Sparkline Resizer", element.id, parentWidth, parentHeight); // Log it.
     element.setAttribute('width', parentWidth); // Use setAttribute to change width
     //element.setAttribute('height', parentHeight); // Also set height to parent, if required.
   });

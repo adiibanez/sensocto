@@ -1,0 +1,1 @@
+python3 sensocto-simulator.py --sensor_id Vicumulator1 --sensor_type heartrate --duration 30 --sampling_rate 1 --heart_rate 50

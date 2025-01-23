@@ -11,6 +11,7 @@ defmodule SensoctoWeb.SensorDataChannel do
 
   # Store the device ID in the socket's assigns when joining the channel
   @impl true
+
   def join(
         "sensor_data:" <> sensor_id,
         %{
@@ -50,6 +51,18 @@ defmodule SensoctoWeb.SensorDataChannel do
       # })
 
       """
+
+      %{
+      "batch_size" => 1,
+      "connector_id" => "1111111",
+      "connector_name" => "SensoctoSim",
+      "device_name" => "Device1",
+      "sampling_rate" => 10,
+      "sensor_id" => "Device1:heartrate",
+      "sensor_name" => "Device1:heartrate",
+      "sensor_type" => "heartrate"
+      }
+
 
       %{
       "batch_size" => 1,

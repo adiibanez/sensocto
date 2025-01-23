@@ -21,7 +21,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
       <sensocto-sparkline
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
-        sensor_id={assigns.sensor_data.id}
+        sensor_id={assigns.sensor_data.sensor_id}
         maxlength={assigns.sensor_data.sampling_rate * 5}
         phx-update="ignore"
         class="loading w-full m-0 p-0"
@@ -53,7 +53,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
         height="50"
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
-        sensor_id={assigns.sensor_data.id}
+        sensor_id={assigns.sensor_data.sensor_id}
         maxlength={assigns.sensor_data.sampling_rate * 60}
         phx-update="ignore"
         class="loading"

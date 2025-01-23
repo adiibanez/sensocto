@@ -19,6 +19,7 @@ defmodule Sensocto.AttributeStore do
     Agent.get(via_tuple(sensor_id), & &1)
   end
 
+  @spec get_attribute(any(), any(), any()) :: any()
   def get_attribute(sensor_id, attribute_id, limit) do
     Logger.debug("Agent client get_attribute #{sensor_id}")
     Agent.get(via_tuple(sensor_id), fn state ->

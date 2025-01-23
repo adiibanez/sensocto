@@ -1,0 +1,93 @@
+defmodule Sensocto.Simulator.Application do
+  use Application
+
+
+  @configs [%{
+          device_name: "Device1",
+          batch_size: 1,
+          connector_id: "1111111",
+          connector_name: "SensoctoSim",
+          sampling_rate: 10,
+          sensor_id: "Device1:heartrate",
+          sensor_name: "Device1:heartrate",
+          sensor_type: "heartrate",
+          duration: 10,
+          sampling_rate: 1,
+          heart_rate: 60,
+          respiratory_rate: 15,
+          scr_number: 5,
+          burst_number: 5,
+          sensor_type: "heartrate",
+  },
+  %{
+    device_name: "Device2",
+    batch_size: 1,
+    connector_id: "22222",
+    connector_name: "SensoctoSim",
+    sampling_rate: 10,
+    sensor_id: "Device1:heartrate",
+    sensor_name: "Device1:heartrate",
+    sensor_type: "heartrate",
+    duration: 10,
+    sampling_rate: 1,
+    heart_rate: 150,
+    respiratory_rate: 30,
+    scr_number: 5,
+    burst_number: 5,
+    sensor_type: "heartrate",
+}
+  ]
+
+  def start(_type, _args) do
+
+    IO.puts("Start simulator")
+    children = [
+      SensorSimulatorSupervisor,
+      {Registry, keys: :unique, name: SensorSimulatorRegistry},
+    ]
+
+    # See https://hexdocs.pm/elixir/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: Sensocto.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  def ensure_running_count(keep_running, ramp_up_delay, ramp_down_delay) do
+    processes_running = Enum.count(SensorSimulatorSupervisor.get_children())
+    IO.inspect(SensorSimulatorSupervisor.get_children())
+
+    IO.puts("keep: #{keep_running}, running: #{processes_running}")
+
+    if processes_running < keep_running do
+      IO.puts("start servers")
+
+      sensor_numbers = 1..keep_running
+
+        Enum.each(sensor_numbers, fn number ->
+      # Convert the number to a sensor name string (e.g., "sensor1", "sensor2", ...)
+
+        config = Enum.random(@configs)
+        sensor_name = config['sensor_name']
+
+        # Start the sensor by calling start_sensor on the SensorSupervisor
+        case SensorSimulatorSupervisor.start_sensor(sensor_name, [config]) do
+          {:ok, pid} -> IO.puts("started #{sensor_name}")
+          {:error, _} -> IO.puts("failed to start #{sensor_name}")
+        end
+        Process.sleep(:rand.uniform(ramp_up_delay))
+      end)
+
+      SensorSimulatorSupervisor.get_children()
+
+    else
+      IO.puts("keep or stop servers")
+      Enum.take(SensorSimulatorSupervisor.get_children(), processes_running - keep_running)
+        |> Enum.each(fn {_, pid, _, _type} ->
+          IO.inspect(pid)
+          DynamicSupervisor.terminate_child(SensorSimulatorSupervisor, pid)
+          Process.sleep(:rand.uniform(ramp_down_delay))
+      end)
+      SensorSimulatorSupervisor.get_children()
+    end
+  end
+end

@@ -1,0 +1,329 @@
+# Sensor supervisor
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.8.0"},
+  {:httpoison, "~> 2.0"},
+  {:jason, "~> 1.4"}
+])
+```
+
+## Section
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+defmodule Sensocto.SensorsDynamicSupervisor do
+  use DynamicSupervisor
+  require Logger
+
+  def start_link(test) do
+    IO.puts("#{__MODULE__}: start_link, test: #{test}")
+    DynamicSupervisor.start_link(__MODULE__, :no_args, name: __MODULE__)
+  end
+
+  def init(:no_args) do
+    DynamicSupervisor.init(strategy: :one_for_one)
+  end
+
+  def add_sensor(sensor_id, configuration) do
+    child_spec = %{
+      id: sensor_id,
+      start: {Sensocto.SensorSupervisor, :start_link, [configuration]},
+      shutdown: 5_000,
+      restart: :permanent,
+      type: :worker
+    }
+
+    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+      {:ok, pid} when is_pid(pid) ->
+        Logger.debug("Added sensor #{sensor_id}")
+        {:ok, pid}
+
+      {:error, {:already_started, _pid}} ->
+        Logger.debug("Sensor already started #{sensor_id}")
+        {:ok, :already_started}
+
+      {:error, reason} ->
+        Logger.debug("error adding sensor: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  def remove_sensor(sensor_id) do
+    case Registry.lookup(Sensocto.SensorPairRegistry, sensor_id) do
+      [{pid, _}] ->
+        DynamicSupervisor.terminate_child(__MODULE__, pid)
+
+      [] ->
+        :error
+    end
+  end
+
+  defp via_tuple(sensor_id), do: {:via, Registry, {SensorPairRegistry, sensor_id}}
+end
+
+defmodule Sensocto.SensorSupervisor do
+  use Supervisor
+  require Logger
+  alias Sensocto.{SimpleSensor, AttributeStore}
+
+  def start_link(configuration) do
+    Supervisor.start_link(__MODULE__, configuration)
+  end
+
+  @impl true
+  def init(configuration) do
+    children = [
+      %{
+        id: :sensor,
+        start: {SimpleSensor, :start_link, [configuration]},
+        shutdown: 5000,
+        restart: :permanent,
+        type: :worker
+      },
+      %{
+        id: :attribute_store,
+        start: {AttributeStore, :start_link, [configuration]},
+        shutdown: 5000,
+        restart: :permanent,
+        type: :worker
+      }
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+
+defmodule SimpleSensor do
+  use GenServer
+
+  defstruct [:attribute_store_pid]
+
+  def start_link(configuration) do
+    IO.puts("SimpleSensor start_link: #{inspect(configuration)}")
+    # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
+    GenServer.start_link(__MODULE__, configuration, name: via_tuple(configuration.sensor_id))
+    {:ok}
+  end
+
+  @impl true
+  def init(state) do
+    IO.puts("SimpleSensor state: #{inspect(state)}")
+    {:ok, state}
+  end
+
+  # client
+  def set_attribute(sensor_id, attribute) do
+    IO.puts("test")
+    [{pid, _}] = Registry.lookup(SimpleSensorRegistry, sensor_id)
+    IO.puts("Client: Set_attribute #{inspect(pid)} #{inspect(attribute)}")
+    GenServer.cast(pid, {:set_attribute, attribute})
+
+    # case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+    #      [{pid, _}] ->
+    #           IO.puts("Client: Set_attribute #{inspect(pid)} #{inspect(attribute)}")
+    #          GenServer.cast(pid, {:set_attribute, attribute})
+    #     _ ->
+    #        IO.puts("Client: Set_attribute ERROR #{inspect(attribute)}")
+    #     end
+  end
+
+  def get_attributes(sensor_id) do
+    [{pid, _}] = Registry.lookup(SimpleSensorRegistry, sensor_id)
+    IO.puts("Client: Get attributes #{inspect(pid)}")
+    GenServer.call(pid, :get_attributes)
+  end
+
+  # server
+
+  @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  @impl true
+  def handle_call(:get_attributes, _from, state) do
+    IO.puts("sensor_id #{state.sensor_id}")
+    attributes = AttributeStore.get_attributes(state.sensor_id)
+    IO.puts("Server: :get_attributes #{inspect(attributes)}")
+    {:reply, attributes, state}
+  end
+
+  @impl true
+  def handle_cast({:set_attribute, %{:id => attribute_id, :value => value} = attribute}, state) do
+    IO.puts("Server: :set_attribute #{inspect(attribute)} state: #{inspect(state)}")
+    # IO.puts("Server: :set_attribute registered_name #{inspect(sensor_id)}")
+    AttributeStore.put_attribute(state.sensor_id, attribute_id, value)
+    {:noreply, state}
+  end
+
+  defp via_tuple(sensor_id) do
+    {:via, Registry, {SimpleSensorRegistry, sensor_id}}
+  end
+end
+
+defmodule AttributeStore do
+  use Agent
+
+  def start_link(configuration) do
+    IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for attributestore")
+
+    IO.puts(
+      "AttributeStore #{inspect(via_tuple(configuration.sensor_id))} #{inspect(configuration.sensor_id)}"
+    )
+
+    Agent.start_link(fn -> %{} end, name: via_tuple(configuration.sensor_id))
+  end
+
+  def put_attribute(sensor_id, attribute_id, value) do
+    pid = get_pid(sensor_id)
+
+    IO.puts(
+      "AttributeStore put_attribute sensor_id: #{sensor_id}, #{inspect(pid)}, #{inspect(attribute_id)}, #{inspect(value)}"
+    )
+
+    Agent.update(pid, fn state ->
+      Map.put(state, attribute_id, value)
+    end)
+  end
+
+  def get_attributes(sensor_id) do
+    pid = get_pid(sensor_id)
+    IO.puts("AttributeStore get_attributes sensor_id: #{sensor_id}, #{inspect(pid)}")
+    Agent.get(pid, & &1)
+  end
+
+  def get_pid(sensor_id) do
+    case Registry.lookup(SimpleAttributeRegistry, sensor_id) do
+      [{pid, _}] ->
+        pid
+
+      _ ->
+        :error
+    end
+  end
+
+  defp via_tuple(sensor_id), do: {:via, Registry, {SimpleAttributeRegistry, sensor_id}}
+end
+```
+
+```elixir
+case Supervisor.start_link(
+       [
+         # {DynamicSupervisor, name: DynSup, strategy: :one_for_one},
+         # {Registry, keys: :unique, name: MyRegistry},
+         # {Task.Supervisor, name: MyTaskSupervisor},
+         {Registry, keys: :unique, name: SimpleAttributeRegistry},
+         {Registry, keys: :unique, name: SimpleSensorRegistry},
+         {Registry, keys: :unique, name: SensorPairRegistry},
+         Sensocto.SensorsDynamicSupervisor
+         # {SimpleSensor, name: "sensor_2"},
+         # {AttributeStore, name: "sensor_2"},
+       ],
+       strategy: :one_for_one,
+       name: MySupervisor
+     ) do
+  {:ok, supervisor} -> supervisor
+  {:error, {:already_started, supervisor}} -> supervisor
+end
+```
+
+```elixir
+# Application.started_applications()
+```
+
+```elixir
+defmodule Sensocto.RegistryUtils do
+  require Logger
+
+  def list_all_entries(registry_module) do
+    Registry.select(registry_module, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    # |> Enum.flat_map(& &1)
+  end
+end
+
+defmodule Sensocto.RegistryUtils2 do
+  require Logger
+
+  def list_all_entries(registry_module) do
+    Registry.select(registry_module, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    |> Enum.each(fn [{pid, _}] ->
+      Logger.info("Found pid #{inspect(pid)}  in Registry #{inspect(registry_module)}")
+    end)
+  end
+end
+
+sensor_id = "sensor_2"
+
+# pid = SimpleSensor.start_link(%{:sensor_id =>sensor_id})
+# pid = GenServer.start(SimpleSensor, "sensor_3")
+Registry.lookup(SimpleAttributeRegistry, sensor_id)
+
+%{
+  :sensors => Sensocto.RegistryUtils.list_all_entries(SimpleSensorRegistry),
+  :attributestores => Sensocto.RegistryUtils.list_all_entries(SimpleAttributeRegistry)
+}
+```
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+Kino.Process.seq_trace(fn ->
+  sensor_id = "sensor_2"
+
+  configuration = %{
+    :sensor_id => sensor_id,
+    :test => 1
+  }
+
+  IO.puts("Test: sensor_id: #{configuration.sensor_id}")
+
+  Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, configuration)
+
+  case AttributeStore.start_link(configuration) do
+    {:ok, _agent_pid} -> IO.puts("AttributeStore started")
+    {:error, {:already_started, _agent_pid}} -> IO.puts("AttributeStore started")
+  end
+
+  # SimpleSensor.set_attribute(sensor_id, %{:id => "test2", :value => 1})
+  #  SimpleSensor.get_attributes(sensor_id)
+
+  with {:ok, _pid} <- GenServer.start(SimpleSensor, configuration) do
+    IO.puts("Simple sensor started")
+
+    # pid = Registry.lookup(SimpleSensorRegistry, "sensor_2")
+    # SimpleSensor.set_attribute(sensor_id, %{:id => "test2", :value => 1})
+    #  SimpleSensor.get_attributes(sensor_id)
+  else
+    {:error, {:already_started, pid}} ->
+      {:error, pid}
+  end
+
+  # with GenServer.start(SimpleSensor, "sensor_1") do
+  #  {:ok, pid} -> do 
+  #    IO.puts("Simple sensor started")
+  #  end
+  #  {:error, {:already_started, pid}} -> IO.puts("Simple sensor already started")
+  # end
+  # case AttributeStore.start_link(%{}) do
+  #  {:ok, agent_pid} -> IO.puts("AttributeStore started")
+  #  {:error, {:already_started, agent_pid}} -> IO.puts("AttributeStore started")
+  # end
+
+  # SimpleSensor.set_attribute(pid, %{:id => "test2", :value => 1})
+  # SimpleSensor.get_attributes(pid)
+end)
+```
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+Registry.lookup(SimpleSensorRegistry, "sensor_1")
+```
+
+<!-- livebook:{"attrs":"e30","chunks":null,"kind":"Elixir.Kino.RemoteExecutionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+
+```

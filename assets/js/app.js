@@ -84,6 +84,15 @@ Hooks.ResizeDetection = {
   }
 }
 
+Hooks.ConnectionHandler = {
+  disconnected(event) {
+    logger.log("Hooks.ConnectionHandler", "disconnected", event);
+  },
+  connected(event) {
+    logger.log("Hooks.ConnectionHandler", "connected", event);
+  }
+}
+
 Hooks.SensorDataAccumulator = {
 
   workerEventListener(event) {
@@ -100,16 +109,20 @@ Hooks.SensorDataAccumulator = {
 
     if ('pushEvent' in this) {
       const payload = { "id": this.el.dataset.sensorid_raw, "attribute_id": "heartrate" };
-      logger.log("Hooks.SensorDataAccumulator","pushEvent seeddata", payload);
-      
+      logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
+
       this.handleEvent("seeddata", (answer) => {
         console.log("Hooks.SensorDataAccumulator", "seed-data", answer);
+
+        workerStorage.postMessage({ type: 'seed-data', data: { id: answer.sensor_id, seedData: answer.data } });
+        const seedEvent = new CustomEvent('seeddata-event', { id: answer.sensor_id, detail: answer });
+        window.dispatchEvent(seedEvent);
       });
 
       this.handleEvent("scores", (answer) => {
         console.log("Hooks.SensorDataAccumulator", "scores", answer);
       });
-      
+
       this.pushEvent("request-seed-data", payload);
     } else {
       logger.log("Hooks.SensorDataAccumulator", 'liveSocket', liveSocket);
@@ -131,7 +144,7 @@ Hooks.SensorDataAccumulator = {
         //logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: About to send accumulator-data-event", this.el.dataset.sensorid);
         appendData = JSON.parse(this.el.dataset.append);
         // weird sparkline doesn't see the first id TODO debug resp, normalize with storage worker event
-        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: this.el.dataset.sensorid, detail: { data: appendData, id: this.el.dataset.sensorid } });
+        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: this.el.dataset.sensorid_raw, detail: { data: appendData, id: this.el.dataset.sensorid_raw } });
         window.dispatchEvent(accumulatorEvent);
       } catch (e) {
         logger.log("Hooks.SensorDataAccumulator", 'accumulator parsing error', this.el.dataset.append, e);

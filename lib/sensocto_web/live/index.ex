@@ -39,7 +39,7 @@ defmodule SensoctoWeb.IndexLive do
     <div id="status" class="hidden" phx-disconnected={JS.show()} phx-connected={JS.hide()}>
       Attempting to reconnect...
     </div>
-    <div>
+    <div id="cnt" phx-hook="ConnectionHandler">
       <div id="sensors" phx-update="stream" class={assigns.stream_div_class}>
         <div class="only:block hidden">
           <p>No sensors online</p>
@@ -52,7 +52,6 @@ defmodule SensoctoWeb.IndexLive do
           data-sensorid={sensor_data.id}
           data-sensorid_raw={sensor_data.sensor_id}
           data-append={sensor_data.append_data}
-          class="m-0 p-0"
         >
           {render_sensor_by_type(sensor_data, assigns)}
         </div>
@@ -124,26 +123,20 @@ defmodule SensoctoWeb.IndexLive do
         socket
       ) do
     IO.puts("request-seed_data #{sensor_id}")
-    {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
+    #{:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
 
-    case Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000) do
-      attribute_data ->
-        # IO.inspect(attribute_data, label: " SimpleSensor data received")
+    attribute_data = Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000)
+    IO.inspect(attribute_data)
 
-        {:noreply,
-         push_event(socket, "seeddata", %{
-           sensor_id: sensor_id,
-           attribute_id: attribute_id,
-           data: attribute_data
-         })}
-
-      _ ->
-        Logger.error("Seed data SimpleSensor data error")
-        {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
-    end
+    {:noreply,
+     push_event(socket, "seeddata", %{
+       sensor_id: sensor_id,
+       attribute_id: attribute_id,
+       data: attribute_data
+     })}
 
     # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
-    {:noreply, socket}
+    # {:noreply, socket}
   end
 
   @impl true
@@ -226,7 +219,7 @@ defmodule SensoctoWeb.IndexLive do
         connector_name: sensor_params["connector_name"],
         sampling_rate: sensor_params["sampling_rate"],
         append_data:
-          "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": #{sensor_data["payload"]}}"
+          "{\"timestamp\": #{sensor_data["timestamp"]}, \"payload\": #{sensor_data["payload"]}}"
       }
 
     # |> Map.update(

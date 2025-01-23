@@ -58,15 +58,12 @@
             try {
                 const metadata = {
                     sensor_name: channelIdentifier,
-                    sensor_id: sensorService.getDeviceId() + ':imu',
+                    sensor_id: sensorService.getDeviceId() + ":imu",
                     sensor_type: "imu",
                     sampling_rate: imuFrequency,
                 };
 
-                sensorService.setupChannel(
-                    channelIdentifier,
-                    metadata
-                );
+                sensorService.setupChannel(channelIdentifier, metadata);
 
                 console.log("IMU frequency", imuFrequency, "Hz");
 
@@ -162,108 +159,69 @@
         sensorService.sendChannelMessage(channelIdentifier, payload);
     }
 
-    function handleMobileIMU() {
-        let dt = 0;
-        if (imuData && imuData.timestamp) {
-            dt = (timestamp - imuData.timestamp) / 1000; // Convert milliseconds to seconds
-        }
-
-        console.log("handleMobileIMU");
-        imuData = {
-            acceleration: {
+    function handleMobileIMU(
+        accelerometer,
+        gyroscope,
+        dt,
+        initialOrientation = { alpha: 0, beta: 0, gamma: 0 },
+    ) {
+        let imuData = {
+            a: {
+                // acceleration
                 x: accelerometer.x,
                 y: accelerometer.y,
                 z: accelerometer.z,
             },
-            rotationRate: {
-                alpha: gyroscope.x,
-                beta: gyroscope.y,
-                gamma: gyroscope.z,
+            r: {
+                // rotation rate
+                x: gyroscope.x,
+                y: gyroscope.y,
+                z: gyroscope.z,
             },
         };
-
-        let firstSensorValue = imuData == null;
-
         imuData.rotationAngles = rotationRateToAngle(
-            imuData.rotationRate.alpha,
-            imuData.rotationRate.beta,
-            imuData.rotationRate.gamma,
-        );
-        imuData.relativeOrientation = updateOrientation(
-            imuData.acceleration,
-            imuData.rotationRate,
-            dt,
-        );
+            imuData.r.x,
+            imuData.r.y,
+            imuData.r.z,
+            initialOrientation,
+        ); // use correct values.
 
-        let rotationAnglesDelta = Math.abs(
-            imuData.rotationAngles.x +
-                imuData.rotationAngles.y +
-                imuData.rotationAngles.z,
-        );
-        //console.log("rotationAnglesDelta: " + rotationAnglesDelta, imuData.rotationAngles);
-
-        //madgwick.update(gyroscope.x, gyroscope.y, gyroscope.z, accelerometer.x, accelerometer.y, accelerometer.z); // , compass.x, compass.y, compass.z
-        //console.log("madgwick", madgwick.toVector());
-
-        if (!firstSensorValue && rotationAnglesDelta < 0.3) {
-            return;
-        }
-
-        let payload = {
-            // same as before ...
-            //number: imuData.relativeOrientation.roll + ',' + imuData.relativeOrientation.pitch + ',' + imuData.relativeOrientation.yaw,
-            payload: JSON.stringify({
+        let output = {
+            t: Math.round(new Date().getTime()), // time
+            a: {
+                x: imuData.acceleration.x.toFixed(4),
+                y: imuData.acceleration.y.toFixed(4),
+                z: imuData.acceleration.z.toFixed(4),
+            },
+            o: {
+                // orientation
                 x: imuData.rotationAngles.x,
                 y: imuData.rotationAngles.y,
-                z: imuData.rotationAngles.z
-            }),
-            uuid: channelIdentifier, // Or some other unique ID for IMU data
-            timestamp: Math.round(new Date().getTime()),
+                z: imuData.rotationAngles.z,
+            },
+            r: {
+                // rotation rate
+                x: imuData.rotationRate.alpha.toFixed(4),
+                y: imuData.rotationRate.beta.toFixed(4),
+                z: imuData.rotationRate.gamma.toFixed(4),
+            },
+            i: dt.toFixed(4), // interval
         };
 
-        sensorService.sendChannelMessage(channelIdentifier, payload);
+        return JSON.stringify(output); // Return output as a valid JSON object
     }
 
-    function updateOrientation(accelData, gyroData, dt) {
-        const rollAccel =
-            (Math.atan2(accelData.y, accelData.z) * 180) / Math.PI;
-        const pitchAccel =
-            (Math.atan2(
-                -accelData.x,
-                Math.sqrt(
-                    accelData.y * accelData.y + accelData.z * accelData.z,
-                ),
-            ) *
-                180) /
-            Math.PI;
+    function rotationRateToAngle(alpha, beta, gamma, initialOrientation) {
+        // Convert radians to degrees
+        const alphaDeg = alpha * (180 / Math.PI);
+        const betaDeg = beta * (180 / Math.PI);
+        const gammaDeg = gamma * (180 / Math.PI);
 
-        // If initialOrientation hasn't been set yet, this is the first reading
-        if (!initialOrientation) {
-            initialOrientation = { roll: rollAccel, pitch: pitchAccel, yaw: 0 };
-        }
-
-        let yawDelta = gyroData.z * dt; // Change in yaw since last reading
-
-        // Calculate changes relative to the initial orientation
-        const rollDelta = rollAccel - initialOrientation.roll;
-        const pitchDelta = pitchAccel - initialOrientation.pitch;
-        const yaw = initialOrientation.yaw + yawDelta;
-
-        initialOrientation.yaw = yaw;
-
-        const relativeOrientation = {
-            roll: rollDelta,
-            pitch: pitchDelta,
-            yaw: yaw,
-        };
-        return relativeOrientation; // Now you have relative changes from the beginning.
-    }
-
-    function rotationRateToAngle(alpha, beta, gamma) {
+        // Add initial orientation (for absolute rotation).
         return {
-            x: Number.parseFloat((alpha * (180 / Math.PI)).toFixed(1)),
-            y: Number.parseFloat((beta * (180 / Math.PI)).toFixed(1)),
-            z: Number.parseFloat((gamma * (180 / Math.PI)).toFixed(1)),
+            x: (alphaDeg + initialOrientation.alpha).toFixed(1),
+            y: (betaDeg + initialOrientation.beta).toFixed(1),
+            z: (gammaDeg + initialOrientation.gamma).toFixed(1),
         };
     }
 
@@ -277,6 +235,7 @@
         {#if readingIMU}
             <button on:click={() => stopIMU()} class="btn btn-blue text-xs"
                 >Stop IMU</button
+            ><button on:click={initialOrientation=null} class="btn btn-blue text-xs">Cal</button
             >
             {imuFrequency} Hz
         {/if}

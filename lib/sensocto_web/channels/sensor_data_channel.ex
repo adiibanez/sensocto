@@ -147,7 +147,6 @@ defmodule SensoctoWeb.SensorDataChannel do
         } = sensor_data,
         socket
       ) do
-
     case SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
            :id => uuid,
            :timestamp => timestamp,
@@ -177,6 +176,18 @@ defmodule SensoctoWeb.SensorDataChannel do
        |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")}
     )
 
+    {:noreply, socket}
+  end
+
+  @impl true
+  # @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
+  #        {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
+  def handle_in(
+        "measurement",
+        message,
+        socket
+      ) do
+    Logger.debug("Unknown measurement #{inspect(message)}")
     {:noreply, socket}
   end
 

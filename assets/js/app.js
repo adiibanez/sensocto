@@ -110,7 +110,7 @@ Hooks.SensorDataAccumulator = {
 
     if ('pushEvent' in this) {
       const payload = { "id": this.el.dataset.sensorid_raw, "attribute_id": this.el.dataset.sensortype };
-      //logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
+      logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
 
       this.handleEvent("seeddata", (seed) => {
         console.log("Hooks.SensorDataAccumulator", "seed-data", seed);

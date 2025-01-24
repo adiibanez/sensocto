@@ -12,10 +12,9 @@ defmodule SensorSimulatorSupervisor do
   end
 
   # Function to start a new SensorDataGenServer dynamically
-  def start_sensor(sensor_id, config) do
-
+  def start_sensor(config) do
     child_spec = %{
-      id: sensor_id,
+      id: config[:sensor_id],
       start: {Sensocto.SensorSimulatorGenServer, :start_link, [config]},
       shutdown: 5_000,
       restart: :permanent,
@@ -24,7 +23,7 @@ defmodule SensorSimulatorSupervisor do
 
     IO.inspect(child_spec)
 
-    #spec = {Sensocto.SensorSimulatorGenServer, config}
+    # spec = {Sensocto.SensorSimulatorGenServer, config}
     DynamicSupervisor.start_child(__MODULE__, child_spec)
   end
 

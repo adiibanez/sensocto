@@ -1,3 +1,44 @@
-SensorSimulatorSupervisor.start_sensor("Device5", config)
+config = %{
+      device_name: "Device1",
+      batch_size: 1,
+      connector_id: "1111111",
+      connector_name: "SensoctoSim",
+      sampling_rate: 10,
+      sensor_id: "Device1:heartrate",
+      sensor_name: "Device1:heartrate",
+      sensor_type: "heartrate",
+      duration: 10,
+      sampling_rate: 1,
+      heart_rate: 60,
+      respiratory_rate: 15,
+      scr_number: 5,
+      burst_number: 5,
+      sensor_type: "heartrate",
+      dummy_data: false
+    }
 
-Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)
+#Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)
+
+{:ok, pid} = GenServer.start(Sensocto.SensorSimulatorGenServer, config)
+
+
+Process.send_after(
+      pid,
+      :get_data,
+      500
+    )
+
+{:ok, pid} = GenServer.start(Sensocto.SensorSimulatorGenServer, config)
+
+
+
+GenServer.cast(pid, :get_data)
+
+Process.send_after(
+      pid,
+      {:get_data},
+      0
+    )
+
+
+GenServer.call(pid, :connect_phoenix)

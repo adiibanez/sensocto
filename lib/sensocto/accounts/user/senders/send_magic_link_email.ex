@@ -25,7 +25,7 @@ defmodule Sensocto.Accounts.User.Senders.SendMagicLinkEmail do
       # TODO: replace with your email
       |> from({"noreply", "hello@adrianibanez.info"})
       |> to(to_string(email))
-      |> subject("Your login link")
+      |> subject("Your magic login link")
       |> html_body(body(token: token, email: email))
       |> Mailer.deliver!()
 

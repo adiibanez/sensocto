@@ -2,11 +2,11 @@ defmodule Sensocto.SensorSimulatorGenServer do
   use GenServer
   require Logger
   alias PhoenixClient.{Socket, Channel, Message}
-  alias NimbleCSV.RFC4180, as: CSV
+  alias Sensocto.BiosenseData
 
   @socket_opts [
-    # url: "ws://localhost:4000/socket/websocket"
-    url: "wss://sensocto.fly.dev/socket/websocket"
+    url: "ws://localhost:4000/socket/websocket"
+    # url: "wss://sensocto.fly.dev/socket/websocket"
   ]
 
   # Max interval in milliseconds for sending messages
@@ -22,26 +22,142 @@ defmodule Sensocto.SensorSimulatorGenServer do
 
   # Public API
   def start_link(%{:sensor_id => sensor_id} = config) do
+    Logger.info("start_link #{inspect(config)}")
     GenServer.start_link(__MODULE__, config, name: via_tuple(sensor_id))
   end
-
-
-  # client
-
-
 
   # GenServer Callbacks
   @impl true
   def init(%{:sensor_id => sensor_id} = config) do
+    Logger.info("init #{inspect(config)}")
+
+    Process.send_after(
+     self(),
+     :get_data,
+     500
+    )
+
+    Process.send_after(
+     self(),
+     :connect_phoenix,
+    0
+    )
+
+
+    # case GenServer.call(self(), :connect_phoenix) do
+    #  {:ok, state} -> Logger.info("Connected to Phoenix #{inspect(state)}");
+    #  {:error} -> Logger.error("Failed to connect to Phoenix #{inspect(config)}")
+    # end
+    {:ok, config |> Map.put(:phoenix_channel, nil)}
+  end
+
+  def handle_info(:process_queue, state) do
+    Logger.info("handle_info:process_queue")
+    GenServer.cast(self(), :process_queue)
+    {:noreply, state}
+  end
+
+  def handle_info({:process_queue, delay}, state) do
+    Logger.info("handle_info:process_queue delayed #{delay} ms")
+    Process.sleep(delay)
+    GenServer.cast(self(), :process_queue)
+    {:noreply, state}
+  end
+
+
+  @impl true
+  def handle_cast(
+        :process_queue,
+        %{:messages_queue => [head | tail], :phoenix_channel => phoenix_channel} = state
+      ) do
+    Logger.info("Got message, HEAD: #{inspect(head)} TAIL: #{Enum.count(tail)}")
+
+    Process.send_after(
+      self(),
+      {:push_message, head},
+      0
+    )
+    {:noreply, state |> Map.put(:messages_queue, tail)}
+  end
+
+  @impl true
+  def handle_cast(:process_queue, %{:messages_queue => []} = state) do
+    Logger.info("Empty queue, get new data")
+
+    Process.send_after(
+     self(),
+     :get_data,
+     0
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast(:process_queue, %{:messages_queue => {:error, _}} = state) do
+    Logger.info("Faulty queue, get data")
+
+    Process.send_after(
+      self(),
+      :get_data,
+      0
+    )
+
+    {:noreply, state |> Map.put(:updating_data, true)}
+  end
+
+  @impl true
+  def handle_cast(
+        :process_queue,
+        %{:messages_queue => [head | tail], :phoenix_channel => nil} = state
+      ) do
+
+    Logger.info("Have messages but no phoenix : #{head} TAIL: #{tail}")
+
+    Process.send(
+      self(),
+      :connect_phoenix
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(
+        :process_queue,
+        state
+      ) do
+    Logger.info("Default process_queue queue #{inspect(state)}")
+
+    Process.send_after(
+      self(),
+      :process_queue,
+      500
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_info(:connect_phoenix, state) do
+    # case  do
+    #  :noreply -> {:noreply, state}
+    #  :error -> Logger.info("Problem processing #{inspect(message)}")
+    # end
+    GenServer.cast(self(), :connect_phoenix)
+    # Process.send(self(), :process_queue)
+    {:noreply, state}
+  end
+
+  def handle_cast(:connect_phoenix, config) do
+    Logger.info("Connect to phoenix, #{inspect(config)}")
 
     case PhoenixClient.Socket.start_link(@socket_opts) do
       {:ok, socket} ->
         wait_until_connected(socket)
 
         uuid = Enum.random(@uuid_attributes)
-        topic = "sensor_data:" <> sensor_id
+        topic = "sensor_data:" <> config[:sensor_id]
 
-               IO.puts("Connecting ... #{topic}")
+        IO.puts("Connecting ... #{topic}")
 
         join_meta = %{
           device_name: config[:device_name],
@@ -57,10 +173,15 @@ defmodule Sensocto.SensorSimulatorGenServer do
 
         case PhoenixClient.Channel.join(socket, topic, join_meta) do
           {:ok, _response, channel} ->
-            IO.puts("Joined channel successfully for sensor #{sensor_id}")
+            IO.puts("Joined channel successfully for sensor #{config[:sensor_id]}")
             # Schedule the first message
-           schedule_send_message(sensor_id, channel, uuid, config)
-            {:ok, config}
+            # schedule_send_message(sensor_id, channel, uuid, config)
+
+            {:noreply,
+             config
+             |> Map.put(:phoenix_socket, socket)
+             |> Map.put(:phoenix_channel, channel)
+             |> IO.inspect()}
 
           {:error, reason} ->
             IO.puts("Failed to join channel: #{inspect(reason)}")
@@ -70,73 +191,260 @@ defmodule Sensocto.SensorSimulatorGenServer do
       {:error, reason} ->
         IO.puts("Failed to connect to socket: #{inspect(reason)}")
         {:stop, reason}
-
-    end
-    {:ok, config}
-  end
-
-  @impl true
-    def handle_info({:send_message, sensor_id, channel, uuid, config}, state) do
-         case fetch_sensor_data(sensor_id, config) do
-          {:ok, data} ->
-             new_state = Map.update(state, :queue, data, &(&1))
-             IO.inspect(new_state)
-             schedule_process_queue(sensor_id, channel, uuid)
-            {:noreply, new_state}
-          _ ->
-            schedule_send_message(sensor_id, channel, uuid, config)
-             {:noreply, state}
-        end
-    end
-
-  @impl true
-  def handle_info({:process_queue, sensor_id, channel, uuid}, state) do
-      process_queue(state, channel, uuid)
-  end
-
-  @impl true
-  def handle_info({:push_message, channel, message}, state) do
-    if state.config[:phoenix_channel] do
-      PhoenixClient.Channel.push_async(channel, "measurement", message)
-        {:noreply, state}
-      else
-        {:noreply, state}
     end
   end
 
-  def handle_info(%Message{event: _message, payload: _payload}, state) do
-    # IO.puts("Incoming Message: #{message} #{inspect(payload)}")
+  def handle_info({:push_message, message}, state) do
+    # case  do
+    #  :noreply -> {:noreply, state}
+    #  :error -> Logger.info("Problem processing #{inspect(message)}")
+    # end
+    #{delay_s, _} = Float.parse("#{message.delay}")
+
+    #Logger.info("Going to sleep for #{delay_s * 1000} ms")
+    #{delay_ms, _} = Integer.parse("#{delay_s * 1000}")
+
+    parent = self()
+    GenServer.cast(parent, {:push_message, message})
+
+    #GenServer.cast(self(), {:push_message, message})
+    # Process.send(self(), :process_queue)
     {:noreply, state}
   end
 
-  # A helper function to interact with the GenServer
-  def get_data(sensor_id) do
-    GenServer.call(via_tuple(sensor_id), :get_data)
+  @impl true
+  def handle_cast({:push_message, message}, state) do
+    Logger.debug(
+      "handle_cast :push_message #{inspect(message)}, #{inspect(state[:phoenix_channel])}"
+    )
+
+    if state[:phoenix_channel] != nil do
+      {delay_s, _} = Float.parse("#{message.delay}")
+
+      delay_ms_tmp = round(delay_s * 1000.0)
+
+      Logger.info("Going to sleep for #{delay_s} s tmp: #{delay_ms_tmp}")
+      {delay_ms, _} = Integer.parse("#{delay_ms_tmp}")
+
+      Logger.debug("delay_ms: #{delay_s} #{delay_ms}")
+      #Process.sleep(delay_ms)
+
+      Logger.info("Pushing message to channel #{inspect(message.delay)}")
+
+      phoenix_message = %{
+        "payload" => message.payload,
+        "timestamp" => :os.system_time(:milli_seconds),
+        "uuid" => state[:sensor_type]
+      }
+
+      # {:ok, response} = PhoenixClient.Channel.push(state[:phoenix_channel], "measurement", message)
+      # Logger.debug("Push response #{inspect(response)}")
+      #Process.sleep(delay_ms)
+
+      PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", phoenix_message)
+
+      #parent = self()
+
+
+      # tasks = [
+      #   #Task.async(fn -> PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", message) end),
+      #   #Task.async(fn -> take_shower(10) end),
+      #   #Task.async(fn -> call_mum() end),
+      # ]
+
+      # Task.yield_many(tasks)
+      # |> Enum.map(fn {task, result} ->
+      #   case result do
+      #     nil ->
+      #       Task.shutdown(task, :brutal_kill)
+      #       exit(:timeout)
+      #     {:exit, reason} ->
+      #       exit(reason)
+      #     {:ok, result} ->
+      #       Process.send_after(
+      #   parent,
+      #   :process_queue,
+      #   delay_ms
+      # )
+      #   end
+      # end)
+
+#       Task.start_link(fn ->
+#         #{:ok, response} =
+#           PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", message)
+#           #Process.sleep(delay_ms)
+
+#           Process.send_after(
+#         parent,
+#         :process_queue,
+#         delay_ms * 10
+#       )
+
+# #        send(parent, :work_is_done)
+#       end)
+
+      # receive do
+      #   :work_is_done -> :ok
+      # after
+      #   # Optional timeout
+      #   30_000 -> :timeout
+      # end
+
+      #PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", phoenix_message)
+
+      Logger.debug(
+        "going to send delayed :process_queue  #{inspect(delay_ms_tmp)}"
+      )
+
+      Process.send_after(
+        self(),
+        {:process_queue, delay_ms_tmp},
+        delay_ms_tmp
+      )
+
+      {:noreply, state}
+    else
+      {:error, "No phoenix channel"}
+    end
   end
 
-  # Private Functions
- defp process_queue(state, channel, uuid) do
-       case state.queue do
-           [] ->
-                :noop
-             [head | tail] ->
-               %{timestamp: timestamp, delay: delay, value: value} = head
-               message = %{
-                "payload" => value,
-                "timestamp" => timestamp,
-                 "uuid" => uuid
-                }
-                  if state[:phoenix_channel] do
-                     Process.send_after(self(),  {:push_message, channel, message}, delay * 1000)
-                   end
-               new_state = Map.update(state, :queue, tail, &(&1))
 
-               {delay_s, _} = Float.parse("#{delay}")
+  @impl true
+  def handle_call({:push_message, message}, from, state) do
+    Logger.debug(
+      "handle_call :push_message #{inspect(message)}, #{inspect(state[:phoenix_channel])}"
+    )
 
-                Process.send_after(self(),  {:process_queue, state.sensor_id, channel, uuid},  (round(delay_s) * 1000))
-            {:noreply, new_state}
-         end
+    if state[:phoenix_channel] != nil do
+      {delay_s, _} = Float.parse("#{message.delay}")
+
+      Logger.info("Going to sleep for #{delay_s * 1000} ms")
+      {delay_ms, _} = Integer.parse("#{delay_s * 1000}")
+      Process.sleep(delay_ms)
+
+      Logger.info("Pushing message to channel #{inspect(message.delay)}")
+
+      phoenix_message = %{
+        "payload" => message.payload,
+        "timestamp" => :os.system_time(:milli_seconds),
+        "uuid" => state[:sensor_type]
+      }
+
+      # {:ok, response} = PhoenixClient.Channel.push(state[:phoenix_channel], "measurement", message)
+      # Logger.debug("Push response #{inspect(response)}")
+      #Process.sleep(delay_ms)
+
+      parent = self()
+
+
+      tasks = [
+        Task.async(fn -> PhoenixClient.Channel.push(state[:phoenix_channel], "measurement", message) end),
+        #Task.async(fn -> take_shower(10) end),
+        #Task.async(fn -> call_mum() end),
+      ]
+
+      Task.yield_many(tasks)
+      |> Enum.map(fn {task, result} ->
+        case result do
+          nil ->
+            Task.shutdown(task, :brutal_kill)
+            exit(:timeout)
+          {:exit, reason} ->
+            exit(reason)
+          {:ok, result} ->
+            Process.send_after(
+        parent,
+        :process_queue,
+        delay_ms
+      )
+        end
+      end)
+
+#       Task.start_link(fn ->
+#         #{:ok, response} =
+#           PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", message)
+#           #Process.sleep(delay_ms)
+
+#           Process.send_after(
+#         parent,
+#         :process_queue,
+#         delay_ms * 10
+#       )
+
+# #        send(parent, :work_is_done)
+#       end)
+
+      # receive do
+      #   :work_is_done -> :ok
+      # after
+      #   # Optional timeout
+      #   30_000 -> :timeout
+      # end
+
+      #PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", phoenix_message)
+
+      # Process.send_after(
+      #   self(),
+      #   :process_queue,
+      #   0
+      # )
+
+      {:reply, state}
+    else
+      {:error, "No phoenix channel"}
+    end
   end
+
+
+  def handle_info(:get_data, state) do
+    Logger.info(":get_data info received")
+
+    case Map.get(state, :updating_data) do
+      true -> {:noreply, state}
+      _ -> GenServer.cast(self(), :get_data)
+    end
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:get_data, state) do
+    Logger.info(":get_data cast received")
+
+    {:ok, data} = get_data(state)
+    Logger.info("got data: #{Enum.count(data)}")
+    newstate = Map.put(state, :messages_queue, data)
+    Process.send_after(self(), :process_queue, 500)
+    {:noreply, newstate |> Map.put(:updating_data, false)}
+
+    # with
+    #  {:ok, data} <- get_data(state),
+    #  newstate <- Map.put(:messages_queue, data),
+    #  _ <- Process.send_after(self(),:process_queue,500),
+    #  do: {:noreply, newstate}
+  end
+
+  defp get_data(config) do
+    # |> Map.put(:dummy_data, true)
+    case BiosenseData.fetch_sensor_data(config) do
+      data ->
+        data
+
+      _ ->
+        {:error, "No data"}
+    end
+  end
+
+  def handle_info(%Message{event: message, payload: payload}, state) do
+    Logger.info("Incoming Phoenix Message: #{message} #{inspect(payload)}")
+    {:noreply, state}
+  end
+
+  # Logger.info("Incoming Message: #{message} #{inspect(payload)}")
+  ## def handle_info(%Message{event: message, payload: payload}, state) do
+  #   {:noreply, state}
+  # end
+
   defp wait_until_connected(socket) do
     unless PhoenixClient.Socket.connected?(socket) do
       Process.sleep(100)
@@ -144,90 +452,14 @@ defmodule Sensocto.SensorSimulatorGenServer do
     end
   end
 
-  defp schedule_send_message(sensor_id, channel, uuid, config) do
-    Process.send_after(
-      self(),
-      {:send_message, sensor_id, channel, uuid, config},
-      :rand.uniform(@interval)
-    )
-  end
-
-   def schedule_process_queue(sensor_id, channel, uuid) do
-      Process.send_after(
-       self(),
-      {:process_queue, sensor_id, channel, uuid},
-      10
-      )
-  end
-  def fetch_sensor_data(sensor_id, config) do
-    duration =  config[:duration]
-   sampling_rate = config[:sampling_rate]
-   heart_rate = config[:heart_rate]
-    respiratory_rate = config[:respiratory_rate]
-     scr_number = config[:scr_number]
-    burst_number = config[:burst_number]
-    sensor_type = config[:sensor_type]
-   try do
-        System.cmd("python3", [
-        "../sensocto-simulator.py",
-        "--mode",
-           "csv",
-        "--sensor_id",
-         sensor_id,
-        "--sensor_type",
-         sensor_type,
-         "--duration",
-        "#{duration}",
-         "--sampling_rate",
-        "#{sampling_rate}",
-          "--heart_rate",
-        "#{heart_rate}",
-          "--respiratory_rate",
-        "#{respiratory_rate}",
-         "--scr_number",
-        "#{scr_number}",
-        "--burst_number",
-        "#{burst_number}"
-     ])
-    |>  (fn {output, 0} ->
-        output
-          |> String.trim()
-           |> CSV.parse_string()
-          |>  Enum.drop(1)
-         |> Enum.map(fn item ->
-           %{
-             timestamp: String.to_integer(Enum.at(item, 0)),
-             delay: String.to_float(Enum.at(item, 1)),
-             value: String.to_float(Enum.at(item, 2))
-           }
-         end)
-          |>  (fn data ->
-            {:ok, data}
-           end).()
-      {output, status} ->
-         IO.puts("Error executing python script")
-          IO.inspect(output)
-         IO.inspect(status)
-        :error
-      end).()
-      rescue
-           e ->
-          IO.puts("Error executing python script")
-          IO.inspect(e)
-         :error
-    end
-   end
-
   defp generate_random_sensor_id do
-
-    #:crypto.strong_rand_bytes(8)
-    #|> Base.encode64()
+    # :crypto.strong_rand_bytes(8)
+    # |> Base.encode64()
     # Shorten for simplicity
-    #|> binary_part(0, 8)
+    # |> binary_part(0, 8)
 
     uuid_fragment = Enum.take(String.split(UUID.uuid1(), "-"), 1) |> List.last()
     "Sim:" <> uuid_fragment
-
   end
 
   defp via_tuple(sensor_id), do: {:via, Registry, {SensorSimulatorRegistry, sensor_id}}

@@ -34,6 +34,7 @@
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
         const values = data.map((point) => point.payload);
+        const timestamps = data.map((point) => point.timestamp);
 
         const minValue = Math.min(...values);
         const maxValue = Math.max(...values);
@@ -41,11 +42,12 @@
         const padding = 20;
 
         ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        //ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight); // Start with clearing.
 
         // Draw x axis line
         ctx.beginPath();
-        ctx.strokeStyle = color; // Set the color of the line
+        ctx.strokeStyle = color;
         ctx.moveTo(padding, canvasHeight - padding);
         ctx.lineTo(canvasWidth - padding, canvasHeight - padding);
         ctx.stroke();
@@ -69,17 +71,18 @@
 
         // Draw a text for the X axis
         ctx.fillStyle = color;
-        let total_time = values.length / (samplingrate / 1000);
+        const minTimestamp = Math.min(...timestamps);
+       const maxTimestamp = Math.max(...timestamps);
         ctx.fillText("Time", canvasWidth - (padding + 20), canvasHeight - 5);
 
         // Draw highlighted areas
 
         for (const area of highlighted_areas) {
             const start_x =
-                (area.start / values.length) * (canvasWidth - padding * 2) +
+                (area.start / maxsamples) * (canvasWidth - padding * 2) +
                 padding;
             const end_x =
-                (area.end / values.length) * (canvasWidth - padding * 2) +
+                (area.end / maxsamples) * (canvasWidth - padding * 2) +
                 padding;
             ctx.fillStyle = area.color;
             ctx.fillRect(
@@ -89,24 +92,31 @@
                 canvasHeight - padding * 2,
             );
         }
-
+        
+       if(data.length > 0)
         ctx.beginPath();
-        ctx.strokeStyle = color; // Set the color of the line
+        ctx.strokeStyle = color;
         ctx.lineWidth = 1;
 
-        const stepX = (canvasWidth - padding * 2) / (values.length - 1);
-        values.forEach((value, index) => {
-            let normalizedValue = range == 0 ? 1 : (value - minValue) / range;
-            let y =
-                canvasHeight -
-                (normalizedValue * (canvasHeight - padding * 2) + padding);
-            let x = index * stepX + padding;
+       data.forEach((point, index) => {
+
+         let normalizedValue = range == 0 ? 1 : (point.payload - minValue) / range
+          let y =
+            canvasHeight -
+            (normalizedValue * (canvasHeight - padding * 2) + padding);
+
+         let x =
+             (point.timestamp - minTimestamp) / (maxTimestamp-minTimestamp) *
+               (canvasWidth - padding * 2) +
+              padding;
 
             if (index === 0) {
-                ctx.moveTo(x, y);
+              ctx.moveTo(x, y);
             } else {
-                ctx.lineTo(x, y);
+               ctx.lineTo(x, y);
             }
+
+            logger.log(loggerCtxName, "drawEcg", x, y, point.payload, point.timestamp);
         });
         ctx.stroke();
     }

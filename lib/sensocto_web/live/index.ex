@@ -5,6 +5,7 @@ defmodule SensoctoWeb.IndexLive do
   use LiveSvelte.Components
 
   alias SensoctoWeb.Components.SensorTypes.{
+    EcgSensorComponent,
     GenericSensorComponent,
     HeartrateComponent,
     HighSamplingRateSensorComponent
@@ -39,9 +40,9 @@ defmodule SensoctoWeb.IndexLive do
     <div id="status" class="hidden" phx-disconnected={JS.show()} phx-connected={JS.hide()}>
       Attempting to reconnect...
     </div>
-    <div id="cnt" phx-hook="ConnectionHandler">
+    <div id="cnt" phx-hook="ConnectionHandler" class="flex-none md:flex-1">
       <div id="sensors" phx-update="stream" class={assigns.stream_div_class}>
-        <div class="only:block hidden">
+        <div id="no-sensors" phx-update="ignore" class="only:block hidden">
           <p>No sensors online</p>
         </div>
         <div
@@ -81,7 +82,18 @@ defmodule SensoctoWeb.IndexLive do
   end
 
   defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
-       when sensor_type in ["ecg", "pressure", "flex", "eda", "emg", "rsp"] do
+       when sensor_type in ["ecg"] do
+    ~H"""
+    <.live_component
+      id={"live-" <> sensor_data.sensor_id}
+      module={EcgSensorComponent}
+      sensor_data={sensor_data}
+    />
+    """
+  end
+
+  defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
+       when sensor_type in ["pressure", "flex", "eda", "emg", "rsp"] do
     ~H"""
     <.live_component
       id={"live-" <> sensor_data.sensor_id}
@@ -122,7 +134,6 @@ defmodule SensoctoWeb.IndexLive do
         %{"sensor_id" => sensor_id, "attribute_id" => attribute_id} = _params,
         socket
       ) do
-
     # IO.puts("request-seed_data #{sensor_id}")
     # {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
 
@@ -150,7 +161,10 @@ defmodule SensoctoWeb.IndexLive do
     # {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
 
     attribute_data = Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000)
-    IO.puts("Seed data available for attribute #{sensor_id}:#{attribute_id}: #{Enum.count(attribute_data)}")
+
+    Logger.debug(
+      "Seed data available for attribute #{sensor_id}:#{attribute_id}, #{inspect(attribute_data)}}"
+    )
 
     {:noreply,
      push_event(socket, "seeddata", %{
@@ -164,22 +178,19 @@ defmodule SensoctoWeb.IndexLive do
   end
 
   @impl true
-  def handle_event("signal", _, socket) do
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", payload: payload}, socket) do
     sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
 
     sensors_online_count = min(2, Enum.count(sensors_online))
 
+    # div_class =
+    #   "grid gap-2 grid-cols-1 md:grid-cols-" <>
+    #     Integer.to_string(min(2, sensors_online_count)) <>
+    #     " lg:grid-cols-" <>
+    #     Integer.to_string(min(4, sensors_online_count))
+
     div_class =
-      "grid gap-2 grid-cols-1 md:grid-cols-" <>
-        Integer.to_string(min(2, sensors_online_count)) <>
-        " lg:grid-cols-" <>
-        Integer.to_string(min(4, sensors_online_count))
+      "grid gap-2 grid-cols-4 sd:grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
 
     socket_to_return =
       Enum.reduce(payload.leaves, socket, fn {id, metas}, socket ->

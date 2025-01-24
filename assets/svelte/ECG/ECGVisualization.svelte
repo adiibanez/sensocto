@@ -16,9 +16,9 @@
     export let color;
     export let backgroundColor = "transparent";
     export let data = [];
-    export let samplingrate = 1000;
+    export let samplingrate;
     export let highlighted_areas = [];
-    let maxsamples = samplingrate * 10;
+    let maxsamples = samplingrate * 1;
 
     export let sensor_id;
     export let is_loading;
@@ -77,21 +77,21 @@
 
         // Draw highlighted areas
 
-        for (const area of highlighted_areas) {
-            const start_x =
-                (area.start / maxsamples) * (canvasWidth - padding * 2) +
-                padding;
-            const end_x =
-                (area.end / maxsamples) * (canvasWidth - padding * 2) +
-                padding;
-            ctx.fillStyle = area.color;
-            ctx.fillRect(
-                start_x,
-                padding,
-                end_x - start_x,
-                canvasHeight - padding * 2,
-            );
-        }
+        // for (const area of highlighted_areas) {
+        //     const start_x =
+        //         (area.start / maxsamples) * (canvasWidth - padding * 2) +
+        //         padding;
+        //     const end_x =
+        //         (area.end / maxsamples) * (canvasWidth - padding * 2) +
+        //         padding;
+        //     ctx.fillStyle = area.color;
+        //     ctx.fillRect(
+        //         start_x,
+        //         padding,
+        //         end_x - start_x,
+        //         canvasHeight - padding * 2,
+        //     );
+        // }
         
        if(data.length > 0)
         ctx.beginPath();

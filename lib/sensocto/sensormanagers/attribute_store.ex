@@ -85,6 +85,9 @@ defmodule Sensocto.AttributeStore do
     Map.put(state, attribute_id, %{new_attribute | payloads: limited_payloads})
   end
 
-  defp via_tuple(sensor_id),
-    do: {:via, Registry, {Sensocto.SimpleAttributeRegistry, sensor_id}}
+  defp via_tuple(sensor_id) do
+    Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SimpleAttributeRegistry, sensor_id)
+
+    # do: {:via, Registry, {Sensocto.SimpleAttributeRegistry, sensor_id}}
+  end
 end

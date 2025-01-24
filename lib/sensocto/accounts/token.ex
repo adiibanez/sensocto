@@ -99,4 +99,8 @@ defmodule Sensocto.Accounts.Token do
 
     timestamps()
   end
+
+  relationships do
+    #belongs_to :user, Sensocto.Accounts.User
+  end
 end

@@ -167,6 +167,7 @@ defmodule Sensocto.SimpleSensor do
   end
 
   defp via_tuple(sensor_id) do
-    {:via, Registry, {SimpleSensorRegistry, sensor_id}}
+    Sensocto.RegistryUtils.via_dynamic_registry(SimpleSensorRegistry, sensor_id)
+    #{:via, Registry, {SimpleSensorRegistry, sensor_id}}
   end
 end

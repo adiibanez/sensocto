@@ -2,7 +2,7 @@ defmodule Sensocto.Simulator.Application do
   use Application
   require Logger
 
-  @configs [
+  @configs_ [
     %{
       batch_size: 1,
       connector_id: "1111111",
@@ -53,6 +53,23 @@ defmodule Sensocto.Simulator.Application do
       sensor_type: "ecg",
       duration: 10,
       sampling_rate: 10,
+      heart_rate: 150,
+      respiratory_rate: 30,
+      scr_number: 5,
+      burst_number: 5,
+      sensor_type: "ecg"
+    }
+  ]
+
+  @configs [
+    %{
+      batch_size: 1,
+      connector_id: "22222",
+      connector_name: "SensoctoSim",
+      sampling_rate: 10,
+      sensor_type: "ecg",
+      duration: 10,
+      sampling_rate: 50,
       heart_rate: 150,
       respiratory_rate: 30,
       scr_number: 5,
@@ -125,26 +142,25 @@ defmodule Sensocto.Simulator.Application do
     end
   end
 
-
   defp getconfig_for_device(device_name, config) do
-
     merge_config = %{
       :device_name => device_name,
       :sensor_id => device_name,
       :sensor_name => device_name,
-      :duration => 20
+      :duration => 10
     }
 
     case config do
-      nil -> Map.merge(merge_config, Enum.random(@configs))
-      config -> Map.merge(merge_config, config)
-      config
-      |> Map.put(:sensor_id, "#{device_name}:#{config[:sensor_type]}")
-      |> Map.put(:sampling_rate, 1)
+      nil ->
+        Map.merge(merge_config, Enum.random(@configs))
 
+      config ->
+        Map.merge(merge_config, config)
+
+        config
+        |> Map.put(:sensor_id, "#{device_name}:#{config[:sensor_type]}")
+        |> Map.put(:sampling_rate, 20)
     end
-
-
   end
 
   defp config_from_device_name(device_name) do
@@ -166,5 +182,4 @@ defmodule Sensocto.Simulator.Application do
       sensor_type: "heartrate"
     }
   end
-
 end

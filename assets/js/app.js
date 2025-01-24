@@ -125,7 +125,7 @@ Hooks.SensorDataAccumulator = {
       logger.log("Hooks.SensorDataAccumulator", 'liveSocket', liveSocket);
     }
 
-    resizeSparklines();
+    resizeElements();
   },
 
   destroyed() {
@@ -157,26 +157,26 @@ window.addEventListener('worker-requesthandler-event', function (event) {
 
 
 
-function resizeSparklines() {
-  const allSparklines = document.querySelectorAll('sensocto-sparkline'); // Correct custom element tag.
+function resizeElements() {
+  const allSparklines = document.querySelectorAll('sensocto-sparkline, sensocto-ecg-visualization'); // Correct custom element tag.
 
   allSparklines.forEach(element => {
     const parentWidth = element.parentElement.offsetWidth;
     const parentHeight = element.parentElement.offsetHeight;
-    logger.log("Sparkline Resizer", element.id, parentWidth, parentHeight); // Log it.
+    logger.log("Element Resizer", element.id, parentWidth, parentHeight); // Log it.
     element.setAttribute('width', parentWidth); // Use setAttribute to change width
     //element.setAttribute('height', parentHeight); // Also set height to parent, if required.
   });
 }
 
-window.addEventListener('resizeend', resizeSparklines, { passive: true });
+window.addEventListener('resizeend', resizeElements, { passive: true });
 
 
 // Also set it up on DOMContentLoaded, for correct initial loading.
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', resizeSparklines);
+  document.addEventListener('DOMContentLoaded', resizeElements);
 } else {
-  resizeSparklines();
+  resizeElements();
 }
 
 

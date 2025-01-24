@@ -18,7 +18,8 @@
     export let data = [];
     export let samplingrate;
     export let highlighted_areas = [];
-    let maxsamples = samplingrate * 1;
+    let resolution = 3;
+    $: maxsamples = width / resolution;//samplingrate / resolution * width;
 
     export let sensor_id;
     export let is_loading;
@@ -43,6 +44,7 @@
 
         ctx.fillStyle = backgroundColor;
         //ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        ctx.save();
         ctx.clearRect(0, 0, canvasWidth, canvasHeight); // Start with clearing.
 
         // Draw x axis line
@@ -119,6 +121,7 @@
             logger.log(loggerCtxName, "drawEcg", x, y, point.payload, point.timestamp);
         });
         ctx.stroke();
+        ctx.restore();
     }
 
     $: if (canvasElement && data) {
@@ -229,7 +232,7 @@
     on:accumulator-data-event={handleAccumulatorEvent}
     on:seeddata-event={handleSeedDataEvent}
 />
-ECG
+ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution}, data: {data.length}
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvasElement} {width} {height} />
 </div>

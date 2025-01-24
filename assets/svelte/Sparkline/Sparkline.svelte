@@ -54,8 +54,9 @@
             if(data.length > width ) {
                 resolution = 1;
             } else {
-                resolution = width / data.length;
+                resolution = 5; //width / data.length;
             }
+            resolution = 3;
             // width / maxsamples;
         } else {
             if(data.length > width) {
@@ -226,7 +227,7 @@
                     data?.length,
                 );
 
-                data = [...data, e.detail.data];
+                data = [...data.slice(-maxsamples), e.detail.data];
             }
         }
     };
@@ -255,7 +256,9 @@
             ); // calculate based on provided window and rate.
         } else {
             // relative or no time window.
-            maxsamples = Math.max(1, Math.floor(width / resolution)); // Compute based on width, and also using a base resolution value.
+            //maxsamples = Math.max(1, Math.floor(width / resolution)); // Compute based on width, and also using a base resolution value.
+
+            maxsamples = width * samplingrate * (timewindow / 1000);
         }
 
         //maxsamples = ((timewindow / 1000) * width) / samplingrate;

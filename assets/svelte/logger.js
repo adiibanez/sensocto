@@ -1,6 +1,6 @@
 
-    let enabled = true;
-    let enabledComponents = ["Sparkline"];
+    let enabled = false;
+    let enabledComponents = [];//["ScaledPoints"];//["Sparkline"];
 
     export function setLogging(value) {
         enabled = !!value;

@@ -98,7 +98,7 @@
     function drawCanvas() {
 
         if(document.querySelector(`body.resizing`) != undefined) {
-            logger.log(loggerCtxName, "CanvasLayer: isResizing", id);
+            logger.log(loggerCtxName, "CanvasLayer: isResizing");
             return;
         }
 
@@ -106,7 +106,7 @@
         // Draw using new data
         if (!context || !points?.length) {
             // validation
-            logger.log(loggerCtxName, "CanvasLayer: No context or data to draw", id);
+            logger.log(loggerCtxName, "CanvasLayer: No context or data to draw");
             return;
         }
 

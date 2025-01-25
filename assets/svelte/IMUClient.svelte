@@ -258,6 +258,14 @@
 
         imuOutput = output;
 
+        let payload = {
+            payload: JSON.stringify(output),
+            uuid: channelIdentifier,
+            timestamp: Math.round(new Date().getTime()),
+        };
+
+        sensorService.sendChannelMessage(channelIdentifier, payload);
+
         //return JSON.stringify(output); // Return object as JSON string
     }
 

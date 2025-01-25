@@ -70,15 +70,16 @@ defmodule Sensocto.MixProject do
       # {:bandit, "~> 1.0", github: "mtrudel/bandit", branch: "gc_on_websocket"}
       {:broadway, "~> 1.0"},
       {:broadway_dashboard, "~> 0.4.0"},
-       {:live_svelte, "~> 0.6"},
-      #{:live_svelte, github: "woutdp/live_svelte", tag: "svelte-5"},
+      {:live_svelte, "~> 0.6"},
+      # {:live_svelte, github: "woutdp/live_svelte", tag: "svelte-5"},
       {:igniter, "~> 0.5", only: [:dev, :test]},
       {:ash, "~> 3.0"},
       {:ash_authentication, "~> 4.4.1"},
       {:ash_authentication_phoenix, "~> 2.4.2"},
       {:ash_postgres, "~> 2.0.0"},
       {:picosat_elixir, "~> 0.2"},
-      {:flex_logger, "~> 0.2.1"}
+      {:flex_logger, "~> 0.2.1"},
+      #{:sensocto_elixir_simulator, path: "./simulator/sensocto_elixir_simulator", app: false}
     ]
   end
 

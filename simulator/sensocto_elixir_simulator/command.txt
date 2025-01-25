@@ -16,21 +16,13 @@ config = %{
       sensor_type: "heartrate",
       dummy_data: false
     }
+    
+    
+{:ok, pid} = GenServer.start(Sensocto.SensorSimulatorGenServer, config)
 
 #Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)
 
-{:ok, pid} = GenServer.start(Sensocto.SensorSimulatorGenServer, config)
-
-
-Process.send_after(
-      pid,
-      :get_data,
-      500
-    )
-
-{:ok, pid} = GenServer.start(Sensocto.SensorSimulatorGenServer, config)
-
-
+Process.send(pid,:get_data)
 
 GenServer.cast(pid, :get_data)
 

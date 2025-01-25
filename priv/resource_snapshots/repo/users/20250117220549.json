@@ -1,0 +1,74 @@
+{
+  "attributes": [
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "confirmed_at",
+      "references": null,
+      "allow_nil?": true,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "fragment(\"gen_random_uuid()\")",
+      "size": null,
+      "type": "uuid",
+      "source": "id",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": true
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "citext",
+      "source": "email",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "hashed_password",
+      "references": null,
+      "allow_nil?": true,
+      "generated?": false,
+      "primary_key?": false
+    }
+  ],
+  "table": "users",
+  "hash": "64A6292EDED002CA30504BDE046E0E787B7D670BD0D6C32A6B9A73A5BEF75192",
+  "multitenancy": {
+    "global": null,
+    "strategy": null,
+    "attribute": null
+  },
+  "identities": [
+    {
+      "name": "unique_email",
+      "keys": [
+        {
+          "type": "atom",
+          "value": "email"
+        }
+      ],
+      "where": null,
+      "nils_distinct?": true,
+      "all_tenants?": false,
+      "base_filter": null,
+      "index_name": "users_unique_email_index"
+    }
+  ],
+  "repo": "Elixir.Sensocto.Repo",
+  "check_constraints": [],
+  "custom_indexes": [],
+  "custom_statements": [],
+  "schema": null,
+  "base_filter": null,
+  "has_create_action": true
+}

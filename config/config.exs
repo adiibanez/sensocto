@@ -46,7 +46,7 @@ config :spark,
 config :sensocto,
   ecto_repos: [Sensocto.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Sensocto.Accounts]
+  ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
 
 # Configures the endpoint
 config :sensocto, SensoctoWeb.Endpoint,

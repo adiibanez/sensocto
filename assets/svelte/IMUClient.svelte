@@ -10,22 +10,30 @@
 
     loggerCtxName = "IMUClient";
 
-    /*const AHRS = require('./www-ahrs.js');
+    //import { AHRSEKF } from 'js-ahrs';
+
+    //import { AHRS } from "../js/www-ahrs.js";
+    //import { AHRSEKF } from "../js/www-ahrs.js";
+
+    const AHRS = require('ahrs');
+
+    console.log("AHRS", AHRS);
 
     const madgwick = new AHRS({
-        sampleInterval: 20,
-        algorithm: 'Madgwick',
+        //sampleInterval: 20,
+        algorithm: "Madgwick",
         beta: 0.4,
         kp: 0.5,
         ki: 0,
-    });*/
+        doInitialisation: true
+    });
 
     let sensorService = getContext("sensorService");
     let accelerometer;
     let gyroscope;
 
     let imuFrequency = 5; //Default IMU frequency
-    let imuOutput= null;
+    let imuOutput = null;
     let initialOrientation;
     let previousTimestamp = null;
 
@@ -97,6 +105,24 @@
                 await accelerometer.start(); // Promise, resolves if started succesfully
                 await gyroscope.start();
 
+                absoluteorientation = new AbsoluteOrientationSensor();
+                Promise.all([
+                    navigator.permissions.query({ name: "accelerometer" }),
+                    navigator.permissions.query({ name: "magnetometer" }),
+                    navigator.permissions.query({ name: "gyroscope" }),
+                ]).then((results) => {
+                    if (results.every((result) => result.state === "granted")) {
+                        absoluteorientation.start();
+                        // …
+                    } else {
+                        console.log(
+                            "No permissions to use AbsoluteOrientationSensor.",
+                        );
+                    }
+                });
+
+                absoluteorientation.addEventListener("reading", () => handleMobileIMU());
+
                 readingIMU = true;
             } catch (error) {
                 // Handle errors, e.g., sensor not available or permission denied
@@ -121,6 +147,10 @@
                 gyroscope.removeEventListener("reading", () =>
                     handleMobileIMU(),
                 );
+                absoluteorientation.removeEventListener("reading", () =>
+                    handleMobileIMU(),
+                );
+                absoluteorientation.stop();
                 accelerometer.stop();
                 gyroscope.stop();
             } else if (imuType === "desktop") {
@@ -176,6 +206,25 @@
         sensorService.sendChannelMessage(channelIdentifier, payload);
     }
 
+    function handleMobileIMU_(event) {
+
+        madgwick.update(
+            gyroscope.x,
+            gyroscope.y,
+            gyroscope.z,
+            accelerometer.x,
+            accelerometer.y,
+            accelerometer.z,    
+        );
+
+        //  * compass.x,
+        //     compass.y,
+        //     compass.z,
+         
+        console.log(madgwick.toVector(), gyroscope, accelerometer, absoluteorientation);
+        //console.log(madgwick.getEulerAngles(), gyroscope, accelerometer, absoluteorientation);
+    }
+
     function handleMobileIMU(event) {
         let dt = 1; // initial value.
         const currentTimestamp = Date.now();
@@ -194,8 +243,6 @@
         }
 
         let imuData = {
-            
-
             a: {
                 // acceleration
                 x: accelerometer?.x || 0,

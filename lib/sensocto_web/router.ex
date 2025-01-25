@@ -22,7 +22,7 @@ defmodule SensoctoWeb.Router do
     plug :load_from_bearer
   end
 
-  admin_browser_pipeline :browser
+  admin_browser_pipeline(:browser)
 
   pipeline :admins_only do
     plug :admin_basic_auth
@@ -31,10 +31,21 @@ defmodule SensoctoWeb.Router do
   scope "/", SensoctoWeb do
     pipe_through [:browser]
 
+    # live "/users/:id", UserLive.Show, :show
+    # live "/users/:id/show/edit", UserLive.Show, :edit
+
+    # live "/sensors", SensorLive.Index, :index
+    # live "/sensors/:id/edit", SensorLive.Index, :edit
+    # live "/sensors/:id", SensorLive.Index, :show
+
     ash_authentication_live_session :authentication_required,
       on_mount: {LiveUserAuth, :live_user_required} do
       live "/", IndexLive, :index
       live "/sense", SenseLive, :index
+      live "/sensors", SensorLive.Index, :index
+      live "/sensors/:id", SensorLive.Show, :show
+      live "/sensors/:id/edit", SensorLive.Show, :edit
+
     end
 
     auth_routes(Controllers.AuthController, Sensocto.Accounts.User, path: "/auth")
@@ -62,7 +73,6 @@ defmodule SensoctoWeb.Router do
         broadway: BroadwayDashboard
       ]
   end
-
 
   scope "/admin" do
     pipe_through [:browser, :admins_only]

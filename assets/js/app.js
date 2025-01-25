@@ -26,7 +26,7 @@ import logger from "./logger.js"
 import { getHooks } from "live_svelte"
 import * as Components from "../svelte/**/*.svelte"
 
-window.workerStorage = new Worker('./assets/worker-storage.js?' + Math.random());
+window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random());
 
 let Hooks = {}
 

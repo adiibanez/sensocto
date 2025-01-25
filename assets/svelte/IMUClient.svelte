@@ -6,6 +6,10 @@
         onMount,
     } from "svelte";
 
+    import { logger } from "./logger.js";
+
+    loggerCtxName = "IMUClient";
+
     /*const AHRS = require('./www-ahrs.js');
 
     const madgwick = new AHRS({
@@ -17,10 +21,14 @@
     });*/
 
     let sensorService = getContext("sensorService");
+    let accelerometer;
+    let gyroscope;
 
     let imuFrequency = 5; //Default IMU frequency
-    let imuData = null;
-    let initialOrientation = null;
+    let imuOutput= null;
+    let initialOrientation;
+    let previousTimestamp = null;
+
     let readingIMU = false;
     let channelIdentifier = sensorService.getDeviceId() + ":imu";
 
@@ -49,6 +57,14 @@
         }
     }
 
+    function resetInitialOrientation() {
+        initialOrientation = {
+            alpha: 0,
+            beta: 0,
+            gamma: 0,
+        };
+    }
+
     async function startIMU() {
         let imuType = imuAvailable();
 
@@ -70,6 +86,7 @@
                 accelerometer = new LinearAccelerationSensor({
                     frequency: imuFrequency,
                 });
+
                 gyroscope = new Gyroscope({ frequency: imuFrequency });
 
                 accelerometer.addEventListener("reading", () =>
@@ -159,69 +176,111 @@
         sensorService.sendChannelMessage(channelIdentifier, payload);
     }
 
-    function handleMobileIMU(
-        accelerometer,
-        gyroscope,
-        dt,
-        initialOrientation = { alpha: 0, beta: 0, gamma: 0 },
-    ) {
+    function handleMobileIMU(event) {
+        let dt = 1; // initial value.
+        const currentTimestamp = Date.now();
+
+        if (previousTimestamp !== null) {
+            dt = (currentTimestamp - previousTimestamp) / 1000;
+        }
+        previousTimestamp = currentTimestamp;
+
+        if (initialOrientation === null) {
+            initialOrientation = {
+                alpha: 0,
+                beta: 0,
+                gamma: 0,
+            };
+        }
+
         let imuData = {
+            
+
             a: {
                 // acceleration
-                x: accelerometer.x,
-                y: accelerometer.y,
-                z: accelerometer.z,
+                x: accelerometer?.x || 0,
+                y: accelerometer?.y || 0,
+                z: accelerometer?.z || 0,
             },
             r: {
                 // rotation rate
-                x: gyroscope.x,
-                y: gyroscope.y,
-                z: gyroscope.z,
+                x: gyroscope?.x || 0,
+                y: gyroscope?.y || 0,
+                z: gyroscope?.z || 0,
             },
         };
-        imuData.rotationAngles = rotationRateToAngle(
+
+        let rotationAngles = rotationRateToAngle(
             imuData.r.x,
             imuData.r.y,
             imuData.r.z,
             initialOrientation,
-        ); // use correct values.
+            dt,
+        ); // get delta rotation.
+
+        initialOrientation = {
+            // Update using calculated angles.
+            alpha: parseFloat(rotationAngles.x),
+            beta: parseFloat(rotationAngles.y),
+            gamma: parseFloat(rotationAngles.z),
+        };
 
         let output = {
             t: Math.round(new Date().getTime()), // time
             a: {
-                x: imuData.acceleration.x.toFixed(4),
-                y: imuData.acceleration.y.toFixed(4),
-                z: imuData.acceleration.z.toFixed(4),
+                // acceleration
+                x: imuData.a.x.toFixed(4),
+                y: imuData.a.y.toFixed(4),
+                z: imuData.a.z.toFixed(4),
             },
             o: {
-                // orientation
-                x: imuData.rotationAngles.x,
-                y: imuData.rotationAngles.y,
-                z: imuData.rotationAngles.z,
+                //  orientation
+                x: rotationAngles.x,
+                y: rotationAngles.y,
+                z: rotationAngles.z,
             },
             r: {
                 // rotation rate
-                x: imuData.rotationRate.alpha.toFixed(4),
-                y: imuData.rotationRate.beta.toFixed(4),
-                z: imuData.rotationRate.gamma.toFixed(4),
+                x: imuData.r.x.toFixed(4),
+                y: imuData.r.y.toFixed(4),
+                z: imuData.r.z.toFixed(4),
             },
             i: dt.toFixed(4), // interval
         };
 
-        return JSON.stringify(output); // Return output as a valid JSON object
+        logger.log(
+            loggerCtxName,
+            "handleMobileIMU",
+            initialOrientation,
+            output.o,
+            dt,
+        );
+
+        imuOutput = output;
+
+        //return JSON.stringify(output); // Return object as JSON string
     }
 
-    function rotationRateToAngle(alpha, beta, gamma, initialOrientation) {
+    function rotationRateToAngle(alpha, beta, gamma, initialOrientation, dt) {
         // Convert radians to degrees
         const alphaDeg = alpha * (180 / Math.PI);
         const betaDeg = beta * (180 / Math.PI);
         const gammaDeg = gamma * (180 / Math.PI);
 
-        // Add initial orientation (for absolute rotation).
+        // Important: Use parseFloat to handle cases where those variables are `string`, or other formats:
         return {
-            x: (alphaDeg + initialOrientation.alpha).toFixed(1),
-            y: (betaDeg + initialOrientation.beta).toFixed(1),
-            z: (gammaDeg + initialOrientation.gamma).toFixed(1),
+            x: (
+                alphaDeg * dt +
+                parseFloat(initialOrientation?.alpha || 0)
+            ).toFixed(1), // Important: Use parseFloat
+            y: (
+                betaDeg * dt +
+                parseFloat(initialOrientation?.beta || 0)
+            ).toFixed(1),
+            z: (
+                gammaDeg * dt +
+                parseFloat(initialOrientation?.gamma || 0)
+            ).toFixed(1),
         };
     }
 
@@ -235,9 +294,13 @@
         {#if readingIMU}
             <button on:click={() => stopIMU()} class="btn btn-blue text-xs"
                 >Stop IMU</button
-            ><button on:click={initialOrientation=null} class="btn btn-blue text-xs">Cal</button
+            ><button
+                on:click={resetInitialOrientation}
+                class="btn btn-blue text-xs">Cal</button
             >
             {imuFrequency} Hz
+
+            <p>{JSON.stringify(imuOutput)}</p>
         {/if}
         {#if !readingIMU}
             <button on:click={() => startIMU()} class="btn btn-blue text-xs"

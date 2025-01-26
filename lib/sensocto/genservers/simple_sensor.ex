@@ -14,6 +14,7 @@ defmodule Sensocto.SimpleSensor do
   @impl true
   def init(state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
+    # :ok = PubSub.subscribe(Sensocto.Pubsub, "measurement")
     {:ok, state}
   end
 
@@ -170,16 +171,30 @@ defmodule Sensocto.SimpleSensor do
     Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
     AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
 
+    broadcast_message =
+      attribute
+      |> Map.put(:sensor_id, sensor_id)
+      |> Map.put(:uuid, attribute_id)
+      |> Map.delete(:id)
+      |> IO.inspect()
+
+    IO.inspect(
+      {:measurement, broadcast_message},
+      label: "Message before broadcast"
+    )
+
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "measurement",
       {
         :measurement,
-        Map.put(attribute, :sensor_id, sensor_id)
-        # |> Map.put("attribute_id", uuid)
-        # |> Map.put("sensor_params", socket.assigns.sensor_params)
-        # |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")
+        broadcast_message
       }
+    )
+
+    IO.inspect(
+      {:measurement, broadcast_message},
+      label: "Message after broadcast"
     )
 
     {:noreply, state}

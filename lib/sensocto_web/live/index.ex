@@ -49,7 +49,7 @@ defmodule SensoctoWeb.IndexLive do
     <div id="cnt" phx-hook="ConnectionHandler" class="flex-none md:flex-1">
       <div id="test-sensors">
         <.async_result :let={sensors} assign={@sensors}>
-          <:loading>Loading Tim...</:loading>
+          <:loading>Loading Sensor data ...</:loading>
           <:failed :let={reason}>{reason}</:failed>
           <p>Online: {inspect(@sensors_online)}</p>
           <hr />
@@ -61,8 +61,8 @@ defmodule SensoctoWeb.IndexLive do
           <div :for={{id, sensor} <- sensors}>
             Sensor ID: {id} <br />
             {inspect(sensor)}
-
-            <div
+            
+    <!--<div
               :for={{id, attribute_data} <- sensor.viewdata}
               id={id}
               class="bg-gray-800 text-xs m-0 p-1"
@@ -72,7 +72,7 @@ defmodule SensoctoWeb.IndexLive do
               data-sensorid_raw={"#{attribute_data.sensor_id}"}
             >
               {render_sensor_by_type(attribute_data, sensor.metadata)}
-            </div>
+            </div>-->
           </div>
           
     <!--<div :for={sensor_map <- sensors} style="border:1px solid white">
@@ -95,7 +95,7 @@ defmodule SensoctoWeb.IndexLive do
       </div>
 
       <div style="display:hidden" id="sensors" phx-update="stream" class={assigns.stream_div_class}>
-        <div id="no-sensors" phx-update="ignore" class="only:block hidden">
+        <div id="no-sensors" phx-update="ignore" class="only_:block hidden">
           <p>No sensors online</p>
         </div>
         <div
@@ -176,6 +176,277 @@ defmodule SensoctoWeb.IndexLive do
     ~H"""
     <div>Unknown sensor_type {sensor_data}</div>
     """
+  end
+
+  def handle_info(
+        {:measurement,
+         %{
+           :payload => payload,
+           :timestamp => timestamp,
+           :uuid => uuid,
+           :sensor_id => sensor_id
+         } =
+           sensor_data},
+        socket
+      ) do
+    # IO.inspect(sensor_data, label: "Received measurement data:")
+
+    # IO.inspect(socket.assigns.sensors.result, label: "Existing sensors async_assign data")
+
+    existing_data = Map.get(socket.assigns.sensors, :result, %{})
+    IO.inspect(existing_data, label: "Existing sensors async_assign data")
+
+    new_data_updated = update_sensor_data(existing_data, sensor_data)
+    IO.inspect(new_data_updated, label: "Existing sensors async_assign data")
+    new_data = Map.merge(new_data_updated, socket.assigns.sensors.result)
+
+    IO.inspect(new_data, label: "New data")
+
+    new_data_async_assign =
+      Map.merge(%{"#{sensor_id}" => generate_sensor_view_data(sensor_id, sensor_data)}, new_data)
+
+    IO.inspect(
+      new_data_async_assign,
+      label: "New sensors async_assign data"
+    )
+
+    # new_data =
+    #   Map.merge(
+    #     existing_data,
+
+    #   )
+
+    # IO.inspect(new_data, label: "New sensors async_assign data")
+
+    # {:noreply,
+    #  socket
+    #  |> assign_async(:sensors, fn ->
+    #    {:ok,
+    #     %{
+    #       :sensors => new_data_async_assign
+    #     }}
+    #  end)}
+
+    {:noreply, socket}
+  end
+
+  def handle_info(msg, socket) do
+    IO.inspect(msg, label: "Unknown Message")
+    {:noreply, socket}
+  end
+
+  # @spec handle_info(any(), any()) :: {:noreply, any()}
+  # def handle_info(
+  #       {:measurement,
+  #        %{
+  #          :payload => _payload,
+  #          :timestamp => _timestamp,
+  #          :uuid => _uuid,
+  #          :sensor_id => _sensor_id
+  #        } =
+  #          sensor_data},
+  #       socket
+  #     ) do
+  #   Logger.debug("Received TEST measurement: #{inspect(sensor_data)}")
+  #   {:noreply, socket}
+  # end
+
+  # def handle_info(
+  #       {:measurement,
+  #        %{
+  #          "payload" => payload,
+  #          "timestamp" => timestamp,
+  #          "uuid" => _uuid,
+  #          "sensor_id" => sensor_id
+  #        } =
+  #          sensor_data},
+  #       socket
+  #     ) do
+  #   Logger.debug("Received measurement: #{inspect(sensor_data)}")
+  #   {:noreply, socket}
+  # end
+
+  # @spec handle_info(any(), any()) :: {:noreply, any()}
+  # def handle_info({:measurement, sensor_data}, socket) do
+  #   IO.inspect(sensor_data, label: "Received in LiveView")
+
+  #   key_types =
+  #     sensor_data
+  #     |> Map.keys()
+  #     |> Enum.map(fn key ->
+  #       case key do
+  #         key when is_atom(key) -> {key, :atom}
+  #         key when is_binary(key) -> {key, :binary}
+  #         key -> {key, :other}
+  #       end
+  #     end)
+
+  #   Enum.each(key_types, fn {key, type} ->
+  #     IO.inspect({key, type}, label: "Key type")
+  #   end)
+
+  #   {:noreply, socket}
+  # end
+
+  # def handle_info(
+  #       {:measurement,
+  #        %{
+  #          :payload => payload,
+  #          :timestamp => timestamp,
+  #          :uuid => _uuid,
+  #          :sensor_id => sensor_id
+  #        } =
+  #          sensor_data},
+  #       socket
+  #     ) do
+  #   Logger.debug("Received measurement: #{inspect(sensor_data)}")
+
+  #   # existing_data = socket.assigns.sensors.result
+
+  #   # IO.inspect(existing_data)
+  #   # IO.inspect(update_sensor_data(existing_data, sensor_data))
+  #   {:noreply, socket}
+
+  #   # {:noreply,
+  #   #  socket
+  #   #  |> assign_async(:sensors, fn ->
+  #   #    {:ok,
+  #   #     %{
+  #   #       :sensors =>
+  #   #         #existing_data
+  #   #         # |> update_sensor_data(sensor_data)
+  #   #         |> generate_view_data()
+  #   #     }}
+  #   #  end)}
+
+  #   # {:noreply, update_sensors(socket, sensor_data, :update)}
+  # end
+
+  # def handle_info(
+  #       {:measurement,
+  #        %{
+  #          "payload" => payload,
+  #          "timestamp" => timestamp,
+  #          "uuid" => _uuid,
+  #          "sensor_id" => sensor_id
+  #        } =
+  #          sensor_data},
+  #       socket
+  #     ) do
+  #   Logger.debug("handle_info2 Received measurement: #{inspect(sensor_data)}")
+  #   # {:noreply, update_sensors(socket, sensor_data, :update)}
+  #   {:noreply, socket}
+
+  #   # {:noreply,
+  #   #  socket
+  #   #  |> assign_async(:sensors, fn ->
+  #   #    {:ok,
+  #   #     %{
+  #   #       :sensors =>
+  #   #         #existing_data
+  #   #         # |> update_sensor_data(sensor_data)
+  #   #         |> generate_view_data()
+  #   #     }}
+  #   #  end)}
+
+  #   # {:noreply, update_sensors(socket, sensor_data, :update)}
+  # end
+
+  # # def handle_info(event, socket) do
+  # #  IO.puts("handle_info CATCHALL event: #{inspect(event)}")
+  # #  {:noreply, socket}
+  # # end
+
+  defp update_sensor_data(sensors, sensor_data) do
+    sensor_id = Map.get(sensor_data, :sensor_id)
+    sensor_id_string = to_string(sensor_id)
+
+    Enum.reduce(sensors, %{}, fn sensor, acc ->
+      case Map.get(acc, sensor_id_string) do
+        nil ->
+          Map.put(acc, sensor_id_string, %{
+            attributes: %{
+              Map.get(sensor_data, :uuid) => [
+                %{
+                  timestamp: Map.get(sensor_data, :timestamp),
+                  payload: Map.get(sensor_data, :payload)
+                }
+              ]
+            }
+          })
+
+        existing_sensor ->
+          updated_sensor =
+            Map.update(existing_sensor, :attributes, fn attributes ->
+              Map.put(attributes, Map.get(sensor_data, :uuid), [
+                %{
+                  timestamp: Map.get(sensor_data, :timestamp),
+                  payload: Map.get(sensor_data, :payload)
+                }
+              ])
+            end)
+
+          Map.put(acc, sensor_id_string, updated_sensor)
+      end
+    end)
+  end
+
+  defp update_view_data(sensors, sensor_id, attribute_id) do
+    sensor_id_string = to_string(sensor_id)
+
+    Enum.reduce(sensors, %{}, fn {key, value}, acc ->
+      if key == sensor_id_string do
+        updated_sensor =
+          Map.put(value, :viewdata, generate_sensor_view_data(key, value))
+
+        Map.put(acc, key, updated_sensor)
+      else
+        Map.put(acc, key, value)
+      end
+    end)
+  end
+
+  defp update_sensor(sensors, attribute_update) do
+    sensor_id_string =
+      attribute_update
+      |> Map.get("sensor_id", Map.get(attribute_update, :sensor_id))
+      |> to_string()
+
+    Enum.map(sensors, fn sensor ->
+      case Map.get(sensor, sensor_id_string) do
+        nil ->
+          sensor
+
+        sensor_data ->
+          updated_attributes =
+            sensor_data
+            |> Map.get(:attributes, %{})
+            |> Map.update(
+              Map.get(attribute_update, :attribute_id),
+              fn attribute_values ->
+                [Map.drop(attribute_update, [:attribute_id, :sensor_id]) | attribute_values]
+              end,
+              [Map.drop(attribute_update, [:attribute_id, :sensor_id])]
+            )
+
+          Map.put(sensor, sensor_id_string, Map.put(sensor_data, :attributes, updated_attributes))
+      end
+    end)
+  end
+
+  defp update_view_data(socket) do
+    socket
+    |> assign(
+      :sensors,
+      socket.assigns.sensors
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        Map.put(
+          acc,
+          key,
+          Map.put(value, :viewdata, generate_sensor_view_data(key, value))
+        )
+      end)
+    )
   end
 
   alias Timex.DateTime
@@ -336,40 +607,6 @@ defmodule SensoctoWeb.IndexLive do
     {:noreply,
      socket
      |> put_flash(:info, "You clicked the button!")}
-  end
-
-  @impl true
-  def handle_info(
-        {:measurement,
-         %{
-           "payload" => payload,
-           "timestamp" => timestamp,
-           "uuid" => _uuid,
-           "sensor_id" => sensor_id
-         } =
-           sensor_data},
-        socket
-      ) do
-    # IO.inspect(sensor_data)
-
-    # case SimpleSensor.get_attributes(sensor_id) do
-    #  attributes ->
-    #    IO.inspect(attributes, label: " SimpleSensor data received")
-
-    ##    {:noreply, socket}
-    #  {:error, _} ->
-    #    {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
-    # end
-    # |> Map.update(
-    #  :append_data,
-    #  "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": #{sensor_data["payload"]}}",
-    #  fn existing_value -> existing_value end
-    # )
-
-    # {:noreply, stream_insert(socket, :sensor_data, updated_sensor)}
-  end
-
-  defp update_view_data(data) do
   end
 
   @impl true

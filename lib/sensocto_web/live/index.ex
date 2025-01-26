@@ -30,7 +30,11 @@ defmodule SensoctoWeb.IndexLive do
        stream_div_class: ""
      )
      |> assign_async(:sensors, fn ->
-       {:ok, %{:sensors => Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()}}
+       {:ok,
+        %{
+          :sensors =>
+            Sensocto.SensorsDynamicSupervisor.get_all_sensors_state() |> generate_view_data()
+        }}
      end)
      |> stream(:sensor_data, [])}
   end
@@ -47,8 +51,29 @@ defmodule SensoctoWeb.IndexLive do
         <.async_result :let={sensors} assign={@sensors}>
           <:loading>Loading Tim...</:loading>
           <:failed :let={reason}>{reason}</:failed>
+          <p>Online: {inspect(@sensors_online)}</p>
+          <hr />
+          <p>Offline: {inspect(@sensors_offline)}</p>
+          <hr />
 
           {inspect(sensors)}
+
+          <div :for={{id, sensor} <- sensors}>
+            Sensor ID: {id} <br />
+            {inspect(sensor)}
+
+            <div
+              :for={{id, attribute_data} <- sensor.viewdata}
+              id={id}
+              class="bg-gray-800 text-xs m-0 p-1"
+              phx-hook="SensorDataAccumulator"
+              data-sensorid={attribute_data.sensor_id}
+              data-sensortype={attribute_data.sensor_type}
+              data-sensorid_raw={"#{attribute_data.sensor_id}"}
+            >
+              {render_sensor_by_type(attribute_data, sensor.metadata)}
+            </div>
+          </div>
           
     <!--<div :for={sensor_map <- sensors} style="border:1px solid white">
             <div :for={{id, sensor} <- sensor_map}>
@@ -69,7 +94,7 @@ defmodule SensoctoWeb.IndexLive do
         </.async_result>
       </div>
 
-      <div id="sensors" phx-update="stream" class={assigns.stream_div_class}>
+      <div style="display:hidden" id="sensors" phx-update="stream" class={assigns.stream_div_class}>
         <div id="no-sensors" phx-update="ignore" class="only:block hidden">
           <p>No sensors online</p>
         </div>
@@ -153,6 +178,72 @@ defmodule SensoctoWeb.IndexLive do
     """
   end
 
+  alias Timex.DateTime
+  import String, only: [replace: 3]
+
+  def generate_view_data(sensors) when is_map(sensors) do
+    sensors
+    |> Enum.reduce(%{}, fn {sensor_id, sensor_data}, acc ->
+      view_data = generate_sensor_view_data(sensor_id, sensor_data)
+      Map.put(acc, sensor_id, Map.put(sensor_data, :viewdata, view_data))
+    end)
+  end
+
+  defp generate_sensor_view_data(sensor_id, sensor_data) do
+    metadata = Map.get(sensor_data, :metadata, %{})
+    attributes = Map.get(sensor_data, :attributes, %{})
+
+    Enum.reduce(attributes, %{}, fn {attribute_id, attribute_values}, acc ->
+      view_data = generate_single_view_data(sensor_id, attribute_id, attribute_values, metadata)
+      Map.put(acc, attribute_id, view_data)
+    end)
+  end
+
+  defp generate_single_view_data(sensor_id, attribute_id, attribute_values, metadata) do
+    attribute_values
+    |> Enum.reduce(%{}, fn attribute_value, _acc ->
+      timestamp = Map.get(attribute_value, :timestamp)
+
+      timestamp_formatted =
+        try do
+          case timestamp do
+            nil ->
+              "Invalid Date"
+
+            timestamp ->
+              timestamp
+              |> Kernel./(1000)
+              |> Timex.from_unix()
+              |> Timex.to_string()
+          end
+        rescue
+          _ ->
+            "Invalid Date"
+        end
+
+      %{
+        # liveview streams id, remove : for document.querySelector compliance
+        id: sanitize_sensor_id(sensor_id),
+        payload: Map.get(attribute_value, :payload),
+        timestamp: timestamp,
+        timestamp_formated: timestamp_formatted,
+        attribute_id: attribute_id,
+        sensor_id: Map.get(metadata, :sensor_id),
+        sensor_name: Map.get(metadata, :sensor_name),
+        sensor_type: Map.get(metadata, :sensor_type),
+        connector_id: Map.get(metadata, :connector_id),
+        connector_name: Map.get(metadata, :connector_name),
+        sampling_rate: Map.get(metadata, :sampling_rate),
+        append_data:
+          ~s|{"timestamp": #{timestamp}, "payload": #{Jason.encode!(Map.get(attribute_value, :payload))}}|
+      }
+    end)
+  end
+
+  def sanitize_sensor_id(sensor_id) when is_binary(sensor_id) do
+    replace(sensor_id, ":", "_")
+  end
+
   def handle_event(
         "clear-attribute",
         %{"sensor_id" => sensor_id, "attribute_id" => attribute_id} = _params,
@@ -228,6 +319,13 @@ defmodule SensoctoWeb.IndexLive do
       |> assign(:sensors_online, sensors_online)
       |> assign(:sensors_offline, payload.leaves)
       |> assign(:stream_div_class, div_class)
+      |> assign_async(:sensors, fn ->
+        {:ok,
+         %{
+           :sensors =>
+             Sensocto.SensorsDynamicSupervisor.get_all_sensors_state() |> generate_view_data()
+         }}
+      end)
     }
   end
 
@@ -247,8 +345,7 @@ defmodule SensoctoWeb.IndexLive do
            "payload" => payload,
            "timestamp" => timestamp,
            "uuid" => _uuid,
-           "sensor_id" => sensor_id,
-           "sensor_params" => sensor_params
+           "sensor_id" => sensor_id
          } =
            sensor_data},
         socket
@@ -263,32 +360,16 @@ defmodule SensoctoWeb.IndexLive do
     #  {:error, _} ->
     #    {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
     # end
-
-    updated_sensor =
-      %{
-        # liveview streams id, remove : for document.querySelector compliance
-        id: sanitize_sensor_id(sensor_id),
-        payload: payload,
-        timestamp: timestamp,
-        timestamp_formated: DateTime.from_unix!(timestamp, :millisecond) |> DateTime.to_string(),
-        attribute_id: sensor_data["attribute_id"],
-        sensor_id: sensor_params["sensor_id"],
-        sensor_name: sensor_params["sensor_name"],
-        sensor_type: sensor_params["sensor_type"],
-        connector_id: sensor_params["connector_id"],
-        connector_name: sensor_params["connector_name"],
-        sampling_rate: sensor_params["sampling_rate"],
-        append_data:
-          "{\"timestamp\": #{sensor_data["timestamp"]}, \"payload\": #{sensor_data["payload"]}}"
-      }
-
     # |> Map.update(
     #  :append_data,
     #  "{\"timestamp\": #{sensor_data["timestamp"]}, \"value\": #{sensor_data["payload"]}}",
     #  fn existing_value -> existing_value end
     # )
 
-    {:noreply, stream_insert(socket, :sensor_data, updated_sensor)}
+    # {:noreply, stream_insert(socket, :sensor_data, updated_sensor)}
+  end
+
+  defp update_view_data(data) do
   end
 
   @impl true
@@ -313,9 +394,5 @@ defmodule SensoctoWeb.IndexLive do
       # Default for unknown UUIDs
       _ -> uuid
     end
-  end
-
-  defp sanitize_sensor_id(sensor_id) do
-    String.replace(String.replace(sensor_id, ":", "_"), " ", "_")
   end
 end

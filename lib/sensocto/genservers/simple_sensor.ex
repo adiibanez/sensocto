@@ -169,6 +169,19 @@ defmodule Sensocto.SimpleSensor do
       ) do
     Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
     AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
+
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "measurement",
+      {
+        :measurement,
+        Map.put(attribute, :sensor_id, sensor_id)
+        # |> Map.put("attribute_id", uuid)
+        # |> Map.put("sensor_params", socket.assigns.sensor_params)
+        # |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")
+      }
+    )
+
     {:noreply, state}
   end
 

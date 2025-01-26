@@ -9,6 +9,10 @@ defmodule SensoctoWeb.SensorDataChannel do
   alias SensoctoWeb.Sensocto.Presence
   alias Sensocto.SimpleSensor
 
+  def init(args) do
+    Logger.info("Channel init #{inspect(args)}")
+  end
+
   # Store the device ID in the socket's assigns when joining the channel
   @impl true
 
@@ -28,6 +32,7 @@ defmodule SensoctoWeb.SensorDataChannel do
       ) do
     if authorized?(params) do
       send(self(), :after_join)
+
       Logger.debug("socket join #{sensor_id}", params)
 
       # DeviceSupervisor.add_device(sensor_id)
@@ -93,10 +98,10 @@ defmodule SensoctoWeb.SensorDataChannel do
   def handle_info(:disconnect, socket) do
     # Explicitly remove a sensor from presence when it disconnects
 
-    Logger.debug("Sensor disconnect #{socket.assigns.sensor_id}")
-    DeviceSupervisor.remove_device(socket.assigns.sensor_id)
+    Logger.debug("DISCONNECT #{inspect(socket.assigns)}")
     disconnect_sensor_supervisor(socket.assigns.sensor_id)
     Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+    # push(socket, "presence_state", Presence.list(socket))
 
     {:noreply, socket}
   end
@@ -109,7 +114,7 @@ defmodule SensoctoWeb.SensorDataChannel do
       online_at: System.system_time(:millisecond)
     })
 
-    push(socket, "presence_state", Presence.list(socket))
+    # push(socket, "presence_state", Presence.list(socket))
     {:noreply, socket}
   end
 
@@ -130,14 +135,8 @@ defmodule SensoctoWeb.SensorDataChannel do
     {:noreply, socket}
   end
 
-  def handle_in("disconnect", payload, socket) do
-    Logger.info("Disconnect", payload)
-    disconnect_sensor_supervisor(socket.assigns.sensor_id)
-    Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
-    DeviceSupervisor.remove_device(socket.assigns.sensor_id)
-
-    # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal:disconnected:{payload["device_id"]}", {:measurement, payload})
-    {:noreply, socket}
+  def handle_info(msg) do
+    Logger.debug("channel catchall #{inspect(msg)}")
   end
 
   @impl true
@@ -214,6 +213,18 @@ defmodule SensoctoWeb.SensorDataChannel do
   # Add authorization logic here as required.
   defp authorized?(_payload) do
     true
+  end
+
+  def terminate(reason, socket) do
+    Logger.debug(
+      "Channel terminated for sensor: #{inspect(socket.assigns.sensor_id)}, #{inspect(reason)}"
+    )
+
+    disconnect_sensor_supervisor(socket.assigns.sensor_id)
+    Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+    push(socket, "presence_state", Presence.list(socket))
+
+    :ok
   end
 
   defp disconnect_sensor_supervisor(sensor_id) do

@@ -18,8 +18,44 @@ defmodule Sensocto.SensorsDynamicSupervisor do
              strategy: :one_for_one
            }}
   def init(:no_args) do
+    # :ok = Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
     DynamicSupervisor.init(strategy: :one_for_one)
   end
+
+  # def handle_info(message) do
+  #   Logger.debug("Received: #{inspect(message)}")
+  # end
+
+  # @impl true
+  # def handle_infoaaaa(
+  #       %Phoenix.Socket.Broadcast{
+  #         topic: "sensordata:all",
+  #         event: "presence_diff",
+  #         payload: payload
+  #       },
+  #       state
+  #     ) do
+  #   # sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
+
+  #   Logger.debug("DynamicSupervisor #{inspect(payload)}")
+
+  #   # sensors_online_count = min(2, Enum.count(sensors_online))
+
+  #   # div_class =
+  #   #   "grid gap-2 grid-cols-1 md:grid-cols-" <>
+  #   #     Integer.to_string(min(2, sensors_online_count)) <>
+  #   #     " lg:grid-cols-" <>
+  #   #     Integer.to_string(min(4, sensors_online_count))
+
+  #   # div_class =
+  #   #   "grid gap-2 grid-cols-4 sd:grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
+
+  #   # socket_to_return =
+  #   #   Enum.reduce(payload.leaves, socket, fn {id, metas}, socket ->
+  #   #     sensor_dom_id = "sensor_data-" <> sanitize_sensor_id(id)
+  #   #     stream
+  #   {:ok, state}
+  # end
 
   def add_sensor(sensor_id, configuration) do
     child_spec = %{
@@ -61,19 +97,21 @@ defmodule Sensocto.SensorsDynamicSupervisor do
 
   def get_all_sensors_state() do
     get_device_names()
-    |> Enum.map(fn sensor_id -> get_sensor_state(sensor_id) end)
-    # |> Map.merge()
+    |> Enum.reduce(%{}, fn sensor_id, acc ->
+      Map.merge(acc, get_sensor_state(sensor_id))
+    end)
     |> IO.inspect()
 
     # |> Map.to_list()
   end
 
-  #  def get_device_names() do
-  #     Registry.to_list(Sensocto.SimpleSensorRegistry)
-  #  end
+  # def get_device_names() do
+  #  Registry.to_list(Sensocto.SimpleSensorRegistry)
+  #  |> Enum.map(fn {_pid, {sensor_id}} -> sensor_id end)
+  # end
 
   def get_sensor_state(sensor_id) do
-    %{"#{sensor_id}": SimpleSensor.get_state(sensor_id)}
+    %{"#{sensor_id}" => SimpleSensor.get_state(sensor_id)}
   end
 
   # Registry.lookup(Registry.ViaTest, "agent")

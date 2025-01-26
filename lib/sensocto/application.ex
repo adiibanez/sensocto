@@ -31,7 +31,6 @@ defmodule Sensocto.Application do
       # {Horde.Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
 
       # {Horde.DynamicSupervisor, [name: Sensocto.SensorsDynamicSupervisor, strategy: :one_for_one]},
-      Sensocto.SensorsDynamicSupervisor,
 
       # Sensors
       # {Horde.DynamicSupervisor, [name: Sensocto.DistributedSupervisor, strategy: :one_for_one]},
@@ -43,6 +42,9 @@ defmodule Sensocto.Application do
 
       {Phoenix.PubSub, name: Sensocto.PubSub},
       SensoctoWeb.Sensocto.Presence,
+
+      # initialize after pubsub
+      Sensocto.SensorsDynamicSupervisor,
       # Start the Finch HTTP client for sending emails
       {Finch, name: Sensocto.Finch},
       # Start a worker by calling: Sensocto.Worker.start_link(arg)

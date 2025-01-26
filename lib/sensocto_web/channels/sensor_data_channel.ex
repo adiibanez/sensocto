@@ -32,7 +32,10 @@ defmodule SensoctoWeb.SensorDataChannel do
 
       # DeviceSupervisor.add_device(sensor_id)
 
-      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, params) do
+      case Sensocto.SensorsDynamicSupervisor.add_sensor(
+             sensor_id,
+             Sensocto.Utils.string_keys_to_atom_keys(params)
+           ) do
         {:ok, pid} when is_pid(pid) ->
           Logger.debug("Added sensor #{sensor_id}")
 

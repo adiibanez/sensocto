@@ -2,7 +2,7 @@ defmodule Sensocto.AttributeStore do
   use Agent
   require Logger
 
-  def start_link(%{"sensor_id" => sensor_id} = configuration) do
+  def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link2: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     Agent.start_link(fn -> %{} end, name: via_tuple(sensor_id))

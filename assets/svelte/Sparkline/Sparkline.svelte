@@ -28,7 +28,7 @@
     export let test = [];
 
     export let width = 100;
-    export let height = 50;
+    export let height = 15;
     $: data = [];
     export let appenddata;
     export let timemode = "relative";
@@ -39,6 +39,8 @@
     export let points = [];
     export let samplingrate = 1;
     let resolution;
+    let minTimestamp;
+    let maxTimestamp;
 
     //$: width = Math.floor(parseFloat(width));
     //$: height = Math.floor(parseFloat(height));
@@ -48,10 +50,9 @@
         return isResizing;
     };
 
-    $: if(width) {
-        if(timemode == 'absolute') {
-
-            if(data.length > width ) {
+    $: if (width) {
+        if (timemode == "absolute") {
+            if (data.length > width) {
                 resolution = 1;
             } else {
                 resolution = 5; //width / data.length;
@@ -59,13 +60,15 @@
             resolution = 3;
             // width / maxsamples;
         } else {
-            if(data.length > width) {
-                resolution = (timewindow / 1000) / width;
+            if (data.length > width) {
+                resolution = timewindow / 1000 / width;
             } else {
                 resolution = width / data.length;
             }
-            // Math.max(1,Math.round( maxsamples / width, 2));    
+            // Math.max(1,Math.round( maxsamples / width, 2));
         }
+
+        resolution = Math.floor(resolution);
     }
 
     $: maxsamples = calculatemaxsamples({
@@ -92,6 +95,10 @@
             maxsamples,
             data?.length,
         );
+
+        const timestamps = data.map((point) => point.timestamp);
+        minTimestamp = Math.min(...timestamps);
+        maxTimestamp = Math.max(...timestamps);
     }
 
     $: if (scaledPoints?.points) {
@@ -184,7 +191,8 @@
     };
 
     const handleSeedDataEvent = (e) => {
-        if (sensor_id == e?.detail?.sensor_id) {
+        console.log("Here", e?.detail?.data?.length);
+        if (sensor_id == e?.detail?.sensor_id && e?.detail?.data?.length > 0) {
             logger.log(
                 loggerCtxName,
                 "handleSeedDataEvent",
@@ -194,12 +202,22 @@
                 data?.length,
             );
 
-            newData = e.detail.data;
-            //newData = newData.slice(-maxsamples);
-            data = [];
-            newData.forEach((item) => {
-                data = [...data, item];
-            });
+            //let newData = e?.detail?.data;
+
+            if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
+                let newData = e.detail.data;
+                //test.slice(-maxsamples);
+                console.log("Here2 ", test, maxsamples);
+                //newData = newData.slice(-maxsamples);
+                data = [];
+                newData?.forEach((item) => {
+                    data = [...data, item];
+                });
+
+            } else {
+                logger.log(loggerCtxName, "handleSeedDataEvent", "No data", e?.detail);
+            }
+
 
             is_loading = false;
         }
@@ -251,7 +269,7 @@
         if (timemode === "absolute" && timewindow) {
             const timewindowInSeconds = timewindow / 1000; // Convert to seconds.
             maxsamples = Math.max(
-            1,
+                1,
                 Math.floor(timewindowInSeconds * samplingrate * width),
             ); // calculate based on provided window and rate.
         } else {
@@ -313,7 +331,9 @@
             {height}
             {isResizing}
         ></Canvas>
-        {#if true}
+
+        <p>{new Date(minTimestamp).toLocaleTimeString('ch-DE')} - {new Date(maxTimestamp).toLocaleTimeString('ch-DE')}</p>
+        {#if false}
             <p>
                 Sparkline: width: {width} maxsamples: {maxsamples} timewindow: {timewindow}
                 timemode:{timemode} samplingrate: {samplingrate}

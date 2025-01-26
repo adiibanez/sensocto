@@ -1,6 +1,6 @@
 
     let enabled = false;
-    let enabledComponents = ["ECGVisualization", "IMUClient"];//["ScaledPoints"];//["Sparkline"];
+    let enabledComponents = []//["ECGVisualization", "IMUClient"];//["ScaledPoints"];//["Sparkline"];
 
     export function setLogging(value) {
         enabled = !!value;

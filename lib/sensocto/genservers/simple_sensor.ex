@@ -5,7 +5,7 @@ defmodule Sensocto.SimpleSensor do
 
   # defstruct [:attribute_store_pid]
 
-  def start_link(%{"sensor_id" => sensor_id} = configuration) do
+  def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))

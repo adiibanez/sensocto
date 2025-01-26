@@ -1,7 +1,7 @@
 <script>
   import { getContext, onDestroy } from "svelte";
   let sensorService = getContext("sensorService");
-  let channelIdentifier = sensorService.getDeviceId() + ":geo";
+  let channelIdentifier = sensorService.getDeviceId() + "_geo";
   let geolocationData = null;
   let watchId = null; // To store the watchPosition ID
 
@@ -9,7 +9,7 @@
     if (navigator.geolocation) {
       const metadata = {
         sensor_name: channelIdentifier,
-        sensor_id: sensorService.getDeviceId(),
+        sensor_id: channelIdentifier,
         sensor_type: "geolocation",
         sampling_rate: 1,
       };

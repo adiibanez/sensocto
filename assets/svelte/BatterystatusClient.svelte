@@ -9,7 +9,7 @@
         if ("getBattery" in navigator) {
             const metadata = {
                 sensor_name: channelIdentifier,
-                sensor_id: sensorService.getDeviceId(),
+                sensor_id: channelIdentifier,
                 sensor_type: "battery",
                 sampling_rate: 1,
             };
@@ -44,7 +44,7 @@
         let payload = {
             payload: JSON.stringify({
                 level: batteryData.level,
-                charging: batteryData.charging ? "yes" : "no"
+                charging: batteryData.charging ? "yes" : "no",
             }),
             uuid: channelIdentifier,
             timestamp: batteryData.timestamp,

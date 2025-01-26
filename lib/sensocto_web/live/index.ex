@@ -29,6 +29,9 @@ defmodule SensoctoWeb.IndexLive do
        sensors_offline: %{},
        stream_div_class: ""
      )
+     |> assign_async(:sensors, fn ->
+       {:ok, %{:sensors => Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()}}
+     end)
      |> stream(:sensor_data, [])}
   end
 
@@ -40,6 +43,32 @@ defmodule SensoctoWeb.IndexLive do
       Attempting to reconnect...
     </div>
     <div id="cnt" phx-hook="ConnectionHandler" class="flex-none md:flex-1">
+      <div id="test-sensors">
+        <.async_result :let={sensors} assign={@sensors}>
+          <:loading>Loading Tim...</:loading>
+          <:failed :let={reason}>{reason}</:failed>
+
+          {inspect(sensors)}
+          
+    <!--<div :for={sensor_map <- sensors} style="border:1px solid white">
+            <div :for={{id, sensor} <- sensor_map}>
+              Sensor ID: {id} <br />
+              {inspect(sensor)}
+            </div>
+          </div>-->
+
+    <!--<div
+            :for={{id, sensor} <- @sensors.result}
+            id={"test_sensor_#{id}"}
+            class="bg-gray-800 text-xs m-0 p-1"
+          >
+            {inspect(sensor)}
+          </div>-->
+
+    <!--<span :if={user}>{user.email}</span>-->
+        </.async_result>
+      </div>
+
       <div id="sensors" phx-update="stream" class={assigns.stream_div_class}>
         <div id="no-sensors" phx-update="ignore" class="only:block hidden">
           <p>No sensors online</p>

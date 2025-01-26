@@ -62,6 +62,10 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   def get_all_sensors_state() do
     get_device_names()
     |> Enum.map(fn sensor_id -> get_sensor_state(sensor_id) end)
+    # |> Map.merge()
+    |> IO.inspect()
+
+    # |> Map.to_list()
   end
 
   #  def get_device_names() do
@@ -69,7 +73,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   #  end
 
   def get_sensor_state(sensor_id) do
-    SimpleSensor.get_state(sensor_id)
+    %{"#{sensor_id}": SimpleSensor.get_state(sensor_id)}
   end
 
   # Registry.lookup(Registry.ViaTest, "agent")

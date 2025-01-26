@@ -6,6 +6,7 @@
     import IMUClient from "./IMUClient.svelte";
     import GeolocationClient from "./GeolocationClient.svelte";
     import BatterystatusClient from "./BatterystatusClient.svelte";
+    import PushButtonClient from "./PushButtonClient.svelte";
     /*import Sparkline from "./Sparkline.svelte";
 
     let timeMode = "absolute";
@@ -112,6 +113,7 @@
     <IMUClient />
     <GeolocationClient />
     <BatterystatusClient />
+    <PushButtonClient />
 </SensorService>
 
 <!--<textarea style="color:black">{JSON.stringify(sparklineData, null, 4)}</textarea

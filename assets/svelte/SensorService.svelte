@@ -41,7 +41,7 @@
             console.log("new device_id cookie set: " + device_id);
         }
 
-        return device_id.split('-')[0];
+        return device_id.split("-")[0];
     }
 
     function getFullChannelName(sensorId) {
@@ -70,7 +70,7 @@
             bearer_token: "fake",
         });
 
-        console.log('Joining channel', fullChannelName, metadata);
+        console.log("Joining channel", fullChannelName, metadata);
 
         channel
             .join()
@@ -88,6 +88,8 @@
         channel.on("ingest", (payload) => {
             console.log(`Received data from ${sensorId}:`, payload);
         });
+
+        return channel;
     }
 
     function sendChannelMessage(sensorId, message) {
@@ -106,7 +108,6 @@
             sensorChannels[getFullChannelName(sensorId)].leave();
         }
     }
-
 
     function getDeviceName() {
         return getDeviceId();

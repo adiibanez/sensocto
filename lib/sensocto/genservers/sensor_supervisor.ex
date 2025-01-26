@@ -4,7 +4,7 @@ defmodule Sensocto.SensorSupervisor do
   alias Sensocto.{SimpleSensor, AttributeStore}
 
   def start_link(configuration) do
-    Supervisor.start_link(__MODULE__, configuration, name: via_tuple(configuration["sensor_id"]))
+    Supervisor.start_link(__MODULE__, configuration, name: via_tuple(configuration.sensor_id))
   end
 
   @impl true

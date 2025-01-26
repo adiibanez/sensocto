@@ -13,8 +13,9 @@ defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
     <div class="m-2 p-2">
       <div class="m-0 p-2">
         <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}:{assigns.sensor_data.sensor_type}
+          {assigns.sensor_data.sensor_name}
         </p>
+        <p>Type: {assigns.sensor_data.sensor_type}</p>
         <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
         <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
         <button
@@ -66,8 +67,9 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
     <div class="m-2 p-2">
       <div class="m-0 p-2">
         <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}:{assigns.sensor_data.sensor_type}
+          {assigns.sensor_data.sensor_name}
         </p>
+        <p>Type: {assigns.sensor_data.sensor_type}</p>
         <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
         <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
         <button
@@ -107,8 +109,9 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
     <div class="m-0 p-0">
       <div class="m-0 p-2">
         <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}:{assigns.sensor_data.sensor_type}
+          {assigns.sensor_data.sensor_name}
         </p>
+        <p>Type: {assigns.sensor_data.sensor_type}</p>
         <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
         <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
         <button
@@ -146,13 +149,28 @@ defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
     <div class="m-0 p-0">
       <div class="m-0 p-2">
         <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}:{assigns.sensor_data.sensor_type}
+          {assigns.sensor_data.sensor_name}
         </p>
+        <p>Type: {assigns.sensor_data.sensor_type}</p>
         <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
         <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
-        <p class="text-xs">Payload: {assigns.sensor_data.payload}</p>
+        {render_payload(assigns.sensor_data.payload, assigns)}
       </div>
     </div>
     """
+  end
+
+  defp render_payload(payload, assigns) do
+    case Jason.decode(payload) do
+      {:ok, %{} = json_obj} ->
+        # Render JSON object
+        Enum.map(json_obj, fn {key, value} ->
+          ~H"<p>#{String.capitalize(key)}: #{value}</p>"
+        end)
+
+      _ ->
+        # Render single value
+        ~H"<p>#{payload}</p>"
+    end
   end
 end

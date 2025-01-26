@@ -4,7 +4,7 @@ defmodule Sensocto.SensorSupervisor do
   alias Sensocto.{SimpleSensor, AttributeStore}
 
   def start_link(configuration) do
-    Supervisor.start_link(__MODULE__, configuration, name: via_tuple(configuration.sensor_id))
+    Supervisor.start_link(__MODULE__, configuration, name: via_tuple(configuration["sensor_id"]))
   end
 
   @impl true
@@ -52,7 +52,7 @@ defmodule Sensocto.SensorSupervisor do
   end
 
   defp via_tuple(sensor_id) do
-    Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
-    #{:via, Registry, {Sensocto.SensorPairRegistry, sensor_id}}
+    # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
+    {:via, Registry, {Sensocto.SensorPairRegistry, sensor_id}}
   end
 end

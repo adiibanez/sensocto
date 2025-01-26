@@ -18,7 +18,6 @@ defmodule SensoctoWeb.IndexLive do
   @spec mount(any(), any(), any()) :: {:ok, any()}
   def mount(_params, _session, socket) do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
-
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
     # presence tracking
@@ -52,7 +51,7 @@ defmodule SensoctoWeb.IndexLive do
           phx-hook="SensorDataAccumulator"
           data-sensorid={sensor_data.id}
           data-sensortype={sensor_data.sensor_type}
-          data-sensorid_raw={sensor_data.sensor_id}
+          data-sensorid_raw={"#{sensor_data.sensor_id}"}
           data-append={sensor_data.append_data}
         >
           {render_sensor_by_type(sensor_data, assigns)}
@@ -83,20 +82,20 @@ defmodule SensoctoWeb.IndexLive do
 
   defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
        when sensor_type in ["ecg"] do
+    component_id = "live-#{sensor_data.sensor_id}"
+
     ~H"""
-    <.live_component
-      id={"live-" <> sensor_data.sensor_id}
-      module={EcgSensorComponent}
-      sensor_data={sensor_data}
-    />
+    <.live_component id={component_id} module={EcgSensorComponent} sensor_data={sensor_data} />
     """
   end
 
   defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
        when sensor_type in ["pressure", "flex", "eda", "emg", "rsp"] do
+    component_id = "live-#{sensor_data.sensor_id}"
+
     ~H"""
     <.live_component
-      id={"live-" <> sensor_data.sensor_id}
+      id={component_id}
       module={HighSamplingRateSensorComponent}
       sensor_data={sensor_data}
     />
@@ -104,22 +103,18 @@ defmodule SensoctoWeb.IndexLive do
   end
 
   defp render_sensor_by_type(%{sensor_type: "heartrate"} = sensor_data, assigns) do
+    component_id = "live-#{sensor_data.sensor_id}"
+
     ~H"""
-    <.live_component
-      id={"live-" <> sensor_data.sensor_id}
-      module={HeartrateComponent}
-      sensor_data={sensor_data}
-    />
+    <.live_component id={component_id} module={HeartrateComponent} sensor_data={sensor_data} />
     """
   end
 
   defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns) do
+    component_id = "live-#{sensor_data.sensor_id}"
+
     ~H"""
-    <.live_component
-      id={"live-" <> sensor_data.sensor_id}
-      module={GenericSensorComponent}
-      sensor_data={sensor_data}
-    />
+    <.live_component id={component_id} module={GenericSensorComponent} sensor_data={sensor_data} />
     """
   end
 

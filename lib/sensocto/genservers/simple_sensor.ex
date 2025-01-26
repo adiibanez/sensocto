@@ -5,7 +5,7 @@ defmodule Sensocto.SimpleSensor do
 
   # defstruct [:attribute_store_pid]
 
-  def start_link(%{:sensor_id => sensor_id} = configuration) do
+  def start_link(%{"sensor_id" => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
@@ -15,6 +15,17 @@ defmodule Sensocto.SimpleSensor do
   def init(state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
     {:ok, state}
+  end
+
+  def get_state(sensor_id) do
+    case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+      [{pid, _}] ->
+        Logger.debug("Client: get_state #{inspect(pid)} #{inspect(sensor_id)}")
+        GenServer.call(pid, :get_state)
+
+      _ ->
+        Logger.debug("Client: get_state ERROR #{inspect(sensor_id)}")
+    end
   end
 
   # client
@@ -106,8 +117,13 @@ defmodule Sensocto.SimpleSensor do
 
   # server
   @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
+  def handle_call(:get_state, _from, %{sensor_id: sensor_id} = state) do
+    sensor_state = %{
+      metadata: state,
+      attributes: AttributeStore.get_attributes(sensor_id, 1)
+    }
+
+    {:reply, sensor_state, state}
   end
 
   @impl true
@@ -167,7 +183,7 @@ defmodule Sensocto.SimpleSensor do
   end
 
   defp via_tuple(sensor_id) do
-    Sensocto.RegistryUtils.via_dynamic_registry(SimpleSensorRegistry, sensor_id)
-    #{:via, Registry, {SimpleSensorRegistry, sensor_id}}
+    # Sensocto.RegistryUtils.via_dynamic_registry(SimpleSensorRegistry, sensor_id)
+    {:via, Registry, {SimpleSensorRegistry, sensor_id}}
   end
 end

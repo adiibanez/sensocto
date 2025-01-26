@@ -2,7 +2,7 @@ defmodule Sensocto.AttributeStore do
   use Agent
   require Logger
 
-  def start_link(%{:sensor_id => sensor_id} = configuration) do
+  def start_link(%{"sensor_id" => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link2: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     Agent.start_link(fn -> %{} end, name: via_tuple(sensor_id))
@@ -17,6 +17,22 @@ defmodule Sensocto.AttributeStore do
   def get_attributes(sensor_id) do
     Logger.debug("Agent client get_attributes #{sensor_id}")
     Agent.get(via_tuple(sensor_id), & &1)
+  end
+
+  def get_attributes(sensor_id, limit) do
+    Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
+
+    Agent.get(via_tuple(sensor_id), fn state ->
+      Enum.reduce(state, %{}, fn {attribute_id, attr}, acc ->
+        limited_payloads =
+          case attr do
+            %{payloads: payloads} -> Enum.take(Enum.reverse(payloads), limit)
+            _ -> []
+          end
+
+        Map.put(acc, attribute_id, limited_payloads)
+      end)
+    end)
   end
 
   @spec get_attribute(any(), any(), any()) :: any()
@@ -86,8 +102,8 @@ defmodule Sensocto.AttributeStore do
   end
 
   defp via_tuple(sensor_id) do
-    Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SimpleAttributeRegistry, sensor_id)
+    # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SimpleAttributeRegistry, sensor_id)
 
-    # do: {:via, Registry, {Sensocto.SimpleAttributeRegistry, sensor_id}}
+    {:via, Registry, {Sensocto.SimpleAttributeRegistry, sensor_id}}
   end
 end

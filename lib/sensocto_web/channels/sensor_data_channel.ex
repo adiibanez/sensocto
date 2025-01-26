@@ -32,7 +32,7 @@ defmodule SensoctoWeb.SensorDataChannel do
 
       # DeviceSupervisor.add_device(sensor_id)
 
-      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, %{:sensor_id => sensor_id}) do
+      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, params) do
         {:ok, pid} when is_pid(pid) ->
           Logger.debug("Added sensor #{sensor_id}")
 
@@ -74,10 +74,12 @@ defmodule SensoctoWeb.SensorDataChannel do
       }
       """
 
-      {:ok,
-       socket =
-         assign(socket, :sensor_id, sensor_id)
-         |> assign(:sensor_params, params)}
+      {
+        :ok,
+        socket =
+          assign(socket, :sensor_id, sensor_id)
+        # |> assign(:sensor_params, params)
+      }
     else
       {:error, %{reason: "unauthorized"}}
     end
@@ -144,7 +146,7 @@ defmodule SensoctoWeb.SensorDataChannel do
           "payload" => payload,
           "timestamp" => timestamp,
           "uuid" => uuid
-        } = sensor_data,
+        } = _sensor_measurement_data,
         socket
       ) do
     case SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
@@ -166,15 +168,17 @@ defmodule SensoctoWeb.SensorDataChannel do
     #  {:new_sensor_attribute, uuid, timestamp, payload}
     # )
 
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      "measurement",
-      {:measurement,
-       sensor_data
-       |> Map.put("attribute_id", uuid)
-       |> Map.put("sensor_params", socket.assigns.sensor_params)
-       |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")}
-    )
+    # Phoenix.PubSub.broadcast(
+    #   Sensocto.PubSub,
+    #   "measurement",
+    #   {
+    #     :measurement,
+    #     sensor_measurement_data
+    #     # |> Map.put("attribute_id", uuid)
+    #     # |> Map.put("sensor_params", socket.assigns.sensor_params)
+    #     # |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")
+    #   }
+    # )
 
     {:noreply, socket}
   end

@@ -1,4 +1,5 @@
 defmodule Sensocto.SensorsDynamicSupervisor do
+  alias Sensocto.SimpleSensor
   use DynamicSupervisor
   require Logger
 
@@ -30,7 +31,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     }
 
     case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-      #case Sensocto.RegistryUtils.dynamic_start_child(Sensocto.SensorsDynamicSupervisor, __MODULE__, child_spec) do
+      # case Sensocto.RegistryUtils.dynamic_start_child(Sensocto.SensorsDynamicSupervisor, __MODULE__, child_spec) do
       {:ok, pid} when is_pid(pid) ->
         Logger.debug("Added sensor #{sensor_id}")
         {:ok, pid}
@@ -46,7 +47,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   end
 
   def remove_sensor(sensor_id) do
-    case Sensocto.RegistryUtils.dynamic_lookup(Sensocto.SensorPairRegistry, sensor_id) do
+    case Registry.lookup(Sensocto.SensorPairRegistry, sensor_id) do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(__MODULE__, pid)
         Logger.debug("Stopped sensor #{sensor_id}")
@@ -58,9 +59,24 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end
   end
 
+  def get_all_sensors_state() do
+    get_device_names()
+    |> Enum.map(fn sensor_id -> get_sensor_state(sensor_id) end)
+  end
+
+  #  def get_device_names() do
+  #     Registry.to_list(Sensocto.SimpleSensorRegistry)
+  #  end
+
+  def get_sensor_state(sensor_id) do
+    SimpleSensor.get_state(sensor_id)
+  end
+
   # Registry.lookup(Registry.ViaTest, "agent")
   def get_device_names do
-    Sensocto.RegistryUtils.dynamic_select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    Registry.select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+
+    # Sensocto.RegistryUtils.dynamic_select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
   # Function to extract device names (IDs) from the children list
@@ -96,8 +112,8 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     DynamicSupervisor.count_children(__MODULE__)
   end
 
-  defp via_tuple(sensor_id) do
-    Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
-    # {:via, Registry, {Sensocto.SensorPairRegistry, sensor_id}
+  defp via_tuple(worker_name) do
+    # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
+    {:via, Registry, {Sensocto.Registry, worker_name}}
   end
 end

@@ -26,6 +26,7 @@ defmodule SensoctoElixirSimulator.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:jason, "~> 1.4"},
       {:nimble_csv, "~> 1.1"},
+      {:kino, "~> 0.12.0"},
       {:uuid, "~> 1.1"}
 
       # {:dep_from_hexpm, "~> 0.3.0"},

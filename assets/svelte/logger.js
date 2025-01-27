@@ -1,6 +1,6 @@
 
-let enabled = true;
-let enabledComponents = []//["ECGVisualization", "IMUClient"];//["ScaledPoints"];//["Sparkline"];
+let enabled = false;
+let enabledComponents = ["ChartJS", "ECGVisualization"];//["ECGVisualization", "IMUClient"];//["ScaledPoints"];//["Sparkline"];
 
 export function setLogging(value) {
     enabled = !!value;
@@ -8,6 +8,7 @@ export function setLogging(value) {
 // Added new argument to pass component Name
 export function log(componentName, message, ...args) {
     if (enabled || enabledComponents.indexOf(componentName) > -1) {
+        //if (enabled) {
         console.log(`[${componentName}]: ${message}`, ...args);
     }
 }

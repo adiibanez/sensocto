@@ -1,0 +1,120 @@
+# Untitled notebook
+
+```elixir
+Mix.install([
+  {:timex, "~> 3.7"},
+  {:phoenix_client, "~> 0.11.1"},
+  {:phoenix_pubsub, "~> 2.1"},
+  {:jason, "~> 1.4"},
+  {:uuid, "~> 1.1"},
+  {:kino, "~> 0.12.0"},
+  {:nimble_csv, "~> 1.1"}
+])
+```
+
+## Section
+
+```elixir
+defmodule Sensocto.SensorViewData do
+  alias Timex.DateTime
+  import String, only: [replace: 3]
+
+  def generate_view_data(sensors) when is_map(sensors) do
+    sensors
+    |> Enum.reduce(%{}, fn {sensor_id, sensor_data}, acc ->
+      view_data = generate_sensor_view_data(sensor_id, sensor_data)
+      Map.put(acc, sensor_id, Map.put(sensor_data, :viewdata, view_data))
+    end)
+  end
+
+  defp generate_sensor_view_data(sensor_id, sensor_data) do
+    metadata = Map.get(sensor_data, :metadata, %{})
+    attributes = Map.get(sensor_data, :attributes, %{})
+
+    Enum.reduce(attributes, %{}, fn {attribute_id, attribute_values}, acc ->
+      view_data_list =
+        Enum.map(attribute_values, fn attribute_value ->
+          generate_single_view_data(sensor_id, attribute_id, attribute_value, metadata)
+        end)
+
+      Map.put(acc, attribute_id, view_data_list)
+    end)
+  end
+
+  defp generate_single_view_data(sensor_id, attribute_id, attribute_value, metadata) do
+    timestamp = Map.get(attribute_value, :timestamp)
+
+    timestamp_formatted =
+      try do
+        case timestamp do
+          nil ->
+            "Invalid Date"
+
+          timestamp ->
+            timestamp
+            |> Kernel./(1000)
+            |> Timex.from_unix()
+            |> Timex.to_string()
+        end
+      rescue
+        _ ->
+          "Invalid Date"
+      end
+
+    %{
+      # liveview streams id, remove : for document.querySelector compliance
+      id: sanitize_sensor_id(sensor_id),
+      payload: Map.get(attribute_value, :payload),
+      timestamp: timestamp,
+      timestamp_formated: timestamp_formatted,
+      attribute_id: attribute_id,
+      sensor_id: Map.get(metadata, :sensor_id),
+      sensor_name: Map.get(metadata, :sensor_name),
+      sensor_type: Map.get(metadata, :sensor_type),
+      connector_id: Map.get(metadata, :connector_id),
+      connector_name: Map.get(metadata, :connector_name),
+      sampling_rate: Map.get(metadata, :sampling_rate),
+      append_data:
+        ~s|{"timestamp": #{timestamp}, "payload": #{Jason.encode!(Map.get(attribute_value, :payload))}}|
+    }
+  end
+
+  def sanitize_sensor_id(sensor_id) when is_binary(sensor_id) do
+    replace(sensor_id, ":", "_")
+  end
+end
+
+test = %{
+  "SensoctoSimEx_1" => %{
+    attributes: %{"heartrate" => [%{timestamp: 1_737_901_773_389, payload: 161.0}]},
+    metadata: %{
+      batch_size: 1,
+      connector_id: "22222",
+      sensor_type: "heartrate",
+      sensor_id: "SensoctoSimEx_1",
+      sensor_name: "SensoctoSimEx_1",
+      connector_name: "SensoctoSim",
+      sampling_rate: 1,
+      bearer_token: "fake",
+      device_name: "SensoctoSimEx_1"
+    }
+  }
+}
+
+%{
+  attributes: %{"heartrate" => [%{timestamp: 1_737_901_773_389, payload: 161.0}]},
+  metadata: %{
+    batch_size: 1,
+    connector_id: "22222",
+    sensor_type: "heartrate",
+    sensor_id: "SensoctoSimEx_1",
+    sensor_name: "SensoctoSimEx_1",
+    connector_name: "SensoctoSim",
+    sampling_rate: 1,
+    bearer_token: "fake",
+    device_name: "SensoctoSimEx_1"
+  }
+}
+
+Sensocto.SensorViewData.generate_view_data(test)
+```

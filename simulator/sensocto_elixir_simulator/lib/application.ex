@@ -66,11 +66,10 @@ defmodule Sensocto.Simulator.Application do
       batch_size: 1,
       connector_id: "22222",
       connector_name: "SensoctoSim",
-      sampling_rate: 10,
       sensor_type: "ecg",
-      duration: 10,
-      sampling_rate: 50,
-      heart_rate: 150,
+      duration: 30,
+      sampling_rate: 100,
+      heart_rate: 100,
       respiratory_rate: 30,
       scr_number: 5,
       burst_number: 5,
@@ -83,7 +82,19 @@ defmodule Sensocto.Simulator.Application do
 
     children = [
       SensorSimulatorSupervisor,
-      {Registry, keys: :unique, name: SensorSimulatorRegistry}
+      #%{id: :test, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
+      %{id: :data_server_1, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
+      %{id: :data_server_2, start: {Sensocto.BiosenseData.GenServer, :start_link, [2]}},
+      %{id: :data_server_3, start: {Sensocto.BiosenseData.GenServer, :start_link, [3]}},
+      %{id: :data_server_4, start: {Sensocto.BiosenseData.GenServer, :start_link, [4]}},
+      %{id: :data_server_5, start: {Sensocto.BiosenseData.GenServer, :start_link, [5]}},
+      #{Sensocto.BiosenseData.GenServer, [1], id: "biosense_data_server_1"},
+      #{Sensocto.BiosenseData.GenServer, [2], id: "biosense_data_server_2"},
+      #{Sensocto.BiosenseData.GenServer, [3], id: "biosense_data_server_3"},
+      #{Sensocto.BiosenseData.GenServer, [4], id: "biosense_data_server_4"},
+      #{Sensocto.BiosenseData.GenServer, [5], id: "biosense_data_server_5"},
+      {Registry, keys: :unique, name: Sensocto.RegistryWorkers},
+      {Registry, keys: :unique, name: SensorSimulatorRegistry},
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -124,7 +135,7 @@ defmodule Sensocto.Simulator.Application do
           {:error, _} -> IO.puts("failed to start #{sensor_name}")
         end
 
-        Process.sleep(:rand.uniform(ramp_up_delay))
+        Process.sleep(:rand.uniform(max(ramp_up_delay, 1)))
       end)
 
       SensorSimulatorSupervisor.get_children()
@@ -135,7 +146,7 @@ defmodule Sensocto.Simulator.Application do
       |> Enum.each(fn {_, pid, _, _type} ->
         IO.inspect(pid)
         DynamicSupervisor.terminate_child(SensorSimulatorSupervisor, pid)
-        Process.sleep(:rand.uniform(ramp_down_delay))
+        Process.sleep(:rand.uniform(max(1, ramp_down_delay)))
       end)
 
       SensorSimulatorSupervisor.get_children()
@@ -147,7 +158,9 @@ defmodule Sensocto.Simulator.Application do
       :device_name => device_name,
       :sensor_id => device_name,
       :sensor_name => device_name,
-      :duration => 10
+      :duration => 10,
+      :sensor_type => "heartrate",
+      :sampling_rate => 1
     }
 
     case config do
@@ -155,11 +168,12 @@ defmodule Sensocto.Simulator.Application do
         Map.merge(merge_config, Enum.random(@configs))
 
       config ->
-        Map.merge(merge_config, config)
+        Map.merge(config, merge_config)
 
         config
         |> Map.put(:sensor_id, "#{device_name}:#{config[:sensor_type]}")
-        |> Map.put(:sampling_rate, 20)
+
+        # |> Map.put(:sampling_rate, 20)
     end
   end
 
@@ -172,14 +186,14 @@ defmodule Sensocto.Simulator.Application do
       sampling_rate: 1,
       sensor_id: "#{device_name}",
       sensor_name: "#{device_name}",
-      sensor_type: "heartrate",
-      duration: 60,
-      sampling_rate: 1,
-      heart_rate: 150,
+      sensor_type: "ecg",
+      duration: 10,
+      sampling_rate: 10,
+      heart_rate: 100,
       respiratory_rate: 30,
       scr_number: 5,
       burst_number: 5,
-      sensor_type: "heartrate"
+      sensor_type: "ecg"
     }
   end
 end

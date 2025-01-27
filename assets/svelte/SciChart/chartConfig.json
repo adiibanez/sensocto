@@ -1,0 +1,70 @@
+{
+    "surface": {
+        "theme_aaaa": "SciChartJsNavyTheme",
+        "disableAspect": true
+    },
+    "xAxes": [],
+    "yAxes": [],
+    "renderableSeries": [],
+    "chartModifiers": [
+        {
+            "type": "ZoomPanModifier",
+            "options": {
+                "xyDirection": "XDirection"
+            }
+        },
+        {
+            "type": "MouseWheelZoomModifier",
+            "options": {
+                "xyDirection": "XDirection"
+            }
+        },
+        {
+            "type": "ZoomExtentsModifier",
+            "options": {
+                "xyDirection": "XDirection"
+            }
+        },
+        {
+            "type": "SeriesSelectionModifier",
+            "options": {
+                "enableHover": true,
+                "enableSelection": true,
+                "hitTestRadius": 5
+            }
+        }
+    ],
+    "annotations": [
+        {
+            "type": "CustomAnnotation",
+            "options": {
+                "svgString": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"82\">\n                  <g>\n                    <line x1=\"50%\" y1=\"10\" x2=\"50%\" y2=\"40\" stroke=\"#FFBE93\" stroke-dasharray=\"2,2\" />\n                    <circle cx=\"50%\" cy=\"10\" r=\"5\" fill=\"#FFBE93\" />\n                    <rect x=\"2\" y=\"40\" rx=\"10\" ry=\"10\" width=\"96\" height=\"40\" fill=\"#64BAE433\" stroke=\"#64BAE4\" stroke-width=\"2\" />\n                    <text x=\"50%\" y=\"60\" fill=\"White\" text-anchor=\"middle\" alignment-baseline=\"middle\" >Drag me!</text>\n                  </g>\n                </svg>",
+                "x1": 133,
+                "y1": -25,
+                "xAxisId": "X0",
+                "yAxisId": "Y0",
+                "isEditable": true,
+                "annotationsGripsFill": "Transparent",
+                "annotationsGripsStroke": "Transparent",
+                "selectionBoxStroke": "Transparent",
+                "horizontalAnchorPoint": "Center",
+                "verticalAnchorPoint": "Top"
+            }
+        },
+        {
+            "type": "CustomAnnotation",
+            "options": {
+                "svgString": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"82\">\n              <g>\n                <line x1=\"5\" y1=\"77\" x2=\"40\" y2=\"42\" stroke=\"#ffffff\" stroke-dasharray=\"2,2\" />\n                <circle cx=\"5\" cy=\"77\" r=\"5\" fill=\"#ffffff\" />\n                <g>\n                  <rect x=\"20\" y=\"2\" width=\"98\" height=\"40\" rx=\"10\" ry=\"10\" fill=\"#64BAE433\" stroke=\"#64BAE4\" stroke-width=\"2\" />\n                  <text x=\"68\" y=\"24\" fill=\"white\" text-anchor=\"middle\" alignment-baseline=\"middle\" font-size=\"12\">Hover/click chart</text>\n                </g>\n              </g>\n            </svg>",
+                "xAxisId": "X0",
+                "yAxisId": "Y0",
+                "isEditable": false,
+                "xCoordinateMode": "Relative",
+                "yCoordinateMode": "Relative",
+                "horizontalAnchorPoint": "Right",
+                "verticalAnchorPoint": "Top",
+                "x1": 0.9,
+                "y1": 0.1
+            }
+        }
+    ]
+}

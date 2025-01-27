@@ -1,75 +1,47 @@
-<svelte:options customElement="sensocto-sparkline" />
+<svelte:options customElement="sensocto-chartjs" />
 
 <script>
-    import {
-        getContext,
-        createEventDispatcher,
-        onDestroy,
-        onMount,
-    } from "svelte";
-    import { logger } from "../logger.js";
+    import { onMount, afterUpdate } from "svelte";
+    import Chart from "chart.js/auto";
+    import { format } from "date-fns";
 
-    import Canvas from "./Canvas.svelte";
-    import ScaledPoints from "./ScaledPoints.svelte";
-    import Point from "./Point.svelte";
+    export let data = [];
+    export let width = 200;
+    export let height = 80;
+    export let is_loading;
 
-    const dispatch = createEventDispatcher();
-
-    let loggerCtxName = "Sparkline";
-
-    export let id;
-    export let identifier;
-    export let is_loading = true;
-    export let live;
-
-    export let canvas;
-    $: scaledPoints = [];
-
-    export let test = [];
-
-    export let width = 100;
-    export let height = 15;
-    $: data = [];
-    export let appenddata;
-    export let timemode = "relative";
+    export let samplingrate;
     export let timewindow;
-    // 0.5 * 60 * 1000
-    export let yPadding = 0.2;
+    export let timemode;
 
-    export let points = [];
-    export let samplingrate = 1;
-    let resolution;
-    let minTimestamp;
-    let maxTimestamp;
+    export let identifier;
 
-    //$: width = Math.floor(parseFloat(width));
-    //$: height = Math.floor(parseFloat(height));
+    let isMounted = false;
 
-    $: isResizing = () => {
-        isResizing = document.querySelector(`body.resizing`) != "undefined";
-        return isResizing;
-    };
+    let loggerCtxName = "ChartJS";
 
-    $: if (width) {
-        if (timemode == "absolute") {
-            if (data.length > width) {
-                resolution = 1;
-            } else {
-                resolution = 5; //width / data.length;
-            }
-            resolution = 3;
-            // width / maxsamples;
-        } else {
-            if (data.length > width) {
-                resolution = timewindow / 1000 / width;
-            } else {
-                resolution = width / data.length;
-            }
-            // Math.max(1,Math.round( maxsamples / width, 2));
+    let canvas;
+    let chart;
+    export let color = "#007bff";
+    export let showAxis = false;
+    export let xFormat = "HH:mm:ss";
+    export let label = "";
+
+    afterUpdate(() => {
+        if (isMounted) {
+            updateChart();
         }
+    });
 
-        resolution = Math.floor(resolution);
-    }
+    onMount(() => {
+        console.log("Component Mounting");
+        // SciChartSurface.configure({
+        //     wasmUrl: wasmPath,
+        // });
+
+        createChart();
+        isMounted = true;
+    });
 
     $: maxsamples = calculatemaxsamples({
         width,
@@ -77,16 +49,6 @@
         timewindow,
         timemode,
     });
-
-    $: if (appenddata?.length) {
-        logger.log(loggerCtxName, "appenddata ", appenddata, typeof appenddata);
-        appenddata = JSON.parse(appenddata);
-    }
-
-    $: if (points?.length) {
-        //canvas.$set({ points: points });
-        logger.log(loggerCtxName, "scaledPoints changed");
-    }
 
     $: if (data?.length) {
         logger.log(
@@ -99,20 +61,122 @@
         const timestamps = data.map((point) => point.timestamp);
         minTimestamp = Math.min(...timestamps);
         maxTimestamp = Math.max(...timestamps);
+
+        //createChart();
     }
 
-    $: if (scaledPoints?.points) {
-        logger.log(loggerCtxName, "scaledPoints changed");
-    }
-
-    onMount(() => {
-        logger.log(loggerCtxName, "onMount", window.livesocket, live);
-        //LiveSocket.pushEvent("request-seed", identifier);
-
-        if (timewindow == undefined) {
-            timewindow = 0.5 * 60 * 1000;
+    function calculatemaxsamples({
+        width,
+        samplingrate,
+        timewindow,
+        timemode,
+    }) {
+        if (!width || !samplingrate) {
+            return 0; // Handle cases with missing information.
         }
-    });
+
+        let maxsamples;
+
+        /*if(width < 300) {
+            timewindow = Math.min(2000, timewindow);
+        }*/
+
+        if (timemode === "absolute" && timewindow) {
+            const timewindowInSeconds = timewindow / 1000; // Convert to seconds.
+
+            maxsamples = width / 2;
+            /*maxsamples = Math.max(
+                1,
+                Math.floor(timewindowInSeconds * samplingrate * width),
+            ); // calculate based on provided window and rate.
+            */
+        } else {
+            // relative or no time window.
+            //maxsamples = Math.max(1, Math.floor(width / resolution)); // Compute based on width, and also using a base resolution value.
+
+            maxsamples = width * samplingrate * (timewindow / 1000);
+        }
+
+        //maxsamples = ((timewindow / 1000) * width) / samplingrate;
+
+        logger.log(
+            loggerCtxName,
+            "maxsamples:  width:",
+            width,
+            ", samplingrate:",
+            samplingrate,
+            ", timewindow:",
+            timewindow,
+            ", result:",
+            maxsamples,
+        );
+        return maxsamples;
+    }
+
+    function createChart() {
+        if (!canvas) return;
+        if (chart) {
+            chart.destroy();
+        }
+
+        chart = new Chart(canvas, {
+            type: "line",
+            data: {
+                labels: data.map((d) => format(new Date(d.timestamp), xFormat)),
+                datasets: [
+                    {
+                        label: label,
+                        data: data.map((d) => d.payload),
+                        borderColor: color,
+                        borderWidth: 2,
+                        fill: true,
+                        pointRadius: 0,
+                        tension: 0.2,
+                    },
+                ],
+            },
+            options: {
+                responsive: false,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        display: showAxis,
+                        title: {
+                            display: showAxis,
+                            text: "Time",
+                        },
+                    },
+                    y: {
+                        display: showAxis,
+                        title: {
+                            display: showAxis,
+                            text: "Value",
+                        },
+                    },
+                },
+                plugins: {
+                    legend: {
+                        display: false,
+                    },
+                },
+                layout: {
+                    padding: 0,
+                    margin: 0,
+                },
+            },
+        });
+    }
+
+    function updateChart() {
+        // !document.querySelector(".resizing") &&
+        if (chart) {
+            chart.data.datasets[0].data = data.map((d) => d.payload);
+            chart.data.labels = data.map((d) =>
+                format(new Date(d.timestamp), xFormat),
+            );
+            chart.update();
+        }
+    }
 
     const transformStorageEventData = (data) => {
         let transformedData = [];
@@ -234,7 +298,6 @@
     };
 
     const handleAccumulatorEvent = (e) => {
-        console.log("Here", e?.detail?.id, identifier);
         if (identifier === e?.detail?.id) {
             logger.log(
                 loggerCtxName,
@@ -261,101 +324,27 @@
         }
     };
 
-    function calculatemaxsamples({
-        width,
-        samplingrate,
-        timewindow,
-        timemode,
-    }) {
-        if (!width || !samplingrate) {
-            return 0; // Handle cases with missing information.
-        }
-
-        let maxsamples;
-
-        /*if(width < 300) {
-            timewindow = Math.min(2000, timewindow);
-        }*/
-
-        if (timemode === "absolute" && timewindow) {
-            const timewindowInSeconds = timewindow / 1000; // Convert to seconds.
-            maxsamples = Math.max(
-                1,
-                Math.floor(timewindowInSeconds * samplingrate * width),
-            ); // calculate based on provided window and rate.
-        } else {
-            // relative or no time window.
-            //maxsamples = Math.max(1, Math.floor(width / resolution)); // Compute based on width, and also using a base resolution value.
-
-            maxsamples = width * samplingrate * (timewindow / 1000);
-        }
-
-        //maxsamples = ((timewindow / 1000) * width) / samplingrate;
-
-        logger.log(
-            loggerCtxName,
-            "maxsamples:  width:",
-            width,
-            ", samplingrate:",
-            samplingrate,
-            ", timewindow:",
-            timewindow,
-            ", result:",
-            maxsamples,
-        );
-        return maxsamples;
-    }
+    const handleResizeEnd = (e) => {
+        logger.log(loggerCtxName, "handleResizeEnd", e);
+        createChart();
+    };
 </script>
 
 <svelte:window
     on:storage-worker-event={handleStorageWorkerEvent}
     on:accumulator-data-event={handleAccumulatorEvent}
     on:seeddata-event={handleSeedDataEvent}
+    on:resizeend={handleResizeEnd}
 />
 
-<div {width} {height} style="text-align:center">
-    {#if is_loading}
-        <img
-            {height}
-            alt="loading spinner"
-            src="https://raw.githubusercontent.com/n3r4zzurr0/svg-spinners/refs/heads/main/svg-css/12-dots-scale-rotate.svg"
-        /> Waiting for data ...
-    {:else}
-        <ScaledPoints
-            bind:this={scaledPoints}
-            bind:data
-            bind:scaledPoints={test}
-            {width}
-            {height}
-            {timemode}
-            {timewindow}
-            {yPadding}
-            {maxsamples}
-            {isResizing}
-            {resolution}
-        ></ScaledPoints>
-
-        <Canvas
-            bind:this={canvas}
-            bind:points={test}
-            {width}
-            {height}
-            {isResizing}
-        ></Canvas>
-
-        <p>
-            {new Date(minTimestamp).toLocaleTimeString("ch-DE")} - {new Date(
-                maxTimestamp,
-            ).toLocaleTimeString("ch-DE")}
-        </p>
-        {#if true}
-            <p>
-                Sparkline: width: {width} maxsamples: {maxsamples} timewindow: {timewindow}
-                timemode:{timemode} samplingrate: {samplingrate}
-
-                data: {data?.length} Points: {test?.length} Resolution: {resolution}
-
-                {JSON.stringify(data)}
-            </p>{/if}
-    {/if}
-</div>
+<!--<div bind:this={chartDiv} style="width: {width}px; height: {height}px;"></div>-->
+<canvas bind:this={canvas} {width} {height}></canvas>
+<input type="button" on:click={createChart} value="createChart" />
+<p>
+    timewindow: {timewindow}, samplingrate: {samplingrate}, max: {maxsamples},
+    data: {data?.length}
+</p>
+<p>{width} {height}</p>
+<!--
+<div>{JSON.stringify(data)}</div>
+-->

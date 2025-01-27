@@ -162,7 +162,7 @@ window.addEventListener('worker-requesthandler-event', function (event) {
 
 
 function resizeElements() {
-  const allSparklines = document.querySelectorAll('sensocto-sparkline, sensocto-ecg-visualization'); // Correct custom element tag.
+  const allSparklines = document.querySelectorAll('.resizeable'); // Correct custom element tag.
 
   allSparklines.forEach(element => {
     const parentWidth = element.parentElement.offsetWidth;

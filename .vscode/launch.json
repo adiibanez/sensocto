@@ -1,0 +1,71 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "mix_task",
+            "name": "mix (Default task)",
+            "request": "launch",
+            "task": "phx.server",
+            "projectDir": "${workspaceRoot}",
+            "exitAfterTaskReturns": false,
+            "excludeModules": [
+                "Ash",
+                "Bandit",
+                "Reactor",
+                "Mix",
+                "Bcrypt.Base",
+                "Assent",
+                "EctoMigrationDefault",
+                "Plug.Exception.Ash",
+                "Jason",
+                "Comparable",
+                "Broadway",
+                "DBConnection",
+                "Dialyxir",
+                "Ecto",
+                "Expo",
+                "Finch",
+                "Igniter",
+                "Iter",
+                "Phoenix.LiveDashboard",
+                "Postgrex",
+                "Spark",
+                "Swoosh",
+                "Plug",
+                "Req",
+                "Rewrite",
+                "Sourceror",
+                "Telemetry",
+                "ThousandIsland"
+            ],
+            "debugAutoInterpretAllModules": false,
+            "debugInterpretModulesPatterns": [
+                "Sensocto*"
+            ],
+            "env": {
+                "SMTP2GO_APIKEY": "api-8C229504AB2F45248218104C8732F36D",
+                "ERLANG_COOKIE": "testlitest",
+                "AUTH_USERNAME": "admin",
+                "AUTH_PASSWORD": "nimda_1234",
+            }
+        },
+        {
+            "type": "mix_task",
+            "name": "mix test",
+            "request": "launch",
+            "task": "test",
+            "taskArgs": [
+                "--trace"
+            ],
+            "startApps": true,
+            "projectDir": "${workspaceRoot}",
+            "requireFiles": [
+                "test/**/test_helper.exs",
+                "test/**/*_test.exs"
+            ]
+        }
+    ]
+}

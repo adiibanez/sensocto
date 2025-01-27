@@ -136,4 +136,4 @@ Node.set_cookie(node, String.to_atom(System.fetch_env!("LB_ERL_COOKIE")))
 Kino.RPC.eval_string(node, ~S"Sensocto.Accounts.User.default_short_name()", file: __ENV__.file)
 ```
 
-<!-- livebook:{"offset":11618,"stamp":{"token":"XCP.MHAGlRprxIOq4Ubzg8llATn-s0WJb9LzX1ToBIjr-Ik4dFbAB_TJu_07YZCurKq6ckI4EP91skDidAN7FhRorrUr1dLvm802HPanMECQjkRDqSQ9kg","version":2}} -->
+<!-- livebook:{"offset":11618,"stamp":{"token":"XCP.SRwnIJJj079GBlFdcuvI0F1xB3jTU4vdqAenqFjzjAxkIhtSUzb7SvziyXcOXzRG4nfuJgubnShHeWHBctnS-7vkW3BGy2lx9XDvhWbBvtxksaeayg","version":2}} -->

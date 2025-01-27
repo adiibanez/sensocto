@@ -45,3 +45,5 @@ npm-debug.log
 /_pgdata/
 
 /priv/cert/
+
+/rel

@@ -13,6 +13,7 @@ services:
       PGHOST: db
       PGPORT: 5432
       DATABASE_URL: "ecto://postgres:postgres@localhost:5432/sensocto"
+      MIX_ENV: "dev"
     depends_on:
       - db
 #    command:

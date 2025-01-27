@@ -176,12 +176,8 @@ defmodule Sensocto.SimpleSensor do
       |> Map.put(:sensor_id, sensor_id)
       |> Map.put(:uuid, attribute_id)
       |> Map.delete(:id)
-      |> IO.inspect()
 
-    IO.inspect(
-      {:measurement, broadcast_message},
-      label: "Message before broadcast"
-    )
+    #      |> IO.inspect()
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
@@ -190,11 +186,6 @@ defmodule Sensocto.SimpleSensor do
         :measurement,
         broadcast_message
       }
-    )
-
-    IO.inspect(
-      {:measurement, broadcast_message},
-      label: "Message after broadcast"
     )
 
     {:noreply, state}

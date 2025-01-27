@@ -18,7 +18,14 @@
     export let data = [];
     export let samplingrate;
     export let highlighted_areas = [];
-    let resolution = 3;
+    let resolution = 1;
+
+    // make sure we can resize chart
+    let keepsamples = 2000 / resolution;
+
+    export let minValue = -1.0;
+    export let maxValue = 2;
+
     $: maxsamples = width / resolution; //samplingrate / resolution * width;
 
     export let identifier;
@@ -31,14 +38,16 @@
             return;
         }
 
+        const drawData = data.slice(-maxsamples);
+
         const ctx = canvas.getContext("2d");
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
-        const values = data.map((point) => point.payload);
-        const timestamps = data.map((point) => point.timestamp);
+        const values = drawData.map((point) => point.payload);
+        const timestamps = drawData.map((point) => point.timestamp);
 
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
+        //minValue = Math.min(...values);
+        //maxValue = Math.max(...values);
         const range = maxValue - minValue;
         const padding = 20;
 
@@ -95,11 +104,11 @@
         //     );
         // }
 
-        if (data.length > 0) ctx.beginPath();
+        if (drawData.length > 0) ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
 
-        data.forEach((point, index) => {
+        drawData.forEach((point, index) => {
             let normalizedValue =
                 range == 0 ? 1 : (point.payload - minValue) / range;
             let y =
@@ -118,14 +127,14 @@
                 ctx.lineTo(x, y);
             }
 
-            logger.log(
+            /*logger.log(
                 loggerCtxName,
                 "drawEcg",
                 x,
                 y,
                 point.payload,
                 point.timestamp,
-            );
+            );*/
         });
         ctx.stroke();
         ctx.restore();
@@ -179,22 +188,42 @@
     };
 
     const handleSeedDataEvent = (e) => {
-        if (identifier == e?.detail?.identifier) {
+        if (
+            identifier ==
+            e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
+        ) {
+            // e?.detail?.data?.length > 0
             logger.log(
                 loggerCtxName,
                 "handleSeedDataEvent",
                 identifier,
-                e?.detail?.identifier,
                 e?.detail?.data?.length,
                 data?.length,
             );
 
-            newData = e.detail.data;
-            //newData = newData.slice(-maxsamples);
-            data = [];
-            newData.forEach((item) => {
-                data = [...data, item];
-            });
+            //let newData = e?.detail?.data;
+
+            if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
+                let newData = e.detail.data;
+
+                data = [];
+                newData?.forEach((item) => {
+                    data = [...data, item];
+                });
+            } else if (
+                Array.isArray(e?.detail?.data) &&
+                e?.detail?.data?.length == 0
+            ) {
+                // reset data
+                data = [...[]];
+            } else {
+                logger.log(
+                    loggerCtxName,
+                    "handleSeedDataEvent",
+                    "No data",
+                    e?.detail,
+                );
+            }
 
             is_loading = false;
         }
@@ -222,7 +251,7 @@
                     data?.length,
                 );
 
-                data = [...data.slice(-maxsamples), e.detail.data];
+                data = [...data.slice(-keepsamples), e.detail.data];
             }
         }
     };
@@ -234,7 +263,7 @@
     on:seeddata-event={handleSeedDataEvent}
 />
 ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution},
-data: {data.length}
+data: {data.length} minValue: {minValue} maxValue: {maxValue}
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvasElement} {width} {height} />
 </div>

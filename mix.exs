@@ -79,7 +79,10 @@ defmodule Sensocto.MixProject do
       {:ash_postgres, "~> 2.0.0"},
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},
-      #{:sensocto_elixir_simulator, path: "./simulator/sensocto_elixir_simulator", app: false}
+      {:dialyxir, "~> 0.4", only: [:dev]},
+      {:nimble_csv, "~> 1.1", only: [:dev]},
+      {:brotli, "~> 0.3.2", only: [:dev]}
+      # {:sensocto_elixir_simulator, path: "./simulator/sensocto_elixir_simulator", app: false}
     ]
   end
 

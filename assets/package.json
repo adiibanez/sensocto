@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "ahrs": "1.1.8",
+    "chart.js": "^4.4.7",
     "date-fns": "^4.1.0",
     "esbuild-plugin-import-glob": "^0.1.1",
     "esbuild-svelte": "^0.9.0",

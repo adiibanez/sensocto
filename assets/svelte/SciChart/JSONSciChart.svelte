@@ -5,7 +5,7 @@
     import {
         SciChartSurface,
         libraryVersion,
-        SciChartJSLightTheme,
+        SciChartDarkTheme,
         chartBuilder,
         EAxisType,
         ELabelProviderType,
@@ -21,6 +21,8 @@
         EChart2DModifierType,
         Point,
     } from "scichart";
+
+    import { SciChartJSDarkv2Theme } from "scichart/Charting/Themes/SciChartJSDarkv2Theme";
 
     export let data = [];
     export let width = 200;
@@ -42,6 +44,9 @@
     let sciChartSurface;
     let wasmContext;
     let chartDiv;
+    let dataSeries;
+
+    let appTheme = new SciChartJSDarkv2Theme();
 
     // SciChartSurface.configure({
 
@@ -58,13 +63,17 @@
 
     SciChartSurface.UseCommunityLicense();
 
-    const appTheme = { ...new SciChartJSLightTheme() };
+    //const appTheme = { ...new SciChartDarkTheme() };
 
     afterUpdate(() => {
         if (isMounted) {
             //updateChart();
-            drawExample(chartDiv);
-            console.log("Update");
+            //drawExample(chartDiv);
+            //sciChartSurface.update();
+            // drawExample("jsonscichart-" + identifier);
+            console.log("Update", sciChartSurface);
+
+            // sciChartSurface.applyTheme(new SciChartJSDarkv2Theme());
         }
     });
 
@@ -75,6 +84,7 @@
         // });
 
         drawExample(chartDiv);
+        // drawExample("jsonscichart-" + identifier);
         isMounted = true;
         //     // SciChart.SciChartSurface.configure({
         //     //     dataUrl: `/assets/_wasm/scichart2d.data`,
@@ -161,19 +171,31 @@
         return maxsamples;
     }
 
+    export const getXValues = () => {
+        return [1, 2, 3, 4, 5, 5, 7];
+    };
+
+    export const getYValues = () => {
+        return [1, 2, 3, 4, 5, 5, 7];
+    };
+
     export const drawExample = async (rootElement) => {
         // Create a chart using the Builder-API, an api that allows defining a chart
         // with javascript-objects or JSON
 
-        console.log("AppTheme", appTheme, appTheme.VividTeal);
-
-        let { sciChartSurface, wasmContext } = chartBuilder.build2DChart(
+        console.log(
+            "drawExample",
             rootElement,
-            {
-                dataUrl: `https://cdn.jsdelivr.net/npm/scichart@${libraryVersion}/_wasm/scichart2d.data`,
-                wasmUrl: `https://cdn.jsdelivr.net/npm/scichart@${libraryVersion}/_wasm/scichart2d.wasm`, // Set theme
+            //document.getElementById(rootElement),
+            appTheme,
+        );
+        // return;
+        // document.getElementById(rootElement),
+
+        let { sciChartSurface, wasmContext } = chartBuilder
+            .build2DChart(rootElement, {
                 surface: {
-                    //    theme: appTheme.SciChartJsTheme
+                    theme: new SciChartJSDarkv2Theme(),
                 },
                 // Add XAxis
                 xAxes: [
@@ -227,20 +249,25 @@
                         type: ESeriesType.SplineMountainSeries,
                         options: {
                             yAxisId: "y1",
-                            stroke: appTheme.VividSkyBlue,
+                            stroke: "#ccc", //appTheme.VividSkyBlue,
                             strokeThickness: 5,
                             fillLinearGradient: new GradientParams(
                                 new Point(0, 0),
                                 new Point(0, 1),
                                 [
-                                    // { color: appTheme.VividTeal, offset: 0.2 },
+                                    {
+                                        color: "#bbb", //appTheme.VividTeal,
+                                        offset: 0.2,
+                                    },
                                     { color: "Transparent", offset: 1 },
                                 ],
                             ),
                         },
                         xyData: {
-                            xValues: [1, 2, 3, 4, 5],
-                            yValues: [8, 6, 7, 2, 16],
+                            //xValues: [1, 2, 3, 4, 5],
+                            xValues: getXValues(),
+                            //yValues: [8, 6, 7, 2, 16],
+                            yValues: getYValues(),
                         },
                     },
                     {
@@ -253,8 +280,8 @@
                                     width: 100,
                                     height: 100,
                                     strokeThickness: 10,
-                                    fill: appTheme.PaleSkyBlue,
-                                    stroke: appTheme.VividSkyBlue,
+                                    fill: "red", //appTheme.PaleSkyBlue,
+                                    stroke: "blue", //appTheme.VividSkyBlue,
                                 },
                             },
                         },
@@ -338,24 +365,25 @@
                         type: EChart2DModifierType.Rollover,
                         options: {
                             yAxisId: "y1",
-                            rolloverLineStroke: appTheme.VividTeal,
+                            rolloverLineStroke: "green", //appTheme.VividTeal,
                         },
                     },
                     { type: EChart2DModifierType.MouseWheelZoom },
                     { type: EChart2DModifierType.ZoomExtents },
                 ],
-            },
-        );
-        // .then((surface) => {
-        //     sciChartSurface = surface;
-        //     dataSeries = surface.renderableSeries.get(0).dataSeries;
-        //     console.log(
-        //         "SciChartSurface created using json:",
-        //         surface,
-        //         dataSeries,
-        //     );
-        // })
-        // .catch((err) => console.error("Error during initialization:", err));
+            })
+            .then((surface) => {
+                sciChartSurface = surface;
+
+                console.log("surface: ", surface);
+                // dataSeries = surface.renderableSeries[0]; //.get(0).dataSeries;
+                // console.log(
+                //     "SciChartSurface created using json:",
+                //     surface,
+                //     dataSeries,
+                // );
+            })
+            .catch((err) => console.error("Error during initialization:", err));
     };
 
     const transformStorageEventData = (data) => {
@@ -435,12 +463,11 @@
     };
 
     const handleSeedDataEvent = (e) => {
-        console.log("Here", e?.detail?.data?.length);
         if (
             identifier ==
-                e?.detail?.sensor_id + "_" + e?.detail?.attribute_id &&
-            e?.detail?.data?.length > 0
+            e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
         ) {
+            // e?.detail?.data?.length > 0
             logger.log(
                 loggerCtxName,
                 "handleSeedDataEvent",
@@ -459,6 +486,12 @@
                 newData?.forEach((item) => {
                     data = [...data, item];
                 });
+            } else if (
+                Array.isArray(e?.detail?.data) &&
+                e?.detail?.data?.length == 0
+            ) {
+                // reset data
+                data = [...[]];
             } else {
                 logger.log(
                     loggerCtxName,
@@ -508,4 +541,4 @@
 />
 
 <!--<div bind:this={chartDiv} style="width: {width}px; height: {height}px;"></div>-->
-<div bind:this={chartDiv} style="width: 800px; height: 400px;"></div>
+<div bind:this={chartDiv} style="width: {width}px;"></div>

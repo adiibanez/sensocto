@@ -1,1 +1,1 @@
-iex -S mix
+iex  --name "simulator@localhost" --cookie testlitest  -S mix

@@ -31,12 +31,10 @@ defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
       <sensocto-ecg-visualization
         is_loading="true"
         id={ "ecg-" <> assigns.id }
-        sensor_id={assigns.sensor_data.sensor_id}
+        identifier={assigns.sensor_data.id}
         samplingrate={assigns.sensor_data.sampling_rate}
         phx-update="ignore"
-        class="loading w-full m-0 p-0"
-        width="500"
-        height="250"
+        class="loading w-full m-0 p-0 resizeable"
         color="#ffc107"
         backgroundColor="transparent"
         highlighted_areas='{[
@@ -81,18 +79,32 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
           Clear
         </button>
       </div>
-
-      <sensocto-sparkline
+      
+    <!--<sensocto-sparkline
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
-        sensor_id={assigns.sensor_data.sensor_id}
+        identifier={assigns.sensor_data.id}
         samplingrate={assigns.sensor_data.sampling_rate}
         timewindow="500"
         timemode="absolute"
         phx-update="ignore"
         class="loading w-full m-0 p-0"
       >
-      </sensocto-sparkline>
+      </sensocto-sparkline>-->
+
+      <sensocto-chartjs
+        width="800"
+        color="#ffc107"
+        is_loading="true"
+        id={ "sparkline_element-" <> assigns.id }
+        identifier={assigns.sensor_data.id}
+        samplingrate={assigns.sensor_data.sampling_rate}
+        timewindow="5000"
+        timemode="absolute"
+        phx-update="ignore"
+        class="resizeable loading w-full m-0 p-0"
+      >
+      </sensocto-chartjs>
     </div>
     """
   end
@@ -123,17 +135,30 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
           Clear
         </button>
       </div>
-
-      <sensocto-sparkline
+      
+    <!--<sensocto-sparkline
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
-        sensor_id={assigns.sensor_data.sensor_id}
+        identifier={assigns.sensor_data.id}
         samplingrate={assigns.sensor_data.sampling_rate}
         timewindow="5000"
+        timemode="relative"
         phx-update="ignore"
         class="loading w-full m-0 p-0"
       >
-      </sensocto-sparkline>
+      </sensocto-sparkline>-->
+
+      <sensocto-chartjs
+        is_loading="true"
+        id={ "sparkline_element-" <> assigns.id }
+        identifier={assigns.sensor_data.id}
+        samplingrate={assigns.sensor_data.sampling_rate}
+        timewindow="5000"
+        timemode="relative"
+        phx-update="ignore"
+        class="resizeable loading w-full m-0 p-0"
+      >
+      </sensocto-chartjs>
     </div>
     """
   end
@@ -161,16 +186,30 @@ defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
   end
 
   defp render_payload(payload, assigns) do
-    case Jason.decode(payload) do
-      {:ok, %{} = json_obj} ->
-        # Render JSON object
-        Enum.map(json_obj, fn {key, value} ->
-          ~H"<p>#{String.capitalize(key)}: #{value}</p>"
-        end)
+    try do
+      case Jason.decode(payload) do
+        {:ok, %{} = json_obj} ->
+          # Render JSON object
+          output =
+            Enum.map(json_obj, fn {key, value} ->
+              "#{String.capitalize(inspect(key))}: #{inspect(value)}\n"
+            end)
+            |> Enum.join("")
+
+          ~H"<pre>{output}</pre>"
+
+        _ ->
+          # Render single value
+          ~H"<p>#{inspect(payload)}</p>"
+      end
+    rescue
+      Jason.DecodeError ->
+        Logger.debug("Could not decode payload: #{inspect(payload)}")
+        ~H"<p>#{inspect(payload)}</p>"
 
       _ ->
-        # Render single value
-        ~H"<p>#{payload}</p>"
+        Logger.error("Could not decode payload: #{inspect(payload)}")
+        ~H"<p>#{inspect(payload)}</p>"
     end
   end
 end

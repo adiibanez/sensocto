@@ -206,48 +206,50 @@ async def main():
 
 
     elif mode == "csv":
-        data = generate_sensor_data(duration, sampling_rate, sensor_type, heart_rate, respiratory_rate, scr_number,
-                                    burst_number)
-        if sensor_type == "gyro" or sensor_type == "accelerometer":
-            headers = ["timestamp", "x", "y", "z"]
-        elif sensor_type == "geolocation":
-            headers = ["timestamp", "latitude", "longitude"]
-        elif sensor_type == "charge":
-            headers = ["timestamp", "charge"]
-        elif sensor_type == "charge_status":
-            headers = ["timestamp", "status"]
-        else:
-            headers = ["timestamp", "payload"]
-
-        f = None
-
-        if output == "file":
-            f = open(f"{sensor_type}_data.csv", "w")
-
-
-        # with open(f"{sensor_type}_data.csv", 'w', newline='') as csvfile:
-        #    print(csv.list_dialects())
-        #    #writer = csv.writer(csvfile, delimiter=',', dialect='unix') # quotechar='|', quoting=csv.QUOTE_MINIMAL
-
-        last_timestamp = None
-        for row in data:
-            if not last_timestamp is None:
-                delay = (int(row['timestamp']) - int(last_timestamp)) / 1000
+        try: 
+            data = generate_sensor_data(duration, sampling_rate, sensor_type, heart_rate, respiratory_rate, scr_number,
+                                        burst_number)
+            if sensor_type == "gyro" or sensor_type == "accelerometer":
+                headers = ["timestamp", "x", "y", "z"]
+            elif sensor_type == "geolocation":
+                headers = ["timestamp", "latitude", "longitude"]
+            elif sensor_type == "charge":
+                headers = ["timestamp", "charge"]
+            elif sensor_type == "charge_status":
+                headers = ["timestamp", "status"]
             else:
-                delay = 0
+                headers = ["timestamp", "payload"]
 
-            row_str = "{},{},{}".format(row['timestamp'], delay, row['payload'])
-            #print(row_str)
-            #writer.writerow(row_str)
-            last_timestamp = int(row['timestamp'])
+            f = None
 
             if output == "file":
-                f.write("{}\n".format(row_str))
-            else:
-                print(row_str)
-            #print(row_str)
-            # print(f"Data for {sensor_type} saved in {sensor_type}_data.csv")
+                f = open(f"{sensor_type}_data.csv", "w")
 
+
+            # with open(f"{sensor_type}_data.csv", 'w', newline='') as csvfile:
+            #    print(csv.list_dialects())
+            #    #writer = csv.writer(csvfile, delimiter=',', dialect='unix') # quotechar='|', quoting=csv.QUOTE_MINIMAL
+
+            last_timestamp = None
+            for row in data:
+                if not last_timestamp is None:
+                    delay = (int(row['timestamp']) - int(last_timestamp)) / 1000
+                else:
+                    delay = 0
+
+                row_str = "{},{},{}".format(row['timestamp'], delay, row['payload'])
+                #print(row_str)
+                #writer.writerow(row_str)
+                last_timestamp = int(row['timestamp'])
+
+                if output == "file":
+                    f.write("{}\n".format(row_str))
+                else:
+                    print(row_str)
+                #print(row_str)
+                # print(f"Data for {sensor_type} saved in {sensor_type}_data.csv")
+        except BrokenPipeError:
+            print("Broken Pipe Error")
 
 if __name__ == "__main__":
     asyncio.run(main())

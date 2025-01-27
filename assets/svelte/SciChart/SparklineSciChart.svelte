@@ -492,12 +492,11 @@
     };
 
     const handleSeedDataEvent = (e) => {
-        console.log("Here", e?.detail?.data?.length);
         if (
             identifier ==
-                e?.detail?.sensor_id + "_" + e?.detail?.attribute_id &&
-            e?.detail?.data?.length > 0
+            e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
         ) {
+            // e?.detail?.data?.length > 0
             logger.log(
                 loggerCtxName,
                 "handleSeedDataEvent",
@@ -516,6 +515,12 @@
                 newData?.forEach((item) => {
                     data = [...data, item];
                 });
+            } else if (
+                Array.isArray(e?.detail?.data) &&
+                e?.detail?.data?.length == 0
+            ) {
+                // reset data
+                data = [...[]];
             } else {
                 logger.log(
                     loggerCtxName,

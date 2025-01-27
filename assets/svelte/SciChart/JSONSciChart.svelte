@@ -4,6 +4,8 @@
     import { onMount, afterUpdate } from "svelte";
     import {
         SciChartSurface,
+        libraryVersion,
+        SciChartJSLightTheme,
         chartBuilder,
         EAxisType,
         ELabelProviderType,
@@ -20,6 +22,9 @@
         Point,
     } from "scichart";
 
+    export let data = [];
+    export let width = 200;
+    export let height = 80;
     export let is_loading;
 
     export let wasmPath = "/assets/_wasm";
@@ -30,10 +35,21 @@
 
     export let identifier;
 
-    let loggerCtxName = "SparklineSciChart";
+    let isMounted = false;
+
+    let loggerCtxName = "JSONSciChart";
 
     let sciChartSurface;
+    let wasmContext;
     let chartDiv;
+
+    // SciChartSurface.configure({
+
+    // });
+
+    // SciChartSurface.UseCommunityLicense();
+
+    //import { appTheme } from "../../theme";
 
     SciChartSurface.configure({
         dataUrl: `https://cdn.jsdelivr.net/npm/scichart@${libraryVersion}/_wasm/scichart2d.data`,
@@ -41,8 +57,6 @@
     });
 
     SciChartSurface.UseCommunityLicense();
-
-    //import { appTheme } from "../../theme";
 
     const appTheme = { ...new SciChartJSLightTheme() };
 
@@ -150,179 +164,198 @@
     export const drawExample = async (rootElement) => {
         // Create a chart using the Builder-API, an api that allows defining a chart
         // with javascript-objects or JSON
-        return await chartBuilder.build2DChart(rootElement, {
-            // Set theme
-            surface: {
-                //    theme: appTheme.SciChartJsTheme
-            },
-            // Add XAxis
-            xAxes: [
-                {
-                    type: EAxisType.CategoryAxis,
-                    options: {
-                        axisTitle: "X Axis Title",
-                        labelProvider: {
-                            type: ELabelProviderType.Text,
-                            options: {
-                                labels: {
-                                    1: "one",
-                                    2: "two",
-                                    3: "three",
-                                    4: "four",
-                                    5: "five",
+
+        console.log("AppTheme", appTheme, appTheme.VividTeal);
+
+        let { sciChartSurface, wasmContext } = chartBuilder.build2DChart(
+            rootElement,
+            {
+                dataUrl: `https://cdn.jsdelivr.net/npm/scichart@${libraryVersion}/_wasm/scichart2d.data`,
+                wasmUrl: `https://cdn.jsdelivr.net/npm/scichart@${libraryVersion}/_wasm/scichart2d.wasm`, // Set theme
+                surface: {
+                    //    theme: appTheme.SciChartJsTheme
+                },
+                // Add XAxis
+                xAxes: [
+                    {
+                        type: EAxisType.CategoryAxis,
+                        options: {
+                            axisTitle: "X Axis Title",
+                            labelProvider: {
+                                type: ELabelProviderType.Text,
+                                options: {
+                                    labels: {
+                                        1: "one",
+                                        2: "two",
+                                        3: "three",
+                                        4: "four",
+                                        5: "five",
+                                    },
                                 },
                             },
                         },
                     },
-                },
-            ],
-            // Add multiple Y-Axis
-            yAxes: [
-                {
-                    type: EAxisType.NumericAxis,
-                    options: {
-                        id: "y1",
-                        axisTitle: "Left Axis",
-                        axisAlignment: EAxisAlignment.Left,
-                        visibleRange: new NumberRange(0, 20),
-                        zoomExtentsToInitialRange: true,
-                    },
-                },
-                {
-                    type: EAxisType.NumericAxis,
-                    options: {
-                        id: "y2",
-                        axisTitle: "Right Axis",
-                        axisAlignment: EAxisAlignment.Right,
-                        visibleRange: new NumberRange(0, 800),
-                        labelPrecision: 0,
-                        zoomExtentsToInitialRange: true,
-                    },
-                },
-            ],
-            // Add series. More than one can be set in an array
-            series: [
-                {
-                    // each series has type, options in the builder-API
-                    type: ESeriesType.SplineMountainSeries,
-                    options: {
-                        yAxisId: "y1",
-                        stroke: appTheme.VividSkyBlue,
-                        strokeThickness: 5,
-                        fillLinearGradient: new GradientParams(
-                            new Point(0, 0),
-                            new Point(0, 1),
-                            [
-                                { color: appTheme.VividTeal, offset: 0.2 },
-                                { color: "Transparent", offset: 1 },
-                            ],
-                        ),
-                    },
-                    xyData: {
-                        xValues: [1, 2, 3, 4, 5],
-                        yValues: [8, 6, 7, 2, 16],
-                    },
-                },
-                {
-                    type: ESeriesType.BubbleSeries,
-                    options: {
-                        yAxisId: "y2",
-                        pointMarker: {
-                            type: EPointMarkerType.Ellipse,
-                            options: {
-                                width: 100,
-                                height: 100,
-                                strokeThickness: 10,
-                                fill: appTheme.PaleSkyBlue,
-                                stroke: appTheme.VividSkyBlue,
-                            },
+                ],
+                // Add multiple Y-Axis
+                yAxes: [
+                    {
+                        type: EAxisType.NumericAxis,
+                        options: {
+                            id: "y1",
+                            axisTitle: "Left Axis",
+                            axisAlignment: EAxisAlignment.Left,
+                            visibleRange: new NumberRange(0, 20),
+                            zoomExtentsToInitialRange: true,
                         },
                     },
-                    xyzData: {
-                        xValues: [1, 2, 3, 4, 5],
-                        yValues: [320, 240, 280, 80, 640],
-                        zValues: [20, 40, 20, 30, 35],
+                    {
+                        type: EAxisType.NumericAxis,
+                        options: {
+                            id: "y2",
+                            axisTitle: "Right Axis",
+                            axisAlignment: EAxisAlignment.Right,
+                            visibleRange: new NumberRange(0, 800),
+                            labelPrecision: 0,
+                            zoomExtentsToInitialRange: true,
+                        },
                     },
-                },
-            ],
-            // Add annotations
-            annotations: [
-                {
-                    type: EAnnotationType.SVGTextAnnotation,
-                    options: {
-                        text: "Labels",
-                        yAxisId: "y1",
-                        x1: 0,
-                        y1: 10,
-                        yCoordinateMode: ECoordinateMode.DataValue,
+                ],
+                // Add series. More than one can be set in an array
+                series: [
+                    {
+                        // each series has type, options in the builder-API
+                        type: ESeriesType.SplineMountainSeries,
+                        options: {
+                            yAxisId: "y1",
+                            stroke: appTheme.VividSkyBlue,
+                            strokeThickness: 5,
+                            fillLinearGradient: new GradientParams(
+                                new Point(0, 0),
+                                new Point(0, 1),
+                                [
+                                    // { color: appTheme.VividTeal, offset: 0.2 },
+                                    { color: "Transparent", offset: 1 },
+                                ],
+                            ),
+                        },
+                        xyData: {
+                            xValues: [1, 2, 3, 4, 5],
+                            yValues: [8, 6, 7, 2, 16],
+                        },
                     },
-                },
-                {
-                    type: EAnnotationType.SVGTextAnnotation,
-                    options: {
-                        text: "can be placed",
-                        yAxisId: "y1",
-                        x1: 1,
-                        y1: 8,
-                        yCoordinateMode: ECoordinateMode.DataValue,
+                    {
+                        type: ESeriesType.BubbleSeries,
+                        options: {
+                            yAxisId: "y2",
+                            pointMarker: {
+                                type: EPointMarkerType.Ellipse,
+                                options: {
+                                    width: 100,
+                                    height: 100,
+                                    strokeThickness: 10,
+                                    fill: appTheme.PaleSkyBlue,
+                                    stroke: appTheme.VividSkyBlue,
+                                },
+                            },
+                        },
+                        xyzData: {
+                            xValues: [1, 2, 3, 4, 5],
+                            yValues: [320, 240, 280, 80, 640],
+                            zValues: [20, 40, 20, 30, 35],
+                        },
                     },
-                },
-                {
-                    type: EAnnotationType.SVGTextAnnotation,
-                    options: {
-                        text: "on the chart",
-                        yAxisId: "y1",
-                        x1: 2,
-                        y1: 9,
-                        yCoordinateMode: ECoordinateMode.DataValue,
+                ],
+                // Add annotations
+                annotations: [
+                    {
+                        type: EAnnotationType.SVGTextAnnotation,
+                        options: {
+                            text: "Labels",
+                            yAxisId: "y1",
+                            x1: 0,
+                            y1: 10,
+                            yCoordinateMode: ECoordinateMode.DataValue,
+                        },
                     },
-                },
-                {
-                    type: EAnnotationType.SVGTextAnnotation,
-                    options: {
-                        text: "Builder API Demo",
-                        x1: 0.5,
-                        y1: 0.5,
-                        opacity: 0.33,
-                        yCoordShift: -52,
-                        xCoordinateMode: ECoordinateMode.Relative,
-                        yCoordinateMode: ECoordinateMode.Relative,
-                        horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
-                        verticalAnchorPoint: EVerticalAnchorPoint.Center,
-                        fontSize: 42,
-                        fontWeight: "Bold",
+                    {
+                        type: EAnnotationType.SVGTextAnnotation,
+                        options: {
+                            text: "can be placed",
+                            yAxisId: "y1",
+                            x1: 1,
+                            y1: 8,
+                            yCoordinateMode: ECoordinateMode.DataValue,
+                        },
                     },
-                },
-                {
-                    type: EAnnotationType.SVGTextAnnotation,
-                    options: {
-                        text: "Create SciChart charts with JSON Objects",
-                        x1: 0.5,
-                        y1: 0.5,
-                        yCoordShift: 0,
-                        opacity: 0.33,
-                        xCoordinateMode: ECoordinateMode.Relative,
-                        yCoordinateMode: ECoordinateMode.Relative,
-                        horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
-                        verticalAnchorPoint: EVerticalAnchorPoint.Center,
-                        fontSize: 36,
-                        fontWeight: "Bold",
+                    {
+                        type: EAnnotationType.SVGTextAnnotation,
+                        options: {
+                            text: "on the chart",
+                            yAxisId: "y1",
+                            x1: 2,
+                            y1: 9,
+                            yCoordinateMode: ECoordinateMode.DataValue,
+                        },
                     },
-                },
-            ],
-            // Add interaction (zooming, panning, tooltips)
-            modifiers: [
-                {
-                    type: EChart2DModifierType.Rollover,
-                    options: {
-                        yAxisId: "y1",
-                        rolloverLineStroke: appTheme.VividTeal,
+                    {
+                        type: EAnnotationType.SVGTextAnnotation,
+                        options: {
+                            text: "Builder API Demo",
+                            x1: 0.5,
+                            y1: 0.5,
+                            opacity: 0.33,
+                            yCoordShift: -52,
+                            xCoordinateMode: ECoordinateMode.Relative,
+                            yCoordinateMode: ECoordinateMode.Relative,
+                            horizontalAnchorPoint:
+                                EHorizontalAnchorPoint.Center,
+                            verticalAnchorPoint: EVerticalAnchorPoint.Center,
+                            fontSize: 42,
+                            fontWeight: "Bold",
+                        },
                     },
-                },
-                { type: EChart2DModifierType.MouseWheelZoom },
-                { type: EChart2DModifierType.ZoomExtents },
-            ],
-        });
+                    {
+                        type: EAnnotationType.SVGTextAnnotation,
+                        options: {
+                            text: "Create SciChart charts with JSON Objects",
+                            x1: 0.5,
+                            y1: 0.5,
+                            yCoordShift: 0,
+                            opacity: 0.33,
+                            xCoordinateMode: ECoordinateMode.Relative,
+                            yCoordinateMode: ECoordinateMode.Relative,
+                            horizontalAnchorPoint:
+                                EHorizontalAnchorPoint.Center,
+                            verticalAnchorPoint: EVerticalAnchorPoint.Center,
+                            fontSize: 36,
+                            fontWeight: "Bold",
+                        },
+                    },
+                ],
+                // Add interaction (zooming, panning, tooltips)
+                modifiers: [
+                    {
+                        type: EChart2DModifierType.Rollover,
+                        options: {
+                            yAxisId: "y1",
+                            rolloverLineStroke: appTheme.VividTeal,
+                        },
+                    },
+                    { type: EChart2DModifierType.MouseWheelZoom },
+                    { type: EChart2DModifierType.ZoomExtents },
+                ],
+            },
+        );
+        // .then((surface) => {
+        //     sciChartSurface = surface;
+        //     dataSeries = surface.renderableSeries.get(0).dataSeries;
+        //     console.log(
+        //         "SciChartSurface created using json:",
+        //         surface,
+        //         dataSeries,
+        //     );
+        // })
+        // .catch((err) => console.error("Error during initialization:", err));
     };
 
     const transformStorageEventData = (data) => {

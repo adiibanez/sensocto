@@ -51,7 +51,7 @@
         const calculatedPoints = [];
         for (let i = 0; i < data.length; i++) {
             const item = data[i];
-            const x = ((item.timestamp - startTime) / dataRange) * width * resolution;
+            const x = ((item.timestamp - startTime) / dataRange) * width;
             const y =
                 height - ((item.payload - minValue) / valueRange) * height;
             let point = { x: Math.floor(x), y: Math.floor(y) };

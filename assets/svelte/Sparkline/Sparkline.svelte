@@ -18,7 +18,7 @@
     let loggerCtxName = "Sparkline";
 
     export let id;
-    export let sensor_id;
+    export let identifier;
     export let is_loading = true;
     export let live;
 
@@ -107,7 +107,7 @@
 
     onMount(() => {
         logger.log(loggerCtxName, "onMount", window.livesocket, live);
-        //LiveSocket.pushEvent("request-seed", sensor_id);
+        //LiveSocket.pushEvent("request-seed", identifier);
 
         if (timewindow == undefined) {
             timewindow = 0.5 * 60 * 1000;
@@ -149,11 +149,11 @@
 
     const handleStorageWorkerEvent = (e) => {
         //const {type, eventData} = e.detail;
-        if (sensor_id === e?.detail?.data.id) {
+        if (identifier === e?.detail?.data.id) {
             logger.log(
                 loggerCtxName,
                 "handleStorageWorkerEvent",
-                sensor_id,
+                identifier,
                 e?.detail?.type,
                 e?.detail?.data?.length,
             );
@@ -183,7 +183,7 @@
                 logger.log(
                     loggerCtxName,
                     "handleStorageWorkerEvent: Unknown storage event",
-                    sensor_id,
+                    identifier,
                     e.detail,
                 ); // Log processed data.
             }
@@ -192,12 +192,15 @@
 
     const handleSeedDataEvent = (e) => {
         console.log("Here", e?.detail?.data?.length);
-        if (sensor_id == e?.detail?.sensor_id && e?.detail?.data?.length > 0) {
+        if (
+            identifier ==
+                e?.detail?.sensor_id + "_" + e?.detail?.attribute_id &&
+            e?.detail?.data?.length > 0
+        ) {
             logger.log(
                 loggerCtxName,
                 "handleSeedDataEvent",
-                sensor_id,
-                e?.detail?.sensor_id,
+                identifier,
                 e?.detail?.data?.length,
                 data?.length,
             );
@@ -213,18 +216,22 @@
                 newData?.forEach((item) => {
                     data = [...data, item];
                 });
-
             } else {
-                logger.log(loggerCtxName, "handleSeedDataEvent", "No data", e?.detail);
+                logger.log(
+                    loggerCtxName,
+                    "handleSeedDataEvent",
+                    "No data",
+                    e?.detail,
+                );
             }
-
 
             is_loading = false;
         }
     };
 
     const handleAccumulatorEvent = (e) => {
-        if (sensor_id === e?.detail?.id) {
+        console.log("Here", e?.detail?.id, identifier);
+        if (identifier === e?.detail?.id) {
             logger.log(
                 loggerCtxName,
                 "handleAccumulatorEvent",
@@ -240,7 +247,7 @@
                 logger.log(
                     loggerCtxName,
                     "handleAccumulatorEvent",
-                    sensor_id,
+                    identifier,
                     e.detail.data,
                     data?.length,
                 );
@@ -332,13 +339,19 @@
             {isResizing}
         ></Canvas>
 
-        <p>{new Date(minTimestamp).toLocaleTimeString('ch-DE')} - {new Date(maxTimestamp).toLocaleTimeString('ch-DE')}</p>
-        {#if false}
+        <p>
+            {new Date(minTimestamp).toLocaleTimeString("ch-DE")} - {new Date(
+                maxTimestamp,
+            ).toLocaleTimeString("ch-DE")}
+        </p>
+        {#if true}
             <p>
                 Sparkline: width: {width} maxsamples: {maxsamples} timewindow: {timewindow}
                 timemode:{timemode} samplingrate: {samplingrate}
 
                 data: {data?.length} Points: {test?.length} Resolution: {resolution}
+
+                {JSON.stringify(data)}
             </p>{/if}
     {/if}
 </div>

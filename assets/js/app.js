@@ -98,7 +98,7 @@ Hooks.SensorDataAccumulator = {
 
   workerEventListener(event) {
     const { type, data } = event;
-    //logger.log("Hooks.SensorDataAccumulator", "WORKER event", type, data);
+    logger.log("Hooks.SensorDataAccumulator", "WORKER event", type, data);
 
     const workerEvent = new CustomEvent('storage-worker-event', { id: data.id, detail: event.data });
     window.dispatchEvent(workerEvent);
@@ -106,17 +106,17 @@ Hooks.SensorDataAccumulator = {
 
   mounted() {
 
-    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensorid } });
+    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
 
     if ('pushEvent' in this) {
-      const payload = { "id": this.el.dataset.sensorid_raw, "attribute_id": this.el.dataset.sensortype };
+      const payload = { "id": this.el.dataset.sensor_id, "attribute_id": this.el.dataset.attribute_id };
       logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
 
       this.handleEvent("seeddata", (seed) => {
         console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
 
-        workerStorage.postMessage({ type: 'seed-data', data: { id: seed.sensor_id, seedData: seed.data } });
-        const seedEvent = new CustomEvent('seeddata-event', { id: seed.sensor_id, detail: seed });
+        workerStorage.postMessage({ type: 'seed-data', data: { id: seed.sensor_id + "_" + seed.attribute_id, seedData: seed.data } });
+        const seedEvent = new CustomEvent('seeddata-event', { id: seed.sensor_id + "_" + seed.attribute_id, detail: seed });
         window.dispatchEvent(seedEvent);
       });
 
@@ -129,7 +129,7 @@ Hooks.SensorDataAccumulator = {
   },
 
   destroyed() {
-    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensorid } });
+    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
   },
 
   updated() {
@@ -138,10 +138,14 @@ Hooks.SensorDataAccumulator = {
 
     if (this.el.dataset.append) {
       try {
-        //logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: About to send accumulator-data-event", this.el.dataset.sensorid);
+
+        let identifier = this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id;
+
+        logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: About to send accumulator-data-event", identifier);
         appendData = JSON.parse(this.el.dataset.append);
         // weird sparkline doesn't see the first id TODO debug resp, normalize with storage worker event
-        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: this.el.dataset.sensorid_raw, detail: { data: appendData, id: this.el.dataset.sensorid_raw } });
+
+        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: appendData, id: identifier } });
         window.dispatchEvent(accumulatorEvent);
       } catch (e) {
         logger.log("Hooks.SensorDataAccumulator", 'accumulator parsing error', this.el.dataset.append, e);
@@ -151,7 +155,7 @@ Hooks.SensorDataAccumulator = {
 }
 // add one listener for all components
 window.addEventListener('worker-requesthandler-event', function (event) {
-  //logger.log("Hooks.SensorDataAccumulator", 'worker-requesthandler-event', event.type, event.detail);
+  logger.log("Hooks.SensorDataAccumulator", 'worker-requesthandler-event', event.type, event.detail);
   workerStorage.postMessage({ type: event.detail.type, data: event.detail.data });
 }, false);
 

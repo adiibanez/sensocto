@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "ahrs": "1.1.8",
+    "date-fns": "^4.1.0",
     "esbuild-plugin-import-glob": "^0.1.1",
     "esbuild-svelte": "^0.9.0",
     "live_svelte": "file:../deps/live_svelte",
     "phoenix": "file:../deps/phoenix",
     "phoenix_html": "file:../deps/phoenix_html",
-    "phoenix_live_view": "file:../deps/phoenix_live_view"
+    "phoenix_live_view": "file:../deps/phoenix_live_view",
+    "scichart": "^3.5.711"
   }
 }

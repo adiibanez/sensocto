@@ -70,6 +70,10 @@ async function buildAndCopy() {
         await esbuild.build(optsClient);
         await esbuild.build(optsServer);
         copyFile("js/worker-storage.js", "../priv/static/assets/worker-storage.js");
+        copyFile("node_modules/scichart/_wasm/scichart3d.wasm", "../priv/static/assets/_wasm/scichart3d.wasm");
+        copyFile("node_modules/scichart/_wasm/scichart2d.wasm", "../priv/static/assets/_wasm/scichart2d.wasm");
+        copyFile("node_modules/scichart/_wasm/scichart3d.data", "../priv/static/assets/_wasm/scichart3d.data");
+        copyFile("node_modules/scichart/_wasm/scichart2d.data", "../priv/static/assets/_wasm/scichart2d.data");
     } catch (e) {
         console.error("Build error:", e);
         process.exit(1);

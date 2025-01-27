@@ -7,7 +7,7 @@
     } from "svelte";
 
     import { logger } from "../logger.js";
-    let loggerCtxName = 'Canvas';
+    let loggerCtxName = "Canvas";
 
     export let width = 300;
     export let height = 300;
@@ -63,14 +63,23 @@
         // Draw using new data
         if (!context || !points?.length) {
             // validation
-            logger.log(loggerCtxName, "CanvasLayer: No context or data to draw", id);
+            logger.log(
+                loggerCtxName,
+                "CanvasLayer: No context or data to draw",
+                id,
+            );
             return;
         }
 
         elapsed = Date.now() - lastRender;
 
         if (elapsed < 100) {
-            logger.log(loggerCtxName, "Canvas abort rendering", elapsed, renderId);
+            logger.log(
+                loggerCtxName,
+                "Canvas abort rendering",
+                elapsed,
+                renderId,
+            );
             cancelAnimationFrame(renderId);
         } else {
             logger.log(loggerCtxName, "Canvas rendering", elapsed, renderId);
@@ -96,8 +105,7 @@
     }
 
     function drawCanvas() {
-
-        if(document.querySelector(`body.resizing`) != undefined) {
+        if (document.querySelector(`body.resizing`) != undefined) {
             logger.log(loggerCtxName, "CanvasLayer: isResizing");
             return;
         }
@@ -106,14 +114,16 @@
         // Draw using new data
         if (!context || !points?.length) {
             // validation
-            logger.log(loggerCtxName, "CanvasLayer: No context or data to draw");
+            logger.log(
+                loggerCtxName,
+                "CanvasLayer: No context or data to draw",
+            );
             return;
         }
 
         // freeze canvas
         context.save();
 
-        
         context.clearRect(0, 0, width, height); // Start with clearing.
         //context.rect(20, 20, 150, 100);
         //context.stroke();
@@ -134,7 +144,8 @@
 
         // restore canvas
         context.restore();
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "CanvasLayer: Drawing",
             lastRender,
             Date.now(),
@@ -205,7 +216,10 @@
         });
     }}
 ></canvas>
-{#if false}<p {elapsed}>
+{#if true}<p {elapsed}>
         Canvas: {points.length}, width: {width}, height: {height}, elapsed: {elapsed}
+
+        {JSON.stringify(points)}
+
         {lastRender}
     </p>{/if}

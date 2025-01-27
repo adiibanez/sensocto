@@ -19,9 +19,9 @@
     export let samplingrate;
     export let highlighted_areas = [];
     let resolution = 3;
-    $: maxsamples = width / resolution;//samplingrate / resolution * width;
+    $: maxsamples = width / resolution; //samplingrate / resolution * width;
 
-    export let sensor_id;
+    export let identifier;
     export let is_loading;
 
     let canvasElement;
@@ -74,7 +74,7 @@
         // Draw a text for the X axis
         ctx.fillStyle = color;
         const minTimestamp = Math.min(...timestamps);
-       const maxTimestamp = Math.max(...timestamps);
+        const maxTimestamp = Math.max(...timestamps);
         ctx.fillText("Time", canvasWidth - (padding + 20), canvasHeight - 5);
 
         // Draw highlighted areas
@@ -94,53 +94,54 @@
         //         canvasHeight - padding * 2,
         //     );
         // }
-        
-       if(data.length > 0)
-        ctx.beginPath();
+
+        if (data.length > 0) ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
 
-       data.forEach((point, index) => {
+        data.forEach((point, index) => {
+            let normalizedValue =
+                range == 0 ? 1 : (point.payload - minValue) / range;
+            let y =
+                canvasHeight -
+                (normalizedValue * (canvasHeight - padding * 2) + padding);
 
-         let normalizedValue = range == 0 ? 1 : (point.payload - minValue) / range
-          let y =
-            canvasHeight -
-            (normalizedValue * (canvasHeight - padding * 2) + padding);
-
-         let x =
-             (point.timestamp - minTimestamp) / (maxTimestamp-minTimestamp) *
-               (canvasWidth - padding * 2) +
-              padding;
+            let x =
+                ((point.timestamp - minTimestamp) /
+                    (maxTimestamp - minTimestamp)) *
+                    (canvasWidth - padding * 2) +
+                padding;
 
             if (index === 0) {
-              ctx.moveTo(x, y);
+                ctx.moveTo(x, y);
             } else {
-               ctx.lineTo(x, y);
+                ctx.lineTo(x, y);
             }
 
-            logger.log(loggerCtxName, "drawEcg", x, y, point.payload, point.timestamp);
+            logger.log(
+                loggerCtxName,
+                "drawEcg",
+                x,
+                y,
+                point.payload,
+                point.timestamp,
+            );
         });
         ctx.stroke();
         ctx.restore();
     }
 
     $: if (canvasElement && data) {
-        drawEcg(
-            canvasElement,
-            data,
-            color,
-            backgroundColor,
-            highlighted_areas,
-        );
+        drawEcg(canvasElement, data, color, backgroundColor, highlighted_areas);
     }
 
     const handleStorageWorkerEvent = (e) => {
         //const {type, eventData} = e.detail;
-        if (sensor_id === e?.detail?.data.id) {
+        if (identifier === e?.detail?.data.id) {
             logger.log(
                 loggerCtxName,
                 "handleStorageWorkerEvent",
-                sensor_id,
+                identifier,
                 e?.detail?.type,
                 e?.detail?.data?.length,
             );
@@ -170,7 +171,7 @@
                 logger.log(
                     loggerCtxName,
                     "handleStorageWorkerEvent: Unknown storage event",
-                    sensor_id,
+                    identifier,
                     e.detail,
                 ); // Log processed data.
             }
@@ -178,12 +179,12 @@
     };
 
     const handleSeedDataEvent = (e) => {
-        if (sensor_id == e?.detail?.sensor_id) {
+        if (identifier == e?.detail?.identifier) {
             logger.log(
                 loggerCtxName,
                 "handleSeedDataEvent",
-                sensor_id,
-                e?.detail?.sensor_id,
+                identifier,
+                e?.detail?.identifier,
                 e?.detail?.data?.length,
                 data?.length,
             );
@@ -200,7 +201,7 @@
     };
 
     const handleAccumulatorEvent = (e) => {
-        if (sensor_id === e?.detail?.id) {
+        if (identifier === e?.detail?.id) {
             logger.log(
                 loggerCtxName,
                 "handleAccumulatorEvent",
@@ -216,7 +217,7 @@
                 logger.log(
                     loggerCtxName,
                     "handleAccumulatorEvent",
-                    sensor_id,
+                    identifier,
                     e.detail.data,
                     data?.length,
                 );
@@ -232,7 +233,8 @@
     on:accumulator-data-event={handleAccumulatorEvent}
     on:seeddata-event={handleSeedDataEvent}
 />
-ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution}, data: {data.length}
+ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution},
+data: {data.length}
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvasElement} {width} {height} />
 </div>

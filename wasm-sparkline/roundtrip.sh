@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Stop any running container first with the same name
-#docker stop wasm-sparkline 2> /dev/null || true
+docker stop wasm-sparkline 2> /dev/null || true
 
 #Remove image
-#docker image rm wasm-sparkline 2> /dev/null || true
+docker image rm wasm-sparkline 2> /dev/null || true
 
 
 # miniserve -p 8081 ./

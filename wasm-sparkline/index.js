@@ -1,4 +1,4 @@
-import init, { draw_sparkline } from './pkg/your_project_name.js'; // Adjust path
+import init, { draw_sparkline } from './pkg/sparkline.js'; // Adjust path
 
 async function run() {
   await init();

@@ -1,0 +1,16 @@
+[package]
+name = "wasm-sparkline" # The name of your package
+version = "0.1.0"
+edition = "2021"
+description = "A simple sparkline visualization in WebAssembly"
+license = "MIT" # Replace with your preferred license
+
+[lib]
+crate-type = ["cdylib", "rlib"] # We want to generate a wasm library
+
+[dependencies]
+wasm-bindgen = "0.2" # Used for JS <-> wasm bindings
+# Add other dependencies here if needed
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false # Optional: disable wasm optimization for release builds for faster builds during dev.

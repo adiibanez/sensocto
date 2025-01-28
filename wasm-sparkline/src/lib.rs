@@ -9,6 +9,7 @@ extern "C" {
     #[wasm_bindgen(js_namespace = console, js_name = log)]
       fn log_object(x: &JsValue);
 
+
     #[wasm_bindgen(extends = js_sys::Object, js_name = CanvasRenderingContext2D)]
     #[derive(Debug, Clone, PartialEq, Eq)]
     type CanvasRenderingContext2d;
@@ -28,11 +29,12 @@ extern "C" {
     #[wasm_bindgen(method, js_name = clearRect)]
     fn clear_rect(this: &CanvasRenderingContext2d, x: f64, y: f64, width: f64, height: f64);
 
-    //#[wasm_bindgen(method, js_name = setStrokeStyle)]
-    //fn set_stroke_style(this: &CanvasRenderingContext2d, color: &str);
+    //Use the property names to set the styles instead of hallucinating method calls.
+    #[wasm_bindgen(method, setter, js_name = strokeStyle)]
+    fn set_stroke_style(this: &CanvasRenderingContext2d, color: &str);
 
-    //#[wasm_bindgen(method, js_name = setLineWidth)]
-    //fn set_line_width(this: &CanvasRenderingContext2d, width: f64);
+    #[wasm_bindgen(method, setter, js_name = lineWidth)]
+    fn set_line_width(this: &CanvasRenderingContext2d, width: f64);
     
     #[wasm_bindgen(method, js_name = setLineDash)]
     fn set_line_dash(this: &CanvasRenderingContext2d, segments: &[f64]);
@@ -93,8 +95,9 @@ pub fn draw_sparkline(
 
     // Clear canvas
     ctx.clear_rect(0.0, 0.0, width as f64, height as f64);
-    //ctx.set_stroke_style(line_color);
-    //ctx.set_line_width(line_width);
+    // Set the property values for style and width
+    ctx.set_stroke_style(line_color);
+    ctx.set_line_width(line_width);
    
     let mut data_points: Vec<DataPoint> = Vec::new();
 
@@ -176,6 +179,8 @@ pub fn draw_sparkline(
 
                        ctx.rect(x - 5f64, 0f64, 5f64, height_f64);
                        ctx.stroke();
+                
+                    
                 }
             
            }

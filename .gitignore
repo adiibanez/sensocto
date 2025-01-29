@@ -49,3 +49,7 @@ npm-debug.log
 /rel
 
 /wasm-sparkline/target
+
+__pycache__/
+
+.ipynb_checkpoints/

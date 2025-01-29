@@ -2,6 +2,8 @@ const esbuild = require("esbuild");
 const sveltePlugin = require("esbuild-svelte");
 const importGlobPlugin = require("esbuild-plugin-import-glob").default;
 const sveltePreprocess = require("svelte-preprocess");
+const { wasmLoader } = require('esbuild-plugin-wasm')
+
 const fs = require('fs');
 const path = require('path');
 
@@ -12,7 +14,7 @@ const deploy = args.includes("--deploy");
 let optsClient = {
     entryPoints: [
         "js/app.js",
-        //"js/sparkline-element.js",
+        //"js/sparkline-wasm-element.js",
         // ... add any other custom entry points ...
     ],
     bundle: true,
@@ -25,12 +27,31 @@ let optsClient = {
     tsconfig: "./tsconfig.json",
     plugins: [
         importGlobPlugin(),
+
         sveltePlugin({
             preprocess: sveltePreprocess(),
             compilerOptions: { dev: !deploy, hydratable: true, css: "injected", customElement: true },
         }),
+
+        wasmLoader(
+            {
+                // (Default) Deferred mode copies the WASM binary to the output directory,
+                // and then `fetch()`s it at runtime. This is the default mode.
+                mode: 'deferred'
+
+                // Embedded mode embeds the WASM binary in the javascript bundle as a
+                // base64 string. Note this will greatly bloat the resulting bundle
+                // (the binary will take up about 30% more space this way)
+                //  mode: 'embedded'
+            })
+
     ],
     assetNames: "/js/[name]", // New: Create /js subdirectory inside /assets.
+    //loader: {
+    //'.wasm': 'file'
+    //},
+    target: 'es2022',
+    format: 'esm'
 };
 
 let optsServer = {
@@ -70,6 +91,10 @@ async function buildAndCopy() {
         await esbuild.build(optsClient);
         await esbuild.build(optsServer);
         copyFile("js/worker-storage.js", "../priv/static/assets/worker-storage.js");
+        copyFile("js/sparkline-wasm-element.js", "../priv/static/assets/sparkline-wasm-element.js");
+        copyFile("../wasm-sparkline/pkg/sparkline.js", "../priv/static/assets/sparkline.js");
+        copyFile("../wasm-sparkline/pkg/sparkline_bg.wasm", "../priv/static/assets/sparkline_bg.wasm");
+        copyFile("../wasm-sparkline/pkg/sparkline_bg.wasm.d.ts", "../priv/static/assets/sparkline_bg.wasm.d.ts");
         // copyFile("node_modules/scichart/_wasm/scichart3d.wasm", "../priv/static/assets/_wasm/scichart3d.wasm");
         // copyFile("node_modules/scichart/_wasm/scichart2d.wasm", "../priv/static/assets/_wasm/scichart2d.wasm");
         // copyFile("node_modules/scichart/_wasm/scichart3d.data", "../priv/static/assets/_wasm/scichart3d.data");

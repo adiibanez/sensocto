@@ -156,8 +156,11 @@ defmodule SensoctoWeb.SensorDataChannel do
            :timestamp => timestamp,
            :payload => payload
          }) do
-      _ ->
+      :ok ->
         Logger.debug("SimpleSensor data sent uuuid: #{uuid}, #{timestamp}, #{payload}")
+
+      _ ->
+        Logger.warning("SimpleSensor data error")
 
       # {:noreply, socket}
       {:error, _} ->

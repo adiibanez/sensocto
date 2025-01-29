@@ -7,7 +7,7 @@
 
     export let data = [];
     export let width = 200;
-    export let height = 80;
+    export let height = 60;
     export let is_loading;
 
     export let samplingrate;
@@ -23,7 +23,7 @@
     let canvas;
     let chart;
     export let color = "#007bff";
-    export let showAxis = false;
+    export let showAxis = true;
     export let xFormat = "HH:mm:ss";
     export let label = "";
 
@@ -136,8 +136,8 @@
                 ],
             },
             options: {
-                responsive: false,
-                maintainAspectRatio: false,
+                responsive: true,
+                maintainAspectRatio: true,
                 scales: {
                     x: {
                         display: showAxis,
@@ -147,10 +147,17 @@
                         },
                     },
                     y: {
+                        //suggestedMin: 20,
+                        //suggestedMax: 180,
                         display: showAxis,
                         title: {
                             display: showAxis,
                             text: "Value",
+                        },
+                        ticks: {
+                            beginAtZero: true,
+                            //steps: 100,
+                            //stepValue: 1,
                         },
                     },
                 },
@@ -303,6 +310,7 @@
                 loggerCtxName,
                 "handleAccumulatorEvent",
                 "loading: " + is_loading,
+                e,
                 typeof e.detail,
                 e.detail,
                 e?.detail?.data,

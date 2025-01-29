@@ -81,7 +81,8 @@ defmodule Sensocto.MixProject do
       {:flex_logger, "~> 0.2.1"},
       {:dialyxir, "~> 0.4", only: [:dev]},
       {:nimble_csv, "~> 1.1", only: [:dev]},
-      {:brotli, "~> 0.3.2", only: [:dev]}
+      {:brotli, "~> 0.3.2", only: [:dev]},
+      {:mishka_chelekom, "~> 0.0.2", only: :dev}
       # {:sensocto_elixir_simulator, path: "./simulator/sensocto_elixir_simulator", app: false}
     ]
   end

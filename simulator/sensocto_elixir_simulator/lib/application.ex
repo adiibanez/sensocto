@@ -66,14 +66,14 @@ defmodule Sensocto.Simulator.Application do
       batch_size: 1,
       connector_id: "22222",
       connector_name: "SensoctoSim",
-      sensor_type: "ecg",
+      sensor_type: "heartrate",
       duration: 30,
-      sampling_rate: 100,
+      sampling_rate: 1,
       heart_rate: 100,
       respiratory_rate: 30,
       scr_number: 5,
       burst_number: 5,
-      sensor_type: "ecg"
+      sensor_type: "heartrate"
     }
   ]
 
@@ -82,19 +82,19 @@ defmodule Sensocto.Simulator.Application do
 
     children = [
       SensorSimulatorSupervisor,
-      #%{id: :test, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
+      # %{id: :test, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
       %{id: :data_server_1, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
       %{id: :data_server_2, start: {Sensocto.BiosenseData.GenServer, :start_link, [2]}},
       %{id: :data_server_3, start: {Sensocto.BiosenseData.GenServer, :start_link, [3]}},
       %{id: :data_server_4, start: {Sensocto.BiosenseData.GenServer, :start_link, [4]}},
       %{id: :data_server_5, start: {Sensocto.BiosenseData.GenServer, :start_link, [5]}},
-      #{Sensocto.BiosenseData.GenServer, [1], id: "biosense_data_server_1"},
-      #{Sensocto.BiosenseData.GenServer, [2], id: "biosense_data_server_2"},
-      #{Sensocto.BiosenseData.GenServer, [3], id: "biosense_data_server_3"},
-      #{Sensocto.BiosenseData.GenServer, [4], id: "biosense_data_server_4"},
-      #{Sensocto.BiosenseData.GenServer, [5], id: "biosense_data_server_5"},
+      # {Sensocto.BiosenseData.GenServer, [1], id: "biosense_data_server_1"},
+      # {Sensocto.BiosenseData.GenServer, [2], id: "biosense_data_server_2"},
+      # {Sensocto.BiosenseData.GenServer, [3], id: "biosense_data_server_3"},
+      # {Sensocto.BiosenseData.GenServer, [4], id: "biosense_data_server_4"},
+      # {Sensocto.BiosenseData.GenServer, [5], id: "biosense_data_server_5"},
       {Registry, keys: :unique, name: Sensocto.RegistryWorkers},
-      {Registry, keys: :unique, name: SensorSimulatorRegistry},
+      {Registry, keys: :unique, name: SensorSimulatorRegistry}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

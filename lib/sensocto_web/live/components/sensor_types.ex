@@ -2,6 +2,8 @@ defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
   alias SensoctoWeb.Components.SensorTypes.BaseComponent
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
+  import SensoctoWeb.Live.BaseComponents
+  alias SensoctoWeb.Live.BaseComponents
   require Logger
 
   def mount(_params, _session, socket) do
@@ -117,24 +119,11 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
   require Logger
 
   def render(assigns) do
+    import SensoctoWeb.Live.BaseComponents
+
     ~H"""
     <div class="m-0 p-0">
-      <div class="m-0 p-2">
-        <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}
-        </p>
-        <p>Type: {assigns.sensor_data.sensor_type}</p>
-        <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
-        <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
-        <button
-          class="btn"
-          phx-click="clear-attribute"
-          phx-value-sensor_id={assigns.sensor_data.sensor_id}
-          phx-value-attribute_id={assigns.sensor_data.attribute_id}
-        >
-          Clear
-        </button>
-      </div>
+      <.render_sensor_header sensor={assigns.sensor_data}></.render_sensor_header>
       
     <!--<sensocto-sparkline
         is_loading="true"

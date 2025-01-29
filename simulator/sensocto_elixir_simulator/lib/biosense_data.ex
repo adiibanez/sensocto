@@ -87,7 +87,7 @@ defmodule Sensocto.BiosenseData do
                     {:ok, data}
                   end).()
 
-                  # bubble errors
+              # bubble errors
 
               #     IO.puts("Error executing python script")
               #     {output, status} ->
@@ -95,12 +95,11 @@ defmodule Sensocto.BiosenseData do
               # IO.inspect(status)
               # :error
           end).()
-
     rescue
       e ->
         IO.puts("Error executing python script")
         IO.inspect(e)
-        #:error
+        # :error
     end
   end
 end

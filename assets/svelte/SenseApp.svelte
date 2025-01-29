@@ -7,6 +7,8 @@
     import GeolocationClient from "./GeolocationClient.svelte";
     import BatterystatusClient from "./BatterystatusClient.svelte";
     import PushButtonClient from "./PushButtonClient.svelte";
+
+    import Map from "./GoogleMaps/Map.svelte";
     /*import Sparkline from "./Sparkline.svelte";
 
     let timeMode = "absolute";
@@ -80,12 +82,14 @@
     */
     //import DbAnalyzerClient from './DbAnalyzerClient.svelte';
 
+    export let live;
+
     let socket = null;
     // ... other variables
 
     onMount(() => {
         // Initialize socket connection here
-        console.log("initialize socket in SenseApp");
+        console.log("initialize socket in SenseApp", live);
         socket = new Socket("/socket", {
             params: { user_token: "some_token" },
         });
@@ -115,6 +119,8 @@
     <BatterystatusClient />
     <PushButtonClient />
 </SensorService>
+
+<Map></Map>
 
 <!--<textarea style="color:black">{JSON.stringify(sparklineData, null, 4)}</textarea
 >

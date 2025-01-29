@@ -38,6 +38,8 @@ defmodule SensoctoWeb.Router do
     # live "/sensors/:id/edit", SensorLive.Index, :edit
     # live "/sensors/:id", SensorLive.Index, :show
 
+    live "/playground", Live.PlaygroundLive, :index
+
     ash_authentication_live_session :authentication_required,
       on_mount: {LiveUserAuth, :live_user_required} do
       live "/", IndexLive, :index
@@ -45,7 +47,6 @@ defmodule SensoctoWeb.Router do
       live "/sensors", SensorLive.Index, :index
       live "/sensors/:id", SensorLive.Show, :show
       live "/sensors/:id/edit", SensorLive.Show, :edit
-
     end
 
     auth_routes(Controllers.AuthController, Sensocto.Accounts.User, path: "/auth")

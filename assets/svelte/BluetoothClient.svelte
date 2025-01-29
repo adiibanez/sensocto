@@ -6,10 +6,10 @@
         onMount,
     } from "svelte";
 
-    import {logger} from "./logger.js";
+    import { logger } from "./logger.js";
 
     let sensorService = getContext("sensorService");
-    let loggerCtxName = 'BluetoothClient';
+    let loggerCtxName = "BluetoothClient";
 
     export let devices = [];
     export let deviceCharacteristics = {};
@@ -54,8 +54,8 @@
                 const sensorSamplingRate = getDeviceSamplingRate(device);
 
                 const metadata = {
-                    sensor_name: getUniqueDeviceId(device),
-                    sensor_id: device.id,
+                    sensor_name: getUniqueDeviceName(device),
+                    sensor_id: getUniqueDeviceId(device),
                     sensor_type: sensorType,
                     sampling_rate: sensorSamplingRate,
                 };
@@ -82,7 +82,8 @@
                                     undefined ==
                                     characteristic.startNotifications
                                 ) {
-                                    logger.log(loggerCtxName, 
+                                    logger.log(
+                                        loggerCtxName,
                                         "startNotifications not supported, requires polling fallback",
                                     );
                                 }
@@ -105,36 +106,52 @@
     }
 
     function handleCharacteristic(characteristic) {
-        logger.log(loggerCtxName, "> Service UUID:", characteristic.service.uuid);
-        logger.log(loggerCtxName, "> Characteristic UUID:  " + characteristic.uuid);
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
+            "> Service UUID:",
+            characteristic.service.uuid,
+        );
+        logger.log(
+            loggerCtxName,
+            "> Characteristic UUID:  " + characteristic.uuid,
+        );
+        logger.log(
+            loggerCtxName,
             "> Broadcast:            " + characteristic.properties.broadcast,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Read:                 " + characteristic.properties.read,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Write w/o response:   " +
                 characteristic.properties.writeWithoutResponse,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Write:                " + characteristic.properties.write,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Notify:               " + characteristic.properties.notify,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Indicate:             " + characteristic.properties.indicate,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Signed Write:         " +
                 characteristic.properties.authenticatedSignedWrites,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Queued Write:         " +
                 characteristic.properties.reliableWrite,
         );
-        logger.log(loggerCtxName, 
+        logger.log(
+            loggerCtxName,
             "> Writable Auxiliaries: " +
                 characteristic.properties.writableAuxiliaries,
         );
@@ -150,22 +167,26 @@
 
                     if (
                         deviceCharacteristics[
-                            characteristic.service.device.id
+                            getUniqueDeviceId(characteristic.service.device)
                         ] == undefined
                     ) {
                         deviceCharacteristics[
-                            characteristic.service.device.id
+                            getUniqueDeviceId(characteristic.service.device)
                         ] = [];
                     }
                     deviceCharacteristics[
-                        characteristic.service.device.id
+                        getUniqueDeviceId(characteristic.service.device)
                     ].push(characteristic);
 
-                    logger.log(loggerCtxName, 
+                    logger.log(
+                        loggerCtxName,
                         "deviceCharacteristics",
-                        deviceCharacteristics[characteristic.service.device.id],
+                        deviceCharacteristics[
+                            getUniqueDeviceId(characteristic.service.device)
+                        ],
                     );
-                    logger.log(loggerCtxName, 
+                    logger.log(
+                        loggerCtxName,
                         "Subscribed to" + characteristic.uuid,
                         characteristic,
                     );
@@ -174,11 +195,15 @@
                 })
                 .then((characteristic) => {
                     if (characteristic.properties.read == true) {
-                        logger.log(loggerCtxName, "Reading" + characteristic.uuid + "...");
+                        logger.log(
+                            loggerCtxName,
+                            "Reading" + characteristic.uuid + "...",
+                        );
                         return characteristic
                             .readValue()
                             .then((valueObj) => {
-                                logger.log(loggerCtxName, 
+                                logger.log(
+                                    loggerCtxName,
                                     "Characteristic value:",
                                     characteristic.uuid,
                                     valueObj,
@@ -196,7 +221,8 @@
                     }
                 })
                 .catch((error) => {
-                    logger.log(loggerCtxName, 
+                    logger.log(
+                        loggerCtxName,
                         "Argh! " + characteristic.name + " error: " + error,
                     );
                 });
@@ -225,8 +251,8 @@
                 sensorValue = v.getInt8(1);
                 break;
             case "00002a19-0000-1000-8000-00805f9b34fb":
-                // Movesense battery
-                sensorValue = v.getInt8(0);
+                // Movesense battery, ignore
+                //sensorValue = v.getInt8(0);
                 break;
             case "feb7cb83-e359-4b57-abc6-628286b7a79b":
                 // flexsense
@@ -234,11 +260,21 @@
                 debounce = true;
                 break;
             default:
-                logger.log(loggerCtxName, "unknown characteristic", event.target.uuid, v);
+                logger.log(
+                    loggerCtxName,
+                    "unknown characteristic",
+                    event.target.uuid,
+                    v,
+                );
         }
 
         if (sensorValue !== null) {
-            logger.log(loggerCtxName, "sensorValue", event.target.uuid, sensorValue);
+            logger.log(
+                loggerCtxName,
+                "sensorValue",
+                event.target.uuid,
+                sensorValue,
+            );
 
             var payLoad = {
                 payload: sensorValue,
@@ -264,22 +300,26 @@
 
     async function onDisconnected(event) {
         var device = event.target;
-        logger.log(loggerCtxName, 
-            "> Bluetooth Device disconnected " + device.name,
-            device.id,
+        logger.log(
+            loggerCtxName,
+            "> Bluetooth Device disconnected " + getUniqueDeviceName(device),
+            getUniqueDeviceId(device),
         );
         // TODO adjust to send arbitrary message types sensorService.sendChannelMessage(getUniqueDeviceId(event.target.service.device.id)).push("disconnect", {"deviceid": device.id});
         ensureDeviceCleanup(device);
     }
 
     function ensureDeviceCleanup(device) {
-
         logger.log(loggerCtxName, "Device disconnected", device?.id, device);
         return;
 
         try {
-            if (device?.id && deviceCharacteristics?.length && Array.isArray(deviceCharacteristics[device.id])) {
-                deviceCharacteristics[device.id].forEach(
+            if (
+                getUniqueDeviceId(device) &&
+                deviceCharacteristics?.length &&
+                Array.isArray(deviceCharacteristics[getUniqueDeviceId(device)])
+            ) {
+                deviceCharacteristics[getUniqueDeviceId(device)].forEach(
                     function (characteristic) {
                         if (characteristic) {
                             characteristic.removeEventListener(
@@ -287,13 +327,14 @@
                                 handleCharacteristicChanged,
                             );
                             //await characteristic.stopNotifications();
-                            logger.log(loggerCtxName, 
+                            logger.log(
+                                loggerCtxName,
                                 "Notifications stopped and listener removed.",
                             );
                         }
                     },
                 );
-                delete deviceCharacteristics[device.id];
+                delete deviceCharacteristics[getUniqueDeviceId(device)];
             }
 
             var channelName = getUniqueDeviceId(device);
@@ -301,7 +342,8 @@
             sensorService.leaveChannel(channelName);
 
             devices = devices.filter((d) => d.id !== device.id);
-            logger.log(loggerCtxName, 
+            logger.log(
+                loggerCtxName,
                 "Devices after cleanup: ",
                 devices,
                 deviceCharacteristics,
@@ -313,18 +355,32 @@
 
     async function disconnectBLEDevice(device) {
         if (device.gatt.connected) {
-            logger.log(loggerCtxName, "Device still connected", device);
+            logger.log(
+                loggerCtxName,
+                "Device still connected",
+                getUniqueDeviceName(device),
+            );
             device.gatt.disconnect();
         } else {
-            logger.log(loggerCtxName, "Device is already disconnected.");
+            logger.log(
+                loggerCtxName,
+                "Device is already disconnected.",
+                getUniqueDeviceName(device),
+            );
         }
     }
 
-    function getUniqueDeviceId(device) {
+    function getUniqueDeviceName(device) {
         if (device.name.startsWith("Movesense")) {
             return device.name;
         }
         return sensorService.getDeviceId() + ":" + device.name;
+    }
+
+    function getUniqueDeviceId(device) {
+        let name = getUniqueDeviceName(device);
+
+        return name.replace(" ", "_");
     }
 
     function getDeviceSamplingRate(device) {
@@ -362,10 +418,12 @@
     <ul class="py-3">
         {#each devices as device}
             <li>
-                <strong alt="ID: {device.id}">{device.name}</strong>
+                <strong alt="ID: {getUniqueDeviceId(device)}"
+                    >{getUniqueDeviceName(device)}</strong
+                >
                 <ul>
-                    {#if deviceCharacteristics[device.id]}
-                        {#each deviceCharacteristics[device.id] as characteristic}
+                    {#if deviceCharacteristics[getUniqueDeviceId(device)]}
+                        {#each deviceCharacteristics[getUniqueDeviceId(device)] as characteristic}
                             <li class="text-xs">
                                 <p data-tooltip={characteristic.uuid}>
                                     {characteristicValues[characteristic.uuid]}

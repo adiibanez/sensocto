@@ -6,8 +6,16 @@
     <meta name="csrf-token" content={get_csrf_token()} />
     <title>Sensocto | LiveView</title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"} type="module">
     </script>
+    
+<!--<script
+      defer
+      phx-track-static
+      type="text/javascript"
+      src={~p"/assets/sparkline-wasm-element.js"}
+    >
+    </script>-->
   </head>
   <body class="h-full text-white font-mono">
     <header class="bg-gray-800 p-4 flex justify-between items-center">
@@ -19,6 +27,4 @@
     </header>
     {@inner_content}
   </body>
-  <!--<script src="https://cdn.rawgit.com/fnando/sparkline/master/dist/sparkline.js">
-    </script>-->
 </html>

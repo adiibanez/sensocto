@@ -10,12 +10,44 @@ module.exports = {
     "./js/**/*.js",
     "../lib/sensocto_web.ex",
     "../lib/sensocto_web/**/*.*ex",
-    "../deps/ash_authentication_phoenix/**/*.*ex", 
+    "../deps/ash_authentication_phoenix/**/*.*ex",
   ],
   theme: {
     extend: {
       colors: {
         brand: "#FD4F00",
+        primary: {
+          50: '#ffffff',
+          100: '#ffffff',
+          200: '#ffdecf',
+          300: '#ffbb9c',
+          400: '#ff9769',
+          500: '#ff7436',
+          600: '#ff5103',
+          700: '#cf4000',
+          800: '#9c3000',
+          900: '#692000',
+          950: '#4f1900'
+        },
+        'near-black': '#1a1a1a',
+        'dark-gray': '#2b2b2b',
+        'light-gray': '#f0f0f0',
+        'medium-gray': '#999999',
+        'orange': '#ffa500',
+        'hover-orange': '#ffb347',
+        'deep-blue': '#121b28',
+        'medium-blue': '#1e2c3a',
+        'coral': '#ff7f50',
+        'hover-coral': '#ff9c74',
+        'charcoal': '#222222',
+        'dark-charcoal': '#2e2e2e',
+        'off-white': '#f5f5f5',
+        'amber': '#ffc107',
+        'hover-amber': '#ffca3a',
+        'slate': '#374151',
+        'medium-slate': '#4b5563',
+        'burnt-orange': '#e2725b',
+        'hover-burnt-orange': '#e88b78',
       }
     },
   },
@@ -26,15 +58,15 @@ module.exports = {
     //
     //     <div class="phx-click-loading:animate-ping">
     //
-    plugin(({addVariant}) => addVariant("phx-no-feedback", [".phx-no-feedback&", ".phx-no-feedback &"])),
-    plugin(({addVariant}) => addVariant("phx-click-loading", [".phx-click-loading&", ".phx-click-loading &"])),
-    plugin(({addVariant}) => addVariant("phx-submit-loading", [".phx-submit-loading&", ".phx-submit-loading &"])),
-    plugin(({addVariant}) => addVariant("phx-change-loading", [".phx-change-loading&", ".phx-change-loading &"])),
+    plugin(({ addVariant }) => addVariant("phx-no-feedback", [".phx-no-feedback&", ".phx-no-feedback &"])),
+    plugin(({ addVariant }) => addVariant("phx-click-loading", [".phx-click-loading&", ".phx-click-loading &"])),
+    plugin(({ addVariant }) => addVariant("phx-submit-loading", [".phx-submit-loading&", ".phx-submit-loading &"])),
+    plugin(({ addVariant }) => addVariant("phx-change-loading", [".phx-change-loading&", ".phx-change-loading &"])),
 
     // Embeds Heroicons (https://heroicons.com) into your app.css bundle
     // See your `CoreComponents.icon/1` for more information.
     //
-    plugin(function({matchComponents, theme}) {
+    plugin(function ({ matchComponents, theme }) {
       let iconsDir = path.join(__dirname, "../deps/heroicons/optimized")
       let values = {}
       let icons = [
@@ -46,11 +78,11 @@ module.exports = {
       icons.forEach(([suffix, dir]) => {
         fs.readdirSync(path.join(iconsDir, dir)).forEach(file => {
           let name = path.basename(file, ".svg") + suffix
-          values[name] = {name, fullPath: path.join(iconsDir, dir, file)}
+          values[name] = { name, fullPath: path.join(iconsDir, dir, file) }
         })
       })
       matchComponents({
-        "hero": ({name, fullPath}) => {
+        "hero": ({ name, fullPath }) => {
           let content = fs.readFileSync(fullPath).toString().replace(/\r?\n|\r/g, "")
           let size = theme("spacing.6")
           if (name.endsWith("-mini")) {
@@ -70,7 +102,7 @@ module.exports = {
             "height": size
           }
         }
-      }, {values})
+      }, { values })
     })
   ]
 }

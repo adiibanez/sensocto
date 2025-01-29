@@ -27,7 +27,6 @@ import { getHooks } from "live_svelte"
 import * as Components from "../svelte/**/*.svelte"
 
 window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random());
-
 let Hooks = {}
 
 Hooks.ResizeDetection = {
@@ -109,6 +108,14 @@ Hooks.SensorDataAccumulator = {
     workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
 
     if ('pushEvent' in this) {
+
+      this.handleEvent("measurement", (measurement) => {
+        let identifier = measurement.sensor_id + "_" + measurement.attribute_id;
+        logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement", identifier, measurement);
+        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: measurement, id: identifier } });
+        window.dispatchEvent(accumulatorEvent);
+      });
+
       const payload = { "id": this.el.dataset.sensor_id, "attribute_id": this.el.dataset.attribute_id };
       logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
 
@@ -132,11 +139,13 @@ Hooks.SensorDataAccumulator = {
     workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
   },
 
+
+
   updated() {
 
     //logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: Update event", typeof this.el.dataset.append, this.el.dataset.append);
 
-    if (this.el.dataset.append) {
+    if (false && this.el.dataset.append) {
       try {
 
         let identifier = this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id;

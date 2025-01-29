@@ -42,14 +42,44 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
     {:noreply, assign(socket, :sensors, updated_sensors)}
   end
 
+  def render_(assigns) do
+    ~H"""
+    <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div
+        class="flex flex-col  rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 cursor-pointer bg-dark-gray text-light-gray"
+        class:col-span-2={true}
+        class:row-span-2={true}
+      >
+        <div class="flex-1">
+          <div class="font-bold text-orange sm:text-xl md:text-2xl mb-2">Test</div>
+          <div class="text-sm sm:text-base mb-4 text-medium-gray">Test</div>
+          <div class="h-24 sm:h-32 md:h-40 border border-dark-gray rounded-md bg-medium-gray"></div>
+        </div>
+        <div class="mt-4 sm:mt-6 md:mt-8 text-sm sm:text-base text-medium-gray">
+          Test
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   def render(assigns) do
     ~H"""
-    <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-8 xl:gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+    <!--<script defer phx-track-static type="text/javascript" src={~p"/assets/sparkline.js"}>
+    </script>-->
+    <!--<sensocto-sparkline-wasm></sensocto-sparkline-wasm>-->
+
+    <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
       <div
         :for={{id, sensor} <- @sensors}
-        class="flex flex-col  rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-8 xl:p-8 cursor-pointer bg-dark-gray text-light-gray"
-        class:col-span-2={sensor.highlighted}
-        class:row-span-2={sensor.highlighted}
+        class="flex flex-col  rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 cursor-pointer bg-dark-gray text-light-gray"
+        style={
+          if sensor.highlighted do
+            "grid-column: span 2; grid-row: span 1;"
+          else
+            ""
+          end
+        }
         phx-click="set_highlight"
         phx-value-id={id}
       >
@@ -65,6 +95,11 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
           {inspect(sensor)}
         </div>
       </div>
+    </div>
+    <div class="grid grid-cols-4 gap-4">
+      <div class="col-span-1 bg-blue-200 p-4">1</div>
+      <div class="col-span-2 bg-green-200 p-4">2</div>
+      <div class="col-span-1 bg-red-200 p-4">3</div>
     </div>
     """
   end

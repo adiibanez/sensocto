@@ -20,6 +20,15 @@ defmodule Sensocto.SensorSimulatorGenServer do
     "00002a19-0000-1000-8000-00805f9b34fb"
   ]
 
+  # def update_connected_state(state) do
+
+  #   socket = Map.get(state, :phoenix_socket)
+
+  #   {:ok, state
+  #   |> Map.update(:phoenix_connected, PhoenixClient.Socket.connected?(socket))
+  # }
+  # end
+
   # Public API
   def start_link(%{:sensor_id => sensor_id} = config) do
     Logger.info("start_link #{inspect(config)}")
@@ -29,21 +38,19 @@ defmodule Sensocto.SensorSimulatorGenServer do
   # GenServer Callbacks
   @impl true
   def init(%{:sensor_id => sensor_id} = config) do
-
-
     Logger.info("init2 #{inspect(config)}")
 
-    Process.send_after(
-      self(),
-      :get_data,
-      500
-    )
+    # Process.send_after(
+    #   self(),
+    #   :get_data,
+    #   500
+    # )
 
-    Process.send_after(
-      self(),
-      :connect_phoenix,
-      1000
-    )
+    # Process.send_after(
+    #   self(),
+    #   :connect_phoenix,
+    #   1000
+    # )
 
     Process.send_after(
       self(),
@@ -51,32 +58,27 @@ defmodule Sensocto.SensorSimulatorGenServer do
       :rand.uniform(2000)
     )
 
-    # case GenServer.call(self(), :connect_phoenix) do
-    #  {:ok, state} -> Logger.info("Connected to Phoenix #{inspect(state)}");
-    #  {:error} -> Logger.error("Failed to connect to Phoenix #{inspect(config)}")
-    # end
-
     new_config = %{
+      :phoenix_connected => false,
       :phoenix_channel => nil,
       :messages_queue => [],
-      :get_data_updating_data => false,
+      :get_data_updating_data => false
     }
 
-    {:ok,
-     config
-     |> Map.merge(new_config)
-     #|> Map.put(:messages_queue, [])}
-     #|> Map.put(:get_data_updating_data, false
-  }
+    {
+      :ok,
+      config
+      |> Map.merge(new_config)
+      # |> Map.put(:messages_queue, [])}
+      # |> Map.put(:get_data_updating_data, false
+    }
   end
 
-
   def handle_info(:delay_done, state) do
-    Logger.debug("Delay done")
+    # Logger.debug("Delay done")
     GenServer.cast(self(), :process_queue)
     {:noreply, state}
   end
-
 
   def handle_info({:process_queue, delay}, state) do
     # Logger.info("handle_info:process_queue delayed #{delay} ms")
@@ -90,12 +92,88 @@ defmodule Sensocto.SensorSimulatorGenServer do
     {:noreply, state}
   end
 
+  # empty queue handling
+
+  @impl true
+  def handle_cast(:process_queue, %{:messages_queue => []} = state) do
+    Logger.info("Empty queue, get new data")
+
+    Process.send_after(
+      self(),
+      :get_data,
+      0
+    )
+
+    Process.send_after(
+      self(),
+      :process_queue,
+      1000
+    )
+
+    {:noreply, state}
+  end
+
   @impl true
   def handle_cast(
         :process_queue,
-        %{:messages_queue => [head | tail], :phoenix_channel => phoenix_channel} = state
-      ) do
-    Logger.info("Got message, HEAD: #{inspect(head)} TAIL: #{Enum.count(tail)}")
+        %{:messages_queue => [], :phoenix_connected => phoenix_connected} = state
+      )
+      when not phoenix_connected do
+    Logger.info("No messages, no phoenix")
+
+    Process.send_after(
+      self(),
+      :get_data,
+      0
+    )
+
+    Process.send_after(
+      self(),
+      :connect_phoenix,
+      0
+    )
+
+    Process.send_after(
+      self(),
+      :process_queue,
+      500
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(
+        :process_queue,
+        %{:messages_queue => [head | tail], :phoenix_connected => phoenix_connected} = state
+      )
+      when not phoenix_connected do
+    Logger.info("Have messages but no phoenix")
+
+    Process.send_after(
+      self(),
+      :connect_phoenix,
+      0
+    )
+
+    Process.send_after(
+      self(),
+      :process_queue,
+      500
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(
+        :process_queue,
+        %{:messages_queue => [head | tail], :phoenix_connected => phoenix_connected} = state
+      )
+      when phoenix_connected do
+    Logger.info(
+      "Got message, phoenix_connected: #{state.phoenix_connected} HEAD: #{inspect(head)} TAIL: #{Enum.count(tail)}"
+    )
 
     if(Enum.count(tail) < 50) do
       Logger.debug("Low on messages, :get_data")
@@ -117,57 +195,16 @@ defmodule Sensocto.SensorSimulatorGenServer do
   end
 
   @impl true
-  def handle_cast(:process_queue, %{:messages_queue => []} = state) do
-    Logger.info("Empty queue, get new data")
+  def handle_cast(
+        :process_queue,
+        state
+      ) do
+    Logger.info("Default process_queue queue #{inspect(state)}")
 
     Process.send_after(
       self(),
       :process_queue,
       1000
-    )
-
-    {:noreply, state}
-  end
-
-  # def handle_cast(:process_queue, %{:messages_queue => {:error, _}} = state) do
-  #   Logger.info("Faulty queue, get data")
-
-  #   Process.send_after(
-  #     self(),
-  #     :get_data,
-  #     0
-  #   )
-
-  #   {:noreply, state |> Map.put(:get_data_updating_data, true)}
-  # end
-
-  @impl true
-  def handle_cast(
-        :process_queue,
-        %{:messages_queue => [head | tail], :phoenix_channel => nil} = state
-      ) do
-    Logger.info("Have messages but no phoenix : #{head} TAIL: #{tail}")
-
-    Process.send_after(
-      self(),
-      :connect_phoenix,
-      0
-    )
-
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast(
-        :process_queue,
-        state
-      ) do
-    # Logger.info("Default process_queue queue #{inspect(state)}")
-
-    Process.send_after(
-      self(),
-      :process_queue,
-      500
     )
 
     {:noreply, state}
@@ -184,7 +221,9 @@ defmodule Sensocto.SensorSimulatorGenServer do
   end
 
   def handle_cast(:connect_phoenix, config) do
-    Logger.info("Connect to phoenix, #{inspect(config)}")
+    Logger.info("Connect to phoenix")
+
+    parent = self()
 
     case PhoenixClient.Socket.start_link(@socket_opts) do
       {:ok, socket} ->
@@ -213,58 +252,66 @@ defmodule Sensocto.SensorSimulatorGenServer do
             # Schedule the first message
             # schedule_send_message(sensor_id, channel, uuid, config)
 
+            Process.send_after(
+              parent,
+              :process_queue,
+              200
+            )
+
             {:noreply,
              config
              |> Map.put(:phoenix_socket, socket)
              |> Map.put(:phoenix_channel, channel)
+             |> Map.put(:phoenix_connected, true)
              |> IO.inspect()}
 
           {:error, reason} ->
             IO.puts("Failed to join channel: #{inspect(reason)}")
-            {:stop, reason}
+
+            Process.send_after(
+              parent,
+              :process_queue,
+              200
+            )
+
+            {:noreply, config |> Map.put(:phoenix_connected, false)}
+            # {:stop, reason}
         end
 
       {:error, reason} ->
         IO.puts("Failed to connect to socket: #{inspect(reason)}")
-        {:stop, reason}
+
+        Process.send_after(
+          parent,
+          :process_queue,
+          200
+        )
+
+        {:noreply, config |> Map.put(:phoenix_connected, false)}
+        # {:stop, reason}
     end
   end
 
   def handle_info({:push_message, message}, state) do
-    # case  do
-    #  :noreply -> {:noreply, state}
-    #  :error -> Logger.info("Problem processing #{inspect(message)}")
-    # end
-    # {delay_s, _} = Float.parse("#{message.delay}")
-
-    # Logger.info("Going to sleep for #{delay_s * 1000} ms")
-    # {delay_ms, _} = Integer.parse("#{delay_s * 1000}")
-
     parent = self()
     GenServer.cast(parent, {:push_message, message})
-
-    # GenServer.cast(self(), {:push_message, message})
-    # Process.send(self(), :process_queue)
     {:noreply, state}
   end
 
   @impl true
   def handle_cast({:push_message, message}, state) do
-    #Logger.debug(
-    #  "handle_cast :push_message #{inspect(message)}, #{inspect(state[:phoenix_channel])}"
-    #)
+    phoenix_socket = Map.get(state, :phoenix_socket)
+    socket_state = PhoenixClient.Socket.connected?(phoenix_socket)
+
+    Logger.debug(
+      "handle_cast :push_message #{socket_state} #{inspect(message)}, #{inspect(state[:phoenix_channel])}"
+    )
 
     if state[:phoenix_channel] != nil do
       {delay_s, _} = Float.parse("#{message.delay}")
 
       delay_ms_tmp = round(delay_s * 1000.0)
-
-      # Logger.info("Going to sleep for #{delay_s} s tmp: #{delay_ms_tmp}")
       {delay_ms, _} = Integer.parse("#{delay_ms_tmp}")
-
-      # Logger.debug("delay_ms: #{delay_s} #{delay_ms}")
-      # Process.sleep(delay_ms)
-
       Logger.info("Pushing message to channel #{inspect(message.delay)}")
 
       phoenix_message = %{
@@ -273,61 +320,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
         "uuid" => state[:sensor_type]
       }
 
-      # {:ok, response} = PhoenixClient.Channel.push(state[:phoenix_channel], "measurement", message)
-      # Logger.debug("Push response #{inspect(response)}")
-      # Process.sleep(delay_ms)
-
       PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", phoenix_message)
-
-      # parent = self()
-
-      # tasks = [
-      #   #Task.async(fn -> PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", message) end),
-      #   #Task.async(fn -> take_shower(10) end),
-      #   #Task.async(fn -> call_mum() end),
-      # ]
-
-      # Task.yield_many(tasks)
-      # |> Enum.map(fn {task, result} ->
-      #   case result do
-      #     nil ->
-      #       Task.shutdown(task, :brutal_kill)
-      #       exit(:timeout)
-      #     {:exit, reason} ->
-      #       exit(reason)
-      #     {:ok, result} ->
-      #       Process.send_after(
-      #   parent,
-      #   :process_queue,
-      #   delay_ms
-      # )
-      #   end
-      # end)
-
-      #       Task.start_link(fn ->
-      #         #{:ok, response} =
-      #           PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", message)
-      #           #Process.sleep(delay_ms)
-
-      #           Process.send_after(
-      #         parent,
-      #         :process_queue,
-      #         delay_ms * 10
-      #       )
-
-      # #        send(parent, :work_is_done)
-      #       end)
-
-      # receive do
-      #   :work_is_done -> :ok
-      # after
-      #   # Optional timeout
-      #   30_000 -> :timeout
-      # end
-
-      # PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", phoenix_message)
-
-      # Logger.debug("going to send delayed :process_queue  #{inspect(delay_ms_tmp)}")
 
       Process.send_after(
         self(),
@@ -335,14 +328,14 @@ defmodule Sensocto.SensorSimulatorGenServer do
         delay_ms_tmp
       )
 
-      {:noreply, state}
+      {:noreply, state |> Map.put(:phoenix_connected, socket_state)}
     else
-      {:error, "No phoenix channel"}
+      {:noreply, state |> Map.put(:phoenix_connected, false)}
     end
   end
 
   def handle_info(:get_data, state) do
-    Logger.info(":get_data info received")
+    # Logger.info(":get_data info received")
 
     case Map.get(state, :get_data_updating_data) do
       true -> {:noreply, state}
@@ -356,20 +349,21 @@ defmodule Sensocto.SensorSimulatorGenServer do
     Logger.info("got data: #{Enum.count(data)}")
     newstate = Map.put(state, :messages_queue, Map.get(state, :messages_queue) ++ data)
 
-    #Process.send_after(self(), :process_queue, 500)
+    # Process.send_after(self(), :process_queue, 500)
     {:noreply, newstate |> Map.put(:get_data_updating_data, false)}
   end
-
-
 
   @impl true
   def handle_cast(:get_data, state) do
     Logger.info(":get_data cast received")
 
+    Process.send_after(
+      :"biosense_data_server_#{:rand.uniform(4) + 1}",
+      {:get_data, self(), state},
+      0
+    )
 
-    Process.send_after(:"biosense_data_server_#{:rand.uniform(4) + 1}", {:get_data, self(), state}, 0)
-
-    #task_pid = get_data(state)
+    # task_pid = get_data(state)
 
     # Logger.debug("Sheduled get_data: #{inspect(task_pid)}")
     # with
@@ -377,10 +371,8 @@ defmodule Sensocto.SensorSimulatorGenServer do
     #  newstate <- Map.put(:messages_queue, data),
     #  _ <- Process.send_after(self(),:process_queue,500),
     #  do: {:noreply, newstate}
-    {:noreply, state  |> Map.put(:get_data_updating_data, true) }
+    {:noreply, state |> Map.put(:get_data_updating_data, true)}
   end
-
-
 
   # @impl true
   # def handle_cast(:get_data, state) do
@@ -420,12 +412,10 @@ defmodule Sensocto.SensorSimulatorGenServer do
     {:noreply, state}
   end
 
-
   def handle_info(msg, state) do
     Logger.info("handle_info:catch all: #{inspect(msg)}")
     {:noreply, state}
   end
-
 
   # Logger.info("Incoming Message: #{message} #{inspect(payload)}")
   ## def handle_info(%Message{event: message, payload: payload}, state) do
@@ -434,7 +424,8 @@ defmodule Sensocto.SensorSimulatorGenServer do
 
   defp wait_until_connected(socket) do
     unless PhoenixClient.Socket.connected?(socket) do
-      Process.sleep(100)
+      IO.puts("Wait 200ms until connected")
+      Process.sleep(200)
       wait_until_connected(socket)
     end
   end

@@ -123,6 +123,8 @@ defmodule SensoctoWeb.Live.Components.ViewData do
     |> Enum.reduce(%{}, fn attribute_value, _acc ->
       timestamp = Map.get(attribute_value, :timestamp)
 
+      # IO.inspect(timestamp, label: "Timestamp formating")
+
       timestamp_formatted =
         try do
           case timestamp do

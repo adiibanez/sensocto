@@ -47,3 +47,5 @@ npm-debug.log
 /priv/cert/
 
 /rel
+
+/wasm-sparkline/target

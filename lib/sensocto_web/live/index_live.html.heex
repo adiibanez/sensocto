@@ -24,7 +24,7 @@
     >
       <div class="w-full h-full">
         <!-- loading stage content -->
-        <div :if={is_nil(sensor.viewdata) || sensor.viewdata |> Map.size() == 0} class="">
+        <div :if={is_nil(sensor.viewdata) || sensor.viewdata |> Kernel.map_size() == 0} class="">
           <.render_sensor_header sensor={sensor.metadata}></.render_sensor_header>
           <svg
             aria-hidden="true"
@@ -44,7 +44,7 @@
           </svg>
         </div>
 
-        <div :if={Map.size(sensor.viewdata) > 0} class="">
+        <div :if={Kernel.map_size(sensor.viewdata) > 0} class="">
           <.render_sensor_header sensor={sensor.metadata}></.render_sensor_header>
         </div>
 

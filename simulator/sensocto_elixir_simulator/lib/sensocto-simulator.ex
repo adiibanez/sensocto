@@ -292,6 +292,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
     end
   end
 
+  @impl true
   def handle_info({:push_message, message}, state) do
     parent = self()
     GenServer.cast(parent, {:push_message, message})

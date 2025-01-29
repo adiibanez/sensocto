@@ -95,7 +95,8 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
       </sensocto-sparkline>-->
 
       <sensocto-chartjs
-        width="800"
+        width="300"
+        height="30"
         color="#ffc107"
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
@@ -104,7 +105,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
         timewindow="5000"
         timemode="absolute"
         phx-update="ignore"
-        class="resizeable loading w-full m-0 p-0"
+        class="loading w-full m-0 p-0"
       >
       </sensocto-chartjs>
     </div>
@@ -123,9 +124,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
 
     ~H"""
     <div class="m-0 p-0">
-      <.render_sensor_header sensor={assigns.sensor_data}></.render_sensor_header>
-      
-    <!--<sensocto-sparkline
+      <!--<sensocto-sparkline
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
         identifier={assigns.sensor_data.id}
@@ -137,7 +136,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
       >
       </sensocto-sparkline>-->
 
-      <sensocto-chartjs
+      <!--<sensocto-chartjs
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
         identifier={assigns.sensor_data.id}
@@ -148,6 +147,19 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
         class="resizeable loading w-full m-0 p-0"
       >
       </sensocto-chartjs>
+      -->
+
+      <sensocto-sparkline-wasm-svelte
+        is_loading="true"
+        id={ "sparkline_element-" <> assigns.id }
+        identifier={assigns.sensor_data.id}
+        samplingrate={assigns.sensor_data.sampling_rate}
+        timewindow="5000"
+        timemode="relative"
+        phx-update="ignore"
+        class="resizeable loading w-full m-0 p-0"
+      >
+      </sensocto-sparkline-wasm-svelte>
     </div>
     """
   end

@@ -176,8 +176,9 @@ function resizeElements() {
   allSparklines.forEach(element => {
     const parentWidth = element.parentElement.offsetWidth;
     const parentHeight = element.parentElement.offsetHeight;
-    logger.log("Element Resizer", element.id, parentWidth, parentHeight); // Log it.
+
     element.setAttribute('width', parentWidth); // Use setAttribute to change width
+    logger.log("Element Resizer", element.id, parentWidth, parentHeight, element.getAttribute("width")); // Log it.
     //element.setAttribute('height', parentHeight); // Also set height to parent, if required.
   });
 }

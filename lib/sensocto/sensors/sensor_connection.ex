@@ -4,7 +4,7 @@ defmodule Sensocto.Sensors.SensorConnection do
 
   alias Sensocto.Sensors.Sensor
   alias Sensocto.Sensors.Connector
-  alias Sensocto.Rooms.Room
+  alias Sensocto.Sensors.Room
 
   attributes do
     attribute :id, :uuid, primary_key?: true, allow_nil?: false
@@ -16,9 +16,9 @@ defmodule Sensocto.Sensors.SensorConnection do
   end
 
   relationships do
-    belongs_to :sensor, Sensocto.Sensors.Sensor
-    belongs_to :connector, Sensocto.Sensors.Connector, allow_nil?: true
-    belongs_to :room, Sensocto.Sensors.Room, allow_nil?: true
+    belongs_to :sensor, Sensor
+    belongs_to :connector, Connector, allow_nil?: true
+    belongs_to :room, Room, allow_nil?: true
   end
 
   identities do

@@ -2,10 +2,10 @@ defmodule Sensocto.Sensors.Connector do
   use Ash.Resource,
     domain: Sensocto.Sensors
 
-  alias Sensocto.Accounts.User
-  alias Sensocto.Sensors.Sensor
-  alias Sensocto.Sensors.ConnectorSensorType
-  alias Sensocto.Sensors.SensorConnection
+  # alias Sensocto.Accounts.User
+  # alias Sensocto.Sensors.Sensor
+  # alias Sensocto.Sensors.ConnectorSensorType
+  # alias Sensocto.Sensors.SensorConnection
 
   attributes do
     uuid_primary_key :id
@@ -22,8 +22,8 @@ defmodule Sensocto.Sensors.Connector do
     #   Sensocto.Sensors.SensorType,
     #   through: Sensocto.Sensors.ConnectorSensorType
 
-    #has_many :sensors, Sensocto.Sensors.Sensor#, on_delete: :delete
-    #has_many :sensor_connections, Sensocto.Sensors.SensorConnection#, on_delete: :delete
+    # has_many :sensors, Sensocto.Sensors.Sensor#, on_delete: :delete
+    # has_many :sensor_connections, Sensocto.Sensors.SensorConnection#, on_delete: :delete
   end
 
   identities do

@@ -21,13 +21,14 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
      |> assign(:sensor_ids, [1, 2, 3, 4, 5, 6])}
   end
 
+  @impl true
   @spec handle_event(<<_::104>>, map(), map()) :: {:noreply, map()}
   def handle_event("set_highlight", params, socket) do
     Logger.info("Received highlight event: #{inspect(params)}")
 
     updated_sensors =
       socket.assigns.sensors
-      |> Map.map(fn {key, sensor} ->
+      |> Map.new(fn {key, sensor} ->
         if String.to_integer(params["id"]) == key do
           Map.put(sensor, :highlighted, not sensor.highlighted)
         else
@@ -42,32 +43,34 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
     {:noreply, assign(socket, :sensors, updated_sensors)}
   end
 
-  def render_(assigns) do
-    ~H"""
-    <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-      <div
-        class="flex flex-col  rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 cursor-pointer bg-dark-gray text-light-gray"
-        class:col-span-2={true}
-        class:row-span-2={true}
-      >
-        <div class="flex-1">
-          <div class="font-bold text-orange sm:text-xl md:text-2xl mb-2">Test</div>
-          <div class="text-sm sm:text-base mb-4 text-medium-gray">Test</div>
-          <div class="h-24 sm:h-32 md:h-40 border border-dark-gray rounded-md bg-medium-gray"></div>
-        </div>
-        <div class="mt-4 sm:mt-6 md:mt-8 text-sm sm:text-base text-medium-gray">
-          Test
-        </div>
-      </div>
-    </div>
-    """
-  end
+  # @impl true
+  # def render_(assigns) do
+  #   ~H"""
+  #   <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+  #     <div
+  #       class="flex flex-col  rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 cursor-pointer bg-dark-gray text-light-gray"
+  #       class:col-span-2={true}
+  #       class:row-span-2={true}
+  #     >
+  #       <div class="flex-1">
+  #         <div class="font-bold text-orange sm:text-xl md:text-2xl mb-2">Test</div>
+  #         <div class="text-sm sm:text-base mb-4 text-medium-gray">Test</div>
+  #         <div class="h-24 sm:h-32 md:h-40 border border-dark-gray rounded-md bg-medium-gray"></div>
+  #       </div>
+  #       <div class="mt-4 sm:mt-6 md:mt-8 text-sm sm:text-base text-medium-gray">
+  #         Test
+  #       </div>
+  #     </div>
+  #   </div>
+  #   """
+  # end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <!--<script defer phx-track-static type="text/javascript" src={~p"/assets/sparkline.js"}>
     </script>-->
-    <!--<sensocto-sparkline-wasm></sensocto-sparkline-wasm>-->
+    <sensocto-sparkline-wasm-svelte></sensocto-sparkline-wasm-svelte>
 
     <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
       <div

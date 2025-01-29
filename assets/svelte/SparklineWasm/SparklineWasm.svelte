@@ -2,122 +2,78 @@
 
 <script>
     import { onMount } from "svelte";
-    // import init, {
-    //     draw_sparkline,
-    // } from "../../../wasm-sparkline/pkg/sparkline.js";
+    import { logger } from "../logger.js";
+    import { sensorDataService } from "../services-sensor-data.js";
+    import { get } from "svelte/store";
 
-    //import wasm from "../../../wasm-sparkline/Cargo.toml";
-
-    // last init
     import init, {
         draw_sparkline,
-    } from "../../../wasm-sparkline/pkg/sparkline.js"; //sparkline_bg.wasm";
+    } from "../../../../wasm-sparkline/pkg-new/wasm_sparkline.js";
 
-    // import init, {
-    //     draw_sparkline,
-    // } from "../../../wasm-sparkline/pkg/sparkline_bg.wasm"; //sparkline_bg.wasm";
+    let wasmInitialized = false;
 
-    //console.log("Wasm", draw_sparkline);
-
-    /*const init = async () => {
-        const bindings = await wasm();
-        const app = new App({
-            target: document.body,
-            props: {
-                bindings,
-            },
-        });
-    };
-
-    init();
-
-    */
-
-    export let canvasId;
+    export let is_loading;
+    export let id;
+    export let width;
+    export let height = 30;
+    export let identifier;
+    export let samplingrate;
+    export let timewindow;
+    export let timemode;
+    export let minvalue;
+    export let maxvalue;
     export let initialParams;
 
-    //const sparkline = import("../../../wasm-sparkline/pkg/sparkline.js");
-    //console.log(sparkline);
-    //import { wasm } from "../../../wasm-sparkline/pkg/sparkline_bg.wasm";
-    // const wasm = require("../../../wasm-sparkline/pkg/sparkline_bg.wasm");
-
-    //const wasm = require("../../../wasm-sparkline/pkg/sparkline_bg.wasm");
+    let loggerCtxName = "SparklineWasm";
 
     let canvas;
     let ctx;
-    let data = [];
+    //let data = [];
+
+    let dataStore;
+    $: data = $dataStore ? $dataStore : [];
+
     let params = { ...initialParams };
     let isVisible = false;
     let observer;
 
-    // const test = import("../../../wasm-sparkline/pkg/sparkline.js").then(
-    //     (module) => {
-    //         console.log("MODULE", module);
-    //         module.default("/assets/sparkline_bg.wasm"); // call the default exported function to start the module
-    //     },
-    // );
+    let lineColor = "#ffc107";
+    let lineWidth = 1;
+    let smoothing = 20;
+    let timeWindow = 2000;
+    let burstThreshold = 100;
+    let maxValue = null; //200;
+    let minValue = null; //1;
 
-    /*import("../../../wasm-sparkline/pkg/sparkline.js").then((module) => {
-        console.log("MODULE", module);
-        module.default("/assets/sparkline_bg.wasm"); // call the default exported function to start the module
-        moduleExports = module;
-    });
+    let operationMode = "relative";
+    let drawScales = false;
 
-    async function initWasm() {
-        import("../../../wasm-sparkline/pkg/sparkline.js").then((module) => {
-            console.log("MODULE", module);
-            module.default("/assets/sparkline_bg.wasm"); // call the default exported function to start the module
-            moduleExports = module;
-        });
-
-        // const module = await import(
-        //     "../../../wasm-sparkline/pkg/sparkline.js"
-        // ).then((module) => {
-        //     console.log(module);
-        //     module.default("/assets/sparkline_bg.wasm");
-        //     moduleExports = module;
-        // });
-
-        if (isVisible) {
-            requestAnimationFrame(render);
-        }
-    }
-        */
+    $: maxsamples = (timeWindow / 1000) * samplingrate * width; //canvas?.width || 500;
 
     async function initWasm() {
-        console.log("Here");
-        try {
-            // await init(
-            //     "/assets/sparkline_bg.wasm",
-            //     "/assets/sparkline_bg.wasm.d.ts",
-            // );
-
-            ctx = canvas.getContext("2d");
-
-            /*maxSamples = calculateMaxSamples(
-                canvas.width,
-                timeWindow,
-                sampleRate,
-                resolution,
-            );*/
-
-            //startRenderLoop();
-        } catch (error) {
-            console.error("Error initializing WASM:", error);
-        }
+        //await init();
+        await init("/assets/wasm_sparkline_bg.wasm");
+        wasmInitialized = true;
+        console.log("Wasm initialized, yippie", draw_sparkline);
     }
 
     onMount(() => {
-        console.log("test");
+        ctx = canvas.getContext("2d");
 
         initWasm();
+
+        console.log("onMount");
+
+        dataStore = sensorDataService.getSensorDataStore(identifier);
+        console.log("dataStore", dataStore);
 
         observer = new IntersectionObserver(
             (entries) => {
                 entries.forEach((entry) => {
                     isVisible = entry.isIntersecting;
                     if (isVisible) {
-                        requestAnimationFrame(render);
+                        render();
+                        //requestAnimationFrame(render);
                     }
                 });
             },
@@ -125,7 +81,40 @@
         );
 
         observer.observe(canvas);
+
+        //data = generateSampleDataBackInTime(10000);
     });
+
+    $: if (data?.length && wasmInitialized) {
+        logger.log(
+            loggerCtxName,
+            "data changed, redrawing sparkline...",
+            maxsamples,
+            data?.length,
+        );
+
+        const timestamps = data.map((point) => point.timestamp);
+        minTimestamp = Math.min(...timestamps);
+        maxTimestamp = Math.max(...timestamps);
+
+        render();
+    }
+
+    $: if (dataStore && wasmInitialized) {
+        logger.log(
+            loggerCtxName,
+            "dataStore changed, redrawing sparkline...",
+            maxsamples,
+            data?.length,
+        );
+
+        const timestamps = data.map((point) => point.timestamp);
+        minTimestamp = Math.min(...timestamps);
+        maxTimestamp = Math.max(...timestamps);
+
+        render();
+    }
+
     function handleInput(event) {
         const { target } = event;
         params[target.name] =
@@ -134,102 +123,164 @@
 
     let lastTime = 0;
     function render(timestamp) {
-        if (!isVisible) return;
-
-        if (lastTime === 0) {
-            lastTime = timestamp;
-            requestAnimationFrame(render);
+        if (wasmInitialized == false || !isVisible) {
             return;
+            // requestAnimationFrame(render);
         }
-        const delta = timestamp - lastTime;
-        const sampleRate = 20;
-        // Simulate real-time data
-        if (delta > 1000 / sampleRate) {
-            lastTime = timestamp;
-            const noise = (Math.random() - 0.5) * 2;
-            const timestamp = Date.now();
-            const nextValue = Math.sin(timestamp / 1000) * 10 + 20 + noise;
-            data = [...data, { timestamp: timestamp, payload: nextValue }];
-        }
+
+        logger.log(
+            loggerCtxName,
+            "Js args",
+            data.slice(-maxsamples),
+            width,
+            height,
+            //ctx,
+            lineColor,
+            parseFloat(lineWidth),
+            parseInt(smoothing),
+            parseFloat(timeWindow),
+            parseFloat(burstThreshold),
+            operationMode,
+            drawScales,
+            minValue,
+            maxValue,
+        );
 
         draw_sparkline(
-            data,
-            canvas.width,
-            canvas.height,
+            data.slice(-maxsamples),
+            width,
+            height,
             ctx,
-            params.lineColor,
-            parseFloat(params.lineWidth),
-            parseInt(params.smoothing),
-            parseFloat(params.timeWindow),
-            parseFloat(params.burstThreshold),
-            params.operationMode,
-            params.drawScales,
-            params.minValue,
-            params.maxValue,
+            lineColor,
+            parseFloat(lineWidth),
+            parseInt(smoothing),
+            parseFloat(timeWindow),
+            parseFloat(burstThreshold),
+            operationMode,
+            drawScales,
+            minValue,
+            maxValue,
         );
-        requestAnimationFrame(render);
+        //requestAnimationFrame(render);
     }
+
+    function generateSampleDataBackInTime(timeWindowMs, sampleRate = 20) {
+        const now = Date.now();
+        const startTime = now - timeWindowMs; // Calculate the start of the window
+        const dataPoints = [];
+        let currentTime = now;
+
+        while (currentTime > startTime) {
+            const noise = (Math.random() - 0.5) * 2;
+            const nextValue = Math.sin(currentTime / 1000) * 10 + 20 + noise; // Generate a new value using the current time
+            dataPoints.push({ timestamp: currentTime, payload: nextValue }); // Add the new data point to array.
+
+            //console.log(currentTime, nextValue);
+
+            currentTime = currentTime - 1000 / (sampleRate * 5); // Move the current time a little bit backward (simulating the sampling rate)
+        }
+
+        return dataPoints;
+    }
+
+    const handleStorageWorkerEvent = (e) => {
+        //const {type, eventData} = e.detail;
+        if (identifier === e?.detail?.data.id) {
+            sensorDataService.processStorageWorkerEvent(identifier, e);
+        }
+    };
+
+    const handleSeedDataEvent = (e) => {
+        if (
+            identifier ==
+            e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
+        ) {
+            sensorDataService.processSeedDataEvent(identifier, e);
+            is_loading = false;
+        }
+    };
+
+    const handleAccumulatorEvent = (e) => {
+        if (identifier === e?.detail?.id) {
+            sensorDataService.processAccumulatorEvent(identifier, e);
+        }
+    };
+
+    const handleResizeEnd = (e) => {
+        logger.log(loggerCtxName, "handleResizeEnd", e);
+        render();
+    };
 </script>
 
-<div>
-    <canvas bind:this={canvas} id={canvasId} width="400" height="100"></canvas>
+<svelte:window
+    on:storage-worker-event={handleStorageWorkerEvent}
+    on:accumulator-data-event={handleAccumulatorEvent}
+    on:seeddata-event={handleSeedDataEvent}
+    on:resizeend={handleResizeEnd}
+/>
 
-    <label>line color:</label><input
-        name="lineColor"
-        value={params.lineColor}
-        on:input={handleInput}
-    /><br />
-    <label>line width:</label><input
-        name="lineWidth"
-        type="number"
-        value={params.lineWidth}
-        on:input={handleInput}
-    /><br />
-    <label>smoothing:</label><input
-        name="smoothing"
-        type="number"
-        value={params.smoothing}
-        on:input={handleInput}
-    /><br />
-    <label>Time window:</label><input
-        name="timeWindow"
-        type="number"
-        value={params.timeWindow}
-        on:input={handleInput}
-    /><br />
-    <label>Burst treshold:</label><input
-        name="burstThreshold"
-        type="number"
-        value={params.burstThreshold}
-        on:input={handleInput}
-    /><br />
-    <label>Min Value:</label><input
-        name="minValue"
-        type="number"
-        value={params.minValue}
-        on:input={handleInput}
-    /><br />
-    <label>Max Value:</label><input
-        name="maxValue"
-        type="number"
-        value={params.maxValue}
-        on:input={handleInput}
-    /><br />
-    <label>Operation Mode:</label>
-    <select
-        name="operationMode"
-        value={params.operationMode}
-        on:input={handleInput}
-    >
-        <option value="absolute">Absolute</option>
-        <option value="relative">Relative</option>
-    </select>
-    <br />
-    <label>Draw scales:</label>
-    <input
-        type="checkbox"
-        name="drawScales"
-        checked={params.drawScales}
-        on:input={handleInput}
-    />
-</div>
+<canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
+<p class="text-xs">
+    Data points {data.length}, maxsamples: {maxsamples}, width: {width}
+</p>
+{#if false}<div>
+        <label>line color:</label><input
+            name="lineColor"
+            value={lineColor}
+            on:input={handleInput}
+        /><br />
+        <label>line width:</label><input
+            name="lineWidth"
+            type="number"
+            value={lineWidth}
+            on:input={handleInput}
+        /><br />
+        <label>smoothing:</label><input
+            name="smoothing"
+            type="number"
+            value={smoothing}
+            on:input={handleInput}
+        /><br />
+        <label>Time window:</label><input
+            name="timeWindow"
+            type="number"
+            value={timeWindow}
+            on:input={handleInput}
+        /><br />
+        <label>Burst treshold:</label><input
+            name="burstThreshold"
+            type="number"
+            value={burstThreshold}
+            on:input={handleInput}
+        /><br />
+        <label>Min Value:</label><input
+            name="minValue"
+            type="number"
+            value={minValue}
+            on:input={handleInput}
+        /><br />
+        <label>Max Value:</label><input
+            name="maxValue"
+            type="number"
+            value={maxValue}
+            on:input={handleInput}
+        /><br />
+        <label>Operation Mode:</label>
+        <select
+            name="operationMode"
+            value={operationMode}
+            on:input={handleInput}
+        >
+            <option value="absolute">Absolute</option>
+            <option value="relative">Relative</option>
+        </select>
+        <br />
+        <label>Draw scales:</label>
+        <input
+            type="checkbox"
+            name="drawScales"
+            checked={drawScales}
+            on:input={handleInput}
+        />
+    </div>
+{/if}

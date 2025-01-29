@@ -4,8 +4,8 @@ defmodule SensoctoWeb.Router do
   import AshAdmin.Router
   use AshAuthentication.Phoenix.Router
   alias SensoctoWeb.LiveUserAuth
-  alias Plug.Swoosh.MailboxPreview
-  alias AshAdmin.PageLive
+#  alias Plug.Swoosh.MailboxPreview
+ # alias AshAdmin.PageLive
 
   pipeline :browser do
     plug :accepts, ["html"]

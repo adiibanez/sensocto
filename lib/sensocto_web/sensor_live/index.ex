@@ -75,23 +75,26 @@ defmodule SensoctoWeb.SensorLive.Index do
 
   def handle_params(%{:id => id} = params, url, socket) do
     Logger.info("Here I am #{id} #{inspect(params)} #{url}")
-    #case socket.assigns.live_action do
+    # case socket.assigns.live_action do
     #  nil -> {:noreply, apply_action(socket, :index, params)}
     #  _ -> {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-    #end
+    # end
     {:noreply, socket}
-    #{:noreply, socket}
+    # {:noreply, socket}
   end
 
   @impl true
   def handle_params(params, _url, socket) do
-    Logger.info("Here I am #{_url} #{inspect(params)} #{inspect(socket.assigns.live_action)} #{inspect(@live_action)}")
-    #case socket.assigns.live_action do
+    Logger.info(
+      "Here I am #{_url} #{inspect(params)} #{inspect(socket.assigns.live_action)} #{inspect(@live_action)}"
+    )
+
+    # case socket.assigns.live_action do
     #  nil -> {:noreply, apply_action(socket, :index, params)}
     #  _ -> {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-    #end
+    # end
     {:noreply, apply_action(socket, @live_action, params)}
-    #{:noreply, socket}
+    # {:noreply, socket}
   end
 
   defp apply_action(socket, :index, _params) do
@@ -114,12 +117,13 @@ defmodule SensoctoWeb.SensorLive.Index do
 
   defp apply_action(socket, action, params) do
     Logger.debug("Apply fallback action: #{inspect(action)} #{inspect(params)} ")
-   socket
-   |> assign(:live_action, :index)
-   |> assign(:page_title, "Listing Sensors")
-   #|> assign(:sensor, nil)
-  end
 
+    socket
+    |> assign(:live_action, :index)
+    |> assign(:page_title, "Listing Sensors")
+
+    # |> assign(:sensor, nil)
+  end
 
   @impl true
   def handle_info({SensoctoWeb.SensorLive.FormComponent, {:saved, sensor}}, socket) do

@@ -12,7 +12,7 @@ defmodule Sensocto.Sensors.SensorAttribute do
   end
 
   relationships do
-    belongs_to :sensor, Sensocto.Sensors.Sensor
+    belongs_to :sensor, Sensor
   end
 
   identities do

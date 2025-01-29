@@ -92,9 +92,9 @@ async function buildAndCopy() {
         await esbuild.build(optsServer);
         copyFile("js/worker-storage.js", "../priv/static/assets/worker-storage.js");
         copyFile("js/sparkline-wasm-element.js", "../priv/static/assets/sparkline-wasm-element.js");
-        copyFile("../wasm-sparkline/pkg/sparkline.js", "../priv/static/assets/sparkline.js");
-        copyFile("../wasm-sparkline/pkg/sparkline_bg.wasm", "../priv/static/assets/sparkline_bg.wasm");
-        copyFile("../wasm-sparkline/pkg/sparkline_bg.wasm.d.ts", "../priv/static/assets/sparkline_bg.wasm.d.ts");
+        copyFile("../../wasm-sparkline/pkg-new/wasm_sparkline.js", "../priv/static/assets/wasm_sparkline.js");
+        copyFile("../../wasm-sparkline/pkg-new/wasm_sparkline_bg.wasm", "../priv/static/assets/wasm_sparkline_bg.wasm");
+        //copyFile("../../wasm-sparkline/pkg-new/sparkline_bg.wasm.d.ts", "../priv/static/assets/sparkline_bg.wasm.d.ts");
         // copyFile("node_modules/scichart/_wasm/scichart3d.wasm", "../priv/static/assets/_wasm/scichart3d.wasm");
         // copyFile("node_modules/scichart/_wasm/scichart2d.wasm", "../priv/static/assets/_wasm/scichart2d.wasm");
         // copyFile("node_modules/scichart/_wasm/scichart3d.data", "../priv/static/assets/_wasm/scichart3d.data");

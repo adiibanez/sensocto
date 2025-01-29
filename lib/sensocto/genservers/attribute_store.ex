@@ -15,12 +15,12 @@ defmodule Sensocto.AttributeStore do
   end
 
   def get_attributes(sensor_id) do
-    Logger.debug("Agent client get_attributes #{sensor_id}")
+    # Logger.debug("Agent client get_attributes #{sensor_id}")
     Agent.get(via_tuple(sensor_id), & &1)
   end
 
   def get_attributes(sensor_id, limit) do
-    Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
+    # Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
 
     Agent.get(via_tuple(sensor_id), fn state ->
       Enum.reduce(state, %{}, fn {attribute_id, attr}, acc ->
@@ -37,7 +37,7 @@ defmodule Sensocto.AttributeStore do
 
   @spec get_attribute(any(), any(), any()) :: any()
   def get_attribute(sensor_id, attribute_id, limit) do
-    Logger.debug("Agent client get_attribute #{sensor_id}")
+    # Logger.debug("Agent client get_attribute #{sensor_id}")
 
     Agent.get(via_tuple(sensor_id), fn state ->
       case Map.get(state, attribute_id) do

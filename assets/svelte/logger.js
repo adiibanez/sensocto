@@ -1,6 +1,13 @@
 
 let enabled = false;
-let enabledComponents = ["ChartJS", "ECGVisualization"];//["ECGVisualization", "IMUClient"];//["ScaledPoints"];//["Sparkline"];
+let enabledComponents = [
+    // "SensorDataService",
+    // "SparklineWasm",
+    //     "ChartJS",
+    //     "ECGVisualization",
+    //     "IMUClient",
+    // "ScaledPoints", "Sparkline", 
+];
 
 export function setLogging(value) {
     enabled = !!value;

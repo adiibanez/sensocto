@@ -3,7 +3,7 @@ defmodule Sensocto.Sensors.RoomSensorType do
     domain: Sensocto.Sensors
 
   alias Sensocto.Sensors.SensorType
-  alias Sensocto.Rooms.Room
+  alias Sensocto.Sensors.Room
 
   attributes do
     attribute :id, :uuid, primary_key?: true, allow_nil?: false
@@ -12,8 +12,10 @@ defmodule Sensocto.Sensors.RoomSensorType do
   end
 
   relationships do
-    belongs_to :room, Sensocto.Sensors.Room#, primary_key?: true, allow_nil?: false
-    belongs_to :sensor_type, Sensocto.Sensors.SensorType#, primary_key?: true, allow_nil?: false
+    # , primary_key?: true, allow_nil?: false
+    belongs_to :room, Room
+    # , primary_key?: true, allow_nil?: false
+    belongs_to :sensor_type, SensorType
   end
 
   identities do

@@ -12,8 +12,10 @@ defmodule Sensocto.Sensors.ConnectorSensorType do
   end
 
   relationships do
-    belongs_to :connector, Sensocto.Sensors.Connector#, primary_key?: true, allow_nil?: false
-    belongs_to :sensor_type, Sensocto.Sensors.SensorType#, primary_key?: true, allow_nil?: false
+    # , primary_key?: true, allow_nil?: false
+    belongs_to :connector, Connector
+    # , primary_key?: true, allow_nil?: false
+    belongs_to :sensor_type, SensorType
   end
 
   identities do

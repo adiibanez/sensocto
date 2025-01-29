@@ -8,8 +8,9 @@ defmodule Sensocto.Sensors.Sensor do
   alias Sensocto.Sensors.Connector
   alias Sensocto.Sensors.SensorAttribute
   alias Sensocto.Sensors.SensorType
-  alias Sensocto.Rooms.Room
+  # alias Sensocto.Rooms.Room
   alias Sensocto.Sensors.SensorConnection
+  alias Sensocto.Sensors.SensorSensorConnection
   # domain: Sensocto.Sensors
 
   postgres do
@@ -17,13 +18,12 @@ defmodule Sensocto.Sensors.Sensor do
     repo Sensocto.Repo
   end
 
-
   actions do
     defaults [:read, :destroy, create: :*, update: :*]
 
     create :simple do
       accept [:name]
-      #change set_attribute(:status, :open)
+      # change set_attribute(:status, :open)
       upsert? true
     end
 
@@ -47,7 +47,8 @@ defmodule Sensocto.Sensors.Sensor do
 
       upsert? true
       upsert_identity :unique
-      upsert_fields [:id]#
+      #
+      upsert_fields [:id]
 
       # Uses the information from the token to create or sign in the user
       # change AshAuthentication.Strategy.MagicLink.SignInChange
@@ -104,13 +105,12 @@ defmodule Sensocto.Sensors.Sensor do
   end
 
   relationships do
-    belongs_to :connector, Sensocto.Sensors.Connector
-    belongs_to :sensor_type_rel, Sensocto.Sensors.SensorType
+    belongs_to :connector, Connector
+    belongs_to :sensor_type_rel, SensorType
     # , on_delete: :delete
-    has_many :attributes, Sensocto.Sensors.SensorAttribute
+    has_many :attributes, SensorAttribute
     # many_to_many :rooms, Sensocto.Rooms.Room
-    many_to_many :sensor_connections, Sensocto.Sensors.SensorConnection,
-      through: Sensocto.Sensors.SensorSensorConnection
+    many_to_many :sensor_connections, SensorConnection, through: SensorSensorConnection
   end
 
   identities do

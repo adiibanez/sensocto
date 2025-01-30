@@ -48,6 +48,8 @@ config :sensocto,
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
 
+config :ex_heroicons, type: "outline"
+
 # Configures the endpoint
 config :sensocto, SensoctoWeb.Endpoint,
   url: [host: "localhost"],

@@ -179,9 +179,9 @@ defmodule SensoctoWeb.IndexLive do
 
     attribute_data = Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000)
 
-    Logger.debug(
-      "Seed data available for attribute #{sensor_id}:#{attribute_id}, #{Enum.count(attribute_data)}}"
-    )
+    # Logger.debug(
+    #  "Seed data available for attribute #{sensor_id}:#{attribute_id}, #{Enum.count(attribute_data)}}"
+    # )
 
     {:noreply,
      push_event(socket, "seeddata", %{

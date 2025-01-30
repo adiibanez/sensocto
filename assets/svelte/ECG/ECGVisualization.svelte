@@ -262,8 +262,10 @@
     on:accumulator-data-event={handleAccumulatorEvent}
     on:seeddata-event={handleSeedDataEvent}
 />
-ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution},
-data: {data.length} minValue: {minValue} maxValue: {maxValue}
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvasElement} {width} {height} />
 </div>
+<p class="text-xs">
+    ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution},
+    data: {data.length} minValue: {minValue} maxValue: {maxValue}
+</p>

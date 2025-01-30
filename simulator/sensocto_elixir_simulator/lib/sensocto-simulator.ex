@@ -5,8 +5,8 @@ defmodule Sensocto.SensorSimulatorGenServer do
   alias Sensocto.BiosenseData
 
   @socket_opts [
-    #url: "ws://localhost:4000/socket/websocket"
-    url: "wss://sensocto.fly.dev/socket/websocket"
+    url: "ws://localhost:4000/socket/websocket"
+    #url: "wss://sensocto.fly.dev/socket/websocket"
   ]
 
   # Max interval in milliseconds for sending messages
@@ -107,7 +107,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
     Process.send_after(
       self(),
       :process_queue,
-      1000
+      3000
     )
 
     {:noreply, state}

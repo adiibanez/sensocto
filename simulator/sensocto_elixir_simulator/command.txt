@@ -1,6 +1,9 @@
 Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
 
 
+Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)
+Sensocto.Simulator.Application.ensure_running_count(5, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1})
+Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 50})
 
 Sensocto.Simulator.Application.ensure_running_count(1, 100, 100)
 Process.send_after(:biosense_data_server_1, {:get_data, self(), %{}}, 100)

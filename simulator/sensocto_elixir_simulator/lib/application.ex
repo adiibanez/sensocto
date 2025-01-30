@@ -66,14 +66,14 @@ defmodule Sensocto.Simulator.Application do
       batch_size: 1,
       connector_id: "22222",
       connector_name: "SensoctoSim",
-      sensor_type: "heartrate",
+      sensor_type: "ecg",
       duration: 30,
       sampling_rate: 10,
       heart_rate: 100,
       respiratory_rate: 30,
       scr_number: 5,
       burst_number: 5,
-      sensor_type: "heartrate"
+      sensor_type: "ecg"
     }
   ]
 
@@ -154,46 +154,38 @@ defmodule Sensocto.Simulator.Application do
   end
 
   defp getconfig_for_device(device_name, config) do
+
+    IO.inspect(config, label: "config")
+
     merge_config = %{
-      :device_name => device_name,
-      :sensor_id => device_name,
-      :sensor_name => device_name,
-      :duration => 1,
-      :sensor_type => "heartrate",
-      :sampling_rate => 10
-    }
-
-    case config do
-      nil ->
-        Map.merge(merge_config, Enum.random(@configs))
-
-      config ->
-        Map.merge(config, merge_config)
-
-        config
-        |> Map.put(:sensor_id, "#{device_name}:#{config[:sensor_type]}")
-
-        # |> Map.put(:sampling_rate, 20)
-    end
-  end
-
-  defp config_from_device_name(device_name) do
-    %{
-      device_name: "#{device_name}",
+      device_name: device_name,
+      sensor_id: device_name,
+      sensor_name: device_name,
       batch_size: 1,
       connector_id: "22222",
       connector_name: "SensoctoSim",
+      sensor_type: "heartrate",
+      duration: 30,
       sampling_rate: 1,
-      sensor_id: "#{device_name}",
-      sensor_name: "#{device_name}",
-      sensor_type: "ecg",
-      duration: 10,
-      sampling_rate: 10,
       heart_rate: 100,
       respiratory_rate: 30,
       scr_number: 5,
       burst_number: 5,
-      sensor_type: "ecg"
     }
+
+    IO.inspect(merge_config, label: "merge config")
+
+    case config do
+      nil ->
+        Map.merge(Enum.random(@configs), merge_config)
+        |> IO.inspect(label: "result config")
+
+      config ->
+        Map.merge(merge_config, config)
+        |> Map.put(:sensor_id, "#{device_name}:#{config[:sensor_type]}")
+        |>IO.inspect(label: "result config")
+
+        # |> Map.put(:sampling_rate, 20)
+    end
   end
 end

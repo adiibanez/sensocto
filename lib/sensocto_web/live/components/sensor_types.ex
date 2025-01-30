@@ -1,11 +1,17 @@
-defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
+defmodule SensoctoWeb.Components.SensorTypes.BaseComponent do
   alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
-  import SensoctoWeb.Live.BaseComponents
-  alias SensoctoWeb.Live.BaseComponents
   require Logger
+end
 
+defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
+  alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  import SensoctoWeb.Live.BaseComponents
+  # use SensoctoWeb, :live_view
+  use Phoenix.LiveComponent
+  require Logger
   @compile :nowarn_unused_vars
 
   def mount(_params, _session, socket) do
@@ -13,12 +19,11 @@ defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
   end
 
   def render(assigns) do
+    import SensoctoWeb.Live.BaseComponents
+
     ~H"""
     <div>
-      <div class="m-0 p-2">
-        <p>Type: {assigns.sensor_data.sensor_type}</p>
-        <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
-      </div>
+      {render_attribute_header(assigns)}
 
       <sensocto-ecg-visualization
         is_loading="true"
@@ -44,6 +49,7 @@ end
 
 defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
   alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
@@ -53,24 +59,10 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
   end
 
   def render(assigns) do
+    import SensoctoWeb.Live.BaseComponents
+
     ~H"""
-    <div class="m-2 p-2">
-      <div class="m-0 p-2">
-        <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}
-        </p>
-        <p>Type: {assigns.sensor_data.sensor_type}</p>
-        <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
-        <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
-        <button
-          class="btn"
-          phx-click="clear-attribute"
-          phx-value-sensor_id={assigns.sensor_data.sensor_id}
-          phx-value-attribute_id={assigns.sensor_data.attribute_id}
-        >
-          Clear
-        </button>
-      </div>
+    <div class="attribute">
       
     <!--<sensocto-sparkline
         is_loading="true"
@@ -83,6 +75,10 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
         class="loading w-full m-0 p-0"
       >
       </sensocto-sparkline>-->
+
+      {render_attribute_header(assigns)}
+      
+
 
       <sensocto-chartjs
         width="300"
@@ -105,6 +101,7 @@ end
 
 defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
   alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
@@ -113,7 +110,8 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
     import SensoctoWeb.Live.BaseComponents
 
     ~H"""
-    <div class="m-0 p-0">
+    <div class="attribute">
+      {render_attribute_header(assigns)}
       <!--<sensocto-sparkline
         is_loading="true"
         id={ "sparkline_element-" <> assigns.id }
@@ -139,41 +137,42 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
       </sensocto-chartjs>
       -->
 
-      <sensocto-sparkline-wasm-svelte
-        is_loading="true"
-        id={ "sparkline_element-" <> assigns.id }
-        identifier={assigns.sensor_data.id}
-        samplingrate={assigns.sensor_data.sampling_rate}
-        timewindow="5000"
-        timemode="relative"
-        phx-update="ignore"
-        class="resizeable loading w-full m-0 p-0"
-      >
-      </sensocto-sparkline-wasm-svelte>
-
-      <p class="text-xs">{assigns.sensor_data.timestamp_formated} {assigns.sensor_data.payload}</p>
+      <div class="flex items-center">
+        <p class="w-20" style="border:0 solid white">
+          {@sensor_data.payload}
+        </p>
+        <sensocto-sparkline-wasm-svelte
+          is_loading="true"
+          id={"sparkline_element-" <> assigns.id}
+          identifier={assigns.sensor_data.id}
+          samplingrate={assigns.sensor_data.sampling_rate}
+          timewindow="5000"
+          timemode="relative"
+          phx-update="ignore"
+          class="resizeable loading w-full m-0 p-0"
+          style="border:0 solid white"
+        >
+        </sensocto-sparkline-wasm-svelte>
+      </div>
     </div>
     """
   end
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
+  alias SensoctoWeb.Components.SensorTypes.BaseComponent
+  import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
 
   def render(assigns) do
+    import SensoctoWeb.Live.BaseComponents
+
     ~H"""
-    <div class="m-0 p-0">
-      <div class="m-0 p-2">
-        <p class="font-bold text-s">
-          {assigns.sensor_data.sensor_name}
-        </p>
-        <p>Type: {assigns.sensor_data.sensor_type}</p>
-        <p class="text-xs text-gray-500">{assigns.sensor_data.timestamp_formated}</p>
-        <p class="text-xs hidden">Conn: {assigns.sensor_data.connector_name}</p>
-        {render_payload(assigns.sensor_data.payload, assigns)}
-      </div>
+    <div class="attribute">
+      {render_attribute_header(assigns)}
+      {render_payload(assigns.sensor_data.payload, assigns)}
     </div>
     """
   end

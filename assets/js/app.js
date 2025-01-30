@@ -182,8 +182,8 @@ function resizeElements() {
   const allSparklines = document.querySelectorAll('.resizeable'); // Correct custom element tag.
 
   allSparklines.forEach(element => {
-    const parentWidth = element.parentElement.offsetWidth;
-    const parentHeight = element.parentElement.offsetHeight;
+    const parentWidth = element.parentElement.offsetWidth * 0.8;
+    const parentHeight = element.parentElement.offsetHeight * 0.8;
 
     element.setAttribute('width', parentWidth); // Use setAttribute to change width
     logger.log("Element Resizer", element.id, parentWidth, parentHeight, element.getAttribute("width")); // Log it.

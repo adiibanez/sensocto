@@ -3,7 +3,8 @@
 <script>
     import { onMount } from "svelte";
     import { logger } from "../logger.js";
-    import { sensorDataService } from "../services-sensor-data.js";
+    //import { sensorDataService } from "../services-sensor-data.js";
+    import { createSensorDataServiceInstance } from "../services-sensor-data.js";
     import { get } from "svelte/store";
 
     import init, {
@@ -24,14 +25,18 @@
     export let maxvalue;
     export let initialParams;
 
+    //$: data = $dataStore ? $dataStore : [];
     let loggerCtxName = "SparklineWasm";
+    let sensorDataService;
 
     let canvas;
     let ctx;
-    //let data = [];
 
     let dataStore;
-    $: data = $dataStore ? $dataStore : [];
+    let data = [];
+    let unsubscribe;
+
+    //$: data = $dataStore ? $dataStore : [];
 
     let params = { ...initialParams };
     let isVisible = false;
@@ -50,6 +55,9 @@
 
     $: maxsamples = (timeWindow / 1000) * samplingrate * width; //canvas?.width || 500;
 
+    $: console.log("Datastore changed", dataStore);
+    $: console.log("Data changed", data);
+
     async function initWasm() {
         //await init();
         await init("/assets/wasm_sparkline_bg.wasm");
@@ -64,8 +72,32 @@
 
         console.log("onMount");
 
+        sensorDataService = createSensorDataServiceInstance(identifier);
+
         dataStore = sensorDataService.getSensorDataStore(identifier);
+
+        unsubscribe = dataStore.subscribe((value) => {
+            console.log("dataStore subscribe", identifier, value);
+            if (value) {
+                $: data = value;
+            }
+        });
+        console.log("Component mounted with id ", identifier);
+        //  sensorDataService.processSeedDataEvent(identifier, { detail: { data: [{timestamp: new Date().getTime(), payload: 1 }]}})
+        return () => {
+            console.log("Component unmounted with id ", identifier);
+            if (unsubscribe) {
+                unsubscribe();
+            }
+        };
+
+        /*sensorDataService = createSensorDataServiceInstance(identifier);
+        console.log("sensorDataService", sensorDataService);
+        dataStore = sensorDataService.getSensorDataStore(identifier);
+        data = dataStore;
+
         console.log("dataStore", dataStore);
+        */
 
         observer = new IntersectionObserver(
             (entries) => {
@@ -184,25 +216,51 @@
     }
 
     const handleStorageWorkerEvent = (e) => {
+        logger.log(
+            loggerCtxName,
+            "handleStorageWorkerEvent: ",
+            sensorDataService,
+        );
         //const {type, eventData} = e.detail;
-        if (identifier === e?.detail?.data.id) {
-            sensorDataService.processStorageWorkerEvent(identifier, e);
+        if (sensorDataService != "undefined ") {
+            if (identifier === e?.detail?.data.id) {
+                sensorDataService?.processStorageWorkerEvent(e);
+            }
+        } else {
+            logger.log(loggerCtxName, "No: ", sensorDataService);
         }
     };
 
     const handleSeedDataEvent = (e) => {
-        if (
-            identifier ==
-            e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
-        ) {
-            sensorDataService.processSeedDataEvent(identifier, e);
-            is_loading = false;
+        logger.log(loggerCtxName, "handleSeedDataEvent: ", sensorDataService);
+
+        if (sensorDataService != "undefined ") {
+            if (
+                identifier ==
+                e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
+            ) {
+                sensorDataService?.processSeedDataEvent(e);
+                is_loading = false;
+            }
+        } else {
+            logger.log(loggerCtxName, "No: ", sensorDataService);
         }
     };
 
     const handleAccumulatorEvent = (e) => {
-        if (identifier === e?.detail?.id) {
-            sensorDataService.processAccumulatorEvent(identifier, e);
+        logger.log(
+            loggerCtxName,
+            "handleAccumulatorEvent: ",
+            sensorDataService,
+        );
+        if (sensorDataService != "undefined ") {
+            logger.log(loggerCtxName, sensorDataService);
+
+            if (identifier === e?.detail?.id) {
+                sensorDataService?.processAccumulatorEvent(e);
+            }
+        } else {
+            logger.log(loggerCtxName, "No: ", sensorDataService);
         }
     };
 

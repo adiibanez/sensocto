@@ -120,7 +120,7 @@
     <PushButtonClient />
 </SensorService>
 
-<Map></Map>
+<!--<Map></Map>-->
 
 <!--<textarea style="color:black">{JSON.stringify(sparklineData, null, 4)}</textarea
 >

@@ -4,14 +4,18 @@ import { logger } from "./logger.js";
 
 let loggerCtxName = "SensorDataService";
 
-function createSensorDataService() {
+function createSensorDataService(componentId) {
     const sensorDataMap = writable(new Map()); // Store data per sensor
     //const sensorDataMap = writable() // Store data per sensor
 
-    logger.log(loggerCtxName, "createSensorDataService");
+    let identifier;
+
+    logger.log(loggerCtxName, "createSensorDataService", componentId);
 
     const getSensorDataStore = (identifier) => {
-        logger.log(loggerCtxName, "getSensorDataStore {identifier}");
+        logger.log(loggerCtxName, "getSensorDataStore", identifier, componentId);
+
+        identifier = identifier
         let store;
         sensorDataMap.update(map => {
             if (!map.has(identifier)) {
@@ -24,21 +28,24 @@ function createSensorDataService() {
     };
 
     const updateData = (identifier, newData) => {
-        logger.log(loggerCtxName, "updateData", identifier, newData.length);
+        logger.log(loggerCtxName, "updateData", identifier, newData.length, componentId);
         const store = getSensorDataStore(identifier);
         store.update(oldData => {
             if (oldData) {
+                logger.log(loggerCtxName, "updateData oldData", identifier, oldData, newData.length, componentId);
                 return [...oldData, ...newData]
             } else {
+                logger.log(loggerCtxName, "updateData newData", identifier, oldData, newData.length, componentId);
                 return newData;
             }
         })
     };
 
     const setData = (identifier, newData) => {
-        logger.log(loggerCtxName, "setData", identifier, newData);
+        logger.log(loggerCtxName, "setData", identifier, newData, componentId);
         const store = getSensorDataStore(identifier);
         store.set(newData);
+        logger.log(loggerCtxName, "setData newData", identifier, newData.length, componentId);
     };
 
     const transformStorageEventData = (data) => {
@@ -57,7 +64,7 @@ function createSensorDataService() {
                     // Type checks
                     transformedData.push({
                         timestamp: item.timestamp,
-                        payload: item.payload.payload,
+                        payload: item.payload,
                     });
                 } else {
                     // Output error for any malformed data
@@ -75,8 +82,8 @@ function createSensorDataService() {
     };
 
 
-    const processStorageWorkerEvent = (identifier, e) => {
-        logger.log(loggerCtxName, "handleStorageWorkerEvent", identifier, e);
+    const processStorageWorkerEvent = (e) => {
+        logger.log(loggerCtxName, "handleStorageWorkerEvent", identifier, e, componentId);
         const newData = transformStorageEventData(e.detail.data.result);
 
         let eventType = e.detail.type;
@@ -91,16 +98,19 @@ function createSensorDataService() {
         }
     };
 
-    const processAccumulatorEvent = (identifier, e) => {
-        logger.log(loggerCtxName, "handleAccumulatorEvent", identifier, e);
+    const processAccumulatorEvent = (e) => {
+        logger.log(loggerCtxName, "handleAccumulatorEvent", e, componentId);
 
-        if (e?.detail?.data?.timestamp && e?.detail?.data?.payload) {
-            updateData(identifier, [e.detail.data])
+        const sensorId = e?.detail?.data?.sensor_id;
+
+        if (e?.detail?.data?.timestamp && e?.detail?.data?.payload && sensorId) {
+            updateData(sensorId, [e.detail.data])
         }
     };
 
-    const processSeedDataEvent = (identifier, e) => {
-        logger.log(loggerCtxName, "handleSeedDataEvent", identifier);
+
+    const processSeedDataEvent = (e) => {
+        logger.log(loggerCtxName, "handleSeedDataEvent", identifier, componentId);
         if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
             setData(identifier, e.detail.data)
         } else {
@@ -116,4 +126,4 @@ function createSensorDataService() {
     };
 }
 
-export const sensorDataService = createSensorDataService();
+export const createSensorDataServiceInstance = (componentId) => createSensorDataService(componentId)

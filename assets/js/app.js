@@ -111,10 +111,15 @@ Hooks.SensorDataAccumulator = {
 
       this.handleEvent("measurement", (measurement) => {
         let identifier = measurement.sensor_id + "_" + measurement.attribute_id;
-        logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement", identifier, measurement);
-        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: measurement, id: identifier } });
-        window.dispatchEvent(accumulatorEvent);
-      });
+
+        if (identifier == this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id) {
+          logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement", identifier, this.el.dataset.sensor_id, this.el.dataset.attribute_id, measurement);
+          const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: measurement, id: identifier } });
+          window.dispatchEvent(accumulatorEvent);
+        }
+
+      }
+      );
 
       const payload = { "id": this.el.dataset.sensor_id, "attribute_id": this.el.dataset.attribute_id };
       logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);

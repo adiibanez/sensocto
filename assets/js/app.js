@@ -117,7 +117,6 @@ Hooks.SensorDataAccumulator = {
           const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: measurement, id: identifier } });
           window.dispatchEvent(accumulatorEvent);
         }
-
       }
       );
 

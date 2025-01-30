@@ -1,129 +1,134 @@
 // sensorDataService.js
 import { get, writable } from 'svelte/store';
 import { logger } from "./logger.js";
+import { tick } from 'svelte';
 
 let loggerCtxName = "SensorDataService";
 
-function createSensorDataService(componentId) {
-    const sensorDataMap = writable(new Map()); // Store data per sensor
-    //const sensorDataMap = writable() // Store data per sensor
+const sensorDataMap = writable(new Map()); // Store data per sensor
 
-    let identifier;
+const getSensorDataStore = (identifier) => {
+    logger.log(loggerCtxName, "getSensorDataStore", identifier);
 
-    logger.log(loggerCtxName, "createSensorDataService", componentId);
+    let store;
+    sensorDataMap.update(map => {
+        if (!map.has(identifier)) {
+            map.set(identifier, writable([]));
+        }
+        store = map.get(identifier);
+        return map
+    })
+    return store
+};
 
-    const getSensorDataStore = (identifier) => {
-        logger.log(loggerCtxName, "getSensorDataStore", identifier, componentId);
+const updateData = (identifier, newData) => {
+    logger.log(loggerCtxName, "updateData", identifier, newData.length, newData);
+    const store = getSensorDataStore(identifier);
+    store.update(oldData => {
+        if (oldData) {
+            logger.log(loggerCtxName, "updateData oldData", identifier, oldData, newData.length);
+            return [...oldData, ...newData]
+        } else {
+            logger.log(loggerCtxName, "updateData newData", identifier, oldData, newData.length);
+            return newData;
+        }
+    })
+};
 
-        identifier = identifier
-        let store;
-        sensorDataMap.update(map => {
-            if (!map.has(identifier)) {
-                map.set(identifier, writable([]));
-            }
-            store = map.get(identifier);
-            return map
-        })
-        return store
-    };
+const setData = async (identifier, newData) => {
+    logger.log(loggerCtxName, "setData", identifier, newData);
+    console.log('setData called, data before set', newData);
+    const store = getSensorDataStore(identifier);
+    store.set(newData);
+    logger.log(loggerCtxName, "setData newData", identifier, newData.length);
+    await tick();
+};
 
-    const updateData = (identifier, newData) => {
-        logger.log(loggerCtxName, "updateData", identifier, newData.length, componentId);
-        const store = getSensorDataStore(identifier);
-        store.update(oldData => {
-            if (oldData) {
-                logger.log(loggerCtxName, "updateData oldData", identifier, oldData, newData.length, componentId);
-                return [...oldData, ...newData]
+const transformStorageEventData = (data) => {
+    let transformedData = [];
+
+    if (data && Array.isArray(data)) {
+        // Verify data format.
+        data.forEach((item) => {
+            // Loop through each item in the array.
+            if (
+                typeof item === "object" &&
+                item !== null &&
+                item.timestamp &&
+                item.payload
+            ) {
+                // Type checks
+                transformedData.push({
+                    timestamp: item.timestamp,
+                    payload: item.payload,
+                });
             } else {
-                logger.log(loggerCtxName, "updateData newData", identifier, oldData, newData.length, componentId);
-                return newData;
+                // Output error for any malformed data
+                console.warn(
+                    "malformed data detected, skipping item",
+                    item,
+                );
             }
-        })
-    };
+        });
 
-    const setData = (identifier, newData) => {
-        logger.log(loggerCtxName, "setData", identifier, newData, componentId);
-        const store = getSensorDataStore(identifier);
-        store.set(newData);
-        logger.log(loggerCtxName, "setData newData", identifier, newData.length, componentId);
-    };
+        return transformedData;
+    } else {
+        console.warn("Invalid data format or data is missing:", data);
+    }
+};
 
-    const transformStorageEventData = (data) => {
-        let transformedData = [];
+const processStorageWorkerEvent = async (identifier, e) => {
+    logger.log(loggerCtxName, "handleStorageWorkerEvent", e);
+    const newData = transformStorageEventData(e.detail.data.result);
 
-        if (data && Array.isArray(data)) {
-            // Verify data format.
-            data.forEach((item) => {
-                // Loop through each item in the array.
-                if (
-                    typeof item === "object" &&
-                    item !== null &&
-                    item.timestamp &&
-                    item.payload
-                ) {
-                    // Type checks
-                    transformedData.push({
-                        timestamp: item.timestamp,
-                        payload: item.payload,
-                    });
-                } else {
-                    // Output error for any malformed data
-                    console.warn(
-                        "malformed data detected, skipping item",
-                        item,
-                    );
-                }
-            });
+    let eventType = e.detail.type;
 
-            return transformedData;
-        } else {
-            console.warn("Invalid data format or data is missing:", data);
-        }
-    };
+    switch (eventType) {
+        case "clear-data-result":
+            break;
 
+        case "get-data-result":
+            await setData(identifier, newData)
+            break;
+    }
+};
 
-    const processStorageWorkerEvent = (e) => {
-        logger.log(loggerCtxName, "handleStorageWorkerEvent", identifier, e, componentId);
-        const newData = transformStorageEventData(e.detail.data.result);
+const processAccumulatorEvent = (identifier, e) => {
+    logger.log(loggerCtxName, "handleAccumulatorEvent", e);
 
-        let eventType = e.detail.type;
+    const sensorId = e?.detail?.data?.sensor_id;
+    if (e?.detail?.data?.timestamp && e?.detail?.data?.payload && sensorId) {
+        updateData(sensorId, [e.detail.data])
+    } else {
+        logger.log(loggerCtxName, "processAccumulatorEvent: payload is missing");
+    }
+};
 
-        switch (eventType) {
-            case "clear-data-result":
-                break;
+const processSeedDataEvent = async (identifier, e) => {
+    logger.log(loggerCtxName, "handleSeedDataEvent");
+    if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
+        await setData(identifier, e.detail.data)
+    } else {
+        await setData(identifier, [])
+    }
+};
 
-            case "get-data-result":
-                setData(identifier, newData)
-                break;
-        }
-    };
+const handleAccumulatorEvent = (identifier, e) => {
+    processAccumulatorEvent(identifier, e);
+};
 
-    const processAccumulatorEvent = (e) => {
-        logger.log(loggerCtxName, "handleAccumulatorEvent", e, componentId);
-
-        const sensorId = e?.detail?.data?.sensor_id;
-
-        if (e?.detail?.data?.timestamp && e?.detail?.data?.payload && sensorId) {
-            updateData(sensorId, [e.detail.data])
-        }
-    };
-
-
-    const processSeedDataEvent = (e) => {
-        logger.log(loggerCtxName, "handleSeedDataEvent", identifier, componentId);
-        if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
-            setData(identifier, e.detail.data)
-        } else {
-            setData(identifier, [])
-        }
-    };
-
-    return {
-        getSensorDataStore,
-        processStorageWorkerEvent,
-        processAccumulatorEvent,
-        processSeedDataEvent
-    };
+const handleStorageWorkerEvent = (identifier, e) => {
+    processStorageWorkerEvent(identifier, e)
 }
 
-export const createSensorDataServiceInstance = (componentId) => createSensorDataService(componentId)
+const handleSeedDataEvent = (identifier, e) => {
+    processSeedDataEvent(identifier, e)
+}
+
+
+export {
+    getSensorDataStore,
+    handleStorageWorkerEvent,
+    handleAccumulatorEvent,
+    handleSeedDataEvent
+};

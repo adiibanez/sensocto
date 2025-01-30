@@ -5,21 +5,17 @@
 <div
   id="cnt"
   phx-hook="ConnectionHandler"
-  class={
-    "grid gap-4 sm:gap-6 md:gap-8 lg:gap-8 xl:gap-8 grid-cols-1 sm:grid-cols-#{assigns.grid_cols_sm} lg:grid-cols-#{assigns.grid_cols_lg} xl:grid-cols-#{assigns.grid_cols_xl} 2xl:grid-cols-#{assigns.grid_cols_2xl}"
-  }
+  class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
 >
   <.async_result :let={sensors} assign={@sensors}>
     <:loading>Loading Sensor data ...</:loading>
     <:failed :let={reason}>{reason}</:failed>
 
-    <p class="text-xs hidden">{inspect(sensors)}</p>
-
     <div
       :for={{id, sensor} <- sensors}
-      class="flex flex-col rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-8 xl:p-8 cursor-pointer bg-dark-gray text-light-gray"
+      class="flex flex-col rounded-lg shadow-md p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 cursor-pointer bg-dark-gray text-light-gray"
       style={
-        if is_map(sensor) and Map.has_key?(sensor, :highlighted) do
+        if Map.has_key?(sensor, :highlighted) do
           "grid-column: span 2; grid-row: span 1;"
         else
           ""
@@ -28,10 +24,8 @@
     >
       <div class="w-full h-full">
         <!-- loading stage content -->
-        <div
-          :if={not Map.has_key?(sensor, :metadata) || sensor.metadata |> Kernel.map_size() == 0}
-          class=""
-        >
+        <div :if={is_nil(sensor.metadata) || sensor.metadata |> Kernel.map_size() == 0} class="">
+          <.render_sensor_header sensor={sensor.metadata}></.render_sensor_header>
           <svg
             aria-hidden="true"
             class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
@@ -50,37 +44,22 @@
           </svg>
         </div>
 
-        <div
-          :if={Map.has_key?(sensor, :metadata) and Kernel.map_size(sensor.metadata) > 0}
-          class=""
-        >
+        <div :if={Kernel.map_size(sensor.metadata) > 0} class="">
           <.render_sensor_header sensor={sensor.metadata}></.render_sensor_header>
         </div>
 
-        <p class="text-xs hidden">{inspect(sensor)}</p>
-
         <div
-          :for={{id, attribute_data} <- sensor.attributes}
-          :if={Map.has_key?(sensor, :metadata) and Map.has_key?(sensor, :attributes)}
+          :for={{id, attribute_data} <- sensor.viewdata}
           class="attribute"
-          id={"#{sensor.metadata.sensor_id}_#{id}"}
+          id={attribute_data.id}
           class="bg-gray-800 text-xs m-0 p-1"
           phx-hook="SensorDataAccumulator"
           data-sensor_id={sensor.metadata.sensor_id}
-          data-attribute_id={id}
-          data-sensor_type={id}
+          data-attribute_id={attribute_data.attribute_id}
+          data-sensor_type={attribute_data.sensor_type}
           phx-hook="SensorDataAccumulator"
         >
-          <div class="hidden">{"#{is_list(attribute_data)} #{inspect(attribute_data)}"}</div>
-
-          {if is_list(attribute_data) and Enum.count(attribute_data) > 0 do
-            render_sensor_by_type(
-              BaseComponents.get_attribute_view_data(id, sensor.metadata, attribute_data),
-              sensor.metadata
-            )
-          else
-            "No data yet ..."
-          end}
+          {render_sensor_by_type(attribute_data, sensor.metadata)}
         </div>
       </div>
     </div>

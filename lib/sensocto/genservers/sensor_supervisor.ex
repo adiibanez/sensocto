@@ -1,7 +1,8 @@
 defmodule Sensocto.SensorSupervisor do
   use Supervisor
   require Logger
-  alias Sensocto.{SimpleSensor, AttributeStore}
+  alias Sensocto.AttributeStore
+  alias Sensocto.SimpleSensor
 
   def start_link(configuration) do
     Supervisor.start_link(__MODULE__, configuration, name: via_tuple(configuration.sensor_id))

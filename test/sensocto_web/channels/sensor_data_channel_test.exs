@@ -22,11 +22,11 @@ defmodule SensoctoWeb.SensorDataChannelTest do
 
   test "broadcasts are pushed to the client", %{socket: socket} do
     broadcast_from!(socket, "broadcast", %{"some" => "data"})
-    assert_push "broadcast", %{"some" => "data"}
+    assert_push("broadcast", %{"some" => "data"})
   end
 
   test "send measurment", %{socket: socket} do
     ref = push(socket, "ping", %{"measurement" => "1"})
-    assert_reply ref, :ok, %{"measurement" => "1"}
+    assert_reply(ref, :ok, %{"measurement" => "1"})
   end
 end

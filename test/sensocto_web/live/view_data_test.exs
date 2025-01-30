@@ -1,7 +1,7 @@
 defmodule SensoctoWeb.Live.Components.ViewDataTest do
   use ExUnit.Case, async: true
-  alias SensoctoWeb.Live.Components.ViewData
   alias Sensocto.Utils
+  alias SensoctoWeb.Live.Components.ViewData
 
   test "update_sensor_data/2 adds a new attribute to a sensor" do
     sensors = %{

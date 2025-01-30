@@ -96,55 +96,61 @@ defmodule SensoctoWeb.Components.Navbar do
   ```
   """
   @doc type: :component
-  attr :id, :string,
+  attr(:id, :string,
     required: true,
     doc: "A unique identifier is used to manage state and interaction"
+  )
 
-  attr :variant, :string, default: "base", doc: "Determines the style"
-  attr :color, :string, default: "base", doc: "Determines color theme"
-  attr :border, :string, default: "extra_small", doc: "Determines border style"
-  attr :text_position, :string, default: "", doc: "Determines the element' text position"
-  attr :rounded, :string, default: "", doc: "Determines the border radius"
-  attr :max_width, :string, default: "", doc: "Determines the style of element max width"
+  attr(:variant, :string, default: "base", doc: "Determines the style")
+  attr(:color, :string, default: "base", doc: "Determines color theme")
+  attr(:border, :string, default: "extra_small", doc: "Determines border style")
+  attr(:text_position, :string, default: "", doc: "Determines the element' text position")
+  attr(:rounded, :string, default: "", doc: "Determines the border radius")
+  attr(:max_width, :string, default: "", doc: "Determines the style of element max width")
 
-  attr :content_position, :string,
+  attr(:content_position, :string,
     default: "between",
     doc: "Determines the alignment of the element's content"
+  )
 
-  attr :image, :string, default: nil, doc: "Image displayed alongside of an item"
-  attr :image_class, :string, default: nil, doc: "Determines custom class for the image"
-  attr :name, :string, default: nil, doc: "Specifies the name of the element"
-  attr :relative, :boolean, default: false, doc: ""
-  attr :link, :string, default: nil, doc: ""
-  attr :space, :string, default: "", doc: "Space between items"
+  attr(:image, :string, default: nil, doc: "Image displayed alongside of an item")
+  attr(:image_class, :string, default: nil, doc: "Determines custom class for the image")
+  attr(:name, :string, default: nil, doc: "Specifies the name of the element")
+  attr(:relative, :boolean, default: false, doc: "")
+  attr(:link, :string, default: nil, doc: "")
+  attr(:space, :string, default: "", doc: "Space between items")
 
-  attr :font_weight, :string,
+  attr(:font_weight, :string,
     default: "font-normal",
     doc: "Determines custom class for the font weight"
+  )
 
-  attr :padding, :string, default: "small", doc: "Determines padding for items"
-  attr :class, :string, default: nil, doc: "Custom CSS class for additional styling"
+  attr(:padding, :string, default: "small", doc: "Determines padding for items")
+  attr(:class, :string, default: nil, doc: "Custom CSS class for additional styling")
 
-  attr :rest, :global,
+  attr(:rest, :global,
     doc:
       "Global attributes can define defaults which are merged with attributes provided by the caller"
+  )
 
-  slot :start_content,
+  slot(:start_content,
     required: false,
     doc: "Content to be rendered at the start (start side based on rtl or ltr) of the navbar."
+  )
 
-  slot :inner_block, required: false, doc: "Inner block that renders HEEx content"
+  slot(:inner_block, required: false, doc: "Inner block that renders HEEx content")
 
-  slot :end_content,
+  slot(:end_content,
     required: false,
     doc: "Content to be rendered at the end (end side based on rtl or ltr) of the navbar."
+  )
 
   slot :list, required: false do
-    attr :class, :string, doc: "Custom CSS class for additional styling"
-    attr :padding, :string, doc: "Determines padding for items"
-    attr :icon, :string, doc: "Icon displayed alongside of an item"
-    attr :icon_class, :string, doc: "Determines custom class for the icon"
-    attr :icon_position, :string, doc: "Determines icon position"
+    attr(:class, :string, doc: "Custom CSS class for additional styling")
+    attr(:padding, :string, doc: "Determines padding for items")
+    attr(:icon, :string, doc: "Icon displayed alongside of an item")
+    attr(:icon_class, :string, doc: "Determines custom class for the icon")
+    attr(:icon_position, :string, doc: "Determines icon position")
   end
 
   def navbar(assigns) do
@@ -593,8 +599,8 @@ defmodule SensoctoWeb.Components.Navbar do
 
   defp color_variant(params, _) when is_binary(params), do: params
 
-  attr :name, :string, required: true, doc: "Specifies the name of the element"
-  attr :class, :any, default: nil, doc: "Custom CSS class for additional styling"
+  attr(:name, :string, required: true, doc: "Specifies the name of the element")
+  attr(:class, :any, default: nil, doc: "Custom CSS class for additional styling")
 
   defp icon(%{name: "hero-" <> _, class: class} = assigns) when is_list(class) do
     ~H"""

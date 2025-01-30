@@ -3,11 +3,11 @@ defmodule SensoctoWeb.SensorDataChannel do
   use SensoctoWeb, :channel
   require Logger
   # alias Sensocto.Broadway.BufferingProducer
+  alias Sensocto.DeviceSupervisor
   alias Sensocto.Sensors.SensorAttributeAgent
   alias Sensocto.Sensors.SensorSupervisor
-  alias Sensocto.DeviceSupervisor
-  alias SensoctoWeb.Sensocto.Presence
   alias Sensocto.SimpleSensor
+  alias SensoctoWeb.Sensocto.Presence
 
   def init(args) do
     Logger.info("Channel init #{inspect(args)}")

@@ -42,7 +42,7 @@ defmodule Sensocto.MixProject do
       {:phoenix_html, "~> 4.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       # {:phoenix_live_view, "~> 0.20.2"},
-      {:phoenix_live_view, "~> 1.0"},
+      {:phoenix_live_view, "~> 1.0.3"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       # {:esbuild, "~> 0.8.2"},
@@ -72,7 +72,8 @@ defmodule Sensocto.MixProject do
       {:broadway_dashboard, "~> 0.4.0"},
       {:live_svelte, "~> 0.6"},
       # {:live_svelte, github: "woutdp/live_svelte", tag: "svelte-5"},
-      {:igniter, "~> 0.5", only: [:dev, :test]},
+      # {:igniter, "~> 0.5", only: [:dev, :test]},
+      # {:rewrite, "~> 1.1.1", only: [:dev], override: true},
       {:ash, "~> 3.0"},
       {:ash_authentication, "~> 4.4.1"},
       {:ash_authentication_phoenix, "~> 2.4.2"},
@@ -82,7 +83,20 @@ defmodule Sensocto.MixProject do
       {:dialyxir, "~> 0.4", only: [:dev]},
       {:nimble_csv, "~> 1.1", only: [:dev]},
       {:brotli, "~> 0.3.2", only: [:dev]},
-      {:mishka_chelekom, "~> 0.0.2", only: :dev}
+      {:mishka_chelekom, "~> 0.0.2", only: :dev},
+      {:timex, "~> 3.7"}
+      # {:recode, "~> 0.7", only: :dev, override: true}
+
+      # {
+      #   :recode,
+      #   compile: true,
+      #   app: true,
+      #   github: "hrzndhrn/recode",
+      #   branch: "rewrite-1-0-0",
+      #   sparse: "optimized",
+      #   depth: 1
+      # }
+
       # {:sensocto_elixir_simulator, path: "./simulator/sensocto_elixir_simulator", app: false}
     ]
   end

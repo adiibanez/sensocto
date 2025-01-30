@@ -78,8 +78,6 @@ defmodule SensoctoWeb.SenseLive do
   def handle_event("toggle_bluetooth", _, socket) do
     IO.inspect(socket.assigns.bluetooth_enabled)
 
-    {:noreply,
-     socket
-     |> assign(:bluetooth_enabled, !socket.assigns.bluetooth_enabled)}
+    {:noreply, assign(socket, :bluetooth_enabled, !socket.assigns.bluetooth_enabled)}
   end
 end

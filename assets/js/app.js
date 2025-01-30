@@ -126,9 +126,13 @@ Hooks.SensorDataAccumulator = {
       this.handleEvent("seeddata", (seed) => {
         console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
 
-        workerStorage.postMessage({ type: 'seed-data', data: { id: seed.sensor_id + "_" + seed.attribute_id, seedData: seed.data } });
-        const seedEvent = new CustomEvent('seeddata-event', { id: seed.sensor_id + "_" + seed.attribute_id, detail: seed });
-        window.dispatchEvent(seedEvent);
+        identifier_seed = seed.sensor_id + "_" + seed.attribute_id;
+
+        if (identifier_seed == this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id) {
+          workerStorage.postMessage({ type: 'seed-data', data: { id: identifier_seed, seedData: seed.data } });
+          const seedEvent = new CustomEvent('seeddata-event', { id: identifier_seed, detail: seed });
+          window.dispatchEvent(seedEvent);
+        }
       });
 
       this.pushEvent("request-seed-data", payload);

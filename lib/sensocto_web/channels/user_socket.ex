@@ -8,7 +8,7 @@ defmodule SensoctoWeb.UserSocket do
 
   ## Channels
 
-  channel "sensor_data:*", SensoctoWeb.SensorDataChannel
+  channel("sensor_data:*", SensoctoWeb.SensorDataChannel)
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After

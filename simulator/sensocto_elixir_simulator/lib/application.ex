@@ -68,7 +68,7 @@ defmodule Sensocto.Simulator.Application do
       connector_name: "SensoctoSim",
       sensor_type: "heartrate",
       duration: 30,
-      sampling_rate: 1,
+      sampling_rate: 10,
       heart_rate: 100,
       respiratory_rate: 30,
       scr_number: 5,
@@ -158,9 +158,9 @@ defmodule Sensocto.Simulator.Application do
       :device_name => device_name,
       :sensor_id => device_name,
       :sensor_name => device_name,
-      :duration => 10,
+      :duration => 1,
       :sensor_type => "heartrate",
-      :sampling_rate => 1
+      :sampling_rate => 10
     }
 
     case config do

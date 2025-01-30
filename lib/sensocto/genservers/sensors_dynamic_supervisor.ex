@@ -3,6 +3,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   use DynamicSupervisor
   require Logger
 
+  # https://kobrakai.de/kolumne/child-specs-in-elixir?utm_source=elixir-merge
   def start_link(test) do
     IO.puts("#{__MODULE__}: start_link, test: #{test}")
     DynamicSupervisor.start_link(__MODULE__, :no_args, name: __MODULE__)
@@ -96,11 +97,11 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   end
 
   def get_all_sensors_state() do
-    get_device_names()
-    |> Enum.reduce(%{}, fn sensor_id, acc ->
+    Enum.reduce(get_device_names(), %{}, fn sensor_id, acc ->
       Map.merge(acc, get_sensor_state(sensor_id))
     end)
-    |> IO.inspect()
+
+    # |> IO.inspect()
 
     # |> Map.to_list()
   end
@@ -154,8 +155,8 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     DynamicSupervisor.count_children(__MODULE__)
   end
 
-  defp via_tuple(worker_name) do
-    # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
-    {:via, Registry, {Sensocto.Registry, worker_name}}
-  end
+  # defp via_tuple(worker_name) do
+  #  # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
+  #  {:via, Registry, {Sensocto.Registry, worker_name}}
+  # end
 end

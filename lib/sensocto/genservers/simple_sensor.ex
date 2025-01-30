@@ -1,7 +1,8 @@
 defmodule Sensocto.SimpleSensor do
   use GenServer
   require Logger
-  alias Sensocto.{AttributeStore, SimpleSensorRegistry}
+  alias Sensocto.AttributeStore
+  alias Sensocto.SimpleSensorRegistry
 
   # defstruct [:attribute_store_pid]
 
@@ -41,7 +42,7 @@ defmodule Sensocto.SimpleSensor do
           Logger.debug("Client: put_attribute ERROR #{inspect(attribute)}")
       end
     rescue
-      e ->
+      _e ->
         Logger.error(inspect(__STACKTRACE__))
     end
   end
@@ -57,7 +58,7 @@ defmodule Sensocto.SimpleSensor do
           Logger.debug("Client: clear_attribute ERROR #{inspect(attribute_id)}")
       end
     rescue
-      e ->
+      _e ->
         Logger.error(inspect(__STACKTRACE__))
     end
   end
@@ -74,7 +75,7 @@ defmodule Sensocto.SimpleSensor do
           :error
       end
     rescue
-      e ->
+      _e ->
         Logger.error(inspect(__STACKTRACE__))
     end
   end
@@ -94,7 +95,7 @@ defmodule Sensocto.SimpleSensor do
           :error
       end
     rescue
-      e ->
+      _e ->
         Logger.error(inspect(__STACKTRACE__))
     end
   end
@@ -111,7 +112,7 @@ defmodule Sensocto.SimpleSensor do
           :error
       end
     rescue
-      e ->
+      _e ->
         Logger.error(inspect(__STACKTRACE__))
     end
   end
@@ -123,6 +124,8 @@ defmodule Sensocto.SimpleSensor do
       metadata: state,
       attributes: AttributeStore.get_attributes(sensor_id, 1)
     }
+
+    # Logger.debug("Sensor state: #{inspect(sensor_state)}")
 
     {:reply, sensor_state, state}
   end

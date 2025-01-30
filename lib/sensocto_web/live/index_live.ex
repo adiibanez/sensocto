@@ -1,17 +1,23 @@
 defmodule SensoctoWeb.IndexLive do
-  alias Sensocto.SimpleSensor
+  # alias Sensocto.SimpleSensor
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
   alias SensoctoWeb.Live.Components.ViewData
+  alias SensoctoWeb.Live.BaseComponents
   import SensoctoWeb.Live.BaseComponents
 
-  alias SensoctoWeb.Components.SensorTypes.{
-    EcgSensorComponent,
-    GenericSensorComponent,
-    HeartrateComponent,
-    HighSamplingRateSensorComponent
-  }
+  @grid_cols_sm_default 2
+  @grid_cols_lg_default 3
+  @grid_cols_xl_default 6
+  @grid_cols_2xl_default 6
+
+  # alias SensoctoWeb.Components.SensorTypes.{
+  #   EcgSensorComponent,
+  #   # GenericSensorComponent,
+  #   HeartrateComponent,
+  #   HighSamplingRateSensorComponent
+  # }
 
   # https://dev.to/ivor/how-to-unsubscribe-from-all-topics-in-phoenixpubsub-dka
   # https://hexdocs.pm/phoenix_live_view/bindings.html#js-commands
@@ -27,16 +33,22 @@ defmodule SensoctoWeb.IndexLive do
     {:ok,
      socket
      |> assign(
+       sensors_online_count: 0,
        sensors_online: %{},
        sensors_offline: %{},
-       stream_div_class: ""
+       test: %{:test2 => %{:timestamp => 123, :payload => 10}},
+       stream_div_class: "",
+       grid_cols_sm: @grid_cols_sm_default,
+       grid_cols_lg: @grid_cols_lg_default,
+       grid_cols_xl: @grid_cols_xl_default,
+       grid_cols_2xl: @grid_cols_2xl_default
      )
      |> assign_async(:sensors, fn ->
        {:ok,
         %{
-          :sensors =>
-            Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
-            |> ViewData.generate_view_data()
+          :sensors => Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
+          # |> dbg()
+          # |> ViewData.generate_view_data()
         }}
      end)
      |> stream(:sensor_data, [])}
@@ -46,50 +58,6 @@ defmodule SensoctoWeb.IndexLive do
   # @spec render(any()) :: Phoenix.LiveView.Rendered.t()
   #   #render_with(socket)
   # end
-
-  defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
-       when sensor_type in ["ecg"] do
-    component_id = "live-#{sensor_data.id}"
-
-    ~H"""
-    <.live_component id={component_id} module={EcgSensorComponent} sensor_data={sensor_data} />
-    """
-  end
-
-  defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
-       when sensor_type in ["pressure", "flex", "eda", "emg", "rsp"] do
-    component_id = "sensorviz-#{sensor_data.id}"
-
-    ~H"""
-    <.live_component
-      id={component_id}
-      module={HighSamplingRateSensorComponent}
-      sensor_data={sensor_data}
-    />
-    """
-  end
-
-  defp render_sensor_by_type(%{sensor_type: "heartrate"} = sensor_data, assigns) do
-    component_id = "sensorviz-#{sensor_data.id}"
-
-    ~H"""
-    <.live_component id={component_id} module={HeartrateComponent} sensor_data={sensor_data} />
-    """
-  end
-
-  defp render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns) do
-    component_id = "sensorviz-#{sensor_data.id}"
-
-    ~H"""
-    <.live_component id={component_id} module={GenericSensorComponent} sensor_data={sensor_data} />
-    """
-  end
-
-  defp render_sensor_by_type(sensor_data, assigns) do
-    ~H"""
-    <div>Unknown sensor_type {sensor_data}</div>
-    """
-  end
 
   def handle_info(
         {:measurement,
@@ -102,9 +70,12 @@ defmodule SensoctoWeb.IndexLive do
            sensor_data},
         socket
       ) do
-    # IO.inspect(sensor_data, label: "Received measurement data:")
-
     existing_data = socket.assigns.sensors.result
+
+    # Logger.debug("Handle measurment #{inspect(sensor_data)}")
+
+    # IO.inspect(sensor_data, label: "Received measurement data:")
+    # IO.inspect(existing_data, label: "Existing:")
 
     # update client
     measurement = %{
@@ -114,15 +85,64 @@ defmodule SensoctoWeb.IndexLive do
       :sensor_id => sensor_id
     }
 
-    {:noreply,
-     socket
-     |> assign_async(:sensors, fn ->
-       {:ok,
-        %{
-          :sensors => ViewData.merge_sensor_data(existing_data, sensor_data)
-        }}
-     end)
-     |> push_event("measurement", measurement)}
+    existing_data =
+      socket.assigns.sensors.result
+
+    # IO.inspect(existing_data, label: "Existing data")
+
+    # |> dbg()
+
+    if is_map(existing_data) do
+      updated_data =
+        update_in(existing_data, [sensor_id], fn sensor_data ->
+          sensor_data = sensor_data || %{}
+
+          update_in(sensor_data, [:attributes], fn attributes ->
+            attributes = attributes || %{}
+
+            update_in(attributes, [uuid], fn list ->
+              list = list || []
+
+              case list do
+                [] ->
+                  [%{payload: payload, timestamp: timestamp}]
+
+                list ->
+                  List.update_at(list, 0, fn entry ->
+                    %{entry | payload: payload, timestamp: timestamp}
+                  end)
+              end
+            end)
+          end)
+        end)
+
+      # updated_data =
+      #   update_in(existing_data, [sensor_id, :attributes, uuid], fn list ->
+      #     case list do
+      #       [] -> []
+      #       [_ | rest] -> [%{hd(list) | payload: payload} | rest]
+      #       nil -> Logger.debug("Update state no list #{inspect(list)}")
+      #       :ok -> Logger.debug("Update state :ok, async schissle #{Sensocto.Utils.typeof(list)}")
+      #     end
+      #   end)
+
+      {:noreply,
+       socket
+       |> assign_async(:sensors, fn ->
+         {:ok,
+          %{
+            :sensors => updated_data
+            #  |> ViewData.generate_view_data()
+          }}
+       end)
+       |> push_event("measurement", measurement)}
+    else
+      Logger.debug("Something wrong with existing data #{Sensocto.Utils.typeof(existing_data)}")
+
+      {:noreply,
+       socket
+       |> push_event("measurement", measurement)}
+    end
   end
 
   def handle_event(
@@ -160,7 +180,7 @@ defmodule SensoctoWeb.IndexLive do
     attribute_data = Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000)
 
     Logger.debug(
-      "Seed data available for attribute #{sensor_id}:#{attribute_id}, #{inspect(attribute_data)}}"
+      "Seed data available for attribute #{sensor_id}:#{attribute_id}, #{Enum.count(attribute_data)}}"
     )
 
     {:noreply,
@@ -183,22 +203,19 @@ defmodule SensoctoWeb.IndexLive do
         },
         socket
       ) do
-    Logger.debug("presence #{inspect(payload)}")
+    Logger.debug(
+      "presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
+    )
+
     sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
 
-    sensors_online_count = min(2, Enum.count(sensors_online))
-
-    div_class =
-      "grid gap-2 grid-cols-1 md:grid-cols-" <>
-        Integer.to_string(min(2, sensors_online_count)) <>
-        " lg:grid-cols-" <>
-        Integer.to_string(min(4, sensors_online_count))
+    sensors_online_count = Enum.count(socket.assigns.sensors.result)
 
     # div_class =
     #   "grid gap-2 grid-cols-4 sd:grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
 
     socket_to_return =
-      Enum.reduce(payload.leaves, socket, fn {id, metas}, socket ->
+      Enum.reduce(payload.leaves, socket, fn {id, _metas}, socket ->
         sensor_dom_id = "sensor_data-" <> ViewData.sanitize_sensor_id(id)
         stream_delete_by_dom_id(socket, :sensor_data, sensor_dom_id)
       end)
@@ -206,15 +223,19 @@ defmodule SensoctoWeb.IndexLive do
     {
       :noreply,
       socket_to_return
+      |> assign(:sensors_online_count, sensors_online_count)
       |> assign(:sensors_online, sensors_online)
       |> assign(:sensors_offline, payload.leaves)
-      |> assign(:stream_div_class, div_class)
+      |> assign(:grid_cols_sm, min(@grid_cols_sm_default, sensors_online_count))
+      |> assign(:grid_cols_lg, min(@grid_cols_lg_default, sensors_online_count))
+      |> assign(:grid_cols_xl, min(@grid_cols_xl_default, sensors_online_count))
+      |> assign(:grid_cols_2xl, min(@grid_cols_2xl_default, sensors_online_count))
       |> assign_async(:sensors, fn ->
         {:ok,
          %{
-           :sensors =>
-             Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
-             |> ViewData.generate_view_data()
+           :sensors => Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
+           #  |> dbg()
+           #  |> ViewData.generate_view_data()
          }}
       end)
     }
@@ -224,9 +245,7 @@ defmodule SensoctoWeb.IndexLive do
   def handle_info({:signal, msg}, socket) do
     IO.inspect(msg, label: "Handled message {__MODULE__}")
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "You clicked the button!")}
+    {:noreply, put_flash(socket, :info, "You clicked the button!")}
   end
 
   @impl true
@@ -238,17 +257,5 @@ defmodule SensoctoWeb.IndexLive do
   def handle_info(msg, socket) do
     IO.inspect(msg, label: "Unknown Message")
     {:noreply, socket}
-  end
-
-  # Define a map for UUID to human-readable names
-  defp sensor_name_for_uuid(uuid) do
-    case uuid do
-      "61d20a90-71a1-11ea-ab12-0800200c9a66" -> "Pressure"
-      "00002a37-0000-1000-8000-00805f9b34fb" -> "Heart Rate"
-      "feb7cb83-e359-4b57-abc6-628286b7a79b" -> "Flexsense"
-      "00002a19-0000-1000-8000-00805f9b34fb" -> "Battery"
-      # Default for unknown UUIDs
-      _ -> uuid
-    end
   end
 end

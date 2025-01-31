@@ -98,21 +98,33 @@ defmodule Sensocto.SensorsDynamicSupervisor do
 
   def get_all_sensors_state() do
     Enum.reduce(get_device_names(), %{}, fn sensor_id, acc ->
-      Map.merge(acc, get_sensor_state(sensor_id))
+      case acc do
+        %{} = __sensor_state ->
+          if is_map(acc) do
+            Map.merge(acc, get_sensor_state(sensor_id))
+          end
+
+        :ok ->
+          Logger.warning("get_all_sensors_state Got :ok for #{sensor_id}")
+
+        :error ->
+          Logger.debug("Error while retrieving sensor_state #{sensor_id}, ignore")
+      end
     end)
-
-    # |> IO.inspect()
-
-    # |> Map.to_list()
   end
 
-  # def get_device_names() do
-  #  Registry.to_list(Sensocto.SimpleSensorRegistry)
-  #  |> Enum.map(fn {_pid, {sensor_id}} -> sensor_id end)
-  # end
-
   def get_sensor_state(sensor_id) do
-    %{"#{sensor_id}" => SimpleSensor.get_state(sensor_id)}
+    case SimpleSensor.get_state(sensor_id) do
+      %{} = sensor_state ->
+        %{"#{sensor_id}" => sensor_state}
+
+      :ok ->
+        Logger.warning("get_sensor_state Got :ok for #{sensor_id}")
+
+      :error ->
+        Logger.warning("Failed to retrieve sensor state #{sensor_id}")
+        :error
+    end
   end
 
   # Registry.lookup(Registry.ViaTest, "agent")

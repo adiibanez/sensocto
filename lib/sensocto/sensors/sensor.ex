@@ -14,25 +14,25 @@ defmodule Sensocto.Sensors.Sensor do
   # domain: Sensocto.Sensors
 
   postgres do
-    table("sensors")
-    repo(Sensocto.Repo)
+    table "sensors"
+    repo Sensocto.Repo
   end
 
   actions do
-    defaults([:read, :destroy, create: :*, update: :*])
+    defaults [:read, :destroy, create: :*, update: :*]
 
     create :simple do
-      accept([:name])
+      accept [:name]
       # change set_attribute(:status, :open)
-      upsert?(true)
+      upsert? true
     end
 
     create :create_from_sensorinfos do
-      description("Create sensor based on information provided by connector")
+      description "Create sensor based on information provided by connector"
 
       argument :name, :string do
-        description("User readable sensor identification")
-        allow_nil?(false)
+        description "User readable sensor identification"
+        allow_nil? false
       end
 
       # argument :sensor_type, :string do
@@ -45,10 +45,10 @@ defmodule Sensocto.Sensors.Sensor do
       #   allow_nil? false
       # end
 
-      upsert?(true)
-      upsert_identity(:unique)
+      upsert? true
+      upsert_identity :unique
       #
-      upsert_fields([:id])
+      upsert_fields [:id]
 
       # Uses the information from the token to create or sign in the user
       # change AshAuthentication.Strategy.MagicLink.SignInChange
@@ -59,11 +59,11 @@ defmodule Sensocto.Sensors.Sensor do
     end
 
     update :update_sensor_name do
-      description("Create sensor based on information provided by connector")
+      description "Create sensor based on information provided by connector"
 
       argument :name, :string do
-        description("User readable sensor identification")
-        allow_nil?(false)
+        description "User readable sensor identification"
+        allow_nil? false
       end
 
       # upsert? true
@@ -80,40 +80,40 @@ defmodule Sensocto.Sensors.Sensor do
   end
 
   attributes do
-    uuid_primary_key(:id)
+    uuid_primary_key :id
 
     attribute :name, :string do
-      allow_nil?(false)
-      public?(true)
+      allow_nil? false
+      public? true
     end
 
     attribute :sensor_type_id, :uuid do
       # attribute :sensor_type, :string do
-      allow_nil?(true)
-      public?(true)
+      allow_nil? true
+      public? true
     end
 
     attribute :mac_address, :string do
-      allow_nil?(true)
-      public?(true)
+      allow_nil? true
+      public? true
     end
 
     attribute :configuration, :map do
-      allow_nil?(true)
-      public?(true)
+      allow_nil? true
+      public? true
     end
   end
 
   relationships do
-    belongs_to(:connector, Connector)
-    belongs_to(:sensor_type_rel, SensorType)
+    belongs_to :connector, Connector
+    belongs_to :sensor_type_rel, SensorType
     # , on_delete: :delete
-    has_many(:attributes, SensorAttribute)
+    has_many :attributes, SensorAttribute
     # many_to_many :rooms, Sensocto.Rooms.Room
-    many_to_many(:sensor_connections, SensorConnection, through: SensorSensorConnection)
+    many_to_many :sensor_connections, SensorConnection, through: SensorSensorConnection
   end
 
   identities do
-    identity(:unique, keys: [:id])
+    identity :unique, keys: [:id]
   end
 end

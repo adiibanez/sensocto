@@ -4,8 +4,8 @@ defmodule SensoctoWeb.Router do
   import AshAdmin.Router
   use AshAuthentication.Phoenix.Router
   alias SensoctoWeb.LiveUserAuth
-#  alias Plug.Swoosh.MailboxPreview
- # alias AshAdmin.PageLive
+  #  alias Plug.Swoosh.MailboxPreview
+  # alias AshAdmin.PageLive
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -22,7 +22,7 @@ defmodule SensoctoWeb.Router do
     plug :load_from_bearer
   end
 
-  admin_browser_pipeline(:browser)
+  # admin_browser_pipeline(:browser)
 
   pipeline :admins_only do
     plug :admin_basic_auth
@@ -71,7 +71,8 @@ defmodule SensoctoWeb.Router do
     live_dashboard "/dashboard",
       metrics: SensoctoWeb.Telemetry,
       additional_pages: [
-        broadway: BroadwayDashboard
+        # broadway: BroadwayDashboard,
+        sensors: Sensocto.LiveDashboard.SensorsPage
       ]
   end
 

@@ -1,9 +1,19 @@
+iex(1)> pid = "#PID<0.127.0>" |> String.trim_leading("#PID") |> String.to_charlist |> :erlang.list_to_pid  
+#PID<0.127.0>
+iex(2)> Process.alive?(pid)
+true
+
+
 Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
 
 
 Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)
-Sensocto.Simulator.Application.ensure_running_count(5, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1})
+Sensocto.Simulator.Application.ensure_running_count(5, 0, 0, %{:sensor_type => "heartrate", :duration => 60, :sampling_rate => 1})
+Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1})
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 50})
+
+
+Sensocto.Simulator.Application.ensure_running_count(3, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1, :duration=>60, :batch_size => 10, :batch_timeout => 5})
 
 Sensocto.Simulator.Application.ensure_running_count(1, 100, 100)
 Process.send_after(:biosense_data_server_1, {:get_data, self(), %{}}, 100)

@@ -17,7 +17,7 @@ defmodule Sensocto.RegistryUtils do
   end
 
   def via_dynamic_registry(registry, via_token) do
-    case RegistryUtils.check_registry_type(registry) do
+    case check_registry_type(registry) do
       {:ok, :elixir_registry, _} ->
         {:via, Registry, {registry, via_token}}
 
@@ -27,7 +27,7 @@ defmodule Sensocto.RegistryUtils do
   end
 
   def dynamic_select(registry, select) do
-    case RegistryUtils.check_registry_type(registry) do
+    case check_registry_type(registry) do
       {:ok, :elixir_registry, _} ->
         Registry.select(Sensocto.SensorPairRegistry, select)
 
@@ -36,12 +36,12 @@ defmodule Sensocto.RegistryUtils do
     end
   end
 
-  def dynamic_terminat(supervisor, module, pid) do
+  def dynamic_terminat(_supervisor, _module, pid) do
     DynamicSupervisor.terminate_child(__MODULE__, pid)
   end
 
   def dynamic_lookup(registry, lookup) do
-    case RegistryUtils.check_registry_type(registry) do
+    case check_registry_type(registry) do
       {:ok, :elixir_registry, _} ->
         Registry.lookup(Sensocto.SensorPairRegistry, lookup)
 
@@ -53,29 +53,44 @@ defmodule Sensocto.RegistryUtils do
   alias Horde.DynamicSupervisor
 
   def check_supervisor_type(tuple) do
-
     IO.inspect(tuple)
 
+    case tuple do
+      {:via, _, {supervisor_type, _}} when supervisor_type in [Horde.DynamicSupervisor] ->
+        {:ok, :horde_dynamic_supervisor}
+
+      {supervisor_type, _} when supervisor_type in [Horde.DynamicSupervisor] ->
+        {:ok, :horde_dynamic_supervisor}
+
+      {:via, _, {supervisor_type, _}} when supervisor_type in [DynamicSupervisor] ->
+        {:ok, :dynamic_supervisor}
+
+      {supervisor_type, _} when supervisor_type in [DynamicSupervisor] ->
+        {:ok, :dynamic_supervisor}
+
+      _ ->
+        :error
+    end
 
     case tuple do
-      {DynamicSupervisor, _} ->
-        {:ok, :dynamic_supervisor}
-
-      {:via, _, {DynamicSupervisor, _}} ->
-        {:ok, :dynamic_supervisor}
+      {:via, _, {Horde.DynamicSupervisor, _}} ->
+        {:ok, :horde_dynamic_supervisor}
 
       {Horde.DynamicSupervisor, _} ->
         {:ok, :horde_dynamic_supervisor}
 
-      {:via, _, {Horde.DynamicSupervisor, _}} ->
-        {:ok, :horde_dynamic_supervisor}
+      {:via, _, {DynamicSupervisor, _}} ->
+        {:ok, :dynamic_supervisor}
+
+      {DynamicSupervisor, _} ->
+        {:ok, :dynamic_supervisor}
 
       _ ->
         :error
     end
   end
 
-  def dynamic_start_link(dynamicsupervisor, module) do
+  def dynamic_start_link(_dynamicsupervisor, module) do
     DynamicSupervisor.start_link(module)
 
     # case check_supervisor_type(dynamicsupervisor) do
@@ -87,14 +102,13 @@ defmodule Sensocto.RegistryUtils do
     # end
   end
 
-  def dynamic_start_child(dynamicsupervisor, module, child_spec) do
-
+  def dynamic_start_child(_dynamicsupervisor, module, child_spec) do
     DynamicSupervisor.start_child(module, child_spec)
 
-    #case check_supervisor_type(dynamicsupervisor) do
+    # case check_supervisor_type(dynamicsupervisor) do
     #  {:ok, :dynamic_supervisor} -> DynamicSupervisor.start_child(module, child_spec)
     #  {:ok, :horde_dynamic_supervisor} -> Horde.DynamicSupervisor.start_child(module, child_spec)
-    #end
+    # end
   end
 
   def check_registry_type(via_tuple) do

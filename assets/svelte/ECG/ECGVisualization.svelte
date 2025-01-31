@@ -11,6 +11,7 @@
 
     let loggerCtxName = "ECGVisualization";
 
+    export let windowsize = 20;
     export let width = 200;
     export let height = 100;
     export let color;
@@ -18,27 +19,62 @@
     export let data = [];
     export let samplingrate;
     export let highlighted_areas = [];
-    let resolution = 1;
+
+    $: ecgDimensions = calculateEcgDimensions(windowsize, samplingrate, width);
 
     // make sure we can resize chart
-    let keepsamples = 2000 / resolution;
+    $: keepsamples = 2000 / ecgDimensions.dynamicResolution;
 
     export let minValue = -1.0;
     export let maxValue = 2;
-
-    $: maxsamples = width / resolution; //samplingrate / resolution * width;
 
     export let identifier;
     export let is_loading;
 
     let canvasElement;
 
+    function calculateEcgDimensions(
+        windowsize,
+        samplingRate,
+        width,
+        options = {},
+    ) {
+        const minHeight = options.minHeight || 30;
+        const maxHeight = options.maxHeight || 200;
+        const fixedAspectRatio = options.fixedAspectRatio || 1;
+        const minResolution = options.minResolution || 1;
+
+        const totalDataPoints = Math.round(windowsize * samplingRate);
+        let dynamicResolution = width / totalDataPoints;
+        dynamicResolution = Math.max(minResolution, dynamicResolution);
+
+        const requiredHorizontalPixels = totalDataPoints * dynamicResolution;
+        const desiredHeight = width * fixedAspectRatio;
+
+        const height = Math.max(
+            Math.min(Math.round(desiredHeight), maxHeight),
+            minHeight,
+        );
+
+        const pixelsPerSecond = samplingRate * dynamicResolution;
+        const maxSamples = Math.round(width / dynamicResolution);
+
+        return {
+            totalDataPoints: totalDataPoints,
+            requiredHorizontalPixels: requiredHorizontalPixels,
+            dynamicResolution: dynamicResolution,
+            height: height,
+            pixelsPerSecond: pixelsPerSecond,
+            maxSamples: maxSamples,
+        };
+    }
+
     function drawEcg(canvas, data, color, backgroundColor, highlighted_areas) {
         if (!canvas || !data || data.length < 2) {
             return;
         }
 
-        const drawData = data.slice(-maxsamples);
+        const drawData = data.slice(-ecgDimensions.maxSamples);
 
         const ctx = canvas.getContext("2d");
         const canvasWidth = canvas.width;
@@ -266,6 +302,6 @@
     <canvas bind:this={canvasElement} {width} {height} />
 </div>
 <p class="text-xs">
-    ECG maxsamples: {maxsamples}, samplingrate: {samplingrate}, resolution: {resolution},
-    data: {data.length} minValue: {minValue} maxValue: {maxValue}
+    ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}
+    maxValue: {maxValue} width: {width} height: {height}
 </p>

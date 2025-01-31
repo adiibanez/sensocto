@@ -1,5 +1,4 @@
 defmodule SensoctoWeb.Components.SensorTypes.BaseComponent do
-  alias SensoctoWeb.Components.SensorTypes.BaseComponent
   import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
@@ -7,17 +6,12 @@ defmodule SensoctoWeb.Components.SensorTypes.BaseComponent do
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
-  alias SensoctoWeb.Components.SensorTypes.BaseComponent
   import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
-  @compile :nowarn_unused_vars
 
-  def mount(_params, _session, socket) do
-    IO.puts("test")
-  end
-
+  @impl true
   def render(assigns) do
     import SensoctoWeb.Live.BaseComponents
 
@@ -48,15 +42,10 @@ defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
-  alias SensoctoWeb.Components.SensorTypes.BaseComponent
   import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
   require Logger
-
-  def mount(_params, _session, socket) do
-    IO.puts("test")
-  end
 
   def render(assigns) do
     import SensoctoWeb.Live.BaseComponents
@@ -77,8 +66,6 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
       </sensocto-sparkline>-->
 
       {render_attribute_header(assigns)}
-      
-
 
       <sensocto-chartjs
         width="300"
@@ -100,7 +87,6 @@ defmodule SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent do
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
-  alias SensoctoWeb.Components.SensorTypes.BaseComponent
   import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
@@ -137,22 +123,26 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
       </sensocto-chartjs>
       -->
 
-      <div class="flex items-center">
-        <p class="w-20" style="border:0 solid white">
+      <div class="flex items-left">
+        <p class="w-20 flex-none" style="border:0 solid white">
           {@sensor_data.payload}
         </p>
-        <sensocto-sparkline-wasm-svelte
-          is_loading="true"
-          id={"sparkline_element-" <> assigns.id}
-          identifier={assigns.sensor_data.id}
-          samplingrate={assigns.sensor_data.sampling_rate}
-          timewindow="5000"
-          timemode="relative"
-          phx-update="ignore"
-          class="resizeable loading w-full m-0 p-0"
-          style="border:0 solid white"
-        >
-        </sensocto-sparkline-wasm-svelte>
+
+        <p class="flex-1">
+          <sensocto-sparkline-wasm-svelte
+            height="20"
+            is_loading="true"
+            id={"sparkline_element-" <> assigns.id}
+            identifier={assigns.sensor_data.id}
+            samplingrate={assigns.sensor_data.sampling_rate}
+            timewindow="5000"
+            timemode="relative"
+            phx-update="ignore"
+            class="resizeable loading w-full m-0 p-0"
+            style="border:0 solid white"
+          >
+          </sensocto-sparkline-wasm-svelte>
+        </p>
       </div>
     </div>
     """
@@ -160,7 +150,6 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
 end
 
 defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
-  alias SensoctoWeb.Components.SensorTypes.BaseComponent
   import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
@@ -189,6 +178,8 @@ defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
             |> Enum.join("")
 
           ~H"<pre>{output}</pre>"
+
+        # aaaa
 
         _ ->
           # Render single value

@@ -4,18 +4,22 @@ defmodule Sensocto.SimpleSensor do
   alias Sensocto.AttributeStore
   alias Sensocto.SimpleSensorRegistry
 
-  # defstruct [:attribute_store_pid]
+  # Add interval for mps calculation
+  # 1 second
+  @mps_interval 1_000
 
   def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
-    # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
   end
 
   @impl true
+  @spec init(map()) :: {:ok, %{:message_timestamps => [], optional(any()) => any()}}
   def init(state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
-    # :ok = PubSub.subscribe(Sensocto.Pubsub, "measurement")
+    # Initialize message counter and schedule mps calculation
+    state = Map.merge(state, %{message_timestamps: []})
+    schedule_mps_calculation()
     {:ok, state}
   end
 
@@ -24,6 +28,9 @@ defmodule Sensocto.SimpleSensor do
       [{pid, _}] ->
         Logger.debug("Client: get_state #{inspect(pid)} #{inspect(sensor_id)}")
         GenServer.call(pid, :get_state)
+
+      [] ->
+        Logger.debug("Client: get_state No sensor_found #{inspect(sensor_id)}")
 
       _ ->
         Logger.debug("Client: get_state ERROR #{inspect(sensor_id)}")
@@ -35,11 +42,12 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
+          # Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
           GenServer.cast(pid, {:put_attribute, attribute})
 
         _ ->
           Logger.debug("Client: put_attribute ERROR #{inspect(attribute)}")
+          {:error, "Whatever"}
       end
     rescue
       _e ->
@@ -51,7 +59,7 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          Logger.debug("Client: clear_attribute #{inspect(pid)} #{inspect(attribute_id)}")
+          # Logger.debug("Client: clear_attribute #{inspect(pid)} #{inspect(attribute_id)}")
           GenServer.cast(pid, {:clear_attribute, attribute_id})
 
         _ ->
@@ -67,7 +75,7 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          Logger.debug("Client: Get attribute #{sensor_id}, #{attribute_id}, limit: #{limit}")
+          # Logger.debug("Client: Get attribute #{sensor_id}, #{attribute_id}, limit: #{limit}")
           GenServer.call(pid, {:get_attribute, attribute_id, limit})
 
         _ ->
@@ -84,9 +92,7 @@ defmodule Sensocto.SimpleSensor do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          Logger.debug(
-            "Client: Get attribute #{sensor_id}, #{attribute_id}, from: #{from_timestamp} to: #{to_timestamp}"
-          )
+          # Logger.debug("Client: Get attribute #{sensor_id}, #{attribute_id}, from: #{from_timestamp} to: #{to_timestamp}")
 
           GenServer.call(pid, {:get_attribute, attribute_id, from_timestamp, to_timestamp})
 
@@ -171,7 +177,7 @@ defmodule Sensocto.SimpleSensor do
          %{:id => attribute_id, :payload => payload, :timestamp => timestamp} = attribute},
         %{sensor_id: sensor_id} = state
       ) do
-    Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
+    # Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
     AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
 
     broadcast_message =
@@ -180,7 +186,7 @@ defmodule Sensocto.SimpleSensor do
       |> Map.put(:uuid, attribute_id)
       |> Map.delete(:id)
 
-    #      |> IO.inspect()
+    now = System.system_time(:millisecond)
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
@@ -191,7 +197,9 @@ defmodule Sensocto.SimpleSensor do
       }
     )
 
-    {:noreply, state}
+    {:noreply,
+     state
+     |> Map.update!(:message_timestamps, &[now | &1])}
   end
 
   @impl true
@@ -202,6 +210,33 @@ defmodule Sensocto.SimpleSensor do
     Logger.debug("Server: :clear_attribute #{sensor_id}:#{attribute_id} state: #{inspect(state)}")
     AttributeStore.remove_attribute(sensor_id, attribute_id)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:calculate_mps, %{sensor_id: sensor_id, message_timestamps: timestamps} = state) do
+    now = System.system_time(:millisecond)
+    one_second_ago = now - @mps_interval
+
+    # Filter timestamps within the last second
+    recent_timestamps = Enum.filter(timestamps, fn timestamp -> timestamp >= one_second_ago end)
+    mps = length(recent_timestamps)
+
+    # Logger.debug("Server: :calculate_mps #{inspect(mps)}")
+
+    # Emit telemetry event with MPS
+    :telemetry.execute(
+      [:sensocto, :sensors, :messages, :mps],
+      %{value: mps},
+      %{sensor_id: sensor_id}
+    )
+
+    # Schedule next calculation
+    schedule_mps_calculation()
+    {:noreply, %{state | message_timestamps: recent_timestamps}}
+  end
+
+  defp schedule_mps_calculation do
+    Process.send_after(self(), :calculate_mps, @mps_interval)
   end
 
   defp via_tuple(sensor_id) do

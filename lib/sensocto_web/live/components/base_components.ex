@@ -2,7 +2,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
   use Phoenix.Component
   require Logger
   use Timex
-  alias Timex.DateTime
 
   alias SensoctoWeb.Components.SensorTypes.HeartrateComponent
   alias SensoctoWeb.Components.SensorTypes.EcgSensorComponent
@@ -14,9 +13,25 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
   def render_sensor_header(assigns) do
     ~H"""
-    <div class="m-0 p-2">
-      <p class="font-bold text-s">
-        {@sensor.sensor_name}
+    <div class="flex items-right m-0 p-0">
+      <p class="flex-none font-bold text-s" style="border:0 solid white">
+        {@sensor.metadata.sensor_name}
+      </p>
+      <p class="flex-1 float-left items-right">
+        <Heroicons.icon
+          name={
+            if get_in(@sensor, [:highlighted]) do
+              "magnifying-glass-minus"
+            else
+              "magnifying-glass-plus"
+            end
+          }
+          type="outline"
+          class="h-4 w-4"
+          phx-click="toggle_highlight"
+          phx-value-sensor_id={get_in(@sensor, [:metadata, :sensor_id])}
+          style="border:0 solid white"
+        />
       </p>
     </div>
     """

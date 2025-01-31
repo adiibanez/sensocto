@@ -31,22 +31,23 @@
 
     let canvas;
     let ctx;
+    let isVisible = false;
+    let observer;
 
     let dataStore = writable([]);
     $: data = $dataStore;
 
-    // $: console.log("Data changed", data);
-
     async function initWasm() {
         await init("/assets/wasm_sparkline_bg.wasm");
         wasmInitialized = true;
-        console.log("Wasm initialized, yippie", draw_sparkline);
+        logger.log(loggerCtxName, "Wasm initialized, yippie", draw_sparkline);
     }
 
     onMount(() => {
         initWasm();
         ctx = canvas.getContext("2d");
-        console.log("onMount");
+        logger.log(loggerCtxName, "onMount", identifier);
+
         const handleAccumulatorEvent = (e) => {
             if (identifier == e.detail.id) {
                 logger.log(
@@ -95,6 +96,20 @@
         );
         window.addEventListener("seeddata-event", handleSeedDataEvent);
 
+        observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    isVisible = entry.isIntersecting;
+                    if (isVisible) {
+                        render();
+                    }
+                });
+            },
+            { threshold: 0.1 },
+        );
+
+        observer.observe(canvas);
+
         return () => {
             window.removeEventListener("resizeend", handleResizeEnd);
             window.removeEventListener(
@@ -106,51 +121,52 @@
                 handleStorageWorkerEvent,
             );
             window.removeEventListener("seeddata-event", handleSeedDataEvent);
+            if (observer) {
+                observer.unobserve(canvas);
+            }
         };
     });
 
     $: if (data?.length && wasmInitialized) {
-        // console.log("data inside data check", data);
         tick().then(() => {
-            // logger.log(
-            //     loggerCtxName,
-            //     "data changed, redrawing sparkline...",
-            //     maxsamples,
-            //     data?.length,
-            // );
-            // console.log("data before timestamps", data);
-            if (data.length == 0) {
-                return;
+            if (isVisible) {
+                logger.log(
+                    loggerCtxName,
+                    "data changed, redrawing sparkline...",
+                    maxsamples,
+                    data?.length,
+                );
+                if (data.length == 0) {
+                    return;
+                }
+                const timestamps = data.map((point) => point.timestamp);
+                let minTimestamp = Math.min(...timestamps);
+                let maxTimestamp = Math.max(...timestamps);
+                render();
             }
-            const timestamps = data.map((point) => point.timestamp);
-            let minTimestamp = Math.min(...timestamps);
-            let maxTimestamp = Math.max(...timestamps);
-            render();
         });
     }
 
     function render(timestamp) {
-        if (wasmInitialized == false) {
+        if (wasmInitialized == false || !isVisible) {
             return;
         }
-
-        // logger.log(
-        //     loggerCtxName,
-        //     "Js args",
-        //     data.slice(-maxsamples),
-        //     width,
-        //     height,
-        //     "#ffc107",
-        //     1,
-        //     20,
-        //     2000,
-        //     100,
-        //     "relative",
-        //     false,
-        //     null,
-        //     null,
-        // );
-
+        logger.log(
+            loggerCtxName,
+            "Js args",
+            data.slice(-maxsamples),
+            width,
+            height,
+            "#ffc107",
+            1,
+            20,
+            2000,
+            100,
+            "relative",
+            false,
+            minvalue,
+            maxvalue,
+        );
         draw_sparkline(
             data.slice(-maxsamples),
             width,
@@ -163,23 +179,24 @@
             100,
             "relative",
             false,
-            null,
-            null,
+            minvalue,
+            maxvalue,
         );
     }
-
     const handleResizeEnd = (e) => {
-        logger.log(loggerCtxName, "handleResizeEnd", e);
-        render();
+        if (isVisible) {
+            logger.log(loggerCtxName, "handleResizeEnd", e);
+            render();
+        }
     };
-
     $: maxsamples = (timewindow / 1000) * samplingrate * width;
 </script>
 
 <canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
 
 {#if false}
-    <p class="text-xs hidden">
+    <div class="text-xs hidden">
         Data points {data.length}, maxsamples: {maxsamples}, width: {width}
-    </p>
+        width: {width} height: {height}
+    </div>
 {/if}

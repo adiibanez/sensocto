@@ -2,30 +2,21 @@
   Attempting to reconnect...
 </div>
 
-<div
-  id="cnt"
-  phx-hook="ConnectionHandler"
-  class={
-    "grid gap-4 sm:gap-4 md:gap-4 lg:gap-4 xl:gap-4 grid-cols-1 sm:grid-cols-#{assigns.grid_cols_sm} lg:grid-cols-#{assigns.grid_cols_lg} xl:grid-cols-#{assigns.grid_cols_xl} 2xl:grid-cols-#{assigns.grid_cols_2xl}"
-  }
->
-  <.async_result :let={sensors} assign={@sensors}>
+<div class="text-l">Sensors online: {@sensors_online_count}</div>
+
+<div id="cnt" phx-hook="ConnectionHandler"
+  class={ "grid gap-4 sm:gap-4 md:gap-4 lg:gap-4 xl:gap-4 grid-cols-1 sm:grid-cols-#{assigns.grid_cols_sm} lg:grid-cols-#{assigns.grid_cols_lg} xl:grid-cols-#{assigns.grid_cols_xl} 2xl:grid-cols-#{assigns.grid_cols_2xl}"
+  }>
+  <%!-- <.async_result :let={sensors} assign={@sensors}>
     <:loading>Loading Sensor data ...</:loading>
-    <:failed :let={reason}>{reason}</:failed>
+    <:failed :let={reason}>{reason}</:failed> --%>
 
-    <p class="text-xs hidden">{inspect(sensors)}</p>
+    <p class="text-xs hidden">{inspect(@sensors)}</p>
 
-    <div
-      :for={{id, sensor} <- sensors}
+    <div :for={{_id, sensor} <- @sensors}
       class="flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray"
-      style={
-        if is_map(sensor) and Map.has_key?(sensor, :highlighted) do
-          "grid-column: span 2; grid-row: span 1;"
-        else
-          ""
-        end
-      }
-    >
+      style={ if is_map(sensor) and get_in(sensor, [:highlighted]) do "grid-column: span 2; grid-row: span 1;" else ""
+      end }>
       <div class="w-full h-full">
         <!-- loading stage content -->
 
@@ -34,61 +25,51 @@
         </div>
 
         <div :if={viewdata_ready_sensor(sensor)} class="">
-          <.render_sensor_header sensor={sensor.metadata}></.render_sensor_header>
+          <.render_sensor_header sensor={sensor}></.render_sensor_header>
 
-          <div :if={Enum.count(sensor.attributes) == 0}>
+          <div :if={Enum.count(sensor.attributes)==0}>
             {render_loading(8, assigns)}
           </div>
 
-          <div
-            :for={{attribute_id, attribute_data} <- sensor.attributes}
-            class="attribute"
-            id={"#{sensor.metadata.sensor_id}_#{attribute_id}"}
-            class="bg-gray-800 text-xs m-0 p-1"
-            phx-hook="SensorDataAccumulator"
-            data-sensor_id={sensor.metadata.sensor_id}
-            data-attribute_id={attribute_id}
-            data-sensor_type={attribute_id}
-            phx-hook="SensorDataAccumulator"
-          >
+          <div :for={{attribute_id, attribute_data} <- sensor.attributes} class="attribute"
+            id={"#{sensor.metadata.sensor_id}_#{attribute_id}"} class="bg-gray-800 text-xs m-0 p-1"
+            phx-hook="SensorDataAccumulator" data-sensor_id={sensor.metadata.sensor_id} data-attribute_id={attribute_id}
+            data-sensor_type={attribute_id} phx-hook="SensorDataAccumulator">
             {if viewdata_ready_attribute(attribute_data) do
-              render_sensor_by_type(
-                BaseComponents.get_attribute_view_data(
-                  attribute_id,
-                  sensor.metadata,
-                  attribute_data
-                ),
-                sensor.metadata
-              )
+            render_sensor_by_type(
+            BaseComponents.get_attribute_view_data(
+            attribute_id,
+            sensor.metadata,
+            attribute_data
+            ),
+            sensor.metadata
+            )
             else
-              {render_loading(8, assigns)}
+            {render_loading(8, assigns)}
             end}
           </div>
         </div>
       </div>
     </div>
-    
-<!--<p class="text-xs">Online: {inspect(@sensors_online)}</p>
+
+    <!--<p class="text-xs">Online: {inspect(@sensors_online)}</p>
         <p class="text-xs">Offline: {inspect(@sensors_offline)}</p>-->
-  </.async_result>
+    <%!-- </.async_result> --%>
 </div>
-<%= if @sensors_offline != %{} do %>
+<%= if @sensors_offline !=%{} do %>
   <div>
     <p class="text font-bold mt-8 mb-2">Recently disconnected sensors</p>
     <ul class="list-disc list-inside ml-4">
       <%= for sensor_id <- Map.keys(@sensors_offline) do %>
         <li>{sensor_id}</li>
-      <% end %>
+        <% end %>
     </ul>
   </div>
-<% end %>
+  <% end %>
 
-<div
-  id="toolbar"
-  class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[80%] overflow-y-auto"
->
-  {live_render(@socket, SensoctoWeb.SenseLive,
-    id: "bluetooth",
-    session: %{"parent_id" => self()}
-  )}
-</div>
+    <div id="toolbar" class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[80%] overflow-y-auto">
+      {live_render(@socket, SensoctoWeb.SenseLive,
+      id: "bluetooth",
+      session: %{"parent_id" => self()}
+      )}
+    </div>

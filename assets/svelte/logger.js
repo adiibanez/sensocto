@@ -4,9 +4,10 @@ let enabledComponents = [
     // "SensorDataService",
     // "SparklineWasm",
     //     "ChartJS",
-    //     "ECGVisualization",
+    "ECGVisualization",
     //     "IMUClient",
-    // "ScaledPoints", "Sparkline", 
+    // "ScaledPoints", "Sparkline",
+    "BluetoothClient",
 ];
 
 export function setLogging(value) {

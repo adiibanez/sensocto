@@ -1,5 +1,5 @@
 
-let enabled = true;
+let enabled = false;
 
 export function setLogging(value) {
     enabled = !!value;

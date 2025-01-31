@@ -179,15 +179,38 @@ window.addEventListener('worker-requesthandler-event', function (event) {
 
 
 function resizeElements() {
-  const allSparklines = document.querySelectorAll('.resizeable'); // Correct custom element tag.
+  const allSparklines = document.querySelectorAll('.resizeable');
 
   allSparklines.forEach(element => {
-    const parentWidth = element.parentElement.offsetWidth * 0.8;
-    const parentHeight = element.parentElement.offsetHeight * 0.8;
+    const parent = element.parentElement;
+    if (!parent) {
+      console.warn("Parent element not found for", element);
+      return;
+    }
 
-    element.setAttribute('width', parentWidth); // Use setAttribute to change width
-    logger.log("Element Resizer", element.id, parentWidth, parentHeight, element.getAttribute("width")); // Log it.
-    //element.setAttribute('height', parentHeight); // Also set height to parent, if required.
+    const computedStyle = getComputedStyle(parent);
+
+    // Get padding and margin values
+    const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+    const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
+    const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+
+    const marginLeft = parseFloat(computedStyle.marginLeft) || 0;
+    const marginRight = parseFloat(computedStyle.marginRight) || 0;
+    const marginTop = parseFloat(computedStyle.marginTop) || 0;
+    const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+
+    // Calculate the inner width and height by subtracting padding and margins.
+    const parentWidth = parent.offsetWidth - paddingLeft - paddingRight - marginLeft - marginRight;
+    const parentHeight = parent.offsetHeight - paddingTop - paddingBottom - marginTop - marginBottom;
+
+    // Calculate the available with based on padding and margin
+    const availableWidth = parentWidth;
+    const availableHeight = parentHeight;
+
+    element.setAttribute('width', availableWidth);
+    logger.log("Element Resizer", element.id, availableWidth, availableHeight, element.getAttribute("width"));
   });
 }
 
@@ -201,6 +224,14 @@ if (document.readyState === 'loading') {
   resizeElements();
 }
 
+
+
+window.addEventListener("phx:live_reload:attached", ({ detail: reloader }) => {
+  // Enable server log streaming to client.
+  // Disable with reloader.disableServerLogs()
+  reloader.enableServerLogs()
+  window.liveReloader = reloader
+})
 
 
 workerStorage.addEventListener('message', Hooks.SensorDataAccumulator.workerEventListener);

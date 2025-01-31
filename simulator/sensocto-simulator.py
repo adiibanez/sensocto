@@ -16,14 +16,27 @@ logging.basicConfig(level=logging.INFO)  # Set Logging Level
 
 
 def generate_heart_rate(
-    duration, sampling_rate, avg_heart_rate=70, variability=2, tidal_amplitude=30
+    duration,
+    sampling_rate,
+    avg_heart_rate=70,
+    variability=2,
+    tidal_amplitude=30,
+    rsa_amplitude=5,
+    drift_rate=0.001,
+    spike_probability=0.001,
 ):
-    """Generates heart rate data with a tidal trend, sinusoidal variation, and random noise."""
+    """Generates heart rate data with a tidal trend, sinusoidal variation, RSA, baseline drift, and random noise."""
     num_samples = int(duration * sampling_rate)
     time_points = np.linspace(0, duration, num_samples)
 
     # Tidal trend (slow sinusoidal variation)
     tidal_trend = np.sin(2 * np.pi * 0.01 * time_points) * tidal_amplitude
+
+    # Respiratory Sinus Arrhythmia (RSA)
+    rsa_variation = np.sin(2 * np.pi * 0.25 * time_points) * rsa_amplitude
+
+    # Baseline drift (very slow linear trend)
+    drift = drift_rate * time_points
 
     # Sinusoidal variation
     sinusoid = np.sin(2 * np.pi * 0.1 * time_points) * variability
@@ -31,7 +44,16 @@ def generate_heart_rate(
     # Random noise
     noise = np.random.normal(0, variability / 3, num_samples)
 
-    heart_rate_values = avg_heart_rate + tidal_trend + sinusoid + noise
+    heart_rate_values = (
+        avg_heart_rate + tidal_trend + rsa_variation + drift + sinusoid + noise
+    )
+
+    # Simulate Random spikes:
+    for i in range(num_samples):
+        if np.random.rand() < spike_probability:
+            spike_value = np.random.uniform(-10, 10)
+            heart_rate_values[i] += spike_value
+
     heart_rate_values = np.clip(
         heart_rate_values, 30, 220
     )  # Clip to a reasonable range

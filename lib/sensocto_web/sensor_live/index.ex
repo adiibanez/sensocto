@@ -84,10 +84,8 @@ defmodule SensoctoWeb.SensorLive.Index do
   end
 
   @impl true
-  def handle_params(params, _url, socket) do
-    Logger.info(
-      "Here I am #{_url} #{inspect(params)} #{inspect(socket.assigns.live_action)} #{inspect(@live_action)}"
-    )
+  def handle_params(params, url, socket) do
+    Logger.info("Here I am #{url} #{inspect(params)} #{inspect(socket.assigns.live_action)}")
 
     # case socket.assigns.live_action do
     #  nil -> {:noreply, apply_action(socket, :index, params)}

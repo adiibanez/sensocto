@@ -3,9 +3,9 @@ defmodule SensoctoWeb.SensorDataChannel do
   use SensoctoWeb, :channel
   require Logger
   # alias Sensocto.Broadway.BufferingProducer
-  alias Sensocto.DeviceSupervisor
-  alias Sensocto.Sensors.SensorAttributeAgent
-  alias Sensocto.Sensors.SensorSupervisor
+  # alias Sensocto.DeviceSupervisor
+  # alias Sensocto.Sensors.SensorAttributeAgent
+  # alias Sensocto.Sensors.SensorSupervisor
   alias Sensocto.SimpleSensor
   alias SensoctoWeb.Sensocto.Presence
 
@@ -21,7 +21,7 @@ defmodule SensoctoWeb.SensorDataChannel do
         %{
           "connector_id" => _connector_id,
           "connector_name" => _connector_name,
-          "sensor_id" => _sensor_id,
+          "sensor_id" => sensor_id,
           "sensor_name" => _sensor_name,
           "sensor_type" => _sensor_type,
           "sampling_rate" => _sampling_rate,
@@ -34,8 +34,6 @@ defmodule SensoctoWeb.SensorDataChannel do
       send(self(), :after_join)
 
       Logger.debug("socket join #{sensor_id}", params)
-
-      # DeviceSupervisor.add_device(sensor_id)
 
       case Sensocto.SensorsDynamicSupervisor.add_sensor(
              sensor_id,
@@ -52,40 +50,10 @@ defmodule SensoctoWeb.SensorDataChannel do
           # {:error, reason}
       end
 
-      # SensorSupervisor.add_sensor(sensor_id, %{
-      #  :sampling_rate => params["sampling_rate"],
-      #  :batch_size => params["batch_size"]
-      # })
-
-      """
-
-      %{
-      "batch_size" => 1,
-      "connector_id" => "1111111",
-      "connector_name" => "SensoctoSim",
-      "device_name" => "Device1",
-      "sampling_rate" => 10,
-      "sensor_id" => "Device1:heartrate",
-      "sensor_name" => "Device1:heartrate",
-      "sensor_type" => "heartrate"
-      }
-
-
-      %{
-      "batch_size" => 1,
-      "connector_id" => "00000000-0000-0000-0000-82305b3f150e",
-      "connector_name" => "Vicumulator1",
-      "sampling_rate" => 10,
-      "sensor_id" => "Vicumulator1:heartrate",
-      "sensor_name" => "Movesense 007",
-      "sensor_type" => "heartrate"
-      }
-      """
-
       {
         :ok,
-        socket =
-          assign(socket, :sensor_id, sensor_id)
+        socket
+        |> assign(:sensor_id, sensor_id)
         # |> assign(:sensor_params, params)
       }
     else
@@ -94,98 +62,51 @@ defmodule SensoctoWeb.SensorDataChannel do
   end
 
   @impl true
-  @spec handle_info(:after_join | :disconnect, any()) :: {:noreply, any()}
-  def handle_info(:disconnect, socket) do
-    # Explicitly remove a sensor from presence when it disconnects
-
-    Logger.debug("DISCONNECT #{inspect(socket.assigns)}")
-    disconnect_sensor_supervisor(socket.assigns.sensor_id)
-    Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
-    # push(socket, "presence_state", Presence.list(socket))
-
-    {:noreply, socket}
-  end
-
-  def handle_info(:after_join, socket) do
-    Logger.debug("after join")
-
-    Presence.track(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id, %{
-      sensor_id: socket.assigns.sensor_id,
-      online_at: System.system_time(:millisecond)
-    })
-
-    # push(socket, "presence_state", Presence.list(socket))
-    {:noreply, socket}
-  end
-
-  @impl true
-  @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
-          {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
-  def handle_in("discovery", payload, socket) do
-    # Logger.debug inspect(payload)
-
-    broadcast!(socket, "discovery", %{
-      payload:
-        Map.merge(payload, %{
-          "device_id" => socket.assigns.user_id,
-          "device_description" => socket.assigns.device_description
-        })
-    })
-
-    {:noreply, socket}
-  end
-
-  def handle_info(msg) do
-    Logger.debug("channel catchall #{inspect(msg)}")
-  end
-
-  @impl true
   # @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
   #        {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
   def handle_in(
         "measurement",
-        %{
-          "payload" => payload,
-          "timestamp" => timestamp,
-          "uuid" => uuid
-        } = _sensor_measurement_data,
+        %{"payload" => payload, "timestamp" => timestamp, "uuid" => uuid} =
+          _sensor_measurement_data,
         socket
       ) do
-    case SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
-           :id => uuid,
-           :timestamp => timestamp,
-           :payload => payload
-         }) do
-      :ok ->
-        Logger.debug("SimpleSensor data sent uuuid: #{uuid}, #{timestamp}, #{payload}")
+    # :telemetry.execute(
+    #   [:sensocto, :sensors, :messages, :measurement],
+    #   %{count: 1},
+    #   %{sensor_id: socket.assigns.sensor_id}
+    # )
 
-      _ ->
-        Logger.warning("SimpleSensor data error")
+    # sensor_id: socket.assigns.sensor_id
+    ## :telemetry.execute([:sensocto, :sensors, :messages, :measurement], %{value: 1}, %{
+    # })
 
-      # {:noreply, socket}
+    # :telemetry.span(
+    #   [:sensocto, :sensors, :messages],
+    #   %{measurement: 1},
+    #   fn ->
+    with :ok <-
+           SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
+             :id => uuid,
+             :timestamp => timestamp,
+             :payload => payload
+           }) do
+      Logger.debug(
+        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, uuuid: #{uuid}, timestamp: #{timestamp}, payload: #{payload}"
+      )
+
+      :ok
+    else
       {:error, _} ->
-        Logger.debug("SimpleSensor data error")
-        # {:noreply, put_flash(socket, :error, "SimpleSensor data error")}
+        Logger.info(
+          "SimpleSensor data error for sensor: #{socket.assigns.sensor_id},  uuid: #{uuid}"
+        )
+
+        :error
     end
 
-    # GenServer.cast(
-    #  SensorSupervisor.get_sensor_pid(socket.assigns.sensor_datasensor_id),
-    #  {:new_sensor_attribute, uuid, timestamp, payload}
-    # )
-
-    # Phoenix.PubSub.broadcast(
-    #   Sensocto.PubSub,
-    #   "measurement",
-    #   {
-    #     :measurement,
-    #     sensor_measurement_data
-    #     # |> Map.put("attribute_id", uuid)
-    #     # |> Map.put("sensor_params", socket.assigns.sensor_params)
-    #     # |> Map.put("sensor_id", "#{socket.assigns.sensor_id}")
-    #   }
-    # )
-
     {:noreply, socket}
+    # end
+    # )
   end
 
   @impl true
@@ -213,18 +134,53 @@ defmodule SensoctoWeb.SensorDataChannel do
     {:noreply, socket}
   end
 
-  # Add authorization logic here as required.
-  defp authorized?(_payload) do
-    true
-  end
+  @impl true
+  @spec handle_info(:after_join | :disconnect, any()) :: {:noreply, any()}
+  def handle_info(:disconnect, socket) do
+    # Explicitly remove a sensor from presence when it disconnects
 
-  def terminate(reason, socket) do
-    Logger.debug(
-      "Channel terminated for sensor: #{inspect(socket.assigns.sensor_id)}, #{inspect(reason)}"
-    )
-
+    Logger.debug("DISCONNECT #{inspect(socket.assigns)}")
     disconnect_sensor_supervisor(socket.assigns.sensor_id)
     Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+    # push(socket, "presence_state", Presence.list(socket))
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:after_join, socket) do
+    Logger.debug("after join")
+
+    Presence.track(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id, %{
+      sensor_id: socket.assigns.sensor_id,
+      online_at: System.system_time(:millisecond)
+    })
+
+    # push(socket, "presence_state", Presence.list(socket))
+    {:noreply, socket}
+  end
+
+  # Add authorization logic here as required.
+  defp authorized?(payload) do
+    if Map.has_key?(payload, "bearer_token") do
+      true
+    else
+      false
+    end
+  end
+
+  @impl true
+  @spec terminate(any(), Phoenix.Socket.t()) :: :ok
+  def terminate(reason, socket) do
+    case socket.assigns.sensor_id do
+      sensor_id when is_binary(sensor_id) ->
+        Logger.debug("Channel terminated for sensor: #{sensor_id}, #{inspect(reason)}")
+        disconnect_sensor_supervisor(socket.assigns.sensor_id)
+        Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+
+      _ ->
+        Logger.debug("Channel terminated for connection without sensor_id #{inspect(reason)}")
+    end
+
     push(socket, "presence_state", Presence.list(socket))
 
     :ok

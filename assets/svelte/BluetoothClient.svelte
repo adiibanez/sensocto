@@ -29,17 +29,18 @@
                     { namePrefix: "BlueNRG" },
                     { namePrefix: "FlexSenseSensor" },
                     { namePrefix: "vívosmart" },
+                    { namePrefix: "WH-" },
                 ],
                 //
                 //acceptAllDevices: true,
                 optionalServices: [
-                    "453b02b0-71a1-11ea-ab12-0800200c9a66", // pressure
-                    "heart_rate",
-                    "battery_service",
-                    "61353090-8231-49cc-b57a-886370740041",
-                    "a688bc90-09e2-4643-8e9a-ff3076703bc3", // oximeter
-                    "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
-                    "897fdb8d-dec3-40bc-98e8-2310a58b0189", // flexsense
+                    // "453b02b0-71a1-11ea-ab12-0800200c9a66", // pressure
+                    // "heart_rate",
+                    // "battery_service",
+                    // "61353090-8231-49cc-b57a-886370740041",
+                    // "a688bc90-09e2-4643-8e9a-ff3076703bc3", // oximeter
+                    // "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
+                    // "897fdb8d-dec3-40bc-98e8-2310a58b0189", // flexsense
                 ],
             })
             .then((device) => {
@@ -213,7 +214,8 @@
                                     valueObj.getInt8(0);
                             })
                             .catch((error) => {
-                                console.error(
+                                logger.log(
+                                    loggerCtxName,
                                     "Error reading characteristic:",
                                     error,
                                 );

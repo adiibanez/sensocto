@@ -1,9 +1,7 @@
 defmodule SensoctoWeb.Live.PlaygroundLive do
-  alias Sensocto.SimpleSensor
   use SensoctoWeb, :live_view
   require Logger
   # use LiveSvelte.Components
-  alias SensoctoWeb.Live.Components.ViewData
 
   @impl true
   @spec mount(any(), any(), any()) :: {:ok, any()}

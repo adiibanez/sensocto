@@ -50,6 +50,52 @@ defmodule SensoctoWeb.Telemetry do
         tags: [:event],
         unit: {:native, :millisecond}
       ),
+      summary(
+        "sensocto.live.mount.duration",
+        unit: {:native, :millisecond},
+        description: "The time spent waiting for a database connection"
+      ),
+      summary(
+        "sensocto.live.handle_info.measurement.duration",
+        unit: {:native, :millisecond},
+        description: "The time spent waiting for a database connection"
+      ),
+      summary(
+        "sensocto.live.handle_event.request_seed_data.duration",
+        unit: {:native, :millisecond},
+        description: "The time spent waiting for a database connection"
+      ),
+
+      # counter("metrics.emit.value"),
+
+      # summary("sensocto.sensors.messages.measurement.count",
+      #   # tags: [:status],
+      #   reporter_options: [report_as: :counter],
+      #   tags: [:sensor_id]
+      # ),
+
+      summary(
+        "sensocto.sensors.messages.mps.value",
+        description: "The number of messages per second"
+        # tags: [:sensor_id]
+      ),
+      distribution(
+        "sensocto.sensors.messages.mps.value",
+        description: "The number of messages per second"
+        # tags: [:sensor_id]
+      ),
+
+      # summary("sensocto.live.mount",
+      #   unit: {:native, :millisecond},
+      #   description:
+      #     "The time during liveview mount"
+      # ),
+
+      # summary("sensocto.live.handle_info.measurement",
+      #   unit: {:native, :millisecond},
+      #   description:
+      #     "The time during liveview mount"
+      # ),
 
       # Database Metrics
       summary("sensocto.repo.query.total_time",

@@ -64,6 +64,7 @@ config :sensocto, SensoctoWeb.Endpoint,
 # Watch static and templates for browser reloading.
 config :sensocto, SensoctoWeb.Endpoint,
   live_reload: [
+    web_console_logger: true,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
@@ -78,24 +79,25 @@ config :logger,
 config :logger, :logger_name,
   logger: :console,
   # this is the loggers default level
-  default_level: :debug,
+  default_level: :info,
   # override default levels
   level_config: [
-    [module: Sensocto.SimpleSensor, level: :info],
-    [module: Sensocto.AttributeStorer, level: :info],
-    [module: SensoctoWeb.SensorDataChannel, level: :info],
-    [module: Phoenix.Logger, level: :info]
+    # [module: Sensocto.SimpleSensor, level: :debug],
+    # [module: Sensocto.AttributeStorer, level: :debug],
+    # [module: SensoctoWeb.SensorDataChannel, level: :info],
+    # [module: Phoenix.Logger, level: :info]
   ],
   # backend specific configuration
-  format: "DEV $message"
+  # format: "DEV [$time] [$level] $message\n"
+  format: "DEV [$time][$node][$level] $metadata$message\n",
+  metadata: [:file, :function, :line]
+
+# https://elixirforum.com/t/logger-format/8616/2
 
 config :ash_authentication, debug_authentication_failures?: true
 
 # Enable dev routes for dashboard and mailbox
 config :sensocto, dev_routes: true, token_signing_secret: "9fhsVJSpOCeIGPWB7AL7/Q3Emgy34xJK"
-
-# Do not include metadata nor timestamps in development logs
-config :logger, :console, format: "[$level] $message\n"
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

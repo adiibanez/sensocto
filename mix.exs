@@ -82,6 +82,7 @@ defmodule Sensocto.MixProject do
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},
       {:dialyxir, "~> 0.4", only: [:dev]},
+      {:sourceror, "~> 1.7", only: [:dev, :test]},
       {:nimble_csv, "~> 1.1", only: [:dev]},
       {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},

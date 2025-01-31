@@ -101,6 +101,6 @@ defmodule Sensocto.Accounts.Token do
   end
 
   relationships do
-    #belongs_to :user, Sensocto.Accounts.User
+    # belongs_to :user, Sensocto.Accounts.User
   end
 end

@@ -16,7 +16,6 @@
     let wasmInitialized = false;
 
     export let is_loading;
-    export let id;
     export let width;
     export let height = 30;
     export let sensor_id;

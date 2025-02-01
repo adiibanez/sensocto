@@ -69,7 +69,7 @@ defmodule SensoctoWeb.SensorDataChannel do
           {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
   def handle_in(
         "measurement",
-        %{"payload" => payload, "timestamp" => timestamp, "attribute_id" => attribute_id} =
+        %{"payload" => _payload, "timestamp" => _timestamp, "attribute_id" => attribute_id} =
           sensor_measurement_data,
         socket
       ) do

@@ -105,25 +105,7 @@ defmodule Sensocto.SimpleSensor do
     end
   end
 
-  def get_attribute(sensor_id, attribute_id, from_timestamp, to_timestamp) do
-    try do
-      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-        [{pid, _}] ->
-          # Logger.debug("Client: Get attribute #{sensor_id}, #{attribute_id}, from: #{from_timestamp} to: #{to_timestamp}")
-
-          GenServer.call(pid, {:get_attribute, attribute_id, from_timestamp, to_timestamp})
-
-        _ ->
-          Logger.debug("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
-          :error
-      end
-    rescue
-      _e ->
-        Logger.error(inspect(__STACKTRACE__))
-    end
-  end
-
-  def get_attribute(sensor_id, attribute_id, from \\ 0, to \\ 0, limit \\ 0) do
+  def get_attribute(sensor_id, attribute_id, from \\ 0, to \\ :infinity, limit \\ :infinity) do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
@@ -154,26 +136,10 @@ defmodule Sensocto.SimpleSensor do
 
   @impl true
   def handle_call({:get_attribute, attribute_id, limit}, _from, %{sensor_id: sensor_id} = state) do
-    attributes = AttributeStore.get_attribute(sensor_id, attribute_id, limit)
+    {:ok, attributes} = AttributeStore.get_attribute(sensor_id, attribute_id, limit)
 
     Logger.debug(
-      "Server: :get_attribute  #{attribute_id}  with limit #{limit}  from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
-    )
-
-    {:reply, attributes, state}
-  end
-
-  @impl true
-  def handle_call(
-        {:get_attribute, attribute_id, from_timestamp, to_timestamp},
-        _from,
-        %{sensor_id: sensor_id} = state
-      ) do
-    attributes =
-      AttributeStore.get_attribute(sensor_id, attribute_id, from_timestamp, to_timestamp)
-
-    Logger.debug(
-      "Server: :get_attribute  #{attribute_id} from: #{from_timestamp} to: #{to_timestamp} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
+      "Server: :get_attribute (attribute_id, limit)  #{attribute_id}  with limit #{limit}  from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
     )
 
     {:reply, attributes, state}
@@ -185,12 +151,11 @@ defmodule Sensocto.SimpleSensor do
         _from,
         %{sensor_id: sensor_id} = state
       ) do
-    attributes =
-      AttributeStore.get_attribute(sensor_id, attribute_id, from, to)
-      |> Enum.take(limit)
+    {:ok, attributes} =
+      AttributeStore.get_attribute(sensor_id, attribute_id, from, to, limit)
 
     Logger.debug(
-      "Server: :get_attribute  #{attribute_id} from: #{from} to: #{to} limit: #{limit} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
+      "Server: :get_attribute (attribute_id, from, to, limit)  #{attribute_id} from: #{from} to: #{to} limit: #{limit} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
     )
 
     {:reply, attributes, state}

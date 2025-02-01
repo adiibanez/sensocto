@@ -2,6 +2,8 @@ defmodule Sensocto.AttributeStore do
   use Agent
   require Logger
 
+  @default_limit 100_000
+
   def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link2: #{inspect(configuration)}")
     # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
@@ -19,9 +21,8 @@ defmodule Sensocto.AttributeStore do
     Agent.get(via_tuple(sensor_id), & &1)
   end
 
-  def get_attributes(sensor_id, limit) do
+  def get_attributes(sensor_id, limit \\ @default_limit) do
     # Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
-
     Agent.get(via_tuple(sensor_id), fn state ->
       Enum.reduce(state, %{}, fn {attribute_id, attr}, acc ->
         limited_payloads =
@@ -35,28 +36,31 @@ defmodule Sensocto.AttributeStore do
     end)
   end
 
-  @spec get_attribute(any(), any(), any()) :: any()
-  def get_attribute(sensor_id, attribute_id, limit) do
-    # Logger.debug("Agent client get_attribute #{sensor_id}")
-
-    Agent.get(via_tuple(sensor_id), fn state ->
-      case Map.get(state, attribute_id) do
-        nil -> []
-        %{payloads: payloads} -> Enum.take(Enum.reverse(payloads), limit)
-      end
-    end)
-  end
-
-  def get_attribute(sensor_id, attribute_id, from_timestamp, to_timestamp) do
+  @spec get_attribute(any(), any(), any(), any(), any()) :: any()
+  def get_attribute(
+        sensor_id,
+        attribute_id,
+        from_timestamp,
+        to_timestamp \\ :infinity,
+        limit \\ @default_limit
+      ) do
     Agent.get(via_tuple(sensor_id), fn state ->
       case Map.get(state, attribute_id) do
         nil ->
-          []
+          Logger.debug("No attribute data for #{sensor_id}")
+          {:ok, []}
 
         %{payloads: payloads} ->
-          Enum.filter(payloads, fn %{timestamp: timestamp} ->
-            timestamp >= from_timestamp && timestamp <= to_timestamp
-          end)
+          filtered =
+            Enum.filter(payloads, fn %{timestamp: timestamp} ->
+              timestamp >= from_timestamp && timestamp <= to_timestamp
+            end)
+
+          Logger.debug(
+            "attribute data for #{sensor_id} #{is_nil(limit)} #{inspect(limit)} #{inspect(filtered)}"
+          )
+
+          {:ok, Enum.take(filtered, @default_limit)}
       end
     end)
   end

@@ -11,6 +11,88 @@ defmodule SensoctoWeb.Live.BaseComponents do
   use Gettext,
     backend: SensoctoWeb.Gettext
 
+  def attribute(assigns) do
+    assigns =
+      assigns
+      |> Map.put(:id, "viz_" <> assigns.sensor.metadata.sensor_id <> "_" <> assigns.attribute_id)
+      |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
+      |> Map.put(:sensor_type, assigns.sensor.metadata.sensor_type)
+      |> Map.put(:sampling_rate, assigns.sensor.metadata.sampling_rate)
+      |> Map.put(
+        :timestamp_formated,
+        format_unix_timestamp(Enum.at(assigns.attribute_data, 0).timestamp)
+      )
+      |> Map.put(:payload, Enum.at(assigns.attribute_data, 0).payload)
+
+    case assigns.sensor.metadata.sensor_type do
+      "ecg" ->
+        ~H"""
+        <div>
+          {render_attribute_header(assigns)}
+
+          <sensocto-ecg-visualization
+            is_loading="true"
+            id={@id}
+            sensor_id={@sensor_id}
+            attribute_id={@attribute_id}
+            samplingrate={@sampling_rate}
+            phx-update="ignore"
+            class="loading w-full m-0 p-0 resizeable"
+            color="#ffc107"
+            backgroundColor="transparent"
+            highlighted_areas='{[
+          {start: 250, end: 500, color: "lightgreen"},
+          {start: 800, end: 1200, color: "lightgreen"},
+          {start: 900, end: 1000, color: "red"},
+         {start: 1400, end: 1600, color: "brown"}
+        ]}'
+          >
+          </sensocto-ecg-visualization>
+        </div>
+        """
+
+      "heartrate" ->
+        ~H"""
+        <div class="attribute flex-none">
+          {render_attribute_header(assigns)}
+
+          <div class="flex items-left">
+            <p class="w-20 flex-none" style="border:0 solid white">
+              {@payload}
+            </p>
+
+            <p class="flex-1">
+              <sensocto-sparkline-wasm-svelte
+                height="20"
+                is_loading="true"
+                id={@id}
+                sensor_id={@sensor_id}
+                attribute_id={@attribute_id}
+                samplingrate={@sampling_rate}
+                timewindow="5000"
+                timemode="relative"
+                phx-update="ignore"
+                class="resizeable loading w-full m-0 p-0"
+                style="border:0 solid white"
+              >
+              </sensocto-sparkline-wasm-svelte>
+            </p>
+          </div>
+        </div>
+        """
+
+      _ ->
+        ~H"""
+        <h2>Default Attribute</h2>
+        <div>{inspect(assigns)}</div>
+        <!--<p>Sensor: {inspect(assigns.sensor)}</p>
+        <p>Attribute Data: {inspect(assigns.attribute_data)}</p>
+        <p>Sensor_type: {assigns.sensor.metadata.sensor_type}</p>
+        <p>Attribute_id: {assigns.attribute_id}</p>-->
+        """
+    end
+  end
+
   def render_sensor_header(assigns) do
     assigns =
       assigns
@@ -44,13 +126,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_attribute_header(assigns) do
-    assigns =
-      assigns
-      # |> Map.put(:sensor_id, assigns.sensor_data.sensor_id)
-      |> Map.put(:sensor_type, assigns.sensor_data.sensor_type)
-      |> Map.put(:timestamp_formated, assigns.sensor_data.timestamp_formated)
-      |> Map.put(:attribute_id, assigns.sensor_data.attribute_id)
-
     ~H"""
     <p class="text-xs text-gray-500">
       {@sensor_type}: {@timestamp_formated}
@@ -59,7 +134,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
         type="outline"
         class="h-4 w-4 float-right"
         phx-click="clear-attribute"
-        phx-value-sensor_id={assigns.sensor_data.sensor_id}
+        phx-value-sensor_id={@sensor_id}
         phx-value-attribute_id={@attribute_id}
       />
     </p>
@@ -143,6 +218,8 @@ defmodule SensoctoWeb.Live.BaseComponents do
   def get_attribute_view_data(attribute_id, sensor_metadata, attribute_data) do
     # TODO check format list vs map
     first_attribute_data = Enum.at(attribute_data, 0)
+
+    Logger.debug("get_attribute_view_data payload:#{inspect(first_attribute_data)}")
 
     %{
       :sensor_type => sensor_metadata.sensor_type,

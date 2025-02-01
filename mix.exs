@@ -86,7 +86,8 @@ defmodule Sensocto.MixProject do
       {:nimble_csv, "~> 1.1", only: [:dev]},
       {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
-      {:timex, "~> 3.7"}
+      {:timex, "~> 3.7"},
+      {:kino, "~> 0.8.0", only: :dev}
       # {:recode, "~> 0.7", only: :dev, override: true}
 
       # {

@@ -4,6 +4,12 @@ iex(2)> Process.alive?(pid)
 true
 
 
+
+Sensocto.SensorsDynamicSupervisor.get_sensor_state("SensoctoSimEx_1:heartrate")
+
+
+
+
 Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
 
 
@@ -11,7 +17,11 @@ Sensocto.Simulator.Application.ensure_running_count(0, 100, 100)
 Sensocto.Simulator.Application.ensure_running_count(5, 0, 0, %{:sensor_type => "heartrate", :duration => 60, :sampling_rate => 1})
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1})
 Sensocto.Simulator.Application.ensure_running_count(7, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 50})
-Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 50})
+Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 10})
+
+
+
+Sensocto.Simulator.Application.ensure_running_count(5, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 200, :batch_size => 10000, :batch_timeout => 41 * 3 })
 
 
 Sensocto.Simulator.Application.ensure_running_count(5, 1000, 1000, %{:sensor_type => "heartrate", :sampling_rate => 1, :duration=>60, :batch_size => 20, :batch_timeout => 500})

@@ -220,11 +220,6 @@ defmodule SensoctoWeb.IndexLive do
         socket
       ) do
     Logger.debug("clear-attribute request #{inspect(params)}")
-    # IO.puts("request-seed_data #{sensor_id}")
-    # {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
-
-    # attribute_data = Sensocto.SimpleSensor.clear_attribute(sensor_id, attribute_id)
-    # IO.inspect(attribute_data)
 
     {:noreply,
      push_event(socket, "seeddata", %{
@@ -252,8 +247,10 @@ defmodule SensoctoWeb.IndexLive do
     start = System.monotonic_time()
     Logger.debug("request-seed_data #{sensor_id}:#{attribute_id}")
 
-    attribute_data =
+    {:ok, attribute_data} =
       Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
+
+    Logger.debug("handle_event request-seed-data attribute_data: #{inspect(attribute_data)}")
 
     new_socket =
       socket

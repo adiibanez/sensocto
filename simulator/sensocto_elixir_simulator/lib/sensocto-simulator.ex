@@ -305,13 +305,18 @@ defmodule Sensocto.SensorSimulatorGenServer do
         {:push_message, message},
         %{:sensor_id => sensor_id, :phx_messages_queue => phx_messages_queue} = state
       ) do
-    new_queue = phx_messages_queue ++ [message]
+
+
+        {delay_s, _} = Float.parse("#{message.delay}")
+    delay_ms_tmp = round(delay_s * 1000.0)
+    {delay_ms, _} = Integer.parse("#{delay_ms_tmp}")
+
+
+        Logger.debug("#{sensor_id} handle_cast:push_message #{message}")
+    new_queue = phx_messages_queue ++ [message |> Map.put(:timestamp, :os.system_time(:milli_seconds) + delay_ms)]
     batch_size = state[:batch_size] || 10
     batch_timeout = state[:batch_timeout] || 5000
 
-    {delay_s, _} = Float.parse("#{message.delay}")
-    delay_ms_tmp = round(delay_s * 1000.0)
-    {delay_ms, _} = Integer.parse("#{delay_ms_tmp}")
 
     Logger.debug("#{sensor_id} push_message, Delay process_queue #{inspect(message.delay)}")
 
@@ -348,12 +353,12 @@ defmodule Sensocto.SensorSimulatorGenServer do
     socket_state = PhoenixClient.Socket.connected?(phoenix_socket)
 
     if state[:phoenix_channel] != nil do
-      Logger.info("#{sensor_id} PHX Sending Phoenix Messages: #{length(messages)}, #{inspect(messages)}")
+      Logger.debug("#{sensor_id} PHX Sending Phoenix Messages: #{length(messages)}, #{inspect(messages)}")
 
       phoenix_messages = Enum.map(messages, fn message ->
         %{
           "payload" => message.payload,
-          "timestamp" => :os.system_time(:milli_seconds),
+          "timestamp" => message.timestamp,#:os.system_time(:milli_seconds),
           "attribute_id" => state[:sensor_type]
         }
       end)
@@ -372,7 +377,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
 
   @impl true
   def handle_info(:batch_timeout, %{:sensor_id => sensor_id} = state) do
-    Logger.info("#{sensor_id} batch timeout #{length(state[:phx_messages_queue])}")
+    Logger.debug("#{sensor_id} batch timeout #{length(state[:phx_messages_queue])}")
 
     if length(state[:phx_messages_queue]) > 0 do
       send_batch(state[:phx_messages_queue], state)

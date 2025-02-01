@@ -5,7 +5,7 @@ const dbName = 'sensorDataDB';
 const version = 1;
 let debug = false;
 
-import { logger } from "./logger.js";
+//import { logger } from "./logger.js";
 const loggerCtxName = "IndexedDB";
 
 export function setDebug(value) {

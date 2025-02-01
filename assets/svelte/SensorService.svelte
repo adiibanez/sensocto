@@ -14,7 +14,7 @@
 
     // Default batch size and timeout
     export let defaultBatchSize = 10;
-    export let defaultBatchTimeout = 5000;
+    export let defaultBatchTimeout = 1000 / 24; // perception 24fps
 
     setContext("sensorService", {
         setupChannel,

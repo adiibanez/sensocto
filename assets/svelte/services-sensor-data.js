@@ -85,7 +85,7 @@ const processAccumulatorEvent = (store, sensor_id, attribute_id, e) => {
     if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
         updateData(store, sensor_id, attribute_id, e.detail.data);
         // single value update
-    } else if (e?.detail?.data?.timestamp && e?.detail?.data?.payload && sensorId) {
+    } else if (e?.detail?.data?.timestamp && e?.detail?.data?.payload) {
         updateData(store, sensor_id, attribute_id, [e.detail.data])
     } else {
         logger.log(loggerCtxName, "processAccumulatorEvent: payload is missing", sensor_id, attribute_id);

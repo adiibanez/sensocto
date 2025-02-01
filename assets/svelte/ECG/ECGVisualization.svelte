@@ -6,19 +6,35 @@
         createEventDispatcher,
         onDestroy,
         onMount,
+        tick,
     } from "svelte";
     import { logger } from "../logger_svelte.js";
-
     let loggerCtxName = "ECGVisualization";
+
+    import {
+        processStorageWorkerEvent,
+        processAccumulatorEvent,
+        processSeedDataEvent,
+    } from "../services-sensor-data.js";
+
+    import { writable } from "svelte/store";
+
+    export let sensor_id;
+    export let attribute_id;
 
     export let windowsize = 20;
     export let width = 200;
     export let height = 100;
     export let color;
     export let backgroundColor = "transparent";
-    export let data = [];
     export let samplingrate;
     export let highlighted_areas = [];
+
+    let isVisible = false;
+    let observer;
+
+    let dataStore = writable([]);
+    $: data = $dataStore;
 
     $: ecgDimensions = calculateEcgDimensions(windowsize, samplingrate, width);
 
@@ -28,10 +44,160 @@
     export let minValue = -1.0;
     export let maxValue = 2;
 
-    export let identifier;
     export let is_loading;
 
-    let canvasElement;
+    let canvas;
+
+    onMount(() => {
+        ctx = canvas.getContext("2d");
+        logger.log(loggerCtxName, "onMount", sensor_id, attribute_id);
+
+        const handleAccumulatorEvent = (e) => {
+            logger.log(
+                loggerCtxName,
+                "handleAccumulatorEvent",
+                sensor_id,
+                attribute_id,
+                e,
+            );
+            if (
+                sensor_id == e?.detail?.sensor_id &&
+                attribute_id == e?.detail?.attribute_id
+            ) {
+                logger.log(
+                    loggerCtxName,
+                    "handleAccumulatorEvent",
+                    sensor_id,
+                    attribute_id,
+                    e?.detail,
+                );
+                processAccumulatorEvent(dataStore, sensor_id, attribute_id, e);
+            }
+        };
+        const handleStorageWorkerEvent = (e) => {
+            logger.log(
+                loggerCtxName,
+                "handleStorageWorkerEvent",
+                e?.detail?.data?.sensor_id,
+                e?.detail?.data?.attribute_id,
+                e?.detail?.data?.result?.length,
+                e,
+            );
+            if (
+                sensor_id == e?.detail?.data?.sensor_id &&
+                attribute_id == e?.detail?.data?.attribute_id
+            ) {
+                logger.log(
+                    loggerCtxName,
+                    "handleStorageWorkerEvent",
+                    sensor_id,
+                    attribute_id,
+                    e?.detail,
+                );
+                processStorageWorkerEvent(
+                    dataStore,
+                    sensor_id,
+                    attribute_id,
+                    e,
+                );
+            }
+        };
+        const handleSeedDataEvent = (e) => {
+            logger.log(
+                loggerCtxName,
+                "handleSeedDataEvent",
+                sensor_id,
+                attribute_id,
+                e,
+            );
+            if (
+                sensor_id == e?.detail?.sensor_id &&
+                attribute_id == e?.detail?.attribute_id
+            ) {
+                logger.log(
+                    loggerCtxName,
+                    "handleSeedDataEvent",
+                    sensor_id,
+                    attribute_id,
+                    e?.detail,
+                );
+                processSeedDataEvent(dataStore, sensor_id, attribute_id, e);
+            }
+        };
+
+        window.addEventListener("resizeend", handleResizeEnd);
+        window.addEventListener(
+            "accumulator-data-event",
+            handleAccumulatorEvent,
+        );
+        window.addEventListener(
+            "storage-worker-event",
+            handleStorageWorkerEvent,
+        );
+        window.addEventListener("seeddata-event", handleSeedDataEvent);
+
+        observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    isVisible = entry.isIntersecting;
+                    if (isVisible) {
+                        drawEcg(
+                            canvas,
+                            data,
+                            color,
+                            backgroundColor,
+                            highlighted_areas,
+                        );
+                    }
+                });
+            },
+            { threshold: 0.1 },
+        );
+
+        observer.observe(canvas);
+
+        return () => {
+            window.removeEventListener("resizeend", handleResizeEnd);
+            window.removeEventListener(
+                "accumulator-data-event",
+                handleAccumulatorEvent,
+            );
+            window.removeEventListener(
+                "storage-worker-event",
+                handleStorageWorkerEvent,
+            );
+            window.removeEventListener("seeddata-event", handleSeedDataEvent);
+            if (observer) {
+                observer.unobserve(canvas);
+            }
+        };
+    });
+
+    $: if (data?.length) {
+        tick().then(() => {
+            if (isVisible) {
+                logger.log(
+                    loggerCtxName,
+                    "data changed, redrawing sparkline...",
+                    ecgDimensions.maxSamples,
+                    data?.length,
+                );
+                if (data.length == 0) {
+                    return;
+                }
+                const timestamps = data.map((point) => point.timestamp);
+                let minTimestamp = Math.min(...timestamps);
+                let maxTimestamp = Math.max(...timestamps);
+                drawEcg(
+                    canvas,
+                    data,
+                    color,
+                    backgroundColor,
+                    highlighted_areas,
+                );
+            }
+        });
+    }
 
     function calculateEcgDimensions(
         windowsize,
@@ -176,130 +342,20 @@
         ctx.restore();
     }
 
-    $: if (canvasElement && data) {
-        drawEcg(canvasElement, data, color, backgroundColor, highlighted_areas);
+    const handleResizeEnd = (e) => {
+        if (isVisible) {
+            logger.log(loggerCtxName, "handleResizeEnd", e);
+            drawEcg(canvas, data, color, backgroundColor, highlighted_areas);
+        }
+    };
+
+    $: if (canvas && data) {
+        drawEcg(canvas, data, color, backgroundColor, highlighted_areas);
     }
-
-    const handleStorageWorkerEvent = (e) => {
-        //const {type, eventData} = e.detail;
-        if (identifier === e?.detail?.data.id) {
-            logger.log(
-                loggerCtxName,
-                "handleStorageWorkerEvent",
-                identifier,
-                e?.detail?.type,
-                e?.detail?.data?.length,
-            );
-
-            if (e?.detail?.type == "append-read-data-result") {
-                newData = transformStorageEventData(e.detail.data.result);
-                data = [];
-                data = [...newData];
-
-                logger.log(
-                    loggerCtxName,
-                    "handleStorageWorkerEvent: Data transformed",
-                    data?.length,
-                    id,
-                ); // Log processed data.
-                if (data?.length > 1) is_loading = false;
-            } else if (e?.detail?.type == "append-data-result") {
-                // TODO: clarify event handler
-                data.push(e.detail.data.result.payload);
-                logger.log(
-                    loggerCtxName,
-                    "handleStorageWorkerEvent: append-data-result. Nothing to do",
-                    data,
-                ); // Log processed data.
-                //data = transformEventData(e.detail.data.result);
-            } else {
-                logger.log(
-                    loggerCtxName,
-                    "handleStorageWorkerEvent: Unknown storage event",
-                    identifier,
-                    e.detail,
-                ); // Log processed data.
-            }
-        }
-    };
-
-    const handleSeedDataEvent = (e) => {
-        if (
-            identifier ==
-            e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
-        ) {
-            // e?.detail?.data?.length > 0
-            logger.log(
-                loggerCtxName,
-                "handleSeedDataEvent",
-                identifier,
-                e?.detail?.data?.length,
-                data?.length,
-            );
-
-            //let newData = e?.detail?.data;
-
-            if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
-                let newData = e.detail.data;
-
-                data = [];
-                newData?.forEach((item) => {
-                    data = [...data, item];
-                });
-            } else if (
-                Array.isArray(e?.detail?.data) &&
-                e?.detail?.data?.length == 0
-            ) {
-                // reset data
-                data = [...[]];
-            } else {
-                logger.log(
-                    loggerCtxName,
-                    "handleSeedDataEvent",
-                    "No data",
-                    e?.detail,
-                );
-            }
-
-            is_loading = false;
-        }
-    };
-
-    const handleAccumulatorEvent = (e) => {
-        if (identifier === e?.detail?.id) {
-            logger.log(
-                loggerCtxName,
-                "handleAccumulatorEvent",
-                "loading: " + is_loading,
-                typeof e.detail,
-                e.detail,
-                e?.detail?.data,
-                e?.detail?.data?.timestamp,
-                e?.detail?.data?.payload,
-            );
-
-            if (e?.detail?.data?.timestamp && e?.detail?.data?.payload) {
-                logger.log(
-                    loggerCtxName,
-                    "handleAccumulatorEvent",
-                    identifier,
-                    e.detail.data,
-                    data?.length,
-                );
-
-                data = [...data.slice(-keepsamples), e.detail.data];
-            }
-        }
-    };
 </script>
 
-<svelte:window
-    on:storage-worker-event={handleStorageWorkerEvent}
-    on:accumulator-data-event={handleAccumulatorEvent}
-    on:seeddata-event={handleSeedDataEvent}
-/>
 <div style="width:{width}px;height:{height}px; position: relative">
-    <canvas bind:this={canvasElement} {width} {height} />
+    <canvas bind:this={canvas} {width} {height} />
 </div>
 <p class="text-xs">
     ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}

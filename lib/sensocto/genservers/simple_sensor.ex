@@ -18,7 +18,10 @@ defmodule Sensocto.SimpleSensor do
   def init(state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
     # Initialize message counter and schedule mps calculation
-    state = Map.merge(state, %{message_timestamps: []})
+    state =
+      Map.merge(state, %{message_timestamps: []})
+      |> Map.put(:mps_interval, 5000)
+
     schedule_mps_calculation()
     {:ok, state}
   end
@@ -235,16 +238,19 @@ defmodule Sensocto.SimpleSensor do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:calculate_mps, %{sensor_id: sensor_id, message_timestamps: timestamps} = state) do
+  def handle_info(
+        :calculate_mps,
+        %{sensor_id: sensor_id, message_timestamps: timestamps, mps_interval: mps_interval} =
+          state
+      ) do
     now = System.system_time(:millisecond)
-    one_second_ago = now - @mps_interval
+    interval_ago = now - mps_interval
 
-    # Filter timestamps within the last second
-    recent_timestamps = Enum.filter(timestamps, fn timestamp -> timestamp >= one_second_ago end)
-    mps = length(recent_timestamps)
+    # Filter timestamps within the interval
+    recent_timestamps = Enum.filter(timestamps, fn timestamp -> timestamp >= interval_ago end)
+    mps = length(recent_timestamps) / (mps_interval / 1000)
 
-    # Logger.debug("Server: :calculate_mps #{inspect(mps)}")
+    Logger.debug("Server: :calculate_mps #{inspect(mps)}")
 
     # Emit telemetry event with MPS
     :telemetry.execute(
@@ -256,6 +262,10 @@ defmodule Sensocto.SimpleSensor do
     # Schedule next calculation
     schedule_mps_calculation()
     {:noreply, %{state | message_timestamps: recent_timestamps}}
+  end
+
+  defp schedule_mps_calculation do
+    Process.send_after(self(), :calculate_mps, @mps_interval)
   end
 
   defp schedule_mps_calculation do

@@ -76,13 +76,13 @@ defmodule SensoctoWeb.Telemetry do
 
       summary(
         "sensocto.sensors.messages.mps.value",
-        description: "The number of messages per second"
-        # tags: [:sensor_id]
+        description: "The number of messages per second",
+        tags: [:sensor_id]
       ),
       distribution(
         "sensocto.sensors.messages.mps.value",
-        description: "The number of messages per second"
-        # tags: [:sensor_id]
+        description: "The number of messages per second",
+        tags: [:sensor_id]
       ),
 
       # summary("sensocto.live.mount",

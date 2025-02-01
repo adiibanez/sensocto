@@ -21,7 +21,7 @@
 
     export let points = [];
 
-    export let isResizing = false;
+    // export let isResizing = false;
 
     let canvas;
     let context;

@@ -26,10 +26,10 @@
 
     export let data = [];
     export let width = 200;
-    export let height = 80;
+    //export let height = 80;
     export let is_loading;
 
-    export let wasmPath = "/assets/_wasm";
+    //export let wasmPath = "/assets/_wasm";
 
     export let samplingrate;
     export let timewindow;

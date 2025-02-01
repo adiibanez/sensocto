@@ -3,7 +3,6 @@ defmodule SensoctoWeb.IndexLive do
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
-  alias SensoctoWeb.Live.BaseComponents
   import SensoctoWeb.Live.BaseComponents
 
   @grid_cols_sm_default 2
@@ -50,6 +49,7 @@ defmodule SensoctoWeb.IndexLive do
     {:ok, new_socket}
   end
 
+  @impl true
   def handle_info(
         {:measurements_batch, {sensor_id, measurements_list}},
         socket
@@ -109,6 +109,7 @@ defmodule SensoctoWeb.IndexLive do
     {:noreply, new_socket}
   end
 
+  @impl true
   def handle_info(
         {:measurement,
          %{
@@ -194,6 +195,54 @@ defmodule SensoctoWeb.IndexLive do
     end
   end
 
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          # topic: "sensordata:all",
+          event: "presence_diff",
+          payload: payload
+        },
+        socket
+      ) do
+    Logger.debug(
+      "presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
+    )
+
+    sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
+    sensors_online_count = Enum.count(socket.assigns.sensors)
+
+    {
+      :noreply,
+      socket
+      |> assign(:sensors_online_count, sensors_online_count)
+      |> assign(:sensors_online, sensors_online)
+      |> assign(:sensors_offline, payload.leaves)
+      |> assign(:grid_cols_sm, min(@grid_cols_sm_default, sensors_online_count))
+      |> assign(:grid_cols_lg, min(@grid_cols_lg_default, sensors_online_count))
+      |> assign(:grid_cols_xl, min(@grid_cols_xl_default, sensors_online_count))
+      |> assign(:grid_cols_2xl, min(@grid_cols_2xl_default, sensors_online_count))
+      |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state())
+    }
+  end
+
+  @impl true
+  def handle_info({:signal, msg}, socket) do
+    IO.inspect(msg, label: "Handled message {__MODULE__}")
+
+    {:noreply, put_flash(socket, :info, "You clicked the button!")}
+  end
+
+  @impl true
+  def handle_info({:trigger_parent_flash, message}, socket) do
+    {:noreply, put_flash(socket, :info, message)}
+  end
+
+  @impl true
+  def handle_info(msg, socket) do
+    IO.inspect(msg, label: "Unknown Message")
+    {:noreply, socket}
+  end
+
   def handle_event("toggle_highlight", %{"sensor_id" => sensor_id} = params, socket) do
     Logger.info("Received highlight event: #{inspect(params)}")
 
@@ -241,7 +290,7 @@ defmodule SensoctoWeb.IndexLive do
           "from" => from,
           "to" => to,
           "limit" => limit
-        } = params,
+        } = _params,
         socket
       ) do
     start = System.monotonic_time()
@@ -267,53 +316,5 @@ defmodule SensoctoWeb.IndexLive do
     )
 
     {:noreply, new_socket}
-  end
-
-  @impl true
-  def handle_info(
-        %Phoenix.Socket.Broadcast{
-          # topic: "sensordata:all",
-          event: "presence_diff",
-          payload: payload
-        },
-        socket
-      ) do
-    Logger.debug(
-      "presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
-    )
-
-    sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
-    sensors_online_count = Enum.count(socket.assigns.sensors)
-
-    {
-      :noreply,
-      socket
-      |> assign(:sensors_online_count, sensors_online_count)
-      |> assign(:sensors_online, sensors_online)
-      |> assign(:sensors_offline, payload.leaves)
-      |> assign(:grid_cols_sm, min(@grid_cols_sm_default, sensors_online_count))
-      |> assign(:grid_cols_lg, min(@grid_cols_lg_default, sensors_online_count))
-      |> assign(:grid_cols_xl, min(@grid_cols_xl_default, sensors_online_count))
-      |> assign(:grid_cols_2xl, min(@grid_cols_2xl_default, sensors_online_count))
-      |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state())
-    }
-  end
-
-  @impl true
-  def handle_info({:signal, msg}, socket) do
-    IO.inspect(msg, label: "Handled message {__MODULE__}")
-
-    {:noreply, put_flash(socket, :info, "You clicked the button!")}
-  end
-
-  @impl true
-  def handle_info({:trigger_parent_flash, message}, socket) do
-    {:noreply, put_flash(socket, :info, message)}
-  end
-
-  @impl true
-  def handle_info(msg, socket) do
-    IO.inspect(msg, label: "Unknown Message")
-    {:noreply, socket}
   end
 end

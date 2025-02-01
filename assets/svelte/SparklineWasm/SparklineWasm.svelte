@@ -15,17 +15,17 @@
 
     let wasmInitialized = false;
 
-    export let is_loading;
+    // export let is_loading;
     export let width;
     export let height = 30;
     export let sensor_id;
     export let attribute_id;
     export let samplingrate;
     export let timewindow;
-    export let timemode;
+    // export let timemode;
     export let minvalue;
     export let maxvalue;
-    export let initialParams;
+    // export let initialParams;
 
     let loggerCtxName = "SparklineWasm";
 

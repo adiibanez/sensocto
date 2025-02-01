@@ -6,7 +6,7 @@
     export let data = [];
     export let width = 100;
     export let height = 50;
-    export let resolution;
+    // export let resolution;
 
     export let scaledPoints = []; // export, so that we can see it.
 

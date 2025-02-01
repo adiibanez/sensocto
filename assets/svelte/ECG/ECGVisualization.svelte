@@ -44,7 +44,7 @@
     export let minValue = -1.0;
     export let maxValue = 2;
 
-    export let is_loading;
+    // export let is_loading;
 
     let canvas;
 

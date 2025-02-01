@@ -83,13 +83,14 @@ config :logger, :logger_name,
   # override default levels
   level_config: [
     [module: Sensocto.SimpleSensor, level: :debug],
-    [module: Sensocto.AttributeStorer, level: :debug],
-    [module: SensoctoWeb.SensorDataChannel, level: :debug],
-    [module: Phoenix.Logger, level: :debug]
+    [module: Sensocto.AttributeStorer, level: :debug]
+    # [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    # [module: Phoenix.Logger, level: :debug]
   ],
   # backend specific configuration
   # format: "DEV [$time] [$level] $message\n"
-  format: "DEV [$time][$node][$level] $metadata$message\n",
+  format: "DEV $metadata$message\n",
+  # [$time][$node][$level]
   metadata: [:file, :function, :line]
 
 # https://elixirforum.com/t/logger-format/8616/2

@@ -3,11 +3,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
   require Logger
   use Timex
 
-  alias SensoctoWeb.Components.SensorTypes.HeartrateComponent
-  alias SensoctoWeb.Components.SensorTypes.EcgSensorComponent
-  alias SensoctoWeb.Components.SensorTypes.HighSamplingRateSensorComponent
-  alias SensoctoWeb.Components.SensorTypes.GenericSensorComponent
-
   use Gettext,
     backend: SensoctoWeb.Gettext
 
@@ -141,60 +136,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
     """
   end
 
-  def render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
-      when sensor_type in ["ecg"] do
-    assigns =
-      assigns
-      |> Map.put(:sensor_id, sensor_data.sensor_id)
-
-    ~H"""
-    <.live_component id={@sensor_id} module={EcgSensorComponent} sensor_data={sensor_data} />
-    """
-  end
-
-  def render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
-      when sensor_type in ["pressure", "flex", "eda", "emg", "rsp"] do
-    assigns =
-      assigns
-      |> Map.put(:sensor_id, sensor_data.sensor_id)
-
-    ~H"""
-    <.live_component
-      id={@sensor_id}
-      module={HighSamplingRateSensorComponent}
-      sensor_data={sensor_data}
-    />
-    """
-  end
-
-  def render_sensor_by_type(%{sensor_type: "heartrate"} = sensor_data, assigns) do
-    assigns =
-      assigns
-      |> Map.put(:sensor_id, sensor_data.sensor_id)
-
-    ~H"""
-    <p class="hidden">Attribute data: {inspect(sensor_data)}</p>
-    <.live_component id={@sensor_id} module={HeartrateComponent} sensor_data={sensor_data} />
-    """
-  end
-
-  def render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns) do
-    assigns =
-      assigns
-      |> Map.put(:sensor_id, sensor_data.sensor_id)
-
-    ~H"""
-    <.live_component id={@sensor_id} module={GenericSensorComponent} sensor_data={sensor_data} />
-    """
-  end
-
-  def render_sensor_by_type(sensor_data, assigns) do
-    ~H"""
-    <div>Unknown sensor_type {inspect(sensor_data)}</div>
-    """
-  end
-
-  def render_loading(size, assigns) do
+  def render_loading(_size, assigns) do
     ~H"""
     <svg
       aria-hidden="true"
@@ -255,23 +197,22 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
     # IO.inspect(timestamp_int, label: "Timestamp")
 
-    timestamp_formatted =
-      if timestamp_int do
-        try do
-          {:ok, formatted_timestamp} =
-            timestamp_int
-            |> Timex.from_unix(:milliseconds)
-            |> Timex.format("%FT%T%:z", :strftime)
+    if timestamp_int do
+      try do
+        {:ok, formatted_timestamp} =
+          timestamp_int
+          |> Timex.from_unix(:milliseconds)
+          |> Timex.format("%FT%T%:z", :strftime)
 
-          formatted_timestamp
-        rescue
-          _ ->
-            Logger.debug("invalid format unix timestamp #{inspect(timestamp)}")
-            "Invalid Date"
-        end
-      else
-        "Invalid Date"
+        formatted_timestamp
+      rescue
+        _ ->
+          Logger.debug("invalid format unix timestamp #{inspect(timestamp)}")
+          "Invalid Date"
       end
+    else
+      "Invalid Date"
+    end
   end
 
   def viewdata_ready_attribute(attribute_data) do

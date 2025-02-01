@@ -64,7 +64,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
                 sensor_id={@sensor_id}
                 attribute_id={@attribute_id}
                 samplingrate={@sampling_rate}
-                timewindow="5000"
+                timewindow="1000"
                 timemode="relative"
                 phx-update="ignore"
                 class="resizeable loading w-full m-0 p-0"
@@ -155,23 +155,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
       />
     </svg>
     """
-  end
-
-  def get_attribute_view_data(attribute_id, sensor_metadata, attribute_data) do
-    # TODO check format list vs map
-    first_attribute_data = Enum.at(attribute_data, 0)
-
-    Logger.debug("get_attribute_view_data payload:#{inspect(first_attribute_data)}")
-
-    %{
-      :sensor_type => sensor_metadata.sensor_type,
-      :sensor_id => sensor_metadata.sensor_id,
-      :attribute_id => attribute_id,
-      :payload => first_attribute_data.payload,
-      :timestamp_formated => format_unix_timestamp(first_attribute_data.timestamp),
-      :sampling_rate => sensor_metadata.sampling_rate,
-      :id => "#{sensor_metadata.sensor_id}_#{attribute_id}"
-    }
   end
 
   def format_unix_timestamp(timestamp) do

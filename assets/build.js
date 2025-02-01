@@ -2,7 +2,7 @@ const esbuild = require("esbuild");
 const sveltePlugin = require("esbuild-svelte");
 const importGlobPlugin = require("esbuild-plugin-import-glob").default;
 const sveltePreprocess = require("svelte-preprocess");
-//const { wasmLoader } = require('esbuild-plugin-wasm');
+const { wasmLoader } = require('esbuild-plugin-wasm');
 
 const fs = require('fs');
 const path = require('path');
@@ -16,9 +16,9 @@ let optsClient = {
         "js/app.js",
         "js/worker-storage.js",
         "js/indexeddb.js",
-        "js/sparkline-wasm-element.js",
+        // "js/sparkline-wasm-element.js",
         //"js/wasm_sparkline_bg.js",
-        //"js/wasm_sparkline_bg.wasm",
+        // "js/wasm_sparkline_bg.wasm",
         // ... add any other custom entry points ...
     ],
     bundle: true,
@@ -27,7 +27,7 @@ let optsClient = {
     conditions: ["svelte", "browser"],
     outdir: "../priv/static/assets",
     logLevel: "info",
-    sourcemap: watch ? "inline" : false,
+    sourcemap: true, // Enable source maps
     tsconfig: "./tsconfig.json",
     plugins: [
         importGlobPlugin(),
@@ -37,7 +37,7 @@ let optsClient = {
             compilerOptions: { dev: !deploy, hydratable: true, css: "injected", customElement: true },
         }),
 
-        /*wasmLoader(
+        wasmLoader(
             {
                 // (Default) Deferred mode copies the WASM binary to the output directory,
                 // and then `fetch()`s it at runtime. This is the default mode.
@@ -47,7 +47,7 @@ let optsClient = {
                 // base64 string. Note this will greatly bloat the resulting bundle
                 // (the binary will take up about 30% more space this way)
                 //  mode: 'embedded'
-            })*/
+            })
 
     ],
     assetNames: "/js/[name]", // New: Create /js subdirectory inside /assets.
@@ -67,7 +67,7 @@ let optsServer = {
     conditions: ["svelte"],
     outdir: "../priv/svelte",
     logLevel: "info",
-    sourcemap: watch ? "inline" : false,
+    sourcemap: true, // Enable source maps
     tsconfig: "./tsconfig.json",
     plugins: [
         importGlobPlugin(),

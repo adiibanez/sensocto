@@ -16,10 +16,10 @@ defmodule Sensocto.AttributeStore do
     end)
   end
 
-  def get_attributes(sensor_id) do
-    # Logger.debug("Agent client get_attributes #{sensor_id}")
-    Agent.get(via_tuple(sensor_id), & &1)
-  end
+  # def get_attributes(sensor_id) do
+  #   # Logger.debug("Agent client get_attributes #{sensor_id}")
+  #   Agent.get(via_tuple(sensor_id), & &1)
+  # end
 
   def get_attributes(sensor_id, limit \\ @default_limit) do
     # Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
@@ -51,18 +51,43 @@ defmodule Sensocto.AttributeStore do
           {:ok, []}
 
         %{payloads: payloads} ->
-          filtered =
-            Enum.filter(payloads, fn %{timestamp: timestamp} ->
-              timestamp >= from_timestamp && timestamp <= to_timestamp
-            end)
+          payloads
+          |> maybe_filter(from_timestamp, to_timestamp)
+          |> maybe_limit(limit)
 
           Logger.debug(
-            "attribute data for #{sensor_id} #{is_nil(limit)} #{inspect(limit)} #{inspect(filtered)}"
+            "Agent: attribute data for #{sensor_id} #{is_nil(limit)} from: #{from_timestamp} to: #{to_timestamp} #{inspect(limit)} #{inspect(payloads)}"
           )
 
-          {:ok, Enum.take(filtered, @default_limit)}
+          {:ok, payloads}
       end
     end)
+  end
+
+  defp maybe_filter(payloads, from_timestamp, to_timestamp)
+       when not is_nil(from_timestamp) and not is_nil(to_timestamp) do
+    Enum.filter(payloads, fn %{timestamp: timestamp} ->
+      timestamp >= from_timestamp && timestamp <= to_timestamp
+    end)
+  end
+
+  defp maybe_filter(payloads, from_timestamp, to_timestamp)
+       when not is_nil(from_timestamp) do
+    Enum.filter(payloads, fn %{timestamp: timestamp} ->
+      timestamp >= from_timestamp
+    end)
+  end
+
+  defp maybe_filter(payloads, from_timestamp, to_timestamp) do
+    payloads
+  end
+
+  defp maybe_limit(payloads, limit) when not is_nil(limit) do
+    Enum.take(payloads, limit)
+  end
+
+  defp maybe_limit(payloads, limit) do
+    payloads
   end
 
   def remove_attribute(sensor_id, attribute_id) do

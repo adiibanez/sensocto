@@ -116,12 +116,66 @@ Hooks.SensorDataAccumulator = {
   },
 
   mounted() {
-
     //workerStorage.postMessage({ type: 'clear-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id } });
+
+
+    // make sure we wait for server seed
+    this.el.dataset.seeding = true;
+    handleGetLastTimestamp(this.el.dataset.sensor_id, this.el.dataset.attribute_id).then((result) => {
+      console.log("Last timestamp for ", this.el.dataset.sensor_id, this.el.dataset.attribute_id, result);
+
+      const payload = {
+        "sensor_id": this.el.dataset.sensor_id,
+        "attribute_id": this.el.dataset.attribute_id,
+        "from": result,
+        "to": null,
+        "limit": null
+      };
+
+      logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload, result);
+
+      this.handleEvent("seeddata", (seed) => {
+        console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
+
+        let identifier_seed = seed.sensor_id + "_" + seed.attribute_id;
+
+        if (seed.sensor_id == this.el.dataset.sensor_id && seed.attribute_id == this.el.dataset.attribute_id) {
+
+          handleAppendAndReadData(seed.sensor_id, seed.attribute_id, seed).then((result) => {
+            logger.log("Hooks.SensorDataAccumulator", "handleAppendAndReadData measurement", seed.sensor_id, seed.attribute_id, "Seed length: ", seed.length, "Result length: ", result.length);
+            const seedEvent = new CustomEvent('seeddata-event', { id: identifier_seed, detail: { sensor_id: seed.sensor_id, attribute_id: seed.attribute_id, data: result } });
+            window.dispatchEvent(seedEvent);
+            this.el.dataset.seeding = false;
+          });
+
+          // workerStorage.postMessage({ type: 'seed-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id, seedData: seed.data } });
+
+        }
+      });
+
+      this.pushEvent("request-seed-data", payload);
+    });
+
+
+    this.handleEvent("clear-attribute", (e) => {
+
+      this.el.dataset.seeding = true;
+
+      logger.log("Hooks.SensorDataAccumulator", "clear-attribute", e.sensor_id, e.attribute_id);
+      handleClearData(e.sensor_id, e.attribute_id).then((result) => {
+        const seedEvent = new CustomEvent('seeddata-event', { id: e.sensor_id + '_' + e.attribute_id, detail: { sensor_id: e.sensor_id, attribute_id: e.attribute_id, data: [] } });
+        window.dispatchEvent(seedEvent);
+        this.el.dataset.seeding = false;
+      });
+    }
+    );
+
+    var hookElement = this.el;
 
     if ('pushEvent' in this && 'handleEvent' in this) {
       this.handleEvent("measurements_batch", (event) => {
-        if (event.sensor_id == this.el.dataset.sensor_id) {
+
+        if (hookElement.dataset.seeding !== true && event.sensor_id == this.el.dataset.sensor_id) {
           // iterate over attributes and triage
           let uniqueAttributeIds = [...new Set(event.attributes.map(attribute => attribute.attribute_id))];
 
@@ -129,9 +183,13 @@ Hooks.SensorDataAccumulator = {
             logger.log("Hooks.SensorDataAccumulator", "measurements_batch ", { attribute_id: attributeId, el_attribute_id: this.el.dataset.attribute_id }, event);
             if (event.sensor_id == this.el.dataset.sensor_id && attributeId == this.el.dataset.attribute_id) {
               let relevantAttributes = event.attributes.filter(attribute => attribute.attribute_id === attributeId);
-              logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement_batch", event.sensor_id, attributeId, relevantAttributes.length);
+              logger.log("Hooks.SensorDataAccumulator", "handleEvent BATCH measurement_batch", event.sensor_id, attributeId, relevantAttributes.length, relevantAttributes);
               const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: attributeId, data: relevantAttributes } });
               window.dispatchEvent(accumulatorEvent);
+
+              handleAppendData(event.sensor_id, attributeId, relevantAttributes, 100000).then((result) => {
+                logger.log("Hooks.SensorDataAccumulator", " handleAppendData measurements_batch", event.sensor_id, attributeId, result);
+              });
             }
           });
         }
@@ -139,44 +197,17 @@ Hooks.SensorDataAccumulator = {
 
       this.handleEvent("measurement", (event) => {
         // match sensor_id and attribute_id, then push event
-        if (event.sensor_id == this.el.dataset.sensor_id && event.attribute_id == this.el.dataset.attribute_id) {
-          logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement", event.sensor_id, event.attribute_id, event);
+        if (hookElement.dataset.seeding !== true && event.sensor_id == this.el.dataset.sensor_id && event.attribute_id == this.el.dataset.attribute_id) {
+          logger.log("Hooks.SensorDataAccumulator", "handleEvent SINGLE measurement", event.sensor_id, event.attribute_id, event);
           const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: this.el.dataset.attribute_id, data: event } });
           window.dispatchEvent(accumulatorEvent);
+
+          handleAppendData(event.sensor_id, event.attribute_id, event, 100000).then((result) => {
+            logger.log("Hooks.SensorDataAccumulator", "handleAppendData measurement", event.sensor_id, event.attribute_id, result);
+          });
         }
       }
       );
-
-
-      console.log("Here", this.el.dataset.sensor_id, this.el.dataset.attribute_id);
-      handleGetLastTimestamp(this.el.dataset.sensor_id, this.el.dataset.attribute_id).then((result) => {
-        console.log("Here", result);
-
-        const payload = {
-          "sensor_id": this.el.dataset.sensor_id,
-          "attribute_id": this.el.dataset.attribute_id,
-          "from": result,
-          "to": null,
-          "limit": null
-        };
-
-        logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload, result);
-
-        this.handleEvent("seeddata", (seed) => {
-          console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
-
-          let identifier_seed = seed.sensor_id + "_" + seed.attribute_id;
-
-          if (seed.sensor_id == this.el.dataset.sensor_id && seed.attribute_id == this.el.dataset.attribute_id) {
-            workerStorage.postMessage({ type: 'seed-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id, seedData: seed.data } });
-            const seedEvent = new CustomEvent('seeddata-event', { id: identifier_seed, detail: seed });
-            window.dispatchEvent(seedEvent);
-          }
-        });
-
-        this.pushEvent("request-seed-data", payload);
-      });
-
 
     } else {
       logger.log("Hooks.SensorDataAccumulator", 'liveSocket', liveSocket);
@@ -273,6 +304,20 @@ window.addEventListener("phx:live_reload:attached", ({ detail: reloader }) => {
   // Disable with reloader.disableServerLogs()
   reloader.enableServerLogs()
   window.liveReloader = reloader
+  let keyDown
+  window.addEventListener("keydown", (event) => keyDown = event.key)
+  window.addEventListener("keyup", (_) => keyDown = null)
+  window.addEventListener("click", (event) => {
+    if (keyDown === "c") {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      reloader.openEditorAtCaller(event.target)
+    } else if (keyDown === "d") {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      reloader.openEditorAtDef(event.target)
+    }
+  })
 })
 
 
@@ -288,6 +333,11 @@ let liveSocket = new LiveSocket("/live", Socket, { hooks: mergedHooks, params: {
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+
+
+
+
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

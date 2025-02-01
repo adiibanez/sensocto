@@ -20,11 +20,19 @@ Sensocto.Simulator.Application.ensure_running_count(7, 0, 0, %{:sensor_type => "
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 10})
 
 
+Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1, :batch_size => 1})
 
-Sensocto.Simulator.Application.ensure_running_count(5, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 200, :batch_size => 10000, :batch_timeout => 41 * 3 })
+
+Sensocto.Simulator.Application.ensure_running_count(10, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 100, :batch_size => 10000, :batch_timeout => 500 })
 
 
 Sensocto.Simulator.Application.ensure_running_count(5, 1000, 1000, %{:sensor_type => "heartrate", :sampling_rate => 1, :duration=>60, :batch_size => 20, :batch_timeout => 500})
+
+ SensorSimulatorSupervisor.get_all_sensors_state()
+SensorSimulatorSupervisor.set_sensor_config("SensoctoSimEx_1:heartrate", :heart_rate, 40)
+
+
+
 
 Sensocto.Simulator.Application.ensure_running_count(1, 100, 100)
 Process.send_after(:biosense_data_server_1, {:get_data, self(), %{}}, 100)

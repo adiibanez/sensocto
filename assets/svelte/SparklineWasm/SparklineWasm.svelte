@@ -187,22 +187,22 @@
         if (wasmInitialized == false || !isVisible) {
             return;
         }
-        logger.log(
-            loggerCtxName,
-            "Js args",
-            data.slice(-maxsamples),
-            width,
-            height,
-            "#ffc107",
-            1,
-            20,
-            2000,
-            100,
-            "relative",
-            false,
-            minvalue,
-            maxvalue,
-        );
+        // logger.log(
+        //     loggerCtxName,
+        //     "Js args",
+        //     data.slice(-maxsamples),
+        //     width,
+        //     height,
+        //     "#ffc107",
+        //     1,
+        //     20,
+        //     2000,
+        //     100,
+        //     "relative",
+        //     false,
+        //     minvalue,
+        //     maxvalue,
+        // );
         draw_sparkline(
             data.slice(-maxsamples),
             width,
@@ -230,9 +230,10 @@
 
 <canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
 
-{#if true}
+{#if false}
     <div class="text-xs hidden">
         Data points {data.length}, maxsamples: {maxsamples}, width: {width}
         width: {width} height: {height}
+        <pre>{JSON.stringify(data, null, 2)}</pre>
     </div>
 {/if}

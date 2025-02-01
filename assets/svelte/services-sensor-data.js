@@ -34,11 +34,19 @@ const transformStorageEventData = (data) => {
         // Verify data format.
         data.forEach((item) => {
             // Loop through each item in the array.
-            if (
+
+            if (typeof item.payload === "object" && item?.payload?.timestamp !== null && item?.payload?.payload !== null) {
+                let newItem = {
+                    timestamp: item.timestamp,
+                    payload: item.payload.payload,
+                }
+                // console.log('item', newItem, item);
+                transformedData.push(newItem);
+            } else if (
                 typeof item === "object" &&
                 item !== null &&
-                item.timestamp &&
-                item.payload
+                item?.timestamp !== null &&
+                item?.payload !== null
             ) {
                 // Type checks
                 transformedData.push({
@@ -62,6 +70,7 @@ const transformStorageEventData = (data) => {
 
 const processStorageWorkerEvent = async (store, sensor_id, attribute_id, e) => {
     logger.log(loggerCtxName, "handleStorageWorkerEvent", sensor_id, attribute_id, e);
+
     const newData = transformStorageEventData(e.detail.data.result);
 
     let eventType = e.detail.type;
@@ -93,9 +102,12 @@ const processAccumulatorEvent = (store, sensor_id, attribute_id, e) => {
 };
 
 const processSeedDataEvent = async (store, sensor_id, attribute_id, e) => {
-    // logger.log(loggerCtxName, "handleSeedDataEvent");
-    if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
-        await setData(store, sensor_id, attribute_id, e.detail.data)
+    logger.log(loggerCtxName, "handleSeedDataEvent", e);
+
+    const transformedData = transformStorageEventData(e.detail.data)
+    // let newData = e.detail.data;
+    if (Array.isArray(transformedData) && transformedData?.length > 0) {
+        await setData(store, sensor_id, attribute_id, transformedData);
     } else {
         await setData(store, sensor_id, attribute_id, [])
     }

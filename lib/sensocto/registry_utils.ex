@@ -73,17 +73,17 @@ defmodule Sensocto.RegistryUtils do
     end
 
     case tuple do
-      {:via, _, {Horde.DynamicSupervisor, _}} ->
-        {:ok, :horde_dynamic_supervisor}
+      # {:via, _, {Horde.DynamicSupervisor, _}} ->
+      #   {:ok, :horde_dynamic_supervisor}
 
       {Horde.DynamicSupervisor, _} ->
         {:ok, :horde_dynamic_supervisor}
 
-      {:via, _, {DynamicSupervisor, _}} ->
-        {:ok, :dynamic_supervisor}
+      # {:via, _, {DynamicSupervisor, _}} ->
+      #   {:ok, :dynamic_supervisor}
 
-      {DynamicSupervisor, _} ->
-        {:ok, :dynamic_supervisor}
+      # {DynamicSupervisor, _} ->
+      #   {:ok, :dynamic_supervisor}
 
       _ ->
         :error

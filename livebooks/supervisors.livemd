@@ -44,7 +44,9 @@ filtered =
 filtered
 
 Sensocto.SimpleSensor.get_state("SensoctoSimEx_1:heartrate")
-Sensocto.SensorsDynamicSupervisor.remove_sensor("sensor_5")
+
+Sensocto.SimpleSensor.get_attribute("SensoctoSimEx_1:heartrate", "heartrate", 1_738_428_011_390)
+# Sensocto.SensorsDynamicSupervisor.remove_sensor("sensor_5")
 ```
 
 <!-- livebook:{"attrs":"e30","chunks":null,"kind":"Elixir.Kino.RemoteExecutionCell","livebook_object":"smart_cell"} -->

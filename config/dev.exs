@@ -73,7 +73,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :debug,
+  level: :info,
   backends: [{FlexLogger, :logger_name}]
 
 config :logger, :logger_name,
@@ -82,8 +82,8 @@ config :logger, :logger_name,
   default_level: :info,
   # override default levels
   level_config: [
-    [module: Sensocto.SimpleSensor, level: :debug],
-    [module: Sensocto.AttributeStorer, level: :debug]
+    # [module: Sensocto.SimpleSensor, level: :debug],
+    # [module: Sensocto.AttributeStorer, level: :debug]
     # [module: SensoctoWeb.SensorDataChannel, level: :debug],
     # [module: Phoenix.Logger, level: :debug]
   ],

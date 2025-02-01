@@ -216,6 +216,34 @@ defmodule Sensocto.SensorSimulatorGenServer do
     {:noreply, state}
   end
 
+  def get_config(sensor_id) do
+    case Registry.lookup(SensorSimulatorRegistry, sensor_id) do
+      [{pid, _}] ->
+        Logger.debug("Client: get_config #{inspect(pid)} #{inspect(sensor_id)}")
+        GenServer.call(pid, :get_config)
+      [] ->
+        Logger.debug("Client: get_config No sensor_found #{inspect(sensor_id)}")
+      _ ->
+        Logger.debug("Client: get_config ERROR #{inspect(sensor_id)}")
+    end
+  end
+
+  def handle_info(:get_config, %{:sensor_id => sensor_id} = state) do
+    Logger.debug("#{sensor_id} handle_info:get_config")
+    {:ok, state}
+  end
+
+  def handle_call(:get_config, _from, %{sensor_id: sensor_id} = state) do
+    {:reply, state, state}
+  end
+
+  def handle_info({:set_config, config_key, config_value}, %{:sensor_id => sensor_id} = state) do
+    old_value = Map.get(state, config_key)
+
+    Logger.info("#{sensor_id} handle_info:set_config #{config_key} New: #{config_value}, Old: #{old_value}")
+    {:noreply, state |> Map.put(config_key, config_value)}
+  end
+
   def handle_info(:connect_phoenix, %{:sensor_id => sensor_id} = state) do
     Logger.info("#{sensor_id} handle_info:connect_phoenix")
     GenServer.cast(self(), :connect_phoenix)
@@ -363,7 +391,10 @@ defmodule Sensocto.SensorSimulatorGenServer do
         }
       end)
 
-      PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurements_batch", phoenix_messages)
+      case Enum.count(phoenix_messages) do
+        1 -> PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", Enum.at(phoenix_messages, 0))
+        _ -> PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurements_batch", phoenix_messages)
+      end
 
       {:noreply,
        state

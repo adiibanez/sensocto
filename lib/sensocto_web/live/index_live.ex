@@ -268,10 +268,10 @@ defmodule SensoctoWeb.IndexLive do
         %{"sensor_id" => sensor_id, "attribute_id" => attribute_id} = params,
         socket
       ) do
-    Logger.debug("clear-attribute request #{inspect(params)}")
+    Logger.info("clear-attribute request #{inspect(params)}")
 
     {:noreply,
-     push_event(socket, "seeddata", %{
+     push_event(socket, "clear-attribute", %{
        sensor_id: sensor_id,
        attribute_id: attribute_id,
        data: []
@@ -296,10 +296,10 @@ defmodule SensoctoWeb.IndexLive do
     start = System.monotonic_time()
     Logger.debug("request-seed_data #{sensor_id}:#{attribute_id}")
 
-    {:ok, attribute_data} =
+    attribute_data =
       Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
 
-    Logger.debug("handle_event request-seed-data attribute_data: #{inspect(attribute_data)}")
+    Logger.info("handle_event request-seed-data attribute_data: #{Enum.count(attribute_data)}")
 
     new_socket =
       socket
@@ -316,5 +316,11 @@ defmodule SensoctoWeb.IndexLive do
     )
 
     {:noreply, new_socket}
+  end
+
+  @impl true
+  def handle_event(type, params, socket) do
+    Logger.debug("Unknown event: #{type} #{inspect(params)}")
+    {:noreply, socket}
   end
 end

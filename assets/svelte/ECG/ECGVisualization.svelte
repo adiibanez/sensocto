@@ -22,7 +22,7 @@
     export let sensor_id;
     export let attribute_id;
 
-    export let windowsize = 20;
+    export let windowsize = 10;
     export let width = 200;
     export let height = 100;
     export let color;
@@ -357,7 +357,8 @@
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvas} {width} {height} />
 </div>
-<p class="text-xs">
+<!--<p class="text-xs hidden">
     ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}
     maxValue: {maxValue} width: {width} height: {height}
 </p>
+-->

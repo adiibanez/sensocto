@@ -17,10 +17,10 @@ export function openDatabase() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(dbName, version);
 
-        console.log("STORAGE Opening IndexedDB:", dbName, version, loggerCtxName);
+        if (debug) console.log("STORAGE Opening IndexedDB:", dbName, version, loggerCtxName);
 
         request.onerror = () => {
-            console.log(loggerCtxName, "Error opening IndexedDB:", request.error);
+            if (debug) console.log(loggerCtxName, "Error opening IndexedDB:", request.error);
             reject(request.error);
         };
 
@@ -29,13 +29,13 @@ export function openDatabase() {
             if (!db.objectStoreNames.contains(objectStoreName)) {
                 const objectStore = db.createObjectStore(objectStoreName, { keyPath: 'id' });
                 objectStore.createIndex('timestamps', 'timestamps', { multiEntry: true });
-                console.log(loggerCtxName, "STORAGE Object store created", objectStoreName);
+                if (debug) console.log(loggerCtxName, "STORAGE Object store created", objectStoreName);
             }
         };
 
         request.onsuccess = () => {
             db = request.result;
-            console.log(loggerCtxName, "STORAGE IndexedDB opened successfully");
+            if (debug) console.log(loggerCtxName, "STORAGE IndexedDB opened successfully");
             resolve(db);
         };
     });
@@ -60,10 +60,10 @@ export const handleClearData = async (sensor_id, attribute_id) => {
     });
 };
 
-export const handleAppendData = async (sensor_id, attribute_id, payload, maxLength) => {
+export const handleAppendData = async (sensor_id, attribute_id, payload, maxLength = 100000) => {
     const identifier = `${sensor_id}_${attribute_id}`;
     if (!db) await openDatabase();
-    console.log(loggerCtxName, "STORAGE appendData called for:", identifier, "with payload:", payload, "and max length:", maxLength);
+    if (debug) console.log(loggerCtxName, "STORAGE appendData called for:", identifier, "with payload:", payload, "and max length:", maxLength);
 
     return new Promise(async (resolve, reject) => {
         const tx = db.transaction(objectStoreName, 'readwrite');
@@ -78,39 +78,49 @@ export const handleAppendData = async (sensor_id, attribute_id, payload, maxLeng
 
             let dataPoints = existingData ? existingData.dataPoints || [] : [];
 
-            const newDataPoint = { timestamp: payload.timestamp, payload: payload };
-            dataPoints.push(newDataPoint);
-
-            // Sort the data by timestamp before saving:
-            // TODO: check if housekeeping is required when under heavy load (events out of order)
-            // dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+            if (Array.isArray(payload)) {
+                payload.forEach((item) => {
+                    if (item.payload && item.timestamp) {
+                        const newDataPoint = { timestamp: item.timestamp, payload: item };
+                        dataPoints.push(newDataPoint);
+                    }
+                });
+            } else {
+                if (payload.payload && payload.timestamp) {
+                    const newDataPoint = { timestamp: payload.timestamp, payload: payload };
+                    dataPoints.push(newDataPoint);
+                }
+            }
 
             if (maxLength && dataPoints.length > maxLength) {
                 dataPoints = dataPoints.slice(-maxLength); // Use slice to remove old points
             }
 
+            // Sort dataPoints by timestamp
+            dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+
             const putRequest = store.put({ id: identifier, dataPoints });
 
             putRequest.onsuccess = () => {
-                console.log(loggerCtxName, "STORAGE Data updated on indexdb, new data length:", dataPoints.length);
-                resolve(newDataPoint); // resolve with all points.
+                if (debug) console.log(loggerCtxName, "STORAGE Data updated on indexdb, new data length:", dataPoints.length);
+                resolve(dataPoints.length); // resolve with the new count of data points
             };
             putRequest.onerror = (event) => reject(event.target.error);
 
         } catch (error) {
-            console.log(loggerCtxName, "Error during appendData processing:", error);
+            if (debug) console.log(loggerCtxName, "Error during appendData processing:", error);
             reject(error);
         }
 
     });
 };
 
-export const handleAppendAndReadData = async (sensor_id, attribute_id, payload, maxLength) => {
+export const handleAppendAndReadData = async (sensor_id, attribute_id, payload, maxLength = 100000) => {
     const identifier = `${sensor_id}_${attribute_id}`;
     if (!db) {
         await openDatabase();
     }
-    console.log(loggerCtxName, "STORAGE handleAppendAndReadData called for:", identifier, "with payload:", payload, "and max length:", maxLength);
+    logger.log(loggerCtxName, "STORAGE handleAppendAndReadData called for:", identifier, "with payload:", payload, "and max length:", maxLength);
 
     return new Promise(async (resolve, reject) => {
         const tx = db.transaction(objectStoreName, 'readwrite');
@@ -124,25 +134,41 @@ export const handleAppendAndReadData = async (sensor_id, attribute_id, payload, 
             });
 
             let dataPoints = existingData ? existingData.dataPoints || [] : [];
-            const newDataPoint = { timestamp: payload.timestamp, payload: payload }; // include timestamp
-            dataPoints.push(newDataPoint);
-            dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+            logger.log(loggerCtxName, "STORAGE existing data points length:", dataPoints.length);
+
+            if (Array.isArray(payload.data)) {
+                payload.data.forEach((item) => {
+                    if (item.payload && item.timestamp) {
+                        const newDataPoint = { timestamp: item.timestamp, payload: item };
+                        dataPoints.push(newDataPoint);
+                    }
+                });
+            } else {
+                if (payload.payload && payload.timestamp) {
+                    const newDataPoint = { timestamp: payload.timestamp, payload: payload };
+                    dataPoints.push(newDataPoint);
+                }
+            }
 
             if (maxLength && dataPoints.length > maxLength) {
                 dataPoints = dataPoints.slice(-maxLength);
             }
 
+            dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+
+            logger.log(loggerCtxName, "STORAGE new data points length before put:", dataPoints.length);
+
             const putRequest = store.put({ id: identifier, dataPoints });
             putRequest.onsuccess = () => {
-                console.log(loggerCtxName, "STORAGE Data updated on indexdb, new data length:", dataPoints.length);
+                logger.log(loggerCtxName, "STORAGE Data updated on indexdb, new data length:", dataPoints.length);
                 resolve(dataPoints);
             };
             putRequest.onerror = (event) => {
-                console.log(loggerCtxName, "STORAGE Error in handleAppendAndReadData put request:", putRequest.error);
+                logger.log(loggerCtxName, "STORAGE Error in handleAppendAndReadData put request:", putRequest.error);
                 reject(putRequest.error);
             };
         } catch (error) {
-            console.log(loggerCtxName, "STORAGE Error during handleAppendAndReadData processing:", error);
+            logger.log(loggerCtxName, "STORAGE Error during handleAppendAndReadData processing:", error);
             reject(error);
         }
     });
@@ -158,7 +184,7 @@ export const handleSeedData = async (sensor_id, attribute_id, seedData, reset = 
         const store = tx.objectStore(objectStoreName);
 
         try {
-            console.log(loggerCtxName, "STORAGE", "seedData", identifier, seedData.length);
+            if (debug) console.log(loggerCtxName, "STORAGE", "seedData", identifier, seedData.length);
             const putRequest = store.put({ id: identifier, dataPoints: seedData });
             putRequest.onsuccess = () => resolve(seedData);
             putRequest.onerror = event => reject(event.target.error);

@@ -1,4 +1,4 @@
-defmodule SensoctoWeb.Components.SensorTypes.BaseComponent do
+defmodule SensoctoWeb.Components.SensorTypes do
   import SensoctoWeb.Live.BaseComponents
   # use SensoctoWeb, :live_view
   use Phoenix.LiveComponent
@@ -14,6 +14,10 @@ defmodule SensoctoWeb.Components.SensorTypes.EcgSensorComponent do
   @impl true
   def render(assigns) do
     import SensoctoWeb.Live.BaseComponents
+
+    assigns =
+      assigns
+      |> Map.put(:sensor_id, assigns.sensor_data.sensor_id)
 
     ~H"""
     <div>
@@ -95,8 +99,15 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
   def render(assigns) do
     import SensoctoWeb.Live.BaseComponents
 
+    assigns =
+      assigns
+      |> Map.put(:sensor_id, assigns.sensor_data.sensor_id)
+      |> Map.put(:attribute_id, assigns.sensor_data.attribute_id)
+      |> Map.put(:sampling_rate, assigns.sensor_data.sampling_rate)
+      |> Map.put(:payload, assigns.sensor_data.payload)
+
     ~H"""
-    <div class="attribute">
+    <div class="attribute flex-none">
       {render_attribute_header(assigns)}
       <!--<sensocto-sparkline
         is_loading="true"
@@ -125,7 +136,7 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
 
       <div class="flex items-left">
         <p class="w-20 flex-none" style="border:0 solid white">
-          {@sensor_data.payload}
+          {@payload}
         </p>
 
         <p class="flex-1">
@@ -133,8 +144,9 @@ defmodule SensoctoWeb.Components.SensorTypes.HeartrateComponent do
             height="20"
             is_loading="true"
             id={"sparkline_element-" <> assigns.id}
-            identifier={assigns.sensor_data.id}
-            samplingrate={assigns.sensor_data.sampling_rate}
+            sensor_id={@sensor_id}
+            attribute_id={@attribute_id}
+            samplingrate={@sampling_rate}
             timewindow="5000"
             timemode="relative"
             phx-update="ignore"
@@ -167,32 +179,36 @@ defmodule SensoctoWeb.Components.SensorTypes.GenericSensorComponent do
   end
 
   defp render_payload(payload, assigns) do
-    try do
-      case Jason.decode(payload) do
-        {:ok, %{} = json_obj} ->
-          # Render JSON object
-          output =
-            Enum.map(json_obj, fn {key, value} ->
-              "#{String.capitalize(inspect(key))}: #{inspect(value)}\n"
-            end)
-            |> Enum.join("")
+    if is_integer(payload) do
+      ~H"<p>{payload}</p>"
+    else
+      try do
+        case Jason.decode(payload) do
+          {:ok, %{} = json_obj} ->
+            # Render JSON object
+            output =
+              Enum.map(json_obj, fn {key, value} ->
+                "#{String.capitalize(inspect(key))}: #{inspect(value)}\n"
+              end)
+              |> Enum.join("")
 
-          ~H"<pre>{output}</pre>"
+            ~H"<pre>{output}</pre>"
 
-        # aaaa
+          # aaaa
+
+          _ ->
+            # Render single value
+            ~H"<p>#{inspect(payload)}</p>"
+        end
+      rescue
+        Jason.DecodeError ->
+          Logger.debug("Could not decode payload: #{inspect(payload)}")
+          ~H"<p>{inspect(payload)}</p>"
 
         _ ->
-          # Render single value
-          ~H"<p>#{inspect(payload)}</p>"
+          Logger.error("Could not decode payload: #{inspect(payload)}")
+          ~H"<p>{inspect(payload)}</p>"
       end
-    rescue
-      Jason.DecodeError ->
-        Logger.debug("Could not decode payload: #{inspect(payload)}")
-        ~H"<p>#{inspect(payload)}</p>"
-
-      _ ->
-        Logger.error("Could not decode payload: #{inspect(payload)}")
-        ~H"<p>#{inspect(payload)}</p>"
     end
   end
 end

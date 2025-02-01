@@ -19,8 +19,8 @@
         }
 
         let payload = {
-            payload: "PUSH",
-            uuid: channelIdentifier,
+            payload: 1,
+            attribute_id: channelIdentifier,
             timestamp: Math.round(new Date().getTime()),
         };
         sensorService.sendChannelMessage(channelIdentifier, payload);

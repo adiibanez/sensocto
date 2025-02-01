@@ -350,15 +350,15 @@ defmodule Sensocto.SensorSimulatorGenServer do
     if state[:phoenix_channel] != nil do
       Logger.info("#{sensor_id} PHX Sending Phoenix Messages: #{length(messages)}, #{inspect(messages)}")
 
-      Enum.each(messages, fn message ->
-        phoenix_message = %{
+      phoenix_messages = Enum.map(messages, fn message ->
+        %{
           "payload" => message.payload,
           "timestamp" => :os.system_time(:milli_seconds),
-          "uuid" => state[:sensor_type]
+          "attribute_id" => state[:sensor_type]
         }
-
-        PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurement", phoenix_message)
       end)
+
+      PhoenixClient.Channel.push_async(state[:phoenix_channel], "measurements_batch", phoenix_messages)
 
       {:noreply,
        state

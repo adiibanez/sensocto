@@ -12,15 +12,21 @@ defmodule SensoctoWeb.Live.BaseComponents do
     backend: SensoctoWeb.Gettext
 
   def render_sensor_header(assigns) do
+    assigns =
+      assigns
+      |> Map.put(:sensor_name, assigns.sensor.metadata.sensor_name)
+      |> Map.put(:highlighted, get_in(assigns.sensor, [:highlighted]))
+      |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
+
     ~H"""
     <div class="flex items-right m-0 p-0">
       <p class="flex-none font-bold text-s" style="border:0 solid white">
-        {@sensor.metadata.sensor_name}
+        {@sensor_name}
       </p>
       <p class="flex-1 float-left items-right">
         <Heroicons.icon
           name={
-            if get_in(@sensor, [:highlighted]) do
+            if @highlighted do
               "magnifying-glass-minus"
             else
               "magnifying-glass-plus"
@@ -29,7 +35,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
           type="outline"
           class="h-4 w-4"
           phx-click="toggle_highlight"
-          phx-value-sensor_id={get_in(@sensor, [:metadata, :sensor_id])}
+          phx-value-sensor_id={@sensor_id}
           style="border:0 solid white"
         />
       </p>
@@ -38,16 +44,23 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_attribute_header(assigns) do
+    assigns =
+      assigns
+      # |> Map.put(:sensor_id, assigns.sensor_data.sensor_id)
+      |> Map.put(:sensor_type, assigns.sensor_data.sensor_type)
+      |> Map.put(:timestamp_formated, assigns.sensor_data.timestamp_formated)
+      |> Map.put(:attribute_id, assigns.sensor_data.attribute_id)
+
     ~H"""
     <p class="text-xs text-gray-500">
-      {@sensor_data.sensor_type}: {@sensor_data.timestamp_formated}
+      {@sensor_type}: {@timestamp_formated}
       <Heroicons.icon
         name="trash"
         type="outline"
         class="h-4 w-4 float-right"
         phx-click="clear-attribute"
-        phx-value-sensor_id={@sensor_data.sensor_id}
-        phx-value-attribute_id={@sensor_data.attribute_id}
+        phx-value-sensor_id={assigns.sensor_data.sensor_id}
+        phx-value-attribute_id={@attribute_id}
       />
     </p>
     """
@@ -55,16 +68,24 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
   def render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
       when sensor_type in ["ecg"] do
+    assigns =
+      assigns
+      |> Map.put(:sensor_id, sensor_data.sensor_id)
+
     ~H"""
-    <.live_component id={sensor_data.id} module={EcgSensorComponent} sensor_data={sensor_data} />
+    <.live_component id={@sensor_id} module={EcgSensorComponent} sensor_data={sensor_data} />
     """
   end
 
   def render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns)
       when sensor_type in ["pressure", "flex", "eda", "emg", "rsp"] do
+    assigns =
+      assigns
+      |> Map.put(:sensor_id, sensor_data.sensor_id)
+
     ~H"""
     <.live_component
-      id={sensor_data.id}
+      id={@sensor_id}
       module={HighSamplingRateSensorComponent}
       sensor_data={sensor_data}
     />
@@ -72,15 +93,23 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_sensor_by_type(%{sensor_type: "heartrate"} = sensor_data, assigns) do
+    assigns =
+      assigns
+      |> Map.put(:sensor_id, sensor_data.sensor_id)
+
     ~H"""
     <p class="hidden">Attribute data: {inspect(sensor_data)}</p>
-    <.live_component id={sensor_data.id} module={HeartrateComponent} sensor_data={sensor_data} />
+    <.live_component id={@sensor_id} module={HeartrateComponent} sensor_data={sensor_data} />
     """
   end
 
   def render_sensor_by_type(%{sensor_type: sensor_type} = sensor_data, assigns) do
+    assigns =
+      assigns
+      |> Map.put(:sensor_id, sensor_data.sensor_id)
+
     ~H"""
-    <.live_component id={sensor_data.id} module={GenericSensorComponent} sensor_data={sensor_data} />
+    <.live_component id={@sensor_id} module={GenericSensorComponent} sensor_data={sensor_data} />
     """
   end
 

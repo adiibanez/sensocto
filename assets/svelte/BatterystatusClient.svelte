@@ -46,7 +46,7 @@
                 level: batteryData.level,
                 charging: batteryData.charging ? "yes" : "no",
             }),
-            uuid: channelIdentifier,
+            attribute_id: channelIdentifier,
             timestamp: batteryData.timestamp,
         };
         sensorService.sendChannelMessage(channelIdentifier, payload);

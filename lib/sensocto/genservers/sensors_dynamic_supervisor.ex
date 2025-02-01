@@ -101,7 +101,13 @@ defmodule Sensocto.SensorsDynamicSupervisor do
       case acc do
         %{} = __sensor_state ->
           if is_map(acc) do
-            Map.merge(acc, get_sensor_state(sensor_id))
+            sensor_state = get_sensor_state(sensor_id)
+
+            if is_map(sensor_state) do
+              Map.merge(acc, sensor_state)
+            else
+              acc
+            end
           end
 
         :ok ->

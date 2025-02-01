@@ -11,13 +11,6 @@ defmodule SensoctoWeb.IndexLive do
   @grid_cols_xl_default 6
   @grid_cols_2xl_default 6
 
-  # alias SensoctoWeb.Components.SensorTypes.{
-  #   EcgSensorComponent,
-  #   # GenericSensorComponent,
-  #   HeartrateComponent,
-  #   HighSamplingRateSensorComponent
-  # }
-
   # https://dev.to/ivor/how-to-unsubscribe-from-all-topics-in-phoenixpubsub-dka
   # https://hexdocs.pm/phoenix_live_view/bindings.html#js-commands
 
@@ -28,6 +21,7 @@ defmodule SensoctoWeb.IndexLive do
 
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurements_batch")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
     # presence tracking
 
@@ -54,30 +48,73 @@ defmodule SensoctoWeb.IndexLive do
     )
 
     {:ok, new_socket}
-
-    #  |> assign_async(:sensors, fn ->
-    #    {:ok,
-    #     %{
-    #       :sensors => Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
-    #       # |> dbg()
-    #       # |> ViewData.generate_view_data()
-    #     }}
-    #  end)
-
-    #  |> stream(:sensor_data, [])}
   end
 
-  # @impl true
-  # @spec render(any()) :: Phoenix.LiveView.Rendered.t()
-  #   #render_with(socket)
-  # end
+  def handle_info(
+        {:measurements_batch, {sensor_id, measurements_list}},
+        socket
+      )
+      when is_list(measurements_list) do
+    start = System.monotonic_time()
+
+    Logger.debug("Received measurements_batch for sensor #{sensor_id}")
+
+    latest_measurements =
+      measurements_list
+      |> Enum.group_by(& &1.attribute_id)
+      |> Enum.map(fn {_attribute_id, measurements} ->
+        Enum.max_by(measurements, & &1.timestamp)
+      end)
+
+    updated_data =
+      Enum.reduce(latest_measurements, socket.assigns.sensors, fn measurement, acc ->
+        update_in(acc, [measurement.sensor_id], fn sensor_data ->
+          sensor_data = sensor_data || %{}
+
+          update_in(sensor_data, [:attributes], fn attributes ->
+            attributes = attributes || %{}
+
+            update_in(attributes, [measurement.attribute_id], fn list ->
+              list = list || []
+
+              case list do
+                [] ->
+                  [%{payload: measurement.payload, timestamp: measurement.timestamp}]
+
+                list ->
+                  List.update_at(list, 0, fn entry ->
+                    %{entry | payload: measurement.payload, timestamp: measurement.timestamp}
+                  end)
+              end
+            end)
+          end)
+        end)
+      end)
+
+    new_socket =
+      socket
+      |> assign(:sensors_online_count, Enum.count(socket.assigns.sensors))
+      |> assign(:sensors, updated_data)
+      |> push_event("measurements_batch", %{
+        :sensor_id => sensor_id,
+        :attributes => measurements_list
+      })
+
+    :telemetry.execute(
+      [:sensocto, :live, :handle_info, :measurement_batch],
+      %{duration: System.monotonic_time() - start},
+      %{}
+    )
+
+    {:noreply, new_socket}
+  end
 
   def handle_info(
         {:measurement,
          %{
            :payload => payload,
            :timestamp => timestamp,
-           :uuid => uuid,
+           :attribute_id => attribute_id,
            :sensor_id => sensor_id
          } =
            _sensor_data},
@@ -97,7 +134,7 @@ defmodule SensoctoWeb.IndexLive do
     measurement = %{
       :payload => payload,
       :timestamp => timestamp,
-      :attribute_id => uuid,
+      :attribute_id => attribute_id,
       :sensor_id => sensor_id
     }
 
@@ -113,7 +150,7 @@ defmodule SensoctoWeb.IndexLive do
           update_in(sensor_data, [:attributes], fn attributes ->
             attributes = attributes || %{}
 
-            update_in(attributes, [uuid], fn list ->
+            update_in(attributes, [attribute_id], fn list ->
               list = list || []
 
               case list do
@@ -141,25 +178,7 @@ defmodule SensoctoWeb.IndexLive do
         %{}
       )
 
-      # updated_data =
-      #   update_in(existing_data, [sensor_id, :attributes, uuid], fn list ->
-      #     case list do
-      #       [] -> []
-      #       [_ | rest] -> [%{hd(list) | payload: payload} | rest]
-      #       nil -> Logger.debug("Update state no list #{inspect(list)}")
-      #       :ok -> Logger.debug("Update state :ok, async schissle #{Sensocto.Utils.typeof(list)}")
-      #     end
-      #   end)
-
       {:noreply, new_socket}
-
-      #  |> assign_async(:sensors, fn ->
-      #    {:ok,
-      #     %{
-      #       :sensors => updated_data
-      #       #  |> ViewData.generate_view_data()
-      #     }}
-      #  end)
     else
       Logger.debug("Something wrong with existing data #{Sensocto.Utils.typeof(existing_data)}")
 
@@ -221,18 +240,20 @@ defmodule SensoctoWeb.IndexLive do
   @impl true
   def handle_event(
         "request-seed-data",
-        %{"id" => sensor_id, "attribute_id" => attribute_id},
+        %{
+          "sensor_id" => sensor_id,
+          "attribute_id" => attribute_id,
+          "from" => from,
+          "to" => to,
+          "limit" => limit
+        } = params,
         socket
       ) do
     start = System.monotonic_time()
     Logger.debug("request-seed_data #{sensor_id}:#{attribute_id}")
-    # {:noreply, push_event(socket, "scores", %{points: 100, user: "josé"})}
 
-    attribute_data = Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, 10000)
-
-    # Logger.debug(
-    #  "Seed data available for attribute #{sensor_id}:#{attribute_id}, #{Enum.count(attribute_data)}}"
-    # )
+    attribute_data =
+      Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
 
     new_socket =
       socket
@@ -249,9 +270,6 @@ defmodule SensoctoWeb.IndexLive do
     )
 
     {:noreply, new_socket}
-
-    # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
-    # {:noreply, socket}
   end
 
   @impl true
@@ -268,19 +286,7 @@ defmodule SensoctoWeb.IndexLive do
     )
 
     sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
-
-    # sensors_online_count = Enum.count(socket.assigns.sensors.result)
     sensors_online_count = Enum.count(socket.assigns.sensors)
-
-    # div_class =
-    #   "grid gap-2 grid-cols-4 sd:grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
-
-    #  streams
-    # socket_to_return =
-    #   Enum.reduce(payload.leaves, socket, fn {id, _metas}, socket ->
-    #     sensor_dom_id = "sensor_data-" <> ViewData.sanitize_sensor_id(id)
-    #     stream_delete_by_dom_id(socket, :sensor_data, sensor_dom_id)
-    #   end)
 
     {
       :noreply,
@@ -293,14 +299,6 @@ defmodule SensoctoWeb.IndexLive do
       |> assign(:grid_cols_xl, min(@grid_cols_xl_default, sensors_online_count))
       |> assign(:grid_cols_2xl, min(@grid_cols_2xl_default, sensors_online_count))
       |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state())
-      # |> assign_async(:sensors, fn ->
-      #   {:ok,
-      #    %{
-      #      :sensors => Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
-      #      #  |> dbg()
-      #      #  |> ViewData.generate_view_data()
-      #    }}
-      # end)
     }
   end
 

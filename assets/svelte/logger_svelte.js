@@ -1,5 +1,5 @@
 
-let enabled = false;
+let enabled = true;
 let enabledComponents = [
     // "SensorDataService",
     // "SparklineWasm",
@@ -8,6 +8,10 @@ let enabledComponents = [
     //     "IMUClient",
     // "ScaledPoints", "Sparkline",
     "BluetoothClient",
+    "SensorService",
+    "SensorDataService",
+    "IndexedDB",
+    "IndexedDB.Worker",
 ];
 
 export function setLogging(value) {

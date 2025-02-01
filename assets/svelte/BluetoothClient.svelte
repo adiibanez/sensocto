@@ -6,7 +6,7 @@
         onMount,
     } from "svelte";
 
-    import { logger } from "./logger.js";
+    import { logger } from "./logger_svelte.js";
 
     let sensorService = getContext("sensorService");
     let loggerCtxName = "BluetoothClient";
@@ -280,7 +280,7 @@
 
             var payLoad = {
                 payload: sensorValue,
-                uuid: event.target.uuid,
+                attribute_id: event.target.uuid,
                 timestamp: Math.round(new Date().getTime()),
             };
             /*live.pushEvent("ingest", );*/

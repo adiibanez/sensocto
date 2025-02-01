@@ -55,6 +55,23 @@ defmodule Sensocto.SimpleSensor do
     end
   end
 
+  def put_batch_attributes(sensor_id, attributes) do
+    try do
+      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
+        [{pid, _}] ->
+          # Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
+          GenServer.cast(pid, {:put_batch_attributes, attributes})
+
+        _ ->
+          Logger.debug("Client: put_batch_attribute ERROR #{length(attributes)}")
+          {:error, "Whatever"}
+      end
+    rescue
+      _e ->
+        Logger.error(inspect(__STACKTRACE__))
+    end
+  end
+
   def clear_attribute(sensor_id, attribute_id) do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
@@ -106,15 +123,14 @@ defmodule Sensocto.SimpleSensor do
     end
   end
 
-  def get_attributes(sensor_id) do
+  def get_attribute(sensor_id, attribute_id, from \\ 0, to \\ 0, limit \\ 0) do
     try do
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
-          Logger.debug("Client: Get attributes #{inspect(pid)}")
-          GenServer.call(pid, :get_attributes)
+          GenServer.call(pid, {:get_attribute, attribute_id, from, to, limit})
 
         _ ->
-          Logger.debug("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
+          Logger.debug("Client: Get attribute ERROR for id: #{inspect(sensor_id)}")
           :error
       end
     rescue
@@ -164,27 +180,32 @@ defmodule Sensocto.SimpleSensor do
   end
 
   @impl true
-  def handle_call(:get_attributes, _from, %{sensor_id: sensor_id} = state) do
-    Logger.debug("{__MODULE__}:SRV :get_attributes  #{inspect(state)}")
-    attributes = AttributeStore.get_attributes(sensor_id)
-    # Logger.debug("Server: :get_attributes #{inspect(attributes)}")
+  def handle_call(
+        {:get_attribute, attribute_id, from, to, limit},
+        _from,
+        %{sensor_id: sensor_id} = state
+      ) do
+    attributes =
+      AttributeStore.get_attribute(sensor_id, attribute_id, from, to)
+      |> Enum.take(limit)
+
+    Logger.debug(
+      "Server: :get_attribute  #{attribute_id} from: #{from} to: #{to} limit: #{limit} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
+    )
+
     {:reply, attributes, state}
   end
 
   @impl true
   def handle_cast(
         {:put_attribute,
-         %{:id => attribute_id, :payload => payload, :timestamp => timestamp} = attribute},
+         %{:attribute_id => attribute_id, :payload => payload, :timestamp => timestamp} =
+           attribute},
         %{sensor_id: sensor_id} = state
       ) do
-    # Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
-    AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
+    Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
 
-    broadcast_message =
-      attribute
-      |> Map.put(:sensor_id, sensor_id)
-      |> Map.put(:uuid, attribute_id)
-      |> Map.delete(:id)
+    AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
 
     now = System.system_time(:millisecond)
 
@@ -193,7 +214,44 @@ defmodule Sensocto.SimpleSensor do
       "measurement",
       {
         :measurement,
-        broadcast_message
+        attribute
+        |> Map.put(:sensor_id, sensor_id)
+      }
+    )
+
+    {:noreply,
+     state
+     |> Map.update!(:message_timestamps, &[now | &1])}
+  end
+
+  @impl true
+  def handle_cast(
+        {:put_batch_attributes, attributes},
+        %{sensor_id: sensor_id} = state
+      ) do
+    Logger.debug("Server: :put_batch_attributes #{length(attributes)} state: #{inspect(state)}")
+
+    broadcast_messages_list =
+      Enum.map(attributes, fn attribute ->
+        AttributeStore.put_attribute(
+          sensor_id,
+          attribute.attribute_id,
+          attribute.timestamp,
+          attribute.payload
+        )
+
+        attribute
+        |> Map.put(:sensor_id, sensor_id)
+      end)
+
+    now = System.system_time(:millisecond)
+
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "measurements_batch",
+      {
+        :measurements_batch,
+        {sensor_id, broadcast_messages_list}
       }
     )
 

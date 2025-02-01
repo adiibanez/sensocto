@@ -7,7 +7,7 @@
         onDestroy,
         onMount,
     } from "svelte";
-    import { logger } from "../logger.js";
+    import { logger } from "../logger_svelte.js";
 
     import Canvas from "./Canvas.svelte";
     import ScaledPoints from "./ScaledPoints.svelte";

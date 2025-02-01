@@ -11,7 +11,7 @@
     <:loading>Loading Sensor data ...</:loading>
     <:failed :let={reason}>{reason}</:failed> --%>
 
-    <p class="text-xs hidden">{inspect(@sensors)}</p>
+    <p class="text-xs">{inspect(@sensors)}</p>
 
     <div :for={{_id, sensor} <- @sensors}
       class="flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray"

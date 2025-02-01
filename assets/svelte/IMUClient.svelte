@@ -6,7 +6,7 @@
         onMount,
     } from "svelte";
 
-    import { logger } from "./logger.js";
+    import { logger } from "./logger_svelte.js";
 
     loggerCtxName = "IMUClient";
 
@@ -15,7 +15,7 @@
     //import { AHRS } from "../js/www-ahrs.js";
     //import { AHRSEKF } from "../js/www-ahrs.js";
 
-    const AHRS = require('ahrs');
+    const AHRS = require("ahrs");
 
     console.log("AHRS", AHRS);
 
@@ -25,7 +25,7 @@
         beta: 0.4,
         kp: 0.5,
         ki: 0,
-        doInitialisation: true
+        doInitialisation: true,
     });
 
     let sensorService = getContext("sensorService");
@@ -121,7 +121,9 @@
                     }
                 });
 
-                absoluteorientation.addEventListener("reading", () => handleMobileIMU());
+                absoluteorientation.addEventListener("reading", () =>
+                    handleMobileIMU(),
+                );
 
                 readingIMU = true;
             } catch (error) {
@@ -199,7 +201,7 @@
                 imuData.rotationAngles.y +
                 "," +
                 imuData.rotationAngles.z,
-            uuid: channelIdentifier, // Or some other unique ID for IMU data
+            attribute_id: channelIdentifier, // Or some other unique ID for IMU data
             timestamp: Math.round(new Date().getTime()),
         };
 
@@ -207,21 +209,25 @@
     }
 
     function handleMobileIMU_(event) {
-
         madgwick.update(
             gyroscope.x,
             gyroscope.y,
             gyroscope.z,
             accelerometer.x,
             accelerometer.y,
-            accelerometer.z,    
+            accelerometer.z,
         );
 
         //  * compass.x,
         //     compass.y,
         //     compass.z,
-         
-        console.log(madgwick.toVector(), gyroscope, accelerometer, absoluteorientation);
+
+        console.log(
+            madgwick.toVector(),
+            gyroscope,
+            accelerometer,
+            absoluteorientation,
+        );
         //console.log(madgwick.getEulerAngles(), gyroscope, accelerometer, absoluteorientation);
     }
 
@@ -307,7 +313,7 @@
 
         let payload = {
             payload: JSON.stringify(output),
-            uuid: channelIdentifier,
+            attribute_id: channelIdentifier,
             timestamp: Math.round(new Date().getTime()),
         };
 

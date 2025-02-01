@@ -26,7 +26,19 @@ import logger from "./logger.js"
 import { getHooks } from "live_svelte"
 import * as Components from "../svelte/**/*.svelte"
 
-window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random());
+import {
+  openDatabase,
+  handleClearData,
+  handleAppendData,
+  handleAppendAndReadData,
+  handleSeedData,
+  handleGetLastTimestamp,
+  setDebug
+} from './indexeddb.js';
+
+
+
+window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
 let Hooks = {}
 
 Hooks.ResizeDetection = {
@@ -99,43 +111,73 @@ Hooks.SensorDataAccumulator = {
     const { type, data } = event;
     logger.log("Hooks.SensorDataAccumulator", "WORKER event", type, data);
 
-    const workerEvent = new CustomEvent('storage-worker-event', { id: data.id, detail: event.data });
+    const workerEvent = new CustomEvent('storage-worker-event', { id: data.sensor_id + "_" + data.attribute_id, detail: event.data });
     window.dispatchEvent(workerEvent);
   },
 
   mounted() {
 
-    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
+    //workerStorage.postMessage({ type: 'clear-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id } });
 
-    if ('pushEvent' in this) {
+    if ('pushEvent' in this && 'handleEvent' in this) {
+      this.handleEvent("measurements_batch", (event) => {
+        //console.log("Hooks.SensorDataAccumulator", "handleEvent measurements_batch", event.sensor_id, event.attributes);
 
-      this.handleEvent("measurement", (measurement) => {
-        let identifier = measurement.sensor_id + "_" + measurement.attribute_id;
+        // iterate over attributes and triage
+        let uniqueAttributeIds = [...new Set(event.attributes.map(attribute => attribute.attribute_id))];
 
-        if (identifier == this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id) {
-          logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement", identifier, this.el.dataset.sensor_id, this.el.dataset.attribute_id, measurement);
-          const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: measurement, id: identifier } });
+        uniqueAttributeIds.forEach(attributeId => {
+          logger.log("Hooks.SensorDataAccumulator", "measurements_batch attributeId", attributeId, this.el.dataset.attribute_id);
+          if (event.sensor_id == this.el.dataset.sensor_id && attributeId == this.el.dataset.attribute_id) {
+            let relevantAttributes = event.attributes.filter(attribute => attribute.attribute_id === attributeId);
+            logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement_batch", event.sensor_id, attributeId, relevantAttributes.length);
+            const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: attributeId, data: relevantAttributes } });
+            window.dispatchEvent(accumulatorEvent);
+          }
+        });
+      });
+
+      this.handleEvent("measurement", (event) => {
+        // match sensor_id and attribute_id, then push event
+        if (measurement.sensor_id == this.el.dataset.sensor_id && measurement.attribute_id == this.el.dataset.attribute_id) {
+          logger.log("Hooks.SensorDataAccumulator", "handleEvent measurement", event.sensor_id, event.attribute_id, event);
+          const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: this.el.dataset.attribute_id, data: event } });
           window.dispatchEvent(accumulatorEvent);
         }
       }
       );
 
-      const payload = { "id": this.el.dataset.sensor_id, "attribute_id": this.el.dataset.attribute_id };
-      logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload);
 
-      this.handleEvent("seeddata", (seed) => {
-        console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
+      console.log("Here", this.el.dataset.sensor_id, this.el.dataset.attribute_id);
+      handleGetLastTimestamp(this.el.dataset.sensor_id, this.el.dataset.attribute_id).then((result) => {
+        console.log("Here", result);
 
-        identifier_seed = seed.sensor_id + "_" + seed.attribute_id;
+        const payload = {
+          "sensor_id": this.el.dataset.sensor_id,
+          "attribute_id": this.el.dataset.attribute_id,
+          "from": result || 0,
+          "to": 0,
+          "limit": 0
+        };
 
-        if (identifier_seed == this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id) {
-          workerStorage.postMessage({ type: 'seed-data', data: { id: identifier_seed, seedData: seed.data } });
-          const seedEvent = new CustomEvent('seeddata-event', { id: identifier_seed, detail: seed });
-          window.dispatchEvent(seedEvent);
-        }
+        logger.log("Hooks.SensorDataAccumulator", "pushEvent seeddata", payload, result);
+
+        this.handleEvent("seeddata", (seed) => {
+          console.log("Hooks.SensorDataAccumulator", "seed-data", seed);
+
+          let identifier_seed = seed.sensor_id + "_" + seed.attribute_id;
+
+          if (seed.sensor_id == this.el.dataset.sensor_id && seed.attribute_id == this.el.dataset.attribute_id) {
+            workerStorage.postMessage({ type: 'seed-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id, seedData: seed.data } });
+            const seedEvent = new CustomEvent('seeddata-event', { id: identifier_seed, detail: seed });
+            window.dispatchEvent(seedEvent);
+          }
+        });
+
+        this.pushEvent("request-seed-data", payload);
       });
 
-      this.pushEvent("request-seed-data", payload);
+
     } else {
       logger.log("Hooks.SensorDataAccumulator", 'liveSocket', liveSocket);
     }
@@ -144,7 +186,7 @@ Hooks.SensorDataAccumulator = {
   },
 
   destroyed() {
-    workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
+    //workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
   },
 
 

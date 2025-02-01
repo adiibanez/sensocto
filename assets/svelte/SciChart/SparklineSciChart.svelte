@@ -28,23 +28,23 @@
     // import * as scichart from "scichart";
     import { format } from "date-fns";
 
-    import { logger } from "../logger.js";
+    import { logger } from "../logger_svelte.js";
 
     export let data = [];
     export let width = 200;
-    export let height = 80;
-    export let labelFrequencyX = 2;
-    export let labelFrequencyY = 2;
-    export let xAxisLabel = "Time";
-    export let yAxisLabel = "Value";
-    export let xFormat = "HH:mm:ss";
-    export let stroke = "#007bff";
-    export let axisTextColor = "#999";
+    export const height = 80;
+    export const labelFrequencyX = 2;
+    export const labelFrequencyY = 2;
+    export const xAxisLabel = "Time";
+    export const yAxisLabel = "Value";
+    export const xFormat = "HH:mm:ss";
+    export const stroke = "#007bff";
+    export const axisTextColor = "#999";
     export let is_loading;
 
     let isMounted = false;
 
-    export let wasmPath = "/assets/_wasm";
+    export const wasmPath = "/assets/_wasm";
 
     export let samplingrate;
     export let timewindow;

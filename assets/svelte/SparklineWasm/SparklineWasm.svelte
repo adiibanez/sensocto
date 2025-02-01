@@ -2,7 +2,7 @@
 
 <script>
     import { onMount, onDestroy, tick } from "svelte";
-    import { logger } from "../logger.js";
+    import { logger } from "../logger_svelte.js";
     import {
         processStorageWorkerEvent,
         processAccumulatorEvent,
@@ -19,7 +19,8 @@
     export let id;
     export let width;
     export let height = 30;
-    export let identifier;
+    export let sensor_id;
+    export let attribute_id;
     export let samplingrate;
     export let timewindow;
     export let timemode;
@@ -46,42 +47,78 @@
     onMount(() => {
         initWasm();
         ctx = canvas.getContext("2d");
-        logger.log(loggerCtxName, "onMount", identifier);
+        logger.log(loggerCtxName, "onMount", sensor_id, attribute_id);
 
         const handleAccumulatorEvent = (e) => {
-            if (identifier == e.detail.id) {
+            logger.log(
+                loggerCtxName,
+                "handleAccumulatorEvent",
+                sensor_id,
+                attribute_id,
+                e,
+            );
+            if (
+                sensor_id == e?.detail?.sensor_id &&
+                attribute_id == e?.detail?.attribute_id
+            ) {
                 logger.log(
                     loggerCtxName,
                     "handleAccumulatorEvent",
-                    identifier,
-                    e?.detail?.id,
+                    sensor_id,
+                    attribute_id,
+                    e?.detail,
                 );
-                processAccumulatorEvent(dataStore, identifier, e);
+                processAccumulatorEvent(dataStore, sensor_id, attribute_id, e);
             }
         };
         const handleStorageWorkerEvent = (e) => {
-            if (identifier == e?.detail?.data?.id) {
+            logger.log(
+                loggerCtxName,
+                "handleStorageWorkerEvent",
+                e?.detail?.data?.sensor_id,
+                e?.detail?.data?.attribute_id,
+                e?.detail?.data?.result?.length,
+                e,
+            );
+            if (
+                sensor_id == e?.detail?.data?.sensor_id &&
+                attribute_id == e?.detail?.data?.attribute_id
+            ) {
                 logger.log(
                     loggerCtxName,
                     "handleStorageWorkerEvent",
-                    identifier,
-                    e?.detail?.data?.id,
+                    sensor_id,
+                    attribute_id,
+                    e?.detail,
                 );
-                processStorageWorkerEvent(dataStore, identifier, e);
+                processStorageWorkerEvent(
+                    dataStore,
+                    sensor_id,
+                    attribute_id,
+                    e,
+                );
             }
         };
         const handleSeedDataEvent = (e) => {
+            logger.log(
+                loggerCtxName,
+                "handleSeedDataEvent",
+                sensor_id,
+                attribute_id,
+                e,
+            );
             if (
-                identifier ==
-                e?.detail?.sensor_id + "_" + e?.detail?.attribute_id
+                sensor_id == e?.detail?.sensor_id &&
+                attribute_id == e?.detail?.attribute_id
             ) {
                 logger.log(
                     loggerCtxName,
                     "handleSeedDataEvent",
-                    identifier,
-                    e?.detail?.sensor_id + "_" + e?.detail?.attribute_id,
+                    sensor_id,
+                    attribute_id,
+                    e?.detail,
                 );
-                processSeedDataEvent(dataStore, identifier, e);
+                processSeedDataEvent(dataStore, sensor_id, attribute_id, e);
             }
         };
 
@@ -194,7 +231,7 @@
 
 <canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
 
-{#if false}
+{#if true}
     <div class="text-xs hidden">
         Data points {data.length}, maxsamples: {maxsamples}, width: {width}
         width: {width} height: {height}

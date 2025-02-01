@@ -1,12 +1,12 @@
 // sensorDataService.js
 import { get } from 'svelte/store';
-import { logger } from "./logger.js";
+import { logger } from "./logger_svelte.js";
 import { tick } from 'svelte';
 
 let loggerCtxName = "SensorDataService";
 
-const updateData = (store, identifier, newData) => {
-    //logger.log(loggerCtxName, "updateData", identifier, newData.length, newData);
+const updateData = (store, sensor_id, attribute_id, newData) => {
+    logger.log(loggerCtxName, "updateData", sensor_id, attribute_id, newData.length, newData);
     store.update(oldData => {
         if (oldData) {
             //logger.log(loggerCtxName, "updateData oldData", identifier, oldData, newData.length);
@@ -18,8 +18,8 @@ const updateData = (store, identifier, newData) => {
     })
 };
 
-const setData = async (store, identifier, newData) => {
-    //logger.log(loggerCtxName, "setData", identifier, newData);
+const setData = async (store, sensor_id, attribute_id, newData) => {
+    logger.log(loggerCtxName, "setData", sensor_id, attribute_id, newData.length, newData);
     //console.log('setData called, data before set', newData);
     store.set(newData);
     //logger.log(loggerCtxName, "setData newData", identifier, newData.length);
@@ -60,8 +60,8 @@ const transformStorageEventData = (data) => {
     }
 };
 
-const processStorageWorkerEvent = async (store, identifier, e) => {
-    // logger.log(loggerCtxName, "handleStorageWorkerEvent", e);
+const processStorageWorkerEvent = async (store, sensor_id, attribute_id, e) => {
+    logger.log(loggerCtxName, "handleStorageWorkerEvent", sensor_id, attribute_id, e);
     const newData = transformStorageEventData(e.detail.data.result);
 
     let eventType = e.detail.type;
@@ -76,23 +76,28 @@ const processStorageWorkerEvent = async (store, identifier, e) => {
     }
 };
 
-const processAccumulatorEvent = (store, identifier, e) => {
-    // logger.log(loggerCtxName, "handleAccumulatorEvent", e);
+const processAccumulatorEvent = (store, sensor_id, attribute_id, e) => {
+    logger.log(loggerCtxName, "handleAccumulatorEvent", e, sensor_id, attribute_id, Array.isArray(e?.detail?.data));
 
-    const sensorId = e?.detail?.data?.sensor_id;
-    if (e?.detail?.data?.timestamp && e?.detail?.data?.payload && sensorId) {
-        updateData(store, sensorId, [e.detail.data])
+    // const sensorId = e?.detail?.data?.sensor_id;
+
+    // batch update
+    if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
+        updateData(store, sensor_id, attribute_id, e.detail.data);
+        // single value update
+    } else if (e?.detail?.data?.timestamp && e?.detail?.data?.payload && sensorId) {
+        updateData(store, sensor_id, attribute_id, [e.detail.data])
     } else {
-        logger.log(loggerCtxName, "processAccumulatorEvent: payload is missing");
+        logger.log(loggerCtxName, "processAccumulatorEvent: payload is missing", sensor_id, attribute_id);
     }
 };
 
-const processSeedDataEvent = async (store, identifier, e) => {
+const processSeedDataEvent = async (store, sensor_id, attribute_id, e) => {
     // logger.log(loggerCtxName, "handleSeedDataEvent");
     if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
-        await setData(store, identifier, e.detail.data)
+        await setData(store, sensor_id, attribute_id, e.detail.data)
     } else {
-        await setData(store, identifier, [])
+        await setData(store, sensor_id, attribute_id, [])
     }
 };
 

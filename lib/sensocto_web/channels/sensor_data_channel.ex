@@ -15,7 +15,8 @@ defmodule SensoctoWeb.SensorDataChannel do
 
   # Store the device ID in the socket's assigns when joining the channel
   @impl true
-
+  @spec join(<<_::32, _::_*8>>, map(), Phoenix.Socket.t()) ::
+          {:ok, Phoenix.Socket.t()} | {:error, %{reason: String.t()}}
   def join(
         "sensor_data:" <> sensor_id,
         %{
@@ -30,6 +31,8 @@ defmodule SensoctoWeb.SensorDataChannel do
         } = params,
         socket
       ) do
+    Logger.debug("JOIN #{inspect(params)}")
+
     if authorized?(params) do
       send(self(), :after_join)
 
@@ -62,56 +65,75 @@ defmodule SensoctoWeb.SensorDataChannel do
   end
 
   @impl true
-  # @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
-  #        {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
+  @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
+          {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
   def handle_in(
         "measurement",
-        %{"payload" => payload, "timestamp" => timestamp, "uuid" => uuid} =
-          _sensor_measurement_data,
+        %{"payload" => payload, "timestamp" => timestamp, "attribute_id" => attribute_id} =
+          sensor_measurement_data,
         socket
       ) do
-    # :telemetry.execute(
-    #   [:sensocto, :sensors, :messages, :measurement],
-    #   %{count: 1},
-    #   %{sensor_id: socket.assigns.sensor_id}
-    # )
+    Logger.debug("SINGLE: #{inspect(sensor_measurement_data)}")
 
-    # sensor_id: socket.assigns.sensor_id
-    ## :telemetry.execute([:sensocto, :sensors, :messages, :measurement], %{value: 1}, %{
-    # })
-
-    # :telemetry.span(
-    #   [:sensocto, :sensors, :messages],
-    #   %{measurement: 1},
-    #   fn ->
     with :ok <-
-           SimpleSensor.put_attribute(socket.assigns.sensor_id, %{
-             :id => uuid,
-             :timestamp => timestamp,
-             :payload => payload
-           }) do
+           SimpleSensor.put_attribute(
+             socket.assigns.sensor_id,
+             Sensocto.Utils.string_keys_to_atom_keys(sensor_measurement_data)
+           ) do
       Logger.debug(
-        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, uuuid: #{uuid}, timestamp: #{timestamp}, payload: #{payload}"
+        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, SINGLE: #{inspect(sensor_measurement_data)}}"
       )
-
-      :ok
     else
       {:error, _} ->
         Logger.info(
-          "SimpleSensor data error for sensor: #{socket.assigns.sensor_id},  uuid: #{uuid}"
+          "SimpleSensor data error for sensor: #{socket.assigns.sensor_id},  attribute_id: #{attribute_id}"
         )
-
-        :error
     end
 
     {:noreply, socket}
-    # end
-    # )
   end
 
   @impl true
-  # @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
-  #        {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
+  @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
+          {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
+  def handle_in(
+        "measurements_batch",
+        measurements_list,
+        socket
+      )
+      when is_list(measurements_list) do
+    if Enum.all?(measurements_list, fn item ->
+         is_map(item) and
+           Map.has_key?(item, "attribute_id") and
+           Map.has_key?(item, "payload") and
+           Map.has_key?(item, "timestamp")
+       end) do
+      Logger.debug("BATCH: #{length(measurements_list)}")
+
+      atom_key_map = Enum.map(measurements_list, &Sensocto.Utils.string_keys_to_atom_keys/1)
+
+      with :ok <-
+             SimpleSensor.put_batch_attributes(socket.assigns.sensor_id, atom_key_map) do
+        Logger.debug(
+          "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, BATCH: #{length(atom_key_map)}"
+        )
+      else
+        {:error, _} ->
+          Logger.info(
+            "SimpleSensor data error for sensor: #{socket.assigns.sensor_id}, BATCH: #{length(atom_key_map)}"
+          )
+      end
+
+      {:noreply, socket}
+    else
+      Logger.debug("Invalid batch of measurements #{inspect(measurements_list)}")
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
+          {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
   def handle_in(
         "measurement",
         message,
@@ -160,10 +182,11 @@ defmodule SensoctoWeb.SensorDataChannel do
   end
 
   # Add authorization logic here as required.
-  defp authorized?(payload) do
-    if Map.has_key?(payload, "bearer_token") do
+  defp authorized?(%{"sensor_id" => sensor_id} = params) do
+    if Map.has_key?(params, "bearer_token") do
       true
     else
+      Logger.debug("Unauthorized request #{sensor_id}")
       false
     end
   end

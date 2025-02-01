@@ -82,10 +82,10 @@ config :logger, :logger_name,
   default_level: :info,
   # override default levels
   level_config: [
-    # [module: Sensocto.SimpleSensor, level: :debug],
-    # [module: Sensocto.AttributeStorer, level: :debug],
-    # [module: SensoctoWeb.SensorDataChannel, level: :info],
-    # [module: Phoenix.Logger, level: :info]
+    [module: Sensocto.SimpleSensor, level: :debug],
+    [module: Sensocto.AttributeStorer, level: :debug],
+    [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    [module: Phoenix.Logger, level: :debug]
   ],
   # backend specific configuration
   # format: "DEV [$time] [$level] $message\n"

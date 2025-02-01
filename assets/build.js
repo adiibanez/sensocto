@@ -2,7 +2,7 @@ const esbuild = require("esbuild");
 const sveltePlugin = require("esbuild-svelte");
 const importGlobPlugin = require("esbuild-plugin-import-glob").default;
 const sveltePreprocess = require("svelte-preprocess");
-const { wasmLoader } = require('esbuild-plugin-wasm')
+const { wasmLoader } = require('esbuild-plugin-wasm');
 
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +14,11 @@ const deploy = args.includes("--deploy");
 let optsClient = {
     entryPoints: [
         "js/app.js",
-        //"js/sparkline-wasm-element.js",
+        "js/worker-storage.js",
+        "js/indexeddb.js",
+        "js/sparkline-wasm-element.js",
+        //"js/wasm_sparkline_bg.js",
+        // "js/wasm_sparkline_bg.wasm",
         // ... add any other custom entry points ...
     ],
     bundle: true,
@@ -75,36 +79,16 @@ let optsServer = {
     assetNames: "[name]",
 };
 
-function copyFile(source, target) {
-    const targetDir = path.dirname(target);
-
-    if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-    }
-    fs.copyFileSync(source, target);
-    console.log(`Copied file from: ${source} to: ${target}`)
-}
-
-
 async function buildAndCopy() {
     try {
         await esbuild.build(optsClient);
         await esbuild.build(optsServer);
-        copyFile("js/worker-storage.js", "../priv/static/assets/worker-storage.js");
-        copyFile("js/sparkline-wasm-element.js", "../priv/static/assets/sparkline-wasm-element.js");
-        // copyFile("js/wasm_sparkline_bg.js", "../priv/static/assets/wasm_sparkline_bg.js");
-        copyFile("js/wasm_sparkline_bg.wasm", "../priv/static/assets/wasm_sparkline_bg.wasm");
-        //copyFile("../../wasm-sparkline/pkg-new/sparkline_bg.wasm.d.ts", "../priv/static/assets/sparkline_bg.wasm.d.ts");
-        // copyFile("node_modules/scichart/_wasm/scichart3d.wasm", "../priv/static/assets/_wasm/scichart3d.wasm");
-        // copyFile("node_modules/scichart/_wasm/scichart2d.wasm", "../priv/static/assets/_wasm/scichart2d.wasm");
-        // copyFile("node_modules/scichart/_wasm/scichart3d.data", "../priv/static/assets/_wasm/scichart3d.data");
-        // copyFile("node_modules/scichart/_wasm/scichart2d.data", "../priv/static/assets/_wasm/scichart2d.data");
+        console.log("Build and minification completed.");
     } catch (e) {
         console.error("Build error:", e);
         process.exit(1);
     }
 }
-
 
 if (watch) {
     esbuild
@@ -118,8 +102,6 @@ if (watch) {
         .catch(_error => process.exit(1))
 
     buildAndCopy();
-
-
 } else {
     buildAndCopy();
 }

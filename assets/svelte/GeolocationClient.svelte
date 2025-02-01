@@ -1,5 +1,8 @@
 <script>
   import { getContext, onDestroy } from "svelte";
+  import { logger } from "./logger_svelte.js";
+  let loggerCtxName = "GoelocationClient";
+
   let sensorService = getContext("sensorService");
   let channelIdentifier = sensorService.getDeviceId() + "_geo";
   let geolocationData = null;
@@ -30,9 +33,11 @@
               accuracy: Number(geolocationData.accuracy.toFixed(1)),
             }),
             // Combine lat/long for simplicity
-            uuid: channelIdentifier,
+            attribute_id: channelIdentifier,
             timestamp: Math.round(new Date().getTime()), // Ensure consistent timestamp format
           };
+
+          logger.log(loggerCtxName, "Sending geolocation data", payload);
           sensorService.sendChannelMessage(channelIdentifier, payload);
         },
         (error) => {

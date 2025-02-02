@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: fly auth docker --verbose --debug
+      - run: flyctl auth docker --verbose --debug
       - run: docker build -t sensocto .
       - run: docker tag sensocto registry.fly.io/sensocto
       - run: docker push registry.fly.io/sensocto

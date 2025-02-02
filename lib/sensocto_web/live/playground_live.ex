@@ -143,14 +143,14 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
     ~H"""
     <!--<script defer phx-track-static type="text/javascript" src={~p"/assets/sparkline.js"}>
     </script>-->
-    <sensocto-sparkline-wasm-svelte></sensocto-sparkline-wasm-svelte>
 
-    <.sidebar id="sidebar-left" size="small" color="dark" hide_position="left">
+    <.sidebar id="sidebar-left" variant="default" size="small" color="dark" hide_position="left">
       <div class="px-4 py-2">
         <h2 class="text-white">Menu</h2>
       </div>
     </.sidebar>
 
+    <!--<sensocto-sparkline-wasm-svelte></sensocto-sparkline-wasm-svelte>-->
     <.button
       icon="hero-menu"
       color="dark"

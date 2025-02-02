@@ -17,6 +17,7 @@ config :sensocto, Sensocto.Repo,
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
 config :sensocto, SensoctoWeb.Endpoint,
+  # url: [host: "Adrians-MacBook-Pro.local", port: 4001, scheme: "https"],
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   # http: [ip: {127, 0, 0, 1}, port: 4000],

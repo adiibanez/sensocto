@@ -1,257 +1,207 @@
-defmodule SensoctoWeb.Components.Navbar do
+defmodule SensoctoWeb.Components.Tooltip do
   @moduledoc """
-  The `SensoctoWeb.Components.Navbar` module provides a flexible and customizable navigation
-  bar component for Phoenix LiveView applications. It allows for a variety of styles,
-  colors, and configurations to fit different design needs, including border styles,
-  content alignment, and text positioning.
+  A Tooltip SensoctoWeb.Components.Tooltip module for use in Phoenix applications.
 
-  This component supports nested elements through slots, enabling complex navigation structures.
+  This component allows you to display informative text when the user hovers over or focuses on an element.
+  It supports various customization options, including position, color themes, and sizes, allowing for
+  flexible integration within your UI.
 
-  It also offers extensive theming options, such as rounded corners, shadow effects,
-  and maximum width settings.
+  ## Features
 
-  With built-in support for icons and images, the `Navbar` module makes it easy to create
-  visually appealing and interactive navigation bars that enhance the user experience.
+  - Customizable tooltip position (top, bottom, left, right).
+  - Multiple color variants and styles for different contexts.
+  - Adjustable size and padding to fit design requirements.
+  - Support for additional CSS classes to further customize appearance.
+
+  Use this component to enhance user experience by providing contextual information without cluttering the interface.
   """
   use Phoenix.Component
 
   @doc """
-  Renders a customizable navigation bar (`navbar` component) that can include links,
-  dropdowns, and other components.
+  The `tooltip` component is used to display additional information when users hover over an element.
 
-  The navigation bar is designed to handle various styles, colors, and layouts.
+  It provides a small box with text or content and is positioned around the target
+  element based on the specified `position`.
 
   ## Examples
 
   ```elixir
-  <.navbar id="nav-11" color="success" variant="shadow">
-    <:list><.link navigate="/">Home</.link></:list>
-    <:list><.link navigate="/examples/sidebar">List</.link></:list>
+  <.tooltip text="This is text" position="bottom">
+    <button class="p-2 bg-orange-700">
+      This is Tooltip a long text for bottom tooltip
+    </button>
+  </.tooltip>
 
-    <:list>
-      <.dropdown relative="md:relative" width="w-full" clickable>
-        <:trigger width="full" trigger_id="test-31">
-          <button class="text-start w-full block">Dropdown</button>
-        </:trigger>
+  <.tooltip text="This is text" color="warning" position="left">
+    <button class="p-2 bg-orange-700">This is Tooltip left</button>
+  </.tooltip>
 
-        <:content space="small" id="test-31" rounded="large" width="large" padding="extra_small">
-          <ul class="space-y-5">
-            <li>
-              <.dropdown width="w-full" position="right" clickable>
-                <:trigger trigger_id="test-19">
-                  <button class={[
-                    "py-1 px-2 text-start w-full flex items-center justify-between hover:bg-gray-200"
-                  ]}
-                  >
-                    Nested Dropdown <.icon name="hero-chevron-right" />
-                  </button>
-                </:trigger>
+  <.tooltip text="Delete" color="light" position="left">
+    <button class="p-2 bg-red-500 text-white">
+      <.icon name="hero-trash" />
+    </button>
+  </.tooltip>
 
-                <:content id="test-19" rounded="large" width="large" padding="extra_small">
-                  <ul class="space-y-5">
-                    <li>
-                      <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/list">
-                        Security
-                      </.link>
-                    </li>
-
-                    <li>
-                      <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/dropdown">
-                        Memory
-                      </.link>
-                    </li>
-
-                    <li>
-                      <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/image">
-                        Design
-                      </.link>
-                    </li>
-                  </ul>
-                </:content>
-              </.dropdown>
-            </li>
-
-            <li>
-              <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/dropdown">
-                Memory
-              </.link>
-            </li>
-
-            <li>
-              <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/image">
-                Design
-              </.link>
-            </li>
-          </ul>
-        </:content>
-      </.dropdown>
-    </:list>
-
-    <:list><.link navigate="/examples/rating">Blog</.link></:list>
-    <:list><.link navigate="/examples/sidebar">Calendar</.link></:list>
-    <:list><.link navigate="/examples/rating">Booking</.link></:list>
-    <:list><.link navigate="/examples/sidebar">Partners</.link></:list>
-    <:list><.link navigate="/examples/rating">About</.link></:list>
-  </.navbar>
+  <.tooltip text="This is text" color="dark" position="right">
+    <button class="p-2 bg-orange-700">This is Tooltip right</button>
+  </.tooltip>
   ```
   """
   @doc type: :component
   attr :id, :string,
-    required: true,
+    default: nil,
     doc: "A unique identifier is used to manage state and interaction"
 
+  attr :position, :string, default: "top", doc: "Determines the element position"
   attr :variant, :string, default: "base", doc: "Determines the style"
   attr :color, :string, default: "base", doc: "Determines color theme"
-  attr :border, :string, default: "extra_small", doc: "Determines border style"
-  attr :text_position, :string, default: "", doc: "Determines the element' text position"
   attr :rounded, :string, default: "", doc: "Determines the border radius"
-  attr :max_width, :string, default: "", doc: "Determines the style of element max width"
+  attr :border, :string, default: "extra_small", doc: "Determines border style"
+  attr :show_arrow, :boolean, default: true, doc: "Show or hide arrow of popover"
 
-  attr :content_position, :string,
-    default: "between",
-    doc: "Determines the alignment of the element's content"
+  attr :size, :string,
+    default: "",
+    doc:
+      "Determines the overall size of the elements, including padding, font size, and other items"
 
-  attr :image, :string, default: nil, doc: "Image displayed alongside of an item"
-  attr :image_class, :string, default: nil, doc: "Determines custom class for the image"
-  attr :name, :string, default: nil, doc: "Specifies the name of the element"
-  attr :relative, :boolean, default: false, doc: ""
-  attr :link, :string, default: nil, doc: ""
   attr :space, :string, default: "", doc: "Space between items"
 
   attr :font_weight, :string,
     default: "font-normal",
     doc: "Determines custom class for the font weight"
 
+  attr :width, :string, default: "fit", doc: "Determines the element width"
+  attr :wrapper_width, :string, default: "w-fit", doc: "Determines the parent element width"
   attr :padding, :string, default: "small", doc: "Determines padding for items"
   attr :class, :string, default: nil, doc: "Custom CSS class for additional styling"
+  attr :text_position, :string, default: "center", doc: "Determines the element' text position"
+  attr :text, :string, default: "", doc: "Determines element's text"
 
   attr :rest, :global,
     doc:
       "Global attributes can define defaults which are merged with attributes provided by the caller"
 
-  slot :start_content,
-    required: false,
-    doc: "Content to be rendered at the start (start side based on rtl or ltr) of the navbar."
-
   slot :inner_block, required: false, doc: "Inner block that renders HEEx content"
 
-  slot :end_content,
-    required: false,
-    doc: "Content to be rendered at the end (end side based on rtl or ltr) of the navbar."
-
-  slot :list, required: false do
-    attr :class, :string, doc: "Custom CSS class for additional styling"
-    attr :padding, :string, doc: "Determines padding for items"
-    attr :icon, :string, doc: "Icon displayed alongside of an item"
-    attr :icon_class, :string, doc: "Determines custom class for the icon"
-    attr :icon_position, :string, doc: "Determines icon position"
-  end
-
-  def navbar(assigns) do
+  def tooltip(assigns) do
     ~H"""
-    <nav
-      id={@id}
-      class={[
-        "relative",
-        "[&.show-nav-menu_.nav-menu]:block [&.show-nav-menu_.nav-menu]:opacity-100",
-        border_class(@border, @variant),
-        content_position(@content_position),
-        color_variant(@variant, @color),
-        rounded_size(@rounded),
-        padding_size(@padding),
-        text_position(@text_position),
-        maximum_width(@max_width),
-        space_class(@space),
-        @font_weight,
-        @class
-      ]}
-      {@rest}
-    >
-      <div class="nav-wrapper md:flex items-center gap-2 md:gap-5">
-        <div :if={@start_content != [] and !is_nil(@start_content)}>
-          {render_slot(@start_content)}
-        </div>
-        <.link
-          :if={!is_nil(@link)}
-          navigate={@link}
-          class="flex items-center space-x-3 rtl:space-x-reverse mb-5 md:mb-0"
+    <span class={["relative group", @wrapper_width]}>
+      {render_slot(@inner_block)}
+      <span
+        role="tooltip"
+        id={@id}
+        class={[
+          "absolute z-10 transition-all ease-in-out delay-100 duratio-500 w-full",
+          "invisible opacity-0 group-hover:visible group-hover:opacity-100",
+          space_class(@space),
+          color_variant(@variant, @color),
+          rounded_size(@rounded),
+          size_class(@size),
+          padding_size(@padding),
+          @variant == "bordered" || (@variant == "base" && border_class(@border)),
+          position_class(@position),
+          text_position(@text_position),
+          width_class(@width),
+          @font_weight,
+          @class
+        ]}
+        {@rest}
+      >
+        <span
+          :if={@show_arrow && @variant != "bordered" && @variant != "base"}
+          class="block absolute size-[8px] bg-inherit rotate-45 -z-[1] tooltip-arrow"
         >
-          <img :if={!is_nil(@image)} src={@image} class={@image_class} />
-          <h1 :if={!is_nil(@name)} class="text-xl font-semibold">
-            {@name}
-          </h1>
-        </.link>
-
-        <div :if={!is_nil(@list) && length(@list) > 0} class={["w-auto"]}>
-          <ul class={[
-            "flex flex-wrap md:flex-nowrap gap-4",
-            @relative && "relative"
-          ]}>
-            <li
-              :for={list <- @list}
-              class={[
-                "inline-flex items-center",
-                list[:icon_position] == "end" && "flex-row-reverse",
-                list[:class]
-              ]}
-            >
-              <.icon :if={list[:icon]} name={list[:icon]} class={["list-icon", list[:icon_class]]} />
-              {render_slot(list)}
-            </li>
-          </ul>
-        </div>
-        {render_slot(@inner_block)}
-        <div :if={@end_content != [] and !is_nil(@end_content)}>{render_slot(@end_content)}</div>
-      </div>
-    </nav>
+        </span>
+        {@text}
+      </span>
+    </span>
     """
   end
 
-  defp content_position("start") do
-    "[&_.nav-wrapper]:justify-start"
+  defp rounded_size("extra_small"), do: "rounded-sm"
+
+  defp rounded_size("small"), do: "rounded"
+
+  defp rounded_size("medium"), do: "rounded-md"
+
+  defp rounded_size("large"), do: "rounded-lg"
+
+  defp rounded_size("extra_large"), do: "rounded-xl"
+
+  defp rounded_size(params) when is_binary(params), do: params
+
+  defp position_class("top") do
+    [
+      "bottom-full left-1/2 -translate-x-1/2 -translate-y-[4px]",
+      "[&>.tooltip-arrow]:-bottom-[4px] [&>.tooltip-arrow]:-translate-x-1/2 [&>.tooltip-arrow]:left-1/2"
+    ]
   end
 
-  defp content_position("end") do
-    "[&_.nav-wrapper]:justify-end"
+  defp position_class("bottom") do
+    [
+      "top-full left-1/2 -translate-x-1/2 translate-y-[4px]",
+      "[&>.tooltip-arrow]:-top-[4px] [&>.tooltip-arrow]:-translate-x-1/2 [&>.tooltip-arrow]:left-1/2"
+    ]
   end
 
-  defp content_position("center") do
-    "[&_.nav-wrapper]:justify-center"
+  defp position_class("left") do
+    [
+      "right-full top-1/2 -translate-y-1/2 -translate-x-[6px]",
+      "[&>.tooltip-arrow]:-right-[4px] [&>.tooltip-arrow]:translate-y-1/2 [&>.tooltip-arrow]:top-1/3"
+    ]
   end
 
-  defp content_position("between") do
-    "[&_.nav-wrapper]:justify-between"
+  defp position_class("right") do
+    [
+      "left-full top-1/2 -translate-y-1/2 translate-x-[6px]",
+      "[&>.tooltip-arrow]:-left-[4px] [&>.tooltip-arrow]:translate-y-1/2 [&>.tooltip-arrow]:top-1/3"
+    ]
   end
 
-  defp content_position("around") do
-    "[&_.nav-wrapper]:justify-around"
-  end
+  defp border_class("extra_small"), do: "border"
 
-  defp content_position(params) when is_binary(params), do: params
+  defp border_class("small"), do: "border-2"
+
+  defp border_class("medium"), do: "border-[3px]"
+
+  defp border_class("large"), do: "border-4"
+
+  defp border_class("extra_large"), do: "border-[5px]"
+
+  defp border_class("none"), do: nil
+
+  defp border_class(params) when is_binary(params), do: params
+
+  defp size_class("extra_small"), do: "text-xs max-w-40"
+
+  defp size_class("small"), do: "text-sm max-w-44"
+
+  defp size_class("medium"), do: "text-base max-w-48"
+
+  defp size_class("large"), do: "text-lg max-w-28"
+
+  defp size_class("extra_large"), do: "text-xl max-w-32"
+
+  defp size_class(params) when is_binary(params), do: params
 
   defp text_position("left"), do: "text-left"
   defp text_position("right"), do: "text-right"
   defp text_position("center"), do: "text-center"
-  defp text_position(params) when is_binary(params), do: params
+  defp text_position("justify"), do: "text-justify"
+  defp text_position("start"), do: "text-start"
+  defp text_position("end"), do: "text-end"
+  defp text_position(_), do: text_position("center")
 
-  defp space_class("extra_small"), do: "space-y-2"
-
-  defp space_class("small"), do: "space-y-3"
-
-  defp space_class("medium"), do: "space-y-4"
-
-  defp space_class("large"), do: "space-y-5"
-
-  defp space_class("extra_large"), do: "space-y-6"
-
-  defp space_class(params) when is_binary(params), do: params
-
-  defp maximum_width("extra_small"), do: "[&_.nav-wrapper]:max-w-3xl	[&_.nav-wrapper]:mx-auto"
-  defp maximum_width("small"), do: "[&_.nav-wrapper]:max-w-4xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width("medium"), do: "[&_.nav-wrapper]:max-w-5xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width("large"), do: "[&_.nav-wrapper]:max-w-6xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width("extra_large"), do: "[&_.nav-wrapper]:max-w-7xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width(params) when is_binary(params), do: params
+  defp width_class("extra_small"), do: "min-w-28"
+  defp width_class("small"), do: "min-w-32"
+  defp width_class("medium"), do: "min-w-36"
+  defp width_class("large"), do: "min-w-40"
+  defp width_class("extra_large"), do: "min-w-44"
+  defp width_class("double_large"), do: "min-w-48"
+  defp width_class("triple_large"), do: "min-w-52"
+  defp width_class("quadruple_large"), do: "min-w-56"
+  defp width_class("fit"), do: "min-w-fit"
+  defp width_class(params) when is_binary(params), do: params
 
   defp padding_size("extra_small"), do: "p-1"
 
@@ -267,28 +217,17 @@ defmodule SensoctoWeb.Components.Navbar do
 
   defp padding_size(params) when is_binary(params), do: params
 
-  defp border_class(_, variant) when variant in ["default", "shadow", "gradient"],
-    do: nil
+  defp space_class("extra_small"), do: "space-y-2"
 
-  defp border_class("none", _), do: "border-b-0"
-  defp border_class("extra_small", _), do: "border-b"
-  defp border_class("small", _), do: "border-b-2"
-  defp border_class("medium", _), do: "border-b-[3px]"
-  defp border_class("large", _), do: "border-b-4"
-  defp border_class("extra_large", _), do: "border-b-[5px]"
-  defp border_class(params, _) when is_binary(params), do: params
+  defp space_class("small"), do: "space-y-3"
 
-  defp rounded_size("extra_small"), do: "rounded-b-sm"
+  defp space_class("medium"), do: "space-y-4"
 
-  defp rounded_size("small"), do: "rounded-b"
+  defp space_class("large"), do: "space-y-5"
 
-  defp rounded_size("medium"), do: "rounded-b-md"
+  defp space_class("extra_large"), do: "space-y-6"
 
-  defp rounded_size("large"), do: "rounded-b-lg"
-
-  defp rounded_size("extra_large"), do: "rounded-b-xl"
-
-  defp rounded_size(params) when is_binary(params), do: params
+  defp space_class(params) when is_binary(params), do: params
 
   defp color_variant("base", "base") do
     [
@@ -298,15 +237,11 @@ defmodule SensoctoWeb.Components.Navbar do
   end
 
   defp color_variant("default", "white") do
-    [
-      "bg-white text-black"
-    ]
+    ["bg-white text-black"]
   end
 
   defp color_variant("default", "dark") do
-    [
-      "bg-[#282828] text-white"
-    ]
+    ["bg-[#282828] text-white"]
   end
 
   defp color_variant("default", "natural") do
@@ -592,19 +527,4 @@ defmodule SensoctoWeb.Components.Navbar do
   end
 
   defp color_variant(params, _) when is_binary(params), do: params
-
-  attr :name, :string, required: true, doc: "Specifies the name of the element"
-  attr :class, :any, default: nil, doc: "Custom CSS class for additional styling"
-
-  defp icon(%{name: "hero-" <> _, class: class} = assigns) when is_list(class) do
-    ~H"""
-    <span class={[@name] ++ @class} />
-    """
-  end
-
-  defp icon(%{name: "hero-" <> _} = assigns) do
-    ~H"""
-    <span class={[@name, @class]} />
-    """
-  end
 end

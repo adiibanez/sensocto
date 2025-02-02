@@ -1,15 +1,15 @@
 <script>
     import { onMount } from "svelte";
     import { Socket } from "phoenix";
-    import SensorService from "./SensorService.svelte";
-    import BluetoothClient from "./BluetoothClient.svelte";
-    import IMUClient from "./IMUClient.svelte";
-    import GeolocationClient from "./GeolocationClient.svelte";
-    import BatterystatusClient from "./BatterystatusClient.svelte";
-    import PushButtonClient from "./PushButtonClient.svelte";
-    import NetworkQualityMonitor from "./NetworkQualityMonitor.svelte";
+    import SensorService from "./SenseApp/SensorService.svelte";
+    import BluetoothClient from "./SenseApp/BluetoothClient.svelte";
+    import IMUClient from "./SenseApp/IMUClient.svelte";
+    import GeolocationClient from "./SenseApp/GeolocationClient.svelte";
+    import BatterystatusClient from "./SenseApp/BatterystatusClient.svelte";
+    import PushButtonClient from "./SenseApp/PushButtonClient.svelte";
+    import NetworkQualityMonitor from "./SenseApp/NetworkQualityMonitor.svelte";
 
-    import Map from "../GoogleMaps/Map.svelte";
+    import Map from "./GoogleMaps/Map.svelte";
     /*import Sparkline from "./Sparkline.svelte";
 
     let timeMode = "absolute";

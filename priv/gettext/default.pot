@@ -1,0 +1,82 @@
+## This file is a PO Template file.
+##
+## "msgid"s here are often extracted from source code.
+## Add new messages manually only if they're dynamic
+## messages that can't be statically extracted.
+##
+## Run "mix gettext.extract" to bring this file up to
+## date. Leave "msgstr"s empty as changing them here has no
+## effect: edit them in PO (.po) files instead.
+#
+msgid ""
+msgstr ""
+
+#: lib/sensocto_web/components/core_components.ex:491
+#, elixir-autogen, elixir-format
+msgid "Actions"
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:168
+#: lib/sensocto_web/components/core_components.ex:162
+#, elixir-autogen, elixir-format
+msgid "Attempting to reconnect"
+msgstr ""
+
+#: lib/sensocto_web/components/drawer.ex:104
+#: lib/sensocto_web/components/sidebar.ex:95
+#, elixir-autogen, elixir-format
+msgid "Close menu"
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:159
+#: lib/sensocto_web/components/core_components.ex:153
+#, elixir-autogen, elixir-format
+msgid "Error!"
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:180
+#: lib/sensocto_web/components/core_components.ex:174
+#, elixir-autogen, elixir-format
+msgid "Hang in there while we get back on track"
+msgstr ""
+
+#: lib/sensocto_web/components/speed_dial.ex:182
+#, elixir-autogen, elixir-format
+msgid "Open actions menu"
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:175
+#: lib/sensocto_web/components/core_components.ex:169
+#, elixir-autogen, elixir-format
+msgid "Something went wrong!"
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:158
+#: lib/sensocto_web/components/core_components.ex:152
+#, elixir-autogen, elixir-format
+msgid "Success!"
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:163
+#: lib/sensocto_web/components/core_components.ex:157
+#, elixir-autogen, elixir-format
+msgid "We can't find the internet"
+msgstr ""
+
+#: lib/sensocto_web/components/video.ex:138
+#, elixir-autogen, elixir-format
+msgid "Your browser does not support the video tag."
+msgstr ""
+
+#: lib/sensocto_web/components/alert.ex:132
+#: lib/sensocto_web/components/banner.ex:184
+#: lib/sensocto_web/components/core_components.ex:78
+#: lib/sensocto_web/components/core_components.ex:132
+#: lib/sensocto_web/components/modal.ex:117
+#: lib/sensocto_web/components/toast.ex:259
+#, elixir-autogen, elixir-format
+msgid "close"
+msgstr ""
+
+msgid "If this user exists in our database you will contacted with a sign-in link shortly."
+msgstr "Pls check your inbox and click on the magic link."

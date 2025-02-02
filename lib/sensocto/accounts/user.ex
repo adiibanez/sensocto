@@ -20,12 +20,25 @@ defmodule Sensocto.Accounts.User do
     end
 
     strategies do
+      google do
+        # Sensocto.Secrets
+        client_id "708240357767-gaar1ph0fngc01mcj188vfo14mc3ilbn.apps.googleusercontent.com"
+        # Sensocto.Secrets
+        # redirect_uri "https://adrians-macbook-pro.local:4001/"
+        redirect_uri "https://localhost:4001/auth/user/google/callback"
+        # Sensocto.Secrets
+        client_secret "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"
+      end
+
       magic_link do
         identity_field :email
         registration_enabled? true
 
         sender Sensocto.Accounts.User.Senders.SendMagicLinkEmail
       end
+
+      # client 708240357767-gaar1ph0fngc01mcj188vfo14mc3ilbn.apps.googleusercontent.com
+      # secret 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
 
       """
       password :password do
@@ -47,14 +60,20 @@ defmodule Sensocto.Accounts.User do
         monitor_fields [:email]
         confirm_on_create? true
         confirm_on_update? false
-        auto_confirm_actions [:sign_in_with_magic_link, :reset_password_with_token]
+
+        auto_confirm_actions [
+          :sign_in_with_magic_link,
+          :reset_password_with_token,
+          :register_with_google
+        ]
+
         sender Sensocto.Accounts.User.Senders.SendNewUserConfirmationEmail
       end
     end
   end
 
   actions do
-    defaults [:read]
+    defaults [:read, :destroy]
 
     read :get_by_subject do
       description "Get a user by the subject claim in a JWT"
@@ -72,6 +91,35 @@ defmodule Sensocto.Accounts.User do
       end
 
       filter expr(email == ^arg(:email))
+    end
+
+    create :register_with_google do
+      argument :user_info, :map, allow_nil?: false
+      argument :oauth_tokens, :map, allow_nil?: false
+      upsert? true
+      upsert_identity :unique_email
+
+      change AshAuthentication.GenerateTokenChange
+
+      # Required if you have the `identity_resource` configuration enabled.
+      # change AshAuthentication.Strategy.OAuth2.IdentityChange
+
+      change fn changeset, _ ->
+        user_info = Ash.Changeset.get_argument(changeset, :user_info)
+
+        Ash.Changeset.change_attributes(changeset, Map.take(user_info, ["email"]))
+      end
+
+      # Required if you're using the password & confirmation strategies
+      upsert_fields []
+      change set_attribute(:confirmed_at, &DateTime.utc_now/0)
+
+      change after_action(fn _changeset, user, _context ->
+               case user.confirmed_at do
+                 nil -> {:error, "Unconfirmed user exists already"}
+                 _ -> {:ok, user}
+               end
+             end)
     end
 
     create :sign_in_with_magic_link do
@@ -250,6 +298,16 @@ defmodule Sensocto.Accounts.User do
 
       # Generates an authentication token for the user
       change AshAuthentication.GenerateTokenChange
+    end
+
+    destroy :delete_user do
+      description "Delete a user by their ID."
+
+      argument :id, :uuid do
+        allow_nil? false
+      end
+
+      filter expr(id == ^arg(:id))
     end
   end
 

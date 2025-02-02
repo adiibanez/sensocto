@@ -1,103 +1,59 @@
-defmodule SensoctoWeb.Components.Navbar do
+defmodule SensoctoWeb.Components.Footer do
   @moduledoc """
-  The `SensoctoWeb.Components.Navbar` module provides a flexible and customizable navigation
-  bar component for Phoenix LiveView applications. It allows for a variety of styles,
-  colors, and configurations to fit different design needs, including border styles,
-  content alignment, and text positioning.
+  The `SensoctoWeb.Components.Footer` module provides a customizable footer component for Phoenix applications,
+  allowing for various styles, colors, and layout options. It supports different design variants
+  such as default, outline, transparent, shadow, and unbordered.
 
-  This component supports nested elements through slots, enabling complex navigation structures.
+  ### Features:
 
-  It also offers extensive theming options, such as rounded corners, shadow effects,
-  and maximum width settings.
+  - **Customizable Styles:** Choose from multiple color themes and design variants.
+  - **Flexible Layouts:** Control text positioning, spacing, padding, and border styles.
+  - **Responsive Design:** Set max width and rounded corners for adaptive layouts.
+  - **Global Attributes Support:** Allows for additional attributes to be merged with component defaults.
 
-  With built-in support for icons and images, the `Navbar` module makes it easy to create
-  visually appealing and interactive navigation bars that enhance the user experience.
+  This component is designed to enhance the appearance and functionality of footers in web applications.
   """
+
   use Phoenix.Component
 
   @doc """
-  Renders a customizable navigation bar (`navbar` component) that can include links,
-  dropdowns, and other components.
-
-  The navigation bar is designed to handle various styles, colors, and layouts.
+  Renders a customizable `footer` component with different sections and styling options, allowing
+  for the inclusion of text, links, and other content.
 
   ## Examples
 
   ```elixir
-  <.navbar id="nav-11" color="success" variant="shadow">
-    <:list><.link navigate="/">Home</.link></:list>
-    <:list><.link navigate="/examples/sidebar">List</.link></:list>
+  <.footer color="secondary" padding="large" space="medium">
+    <.footer_section class="border-b" padding="small">Mishka Chelekom</.footer_section>
 
-    <:list>
-      <.dropdown relative="md:relative" width="w-full" clickable>
-        <:trigger width="full" trigger_id="test-31">
-          <button class="text-start w-full block">Dropdown</button>
-        </:trigger>
+    <.footer_section class="grid grid-cols-3 gap-2 justify-between" padding="large">
+      <.list color="secondary">
+        <:item><a href="/">Home</a></:item>
+        <:item><a href="/">Contact</a></:item>
+        <:item><a href="/">About</a></:item>
+      </.list>
 
-        <:content space="small" id="test-31" rounded="large" width="large" padding="extra_small">
-          <ul class="space-y-5">
-            <li>
-              <.dropdown width="w-full" position="right" clickable>
-                <:trigger trigger_id="test-19">
-                  <button class={[
-                    "py-1 px-2 text-start w-full flex items-center justify-between hover:bg-gray-200"
-                  ]}
-                  >
-                    Nested Dropdown <.icon name="hero-chevron-right" />
-                  </button>
-                </:trigger>
+      <.list color="secondary" style="list-disc">
+        <:item>list</:item>
+        <:item>list</:item>
+        <:item>list</:item>
+      </.list>
 
-                <:content id="test-19" rounded="large" width="large" padding="extra_small">
-                  <ul class="space-y-5">
-                    <li>
-                      <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/list">
-                        Security
-                      </.link>
-                    </li>
+      <div>
+        Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an
+        unknown printer took a galley of type and scrambled it to make a type specimen bookged.
+      </div>
+    </.footer_section>
 
-                    <li>
-                      <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/dropdown">
-                        Memory
-                      </.link>
-                    </li>
-
-                    <li>
-                      <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/image">
-                        Design
-                      </.link>
-                    </li>
-                  </ul>
-                </:content>
-              </.dropdown>
-            </li>
-
-            <li>
-              <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/dropdown">
-                Memory
-              </.link>
-            </li>
-
-            <li>
-              <.link class="py-1 px-2 block hover:bg-gray-200" navigate="/examples/image">
-                Design
-              </.link>
-            </li>
-          </ul>
-        </:content>
-      </.dropdown>
-    </:list>
-
-    <:list><.link navigate="/examples/rating">Blog</.link></:list>
-    <:list><.link navigate="/examples/sidebar">Calendar</.link></:list>
-    <:list><.link navigate="/examples/rating">Booking</.link></:list>
-    <:list><.link navigate="/examples/sidebar">Partners</.link></:list>
-    <:list><.link navigate="/examples/rating">About</.link></:list>
-  </.navbar>
+    <.footer_section text_position="center" class="border-t" padding="small">
+      © 2023 Mishka Chelekom
+    </.footer_section>
+  </.footer>
   ```
   """
   @doc type: :component
   attr :id, :string,
-    required: true,
+    default: nil,
     doc: "A unique identifier is used to manage state and interaction"
 
   attr :variant, :string, default: "base", doc: "Determines the style"
@@ -106,56 +62,27 @@ defmodule SensoctoWeb.Components.Navbar do
   attr :text_position, :string, default: "", doc: "Determines the element' text position"
   attr :rounded, :string, default: "", doc: "Determines the border radius"
   attr :max_width, :string, default: "", doc: "Determines the style of element max width"
-
-  attr :content_position, :string,
-    default: "between",
-    doc: "Determines the alignment of the element's content"
-
-  attr :image, :string, default: nil, doc: "Image displayed alongside of an item"
-  attr :image_class, :string, default: nil, doc: "Determines custom class for the image"
-  attr :name, :string, default: nil, doc: "Specifies the name of the element"
-  attr :relative, :boolean, default: false, doc: ""
-  attr :link, :string, default: nil, doc: ""
   attr :space, :string, default: "", doc: "Space between items"
 
   attr :font_weight, :string,
     default: "font-normal",
     doc: "Determines custom class for the font weight"
 
-  attr :padding, :string, default: "small", doc: "Determines padding for items"
+  attr :padding, :string, default: "", doc: "Determines padding for items"
   attr :class, :string, default: nil, doc: "Custom CSS class for additional styling"
 
   attr :rest, :global,
     doc:
       "Global attributes can define defaults which are merged with attributes provided by the caller"
 
-  slot :start_content,
-    required: false,
-    doc: "Content to be rendered at the start (start side based on rtl or ltr) of the navbar."
-
   slot :inner_block, required: false, doc: "Inner block that renders HEEx content"
 
-  slot :end_content,
-    required: false,
-    doc: "Content to be rendered at the end (end side based on rtl or ltr) of the navbar."
-
-  slot :list, required: false do
-    attr :class, :string, doc: "Custom CSS class for additional styling"
-    attr :padding, :string, doc: "Determines padding for items"
-    attr :icon, :string, doc: "Icon displayed alongside of an item"
-    attr :icon_class, :string, doc: "Determines custom class for the icon"
-    attr :icon_position, :string, doc: "Determines icon position"
-  end
-
-  def navbar(assigns) do
+  def footer(assigns) do
     ~H"""
-    <nav
+    <footer
       id={@id}
       class={[
-        "relative",
-        "[&.show-nav-menu_.nav-menu]:block [&.show-nav-menu_.nav-menu]:opacity-100",
         border_class(@border, @variant),
-        content_position(@content_position),
         color_variant(@variant, @color),
         rounded_size(@rounded),
         padding_size(@padding),
@@ -167,67 +94,47 @@ defmodule SensoctoWeb.Components.Navbar do
       ]}
       {@rest}
     >
-      <div class="nav-wrapper md:flex items-center gap-2 md:gap-5">
-        <div :if={@start_content != [] and !is_nil(@start_content)}>
-          {render_slot(@start_content)}
-        </div>
-        <.link
-          :if={!is_nil(@link)}
-          navigate={@link}
-          class="flex items-center space-x-3 rtl:space-x-reverse mb-5 md:mb-0"
-        >
-          <img :if={!is_nil(@image)} src={@image} class={@image_class} />
-          <h1 :if={!is_nil(@name)} class="text-xl font-semibold">
-            {@name}
-          </h1>
-        </.link>
-
-        <div :if={!is_nil(@list) && length(@list) > 0} class={["w-auto"]}>
-          <ul class={[
-            "flex flex-wrap md:flex-nowrap gap-4",
-            @relative && "relative"
-          ]}>
-            <li
-              :for={list <- @list}
-              class={[
-                "inline-flex items-center",
-                list[:icon_position] == "end" && "flex-row-reverse",
-                list[:class]
-              ]}
-            >
-              <.icon :if={list[:icon]} name={list[:icon]} class={["list-icon", list[:icon_class]]} />
-              {render_slot(list)}
-            </li>
-          </ul>
-        </div>
+      <div>
         {render_slot(@inner_block)}
-        <div :if={@end_content != [] and !is_nil(@end_content)}>{render_slot(@end_content)}</div>
       </div>
-    </nav>
+    </footer>
     """
   end
 
-  defp content_position("start") do
-    "[&_.nav-wrapper]:justify-start"
-  end
+  @doc """
+  Renders a section within a footer component, allowing for customized text alignment, spacing, and styling.
 
-  defp content_position("end") do
-    "[&_.nav-wrapper]:justify-end"
-  end
+  ## Examples
 
-  defp content_position("center") do
-    "[&_.nav-wrapper]:justify-center"
-  end
+  ```elixir
+  <.footer_section class="border-b" padding="small">Mishka Chelekom</.footer_section>
+  ```
+  """
+  @doc type: :component
+  attr :class, :string, default: nil, doc: "Custom CSS class for additional styling"
 
-  defp content_position("between") do
-    "[&_.nav-wrapper]:justify-between"
-  end
+  attr :font_weight, :string,
+    default: "font-normal",
+    doc: "Determines custom class for the font weight"
 
-  defp content_position("around") do
-    "[&_.nav-wrapper]:justify-around"
-  end
+  attr :text_position, :string, default: "", doc: "Determines the element' text position"
+  attr :space, :string, default: "", doc: "Space between items"
+  attr :padding, :string, default: "", doc: "Determines padding for items"
+  slot :inner_block, required: false, doc: "Inner block that renders HEEx content"
 
-  defp content_position(params) when is_binary(params), do: params
+  def footer_section(assigns) do
+    ~H"""
+    <div class={[
+      padding_size(@padding),
+      text_position(@text_position),
+      space_class(@space),
+      @font_weight,
+      @class
+    ]}>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
 
   defp text_position("left"), do: "text-left"
   defp text_position("right"), do: "text-right"
@@ -246,11 +153,11 @@ defmodule SensoctoWeb.Components.Navbar do
 
   defp space_class(params) when is_binary(params), do: params
 
-  defp maximum_width("extra_small"), do: "[&_.nav-wrapper]:max-w-3xl	[&_.nav-wrapper]:mx-auto"
-  defp maximum_width("small"), do: "[&_.nav-wrapper]:max-w-4xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width("medium"), do: "[&_.nav-wrapper]:max-w-5xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width("large"), do: "[&_.nav-wrapper]:max-w-6xl [&_.nav-wrapper]:mx-auto"
-  defp maximum_width("extra_large"), do: "[&_.nav-wrapper]:max-w-7xl [&_.nav-wrapper]:mx-auto"
+  defp maximum_width("extra_small"), do: "[&>div]:max-w-3xl	[&>div]:mx-auto"
+  defp maximum_width("small"), do: "[&>div]:max-w-4xl [&>div]:mx-auto"
+  defp maximum_width("medium"), do: "[&>div]:max-w-5xl [&>div]:mx-auto"
+  defp maximum_width("large"), do: "[&>div]:max-w-6xl [&>div]:mx-auto"
+  defp maximum_width("extra_large"), do: "[&>div]:max-w-7xl [&>div]:mx-auto"
   defp maximum_width(params) when is_binary(params), do: params
 
   defp padding_size("extra_small"), do: "p-1"
@@ -263,36 +170,34 @@ defmodule SensoctoWeb.Components.Navbar do
 
   defp padding_size("extra_large"), do: "p-5"
 
-  defp padding_size("none"), do: "p-0"
-
   defp padding_size(params) when is_binary(params), do: params
 
-  defp border_class(_, variant) when variant in ["default", "shadow", "gradient"],
+  defp border_class(_, variant) when variant in ["default", "shadow", "transparent", "gradient"],
     do: nil
 
-  defp border_class("none", _), do: "border-b-0"
-  defp border_class("extra_small", _), do: "border-b"
-  defp border_class("small", _), do: "border-b-2"
-  defp border_class("medium", _), do: "border-b-[3px]"
-  defp border_class("large", _), do: "border-b-4"
-  defp border_class("extra_large", _), do: "border-b-[5px]"
+  defp border_class("none", _), do: "border-t-0"
+  defp border_class("extra_small", _), do: "border-t"
+  defp border_class("small", _), do: "border-t-2"
+  defp border_class("medium", _), do: "border-t-[3px]"
+  defp border_class("large", _), do: "border-t-4"
+  defp border_class("extra_large", _), do: "border-t-[5px]"
   defp border_class(params, _) when is_binary(params), do: params
 
-  defp rounded_size("extra_small"), do: "rounded-b-sm"
+  defp rounded_size("extra_small"), do: "rounded-t-sm"
 
-  defp rounded_size("small"), do: "rounded-b"
+  defp rounded_size("small"), do: "rounded-t"
 
-  defp rounded_size("medium"), do: "rounded-b-md"
+  defp rounded_size("medium"), do: "rounded-t-md"
 
-  defp rounded_size("large"), do: "rounded-b-lg"
+  defp rounded_size("large"), do: "rounded-t-lg"
 
-  defp rounded_size("extra_large"), do: "rounded-b-xl"
+  defp rounded_size("extra_large"), do: "rounded-t-xl"
 
   defp rounded_size(params) when is_binary(params), do: params
 
   defp color_variant("base", "base") do
     [
-      "bg-white text-[#09090b] border-[#e4e4e7] shadow-sm",
+      "bg-white text-[#09090b] border-[#e4e4e7]",
       "dark:bg-[#18181B] dark:text-[#FAFAFA] dark:border-[#27272a]"
     ]
   end
@@ -366,6 +271,66 @@ defmodule SensoctoWeb.Components.Navbar do
   defp color_variant("default", "silver") do
     [
       "bg-[#868686] text-white dark:bg-[#A6A6A6] dark:text-black"
+    ]
+  end
+
+  defp color_variant("outline", "natural") do
+    [
+      "text-[#4B4B4B] border-[#4B4B4B] dark:text-[#DDDDDD] dark:border-[#DDDDDD]"
+    ]
+  end
+
+  defp color_variant("outline", "primary") do
+    [
+      "text-[#007F8C] border-[#007F8C]  dark:text-[#01B8CA] dark:border-[#01B8CA]"
+    ]
+  end
+
+  defp color_variant("outline", "secondary") do
+    [
+      "text-[#266EF1] border-[#266EF1] dark:text-[#6DAAFB] dark:border-[#6DAAFB]"
+    ]
+  end
+
+  defp color_variant("outline", "success") do
+    [
+      "text-[#0E8345] border-[#0E8345] dark:text-[#06C167] dark:border-[#06C167]"
+    ]
+  end
+
+  defp color_variant("outline", "warning") do
+    [
+      "text-[#CA8D01] border-[#CA8D01] dark:text-[#FDC034] dark:border-[#FDC034]"
+    ]
+  end
+
+  defp color_variant("outline", "danger") do
+    [
+      "text-[#DE1135] border-[#DE1135] dark:text-[#FC7F79] dark:border-[#FC7F79]"
+    ]
+  end
+
+  defp color_variant("outline", "info") do
+    [
+      "text-[#0B84BA] border-[#0B84BA] dark:text-[#3EB7ED] dark:border-[#3EB7ED]"
+    ]
+  end
+
+  defp color_variant("outline", "misc") do
+    [
+      "text-[#8750C5] border-[#8750C5] dark:text-[#BA83F9] dark:border-[#BA83F9]"
+    ]
+  end
+
+  defp color_variant("outline", "dawn") do
+    [
+      "text-[#A86438] border-[#A86438] dark:text-[#DB976B] dark:border-[#DB976B]"
+    ]
+  end
+
+  defp color_variant("outline", "silver") do
+    [
+      "text-[#868686] border-[#868686] dark:text-[#A6A6A6] dark:border-[#A6A6A6]"
     ]
   end
 
@@ -521,6 +486,66 @@ defmodule SensoctoWeb.Components.Navbar do
     ]
   end
 
+  defp color_variant("transparent", "natural") do
+    [
+      "text-[#4B4B4B] dark:text-[#DDDDDD]"
+    ]
+  end
+
+  defp color_variant("transparent", "primary") do
+    [
+      "text-[#007F8C] dark:text-[#01B8CA]"
+    ]
+  end
+
+  defp color_variant("transparent", "secondary") do
+    [
+      "text-[#266EF1] dark:text-[#6DAAFB]"
+    ]
+  end
+
+  defp color_variant("transparent", "success") do
+    [
+      "text-[#0E8345] dark:text-[#06C167]"
+    ]
+  end
+
+  defp color_variant("transparent", "warning") do
+    [
+      "text-[#CA8D01] dark:text-[#FDC034]"
+    ]
+  end
+
+  defp color_variant("transparent", "danger") do
+    [
+      "text-[#DE1135] dark:text-[#FC7F79]"
+    ]
+  end
+
+  defp color_variant("transparent", "info") do
+    [
+      "text-[#0B84BA] dark:text-[#3EB7ED]"
+    ]
+  end
+
+  defp color_variant("transparent", "misc") do
+    [
+      "text-[#8750C5] dark:text-[#BA83F9]"
+    ]
+  end
+
+  defp color_variant("transparent", "dawn") do
+    [
+      "text-[#A86438] dark:text-[#DB976B]"
+    ]
+  end
+
+  defp color_variant("transparent", "silver") do
+    [
+      "text-[#868686] dark:text-[#A6A6A6]"
+    ]
+  end
+
   defp color_variant("gradient", "natural") do
     [
       "bg-gradient-to-br from-[#282828] to-[#727272] text-white",
@@ -592,19 +617,4 @@ defmodule SensoctoWeb.Components.Navbar do
   end
 
   defp color_variant(params, _) when is_binary(params), do: params
-
-  attr :name, :string, required: true, doc: "Specifies the name of the element"
-  attr :class, :any, default: nil, doc: "Custom CSS class for additional styling"
-
-  defp icon(%{name: "hero-" <> _, class: class} = assigns) when is_list(class) do
-    ~H"""
-    <span class={[@name] ++ @class} />
-    """
-  end
-
-  defp icon(%{name: "hero-" <> _} = assigns) do
-    ~H"""
-    <span class={[@name, @class]} />
-    """
-  end
 end

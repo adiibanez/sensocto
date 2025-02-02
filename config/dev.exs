@@ -85,7 +85,8 @@ config :logger, :logger_name,
     # [module: Sensocto.SimpleSensor, level: :debug],
     # [module: Sensocto.AttributeStorer, level: :debug]
     # [module: SensoctoWeb.SensorDataChannel, level: :debug],
-    # [module: Phoenix.Logger, level: :debug]
+    # [module: Phoenix.Logger, level: :debug],
+    [module: SensoctoWeb.Live.PlaygroundLive, level: :debug]
   ],
   # backend specific configuration
   # format: "DEV [$time] [$level] $message\n"

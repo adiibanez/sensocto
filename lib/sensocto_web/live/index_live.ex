@@ -22,6 +22,7 @@ defmodule SensoctoWeb.IndexLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurements_batch")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
+
     # presence tracking
 
     new_socket =
@@ -260,6 +261,26 @@ defmodule SensoctoWeb.IndexLive do
      |> assign(
        :sensors,
        update_in(socket.assigns.sensors, [sensor_id, :highlighted], fn _ -> not is_highlighted end)
+     )}
+  end
+
+  def handle_event(
+        "attribute_windowsize_changed",
+        %{"sensor_id" => sensor_id, "attribute_id" => attribute_id, "windowsize" => windowsize} =
+          params,
+        socket
+      ) do
+    Logger.info("Received windowsize event: #{inspect(params)}")
+
+    {:noreply,
+     socket
+     |> assign(
+       :sensors,
+       update_in(
+         socket.assigns.sensors,
+         [sensor_id, :attributes, attribute_id, :windowsize],
+         fn _ -> windowsize end
+       )
      )}
   end
 

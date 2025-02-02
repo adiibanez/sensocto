@@ -67,7 +67,7 @@ RUN apt remove --purge libnode72 nodejs-legacy nodejs npm && apt autoremove
 RUN curl -sL https://deb.nodesource.com/setup_20.x | bash -
 RUN apt-get update -y && apt-get install -y -f nodejs \
     && apt-get clean 
-    #&& rm -f /var/lib/apt/lists/*
+#&& rm -f /var/lib/apt/lists/*
 
 # Download and install nvm:
 RUN node --version
@@ -93,8 +93,15 @@ RUN mix release
 FROM ${RUNNER_IMAGE}
 
 RUN apt-get update -y && \
-  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates \
-  && apt-get clean && rm -f /var/lib/apt/lists/*_*
+    apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# RUN apt-get update -y && \
+#     apt-get install -y python3 python3-pip \
+#     && pip3 install --upgrade pip \
+#     && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# RUN pip3 install --no-cache-dir neurokit2
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen

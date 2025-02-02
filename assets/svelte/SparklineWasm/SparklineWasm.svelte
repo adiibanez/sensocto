@@ -169,7 +169,6 @@
                 logger.log(
                     loggerCtxName,
                     "data changed, redrawing sparkline...",
-                    maxsamples,
                     data?.length,
                 );
                 if (data.length == 0) {
@@ -225,15 +224,18 @@
             render();
         }
     };
-    $: maxsamples = (timewindow / 1000) * samplingrate * width;
+    //$: maxsamples = (timewindow / 1000) * samplingrate * width;
+    $: if (timewindow && width && samplingrate) {
+        maxsamples = (timewindow / 1000) * samplingrate * width;
+    }
 </script>
 
 <canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
 
-{#if false}
+{#if true}
     <div class="text-xs hidden">
-        Data points {data.length}, maxsamples: {maxsamples}, width: {width}
-        width: {width} height: {height}
-        <pre>{JSON.stringify(data, null, 2)}</pre>
+        <!--Data points {data.length}, maxsamples: {maxsamples}, width: {width}-->
+        width: {width} height: {height} timewindow: {timewindow}
+        <!--<pre>{JSON.stringify(data, null, 2)}</pre>-->
     </div>
 {/if}

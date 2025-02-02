@@ -1,6 +1,19 @@
 defmodule SensoctoWeb.Live.PlaygroundLive do
   use SensoctoWeb, :live_view
   require Logger
+  import SensoctoWeb.Components.RangeField
+  import SensoctoWeb.Components.RadioField
+  # import SensoctoWeb.Components.RadioGroup
+  import SensoctoWeb.Components.Tooltip
+  import SensoctoWeb.Components.SpeedDial
+  import SensoctoWeb.Components.Navbar
+  import SensoctoWeb.Components.Sidebar
+  alias SensoctoWeb.Components.Sidebar
+
+  use Phoenix.LiveView
+
+  # import Phoenix.HTML.Form
+  import LiveSvelte
   # use LiveSvelte.Components
 
   @impl true
@@ -16,7 +29,16 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
        5 => %{id: 5, name: "ECG", unit: "mV", data: [], highlighted: false},
        6 => %{id: 6, name: "ECG", unit: "mV", data: [], highlighted: false}
      })
-     |> assign(:sensor_ids, [1, 2, 3, 4, 5, 6])}
+     # |> assign(:form, %Phoenix.HTML.Form{})
+     |> assign(:form, %{
+       windowsize: 10000,
+       selection: "Option 1"
+     })
+     |> assign(:windowsize, 10000)
+     |> assign(:sensor_id, "test1")
+     |> assign(:attribute_id, "test2")
+     |> assign(:sensor_ids, [1, 2, 3, 4, 5, 6])
+     |> assign(:number, 10)}
   end
 
   @impl true
@@ -63,12 +85,193 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
   #   """
   # end
 
-  @impl true
+  # @impl true
+  def render_(assigns) do
+    ~V"""
+    <script socket={@socket} phx-endpoint={@endpoint} phx-ref={@ref}>
+      // We added export to make it reactive with the server
+      // Number is set to 10
+      export let number = 1
+
+      // Let's combine local state with server state
+      let number2 = 5
+
+      $: combined = number + number2
+    </script>
+
+    {number} + {number2} = {combined}
+
+    <button class="rounded" phx-click="increment">increment</button>
+    <button class="rounded" phx-click="decrement">decrement</button>
+
+
+    <style lang="stylus">
+      button
+        background-color black
+        color white
+        padding 0.5rem 1rem
+    </style>
+    """
+  end
+
+  def handle_event("increment", _values, socket) do
+    # This will increment the number when the increment events gets sent
+    Logger.info("Incrementing number")
+    {:noreply, assign(socket, :number, socket.assigns.number + 1)}
+  end
+
+  def handle_event("decrement", _values, socket) do
+    # This will increment the number when the increment events gets sent
+    Logger.info("Decrementing number")
+    {:noreply, assign(socket, :number, socket.assigns.number - 1)}
+  end
+
+  def handle_event(
+        "test",
+        %{"windowsize" => windowsize} = params,
+        socket
+      ) do
+    Logger.info("Received test event: #{inspect(params)}")
+
+    {:noreply,
+     socket
+     |> assign(:windowsize, String.to_integer(windowsize))
+     |> assign(@form[:windowsize], String.to_integer(windowsize))}
+  end
+
   def render(assigns) do
     ~H"""
     <!--<script defer phx-track-static type="text/javascript" src={~p"/assets/sparkline.js"}>
     </script>-->
     <sensocto-sparkline-wasm-svelte></sensocto-sparkline-wasm-svelte>
+
+    <.sidebar id="sidebar-left" size="small" color="dark" hide_position="left">
+      <div class="px-4 py-2">
+        <h2 class="text-white">Menu</h2>
+      </div>
+    </.sidebar>
+
+    <.button
+      icon="hero-menu"
+      color="dark"
+      phx-click={Sidebar.show_sidebar(%JS{}, "sidebar-left", "left")}
+      size="extra_small"
+    >
+      Show Sidebar
+    </.button>
+
+    <.button
+      icon="hero-menu"
+      color="dark"
+      phx-click={Sidebar.hide_sidebar(%JS{}, "sidebar-left", "left")}
+      size="extra_small"
+    >
+      Hide Sidebar
+    </.button>
+
+    <.speed_dial icon="hero-plus" space="large" icon_animated id="test-1" size="extra_small" clickable>
+      <:item icon="hero-home" href="/examples/navbar" color="danger"></:item>
+      <:item icon="hero-bars-3" href="/examples/navbar" variant="shadow" color="misc">11</:item>
+      <:item icon="hero-chart-bar" href="/examples/navbar" variant="unbordered" color="warning">
+      </:item>
+    </.speed_dial>
+
+    <!--{inspect(assigns)}-->
+
+    <p>Window size: {@windowsize}ms</p>
+
+    <.form for={@form} phx-change="test">
+      <.range_field
+        appearance="custom"
+        value={@windowsize}
+        color="warning"
+        size="extra_small"
+        min="1000"
+        field={@form[:windowsize]}
+        id="custom-range-1"
+        max="60000"
+        name="windowsize"
+        step="500"
+        phx-change="test"
+        phx-value-sensor_id={@sensor_id}
+        phx-value-attribute_id={@attribute_id}
+      >
+        <:range_value position="start">1sec</:range_value>
+        <:range_value position="end">60sec</:range_value>
+      </.range_field>
+
+      <.group_radio
+        variation="horizontal"
+        field={@form[:selection]}
+        name="selection"
+        space="extrasmall"
+      >
+        <:radio value="option1">Option 1</:radio>
+        <:radio value="option2">Option 2</:radio>
+        <:radio value="option3">Option 3</:radio>
+        <:radio value="option4" checked>Option 4</:radio>
+      </.group_radio>
+
+      <.radio_field
+        color="secondary"
+        name="selection"
+        value="option1"
+        space="medium"
+        field={@form[:selection]}
+        color="secondary"
+        label="Option 1 Label"
+        checked={@form[:selection] == "option1"}
+      />
+
+      <.radio_field
+        name="selection"
+        value="option2"
+        space="medium"
+        field={@form[:selection]}
+        color="secondary"
+        label="Option 2 Label"
+        checked={@form[:selection] == "option2"}
+      />
+
+      <.radio_field
+        name="selection"
+        value="option3"
+        space="medium"
+        field={@form[:selection]}
+        color="secondary"
+        label="Option 3 Label"
+        checked={@form[:selection] == "option3"}
+      />
+
+      <label for="windowsize">Window Size:</label>
+      <input
+        type="number"
+        name="windowsize2"
+        id="windowsize"
+        value={@windowsize}
+        min="1000"
+        max="60000"
+        step="500"
+        phx-value-sensor_id={@sensor_id}
+        phx-value-attribute_id={@attribute_id}
+      />
+      <button type="submit">Update</button>
+
+      <.tooltip text="This is text" position="bottom">
+        <.icon name="hero-trash" size="sm">
+          This is Tooltip a long text for bottom tooltip
+        </.icon>
+      </.tooltip>
+    </.form>
+
+    <input
+      type="number"
+      value={@windowsize}
+      class="w-20"
+      phx-keyup="test"
+      phx-value-sensor_id={@sensor_id}
+      phx-value-attribute_id={@attribute_id}
+    />
 
     <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
       <div

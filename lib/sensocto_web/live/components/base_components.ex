@@ -2,6 +2,8 @@ defmodule SensoctoWeb.Live.BaseComponents do
   use Phoenix.Component
   require Logger
   use Timex
+  import SensoctoWeb.Components.RangeField
+  import Phoenix.Component
 
   use Gettext,
     backend: SensoctoWeb.Gettext
@@ -12,6 +14,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
       |> Map.put(:id, "viz_" <> assigns.sensor.metadata.sensor_id <> "_" <> assigns.attribute_id)
       |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
       |> Map.put(:sensor_type, assigns.sensor.metadata.sensor_type)
+      |> Map.put(:windowsize, 10000)
       |> Map.put(:sampling_rate, assigns.sensor.metadata.sampling_rate)
       |> Map.put(
         :timestamp_formated,
@@ -64,7 +67,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
                 sensor_id={@sensor_id}
                 attribute_id={@attribute_id}
                 samplingrate={@sampling_rate}
-                timewindow="1000"
+                timewindow={@windowsize}
                 timemode="relative"
                 phx-update="ignore"
                 class="resizeable loading w-full m-0 p-0"
@@ -72,6 +75,34 @@ defmodule SensoctoWeb.Live.BaseComponents do
               >
               </sensocto-sparkline-wasm-svelte>
             </p>
+          </div>
+          <div class="flex-none">
+            <.range_field
+              appearance="custom"
+              value={@windowsize}
+              color="warning"
+              size="extra_small"
+              min="1000"
+              id="custom-range-1"
+              max="60000"
+              name="custom-range"
+              step="500"
+              phx-keyup="test"
+              phx-value-sensor_id={@sensor_id}
+              phx-value-attribute_id={@attribute_id}
+            >
+              <:range_value position="start">1sec</:range_value>
+              <:range_value position="end">60sec</:range_value>
+            </.range_field>
+
+            <input
+              type="number"
+              value={@windowsize}
+              class="w-20"
+              phx-keyup="test"
+              phx-value-sensor_id={@sensor_id}
+              phx-value-attribute_id={@attribute_id}
+            />
           </div>
         </div>
         """

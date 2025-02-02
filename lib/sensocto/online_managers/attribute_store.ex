@@ -71,14 +71,14 @@ defmodule Sensocto.AttributeStore do
     end)
   end
 
-  defp maybe_filter(payloads, from_timestamp, to_timestamp)
+  defp maybe_filter(payloads, from_timestamp, _to_timestamp)
        when not is_nil(from_timestamp) do
     Enum.filter(payloads, fn %{timestamp: timestamp} ->
       timestamp >= from_timestamp
     end)
   end
 
-  defp maybe_filter(payloads, from_timestamp, to_timestamp) do
+  defp maybe_filter(payloads, _from_timestamp, _to_timestamp) do
     payloads
   end
 
@@ -86,7 +86,7 @@ defmodule Sensocto.AttributeStore do
     Enum.take(payloads, limit)
   end
 
-  defp maybe_limit(payloads, limit) do
+  defp maybe_limit(payloads, _limit) do
     payloads
   end
 

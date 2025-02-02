@@ -1,9 +1,9 @@
 <script type="ts">
     import { setContext, onMount } from "svelte";
     import { Socket } from "phoenix";
-    import { getCookie, setCookie } from "./utils.js";
+    import { getCookie, setCookie } from "../utils.js";
 
-    import { logger } from "./logger_svelte.js";
+    import { logger } from "../logger_svelte.js";
     let loggerCtxName = "SensorService";
 
     export let socket; // Make socket a prop so it can be shared

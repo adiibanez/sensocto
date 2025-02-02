@@ -7,8 +7,9 @@
     import GeolocationClient from "./GeolocationClient.svelte";
     import BatterystatusClient from "./BatterystatusClient.svelte";
     import PushButtonClient from "./PushButtonClient.svelte";
+    import NetworkQualityMonitor from "./NetworkQualityMonitor.svelte";
 
-    import Map from "./GoogleMaps/Map.svelte";
+    import Map from "../GoogleMaps/Map.svelte";
     /*import Sparkline from "./Sparkline.svelte";
 
     let timeMode = "absolute";
@@ -95,6 +96,8 @@
         });
         socket.connect();
         console.log("connected to socket", socket);
+
+        SensorService.setupChannel("test", { sensor_type: "test" });
     });
 
     function generateTestData(startTime, interval, count, valueRange) {
@@ -113,6 +116,7 @@
 <!-- bind:data -->
 
 <SensorService bind:socket>
+    <NetworkQualityMonitor />
     <BluetoothClient />
     <IMUClient />
     <GeolocationClient />

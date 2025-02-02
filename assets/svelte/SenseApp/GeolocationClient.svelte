@@ -1,6 +1,6 @@
 <script>
   import { getContext, onDestroy } from "svelte";
-  import { logger } from "./logger_svelte.js";
+  import { logger } from "../logger_svelte.js";
   let loggerCtxName = "GoelocationClient";
 
   let sensorService = getContext("sensorService");

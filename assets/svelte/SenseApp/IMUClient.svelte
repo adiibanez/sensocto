@@ -6,7 +6,7 @@
         onMount,
     } from "svelte";
 
-    import { logger } from "./logger_svelte.js";
+    import { logger } from "../logger_svelte.js";
 
     loggerCtxName = "IMUClient";
 
@@ -38,7 +38,7 @@
     let previousTimestamp = null;
 
     let readingIMU = false;
-    let channelIdentifier = sensorService.getDeviceId() + ":imu";
+    let channelIdentifier = sensorService.getDeviceId(); // + ":imu";
 
     onMount(() => {
         // Now you can use sensorService.setupChannel, etc.
@@ -49,7 +49,7 @@
 
     onDestroy(() => {
         // ... IMU cleanup (same as before)
-        sensorService.leaveChannel(channelIdentifier);
+        //sensorService.leaveChannel(channelIdentifier);
     });
 
     function imuAvailable() {

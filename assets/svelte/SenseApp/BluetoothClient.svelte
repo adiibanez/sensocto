@@ -6,7 +6,7 @@
         onMount,
     } from "svelte";
 
-    import { logger } from "./logger_svelte.js";
+    import { logger } from "../logger_svelte.js";
 
     let sensorService = getContext("sensorService");
     let loggerCtxName = "BluetoothClient";
@@ -16,6 +16,26 @@
     export let characteristicValues = {};
 
     const dispatch = createEventDispatcher();
+
+    async function requestLEScan() {
+        navigator.bluetooth
+            .requestLEScan({
+                acceptAllAdvertisements: true,
+                keepRepeatedDevices: true,
+            })
+            .then(() => {
+                navigator.bluetooth.addEventListener(
+                    "advertisementreceived",
+                    (event) => {
+                        console.log("Advertisement received:", event);
+                        // You can process the advertisement data here
+                    },
+                );
+            })
+            .catch((error) => {
+                console.error("Error during LE scan:", error);
+            });
+    }
 
     async function scanDevices() {
         const newDevice = await navigator.bluetooth
@@ -42,6 +62,8 @@
                     "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
                     "897fdb8d-dec3-40bc-98e8-2310a58b0189", // flexsense
                 ],
+                scanMode: "balanced", // Add scan mode to keep receiving advertisements
+                keepRepeatedDevices: true, // Keep receiving advertisements from the same device
             })
             .then((device) => {
                 devices = [...devices, device];
@@ -413,6 +435,12 @@
         ensureDeviceCleanup();
     });
 </script>
+
+{#if "bluetooth" in navigator && "requestLEScan" in navigator.bluetooth}
+    <button on:click={requestLEScan} class="btn btn-blue text-xs"
+        >Request LE Scan</button
+    >
+{/if}
 
 {#if "bluetooth" in navigator}
     <button on:click={scanDevices} class="btn btn-blue text-xs">Scan BLE</button

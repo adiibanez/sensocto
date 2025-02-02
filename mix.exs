@@ -88,6 +88,7 @@ defmodule Sensocto.MixProject do
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
       {:timex, "~> 3.7"},
       {:kino, "~> 0.8.0", only: :dev}
+      # {:otp_dsl, github: "pragdave/otp_dsl"}
       # {:recode, "~> 0.7", only: :dev, override: true}
 
       # {

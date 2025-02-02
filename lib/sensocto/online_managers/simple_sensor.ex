@@ -238,6 +238,7 @@ defmodule Sensocto.SimpleSensor do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(
         :calculate_mps,
         %{sensor_id: sensor_id, message_timestamps: timestamps, mps_interval: mps_interval} =

@@ -11,7 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
+      - run: fly auth docker --verbose --debug
+      - run: docker build -t sensocto .
+      - run: docker tag sensocto registry.fly.io/sensocto
+      - run: docker push registry.fly.io/sensocto
+      
+      - run: flyctl deploy --local-only --verbose --debug
       # --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

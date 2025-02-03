@@ -99,6 +99,12 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :sensocto,
+  google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
+  # ||raise("Missing environment variable `GOOGLE_SIGNING_SECRET`!"),
+  google_redirect_uri: System.get_env("GOOGLE_REDIRECT_URI"),
+  google_client_id: System.get_env("GOOGLE_CLIENT_ID")
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

@@ -22,12 +22,21 @@ defmodule Sensocto.Accounts.User do
     strategies do
       google do
         # Sensocto.Secrets
-        client_id "708240357767-gaar1ph0fngc01mcj188vfo14mc3ilbn.apps.googleusercontent.com"
+        client_id fn _secret, _resource ->
+          Application.fetch_env(:sensocto, :google_client_id)
+        end
+
         # Sensocto.Secrets
         # redirect_uri "https://adrians-macbook-pro.local:4001/"
-        redirect_uri "https://localhost:4001/auth/user/google/callback"
+        redirect_uri fn _secret, _resource ->
+          Application.fetch_env(:sensocto, :google_redirect_uri)
+        end
+
+        # "https://localhost:4001/auth/user/google/callback"
         # Sensocto.Secrets
-        client_secret "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"
+        client_secret fn _secret, _resource ->
+          Application.fetch_env(:sensocto, :google_client_secret)
+        end
       end
 
       magic_link do

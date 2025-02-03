@@ -24,7 +24,8 @@ import topbar from "../vendor/topbar"
 import logger from "./logger.js"
 // import Hooks from "./hooks"
 import { getHooks } from "live_svelte"
-//import * as Components from "../svelte/**/*.svelte"
+import * as Components from "../svelte/**/*.svelte"
+//import * as Components from "../svelte/SenseApp.svelte"
 
 import {
   openDatabase,
@@ -325,6 +326,7 @@ workerStorage.addEventListener('message', Hooks.SensorDataAccumulator.workerEven
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
+//let mergedHooks = { ...getHooks(Components), ...Hooks };
 let mergedHooks = { ...getHooks(Components), ...Hooks };
 
 let liveSocket = new LiveSocket("/live", Socket, { hooks: mergedHooks, params: { _csrf_token: csrfToken } })

@@ -27,13 +27,18 @@ Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1, :batch_size => 1})
 
 
-Sensocto.Simulator.Application.ensure_running_count(6, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 100, :batch_size => 10000, :batch_timeout => 100 })
+Sensocto.Simulator.Application.ensure_running_count(6, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 100, :batch_size => 10000, :batch_timeout => 200 })
 
 
 Sensocto.Simulator.Application.ensure_running_count(5, 1000, 1000, %{:sensor_type => "heartrate", :sampling_rate => 1, :duration=>60, :batch_size => 20, :batch_timeout => 500})
 
- SensorSimulatorSupervisor.get_all_sensors_state()
-SensorSimulatorSupervisor.set_sensor_config("SensoctoSimEx_1:heartrate", :heart_rate, 40)
+SensorSimulatorSupervisor.get_all_sensors_state()
+SensorSimulatorSupervisor.set_sensor_config("SensoctoSimEx_5:heartrate", :heart_rate, 80)
+SensorSimulatorSupervisor.set_sensor_config("SensoctoSimEx_5:heartrate", :batch_size, 1)
+SensorSimulatorSupervisor.set_sensor_config("SensoctoSimEx_5:heartrate", :batch_window, 1)
+SensorSimulatorSupervisor.set_sensor_config("SensoctoSimEx_5:heartrate", :duration, 10)
+
+SensoctoSimEx_5:heartrate
 
 
 

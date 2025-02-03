@@ -12,6 +12,31 @@ module.exports = {
     "../lib/sensocto_web/**/*.*ex",
     "../deps/ash_authentication_phoenix/**/*.*ex",
   ],
+  //purge: [
+  //"../lib/sensocto_web/**/*.*ex",
+  //"../lib/sensocto_web.ex",
+  //"../lib/sensocto_web.ex",
+  //"./svelte/**/*.svelte",
+  //"../deps/ash_authentication_phoenix/**/*.*ex",
+  //'./js/**/*.js',
+  //],
+
+  /*safelist: [
+    'h-full', 'bg-gray-900', 'text-white', 'font-mono', 'flex-grow', 'overflow-y-auto',
+    'bg-gray-800', 'p-4', 'flex', 'justify-between', 'items-center', 'h-12', 'w-auto',
+    'text-gray-300', 'hover:text-white', 'mr-4',
+    'container', 'mx-auto', 'p-4', 'grid', 'gap-4',
+    'sm:gap-4', 'md:gap-4', 'lg:gap-4', 'xl:gap-4', 'grid-cols-1', 'sm:grid-cols-2',
+    'lg:grid-cols-3', 'xl:grid-cols-6', '2xl:grid-cols-6',
+    'hidden', 'bg-gray-800', 'p-4', 'rounded-lg', 'fixed', 'bottom-0', 'right-0', 'w-64', 'max-h-[80%]', 'overflow-y-auto',
+    'btn', 'btn-blue',
+    'fixed', 'top-2', 'right-2', 'mr-2', 'w-80', 'sm:w-96', 'z-50', 'rounded-lg', 'p-3', 'ring-1', 'bg-rose-50', 'text-rose-900', 'shadow-md', 'ring-rose-500',
+    'opacity-40', 'group-hover:opacity-70',
+    'flex', 'items-center', 'gap-1.5', 'text-sm', 'font-semibold', 'leading-6',
+    'mt-2', 'text-sm', 'leading-5',
+    'group', 'absolute', 'top-1', 'right-1', 'p-2',
+    'animate-spin'
+  ],*/
   theme: {
     extend: {
       colors: {

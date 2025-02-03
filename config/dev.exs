@@ -10,6 +10,17 @@ config :sensocto, Sensocto.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+config :tailwind,
+  version: "3.4.0",
+  sensocto: [
+    args: ~w(
+      --config=tailwind.config.js
+      --input=css/app.css
+      --output=../priv/static/assets/app.css
+    ),
+    cd: Path.expand("../assets", __DIR__)
+  ]
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

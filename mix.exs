@@ -90,7 +90,6 @@ defmodule Sensocto.MixProject do
       {:timex, "~> 3.7"},
       {:kino, "~> 0.8.0", only: :dev},
       {:observer_cli, "~> 1.8"}
-      # {:otp_dsl, github: "pragdave/otp_dsl"}
       # {:recode, "~> 0.7", only: :dev, override: true}
 
       # {

@@ -5,8 +5,11 @@ defmodule Sensocto.SensorSimulatorGenServer do
   alias Sensocto.BiosenseData
 
   @socket_opts [
-    url: "ws://localhost:4000/socket/websocket"
-    # url: "wss://sensocto.fly.dev/socket/websocket"
+    #url: "ws://localhost:4000/socket/websocket"
+    #url: "wss://sensocto.fly.dev/socket/websocket"
+    url: "ws://192.168.1.195:4000/socket/websocket"
+    #url: "wss://sensocto.ddns.net/socket/websocket"
+    #https://sensocto.ddns.net/
   ]
 
   # Max interval in milliseconds for sending messages

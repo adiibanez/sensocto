@@ -26,7 +26,7 @@ let optsClient = {
     // target: "es2017",
     conditions: ["svelte", "browser"],
     outdir: "../priv/static/assets",
-    logLevel: "debug",
+    logLevel: (deploy) ? "info" : "debug",
     sourcemap: watch ? "inline" : false,
     tsconfig: "./tsconfig.json",
     // external: [

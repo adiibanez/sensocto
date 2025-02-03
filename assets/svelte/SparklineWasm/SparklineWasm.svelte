@@ -70,6 +70,7 @@
                 processAccumulatorEvent(dataStore, sensor_id, attribute_id, e);
             }
         };
+
         const handleStorageWorkerEvent = (e) => {
             logger.log(
                 loggerCtxName,

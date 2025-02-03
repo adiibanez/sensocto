@@ -42,6 +42,31 @@ import {
 window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
 let Hooks = {}
 
+
+Hooks.Formless = {
+  mounted() {
+
+    console.log('Formless mount', this.el.dataset.sensor_id, this.el.dataset.attribute_id);
+
+    this.el.addEventListener('change', event => {
+
+      console.log('Formless change', this.el.dataset.event, this.el.dataset.sensor_id, this.el.dataset.attribute_id, this.el.value);
+
+      const eventName = this.el.dataset.event
+      const sensorId = this.el.dataset.sensor_id;
+      const attributeId = this.el.dataset.attribute_id;
+
+      const payload = {
+        sensor_id: sensorId,
+        attribute_id: attributeId,
+        value: event.target.value
+      };
+
+      this.pushEvent(eventName, payload);
+    })
+  }
+}
+
 Hooks.ResizeDetection = {
   isResizing() {
     const mainElement = document.getElementById("main");

@@ -71,7 +71,8 @@ defmodule Sensocto.MixProject do
       # {:bandit, "~> 1.0", github: "mtrudel/bandit", branch: "gc_on_websocket"}
       {:broadway, "~> 1.0"},
       {:broadway_dashboard, "~> 0.4.0"},
-      {:live_svelte, "~> 0.6"},
+      # {:live_svelte, "~> 0.15.0-rc.6"},
+      {:live_svelte, "~> 0.14.1"},
       # {:live_svelte, github: "woutdp/live_svelte", tag: "svelte-5"},
       # {:igniter, "~> 0.5", only: [:dev, :test]},
       # {:rewrite, "~> 1.1.1", only: [:dev], override: true},
@@ -87,7 +88,8 @@ defmodule Sensocto.MixProject do
       {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
       {:timex, "~> 3.7"},
-      {:kino, "~> 0.8.0", only: :dev}
+      {:kino, "~> 0.8.0", only: :dev},
+      {:observer_cli, "~> 1.8"}
       # {:otp_dsl, github: "pragdave/otp_dsl"}
       # {:recode, "~> 0.7", only: :dev, override: true}
 

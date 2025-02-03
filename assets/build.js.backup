@@ -18,7 +18,7 @@ let optsClient = {
         "js/indexeddb.js",
         // "js/sparkline-wasm-element.js",
         //"js/wasm_sparkline_bg.js",
-        // "js/wasm_sparkline_bg.wasm",
+        //"js/wasm_sparkline_bg.wasm",
         // ... add any other custom entry points ...
     ],
     bundle: true,
@@ -26,13 +26,13 @@ let optsClient = {
     // target: "es2017",
     conditions: ["svelte", "browser"],
     outdir: "../priv/static/assets",
-    logLevel: "debug",
+    logLevel: "info",
     sourcemap: watch ? "inline" : false,
     tsconfig: "./tsconfig.json",
-    // external: [
-    //     "/fonts/*",
-    //     "/images/*"
-    // ],
+    external: [
+        "/fonts/*",
+        "/images/*"
+    ],
     plugins: [
         importGlobPlugin(),
 
@@ -75,8 +75,8 @@ function copyFile(source, target) {
 function copyAssets() {
 
 
-    copyFile('./js/wasm_sparkline_bg.js', '../priv/static/assets/wasm_sparkline_bg.js');
-    copyFile('./js/wasm_sparkline_bg.wasm', '../priv/static/assets/wasm_sparkline_bg.wasm');
+    copyFile(path.join(__dirname, './js/wasm_sparkline_bg.js'), path.join(__dirname, '../priv/static/assets/wasm_sparkline_bg.js'));
+    copyFile(path.join(__dirname, './js/wasm_sparkline_bg.wasm'), path.join(__dirname, '../priv/static/assets/wasm_sparkline_bg.wasm'));
 
     const imagesDir = path.join(__dirname, './images');
     const destImagesDir = path.join(__dirname, '../priv/static/images');
@@ -117,42 +117,53 @@ function copyAssets() {
     }
 }
 
-// let optsServer = {
-//     entryPoints: ["js/server.js"],
-//     platform: "node",
-//     bundle: true,
-//     minify: false,
-//     target: "node19.6.1",
-//     conditions: ["svelte"],
-//     outdir: "../priv/svelte",
-//     logLevel: "info",
-//     sourcemap: true, // Enable source maps
-//     tsconfig: "./tsconfig.json",
-//     plugins: [
-//         importGlobPlugin(),
-//         sveltePlugin({
-//             preprocess: sveltePreprocess(),
-//             compilerOptions: { dev: !deploy, hydratable: true, generate: "ssr", customElement: true },
-//         }),
-//     ],
-//     assetNames: "[name]",
-// };
+let optsServer = {
+    entryPoints: ["js/server.js"],
+    platform: "node",
+    bundle: true,
+    minify: false,
+    target: "node19.6.1",
+    conditions: ["svelte"],
+    outdir: "../priv/svelte",
+    logLevel: "info",
+    sourcemap: true, // Enable source maps
+    tsconfig: "./tsconfig.json",
+    plugins: [
+        importGlobPlugin(),
+        sveltePlugin({
+            preprocess: sveltePreprocess(),
+            compilerOptions: { dev: !deploy, hydratable: true, generate: "ssr", customElement: true },
+        }),
+    ],
+    // external: ["svelte/server", "svelte", "svelte/internal/client"],
+    assetNames: "[name]",
+};
 
 if (watch) {
     console.log("esbuild Watching...");
     copyAssets();
+
     esbuild
         .context(optsClient)
+        .then(ctx => ctx.watch())
+        .catch(_error => process.exit(1))
+
+    esbuild
+        .context(optsServer)
         .then(ctx => ctx.watch())
         .catch(_error => process.exit(1))
 
 } else if (deploy) {
     console.log("esbuild Deploying...");
     copyAssets();
-    esbuild.build(optsClient)
-    // .context(optsClient)
-    // .then(process.exit(0))
-    // .catch(_error => process.exit(1))
+
+    esbuild.build(optsClient);
+    // esbuild.build(optsServer);
+
+    esbuild
+        .context(optsClient)
+        .then(process.exit(0))
+        .catch(_error => process.exit(1))
 }
 // esbuild
 //     .context(optsServer)

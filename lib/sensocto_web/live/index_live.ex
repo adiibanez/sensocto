@@ -264,6 +264,11 @@ defmodule SensoctoWeb.IndexLive do
      )}
   end
 
+  def handle_event("test", params, socket) do
+    Logger.info("Test event #{inspect(params)}")
+    {:noreply, socket}
+  end
+
   def handle_event(
         "attribute_windowsize_changed",
         %{"sensor_id" => sensor_id, "attribute_id" => attribute_id, "windowsize" => windowsize} =

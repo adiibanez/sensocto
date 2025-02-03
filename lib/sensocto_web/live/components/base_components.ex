@@ -87,9 +87,16 @@ defmodule SensoctoWeb.Live.BaseComponents do
               max="60000"
               name="custom-range"
               step="500"
-              phx-keyup="test"
-              phx-value-sensor_id={@sensor_id}
-              phx-value-attribute_id={@attribute_id}
+              rest={
+                %{
+                  "phx-hook" => "Formless",
+                  "data-event" => "update-parameter",
+                  "data-parameter" => "windowsize",
+                  # "phx-debounce" => "500",
+                  "data-sensor_id" => @sensor_id,
+                  "data-attribute_id" => @attribute_id
+                }
+              }
             >
               <:range_value position="start">1sec</:range_value>
               <:range_value position="end">60sec</:range_value>

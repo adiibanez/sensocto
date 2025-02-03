@@ -78,7 +78,9 @@ RUN mix compile
 COPY config/runtime.exs config/
 
 # COPY rel rel
-RUN mix release
+#RUN mix release
+RUN mix phx.gen.release
+RUN MIX_ENV=prod mix release
 
 # # start a new build stage so that the final image will only contain
 # # the compiled release and other runtime necessities
@@ -88,17 +90,16 @@ RUN apt-get update -y && \
     apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
-RUN apt-get update -y && \
-    apt-get install -y python3 python3-pip
-RUN apt-get update -y && apt-get install -y pipx
-#RUN pip3 install --upgrade pip
-#    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+# RUN apt-get update -y && \
+#     apt-get install -y python3 python3-pip
+# RUN apt-get update -y && apt-get install -y pipx
+# #RUN pip3 install --upgrade pip
+# #    && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
-#RUN pipx install --no-cache-dir neurokit2
-RUN pipx install --include-deps neurokit2
+# # #RUN pipx install --no-cache-dir neurokit2
+# # RUN pipx install --include-deps neurokit2
 
-
-# # Set the locale
+# # # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
 ENV LANG=en_US.UTF-8
@@ -114,14 +115,14 @@ RUN chown nobody /app
 # set runner ENV
 ENV MIX_ENV="prod"
 
-# Only copy the final release from the build stage
+# # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/sensocto ./
 
-USER nobody
+# USER nobody
 
-# If using an environment that doesn't automatically reap zombie processes, it is
-# advised to add an init process such as tini via `apt-get install`
-# above and adding an entrypoint. See https://github.com/krallin/tini for details
-# ENTRYPOINT ["/tini", "--"]
+# # If using an environment that doesn't automatically reap zombie processes, it is
+# # advised to add an init process such as tini via `apt-get install`
+# # above and adding an entrypoint. See https://github.com/krallin/tini for details
+# # ENTRYPOINT ["/tini", "--"]
 
-CMD ["/app/bin/server"]
+# CMD ["/app/bin/server"]

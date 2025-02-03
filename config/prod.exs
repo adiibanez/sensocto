@@ -14,25 +14,6 @@ config :sensocto, Sensocto.Mailer,
   adapter: Swoosh.Adapters.SMTP2GO,
   api_key: System.get_env("SMTP2GO_APIKEY")
 
-"""
-config :sensocto, Sensocto.Mailer,
-adapter: Swoosh.Adapters.SMTP,
-relay: System.get_env("MAILER_SMTP_HOST"),
-username: System.get_env("MAILER_SMTP_USERNAME"),
-password: System.get_env("MAILER_SMTP_PASSWORD"),
-ssl: true,
-tls: :always,
-auth: :always,
-port: 1025,
-#dkim: [
-#  s: "default", d: "domain.com",
-#  private_key: {:pem_plain, File.read!("priv/keys/domain.private")}
-#],
-retries: 2,
-no_mx_lookups: false
-
-"""
-
 # Disable Swoosh Local Memory Storage
 config :swoosh, local: false
 

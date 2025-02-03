@@ -27,7 +27,7 @@ let optsClient = {
     conditions: ["svelte", "browser"],
     outdir: "../priv/static/assets",
     logLevel: "info",
-    sourcemap: true, // Enable source maps
+    sourcemap: !deploy, // Enable source maps
     tsconfig: "./tsconfig.json",
     plugins: [
         importGlobPlugin(),
@@ -58,31 +58,31 @@ let optsClient = {
     format: 'esm'
 };
 
-let optsServer = {
-    entryPoints: ["js/server.js"],
-    platform: "node",
-    bundle: true,
-    minify: false,
-    target: "node19.6.1",
-    conditions: ["svelte"],
-    outdir: "../priv/svelte",
-    logLevel: "info",
-    sourcemap: true, // Enable source maps
-    tsconfig: "./tsconfig.json",
-    plugins: [
-        importGlobPlugin(),
-        sveltePlugin({
-            preprocess: sveltePreprocess(),
-            compilerOptions: { dev: !deploy, hydratable: true, generate: "ssr", customElement: true },
-        }),
-    ],
-    assetNames: "[name]",
-};
+// let optsServer = {
+//     entryPoints: ["js/server.js"],
+//     platform: "node",
+//     bundle: true,
+//     minify: false,
+//     target: "node19.6.1",
+//     conditions: ["svelte"],
+//     outdir: "../priv/svelte",
+//     logLevel: "info",
+//     sourcemap: true, // Enable source maps
+//     tsconfig: "./tsconfig.json",
+//     plugins: [
+//         importGlobPlugin(),
+//         sveltePlugin({
+//             preprocess: sveltePreprocess(),
+//             compilerOptions: { dev: !deploy, hydratable: true, generate: "ssr", customElement: true },
+//         }),
+//     ],
+//     assetNames: "[name]",
+// };
 
 async function buildAndCopy() {
     try {
         await esbuild.build(optsClient);
-        await esbuild.build(optsServer);
+        // await esbuild.build(optsServer);
         console.log("Build and minification completed.");
     } catch (e) {
         console.error("Build error:", e);
@@ -96,10 +96,10 @@ if (watch) {
         .then(ctx => ctx.watch())
         .catch(_error => process.exit(1))
 
-    esbuild
-        .context(optsServer)
-        .then(ctx => ctx.watch())
-        .catch(_error => process.exit(1))
+    // esbuild
+    //     .context(optsServer)
+    //     .then(ctx => ctx.watch())
+    //     .catch(_error => process.exit(1))
 
     buildAndCopy();
 } else {

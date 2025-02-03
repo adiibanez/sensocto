@@ -1,6 +1,7 @@
 defmodule SensoctoWeb.Live.PlaygroundLive do
   use SensoctoWeb, :live_view
   require Logger
+  import SensoctoWeb.Components.Button
   import SensoctoWeb.Components.RangeField
   import SensoctoWeb.Components.RadioField
   # import SensoctoWeb.Components.RadioGroup

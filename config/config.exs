@@ -99,6 +99,11 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :mime, :types, %{
+  "application/wasm" => ["wasm"],
+  "audio/flac" => ["flac"]
+}
+
 config :sensocto,
   google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
   # ||raise("Missing environment variable `GOOGLE_SIGNING_SECRET`!"),

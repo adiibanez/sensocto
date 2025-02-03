@@ -97,7 +97,7 @@
         socket.connect();
         console.log("connected to socket", socket);
 
-        SensorService.setupChannel("test", { sensor_type: "test" });
+        //SensorService.setupChannel("test", { sensor_type: "test" });
     });
 
     function generateTestData(startTime, interval, count, valueRange) {

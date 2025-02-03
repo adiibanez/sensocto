@@ -29,6 +29,10 @@ let optsClient = {
     logLevel: "info",
     sourcemap: watch ? "inline" : false,
     tsconfig: "./tsconfig.json",
+    external: [
+        "/fonts/*",
+        "/images/*"
+    ],
     plugins: [
         importGlobPlugin(),
 
@@ -57,6 +61,18 @@ let optsClient = {
     target: 'es2022',
     format: 'esm'
 };
+
+
+function copyFile(source, target) {
+    const targetDir = path.dirname(target);
+
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+    }
+    fs.copyFileSync(source, target);
+    console.log(`Copied file from: ${source} to: ${target}`)
+}
+
 
 // let optsServer = {
 //     entryPoints: ["js/server.js"],
@@ -95,7 +111,6 @@ if (watch) {
         .context(optsClient)
         .then(ctx => ctx.watch())
         .catch(_error => process.exit(1))
-
     // esbuild
     //     .context(optsServer)
     //     .then(ctx => ctx.watch())

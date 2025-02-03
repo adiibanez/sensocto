@@ -161,26 +161,14 @@ defmodule SensoctoWeb.Live.BaseComponents do
   def render_attribute_header(assigns) do
     ~H"""
     <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
-       {@attribute.name}
-       <Heroicons.icon
-        name="trash"
-        type="outline"
-        class="h-4 w-4 float-right"
-        phx-click="clear-attribute"
-        phx-value-sensor_id={@sensor_id}
-        phx-value-attribute_id={@attribute.id}
-       />
-     </p>
-     """
-  end
-      {@sensor_type}: {@timestamp_formated}
+      {@attribute.name}
       <Heroicons.icon
         name="trash"
         type="outline"
         class="h-4 w-4 float-right"
         phx-click="clear-attribute"
         phx-value-sensor_id={@sensor_id}
-        phx-value-attribute_id={@attribute_id}
+        phx-value-attribute_id={@attribute.id}
       />
     </p>
     """

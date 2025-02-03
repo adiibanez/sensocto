@@ -62,7 +62,6 @@ let optsClient = {
     format: 'esm'
 };
 
-
 function copyFile(source, target) {
     const targetDir = path.dirname(target);
 
@@ -73,6 +72,45 @@ function copyFile(source, target) {
     console.log(`Copied file from: ${source} to: ${target}`)
 }
 
+function copyAssets() {
+    const imagesDir = path.join(__dirname, './images');
+    const destImagesDir = path.join(__dirname, '../priv/static/images');
+
+    console.log("images:", imagesDir);
+
+    if (fs.existsSync(imagesDir)) {
+        console.log(`Copying images from: ${imagesDir} to: ${destImagesDir}`)
+        fs.readdirSync(imagesDir).forEach(file => {
+            const sourceFile = path.join(imagesDir, file);
+            const destFile = path.join(destImagesDir, file);
+            if (fs.statSync(sourceFile).isFile()) {
+                copyFile(sourceFile, destFile)
+            }
+        })
+
+    } else {
+        console.log(`No images directory found. ${imagesDir}`)
+    }
+
+    const fontsDir = path.join(__dirname, './fonts');
+    const destFontsDir = path.join(__dirname, '../priv/static/fonts');
+
+    console.log("fonts:", fontsDir);
+
+    if (fs.existsSync(fontsDir)) {
+        console.log(`Copying fonts from: ${fontsDir} to: ${destFontsDir}`)
+        fs.readdirSync(fontsDir).forEach(file => {
+            const sourceFile = path.join(fontsDir, file);
+            const destFile = path.join(destFontsDir, file);
+            if (fs.statSync(sourceFile).isFile()) {
+                copyFile(sourceFile, destFile)
+            }
+        })
+
+    } else {
+        console.log(`No fonts directory found. ${fontsDir}`)
+    }
+}
 
 // let optsServer = {
 //     entryPoints: ["js/server.js"],
@@ -95,28 +133,26 @@ function copyFile(source, target) {
 //     assetNames: "[name]",
 // };
 
-async function buildAndCopy() {
-    try {
-        await esbuild.build(optsClient);
-        // await esbuild.build(optsServer);
-        console.log("Build and minification completed.");
-    } catch (e) {
-        console.error("Build error:", e);
-        process.exit(1);
-    }
-}
-
 if (watch) {
+    console.log("esbuild Watching...");
+    copyAssets();
+
     esbuild
         .context(optsClient)
         .then(ctx => ctx.watch())
         .catch(_error => process.exit(1))
-    // esbuild
-    //     .context(optsServer)
-    //     .then(ctx => ctx.watch())
-    //     .catch(_error => process.exit(1))
 
-    buildAndCopy();
-} else {
-    buildAndCopy();
+} else if (deploy) {
+    console.log("esbuild Deploying...");
+    copyAssets();
+
+    esbuild
+        .context(optsClient)
+        .then(process.exit(0))
+        .catch(_error => process.exit(1))
 }
+// esbuild
+//     .context(optsServer)
+//     .then(ctx => ctx.watch())
+//     .catch(_error => process.exit(1))
+

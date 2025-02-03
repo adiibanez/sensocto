@@ -85,7 +85,7 @@ RUN mix compile
 # Changes to config/runtime.exs don't require recompiling the code
 COPY config/runtime.exs config/
 
-COPY rel rel
+# COPY rel rel
 RUN mix phx.gen.release
 RUN mix release
 

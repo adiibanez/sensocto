@@ -1,10 +1,11 @@
 name: Fly Deploy
 on:
   push:
-    branches:
-      - main    # change to main if needed
-      
-  
+    tags:
+      - '*'
+    #branches:
+    #  - main    # change to main if needed
+
 jobs:
   deploy:
     env:

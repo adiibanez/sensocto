@@ -134,7 +134,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
       |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
 
     ~H"""
-    <div class="flex items-right m-0 p-0">
+    <div class="flex items-right m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
       <p class="flex-none font-bold text-s" style="border:0 solid white">
         {@sensor_name}
       </p>
@@ -160,7 +160,19 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
   def render_attribute_header(assigns) do
     ~H"""
-    <p class="text-xs text-gray-500">
+    <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
+       {@attribute.name}
+       <Heroicons.icon
+        name="trash"
+        type="outline"
+        class="h-4 w-4 float-right"
+        phx-click="clear-attribute"
+        phx-value-sensor_id={@sensor_id}
+        phx-value-attribute_id={@attribute.id}
+       />
+     </p>
+     """
+  end
       {@sensor_type}: {@timestamp_formated}
       <Heroicons.icon
         name="trash"

@@ -14,6 +14,8 @@ defmodule SensoctoWeb.Live.BaseComponents do
       |> Map.put(:id, "viz_" <> assigns.sensor.metadata.sensor_id <> "_" <> assigns.attribute_id)
       |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
       |> Map.put(:sensor_type, assigns.sensor.metadata.sensor_type)
+      |> Map.put(:attribute_name, assigns.attribute_id)
+      |> Map.put(:attribute_id, assigns.attribute_id)
       |> Map.put(:windowsize, 10000)
       |> Map.put(:sampling_rate, assigns.sensor.metadata.sampling_rate)
       |> Map.put(
@@ -161,14 +163,14 @@ defmodule SensoctoWeb.Live.BaseComponents do
   def render_attribute_header(assigns) do
     ~H"""
     <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
-      {@attribute.name}
+      {@attribute_name}
       <Heroicons.icon
         name="trash"
         type="outline"
         class="h-4 w-4 float-right"
         phx-click="clear-attribute"
         phx-value-sensor_id={@sensor_id}
-        phx-value-attribute_id={@attribute.id}
+        phx-value-attribute_id={@attribute_id}
       />
     </p>
     """

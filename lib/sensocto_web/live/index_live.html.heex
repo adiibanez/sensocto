@@ -15,25 +15,7 @@
     <div class="w-full h-full">
       <!-- loading stage content -->
 
-      <div :if={not viewdata_ready_sensor(sensor)} class="">
-        {render_loading(8, assigns)}
-      </div>
-
-      <div :if={viewdata_ready_sensor(sensor)} class="">
-        <.render_sensor_header sensor={sensor}></.render_sensor_header>
-
-        <div :if={Enum.count(sensor.attributes)==0}>
-          {render_loading(8, assigns)}
-        </div>
-
-        <div :for={{attribute_id, attribute_data} <- sensor.attributes} class="attribute"
-          id={"#{sensor.metadata.sensor_id}_#{attribute_id}"} class="bg-gray-800 text-xs m-0 p-1"
-          phx-hook="SensorDataAccumulator" data-sensor_id={sensor.metadata.sensor_id} data-attribute_id={attribute_id}
-          data-sensor_type={attribute_id} phx-hook="SensorDataAccumulator">
-          <.attribute attribute_data={attribute_data} sensor={sensor} attribute_id={attribute_id}>
-          </.attribute>
-        </div>
-      </div>
+      <.sensor sensor_id={"#{sensor_id}"} sensor={sensor}></.sensor>
     </div>
   </div>
 </div>

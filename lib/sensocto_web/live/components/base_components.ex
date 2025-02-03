@@ -8,21 +8,63 @@ defmodule SensoctoWeb.Live.BaseComponents do
   use Gettext,
     backend: SensoctoWeb.Gettext
 
+  def sensor(assigns) do
+    assigns =
+      assigns
+      |> Map.put(:attribute_count, Enum.count(assigns.sensor.attributes))
+      |> Map.put(:sensor_type, assigns.sensor.metadata.sensor_type)
+      |> Map.put(:sampling_rate, assigns.sensor.metadata.sampling_rate)
+
+    Logger.info("sensor #{assigns.sensor_id} #{inspect(assigns.__changed__)}")
+
+    ~H"""
+    <div id={"cnt_#{@sensor_id}"} class="">
+      <.render_sensor_header sensor={@sensor}></.render_sensor_header>
+
+      <div :if={@attribute_count == 0}>
+        {render_loading(8, "#{@sensor_id}", assigns)}
+      </div>
+
+      <div
+        :for={{attribute_id, attribute_data} <- @sensor.attributes}
+        class="attribute"
+        id={"#{@sensor_id}_#{attribute_id}"}
+        class="bg-gray-800 text-xs m-0 p-1"
+        phx-hook="SensorDataAccumulator"
+        data-sensor_id={@sensor_id}
+        data-attribute_id={attribute_id}
+        data-sensor_type={attribute_id}
+        phx-hook="SensorDataAccumulator"
+      >
+        <.attribute
+          attribute_data={attribute_data}
+          sensor_id={@sensor_id}
+          sensor={@sensor}
+          attribute_id={"#{attribute_id}"}
+          sampling_rate={@sampling_rate}
+        >
+        </.attribute>
+      </div>
+    </div>
+    """
+  end
+
   def attribute(assigns) do
     assigns =
       assigns
-      |> Map.put(:id, "viz_" <> assigns.sensor.metadata.sensor_id <> "_" <> assigns.attribute_id)
-      |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
-      |> Map.put(:sensor_type, assigns.sensor.metadata.sensor_type)
+      |> Map.put(:id, "viz_#{assigns.sensor_id}_#{assigns.attribute_id}")
       |> Map.put(:attribute_name, assigns.attribute_id)
-      |> Map.put(:attribute_id, assigns.attribute_id)
+      # |> Map.put(:attribute_id, assigns.attribute_id)
       |> Map.put(:windowsize, 10000)
-      |> Map.put(:sampling_rate, assigns.sensor.metadata.sampling_rate)
       |> Map.put(
         :timestamp_formated,
         format_unix_timestamp(Enum.at(assigns.attribute_data, 0).timestamp)
       )
       |> Map.put(:payload, Enum.at(assigns.attribute_data, 0).payload)
+
+    Logger.info(
+      "attribute #{assigns.sensor_id} #{assigns.attribute_id} #{inspect(assigns.__changed__)}"
+    )
 
     case assigns.sensor.metadata.sensor_type do
       "ecg" ->
@@ -135,6 +177,8 @@ defmodule SensoctoWeb.Live.BaseComponents do
       |> Map.put(:highlighted, get_in(assigns.sensor, [:highlighted]))
       |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
 
+    Logger.info("sensor_header #{@sensor_id} #{inspect(assigns.__changed__)}")
+
     ~H"""
     <div class="flex items-right m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
       <p class="flex-none font-bold text-s" style="border:0 solid white">
@@ -142,6 +186,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
       </p>
       <p class="flex-1 float-left items-right">
         <Heroicons.icon
+          id={"highlight_button_#{@sensor_id}"}
           name={
             if @highlighted do
               "magnifying-glass-minus"
@@ -161,10 +206,13 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_attribute_header(assigns) do
+    Logger.info("sensor_header #{@sensor_id} #{@attribute_id} #{inspect(assigns.__changed__)}")
+
     ~H"""
     <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
       {@attribute_name}
       <Heroicons.icon
+        id={"trash_#{@sensor_id}_#{@attribute_id}"}
         name="trash"
         type="outline"
         class="h-4 w-4 float-right"
@@ -176,9 +224,12 @@ defmodule SensoctoWeb.Live.BaseComponents do
     """
   end
 
-  def render_loading(_size, assigns) do
+  def render_loading(_size, identifier, assigns) do
+    assigns = assigns |> Map.put(:identifier, identifier)
+
     ~H"""
     <svg
+      id={"loading_spinner_#{@identifier}"}
       aria-hidden="true"
       class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
       viewBox="0 0 100 101"
@@ -209,12 +260,12 @@ defmodule SensoctoWeb.Live.BaseComponents do
               timestamp_int
 
             _ ->
-              Logger.debug("invalid format unix timestamp #{inspect(timestamp_string)}")
+              Logger.info("invalid format unix timestamp #{inspect(timestamp_string)}")
               nil
           end
 
         _ ->
-          Logger.debug("invalid format unix timestamp #{inspect(timestamp)}")
+          Logger.info("invalid format unix timestamp #{inspect(timestamp)}")
           nil
       end
 
@@ -230,7 +281,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
         formatted_timestamp
       rescue
         _ ->
-          Logger.debug("invalid format unix timestamp #{inspect(timestamp)}")
+          Logger.info("invalid format unix timestamp #{inspect(timestamp)}")
           "Invalid Date"
       end
     else
@@ -246,26 +297,26 @@ defmodule SensoctoWeb.Live.BaseComponents do
     case is_list(attribute_data) and Map.has_key?(first_attribute_data, :payload) and
            Map.has_key?(first_attribute_data, :timestamp) do
       true ->
-        # Logger.debug("Viewdata ready attr YEP")
+        # Logger.info("Viewdata ready attr YEP")
         true
 
       false ->
-        # Logger.debug("Viewdata ready attr NOPE")
+        # Logger.info("Viewdata ready attr NOPE")
         false
     end
   end
 
   def viewdata_ready_sensor(sensor) do
-    # Logger.debug("Viewdata ready sensor: #{Map.has_key?(sensor, :metadata)}")
+    # Logger.info("Viewdata ready sensor: #{Map.has_key?(sensor, :metadata)}")
 
     if is_map(sensor) do
       case Map.has_key?(sensor, :metadata) do
         true ->
-          # Logger.debug("Viewdata ready sensor YEP: #{Map.has_key?(sensor, :metadata)}")
+          # Logger.info("Viewdata ready sensor YEP: #{Map.has_key?(sensor, :metadata)}")
           true
 
         false ->
-          # Logger.debug("Viewdata ready sensor NOPE: #{Map.has_key?(sensor, :metadata)}")
+          # Logger.info("Viewdata ready sensor NOPE: #{Map.has_key?(sensor, :metadata)}")
           false
       end
     else

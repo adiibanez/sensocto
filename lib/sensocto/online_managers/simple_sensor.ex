@@ -128,7 +128,7 @@ defmodule Sensocto.SimpleSensor do
   @impl true
   def handle_call(:get_state, _from, %{sensor_id: sensor_id} = state) do
     sensor_state = %{
-      metadata: state,
+      metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
       attributes: AttributeStore.get_attributes(sensor_id, 1)
     }
 

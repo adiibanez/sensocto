@@ -264,7 +264,7 @@ defmodule SensoctoWeb.IndexLive do
      )}
   end
 
-  def handle_event("test", params, socket) do
+  def handle_event("update-parameter", params, socket) do
     Logger.info("Test event #{inspect(params)}")
     {:noreply, socket}
   end

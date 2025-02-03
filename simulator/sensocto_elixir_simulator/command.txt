@@ -20,14 +20,14 @@ Sensocto.Simulator.Application.ensure_running_count(7, 0, 0, %{:sensor_type => "
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 10})
 
 
-Sensocto.Simulator.Application.ensure_running_count(50, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1})
+Sensocto.Simulator.Application.ensure_running_count(20, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1})
 
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1, :duration => 5})
 
 Sensocto.Simulator.Application.ensure_running_count(1, 0, 0, %{:sensor_type => "heartrate", :sampling_rate => 1, :batch_size => 1})
 
 
-Sensocto.Simulator.Application.ensure_running_count(6, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 100, :batch_size => 10000, :batch_timeout => 200 })
+Sensocto.Simulator.Application.ensure_running_count(22, 0, 0, %{:sensor_type => "ecg", :sampling_rate => 100, :batch_size => 10000, :batch_timeout => 1000 })
 
 
 Sensocto.Simulator.Application.ensure_running_count(5, 1000, 1000, %{:sensor_type => "heartrate", :sampling_rate => 1, :duration=>60, :batch_size => 20, :batch_timeout => 500})

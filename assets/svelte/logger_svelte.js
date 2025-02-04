@@ -2,7 +2,7 @@
 let enabled = false;
 let enabledComponents = [
     // "SensorDataService",
-    "SparklineWasm",
+    // "SparklineWasm",
     //     "ChartJS",
     // "ECGVisualization",
     //     "IMUClient",

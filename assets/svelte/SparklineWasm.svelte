@@ -1,4 +1,7 @@
+<!--<svelte:options customElement="sensocto-sparkline-wasm-svelte" />-->
+
 <script>
+    // https://dustinpfister.github.io/2020/03/10/canvas-drag/
     import { onMount, onDestroy, tick } from "svelte";
     import { logger } from "./logger_svelte.js";
     import { Socket } from "phoenix";
@@ -14,7 +17,7 @@
 
     export let id;
     export let live;
-    export let width;
+    export let width = 30;
     export let height = 30;
     export let sensor_id;
     export let attribute_id;
@@ -51,16 +54,6 @@
             wasmInitialized = true;
         } else {
             logger.log(loggerCtxName, "draw_sparkline NOT found");
-        }
-    }
-
-    function updateCanvasDimensions() {
-        if (canvas) {
-            width = canvas.clientWidth;
-            height = canvas.clientHeight;
-            canvas.width = width;
-            canvas.height = height;
-            render();
         }
     }
 
@@ -143,6 +136,7 @@
             }
         };
 
+        window.addEventListener("resize", handleResizeEnd);
         window.addEventListener("resizeend", handleResizeEnd);
         window.addEventListener(
             "accumulator-data-event",
@@ -153,7 +147,7 @@
             handleStorageWorkerEvent,
         );
         window.addEventListener("seeddata-event", handleSeedDataEvent);
-        window.addEventListener("resize", updateCanvasDimensions);
+        window.addEventListener("resize", getAvailableSize);
 
         observer = new IntersectionObserver(
             (entries) => {
@@ -168,8 +162,12 @@
         );
 
         observer.observe(canvas);
+        availableSize = getAvailableSize();
+        console.log("Here", availableSize);
+        width = availableSize.w;
 
-        updateCanvasDimensions();
+        console.log("onMount", availableSize, width);
+        render();
 
         return () => {
             window.removeEventListener("resizeend", handleResizeEnd);
@@ -182,7 +180,7 @@
                 handleStorageWorkerEvent,
             );
             window.removeEventListener("seeddata-event", handleSeedDataEvent);
-            window.removeEventListener("resize", updateCanvasDimensions);
+            window.removeEventListener("resize", handleResizeEnd);
             if (observer) {
                 observer.unobserve(canvas);
             }
@@ -212,22 +210,22 @@
         if (wasmInitialized == false || !isVisible) {
             return;
         }
-        // logger.log(
-        //     loggerCtxName,
-        //     "Js args",
-        //     data.slice(-maxsamples),
-        //     width,
-        //     height,
-        //     "#ffc107",
-        //     1,
-        //     20,
-        //     2000,
-        //     100,
-        //     "relative",
-        //     false,
-        //     minvalue,
-        //     maxvalue,
-        // );
+        logger.log(
+            loggerCtxName,
+            "Js args",
+            //data.slice(-maxsamples),
+            width,
+            height,
+            "#ffc107",
+            1,
+            20,
+            2000,
+            100,
+            "relative",
+            false,
+            minvalue,
+            maxvalue,
+        );
         window.draw_sparkline(
             data.slice(-maxsamples),
             width,
@@ -246,7 +244,7 @@
     }
     const handleResizeEnd = (e) => {
         cntElement = document.getElementById(id);
-        getAvailableSize();
+        availableSize = getAvailableSize();
 
         if (isVisible) {
             logger.log(loggerCtxName, "handleResizeEnd", e);
@@ -258,10 +256,11 @@
         maxsamples = (timewindow / 1000) * samplingrate * width;
     }
 
-    $: if (cntElementOffsetWidth) {
-        console.log("Change in cntElement offsetWidth");
+    $: if (availableSize) {
         availableSize = getAvailableSize();
-        width = availableSize.width;
+        width = availableSize.w;
+
+        console.log("Change in cntElement offsetWidth", availableSize);
     }
 
     const getAvailableSize = () => {
@@ -302,7 +301,7 @@
     };
 </script>
 
-<canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
+<canvas class="resizeable_" bind:this={canvas} {width} {height}></canvas>
 
 {#if true}
     <div class="text-xs">

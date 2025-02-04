@@ -59,12 +59,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             timewindow: 10000,
             timemode: "relative",
             minvalue: 0,
-            maxvalue: 0,
-            width: 100
+            maxvalue: 0
           }
         }
         socket={@socket}
-        class="resizeable loading w-full m-0 p-0"
+        class="loading w-full m-0 p-0"
       />
       
     <!--<sensocto-sparkline-wasm-svelte

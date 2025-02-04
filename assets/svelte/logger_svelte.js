@@ -4,13 +4,13 @@ let enabledComponents = [
     // "SensorDataService",
     // "SparklineWasm",
     //     "ChartJS",
-    // "ECGVisualization",
+    "ECGVisualization",
     //     "IMUClient",
     // "ScaledPoints", "Sparkline",
     // "BluetoothClient",
-    // "SensorService",
-    // "SensorDataService",
-    // "IndexedDB",
+    //"SensorService",
+    //"SensorDataService",
+    //"IndexedDB",
     // "IndexedDB.Worker",
 ];
 

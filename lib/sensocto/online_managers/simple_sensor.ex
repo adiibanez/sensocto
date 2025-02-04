@@ -129,12 +129,26 @@ defmodule Sensocto.SimpleSensor do
   def handle_call(:get_state, _from, %{sensor_id: sensor_id} = state) do
     sensor_state = %{
       metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
-      attributes: AttributeStore.get_attributes(sensor_id, 1)
+      attributes:
+        AttributeStore.get_attributes(sensor_id, 1)
+        |> Enum.map(fn x -> cleanup(x) end)
+        |> Enum.into(%{})
+        |> dbg()
     }
 
     # Logger.debug("Sensor state: #{inspect(sensor_state)}")
 
     {:reply, sensor_state, state}
+  end
+
+  def cleanup(entry) do
+    case entry do
+      {attribute_id, [entry]} ->
+        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
+
+      {attribute_id, %{}} ->
+        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
+    end
   end
 
   @impl true
@@ -179,7 +193,7 @@ defmodule Sensocto.SimpleSensor do
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
-      "measurement",
+      "measurement:#{sensor_id}",
       {
         :measurement,
         attribute
@@ -216,7 +230,7 @@ defmodule Sensocto.SimpleSensor do
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
-      "measurements_batch",
+      "measurements_batch:#{sensor_id}",
       {
         :measurements_batch,
         {sensor_id, broadcast_messages_list}

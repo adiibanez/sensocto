@@ -15,14 +15,16 @@
 
     let wasmInitialized = false;
 
-    // export let is_loading;
+    export let id;
+
     export let width;
     export let height = 30;
     export let sensor_id;
     export let attribute_id;
     export let samplingrate;
     export let timewindow;
-    // export let timemode;
+    export let timemode;
+    export let style;
     export let minvalue;
     export let maxvalue;
     // export let initialParams;
@@ -215,8 +217,8 @@
             100,
             "relative",
             false,
-            minvalue,
-            maxvalue,
+            minvalue != 0 ? minvalue : undefined,
+            maxvalue != 0 ? maxvalue : undefined,
         );
     }
     const handleResizeEnd = (e) => {
@@ -233,7 +235,7 @@
 
 <canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
 
-{#if true}
+{#if false}
     <div class="text-xs hidden">
         <!--Data points {data.length}, maxsamples: {maxsamples}, width: {width}-->
         width: {width} height: {height} timewindow: {timewindow}

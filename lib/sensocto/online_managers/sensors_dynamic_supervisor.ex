@@ -122,7 +122,9 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   def get_sensor_state(sensor_id) do
     case SimpleSensor.get_state(sensor_id) do
       %{} = sensor_state ->
-        %{"#{sensor_id}" => sensor_state}
+        %{
+          "#{sensor_id}" => sensor_state
+        }
 
       :ok ->
         Logger.warning("get_sensor_state Got :ok for #{sensor_id}")

@@ -1,9 +1,11 @@
 defmodule SensoctoWeb.Live.BaseComponents do
   use Phoenix.Component
   require Logger
+  alias Phoenix.LiveComponent
   use Timex
   import SensoctoWeb.Components.RangeField
   import Phoenix.Component
+  use LiveComponent
 
   use Gettext,
     backend: SensoctoWeb.Gettext
@@ -11,13 +13,15 @@ defmodule SensoctoWeb.Live.BaseComponents do
   def sensor(assigns) do
     assigns =
       assigns
-      |> Map.put(:attribute_count, Enum.count(assigns.sensor.attributes))
-      |> Map.put(:sensor_type, assigns.sensor.metadata.sensor_type)
-      |> Map.put(:sampling_rate, assigns.sensor.metadata.sampling_rate)
+      |> Map.put(:attribute_count, Enum.count(assigns.attributes))
+      |> Map.put(:sensor_type, assigns.sensor.sensor_type)
+      |> Map.put(:sampling_rate, assigns.sensor.sampling_rate)
 
-    Logger.info("sensor #{assigns.sensor_id} #{inspect(assigns.__changed__)}")
+    Logger.info("sensor #{assigns.sensor_id} #{inspect(assigns.__changed__, pretty: true)}")
 
     ~H"""
+    {inspect(assigns)}
+
     <div id={"cnt_#{@sensor_id}"} class="">
       <.render_sensor_header sensor={@sensor}></.render_sensor_header>
 
@@ -26,11 +30,10 @@ defmodule SensoctoWeb.Live.BaseComponents do
       </div>
 
       <div
-        :for={{attribute_id, attribute_data} <- @sensor.attributes}
+        :for={{attribute_id, attribute_data} <- @attributes}
         class="attribute"
         id={"#{@sensor_id}_#{attribute_id}"}
         class="bg-gray-800 text-xs m-0 p-1"
-        phx-hook="SensorDataAccumulator"
         data-sensor_id={@sensor_id}
         data-attribute_id={attribute_id}
         data-sensor_type={attribute_id}
@@ -66,7 +69,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
       "attribute #{assigns.sensor_id} #{assigns.attribute_id} #{inspect(assigns.__changed__)}"
     )
 
-    case assigns.sensor.metadata.sensor_type do
+    case assigns.sensor.sensor_type do
       "ecg" ->
         ~H"""
         <div>
@@ -171,13 +174,11 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_sensor_header(assigns) do
-    assigns =
-      assigns
-      |> Map.put(:sensor_name, assigns.sensor.metadata.sensor_name)
-      |> Map.put(:highlighted, get_in(assigns.sensor, [:highlighted]))
-      |> Map.put(:sensor_id, assigns.sensor.metadata.sensor_id)
+    # |> Map.put(:sensor_name, assigns.sensor.sensor_name)
+    # |> Map.put(:highlighted, get_in(assigns.sensor, [:highlighted]))
+    # |> Map.put(:sensor_id, assigns.sensor.sensor_id)
 
-    Logger.info("sensor_header #{@sensor_id} #{inspect(assigns.__changed__)}")
+    Logger.info("sensor_header #{assigns.sensor_id} #{inspect(assigns.__changed__)}")
 
     ~H"""
     <div class="flex items-right m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
@@ -206,7 +207,9 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_attribute_header(assigns) do
-    Logger.info("sensor_header #{@sensor_id} #{@attribute_id} #{inspect(assigns.__changed__)}")
+    Logger.info(
+      "sensor_header #{assigns.sensor_id} #{assigns.attribute_id} #{inspect(assigns.__changed__)}"
+    )
 
     ~H"""
     <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
@@ -227,11 +230,13 @@ defmodule SensoctoWeb.Live.BaseComponents do
   def render_loading(_size, identifier, assigns) do
     assigns = assigns |> Map.put(:identifier, identifier)
 
+    Logger.info("render_loading #{assigns.identifier} #{inspect(assigns.__changed__)}")
+
     ~H"""
     <svg
       id={"loading_spinner_#{@identifier}"}
       aria-hidden="true"
-      class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
+      class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600 place-self-center"
       viewBox="0 0 100 101"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -286,41 +291,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
       end
     else
       "Invalid Date"
-    end
-  end
-
-  def viewdata_ready_attribute(attribute_data) do
-    # TODO list vs map
-    first_attribute_data = Enum.at(attribute_data, 0)
-
-    #  Map.has_key?(first_attribute_data, :timestamp_formated)
-    case is_list(attribute_data) and Map.has_key?(first_attribute_data, :payload) and
-           Map.has_key?(first_attribute_data, :timestamp) do
-      true ->
-        # Logger.info("Viewdata ready attr YEP")
-        true
-
-      false ->
-        # Logger.info("Viewdata ready attr NOPE")
-        false
-    end
-  end
-
-  def viewdata_ready_sensor(sensor) do
-    # Logger.info("Viewdata ready sensor: #{Map.has_key?(sensor, :metadata)}")
-
-    if is_map(sensor) do
-      case Map.has_key?(sensor, :metadata) do
-        true ->
-          # Logger.info("Viewdata ready sensor YEP: #{Map.has_key?(sensor, :metadata)}")
-          true
-
-        false ->
-          # Logger.info("Viewdata ready sensor NOPE: #{Map.has_key?(sensor, :metadata)}")
-          false
-      end
-    else
-      false
     end
   end
 end

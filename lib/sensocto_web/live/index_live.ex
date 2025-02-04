@@ -1,9 +1,12 @@
 defmodule SensoctoWeb.IndexLive do
   # alias Sensocto.SimpleSensor
+  alias SensoctoWeb.Live.Components.AttributeComponent
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
   import SensoctoWeb.Live.BaseComponents
+  alias SensoctoWeb.Live.Components.SensorComponent
+  alias SensoctoWeb.StatefulSensorLiveview
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -19,8 +22,8 @@ defmodule SensoctoWeb.IndexLive do
     start = System.monotonic_time()
 
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurements_batch")
+    # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
+    # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurements_batch")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
 
     # presence tracking
@@ -48,152 +51,6 @@ defmodule SensoctoWeb.IndexLive do
     )
 
     {:ok, new_socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:measurements_batch, {sensor_id, measurements_list}},
-        socket
-      )
-      when is_list(measurements_list) do
-    start = System.monotonic_time()
-
-    Logger.debug("Received measurements_batch for sensor #{sensor_id}")
-
-    latest_measurements =
-      measurements_list
-      |> Enum.group_by(& &1.attribute_id)
-      |> Enum.map(fn {_attribute_id, measurements} ->
-        Enum.max_by(measurements, & &1.timestamp)
-      end)
-
-    updated_data =
-      Enum.reduce(latest_measurements, socket.assigns.sensors, fn measurement, acc ->
-        update_in(acc, [measurement.sensor_id], fn sensor_data ->
-          sensor_data = sensor_data || %{}
-
-          update_in(sensor_data, [:attributes], fn attributes ->
-            attributes = attributes || %{}
-
-            update_in(attributes, [measurement.attribute_id], fn list ->
-              list = list || []
-
-              case list do
-                [] ->
-                  [%{payload: measurement.payload, timestamp: measurement.timestamp}]
-
-                list ->
-                  List.update_at(list, 0, fn entry ->
-                    %{entry | payload: measurement.payload, timestamp: measurement.timestamp}
-                  end)
-              end
-            end)
-          end)
-        end)
-      end)
-
-    new_socket =
-      socket
-      |> assign(:sensors_online_count, Enum.count(socket.assigns.sensors))
-      |> assign(:sensors, updated_data)
-      |> push_event("measurements_batch", %{
-        :sensor_id => sensor_id,
-        :attributes => measurements_list
-      })
-
-    :telemetry.execute(
-      [:sensocto, :live, :handle_info, :measurement_batch],
-      %{duration: System.monotonic_time() - start},
-      %{}
-    )
-
-    {:noreply, new_socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:measurement,
-         %{
-           :payload => payload,
-           :timestamp => timestamp,
-           :attribute_id => attribute_id,
-           :sensor_id => sensor_id
-         } =
-           _sensor_data},
-        socket
-      ) do
-    start = System.monotonic_time()
-
-    #    existing_data = socket.assigns.sensors.result
-    existing_data = socket.assigns.sensors
-
-    # Logger.debug("Handle measurment #{inspect(sensor_data)}")
-
-    # IO.inspect(sensor_data, label: "Received measurement data:")
-    # IO.inspect(existing_data, label: "Existing:")
-
-    # update client
-    measurement = %{
-      :payload => payload,
-      :timestamp => timestamp,
-      :attribute_id => attribute_id,
-      :sensor_id => sensor_id
-    }
-
-    # IO.inspect(existing_data, label: "Existing data")
-
-    # |> dbg()
-
-    if is_map(existing_data) do
-      updated_data =
-        update_in(existing_data, [sensor_id], fn sensor_data ->
-          sensor_data = sensor_data || %{}
-
-          update_in(sensor_data, [:attributes], fn attributes ->
-            attributes = attributes || %{}
-
-            update_in(attributes, [attribute_id], fn list ->
-              list = list || []
-
-              case list do
-                [] ->
-                  [%{payload: payload, timestamp: timestamp}]
-
-                list ->
-                  List.update_at(list, 0, fn entry ->
-                    %{entry | payload: payload, timestamp: timestamp}
-                  end)
-              end
-            end)
-          end)
-        end)
-
-      new_socket =
-        socket
-        |> assign(:sensors_online_count, Enum.count(socket.assigns.sensors))
-        |> assign(:sensors, updated_data)
-        |> push_event("measurement", measurement)
-
-      :telemetry.execute(
-        [:sensocto, :live, :handle_info, :measurement],
-        %{duration: System.monotonic_time() - start},
-        %{}
-      )
-
-      {:noreply, new_socket}
-    else
-      Logger.debug("Something wrong with existing data #{Sensocto.Utils.typeof(existing_data)}")
-
-      :telemetry.execute(
-        [:sensocto, :live, :handle_info, :measurement],
-        %{duration: System.monotonic_time() - start},
-        %{}
-      )
-
-      {:noreply,
-       socket
-       |> push_event("measurement", measurement)}
-    end
   end
 
   @impl true
@@ -242,106 +99,6 @@ defmodule SensoctoWeb.IndexLive do
   def handle_info(msg, socket) do
     IO.inspect(msg, label: "Unknown Message")
     {:noreply, socket}
-  end
-
-  def handle_event("toggle_highlight", %{"sensor_id" => sensor_id} = params, socket) do
-    Logger.info("Received highlight event: #{inspect(params)}")
-
-    is_highlighted =
-      socket.assigns.sensors
-      |> Map.get(sensor_id)
-      |> Map.get(:highlighted)
-      |> case do
-        true -> true
-        _ -> false
-      end
-
-    {:noreply,
-     socket
-     |> assign(
-       :sensors,
-       update_in(socket.assigns.sensors, [sensor_id, :highlighted], fn _ -> not is_highlighted end)
-     )}
-  end
-
-  def handle_event("update-parameter", params, socket) do
-    Logger.info("Test event #{inspect(params)}")
-    {:noreply, socket}
-  end
-
-  def handle_event(
-        "attribute_windowsize_changed",
-        %{"sensor_id" => sensor_id, "attribute_id" => attribute_id, "windowsize" => windowsize} =
-          params,
-        socket
-      ) do
-    Logger.info("Received windowsize event: #{inspect(params)}")
-
-    {:noreply,
-     socket
-     |> assign(
-       :sensors,
-       update_in(
-         socket.assigns.sensors,
-         [sensor_id, :attributes, attribute_id, :windowsize],
-         fn _ -> windowsize end
-       )
-     )}
-  end
-
-  def handle_event(
-        "clear-attribute",
-        %{"sensor_id" => sensor_id, "attribute_id" => attribute_id} = params,
-        socket
-      ) do
-    Logger.info("clear-attribute request #{inspect(params)}")
-
-    {:noreply,
-     push_event(socket, "clear-attribute", %{
-       sensor_id: sensor_id,
-       attribute_id: attribute_id,
-       data: []
-     })}
-
-    # Phoenix.PubSub.broadcast(Sensocto.PubSub, "signal", {:signal, %{test: 1}})
-    # {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event(
-        "request-seed-data",
-        %{
-          "sensor_id" => sensor_id,
-          "attribute_id" => attribute_id,
-          "from" => from,
-          "to" => to,
-          "limit" => limit
-        } = _params,
-        socket
-      ) do
-    start = System.monotonic_time()
-    Logger.debug("request-seed_data #{sensor_id}:#{attribute_id}")
-
-    attribute_data =
-      Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
-
-    Logger.info("handle_event request-seed-data attribute_data: #{Enum.count(attribute_data)}")
-
-    new_socket =
-      socket
-      |> push_event("seeddata", %{
-        sensor_id: sensor_id,
-        attribute_id: attribute_id,
-        data: attribute_data
-      })
-
-    :telemetry.execute(
-      [:sensocto, :live, :handle_event, :request_seed_data],
-      %{duration: System.monotonic_time() - start},
-      %{}
-    )
-
-    {:noreply, new_socket}
   end
 
   @impl true

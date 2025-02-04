@@ -3,7 +3,7 @@ let enabled = false;
 
 let enabledComponents = [
     // "SensorDataService",
-    //"Hooks.SensorDataAccumulator",
+    // "Hooks.SensorDataAccumulator",
     //     "ChartJS",
     //"ECGVisualization",
     //     "IMUClient",

@@ -43,18 +43,6 @@ defmodule Sensocto.SensorSimulatorGenServer do
   def init(%{:sensor_id => sensor_id} = config) do
     Logger.info("#{sensor_id} init2 #{inspect(config)}")
 
-    # Process.send_after(
-    #   self(),
-    #   :get_data,
-    #   500
-    # )
-
-    # Process.send_after(
-    #   self(),
-    #   :connect_phoenix,
-    #   1000
-    # )
-
     Process.send_after(
       self(),
       :process_queue,
@@ -112,12 +100,6 @@ defmodule Sensocto.SensorSimulatorGenServer do
       0
     )
 
-    Process.send_after(
-      self(),
-      :process_queue,
-      3000
-    )
-
     {:noreply, state}
   end
 
@@ -135,18 +117,6 @@ defmodule Sensocto.SensorSimulatorGenServer do
       0
     )
 
-    Process.send_after(
-      self(),
-      :connect_phoenix,
-      0
-    )
-
-    Process.send_after(
-      self(),
-      :process_queue,
-      500
-    )
-
     {:noreply, state}
   end
 
@@ -162,12 +132,6 @@ defmodule Sensocto.SensorSimulatorGenServer do
       self(),
       :connect_phoenix,
       0
-    )
-
-    Process.send_after(
-      self(),
-      :process_queue,
-      500
     )
 
     {:noreply, state}
@@ -285,10 +249,11 @@ defmodule Sensocto.SensorSimulatorGenServer do
             # Schedule the first message
             # schedule_send_message(sensor_id, channel, uuid, config)
 
+
             Process.send_after(
               parent,
               :process_queue,
-              200
+              100
             )
 
             {:noreply,
@@ -296,6 +261,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
              |> Map.put(:phoenix_socket, socket)
              |> Map.put(:phoenix_channel, channel)
              |> Map.put(:phoenix_connected, true)}
+
 
           {:error, reason} ->
             Logger.warning("#{sensor_id} Failed to join channel: #{inspect(reason)}")
@@ -343,7 +309,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
     {delay_ms, _} = Integer.parse("#{delay_ms_tmp}")
 
 
-        Logger.debug("#{sensor_id} handle_cast:push_message #{message}")
+        Logger.debug("#{sensor_id} handle_cast:push_message #{inspect(message)}")
     new_queue = phx_messages_queue ++ [message |> Map.put(:timestamp, :os.system_time(:milli_seconds) + delay_ms)]
     batch_size = state[:batch_size] || 10
     batch_timeout = state[:batch_timeout] || 5000
@@ -435,6 +401,13 @@ defmodule Sensocto.SensorSimulatorGenServer do
     newstate = Map.put(state, :messages_queue, Map.get(state, :messages_queue) ++ data)
 
     # Process.send_after(self(), :process_queue, 500)
+
+    Process.send_after(
+      self(),
+      :process_queue,
+      0
+    )
+
     {:noreply, newstate |> Map.put(:get_data_updating_data, false)}
   end
 
@@ -460,13 +433,6 @@ defmodule Sensocto.SensorSimulatorGenServer do
       :connect_phoenix,
       0
     )
-
-    Process.send_after(
-      self(),
-      :process_queue,
-      1000
-    )
-
     {:noreply, state}
   end
 
@@ -488,19 +454,20 @@ defmodule Sensocto.SensorSimulatorGenServer do
   defp wait_until_connected(socket, retries \\ 0, pid) do
     Logger.debug("wait_until_connected #{retries} #{inspect(pid)}")
 
-    unless PhoenixClient.Socket.connected?(socket) or retries > 5 do
+    unless PhoenixClient.Socket.connected?(socket) or retries > 10 do
       Logger.debug("Wait 500ms until connected #{retries} #{inspect(pid)}")
-      Process.sleep(500)
+      Process.sleep(1000 * retries)
       wait_until_connected(socket, retries + 1, pid)
     end
 
-    Logger.debug("send another :connect_phoenix #{retries} #{inspect(pid)}")
+    Logger.debug("send another :process_queue #{retries} #{inspect(pid)}")
 
-    # Process.send_after(
-    #  pid,
-    #  :connect_phoenix,
-    #  0
-    # )
+    Process.send_after(
+      self(),
+      :process_queue,
+      0
+    )
+
   end
 
   defp generate_random_sensor_id do

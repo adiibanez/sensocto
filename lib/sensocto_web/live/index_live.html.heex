@@ -2,22 +2,25 @@
   Attempting to reconnect...
 </div>
 
-<div class="text-l">Sensors online: {@sensors_online_count}</div>
+<div class="text-l p-8 mb-8 bg-gray-800 rounded-lg">Sensors online: {@sensors_online_count} Liveview pid:
+  {inspect(self())}
+</div>
 
-<div id="cnt" phx-hook="ConnectionHandler"
-  class={ "grid gap-4 sm:gap-4 md:gap-4 lg:gap-4 xl:gap-4 grid-cols-1 sm:grid-cols-#{assigns.grid_cols_sm} lg:grid-cols-#{assigns.grid_cols_lg} xl:grid-cols-#{assigns.grid_cols_xl} 2xl:grid-cols-#{assigns.grid_cols_2xl}"
-  }>
+<div id="cnt" phx-hook="ConnectionHandler">
 
-  <div :for={{sensor_id, sensor} <- @sensors}
-    class="flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray"
-    id={"sensor_#{sensor_id}"} style={ if is_map(sensor) and get_in(sensor, [:highlighted])
-    do "grid-column: span 2; grid-row: span 1;" else "" end }>
-    <div class="w-full h-full">
-      <!-- loading stage content -->
+  <div
+    class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 
-      <.sensor sensor_id={"#{sensor_id}"} sensor={sensor}></.sensor>
+    <div :for={{sensor_id, sensor} <- @sensors}>
+      {live_render(@socket, StatefulSensorLiveview,
+      id: "stateful_sensor_#{sensor_id}",
+      session: %{"parent_pid" => self(), "sensor" => sensor}
+      )}
     </div>
+
+
   </div>
+
 </div>
 <%= if @sensors_offline !=%{} do %>
   <div>

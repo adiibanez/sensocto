@@ -238,6 +238,7 @@
     }
 
     function drawEcg(canvas, data, color, backgroundColor, highlighted_areas) {
+        console.log("Hullo", data.length);
         if (!canvas || !data || data.length < 2) {
             return;
         }
@@ -359,8 +360,7 @@
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvas} {width} {height} />
 </div>
-<!--<p class="text-xs hidden">
+<p class="text-xs">
     ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}
     maxValue: {maxValue} width: {width} height: {height}
 </p>
--->

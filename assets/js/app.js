@@ -154,7 +154,9 @@ Hooks.SensorDataAccumulator = {
     //workerStorage.postMessage({ type: 'clear-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id } });
 
 
-    console.log("last timestamps for all keys:", handleGetAllLatestTimestamps());
+    handleGetAllLatestTimestamps().then((result) => {
+      console.log("last timestamps for all keys:", result);
+    });
 
     // make sure we wait for server seed
     this.el.dataset.seeding = true;

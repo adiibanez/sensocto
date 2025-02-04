@@ -217,3 +217,29 @@ export const handleGetLastTimestamp = async (sensor_id, attribute_id) => {
         };
     });
 };
+export const handleGetAllLatestTimestamps = async () => {
+    if (!db) {
+        await openDatabase();
+    }
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(objectStoreName, 'readonly');
+        const store = tx.objectStore(objectStoreName);
+        const request = store.getAll();
+
+        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+            const allData = event.target.result;
+            const latestTimestamps = allData.map(item => {
+                if (item.dataPoints && item.dataPoints.length > 0) {
+
+                    let latestTimestamp = item.dataPoints.slice(-1)[0].timestamp;
+
+                    console.log("handleGetAllLatestTimestamps", item.id, item.dataPoints.length, latestTimestamp);
+                    return { id: item.id, timestamp: latestTimestamp };
+                }
+                return { id: item.id, timestamp: null };
+            });
+            resolve(latestTimestamps);
+        };
+    });
+};

@@ -75,8 +75,12 @@ function copyFile(source, target) {
 function copyAssets() {
 
 
-    copyFile('./js/wasm_sparkline_bg.js', '../priv/static/assets/wasm_sparkline_bg.js');
-    copyFile('./js/wasm_sparkline_bg.wasm', '../priv/static/assets/wasm_sparkline_bg.wasm');
+    // copyFile('./js/wasm_sparkline_bg.js', '../priv/static/assets/wasm_sparkline_bg.js');
+    // copyFile('./js/wasm_sparkline_bg.wasm', '../priv/static/assets/wasm_sparkline_bg.wasm');
+
+    copyFile('./js/sparkline_init.js', '../priv/static/assets/sparkline_init.js');
+    copyFile('./js/sparkline-new.js', '../priv/static/assets/sparkline-new.js');
+    copyFile('./js/sparkline-new_bg.wasm', '../priv/static/assets/sparkline-new_bg.wasm');
 
     const imagesDir = path.join(__dirname, './images');
     const destImagesDir = path.join(__dirname, '../priv/static/images');

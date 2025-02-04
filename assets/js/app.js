@@ -27,6 +27,14 @@ import { getHooks } from "live_svelte"
 import * as Components from "../svelte/**/*.svelte"
 //import * as Components from "../svelte/SenseApp.svelte"
 
+//import init, { draw_sparkline } from "./wasm_sparkline_bg.js";
+
+/*async function initSparklineWasm() {
+  await init("/assets/wasm_sparkline_bg.wasm");
+  wasmInitialized = true;
+  logger.log(loggerCtxName, "Wasm initialized, yippie", draw_sparkline);
+}*/
+
 import {
   openDatabase,
   handleClearData,
@@ -34,6 +42,7 @@ import {
   handleAppendAndReadData,
   handleSeedData,
   handleGetLastTimestamp,
+  handleGetAllLatestTimestamps,
   setDebug
 } from './indexeddb.js';
 
@@ -144,6 +153,8 @@ Hooks.SensorDataAccumulator = {
   mounted() {
     //workerStorage.postMessage({ type: 'clear-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id } });
 
+
+    console.log("last timestamps for all keys:", handleGetAllLatestTimestamps());
 
     // make sure we wait for server seed
     this.el.dataset.seeding = true;
@@ -319,7 +330,9 @@ window.addEventListener('resizeend', resizeElements, { passive: true });
 // Also set it up on DOMContentLoaded, for correct initial loading.
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', resizeElements);
+  //initSparklineWasm();r
 } else {
+  // initial graph resize
   resizeElements();
 }
 

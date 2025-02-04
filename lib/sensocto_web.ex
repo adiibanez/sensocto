@@ -66,6 +66,8 @@ defmodule SensoctoWeb do
     quote do
       use Phoenix.LiveComponent
 
+      # import LiveSvelte
+
       unquote(html_helpers())
     end
   end

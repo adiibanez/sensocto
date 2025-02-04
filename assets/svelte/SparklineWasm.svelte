@@ -1,22 +1,19 @@
-<svelte:options customElement="sensocto-sparkline-wasm-svelte" />
-
 <script>
     import { onMount, onDestroy, tick } from "svelte";
-    import { logger } from "../logger_svelte.js";
+    import { logger } from "./logger_svelte.js";
+    import { Socket } from "phoenix";
     import {
         processStorageWorkerEvent,
         processAccumulatorEvent,
         processSeedDataEvent,
-    } from "../services-sensor-data.js";
+    } from "./services-sensor-data.js";
 
     import { writable } from "svelte/store";
-
-    import init, { draw_sparkline } from "../../js/wasm_sparkline.js";
 
     let wasmInitialized = false;
 
     export let id;
-
+    export let live;
     export let width;
     export let height = 30;
     export let sensor_id;
@@ -27,6 +24,7 @@
     export let style;
     export let minvalue;
     export let maxvalue;
+    let maxsamples = 1000;
     // export let initialParams;
 
     let loggerCtxName = "SparklineWasm";
@@ -36,17 +34,38 @@
     let isVisible = false;
     let observer;
 
+    $: cntElement = document.getElementById(id);
+    let cntElementOffsetWidth;
+    let availableSize;
+
     let dataStore = writable([]);
     $: data = $dataStore;
 
-    async function initWasm() {
-        await init("/assets/wasm_sparkline_bg.wasm");
-        wasmInitialized = true;
-        logger.log(loggerCtxName, "Wasm initialized, yippie", draw_sparkline);
+    function checkSparklineWasm() {
+        if (typeof window?.draw_sparkline == "function") {
+            logger.log(
+                loggerCtxName,
+                "draw_sparkline found",
+                window.draw_sparkline,
+            );
+            wasmInitialized = true;
+        } else {
+            logger.log(loggerCtxName, "draw_sparkline NOT found");
+        }
+    }
+
+    function updateCanvasDimensions() {
+        if (canvas) {
+            width = canvas.clientWidth;
+            height = canvas.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+            render();
+        }
     }
 
     onMount(() => {
-        initWasm();
+        checkSparklineWasm();
         ctx = canvas.getContext("2d");
         logger.log(loggerCtxName, "onMount", sensor_id, attribute_id);
 
@@ -134,6 +153,7 @@
             handleStorageWorkerEvent,
         );
         window.addEventListener("seeddata-event", handleSeedDataEvent);
+        window.addEventListener("resize", updateCanvasDimensions);
 
         observer = new IntersectionObserver(
             (entries) => {
@@ -149,6 +169,8 @@
 
         observer.observe(canvas);
 
+        updateCanvasDimensions();
+
         return () => {
             window.removeEventListener("resizeend", handleResizeEnd);
             window.removeEventListener(
@@ -160,6 +182,7 @@
                 handleStorageWorkerEvent,
             );
             window.removeEventListener("seeddata-event", handleSeedDataEvent);
+            window.removeEventListener("resize", updateCanvasDimensions);
             if (observer) {
                 observer.unobserve(canvas);
             }
@@ -205,7 +228,7 @@
         //     minvalue,
         //     maxvalue,
         // );
-        draw_sparkline(
+        window.draw_sparkline(
             data.slice(-maxsamples),
             width,
             height,
@@ -222,6 +245,9 @@
         );
     }
     const handleResizeEnd = (e) => {
+        cntElement = document.getElementById(id);
+        getAvailableSize();
+
         if (isVisible) {
             logger.log(loggerCtxName, "handleResizeEnd", e);
             render();
@@ -231,14 +257,62 @@
     $: if (timewindow && width && samplingrate) {
         maxsamples = (timewindow / 1000) * samplingrate * width;
     }
+
+    $: if (cntElementOffsetWidth) {
+        console.log("Change in cntElement offsetWidth");
+        availableSize = getAvailableSize();
+        width = availableSize.width;
+    }
+
+    const getAvailableSize = () => {
+        console.log("Calculate available size");
+        const element = document.getElementById(id);
+        const computedStyle = getComputedStyle(element);
+
+        // Get padding and margin values
+        const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+        const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
+        const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+        const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+
+        const marginLeft = parseFloat(computedStyle.marginLeft) || 0;
+        const marginRight = parseFloat(computedStyle.marginRight) || 0;
+        const marginTop = parseFloat(computedStyle.marginTop) || 0;
+        const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+
+        // Calculate the inner width and height by subtracting padding and margins.
+        const elementWidth =
+            element.offsetWidth -
+            paddingLeft -
+            paddingRight -
+            marginLeft -
+            marginRight;
+        const elementHeight =
+            element.offsetHeight -
+            paddingTop -
+            paddingBottom -
+            marginTop -
+            marginBottom;
+
+        // Calculate the available with based on padding and margin
+        const availableWidth = elementWidth;
+        const availableHeight = elementHeight;
+
+        return { w: availableWidth, h: availableHeight };
+    };
 </script>
 
 <canvas class="resizeable" bind:this={canvas} {width} {height}></canvas>
 
-{#if false}
-    <div class="text-xs hidden">
+{#if true}
+    <div class="text-xs">
         <!--Data points {data.length}, maxsamples: {maxsamples}, width: {width}-->
         width: {width} height: {height} timewindow: {timewindow}
         <!--<pre>{JSON.stringify(data, null, 2)}</pre>-->
+
+        test: {id}
+        {JSON.stringify(availableSize)}
+
+        cntOffsetWidth: {cntElement?.offsetWidth}
     </div>
 {/if}

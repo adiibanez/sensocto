@@ -4,6 +4,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   use Phoenix.LiveComponent
   require Logger
   import BaseComponents
+  import LiveSvelte
 
   def render(assigns) do
     ~H"""
@@ -46,7 +47,27 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       >
       </sensocto-ecg-Visualization>-->
 
-      <sensocto-sparkline-wasm-svelte
+      <.svelte
+        name="SparklineWasm"
+        props={
+          %{
+            height: 20,
+            id: "cnt_#{@sensor_id}_#{@attribute.attribute_id}",
+            sensor_id: @sensor_id,
+            attribute_id: @attribute.attribute_id,
+            samplingrate: 1,
+            timewindow: 10000,
+            timemode: "relative",
+            minvalue: 0,
+            maxvalue: 0,
+            width: 100
+          }
+        }
+        socket={@socket}
+        class="resizeable loading w-full m-0 p-0"
+      />
+      
+    <!--<sensocto-sparkline-wasm-svelte
         height="20"
         id={"viz_#{assigns.sensor_id}_#{@attribute.attribute_id}"}
         sensor_id={@sensor_id}
@@ -59,7 +80,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         maxvalue="0"
         class="resizeable loading w-full m-0 p-0"
       >
-      </sensocto-sparkline-wasm-svelte>
+      </sensocto-sparkline-wasm-svelte>-->
     </div>
     """
   end

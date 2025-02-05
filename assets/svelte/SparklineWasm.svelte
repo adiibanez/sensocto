@@ -163,10 +163,9 @@
 
         observer.observe(canvas);
         availableSize = getAvailableSize();
-        console.log("Here", availableSize);
         width = availableSize.w;
 
-        console.log("onMount", availableSize, width);
+        logger.log(loggerCtxName, "onMount", availableSize, width);
         render();
 
         return () => {
@@ -260,11 +259,14 @@
         availableSize = getAvailableSize();
         width = availableSize.w;
 
-        console.log("Change in cntElement offsetWidth", availableSize);
+        logger.log(
+            loggerCtxName,
+            "Change in cntElement offsetWidth",
+            availableSize,
+        );
     }
 
     const getAvailableSize = () => {
-        console.log("Calculate available size");
         const element = document.getElementById(id);
         const computedStyle = getComputedStyle(element);
 

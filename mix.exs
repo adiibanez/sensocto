@@ -89,7 +89,9 @@ defmodule Sensocto.MixProject do
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
       {:timex, "~> 3.7"},
       {:kino, "~> 0.8.0", only: :dev},
-      {:observer_cli, "~> 1.8"}
+      {:observer_cli, "~> 1.8"},
+      {:exprof, "~> 0.2.4"},
+      {:guarded_struct, "~> 0.0.4"}
       # {:recode, "~> 0.7", only: :dev, override: true}
 
       # {

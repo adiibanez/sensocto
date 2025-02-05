@@ -178,8 +178,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
     # |> Map.put(:highlighted, get_in(assigns.sensor, [:highlighted]))
     # |> Map.put(:sensor_id, assigns.sensor.sensor_id)
 
-    Logger.info("sensor_header #{assigns.sensor_id} #{inspect(assigns.__changed__)}")
-
     ~H"""
     <div class="flex items-right m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
       <p class="flex-none font-bold text-s" style="border:0 solid white">
@@ -207,10 +205,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_attribute_header(assigns) do
-    Logger.info(
-      "sensor_header #{assigns.sensor_id} #{assigns.attribute_id} #{inspect(assigns.__changed__)}"
-    )
-
     ~H"""
     <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
       {@attribute_name}
@@ -229,8 +223,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
   def render_loading(_size, identifier, assigns) do
     assigns = assigns |> Map.put(:identifier, identifier)
-
-    Logger.info("render_loading #{assigns.identifier} #{inspect(assigns.__changed__)}")
 
     ~H"""
     <svg
@@ -265,12 +257,12 @@ defmodule SensoctoWeb.Live.BaseComponents do
               timestamp_int
 
             _ ->
-              Logger.info("invalid format unix timestamp #{inspect(timestamp_string)}")
+              Logger.trace("invalid format unix timestamp #{inspect(timestamp_string)}")
               nil
           end
 
         _ ->
-          Logger.info("invalid format unix timestamp #{inspect(timestamp)}")
+          Logger.trace("invalid format unix timestamp #{inspect(timestamp)}")
           nil
       end
 

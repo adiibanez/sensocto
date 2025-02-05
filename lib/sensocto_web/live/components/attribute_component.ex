@@ -6,6 +6,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   import BaseComponents
   import LiveSvelte
 
+  # battery: <meter id="fuel" min="0" max="100" low="33" high="66" optimum="80" value="50">at 50/100</meter>
+
   def render(assigns) do
     ~H"""
     <div

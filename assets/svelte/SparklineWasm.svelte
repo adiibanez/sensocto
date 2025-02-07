@@ -136,6 +136,8 @@
             }
         };
 
+        canvas.addEventListener("mousedown", handleMouseDown);
+
         window.addEventListener("resize", handleResizeEnd);
         window.addEventListener("resizeend", handleResizeEnd);
         window.addEventListener(
@@ -169,6 +171,8 @@
         render();
 
         return () => {
+            canvas.removeEventListener("mousedown", handleMouseDown);
+
             window.removeEventListener("resizeend", handleResizeEnd);
             window.removeEventListener(
                 "accumulator-data-event",
@@ -185,6 +189,43 @@
             }
         };
     });
+
+    let isDragging = false;
+    let startX;
+    let initialTimewindow;
+
+    function handleMouseDown(event) {
+        isDragging = true;
+        startX = event.clientX;
+        initialTimewindow = timewindow;
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+    }
+
+    function handleMouseMove(event) {
+        if (isDragging) {
+            const deltaX = event.clientX - startX;
+
+            timewindow = Math.max(1000, initialTimewindow + deltaX * 100);
+
+            console.log(
+                "handle canvas drag ",
+                timewindow,
+                initialTimewindow,
+                deltaX,
+            );
+
+            //width = initialWidth + deltaX;
+
+            render();
+        }
+    }
+
+    function handleMouseUp() {
+        isDragging = false;
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+    }
 
     $: if (data?.length && wasmInitialized) {
         tick().then(() => {

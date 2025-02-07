@@ -1,0 +1,61 @@
+# Untitled notebook
+
+## Section
+
+```elixir
+defmodule Reducer do
+  def cleanup(entry) do
+    case entry do
+      {attribute_id, [entry]} ->
+        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
+
+      {attribute_id, %{}} ->
+        {attribute_id, entry}
+    end
+  end
+end
+
+test = %{
+  "heartrate" => [%{timestamp: 1_738_641_990_003, payload: 106.0}],
+  "heartrate2" => [%{timestamp: 1_738_641_990_003, payload: 106.0}]
+}
+
+Enum.map(test, fn x -> Reducer.cleanup(x) end)
+
+# [(sensocto 0.1.0) lib/sensocto_web/live/stateful_sensor_liveview.ex:86: SensoctoWeb.StatefulSensorLiveview.handle_info/2]
+socket_assigns_attributes = [
+  {"heartrate", %{timestamp: 1_738_642_831_487, payload: 134.0, attribute_id: "heartrate"}}
+]
+
+# [(sensocto 0.1.0) lib/sensocto_web/live/stateful_sensor_liveview.ex:88: SensoctoWeb.StatefulSensorLiveview.handle_info/2]
+latest_measurements = [
+  %{
+    timestamp: 1_738_643_158_866,
+    payload: 127.0,
+    sensor_id: "SensoctoSimEx_1:heartrate",
+    attribute_id: "heartrate"
+  },
+  %{
+    timestamp: 1_738_643_158_866,
+    payload: 127.0,
+    sensor_id: "SensoctoSimEx_1:heartrate",
+    attribute_id: "heartrate2"
+  }
+]
+
+test3 = [
+  %{
+    timestamp: 1_738_644_052_005,
+    payload: 123.0,
+    sensor_id: "SensoctoSimEx_1:heartrate",
+    attribute_id: "heartrate"
+  }
+]
+
+test3
+|> Enum.group_by(& &1.attribute_id)
+|> Enum.map(fn {attribute_id, measurements} ->
+  {attribute_id, Enum.max_by(measurements, & &1.timestamp)}
+end)
+|> Enum.into(%{})
+```

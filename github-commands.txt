@@ -1,0 +1,3 @@
+ gh run list --workflow .github/workflows/fly.yml
+ git tag tagname
+ git push --tags

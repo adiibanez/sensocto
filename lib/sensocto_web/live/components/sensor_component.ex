@@ -22,8 +22,12 @@ defmodule SensoctoWeb.Live.Components.SensorComponent do
             :for={{attribute_id, attribute} <- @attributes}
             id={"attribute_#{@sensor_id}_#{attribute_id}"}
             module={AttributeComponent}
-            attribute={Map.put(List.last(attribute), :attribute_id, attribute_id)}
+            attribute={
+              Map.put(List.last(attribute), :attribute_id, attribute_id)
+              |> Map.put(:attribute_type, @sensor_type)
+            }
             sensor_id={@sensor_id}
+            attribute_type={@sensor_type}
             attribute_id={attribute_id}
           >
           </.live_component>

@@ -35,6 +35,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      |> assign(:sensor, sensor_state)
      |> assign(:sensor_id, sensor_state.metadata.sensor_id)
      |> assign(:sensor_name, sensor_state.metadata.sensor_name)
+     |> assign(:sensor_type, sensor_state.metadata.sensor_type)
      |> assign(:highlighted, false)
      |> assign(:attributes, sensor_state.attributes)
      |> assign(
@@ -69,13 +70,15 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         </div>
 
         <div>
+          Type: {@sensor_type}
+
           <.live_component
             :for={{attribute_id, attribute} <- @attributes}
             id={"attribute_#{@sensor_id}_#{attribute_id}"}
+            attribute_type={@sensor_type}
             module={AttributeComponent}
             attribute={attribute}
             sensor_id={@sensor_id}
-            attribute_id={attribute_id}
           >
           </.live_component>
         </div>
@@ -109,8 +112,6 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         Enum.max_by(measurements, & &1.timestamp)
       end)
 
-    # |> dbg()
-
     new_attributes =
       latest_measurements
       |> Enum.group_by(& &1.attribute_id)
@@ -119,26 +120,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       end)
       |> Enum.into(%{})
 
-    # |> dbg()
-
     Map.merge(socket.assigns.attributes, new_attributes)
-    # |> dbg()
-
-    # new_attributes = cleanup(latest_measurements |> Enum.into(%{}))
-
-    # measurements_list |> dbg()
-
-    # socket.assigns.attributes |> dbg()
-
-    # latest_measurements |> dbg()
-
-    # Map.merge(socket.assigns.attributes, latest_measurements) |> dbg()
-
-    # new_attributes =
-    #   Enum.reduce(latest_measurements, fn measurement ->
-    #     Map.merge(socket.assigns.attributes, %{measurement.attribute_id => latest_measurements})
-    #   end)
-    #   |> dbg()
 
     :telemetry.execute(
       [:sensocto, :live, :handle_info, :measurement_batch],
@@ -157,8 +139,8 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
           AttributeComponent,
           [
             id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-            attribute: measurement,
-            sensor_id: sensor_id
+            attribute: measurement
+            # sensor_id: sensor_id
           ],
           0
         )
@@ -235,8 +217,8 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         AttributeComponent,
         [
           id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-          attribute: measurement,
-          sensor_id: sensor_id
+          attribute: measurement
+          # sensor_id: sensor_id
         ],
         0
       )

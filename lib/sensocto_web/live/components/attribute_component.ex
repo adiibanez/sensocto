@@ -6,9 +6,21 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   import BaseComponents
   import LiveSvelte
 
-  # battery: <meter id="fuel" min="0" max="100" low="33" high="66" optimum="80" value="50">at 50/100</meter>
+  # def update(assigns, socket) do
+  #  Logger.debug("StatefulSensorLiveview.update")
+  #  Logger.debug("assigns: #{inspect(assigns)}")
+  #  {:ok, socket}
+  # end
 
-  def render(assigns) do
+  attr :attribute_type, :string
+
+  # battery: <meter id="fuel" min="0" max="100" low="33" high="66" optimum="80" value="50">at 50/100</meter>
+  def render(%{:attribute_type => "ecg"} = assigns) do
+    assigns =
+      assign(assigns, :id, "cnt_#{assigns.sensor_id}_#{assigns.attribute.attribute_id}")
+
+    # |> dbg()
+
     ~H"""
     <div
       id={"cnt_#{@sensor_id}_#{@attribute.attribute_id}"}
@@ -25,11 +37,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       >
       </.render_attribute_header>
       
-    <!--<p>AttributeComponent pid: {inspect(self())}</p>
-      <p>
-        Attribute: {@attribute.attribute_id} Timestamp: {@attribute.timestamp} Payload: {@attribute.payload}
-      </p>-->
-
     <!--<sensocto-ecg-Visualization
         id={"viz_#{assigns.sensor_id}_#{@attribute.attribute_id}"}
         is_loading="true"
@@ -50,6 +57,48 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       </sensocto-ecg-Visualization>-->
 
       <.svelte
+        name="ECGVisualization"
+        props={
+          %{
+            height: 20,
+            id: @id,
+            sensor_id: @sensor_id,
+            attribute_id: @attribute.attribute_id,
+            samplingrate: 50,
+            timewindow: 10000,
+            timemode: "relative",
+            minvalue: 0,
+            maxvalue: 0,
+            height: 100,
+            color: "#ffc107",
+            class: "loading w-full m-0 p-0 resizeable"
+          }
+        }
+        socket={@socket}
+        class="loading w-full m-0 p-0"
+      />
+    </div>
+    """
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div
+      id={"cnt_#{@sensor_id}_#{@attribute.attribute_id}"}
+      class="attribute"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute.attribute_id}
+      data-sensor_type={@attribute.attribute_id}
+      phx-hook="SensorDataAccumulator"
+    >
+      <.render_attribute_header
+        sensor_id={@sensor_id}
+        attribute_id={@attribute.attribute_id}
+        attribute_name={@attribute.attribute_id}
+      >
+      </.render_attribute_header>
+
+      <.svelte
         name="SparklineWasm"
         props={
           %{
@@ -67,38 +116,35 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         socket={@socket}
         class="loading w-full m-0 p-0"
       />
-      
-    <!--<sensocto-sparkline-wasm-svelte
-        height="20"
-        id={"viz_#{assigns.sensor_id}_#{@attribute.attribute_id}"}
-        sensor_id={@sensor_id}
-        attribute_id={@attribute.attribute_id}
-        samplingrate="1"
-        timewindow="10000"
-        timemode="relative"
-        phx-update="ignore"
-        minvalue="0"
-        maxvalue="0"
-        class="resizeable loading w-full m-0 p-0"
-      >
-      </sensocto-sparkline-wasm-svelte>-->
     </div>
     """
   end
 
   def update(assigns, socket) do
     Logger.debug("attribute update #{inspect(assigns)}")
-    # user = Repo.get!(User, assigns.id)
 
     send(self(), :attributes_loaded)
+
+    # assigns.attribute |> dbg()
+
+    attribute_type =
+      case Map.has_key?(assigns, :attribute_type) do
+        true -> assigns.attribute_type
+        false -> socket.assigns.attribute_type
+      end
+
+    sensor_id =
+      case Map.has_key?(assigns, :sensor_id) do
+        true -> assigns.sensor_id
+        false -> socket.assigns.sensor_id
+      end
 
     {
       :ok,
       socket
       |> assign(:attribute, assigns.attribute)
-      |> assign(:sensor_id, assigns.sensor_id)
-      #  |> assign(:timestamp, assigns.attribute[:timestamp])
-      #  |> assign(:payload, assigns.attribute[:payload])
+      |> assign(:sensor_id, sensor_id)
+      |> assign(:attribute_type, attribute_type)
     }
   end
 

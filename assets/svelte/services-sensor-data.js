@@ -10,7 +10,7 @@ const updateData = (store, sensor_id, attribute_id, newData) => {
     store.update(oldData => {
         if (oldData) {
             //logger.log(loggerCtxName, "updateData oldData", identifier, oldData, newData.length);
-            return [...oldData, ...newData]
+            return [...oldData, ...newData].slice(-100000);
         } else {
             // logger.log(loggerCtxName, "updateData newData", identifier, oldData, newData.length);
             return newData;

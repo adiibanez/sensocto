@@ -206,7 +206,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
   def render_attribute_header(assigns) do
     ~H"""
-    <p class="text-xs text-gray-500" id="attribute_header{@sensor_id}_{@attribute_id}">
+    <p class="text-xs text-gray-500" id={"attribute_header#{@sensor_id}_#{@attribute_id}"}>
       {@attribute_name}
       <Heroicons.icon
         id={"trash_#{@sensor_id}_#{@attribute_id}"}

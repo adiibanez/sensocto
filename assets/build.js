@@ -58,7 +58,7 @@ let optsClient = {
     //loader: {
     //'.wasm': 'file'
     //},
-    target: 'es2022',
+    target: 'es2020',
     format: 'esm'
 };
 

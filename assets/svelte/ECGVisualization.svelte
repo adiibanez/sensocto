@@ -1,5 +1,3 @@
-<svelte:options customElement="sensocto-ecg-visualization" />
-
 <script>
     import {
         getContext,
@@ -8,14 +6,14 @@
         onMount,
         tick,
     } from "svelte";
-    import { logger } from "../logger_svelte.js";
+    import { logger } from "./logger_svelte.js";
     let loggerCtxName = "ECGVisualization";
 
     import {
         processStorageWorkerEvent,
         processAccumulatorEvent,
         processSeedDataEvent,
-    } from "../services-sensor-data.js";
+    } from "./services-sensor-data.js";
 
     import { writable } from "svelte/store";
 
@@ -24,7 +22,7 @@
     export let sensor_id;
     export let attribute_id;
 
-    export let windowsize = 10;
+    export let timewindow = 10;
     export let width = 200;
     export let height = 100;
     export let color;
@@ -38,17 +36,27 @@
     let dataStore = writable([]);
     $: data = $dataStore;
 
-    $: ecgDimensions = calculateEcgDimensions(windowsize, samplingrate, width);
+    $: cntElement = document.getElementById(id);
+    let cntElementOffsetWidth;
+    let availableSize;
 
-    // make sure we can resize chart
+    let ecgDimensions = calculateEcgDimensions(timewindow, samplingrate, width);
+
+    $: if (width && timewindow && samplingrate) {
+        ecgDimensions = calculateEcgDimensions(timewindow, samplingrate, width);
+    }
+
+    // make sure we can resize chart to larger window
     $: keepsamples = 2000 / ecgDimensions.dynamicResolution;
 
     export let minValue = -1.0;
     export let maxValue = 2;
 
-    // export let is_loading;
-
     let canvas;
+
+    $: if (canvas && data) {
+        render(canvas, data, color, backgroundColor, highlighted_areas);
+    }
 
     onMount(() => {
         ctx = canvas.getContext("2d");
@@ -128,6 +136,8 @@
         };
 
         window.addEventListener("resizeend", handleResizeEnd);
+        window.addEventListener("resize", getAvailableSize);
+
         window.addEventListener(
             "accumulator-data-event",
             handleAccumulatorEvent,
@@ -138,12 +148,14 @@
         );
         window.addEventListener("seeddata-event", handleSeedDataEvent);
 
+        canvas.addEventListener("mousedown", handleMouseDown);
+
         observer = new IntersectionObserver(
             (entries) => {
                 entries.forEach((entry) => {
                     isVisible = entry.isIntersecting;
                     if (isVisible) {
-                        drawEcg(
+                        render(
                             canvas,
                             data,
                             color,
@@ -156,10 +168,14 @@
             { threshold: 0.1 },
         );
 
+        availableSize = getAvailableSize();
+        width = availableSize.w;
         observer.observe(canvas);
 
         return () => {
             window.removeEventListener("resizeend", handleResizeEnd);
+
+            canvas.removeEventListener("mousedown", handleMouseDown);
             window.removeEventListener(
                 "accumulator-data-event",
                 handleAccumulatorEvent,
@@ -190,19 +206,13 @@
                 const timestamps = data.map((point) => point.timestamp);
                 let minTimestamp = Math.min(...timestamps);
                 let maxTimestamp = Math.max(...timestamps);
-                drawEcg(
-                    canvas,
-                    data,
-                    color,
-                    backgroundColor,
-                    highlighted_areas,
-                );
+                render(canvas, data, color, backgroundColor, highlighted_areas);
             }
         });
     }
 
     function calculateEcgDimensions(
-        windowsize,
+        timewindow,
         samplingRate,
         width,
         options = {},
@@ -212,7 +222,7 @@
         const fixedAspectRatio = options.fixedAspectRatio || 1;
         const minResolution = options.minResolution || 1;
 
-        const totalDataPoints = Math.round(windowsize * samplingRate);
+        const totalDataPoints = Math.round(timewindow * samplingRate);
         let dynamicResolution = width / totalDataPoints;
         dynamicResolution = Math.max(minResolution, dynamicResolution);
 
@@ -237,8 +247,7 @@
         };
     }
 
-    function drawEcg(canvas, data, color, backgroundColor, highlighted_areas) {
-        console.log("Hullo", data.length);
+    function render(canvas, data, color, backgroundColor, highlighted_areas) {
         if (!canvas || !data || data.length < 2) {
             return;
         }
@@ -334,7 +343,7 @@
 
             /*logger.log(
                 loggerCtxName,
-                "drawEcg",
+                "render",
                 x,
                 y,
                 point.payload,
@@ -345,22 +354,94 @@
         ctx.restore();
     }
 
+    let isDragging = false;
+    let startX;
+    let initialTimewindow;
+
+    function handleMouseDown(event) {
+        isDragging = true;
+        startX = event.clientX;
+        initialTimewindow = timewindow;
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+    }
+
+    function handleMouseMove(event) {
+        if (isDragging) {
+            const deltaX = event.clientX - startX;
+
+            timewindow = Math.max(1000, initialTimewindow + deltaX * 100);
+
+            console.log(
+                "handle canvas drag ",
+                timewindow,
+                initialTimewindow,
+                deltaX,
+            );
+
+            //width = initialWidth + deltaX;
+
+            render();
+        }
+    }
+
+    function handleMouseUp() {
+        isDragging = false;
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+    }
+
     const handleResizeEnd = (e) => {
+        cntElement = document.getElementById(id);
+        availableSize = getAvailableSize();
+
         if (isVisible) {
             logger.log(loggerCtxName, "handleResizeEnd", e);
-            drawEcg(canvas, data, color, backgroundColor, highlighted_areas);
+            render(canvas, data, color, backgroundColor, highlighted_areas);
         }
     };
 
-    $: if (canvas && data) {
-        drawEcg(canvas, data, color, backgroundColor, highlighted_areas);
-    }
+    const getAvailableSize = () => {
+        const element = document.getElementById(id);
+        const computedStyle = getComputedStyle(element);
+
+        // Get padding and margin values
+        const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+        const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
+        const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+        const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+
+        const marginLeft = parseFloat(computedStyle.marginLeft) || 0;
+        const marginRight = parseFloat(computedStyle.marginRight) || 0;
+        const marginTop = parseFloat(computedStyle.marginTop) || 0;
+        const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+
+        // Calculate the inner width and height by subtracting padding and margins.
+        const elementWidth =
+            element.offsetWidth -
+            paddingLeft -
+            paddingRight -
+            marginLeft -
+            marginRight;
+        const elementHeight =
+            element.offsetHeight -
+            paddingTop -
+            paddingBottom -
+            marginTop -
+            marginBottom;
+
+        // Calculate the available with based on padding and margin
+        const availableWidth = elementWidth;
+        const availableHeight = elementHeight;
+
+        return { w: availableWidth, h: availableHeight };
+    };
 </script>
 
 <div style="width:{width}px;height:{height}px; position: relative">
     <canvas bind:this={canvas} {width} {height} />
+    <p class="text-xs hidden">
+        ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}
+        maxValue: {maxValue} width: {width} height: {height} tw: {timewindow}
+    </p>
 </div>
-<p class="text-xs">
-    ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}
-    maxValue: {maxValue} width: {width} height: {height}
-</p>

@@ -41,7 +41,7 @@
         const newDevice = await navigator.bluetooth
             .requestDevice({
                 // filters: [...] <- Prefer filters to save energy & show relevant devices.
-                filters: [
+                /*filters: [
                     {
                         namePrefix: "PressureSensor",
                     },
@@ -50,9 +50,11 @@
                     { namePrefix: "FlexSenseSensor" },
                     { namePrefix: "vívosmart" },
                     { namePrefix: "WH-" },
-                ],
+                    { namePrefix: "EdgeImpulse" },
+                ],*/
                 //
-                //acceptAllDevices: true,
+                acceptAllDevices: true,
+                // lowercase required
                 optionalServices: [
                     "453b02b0-71a1-11ea-ab12-0800200c9a66", // pressure
                     "heart_rate",
@@ -61,6 +63,12 @@
                     "a688bc90-09e2-4643-8e9a-ff3076703bc3", // oximeter
                     "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
                     "897fdb8d-dec3-40bc-98e8-2310a58b0189", // flexsense
+                    "19b10000-e8f2-537e-4f6c-d104768a1214", // Edgeimpulse testservice
+
+                    "0000180f-0000-1000-8000-00805f9b34fb", // battery service
+
+                    //battery characteristic
+                    // "00002a19-0000-1000-8000-00805f9b34fb",
                 ],
                 scanMode: "balanced", // Add scan mode to keep receiving advertisements
                 keepRepeatedDevices: true, // Keep receiving advertisements from the same device
@@ -180,6 +188,11 @@
         );
 
         if (characteristic.properties.notify == true) {
+            logger.log(
+                loggerCtxName,
+                "Characteristic supports notifications: " + characteristic.uuid,
+                characteristic,
+            );
             return characteristic
                 .startNotifications()
                 .then((_) => {
@@ -217,32 +230,100 @@
                     return characteristic;
                 })
                 .then((characteristic) => {
-                    if (characteristic.properties.read == true) {
-                        logger.log(
-                            loggerCtxName,
-                            "Reading" + characteristic.uuid + "...",
-                        );
-                        return characteristic
-                            .readValue()
-                            .then((valueObj) => {
-                                logger.log(
-                                    loggerCtxName,
-                                    "Characteristic value:",
-                                    characteristic.uuid,
-                                    valueObj,
-                                    valueObj.getInt8(0),
-                                );
-                                characteristicValues[characteristic.uuid] =
-                                    valueObj.getInt8(0);
-                            })
-                            .catch((error) => {
-                                logger.log(
-                                    loggerCtxName,
-                                    "Error reading characteristic:",
-                                    error,
-                                );
-                            });
-                    }
+                    logger.log(
+                        loggerCtxName,
+                        "Waiting for notfications" + characteristic.uuid,
+                        characteristic,
+                    );
+                    // if (characteristic.properties.read == true) {
+                    //     logger.log(
+                    //         loggerCtxName,
+                    //         "Reading  notify" + characteristic.uuid + "...",
+                    //     );
+                    //     return characteristic
+                    //         .readValue()
+                    //         .then((valueObj) => {
+                    //             logger.log(
+                    //                 loggerCtxName,
+                    //                 "Characteristic value:",
+                    //                 characteristic.uuid,
+                    //                 valueObj,
+                    //                 valueObj.getInt8(0),
+                    //             );
+                    //             characteristicValue = valueObj.getInt8(0);
+                    //             characteristicValues[characteristic.uuid] =
+                    //                 characteristicValue;
+                    //             var payLoad = {
+                    //                 payload: characteristicValue,
+                    //                 attribute_id: characteristic.uuid,
+                    //                 timestamp: Math.round(new Date().getTime()),
+                    //             };
+                    //             logger.log(
+                    //                 loggerCtxName,
+                    //                 "Sending notify single read value",
+                    //                 getUniqueDeviceId(
+                    //                     characteristic.service.device,
+                    //                 ),
+                    //                 payLoad,
+                    //             );
+                    //             sensorService.sendChannelMessage(
+                    //                 getUniqueDeviceId(
+                    //                     characteristic.service.device,
+                    //                 ),
+                    //                 payLoad,
+                    //             );
+                    //         })
+                    //         .catch((error) => {
+                    //             logger.log(
+                    //                 loggerCtxName,
+                    //                 "Error reading characteristic:",
+                    //                 error,
+                    //             );
+                    //         });
+                    // }
+                })
+                .catch((error) => {
+                    logger.log(
+                        loggerCtxName,
+                        "Argh! " + characteristic.name + " error: " + error,
+                    );
+                });
+        } else if (characteristic.properties.read == true) {
+            logger.log(
+                loggerCtxName,
+                "Reading single " + characteristic.uuid + "...",
+            );
+            return characteristic
+                .readValue()
+                .then((valueObj) => {
+                    logger.log(
+                        loggerCtxName,
+                        "Characteristic value:",
+                        characteristic.uuid,
+                        valueObj,
+                        valueObj.getInt8(0),
+                    );
+                    characteristicValue = valueObj.getInt8(0);
+                    characteristicValues[characteristic.uuid] =
+                        characteristicValue;
+
+                    var payLoad = {
+                        payload: characteristicValue,
+                        attribute_id: characteristic.uuid,
+                        timestamp: Math.round(new Date().getTime()),
+                    };
+
+                    logger.log(
+                        loggerCtxName,
+                        "Sending single read value",
+                        getUniqueDeviceId(characteristic.service.device),
+                        payLoad,
+                    );
+
+                    sensorService.sendChannelMessage(
+                        getUniqueDeviceId(characteristic.service.device),
+                        payLoad,
+                    );
                 })
                 .catch((error) => {
                     logger.log(

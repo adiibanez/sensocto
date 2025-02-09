@@ -103,7 +103,6 @@ config :phoenix, :json_library, Jason
 config :mime, :types, %{
   "application/wasm" => ["wasm"],
   "audio/flac" => ["flac"],
-  "text/jetpack" => ["jetpack"],
   "text/styles" => ["styles"],
   "text/swiftui" => ["swiftui"]
 }
@@ -115,13 +114,11 @@ config :sensocto,
   google_client_id: System.get_env("GOOGLE_CLIENT_ID")
 
 config :phoenix_template, :format_encoders, [
-  jetpack: Phoenix.HTML.Engine,
   swiftui: Phoenix.HTML.Engine
 ]
 
 config :live_view_native,
   plugins: [
-    LiveViewNative.Jetpack,
     LiveViewNative.SwiftUI
   ]
 
@@ -131,10 +128,6 @@ config :phoenix, :template_engines, [
 
 config :live_view_native_stylesheet,
   content: [
-    jetpack: [
-      "lib/**/jetpack/*",
-      "lib/**/*jetpack*"
-    ],
     swiftui: [
       "lib/**/swiftui/*",
       "lib/**/*swiftui*"

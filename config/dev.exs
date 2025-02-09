@@ -80,7 +80,10 @@ config :sensocto, SensoctoWeb.Endpoint,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/sensocto_web/(controllers|live|components)/.*(ex|heex)$"
+      ~r"lib/sensocto_web/(controllers|live|components)/.*(ex|heex)$",
+      ~r"lib/sensocto_web/(live|components)/.*neex$",
+      ~r"lib/sensocto_web/styles/.*ex$",
+      ~r"priv/static/*.styles$"
     ]
   ]
 
@@ -96,7 +99,7 @@ config :logger, :logger_name,
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
     # [module: Sensocto.AttributeStorer, level: :debug]
-    # [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    [module: SensoctoWeb.SensorDataChannel, level: :debug],
     # [module: Phoenix.Logger, level: :debug],
     # [module: SensoctoWeb.Live.PlaygroundLive, level: :debug]
 #    [module: SensoctoWeb.IndexLive, level: :debug],
@@ -139,3 +142,7 @@ config :sensocto, Sensocto.Mailer,
   api_key: System.get_env("SMTP2GO_APIKEY")
 
 #
+
+config :live_view_native_stylesheet,
+  annotations: true,
+  pretty: true

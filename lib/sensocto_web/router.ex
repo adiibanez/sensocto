@@ -13,6 +13,7 @@ defmodule SensoctoWeb.Router do
   pipeline :browser do
     plug :accepts, [
       "html",
+      "jetpack",
       "swiftui"
     ]
 
@@ -21,6 +22,7 @@ defmodule SensoctoWeb.Router do
 
     plug :put_root_layout,
       html: {SensoctoWeb.Layouts, :root},
+      jetpack: {SensoctoWeb.Layouts.Jetpack, :root},
       swiftui: {SensoctoWeb.Layouts.SwiftUI, :root}
 
     plug :protect_from_forgery

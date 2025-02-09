@@ -42,7 +42,7 @@ defmodule Sensocto.MixProject do
       {:phoenix_html, "~> 4.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       # {:phoenix_live_view, "~> 0.20.2"},
-      {:phoenix_live_view, "~> 1.0.3"},
+      {:phoenix_live_view, "== 1.0.1"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       # {:esbuild, "~> 0.8.2"},
@@ -83,16 +83,27 @@ defmodule Sensocto.MixProject do
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},
       {:dialyxir, "~> 0.4", only: [:dev]},
-      {:sourceror, "~> 1.7", only: [:dev, :test]},
+      # {:sourceror, "~> 1.7", only: [:dev, :test]},
       {:nimble_csv, "~> 1.1", only: [:dev]},
       {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
       {:timex, "~> 3.7"},
       # {:kino, "~> 0.8.0", only: :dev},
-      {:kino, github: "adiibanez/kino", only: :dev},
+      # {:kino, github: "adiibanez/kino"}, # , only: :dev
+      {:kino,
+       local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/elixir-examples/kino"},
       {:observer_cli, "~> 1.8"},
       {:exprof, "~> 0.2.4"},
-      {:guarded_struct, "~> 0.0.4"}
+      {:guarded_struct, "~> 0.0.4"},
+      {:live_view_native, "~> 0.4.0-rc.0", override: true},
+      {:live_view_native_stylesheet, "~> 0.3.2", override: true},
+      {:live_view_native_swiftui, "~> 0.4.0-rc.0", override: true},
+      {:live_view_native_live_form, "~> 0.4.0-rc.0", override: true},
+      {:live_view_native_jetpack, github: "liveview-native/liveview-client-jetpack"},
+      {:qr_code, "~> 3.1.0"},
+      {:nx, "~> 0.7.2"}
+      # https://github.com/georgeguimaraes/soothsayer
+
       # {:recode, "~> 0.7", only: :dev, override: true}
 
       # {

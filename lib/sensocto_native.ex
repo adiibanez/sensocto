@@ -35,9 +35,11 @@ defmodule SensoctoNative do
     quote do
       use LiveViewNative.LiveView,
         formats: [
+          :jetpack,
           :swiftui
         ],
         layouts: [
+          jetpack: {SensoctoWeb.Layouts.Jetpack, :app},
           swiftui: {SensoctoWeb.Layouts.SwiftUI, :app}
         ],
         dispatch_to: &Module.concat/2

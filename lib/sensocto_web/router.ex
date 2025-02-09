@@ -4,14 +4,25 @@ defmodule SensoctoWeb.Router do
   import AshAdmin.Router
   use AshAuthentication.Phoenix.Router
   alias SensoctoWeb.LiveUserAuth
+
+  alias SensoctoWeb.Live.AuthLive.AuthIndex
+  alias SensoctoWeb.Live.AuthLive.AuthForm
   #  alias Plug.Swoosh.MailboxPreview
   # alias AshAdmin.PageLive
 
   pipeline :browser do
-    plug :accepts, ["html"]
+    plug :accepts, [
+      "html",
+      "swiftui"
+    ]
+
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, html: {SensoctoWeb.Layouts, :root}
+
+    plug :put_root_layout,
+      html: {SensoctoWeb.Layouts, :root},
+      swiftui: {SensoctoWeb.Layouts.SwiftUI, :root}
+
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :load_from_session
@@ -55,6 +66,10 @@ defmodule SensoctoWeb.Router do
     # Prebuilt LiveViews for signing in, registration, resetting, etc.
     # Leave out `register_path` and `reset_path` if you don't want to support
     # user registration and/or password resets respectively.
+
+    # live "/register", AuthIndex, :register
+    # live "/sign-in", AuthIndex, :sign_in
+
     sign_in_route(
       overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default],
       register_path: "/register",

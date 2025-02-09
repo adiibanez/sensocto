@@ -127,24 +127,25 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
     # assigns.attribute |> dbg()
 
-    attribute_type =
-      case Map.has_key?(assigns, :attribute_type) do
-        true -> assigns.attribute_type
-        false -> socket.assigns.attribute_type
-      end
+    # attribute_type =
+    #   case Map.has_key?(assigns, :attribute_type) do
+    #     true -> assigns.attribute_type
+    #     false -> socket.assigns.attribute_type
+    #   end
 
-    sensor_id =
-      case Map.has_key?(assigns, :sensor_id) do
-        true -> assigns.sensor_id
-        false -> socket.assigns.sensor_id
-      end
+    # sensor_id =
+    #   case Map.has_key?(assigns, :sensor_id) do
+    #     true -> assigns.sensor_id
+    #     false -> socket.assigns.sensor_id
+    #   end
 
     {
       :ok,
       socket
+      |> assign_new(:attribute_type, fn _ -> assigns.attribute_type end)
+      |> assign_new(:sensor_id, fn _ -> assigns.sensor_id end)
       |> assign(:attribute, assigns.attribute)
-      |> assign(:sensor_id, sensor_id)
-      |> assign(:attribute_type, attribute_type)
+      # |> assign(:attribute_type, attribute_type)
     }
   end
 

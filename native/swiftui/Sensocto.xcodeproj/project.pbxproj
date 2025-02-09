@@ -1,0 +1,532 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0572142039957B98E4F573D1 /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019549373FF43F5207D190EC /* ErrorView.swift */; };
+		0D1D36EC2D584F620073B37F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1D36EB2D584F5D0073B37F /* AppDelegate.swift */; };
+		0D1D36ED2D584F620073B37F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1D36EB2D584F5D0073B37F /* AppDelegate.swift */; };
+		3753BFDFD7CC6944C25EC808 /* DisconnectedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B671FF8A794DECF4BDD6F143 /* DisconnectedView.swift */; };
+		6844AC7239AD42E3AD4C8745 /* LiveViewNative in Frameworks */ = {isa = PBXBuildFile; productRef = B02459EB1AD8A8B08A60897E /* LiveViewNative */; };
+		6C7D3FB090E1FA35FE83CCBE /* DisconnectedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B671FF8A794DECF4BDD6F143 /* DisconnectedView.swift */; };
+		70E10A4D994CFD773142814E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1660694ABA7687D657F17948 /* Assets.xcassets */; };
+		750867C257307115B10AC7E4 /* ReconnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96E5AD8FC00C41621A8837C /* ReconnectingView.swift */; };
+		90BC1ED05ECB9CF992F974ED /* LiveViewNative in Frameworks */ = {isa = PBXBuildFile; productRef = 07B045D17147B62AC8696F72 /* LiveViewNative */; };
+		9E703D9CADBFD59C1DE6B76E /* ReconnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96E5AD8FC00C41621A8837C /* ReconnectingView.swift */; };
+		A115598CE3009C199F11BCAD /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 768764D0044244B3D6B6A8D8 /* Preview Assets.xcassets */; };
+		A7F838F18C8FEE8735A105AB /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019549373FF43F5207D190EC /* ErrorView.swift */; };
+		A8663478E9062FEA24816121 /* LiveViewNativeLiveForm in Frameworks */ = {isa = PBXBuildFile; productRef = 009C4EAFCF6F8EDA2A6C857C /* LiveViewNativeLiveForm */; };
+		AA62D47EB9177A0C18B2B536 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250E107AACA7C22CA38761B0 /* ContentView.swift */; };
+		B021AC7F97546FD33660B339 /* Sensocto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB64D9CE91F86C24EC827A8 /* Sensocto.swift */; };
+		BB02783124D01C2CFCDAEEA9 /* ConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39CEE0CC2762044857F7340D /* ConnectingView.swift */; };
+		C6BF21918781A6064A279D04 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1660694ABA7687D657F17948 /* Assets.xcassets */; };
+		CE16B8BD9C44A37E60CC6E5B /* Sensocto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB64D9CE91F86C24EC827A8 /* Sensocto.swift */; };
+		CFF368AF8ECF1468305E83AF /* ConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39CEE0CC2762044857F7340D /* ConnectingView.swift */; };
+		D5629FAC62154C962251B6AE /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 768764D0044244B3D6B6A8D8 /* Preview Assets.xcassets */; };
+		E43D01D02CE3D937A03CDD5D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250E107AACA7C22CA38761B0 /* ContentView.swift */; };
+		F9B8F5A54A038372AD5C2679 /* LiveViewNativeLiveForm in Frameworks */ = {isa = PBXBuildFile; productRef = 96670AFB5726B7756AC2F238 /* LiveViewNativeLiveForm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		019549373FF43F5207D190EC /* ErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorView.swift; sourceTree = "<group>"; };
+		0D1D36EA2D584E9D0073B37F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		0D1D36EB2D584F5D0073B37F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		1660694ABA7687D657F17948 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		250E107AACA7C22CA38761B0 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		2FFE72498D98882E7781503C /* Sensocto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sensocto.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		39CEE0CC2762044857F7340D /* ConnectingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectingView.swift; sourceTree = "<group>"; };
+		4CB64D9CE91F86C24EC827A8 /* Sensocto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sensocto.swift; sourceTree = "<group>"; };
+		768764D0044244B3D6B6A8D8 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		A96E5AD8FC00C41621A8837C /* ReconnectingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectingView.swift; sourceTree = "<group>"; };
+		A9821CA801F6EC86FF363BA4 /* Sensocto Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Sensocto Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B671FF8A794DECF4BDD6F143 /* DisconnectedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisconnectedView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DAC44064A8E241E1B866976B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6844AC7239AD42E3AD4C8745 /* LiveViewNative in Frameworks */,
+				A8663478E9062FEA24816121 /* LiveViewNativeLiveForm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E854BD17472423083FC79B9E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				90BC1ED05ECB9CF992F974ED /* LiveViewNative in Frameworks */,
+				F9B8F5A54A038372AD5C2679 /* LiveViewNativeLiveForm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		322467D96F8CAE1A23780480 /* Sensocto */ = {
+			isa = PBXGroup;
+			children = (
+				0D1D36EB2D584F5D0073B37F /* AppDelegate.swift */,
+				0D1D36EA2D584E9D0073B37F /* Info.plist */,
+				B1554C851A3303F04D07DDEA /* Preview Content */,
+				1660694ABA7687D657F17948 /* Assets.xcassets */,
+				39CEE0CC2762044857F7340D /* ConnectingView.swift */,
+				250E107AACA7C22CA38761B0 /* ContentView.swift */,
+				B671FF8A794DECF4BDD6F143 /* DisconnectedView.swift */,
+				019549373FF43F5207D190EC /* ErrorView.swift */,
+				A96E5AD8FC00C41621A8837C /* ReconnectingView.swift */,
+				4CB64D9CE91F86C24EC827A8 /* Sensocto.swift */,
+			);
+			path = Sensocto;
+			sourceTree = "<group>";
+		};
+		7DAA79BA2B5949379B50F311 = {
+			isa = PBXGroup;
+			children = (
+				322467D96F8CAE1A23780480 /* Sensocto */,
+				97E384A84E720C733EFF64BF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		97E384A84E720C733EFF64BF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A9821CA801F6EC86FF363BA4 /* Sensocto Watch App.app */,
+				2FFE72498D98882E7781503C /* Sensocto.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B1554C851A3303F04D07DDEA /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				768764D0044244B3D6B6A8D8 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		38C6563354B0E916ECA50B24 /* Sensocto */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9425FA6A3971700A4B4BC39E /* Build configuration list for PBXNativeTarget "Sensocto" */;
+			buildPhases = (
+				0FDA475BA9EC48E11114DE4B /* Sources */,
+				CD2F518BFF85B0455686160A /* Resources */,
+				DAC44064A8E241E1B866976B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Sensocto;
+			packageProductDependencies = (
+				B02459EB1AD8A8B08A60897E /* LiveViewNative */,
+				009C4EAFCF6F8EDA2A6C857C /* LiveViewNativeLiveForm */,
+			);
+			productName = Sensocto;
+			productReference = 2FFE72498D98882E7781503C /* Sensocto.app */;
+			productType = "com.apple.product-type.application";
+		};
+		416A949891B49B474A5BDC93 /* Sensocto Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9F43E5EA9E755D66F66DC065 /* Build configuration list for PBXNativeTarget "Sensocto Watch App" */;
+			buildPhases = (
+				FFA3E3436133441547C03004 /* Sources */,
+				82CD52F03548EF321CF425D3 /* Resources */,
+				E854BD17472423083FC79B9E /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Sensocto Watch App";
+			packageProductDependencies = (
+				07B045D17147B62AC8696F72 /* LiveViewNative */,
+				96670AFB5726B7756AC2F238 /* LiveViewNativeLiveForm */,
+			);
+			productName = "Sensocto Watch App";
+			productReference = A9821CA801F6EC86FF363BA4 /* Sensocto Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		95861BD69BBE6310F10AE177 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = 819AF92959479BEE0BC75760 /* Build configuration list for PBXProject "Sensocto" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7DAA79BA2B5949379B50F311;
+			packageReferences = (
+				1E9052FFCA0AE5D5EB16A30C /* XCRemoteSwiftPackageReference "liveview-client-swiftui" */,
+				A382834F82BC70A7F1588D35 /* XCRemoteSwiftPackageReference "liveview-native-live-form" */,
+			);
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				38C6563354B0E916ECA50B24 /* Sensocto */,
+				416A949891B49B474A5BDC93 /* Sensocto Watch App */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		82CD52F03548EF321CF425D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6BF21918781A6064A279D04 /* Assets.xcassets in Resources */,
+				D5629FAC62154C962251B6AE /* Preview Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CD2F518BFF85B0455686160A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				70E10A4D994CFD773142814E /* Assets.xcassets in Resources */,
+				A115598CE3009C199F11BCAD /* Preview Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0FDA475BA9EC48E11114DE4B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB02783124D01C2CFCDAEEA9 /* ConnectingView.swift in Sources */,
+				E43D01D02CE3D937A03CDD5D /* ContentView.swift in Sources */,
+				6C7D3FB090E1FA35FE83CCBE /* DisconnectedView.swift in Sources */,
+				A7F838F18C8FEE8735A105AB /* ErrorView.swift in Sources */,
+				0D1D36EC2D584F620073B37F /* AppDelegate.swift in Sources */,
+				9E703D9CADBFD59C1DE6B76E /* ReconnectingView.swift in Sources */,
+				B021AC7F97546FD33660B339 /* Sensocto.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FFA3E3436133441547C03004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CFF368AF8ECF1468305E83AF /* ConnectingView.swift in Sources */,
+				AA62D47EB9177A0C18B2B536 /* ContentView.swift in Sources */,
+				3753BFDFD7CC6944C25EC808 /* DisconnectedView.swift in Sources */,
+				0572142039957B98E4F573D1 /* ErrorView.swift in Sources */,
+				0D1D36ED2D584F620073B37F /* AppDelegate.swift in Sources */,
+				750867C257307115B10AC7E4 /* ReconnectingView.swift in Sources */,
+				CE16B8BD9C44A37E60CC6E5B /* Sensocto.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		07C2FACC7BA30156A567798F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 46KPTB8WG4;
+				INFOPLIST_FILE = Sensocto/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Sensocto;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.example.Sensocto;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sensocto.SensoctoApp;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator appletvos appletvsimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+			};
+			name = Release;
+		};
+		15CE4A782CA9D44177AA3D6F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 46KPTB8WG4;
+				INFOPLIST_FILE = Sensocto/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Sensocto;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.example.Sensocto;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sensocto.SensoctoApp;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator appletvos appletvsimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+			};
+			name = Debug;
+		};
+		72761BF1D8D5BE83F6D6537B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.Sensocto.watchkit;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
+		A0A560002209012FD9281EBF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1.0;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Sensocto;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.example.Sensocto;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TVOS_DEPLOYMENT_TARGET = 16.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Release;
+		};
+		CD47449AD123A1F3ABED61FF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.Sensocto.watchkit;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		DD1F23A5B5EE62596D6BA814 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1.0;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Sensocto;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.example.Sensocto;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TVOS_DEPLOYMENT_TARGET = 16.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		819AF92959479BEE0BC75760 /* Build configuration list for PBXProject "Sensocto" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD1F23A5B5EE62596D6BA814 /* Debug */,
+				A0A560002209012FD9281EBF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9425FA6A3971700A4B4BC39E /* Build configuration list for PBXNativeTarget "Sensocto" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				15CE4A782CA9D44177AA3D6F /* Debug */,
+				07C2FACC7BA30156A567798F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9F43E5EA9E755D66F66DC065 /* Build configuration list for PBXNativeTarget "Sensocto Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD47449AD123A1F3ABED61FF /* Debug */,
+				72761BF1D8D5BE83F6D6537B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1E9052FFCA0AE5D5EB16A30C /* XCRemoteSwiftPackageReference "liveview-client-swiftui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/liveview-native/liveview-client-swiftui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = "0.4.0-rc.0";
+			};
+		};
+		A382834F82BC70A7F1588D35 /* XCRemoteSwiftPackageReference "liveview-native-live-form" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/liveview-native/liveview-native-live-form";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = "0.4.0-rc.0";
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		009C4EAFCF6F8EDA2A6C857C /* LiveViewNativeLiveForm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A382834F82BC70A7F1588D35 /* XCRemoteSwiftPackageReference "liveview-native-live-form" */;
+			productName = LiveViewNativeLiveForm;
+		};
+		07B045D17147B62AC8696F72 /* LiveViewNative */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1E9052FFCA0AE5D5EB16A30C /* XCRemoteSwiftPackageReference "liveview-client-swiftui" */;
+			productName = LiveViewNative;
+		};
+		96670AFB5726B7756AC2F238 /* LiveViewNativeLiveForm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A382834F82BC70A7F1588D35 /* XCRemoteSwiftPackageReference "liveview-native-live-form" */;
+			productName = LiveViewNativeLiveForm;
+		};
+		B02459EB1AD8A8B08A60897E /* LiveViewNative */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1E9052FFCA0AE5D5EB16A30C /* XCRemoteSwiftPackageReference "liveview-client-swiftui" */;
+			productName = LiveViewNative;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 95861BD69BBE6310F10AE177 /* Project object */;
+}

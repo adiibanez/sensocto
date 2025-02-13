@@ -41,7 +41,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
   end
 
   def handle_info(:ble_state_changed, socket) do
-    Logger.debug("handle_info :ble_state_changed")
+    # Logger.debug("handle_info :ble_state_changed")
 
     {:noreply,
      assign(

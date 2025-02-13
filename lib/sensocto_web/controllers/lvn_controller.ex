@@ -24,7 +24,7 @@ defmodule SensoctoWeb.LvnController do
   end
 
   def authenticate(conn, %{"token" => token} = params) do
-    Logger.debug("lvn authenticate token: #{token} #{inspect(params)}")
+    Logger.debug("lvn authenticate token: #{token} params: #{inspect(params)}")
 
     strategy = AshAuthentication.Info.strategy!(Sensocto.Accounts.User, :magic_link)
 
@@ -48,12 +48,11 @@ defmodule SensoctoWeb.LvnController do
         conn
         |> delete_session(:return_to)
         |> store_in_session(user)
+        # |> store_in_session("_csrf_token", params["_csrf_token"])
         |> assign(:current_user, user)
         |> Conn.put_resp_header("location", return_to)
+        # |> Conn.put_resp_header("_csrf_token", params["_csrf_token"])
         |> Conn.send_resp(302, "Redirect")
-        |> halt()
-
-      # |> redirect(to: return_to)
 
       _ ->
         Logger.debug("lvn auth NOK")

@@ -27,3 +27,4 @@
     </VStack>
   <% end %>
 </Group>
+<CustomURLOpener/>

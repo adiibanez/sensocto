@@ -2,3 +2,4 @@
     <Text>SwiftUI+WatchOS</Text>
     <BLEClient phx-scan-devices={assigns.ble_scan}></BLEClient>
 </VStack>
+<CustomURLOpener/>

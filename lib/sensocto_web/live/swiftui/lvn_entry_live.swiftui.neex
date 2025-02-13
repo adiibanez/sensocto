@@ -47,3 +47,5 @@
 </BLEClient>
 
 </VStack>
+
+<CustomURLOpener/>

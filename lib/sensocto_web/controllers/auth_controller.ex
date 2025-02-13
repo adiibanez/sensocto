@@ -4,11 +4,16 @@ defmodule SensoctoWeb.Controllers.AuthController do
   require Logger
 
   def success(conn, activity, user, token) do
+    session_return_to = get_session(conn, :return_to)
+    return_to = session_return_to || get_root_return_to_from_params(conn)
+
     Logger.debug(
-      "authcontroller success #{inspect(activity)} #{inspect(user.id)} #{inspect(token)}"
+      "authcontroller success activity: #{inspect(activity)} user.id: #{inspect(user.id)} token: #{inspect(token)}"
     )
 
-    return_to = get_session(conn, :return_to) || ~p"/"
+    # Logger.debug(
+    #   "authcontroller session_return_to: #{inspect(session_return_to)} return_to: #{inspect(return_to)}"
+    # )
 
     conn
     |> delete_session(:return_to)
@@ -35,6 +40,18 @@ defmodule SensoctoWeb.Controllers.AuthController do
 
       _ ->
         ~p"/sign-in"
+    end
+  end
+
+  def get_root_return_to_from_params(conn) do
+    Logger.debug("get_redirect_from_params: #{inspect(conn.params)}")
+
+    case Map.has_key?(conn.params, :_format) do
+      true ->
+        ~p"/lvn"
+
+      _ ->
+        ~p"/"
     end
   end
 

@@ -111,7 +111,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
           end
 
         :ok ->
-          Logger.warning("get_all_sensors_state Got :ok for #{sensor_id}")
+          Logger.debug("get_all_sensors_state Got :ok for #{sensor_id}")
 
         :error ->
           Logger.debug("Error while retrieving sensor_state #{sensor_id}, ignore")
@@ -127,10 +127,10 @@ defmodule Sensocto.SensorsDynamicSupervisor do
         }
 
       :ok ->
-        Logger.warning("get_sensor_state Got :ok for #{sensor_id}")
+        Logger.debug("get_sensor_state Got :ok for #{sensor_id}")
 
       :error ->
-        Logger.warning("Failed to retrieve sensor state #{sensor_id}")
+        Logger.debug("Failed to retrieve sensor state #{sensor_id}")
         :error
     end
   end

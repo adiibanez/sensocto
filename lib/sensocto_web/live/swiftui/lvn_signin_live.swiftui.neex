@@ -9,6 +9,5 @@
           <.button type="submit">Request Magic link</.button>
         </:actions>
       </.simple_form>
-      
-      <CustomURLOpener/>
+<CustomURLOpener/>
 </VStack>

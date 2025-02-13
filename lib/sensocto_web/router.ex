@@ -5,11 +5,6 @@ defmodule SensoctoWeb.Router do
   use AshAuthentication.Phoenix.Router
   alias SensoctoWeb.LiveUserAuth
 
-  alias SensoctoWeb.Live.LvnSigninLive
-
-  alias SensoctoWeb.Live.AuthLive.AuthIndex
-  alias SensoctoWeb.Live.AuthLive.AuthForm
-
   pipeline :browser do
     plug :accepts, [
       "html",

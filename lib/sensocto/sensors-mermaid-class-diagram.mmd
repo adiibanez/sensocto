@@ -1,0 +1,52 @@
+classDiagram
+    class Sensor {
+        UUID id
+        String name
+        UUID sensor_type_id
+        String mac_address
+        Map configuration
+        update(String name, UUID sensor_type_id, String mac_address, Map configuration)
+        create(String name, UUID sensor_type_id, String mac_address, Map configuration)
+        destroy()
+        read()
+        simple(String name)
+        create_from_sensorinfos(String name)
+        update_sensor_name(String name)
+    }
+    class SensorAttribute {
+        UUID id
+    }
+    class SensorType {
+
+    }
+    class Connector {
+        UUID id
+    }
+    class ConnectorSensorType {
+
+    }
+    class RoomSensorType {
+
+    }
+    class Room {
+        UUID id
+    }
+    class SensorConnection {
+
+    }
+    class SensorSensorConnection {
+
+    }
+
+    Connector -- ConnectorSensorType
+    Connector -- Sensor
+    Connector -- SensorConnection
+    ConnectorSensorType -- SensorType
+    Room -- RoomSensorType
+    Room -- SensorConnection
+    RoomSensorType -- SensorType
+    Sensor -- SensorAttribute
+    Sensor -- SensorConnection
+    Sensor -- SensorSensorConnection
+    Sensor -- SensorType
+    SensorConnection -- SensorSensorConnection

@@ -1,8 +1,13 @@
 defmodule SensoctoWeb.Controllers.AuthController do
   use SensoctoWeb, :controller
   use AshAuthentication.Phoenix.Controller
+  require Logger
 
-  def success(conn, _activity, user, _token) do
+  def success(conn, activity, user, token) do
+    Logger.debug(
+      "authcontroller success #{inspect(activity)} #{inspect(user.id)} #{inspect(token)}"
+    )
+
     return_to = get_session(conn, :return_to) || ~p"/"
 
     conn
@@ -13,17 +18,38 @@ defmodule SensoctoWeb.Controllers.AuthController do
     |> redirect(to: return_to)
   end
 
-  def failure(conn, _activity, _reason) do
+  def failure(conn, activity, reason) do
+    Logger.debug("authcontroller failure #{inspect(activity)} #{inspect(reason)}")
+
     conn
     |> put_flash(:error, "Incorrect email or password")
-    |> redirect(to: ~p"/sign-in")
+    |> redirect(to: get_redirect_from_params(conn))
   end
 
-  def sign_out(conn, _params) do
+  def get_redirect_from_params(conn) do
+    Logger.debug("get_redirect_from_params: #{inspect(conn.params)}")
+
+    case Map.has_key?(conn.params, :_format) do
+      true ->
+        ~p"/lvn-signin"
+
+      _ ->
+        ~p"/sign-in"
+    end
+  end
+
+  def sign_out(conn, params) do
+    Logger.debug("authcontroller sign_out #{inspect(params)}")
     return_to = get_session(conn, :return_to) || ~p"/"
 
     conn
     |> clear_session()
     |> redirect(to: return_to)
   end
+
+  # @impl
+  # def action(conn, opts) do
+  #   Logger.debug("authcontroller action #{inspect(opts)}")
+  #   super(conn, opts)
+  # end
 end

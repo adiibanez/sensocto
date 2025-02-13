@@ -1,0 +1,49 @@
+<VStack
+    alignment="leading"
+    >
+    <Text>Swiftui {inspect(assigns)}</Text>
+
+    <%!--<HStack :for={{peripheral_id, p} <- @ble_state.peripherals}>
+    <Button phx-click="ble-connect" phx-value-peripheral_id={peripheral_id}>{p.id}</Button>
+    <Text> {p[:name]}</Text>
+    </HStack>--%>
+    <%!--<.simple_form for={@form} method="GET" action={~p"/auth/user/magic_link"} phx-update="ignore" id="login">
+    <.input name="token" value={@form[:token]}/>
+    <Button phx-click="login">Login</Button>
+    </.simple_form>--%>
+
+    <BLEClient phx-scan-devices={assigns.ble_scan}>
+
+    <%!--
+
+    <.input name="test2" type="DatePicker" label="toggle" value={1}></.input>
+
+<SwiftUI.input name="test" type="Toggle" label="toggle" value={1}></SwiftUI.input>
+    <SwiftUI.input name="test2" type="DatePicker" label="toggle" value={1}></SwiftUI.input>
+
+
+    <Box size="fill" background="system-blue">
+            <Text align="Center">
+                second_page
+            <Link destination="/nav/next">
+                    <Text class="bold">Next</Text>
+            </Link>
+            </Text>
+        </Box>
+
+        <Button
+        phx-click="send-ble-command"
+        phx-value-test2={1}
+    >Send cmd</Button>
+
+    <Button
+        phx-click="toggle-scan"
+        phx-value-test2={1}
+        style="font(.system(size: 10));padding(.vertical, 5);padding(.horizontal, 5)"
+    >Toggle scan {@ble_scan}</Button>
+--%>
+
+
+</BLEClient>
+
+</VStack>

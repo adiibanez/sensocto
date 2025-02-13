@@ -5,15 +5,14 @@ defmodule SensoctoWeb.Router do
   use AshAuthentication.Phoenix.Router
   alias SensoctoWeb.LiveUserAuth
 
+  alias SensoctoWeb.Live.LvnSigninLive
+
   alias SensoctoWeb.Live.AuthLive.AuthIndex
   alias SensoctoWeb.Live.AuthLive.AuthForm
-  #  alias Plug.Swoosh.MailboxPreview
-  # alias AshAdmin.PageLive
 
   pipeline :browser do
     plug :accepts, [
       "html",
-      "jetpack",
       "swiftui"
     ]
 
@@ -22,12 +21,13 @@ defmodule SensoctoWeb.Router do
 
     plug :put_root_layout,
       html: {SensoctoWeb.Layouts, :root},
-      jetpack: {SensoctoWeb.Layouts.Jetpack, :root},
       swiftui: {SensoctoWeb.Layouts.SwiftUI, :root}
 
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :load_from_session
+
+    plug SensoctoWeb.Plugs.RequestLogger
   end
 
   pipeline :api do
@@ -44,23 +44,16 @@ defmodule SensoctoWeb.Router do
   scope "/", SensoctoWeb do
     pipe_through [:browser]
 
+    post "/lvn-auth", LvnController, :authenticate
+    get "/lvn-auth", LvnController, :authenticate
+    live "/lvn-signin", Live.LvnSigninLive, :index
+
     # live "/users/:id", UserLive.Show, :show
     # live "/users/:id/show/edit", UserLive.Show, :edit
 
     # live "/sensors", SensorLive.Index, :index
     # live "/sensors/:id/edit", SensorLive.Index, :edit
     # live "/sensors/:id", SensorLive.Index, :show
-
-    live "/playground", Live.PlaygroundLive, :index
-
-    ash_authentication_live_session :authentication_required,
-      on_mount: {LiveUserAuth, :live_user_required} do
-      live "/", IndexLive, :index
-      live "/sense", SenseLive, :index
-      live "/sensors", SensorLive.Index, :index
-      live "/sensors/:id", SensorLive.Show, :show
-      live "/sensors/:id/edit", SensorLive.Show, :edit
-    end
 
     auth_routes(Controllers.AuthController, Sensocto.Accounts.User, path: "/auth")
     sign_out_route(Controllers.AuthController)
@@ -71,6 +64,17 @@ defmodule SensoctoWeb.Router do
 
     # live "/register", AuthIndex, :register
     # live "/sign-in", AuthIndex, :sign_in
+
+    ash_authentication_live_session :authentication_required,
+      on_mount: {LiveUserAuth, :live_user_required} do
+      live "/playground", Live.PlaygroundLive, :index
+      live "/lvn", Live.LvnEntryLive, :index
+      live "/", IndexLive, :index
+      live "/sense", SenseLive, :index
+      live "/sensors", SensorLive.Index, :index
+      live "/sensors/:id", SensorLive.Show, :show
+      live "/sensors/:id/edit", SensorLive.Show, :edit
+    end
 
     sign_in_route(
       overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default],

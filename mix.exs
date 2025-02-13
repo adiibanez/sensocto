@@ -72,7 +72,10 @@ defmodule Sensocto.MixProject do
       {:broadway, "~> 1.0"},
       {:broadway_dashboard, "~> 0.4.0"},
       # {:live_svelte, "~> 0.15.0-rc.6"},
-      {:live_svelte, "~> 0.14.1"},
+      # ~> 0.14.1"},
+      {:live_svelte, "~> 0.14.0"},
+
+      # {:live_svelte, github: "woutdp/live_svelte"},
       # {:live_svelte, github: "woutdp/live_svelte", tag: "svelte-5"},
       # {:igniter, "~> 0.5", only: [:dev, :test]},
       # {:rewrite, "~> 1.1.1", only: [:dev], override: true},
@@ -89,20 +92,22 @@ defmodule Sensocto.MixProject do
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
       {:timex, "~> 3.7"},
       # {:kino, "~> 0.8.0", only: :dev},
-      # {:kino, github: "adiibanez/kino"}, # , only: :dev
-      {:kino,
-       local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/elixir-examples/kino"},
+      {:kino, github: "adiibanez/kino", only: :dev},
+      # {:kino,
+      # local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/elixir-examples/kino"},
       {:observer_cli, "~> 1.8"},
       {:exprof, "~> 0.2.4"},
       {:guarded_struct, "~> 0.0.4"},
-      {:live_view_native, "~> 0.4.0-rc.0", override: true},
-      {:live_view_native_stylesheet, "~> 0.3.2", override: true},
-      {:live_view_native_swiftui, "~> 0.4.0-rc.0", override: true},
-      {:live_view_native_live_form, "~> 0.4.0-rc.0", override: true},
-      {:live_view_native_jetpack, github: "liveview-native/liveview-client-jetpack"},
+      {:live_view_native, "~> 0.4.0-rc.0"},
+      {:live_view_native_stylesheet, "~> 0.3.2"},
+      {:live_view_native_swiftui, "~> 0.4.0-rc.0"},
+      {:live_view_native_live_form, "~> 0.4.0-rc.0"},
       {:qr_code, "~> 3.1.0"},
-      {:nx, "~> 0.7.2"}
+      {:nx, "~> 0.7.2"},
+      {:matplotex, "~> 0.4.6"}
+
       # https://github.com/georgeguimaraes/soothsayer
+      # https://github.com/gridpoint-com/plox
 
       # {:recode, "~> 0.7", only: :dev, override: true}
 

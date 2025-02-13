@@ -1,5 +1,6 @@
 defmodule SensoctoWeb.StatefulSensorLiveview do
   use SensoctoWeb, :live_view
+  use SensoctoNative, :live_view
   import Phoenix.LiveView
 
   alias Sensocto.SimpleSensor
@@ -13,7 +14,6 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     # send_test_event()
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
-
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement:#{sensor.metadata.sensor_id}")
 
     Phoenix.PubSub.subscribe(

@@ -2,25 +2,19 @@
   Attempting to reconnect...
 </div>
 
-<div class="text-l p-8 mb-8 bg-gray-800 rounded-lg">Sensors online: {@sensors_online_count} Liveview pid:
-  {inspect(self())}
+<div class="text-l p-8 mb-8 bg-gray-800 rounded-lg">
+  Sensors online: {@sensors_online_count} Liveview pid: {inspect(self())}
 </div>
 
 <div id="cnt" phx-hook="ConnectionHandler">
-
-  <div
-    class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-
+  <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
     <div :for={{sensor_id, sensor} <- @sensors}>
       {live_render(@socket, StatefulSensorLiveview,
-      id: "stateful_sensor_#{sensor_id}",
-      session: %{"parent_pid" => self(), "sensor" => sensor}
+        id: "stateful_sensor_#{sensor_id}",
+        session: %{"parent_pid" => self(), "sensor" => sensor}
       )}
     </div>
-
-
   </div>
-
 </div>
 <%= if @sensors_offline !=%{} do %>
   <div>
@@ -28,14 +22,17 @@
     <ul class="list-disc list-inside ml-4">
       <%= for sensor_id <- Map.keys(@sensors_offline) do %>
         <li>{sensor_id}</li>
-        <% end %>
+      <% end %>
     </ul>
   </div>
-  <% end %>
+<% end %>
 
-    <div id="toolbar" class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[80%] overflow-y-auto">
-      {live_render(@socket, SensoctoWeb.SenseLive,
-      id: "bluetooth",
-      session: %{"parent_id" => self()}
-      )}
-    </div>
+<div
+  id="toolbar"
+  class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[80%] overflow-y-auto"
+>
+  {live_render(@socket, SensoctoWeb.SenseLive,
+    id: "bluetooth",
+    session: %{"parent_id" => self()}
+  )}
+</div>

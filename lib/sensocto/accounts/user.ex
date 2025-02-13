@@ -42,6 +42,7 @@ defmodule Sensocto.Accounts.User do
       magic_link do
         identity_field :email
         registration_enabled? true
+        token_lifetime 60 * 60
 
         sender Sensocto.Accounts.User.Senders.SendMagicLinkEmail
       end

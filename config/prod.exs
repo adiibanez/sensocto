@@ -20,8 +20,6 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-
-
 # only for dummy prod
 config :sensocto, SensoctoWeb.Endpoint,
   # url: [host: "Adrians-MacBook-Pro.local", port: 4001, scheme: "https"],
@@ -36,7 +34,6 @@ config :sensocto, SensoctoWeb.Endpoint,
     keyfile: "priv/cert/selfsigned_key.pem"
   ],
   check_origin: false
-
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

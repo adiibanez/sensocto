@@ -257,12 +257,10 @@ defmodule SensoctoWeb.Live.BaseComponents do
               timestamp_int
 
             _ ->
-              Logger.trace("invalid format unix timestamp #{inspect(timestamp_string)}")
               nil
           end
 
         _ ->
-          Logger.trace("invalid format unix timestamp #{inspect(timestamp)}")
           nil
       end
 

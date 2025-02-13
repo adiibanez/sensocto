@@ -1,0 +1,29 @@
+<Group>
+  <Group class="text-l p-8 mb-8 bg-gray-800 rounded-lg">
+    Sensors online: {@sensors_online_count} Liveview pid: {inspect(self())}
+  </Group>
+
+  <Group id="cnt" phx-hook="ConnectionHandler">
+    <Group class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+
+        <%!-- <.live_component
+             :for={{sensor_id, sensor} <- @sensors}
+            id={"sensor_#{sensor_id}"}
+            sensor_type={sensor.metadata.sensor_type}
+            module={SensorComponent}
+            sensor={sensor}
+            sensor_id={sensor_id}
+            format="swiftui"
+          >
+          </.live_component> --%>
+    </Group>
+  </Group>
+
+  <%= if @sensors_offline != %{} do %>
+    <VStack class="list-disc list-inside ml-4">
+      <%= for sensor_id <- Map.keys(@sensors_offline) do %>
+        <Text>{sensor_id}</Text>
+      <% end %>
+    </VStack>
+  <% end %>
+</Group>

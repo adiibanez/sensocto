@@ -33,11 +33,13 @@ defmodule Sensocto.Accounts.User.Senders.SendMagicLinkEmail do
     email
   end
 
+  # iOS: #{url("sensocto://token=#{params[:token]}")}
   defp body(params) do
     """
     Hello, #{params[:email]}! Click this link to sign in:
 
-    #{url(~p"/auth/user/magic_link/?token=#{params[:token]}")}
+    Web: #{url(~p"/auth/user/magic_link/?token=#{params[:token]}")}
+
     """
   end
 end

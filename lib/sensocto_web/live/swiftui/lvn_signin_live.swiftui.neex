@@ -1,0 +1,14 @@
+<VStack>
+    <Text>SwiftUI Signin 2</Text>
+    <Text>{inspect(@form[:email])}</Text>
+    <.simple_form id="magiclink" for={@form} phx-submit="request_magiclink">
+
+    <.input type="TextField" field={@form[:email]} label="Email"/>
+
+        <:actions>
+          <.button type="submit">Request Magic link</.button>
+        </:actions>
+      </.simple_form>
+      
+      <CustomURLOpener/>
+</VStack>

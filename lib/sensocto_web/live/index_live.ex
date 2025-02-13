@@ -2,11 +2,14 @@ defmodule SensoctoWeb.IndexLive do
   # alias Sensocto.SimpleSensor
   alias SensoctoWeb.Live.Components.AttributeComponent
   use SensoctoWeb, :live_view
+  use SensoctoNative, :live_view
   require Logger
   use LiveSvelte.Components
   import SensoctoWeb.Live.BaseComponents
   alias SensoctoWeb.Live.Components.SensorComponent
   alias SensoctoWeb.StatefulSensorLiveview
+  alias SensoctoWeb.StatefulSensorLiveview.SwiftUI
+  alias SensoctoWeb.Live.Components.SensorComponent
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3

@@ -1,4 +1,4 @@
-defmodule Sensocto.Utils.OtpDsl.Genserver do
+defmodule Sensocto.Utils.OtpDsl.GenserverBackup do
   # @moduledoc OtpDsl.Util.LazyDoc.for("## OtpDsl.Genserver")
   @hidden_state_name :s_t_a_t_e
 
@@ -10,10 +10,8 @@ defmodule Sensocto.Utils.OtpDsl.Genserver do
     initial_state = Keyword.get(options, :initial_state, nil)
 
     quote do
-      # use GenServer.Behaviour
-      @callback
+      use GenServer.Behaviour
       import unquote(__MODULE__)
-      require Logger
 
       def my_name do
         case unquote(register) do
@@ -22,7 +20,7 @@ defmodule Sensocto.Utils.OtpDsl.Genserver do
         end
       end
 
-      def _start_link() do
+      def start_link() do
         case unquote(register) do
           nil ->
             :gen_server.start_link({:local, my_name()}, __MODULE__, unquote(initial_state), [])
@@ -30,21 +28,6 @@ defmodule Sensocto.Utils.OtpDsl.Genserver do
           _ ->
             :gen_server.start_link(unquote(register), __MODULE__, unquote(initial_state), [])
         end
-      end
-
-      def start_link(configuration) do
-        Logger.debug("#{__MODULE__} start_link: #{inspect(configuration)}")
-        GenServer.start_link(__MODULE__, configuration, name: via_tuple(__MODULE__))
-      end
-
-      def child_spec(opts) do
-        %{
-          id: __MODULE__,
-          start: {__MODULE__, :start_link, [opts]},
-          type: :worker,
-          restart: :permanent,
-          shutdown: 500
-        }
       end
     end
   end

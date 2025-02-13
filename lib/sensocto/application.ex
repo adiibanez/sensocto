@@ -11,6 +11,9 @@ defmodule Sensocto.Application do
       # {NodeJS.Supervisor, [path: LiveSvelte.SSR.NodeJS.server_path(), pool_size: 4]},
       SensoctoWeb.Telemetry,
       Sensocto.Repo,
+      Sensocto.Otp.BleConnectorGenServer,
+      {Registry, keys: :unique, name: Sensocto.TestRegistry},
+      Sensocto.Otp.Connector,
       # Registry added here
       {Registry, keys: :unique, name: Sensocto.Sensors.Registry},
       {Registry, keys: :unique, name: Sensocto.Sensors.SensorRegistry},

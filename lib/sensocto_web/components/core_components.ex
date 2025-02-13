@@ -223,6 +223,7 @@ defmodule SensoctoWeb.CoreComponents do
       <.button>Send!</.button>
       <.button phx-click="go" class="ml-2">Send!</.button>
   """
+
   # attr(:type, :string, default: nil)
   # attr(:class, :string, default: nil)
   # attr(:rest, :global, include: ~w(disabled form name value))

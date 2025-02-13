@@ -26,4 +26,16 @@ defmodule Sensocto.Utils do
       true -> "idunno"
     end
   end
+
+  def binary_to_integer(binary) when is_binary(binary) do
+    case Integer.parse(binary) do
+      {integer, _} ->
+        integer
+
+      :error ->
+        # Handle the case where the binary cannot be parsed as an integer
+        # Or raise an error, log a message, etc.
+        nil
+    end
+  end
 end

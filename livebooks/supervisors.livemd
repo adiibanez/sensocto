@@ -1,17 +1,23 @@
 # Sensor supervisor
 
 ```elixir
+"""
 Mix.install([
-  {:kino, "~> 0.8.0"},
+  # {:kino,
+  #     github: "adiibanez/kino"},
+  {:kino,
+   local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/elixir-examples/kino"},
   {:httpoison, "~> 2.0"},
   {:jason, "~> 1.4"}
 ])
+"""
 ```
 
 ## Section
 
 ```elixir
-Kino.Process.app_tree(:sensocto)
+:application_controller.which_applications()
+Kino.Process.app_tree(:livebook, exclude_apps: [:stdlib])
 ```
 
 <!-- livebook:{"reevaluate_automatically":true} -->
@@ -40,8 +46,6 @@ Sensocto.SensorsDynamicSupervisor.get_all_sensors_state()
 
 filtered =
   Sensocto.SimpleSensor.get_attribute("SensoctoSimEx_1:heartrate", "heartrate", 1_738_425_709_406)
-
-filtered
 
 Sensocto.SimpleSensor.get_state("SensoctoSimEx_1:heartrate")
 

@@ -133,7 +133,7 @@ defmodule Sensocto.SimpleSensor do
         AttributeStore.get_attributes(sensor_id, 1)
         |> Enum.map(fn x -> cleanup(x) end)
         |> Enum.into(%{})
-#        |> dbg()
+      #        |> dbg()
     }
 
     # Logger.debug("Sensor state: #{inspect(sensor_state)}")

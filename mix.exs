@@ -104,7 +104,8 @@ defmodule Sensocto.MixProject do
       {:live_view_native_live_form, "~> 0.4.0-rc.0"},
       {:qr_code, "~> 3.1.0"},
       {:nx, "~> 0.7.2"},
-      {:matplotex, "~> 0.4.6"}
+      {:matplotex, "~> 0.4.6"},
+      {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer
       # https://github.com/gridpoint-com/plox
@@ -134,6 +135,7 @@ defmodule Sensocto.MixProject do
 
   defp aliases do
     [
+      # format: ["remove_unused", "format"],
       setup: [
         "deps.get",
         "ecto.setup",

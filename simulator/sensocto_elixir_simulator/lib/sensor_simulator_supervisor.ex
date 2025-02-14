@@ -33,6 +33,7 @@ defmodule SensorSimulatorSupervisor do
         %{} = __sensor_state ->
           if is_map(acc) do
             sensor_state = get_sensor_state(sensor_id)
+
             if is_map(sensor_state) do
               Map.merge(acc, sensor_state)
             else
@@ -53,6 +54,7 @@ defmodule SensorSimulatorSupervisor do
     case Sensocto.SensorSimulatorGenServer.get_config(sensor_id) do
       %{} = sensor_state ->
         %{"#{sensor_id}" => sensor_state}
+
       :ok ->
         Logger.warning("get_sensor_state Got :ok for #{sensor_id}")
 
@@ -65,15 +67,15 @@ defmodule SensorSimulatorSupervisor do
   # Registry.lookup(Registry.ViaTest, "agent")
   def get_sensor_names do
     Registry.select(SensorSimulatorRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+
     # Sensocto.RegistryUtils.dynamic_select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
-
-
 
   def set_sensor_config(sensor_id, key, value) do
     case Registry.lookup(SensorSimulatorRegistry, sensor_id) do
       [{pid, _value}] ->
         Process.send_after(pid, {:set_config, key, value}, 0)
+
       [] ->
         {:error, :not_found}
     end

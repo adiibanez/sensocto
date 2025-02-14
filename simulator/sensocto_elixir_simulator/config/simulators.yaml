@@ -1,0 +1,40 @@
+connectors:
+  connector_1:
+    connector_id: "connector_1"
+    connector_name: "Simulator 1"
+    attributes:
+      heartrate_1:
+        attribute_id: "heartrate_1"
+        sensor_type: "heartrate"
+        batch_size: 100
+        batch_window: 10000
+        duration: 30
+        sampling_rate: 1
+        heart_rate: 100
+        respiratory_rate: 30
+        scr_number: 5
+        burst_number: 5
+      # heartrate_2:
+      #   attribute_id: "heartrate_2"
+      #   sensor_type: "heartrate"
+      #   batch_size: 100
+      #   batch_window: 500
+      #   duration: 30
+      #   sampling_rate: 1
+      #   heart_rate: 100
+      #   respiratory_rate: 30
+      #   scr_number: 5
+      #   burst_number: 5
+      ecg_1:
+        attribute_id: "ecg_1"
+        sensor_type: "ecg"
+        sampling_rate: 100
+        duration: 30
+        batch_size: 100
+        batch_window: 500
+        duration: 30
+        sampling_rate: 1
+        heart_rate: 50
+        respiratory_rate: 15
+        scr_number: 5
+        burst_number: 5

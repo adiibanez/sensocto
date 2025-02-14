@@ -17,7 +17,7 @@ defmodule Sensocto.Otp.BleConnectorGenServer do
   """
 
   def start_link(configuration \\ %{}) do
-    Logger.debug("BleConnectorGenServer start_link: #{inspect(configuration)}")
+    Logger.info("BleConnectorGenServer start_link: #{inspect(configuration)}")
     GenServer.start_link(__MODULE__, configuration, name: :ble_genserver)
   end
 
@@ -168,33 +168,37 @@ defmodule Sensocto.Otp.BleConnectorGenServer do
   def handle_cast({:add_characteristics, {peripheral, characteristics}}, state) do
     # Logger.debug("Server: add_characteristics #{inspect(peripheral)} #{inspect(characteristics)}")
 
-    characteristics_map =
-      characteristics
-      |> Enum.reduce(%{}, fn characteristic, acc ->
-        Map.put(acc, characteristic.id, characteristic)
-      end)
+    if Map.has_key?(state.peripherals, peripheral.id) do
+      characteristics_map =
+        characteristics
+        |> Enum.reduce(%{}, fn characteristic, acc ->
+          Map.put(acc, characteristic.id, characteristic)
+        end)
 
-    # |> dbg()
+      initialized_values =
+        Map.keys(characteristics_map)
+        |> Enum.reduce(%{}, fn characteristic_id, acc ->
+          Map.put(acc, characteristic_id, [])
+        end)
 
-    initialized_values =
-      Map.keys(characteristics_map)
-      |> Enum.reduce(%{}, fn characteristic_id, acc ->
-        Map.put(acc, characteristic_id, [])
-      end)
+      new_characterists_values =
+        Map.merge(
+          state.peripheral_characteristic_values[peripheral.id] || %{},
+          initialized_values
+        )
 
-    # |> dbg()
+      new_state =
+        state
+        |> update_in([:peripheral_characteristics, peripheral.id], fn _ -> characteristics_map end)
+        |> update_in([:peripheral_characteristic_values, peripheral.id], fn _ ->
+          new_characterists_values
+        end)
 
-    new_characterists_values =
-      Map.merge(state.peripheral_characteristic_values[peripheral.id], initialized_values)
-
-    new_state =
-      state
-      |> update_in([:peripheral_characteristics, peripheral.id], fn _ -> characteristics_map end)
-      |> update_in([:peripheral_characteristic_values, peripheral.id], fn _ ->
-        new_characterists_values
-      end)
-
-    {:noreply, new_state}
+      {:noreply, new_state}
+    else
+      Logger.warn("Peripheral #{inspect(peripheral.id)} does not exist in state.")
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -219,34 +223,27 @@ defmodule Sensocto.Otp.BleConnectorGenServer do
 
   @impl true
   def handle_cast({:update_value, peripheral, characteristic_id, value}, state) do
-    Logger.info(
+    Logger.debug(
       "Server: update_value #{inspect(peripheral)} #{inspect(characteristic_id)} #{inspect(value)}"
     )
 
     new_state =
-      state
-      |> update_in(
-        [:peripheral_characteristic_values, peripheral.id, characteristic_id],
-        fn values ->
-          (values ++ [value]) |> Enum.take(-10)
-        end
-      )
+      if Map.has_key?(state.peripheral_characteristic_values, peripheral.id) and
+           Map.has_key?(state.peripheral_characteristic_values[peripheral.id], characteristic_id) do
+        state
+        |> update_in(
+          [:peripheral_characteristic_values, peripheral.id, characteristic_id],
+          fn values when is_list(values) ->
+            (values ++ [value]) |> Enum.take(-10)
+          end
+        )
+      else
+        Logger.debug(
+          "Server: update_value #{inspect(peripheral)} #{inspect(characteristic_id)} #{inspect(value)} not ready for update, state init missing"
+        )
 
-    # peripherals =
-    #   state.peripherals
-    #   |> ensure_characteristic_init(peripheral, characteristic_id)
-    #   |> update_in([peripheral.id, characteristic_id], fn values ->
-    #     # Logger.info("Here: #{inspect(values)}")
-
-    #     case is_list(values) and length(values) > 0 do
-    #       # true -> {nil, [values ++ value] |> List.flatten()}
-    #       # false -> {nil, [value]}
-    #       true -> (values ++ [value]) |> Enum.take(-50)
-    #       false -> [value]
-    #     end
-    #   end)
-
-    # |> dbg()
+        state
+      end
 
     {:noreply, new_state}
   end

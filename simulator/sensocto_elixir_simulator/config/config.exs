@@ -22,8 +22,8 @@ config :logger, :logger_name,
   # override default levels
   level_config: [
     # [module: Sensocto.SensorSimulatorGenServer, level: :debug]
-    #    [module: Sensocto.AttributeStorer, level: :info],
-    #    [module: SensoctoWeb.SensorDataChannel, level: :info],
+        [module: Sensocto.AttributeGenServer, level: :info],
+        [module: Sensocto.ConnectorGenServer, level: :debug],
     #    [module: Phoenix.Logger, level: :info]
   ]
 

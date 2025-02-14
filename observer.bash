@@ -48,7 +48,8 @@ fi
 
 # Assemble the full node name
 FULL_NODE_NAME="${app_name}-${image_tags}@${private_ip}"
-ping $FULL_NODE_NAME
+echo "${FULL_NODE_NAME} ${private_ip}"
+ping6 -c 1 $private_ip
 echo Attempting to connect to $FULL_NODE_NAME
 
 # IMPORTANT:
@@ -63,7 +64,10 @@ echo Attempting to connect to $FULL_NODE_NAME
 # It's the `--erl "-proto_dist inet6_tcp"` portion.
 
 # Toggles on IPv6 support for the local node being started.
-iex --erl "-proto_dist inet6_tcp" --sname my_remote --cookie ${COOKIE} -e "IO.inspect(Node.connect(:'${FULL_NODE_NAME}'), label: \"Node Connected?\"); IO.inspect(Node.list(), label: \"Connected Nodes\"); :observer.start"
+# --erl "-proto_dist inet6_tcp"
+#iex --erl "-proto_dist inet6_tcp" --sname my_remote --cookie ${COOKIE} -e "IO.inspect(Node.connect(:'${FULL_NODE_NAME}'), label: \"Node Connected?\"); IO.inspect(Node.list(), label: \"Connected Nodes\"); :observer.start"
 
 # Does NOT toggle on IPv6 support, assuming it is enabled some other way.
-# iex --sname my_remote --cookie ${COOKIE} -e "IO.inspect(Node.connect(:'${FULL_NODE_NAME}'), label: \"Node Connected?\"); IO.inspect(Node.list(), label: \"Connected Nodes\"); :observer.start"
+
+# Node.connect(:"sensocto-01JK64Z4J69ZBYSEPTS1AD2YFT@fdaa:0:531a:a7b:c207:db30:7469:2")
+ERL_DIST_TRACE=2 ERL_DISTRIBUTION_DEBUG=1 iex  --erl "-proto_dist inet6_tcp"  --sname my_remote --cookie ${COOKIE} -e "IO.inspect(Node.connect(:'${FULL_NODE_NAME}'), label: \"Node Connected?\"); IO.inspect(Node.list(), label: \"Connected Nodes\"); :observer.start"

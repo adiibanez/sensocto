@@ -203,7 +203,9 @@ Hooks.SensorDataAccumulator = {
       logger.log("Hooks.SensorDataAccumulator", "clear-attribute", e.sensor_id, e.attribute_id);
       handleClearData(e.sensor_id, e.attribute_id).then((result) => {
         const seedEvent = new CustomEvent('seeddata-event', { id: e.sensor_id + '_' + e.attribute_id, detail: { sensor_id: e.sensor_id, attribute_id: e.attribute_id, data: [] } });
+        workerStorage.postMessage({ type: 'clear-data', data: { sensor_id: this.el.dataset.sensor_id, attribute_id: this.el.dataset.attribute_id } });
         window.dispatchEvent(seedEvent);
+
         this.el.dataset.seeding = false;
       });
     }

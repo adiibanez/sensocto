@@ -64,9 +64,10 @@ defmodule Sensocto.AttributeGenServerTest do
       {:ok, pid} = AttributeGenServer.start_link(config)
 
       # Generate batch_size + 1 messages
-      messages = Enum.map(1..6, fn i ->
-        %{payload: "test#{i}", delay: 0.1}
-      end)
+      messages =
+        Enum.map(1..6, fn i ->
+          %{payload: "test#{i}", delay: 0.1}
+        end)
 
       # Send messages one by one
       Enum.each(messages, fn msg ->
@@ -85,9 +86,10 @@ defmodule Sensocto.AttributeGenServerTest do
       {:ok, pid} = AttributeGenServer.start_link(config)
 
       # Send fewer messages than batch_size
-      messages = Enum.map(1..3, fn i ->
-        %{payload: "test#{i}", delay: 0.1}
-      end)
+      messages =
+        Enum.map(1..3, fn i ->
+          %{payload: "test#{i}", delay: 0.1}
+        end)
 
       Enum.each(messages, fn msg ->
         GenServer.cast(pid, {:push_message, msg})

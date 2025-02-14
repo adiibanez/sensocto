@@ -1,7 +1,6 @@
 defmodule Sensocto.Simulator.ConnectorGenServer do
   use GenServer
   require Logger
-
   alias PhoenixClient.{Socket, Channel, Message}
 
   @socket_opts [
@@ -12,187 +11,118 @@ defmodule Sensocto.Simulator.ConnectorGenServer do
     # https://sensocto.ddns.net/
   ]
 
-
   defmodule State do
-    defstruct [:connector_id, :connector_name, :attributes, :supervisor, :phx_join_meta, :phoenix_connected, :phoenix_socket, :phoenix_channel]
+    defstruct [
+      :connector_id,
+      :connector_name,
+      :phoenix_socket,
+      :sensors,
+      :supervisor
+    ]
   end
 
   def start_link(config) when is_map(config) do
-    # Convert string keys to atoms for the essential fields
     config = %{
       connector_id: config["connector_id"],
       connector_name: config["connector_name"],
-      attributes: config["attributes"] || %{}
+      sensors: config["sensors"] || %{}
     }
+
+    Logger.info("start_link: #{inspect(config)}")
 
     GenServer.start_link(__MODULE__, config, name: via_tuple(config.connector_id))
   end
 
   @impl true
   def init(config) do
-    Logger.info("Initializing connector: #{inspect(config)}")
     {:ok, supervisor} = DynamicSupervisor.start_link(strategy: :one_for_one)
 
     state = %State{
       connector_id: config.connector_id,
       connector_name: config.connector_name,
-      attributes: %{},
+      sensors: config.sensors,
       supervisor: supervisor,
-      phoenix_connected: false,
-      phoenix_channel: nil,
-      phoenix_socket: nil,
-      phx_join_meta: %{
-          device_name: config.connector_name,
-          batch_size: 1,
-          connector_id: config.connector_id,
-          connector_name: config.connector_name,
-          sampling_rate: 1,
-          sensor_id: config.connector_id,
-          sensor_name: config.connector_name,
-          sensor_type: "",#config.sensor_type,
-          bearer_token: "fake"
-        }
+      phoenix_socket: nil
     }
 
-    Process.send_after(self(), :connect_phoenix, 0)
-
-    {:ok, state, {:continue, {:setup_attributes, config.attributes}}}
+    {:ok, state, {:continue, :connect_socket}}
   end
 
   @impl true
-  def handle_info({:push_batch, attribute_id, messages}, state) do
-    Logger.info("#{state.connector_id} handle_info :push_batch #{inspect(messages)}")
+  def handle_continue(:connect_socket, state) do
+    case connect_phoenix_socket() do
+      {:ok, socket} ->
+        new_state = %{state | phoenix_socket: socket}
+        {:noreply, new_state, {:continue, {:setup_sensors, state.sensors}}}
 
-    case Enum.count(messages) do
-        1 ->
-          PhoenixClient.Channel.push_async(
-            state.phoenix_channel,
-            "measurement",
-            Enum.at(messages, 0)
-          )
-
-        _ ->
-          PhoenixClient.Channel.push_async(
-            state.phoenix_channel,
-            "measurements_batch",
-            messages
-          )
-      end
-
-    {:noreply, state}
+      {:error, reason} ->
+        Logger.error("Failed to connect socket: #{inspect(reason)}")
+        Process.send_after(self(), :retry_connect, 5000)
+        {:noreply, state}
+    end
   end
 
   @impl true
-  def handle_continue({:setup_attributes, attributes}, state) do
+  def handle_continue({:setup_sensors, sensors}, state) do
+    Logger.info("Setup sensors #{inspect(sensors)}")
+
     new_state =
-      Enum.reduce(attributes, state, fn {id, attr_config}, acc ->
-        # Convert string keys to atoms and add attribute_id if not present
-        attr_config = Map.new(attr_config, fn {k, v} -> {String.to_atom(k), v} end)
-
-        attr_config =
-          attr_config
-          #  |> Map.put(:attribute_id, id)
-          |> Map.put(:connector_pid, self())
-
-        #  |> Map.put(:connector_name, state.connector_name)
-
-        Logger.info("Connector attr config: #{inspect(attr_config)}")
-
-        start_attribute(acc, attr_config)
+      Enum.reduce(sensors, state, fn {sensor_id, sensor_config}, acc ->
+        start_sensor(acc, sensor_id, sensor_config)
       end)
 
     {:noreply, new_state}
   end
 
-  @impl true
-  def handle_cast({:update_config, new_config}, state) do
-    # Handle configuration updates
-    {:noreply, state}
+  defp connect_phoenix_socket do
+    case PhoenixClient.Socket.start_link(@socket_opts) do
+      {:ok, socket} ->
+        wait_until_connected(socket, 5, self())
+        {:ok, socket}
+    end
   end
 
-  defp start_attribute(state, attr_config) do
+  defp start_sensor(state, sensor_id, sensor_config) do
+    sensor_config = Sensocto.Utils.string_keys_to_atom_keys(sensor_config)
+
+    config =
+      Map.merge(sensor_config, %{
+        :sensor_id => sensor_id,
+        :connector_id => state.connector_id,
+        :connector_name => state.connector_name,
+        :phoenix_socket => state.phoenix_socket
+      })
+
+    Logger.info("Start sensor: #{sensor_id}")
+    Logger.info("Sensor config: #{inspect(config)}")
+
     case DynamicSupervisor.start_child(
            state.supervisor,
-           {Sensocto.Simulator.AttributeGenServer, attr_config}
+           {Sensocto.Simulator.SensorGenServer, config}
          ) do
       {:ok, pid} ->
-        %{state | attributes: Map.put(state.attributes, attr_config.attribute_id, attr_config)}
+        Logger.info("Added sensor #{sensor_id}")
+        %{state | sensors: Map.put(state.sensors, sensor_id, pid)}
 
       {:error, reason} ->
-        Logger.error("Failed to start attribute #{attr_config.attribute_id}: #{inspect(reason)}")
+        Logger.error("Failed to start sensor #{sensor_id}: #{inspect(reason)}")
         state
     end
   end
 
+  defp wait_until_connected(socket, retries \\ 0, pid) do
+    Logger.debug("wait_until_connected #{retries} #{inspect(pid)}")
 
-def handle_info(:connect_phoenix, %{:connector_id => connector_id} = state) do
-    Logger.info("#{connector_id} handle_info:connect_phoenix")
-    GenServer.cast(self(), :connect_phoenix)
-    {:noreply, state}
-  end
-
-  def handle_cast(:connect_phoenix, %{:connector_id => connector_id} = state) do
-    Logger.info("#{connector_id} Connect to phoenix")
-
-    parent = self()
-
-    case PhoenixClient.Socket.start_link(@socket_opts) do
-      {:ok, socket} ->
-        wait_until_connected(socket, 0, parent)
-
-        topic = "sensor_data:#{state.connector_id}"
-
-        Logger.info("#{connector_id} Connecting ... #{topic}")
-
-        case PhoenixClient.Channel.join(socket, topic, state.phx_join_meta) do
-          {:ok, _response, channel} ->
-            Logger.info(
-              "#{connector_id} Joined channel successfully #{topic}"
-            )
-
-            Process.send_after(
-              parent,
-              :process_queue,
-              100
-            )
-
-            {:noreply,
-             state
-             |> Map.put(:phoenix_socket, socket)
-             |> Map.put(:phoenix_channel, channel)
-             |> Map.put(:phoenix_connected, true)}
-
-          {:error, reason} ->
-            Logger.warning("#{connector_id} Failed to join channel: #{topic} #{inspect(reason)}")
-
-            Process.send_after(
-              self(),
-              :connect_phoenix,
-              0
-            )
-
-            {:noreply, state |> Map.put(:phoenix_connected, false)}
-            # {:stop, reason}
-        end
-
-      {:error, reason} ->
-        Logger.warning("#{connector_id} Failed to connect to socket: #{inspect(reason)}")
-
-        Process.send_after(
-          self(),
-          :connect_phoenix,
-          0
-        )
-
-        {:noreply, state |> Map.put(:phoenix_connected, false)}
-        # {:stop, reason}
+    if !(PhoenixClient.Socket.connected?(socket) or retries > 10) do
+      Logger.debug("Wait 500ms until connected #{retries} #{inspect(pid)}")
+      Process.sleep(1000 * retries)
+      wait_until_connected(socket, retries + 1, pid)
     end
   end
 
-
-def handle_info(%Message{event: message, payload: payload}, %{:connector_id => connector_id} = state)
+  def handle_info(%Message{event: message, payload: payload}, %{:sensor_id => sensor_id} = state)
       when message in ["phx_error", "phx_close"] do
-    Logger.info("#{connector_id} handle_info: #{message}")
+    Logger.debug("#{sensor_id} handle_info: #{message}")
 
     Process.send_after(
       self(),
@@ -203,34 +133,17 @@ def handle_info(%Message{event: message, payload: payload}, %{:connector_id => c
     {:noreply, state}
   end
 
-  def handle_info(%Message{event: message, payload: payload}, %{:connector_id => connector_id} = state) do
-    Logger.info("#{connector_id} Incoming Phoenix Message: #{message} #{inspect(payload)}")
+  def handle_info(%Message{event: message, payload: payload}, %{:sensor_id => sensor_id} = state) do
+    Logger.info("#{sensor_id} Incoming Phoenix Message: #{message} #{inspect(payload)}")
     {:noreply, state}
   end
 
-  def handle_info(msg, %{:connector_id => connector_id} = state) do
-    Logger.info("#{connector_id} handle_info:catch all: #{inspect(msg)}")
+  def handle_info(msg, %{:sensor_id => sensor_id} = state) do
+    Logger.info("#{sensor_id} handle_info:catch all: #{inspect(msg)}")
     {:noreply, state}
   end
 
-
-  defp wait_until_connected(socket, retries \\ 0, pid) do
-    Logger.info("wait_until_connected #{retries} #{inspect(pid)}")
-
-    if !(PhoenixClient.Socket.connected?(socket) or retries > 10) do
-      Logger.info("Wait 500ms until connected #{retries} #{inspect(pid)}")
-      Process.sleep(1000 * retries)
-      wait_until_connected(socket, retries + 1, pid)
-    end
-
-    Logger.info("send another :process_queue #{retries} #{inspect(pid)}")
-
-    Process.send_after(
-      self(),
-      :process_queue,
-      0
-    )
+  defp via_tuple(identifier) do
+    {:via, Registry, {Sensocto.Registry, "#{__MODULE__}_#{identifier}"}}
   end
-
-  defp via_tuple(connector_id), do: {:via, Registry, {Sensocto.Registry, connector_id}}
 end

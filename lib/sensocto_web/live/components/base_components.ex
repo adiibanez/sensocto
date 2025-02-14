@@ -1,11 +1,11 @@
 defmodule SensoctoWeb.Live.BaseComponents do
   use Phoenix.Component
   require Logger
-  alias Phoenix.LiveComponent
+  use Phoenix.LiveComponent
   use Timex
   import SensoctoWeb.Components.RangeField
-  import Phoenix.Component
-  use LiveComponent
+  # import Phoenix.Component
+  # use LiveComponent
 
   use Gettext,
     backend: SensoctoWeb.Gettext

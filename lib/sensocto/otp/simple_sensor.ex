@@ -1,6 +1,7 @@
 defmodule Sensocto.SimpleSensor do
   use GenServer
   require Logger
+  alias Sensocto.SensorsDynamicSupervisor
   alias Sensocto.AttributeStore
   alias Sensocto.SimpleSensorRegistry
 
@@ -8,6 +9,8 @@ defmodule Sensocto.SimpleSensor do
   # 1 second
   @mps_interval 1_000
 
+  @spec start_link(%{:sensor_id => any(), optional(any()) => any()}) ::
+          :ignore | {:error, any()} | {:ok, pid()}
   def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
     GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
@@ -18,9 +21,31 @@ defmodule Sensocto.SimpleSensor do
   def init(state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
     # Initialize message counter and schedule mps calculation
+
+    state |> dbg()
+
+    # {:ok, state} = Sensocto.Utils.string_keys_to_atom_keys(state) |> dbg()
+
     state =
-      Map.merge(state, %{message_timestamps: []})
+      state
+      # TODO: convert upstream
+
+      # |> Sensocto.Utils.string_keys_to_atom_keys()
+      |> Map.merge(%{message_timestamps: []})
       |> Map.put(:mps_interval, 5000)
+      # |> Map.put(:attributes, atom_key_attributes)
+      |> dbg()
+
+    # |> dbg()
+
+    # |> dbg()
+
+    # |> Map.replace(
+    #  :attributes,
+    #  Sensocto.Utils.string_keys_to_atom_keys(state.attributes) |> dbg()
+    # )
+
+    # |> dbg()
 
     schedule_mps_calculation()
     {:ok, state}
@@ -60,6 +85,9 @@ defmodule Sensocto.SimpleSensor do
 
   def put_batch_attributes(sensor_id, attributes) do
     try do
+      SensorsDynamicSupervisor.get_device_names()
+      # |> dbg()
+
       case Registry.lookup(SimpleSensorRegistry, sensor_id) do
         [{pid, _}] ->
           # Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
@@ -213,6 +241,8 @@ defmodule Sensocto.SimpleSensor do
       ) do
     Logger.debug("Server: :put_batch_attributes #{length(attributes)} state: #{inspect(state)}")
 
+    attributes |> dbg()
+
     broadcast_messages_list =
       Enum.map(attributes, fn attribute ->
         AttributeStore.put_attribute(
@@ -265,7 +295,7 @@ defmodule Sensocto.SimpleSensor do
     recent_timestamps = Enum.filter(timestamps, fn timestamp -> timestamp >= interval_ago end)
     mps = length(recent_timestamps) / (mps_interval / 1000)
 
-    Logger.debug("Server: :calculate_mps #{inspect(mps)}")
+    # Logger.debug("Server: :calculate_mps #{inspect(mps)}")
 
     # Emit telemetry event with MPS
     :telemetry.execute(

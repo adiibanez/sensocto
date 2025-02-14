@@ -133,6 +133,7 @@
                     e?.detail,
                 );
                 processSeedDataEvent(dataStore, sensor_id, attribute_id, e);
+                render();
             }
         };
 

@@ -8,119 +8,175 @@
 
     export let socket; // Make socket a prop so it can be shared
     export let sensorChannels = {};
+    export let channelAttributes = {}; // Track attributes per channel
     let messageQueues = {};
     let batchTimeouts = {};
     let messagesSent = {};
 
-    // Default batch size and timeout
+    let sharedAttributes = {
+        imu: {
+            attribute_id: "imu",
+            attribute_type: "imu",
+            sampling_rate: 5,
+        },
+        geolocation: {
+            attribute_id: "geolocation",
+            attribute_type: "geolocation",
+            sampling_rate: 1,
+        },
+        battery: {
+            attribute_id: "battery",
+            attribute_type: "battery",
+            sampling_rate: 1,
+        },
+    };
+
     export let defaultBatchSize = 10;
-    export let defaultBatchTimeout = 1000 / 24; // perception 24fps
+    export let defaultBatchTimeout = 1000 / 24;
 
     setContext("sensorService", {
         setupChannel,
+        registerAttribute,
+        unregisterAttribute,
         sendChannelMessage,
-        leaveChannel,
+        leaveChannelIfUnused,
         updateBatchConfig,
         getDeviceId,
     });
 
     onMount(() => {
-        // Initialize socket connection here
-
         if (socket == null) {
             socket = new Socket("/socket", {
                 params: { user_token: "some_token" },
             });
             socket.connect();
-            logger.log(
-                loggerCtxName,
-                "Socket was null, initialize socket in SensorService",
-            );
+            logger.log(loggerCtxName, "Socket initialized");
         }
     });
-
-    function getDeviceId() {
-        let device_id = getCookie("device_id");
-
-        if (device_id == null || device_id === "") {
-            device_id = crypto.randomUUID();
-            setCookie("device_id", device_id, 365);
-            logger.log(loggerCtxName, "new device_id cookie set: " + device_id);
-        }
-
-        return device_id.split("-")[0];
-    }
 
     function getFullChannelName(sensorId) {
         return "sensor_data:" + sensorId;
     }
 
-    function setupChannel(
-        sensorId,
-        metadata = {},
-        batchSize = defaultBatchSize,
-        batchTimeout = defaultBatchTimeout,
-    ) {
-        if (socket == null) {
+    // New function to register an attribute with a channel
+    function registerAttribute(sensorId, attributeMetadata) {
+        const fullChannelName = getFullChannelName(sensorId);
+
+        // Initialize channel attributes tracking if needed
+        if (!channelAttributes[fullChannelName]) {
+            channelAttributes[fullChannelName] = new Set();
+        }
+
+        // Add this attribute to the channel
+        channelAttributes[fullChannelName].add(attributeMetadata.attribute_id);
+        logger.log(
+            loggerCtxName,
+            `Registered attribute ${attributeMetadata.attribute_id} to ${fullChannelName}`,
+        );
+
+        // If channel doesn't exist, create it
+        if (!sensorChannels[fullChannelName]) {
+            return setupChannel(sensorId, {
+                sensor_name: attributeMetadata.sensor_name || sensorId,
+                sensor_id: sensorId,
+                sensor_type: attributeMetadata.sensor_type,
+                sampling_rate: attributeMetadata.sampling_rate,
+                attributes: sharedAttributes,
+                //attributes: {},
+                //[attributeMetadata.attribute_id]: attributeMetadata,
+            });
+        } else {
+            // Update existing channel's attributes
+            const channel = sensorChannels[fullChannelName];
+            channel.push("update_attributes", {
+                attributes: {
+                    [attributeMetadata.attribute_id]: attributeMetadata,
+                },
+            });
+            return channel;
+        }
+    }
+
+    // New function to unregister an attribute from a channel
+    function unregisterAttribute(sensorId, attributeId) {
+        const fullChannelName = getFullChannelName(sensorId);
+
+        if (channelAttributes[fullChannelName]) {
+            channelAttributes[fullChannelName].delete(attributeId);
+            logger.log(
+                loggerCtxName,
+                `Unregistered attribute ${attributeId} from ${fullChannelName}`,
+            );
+
+            // If no attributes left, leave the channel
+            if (channelAttributes[fullChannelName].size === 0) {
+                leaveChannelIfUnused(sensorId);
+            } else {
+                // Notify server about attribute removal
+                sensorChannels[fullChannelName]?.push("remove_attribute", {
+                    attribute_id: attributeId,
+                });
+            }
+        }
+    }
+
+    function leaveChannelIfUnused(sensorId) {
+        const fullChannelName = getFullChannelName(sensorId);
+
+        if (channelAttributes[fullChannelName]?.size === 0) {
+            if (sensorChannels[fullChannelName]) {
+                sensorChannels[fullChannelName].leave();
+                delete sensorChannels[fullChannelName];
+                delete channelAttributes[fullChannelName];
+                delete messageQueues[fullChannelName];
+                delete batchTimeouts[fullChannelName];
+                delete messagesSent[fullChannelName];
+                logger.log(
+                    loggerCtxName,
+                    `Channel ${fullChannelName} closed - no active attributes`,
+                );
+            }
+        }
+    }
+
+    // ... existing helper functions (getDeviceId, etc.) ...
+
+    function setupChannel(sensorId, metadata) {
+        if (!socket) {
             logger.warn(loggerCtxName, "socket is null", sensorId);
             return false;
         }
 
-        let fullChannelName = getFullChannelName(sensorId);
-        logger.log(
-            loggerCtxName,
-            `setupChannel ${sensorId} ${fullChannelName}`,
-        );
+        const fullChannelName = getFullChannelName(sensorId);
 
         const channel = socket.channel(fullChannelName, {
             connector_id: getDeviceId(),
             connector_name: getDeviceName(),
-            sensor_name: metadata.sensor_name,
-            sensor_id: metadata.sensor_id,
-            sensor_type: metadata.sensor_type,
-            sampling_rate: metadata.sampling_rate,
+            ...metadata,
+            attributes: sharedAttributes,
             batch_size: 1,
             bearer_token: "fake",
         });
 
-        logger.log(
-            loggerCtxName,
-            `Joining channel ${fullChannelName}`,
-            metadata,
-        );
-
         channel
             .join()
             .receive("ok", (resp) =>
-                logger.log(loggerCtxName, `Joined sensor ${sensorId}`, resp),
+                logger.log(loggerCtxName, `Joined ${fullChannelName}`, resp),
             )
             .receive("error", (resp) =>
                 logger.log(
                     loggerCtxName,
-                    `Error joining sensor ${sensorId}`,
+                    `Error joining ${fullChannelName}`,
                     resp,
                 ),
             );
 
-        // Store the channel in the sensorChannels object
         sensorChannels[fullChannelName] = channel;
-
-        // Initialize message queue and timeout for the channel
         messageQueues[fullChannelName] = [];
         batchTimeouts[fullChannelName] = null;
 
-        // Store batch size and timeout for the channel
-        channel.batchSize = batchSize;
-        channel.batchTimeout = batchTimeout;
-
-        // Listen for events from the sensor channel
-        channel.on("ingest", (payload) => {
-            logger.log(
-                loggerCtxName,
-                `Received data from ${sensorId}:`,
-                payload,
-            );
-        });
+        channel.batchSize = defaultBatchSize;
+        channel.batchTimeout = defaultBatchTimeout;
 
         return channel;
     }
@@ -230,6 +286,10 @@
                 `Channel for sensor ${sensorId} not found`,
             );
         }
+    }
+
+    function getDeviceId() {
+        return getCookie("device_id")?.split("-")?.pop();
     }
 
     function getDeviceName() {

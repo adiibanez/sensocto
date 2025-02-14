@@ -88,6 +88,11 @@
                 };
 
                 sensorService.setupChannel(channelIdentifier, metadata);
+                sensorService.registerAttribute(sensorService.getDeviceId(), {
+                    attribute_id: "imu",
+                    attribute_type: "imu",
+                    sampling_rate: imuFrequency,
+                });
 
                 console.log("IMU frequency", imuFrequency, "Hz");
 
@@ -201,7 +206,7 @@
                 imuData.rotationAngles.y +
                 "," +
                 imuData.rotationAngles.z,
-            attribute_id: channelIdentifier, // Or some other unique ID for IMU data
+            attribute_id: "imu", // Or some other unique ID for IMU data
             timestamp: Math.round(new Date().getTime()),
         };
 

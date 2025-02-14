@@ -17,6 +17,34 @@ defmodule SensoctoWeb.SensorDataChannel do
   @impl true
   @spec join(<<_::32, _::_*8>>, map(), Phoenix.Socket.t()) ::
           {:ok, Phoenix.Socket.t()} | {:error, %{reason: String.t()}}
+
+  #   %{
+  #   "attributes" => %{
+  #     "battery" => %{
+  #       "attribute_id" => "battery",
+  #       "attribute_type" => "battery",
+  #       "sampling_rate" => 1
+  #     },
+  #     "geolocation" => %{
+  #       "attribute_id" => "geolocation",
+  #       "attribute_type" => "geolocation",
+  #       "sampling_rate" => 1
+  #     },
+  #     "imu" => %{
+  #       "attribute_id" => "imu",
+  #       "attribute_type" => "imu",
+  #       "sampling_rate" => 5
+  #     }
+  #   },
+  #   "batch_size" => 1,
+  #   "bearer_token" => "fake",
+  #   "connector_id" => "f6eb495578a6",
+  #   "connector_name" => "f6eb495578a6",
+  #   "sampling_rate" => 5,
+  #   "sensor_id" => "f6eb495578a6:imu",
+  #   "sensor_name" => "f6eb495578a6",
+  #   "sensor_type" => "imu"
+  # }
   def join(
         "sensor_data:" <> sensor_id,
         %{
@@ -24,6 +52,7 @@ defmodule SensoctoWeb.SensorDataChannel do
           "connector_name" => _connector_name,
           "sensor_id" => sensor_id,
           "sensor_name" => _sensor_name,
+          "attributes" => _attributes,
           "sensor_type" => _sensor_type,
           "sampling_rate" => _sampling_rate,
           "bearer_token" => _bearer_token,

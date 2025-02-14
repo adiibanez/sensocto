@@ -1,40 +1,57 @@
 connectors:
   connector_1:
     connector_id: "connector_1"
-    connector_name: "Simulator 1"
-    attributes:
-      heartrate_1:
-        attribute_id: "heartrate_1"
-        sensor_type: "heartrate"
-        batch_size: 100
-        batch_window: 10000
-        duration: 30
-        sampling_rate: 1
-        heart_rate: 100
-        respiratory_rate: 30
-        scr_number: 5
-        burst_number: 5
-      # heartrate_2:
-      #   attribute_id: "heartrate_2"
-      #   sensor_type: "heartrate"
-      #   batch_size: 100
-      #   batch_window: 500
-      #   duration: 30
-      #   sampling_rate: 1
-      #   heart_rate: 100
-      #   respiratory_rate: 30
-      #   scr_number: 5
-      #   burst_number: 5
-      ecg_1:
-        attribute_id: "ecg_1"
-        sensor_type: "ecg"
-        sampling_rate: 100
-        duration: 30
-        batch_size: 100
-        batch_window: 500
-        duration: 30
-        sampling_rate: 1
-        heart_rate: 50
-        respiratory_rate: 15
-        scr_number: 5
-        burst_number: 5
+    connector_name: "Simulator_1"
+    sensors:
+      patient_1:
+        sensor_id: "patient_1"
+        sensor_name: "Patient_1"
+        attributes:
+          heartrate_1:
+            attribute_id: "heartrate_1"
+            sensor_type: "heartrate"
+            batch_size: 1000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 1
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+          heartrate_2:
+            attribute_id: "heartrate_2"
+            sensor_type: "heartrate"
+            batch_size: 100
+            batch_window: 1000
+            duration: 30
+            sampling_rate: 1
+            heart_rate: 30
+            respiratory_rate: 15
+            scr_number: 5
+            burst_number: 5
+          # ecg:
+          #   attribute_id: "ecg_1"
+          #   sensor_type: "ecg"
+          #   batch_size: 100
+          #   batch_window: 2000
+          #   duration: 30
+          #   sampling_rate: 10
+          #   heart_rate: 50
+          #   respiratory_rate: 15
+          #   scr_number: 5
+          #   burst_number: 5
+          # patient_2:
+          #   sensor_id: "patient_2"
+          #   sensor_name: "Patient_2"
+          #   attributes:
+          #     heartrate:
+          #       attribute_id: "heartrate_2"
+          #       sensor_type: "heartrate"
+          #       batch_size: 5000
+          #       batch_window: 500
+          #       duration: 30
+          #       sampling_rate: 1
+          #       heart_rate: 100
+          #       respiratory_rate: 30
+          #       scr_number: 5
+          #       burst_number: 5

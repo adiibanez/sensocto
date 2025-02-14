@@ -4,7 +4,7 @@
   let loggerCtxName = "GoelocationClient";
 
   let sensorService = getContext("sensorService");
-  let channelIdentifier = sensorService.getDeviceId() + "_geo";
+  let channelIdentifier = sensorService.getDeviceId();
   let geolocationData = null;
   let watchId = null; // To store the watchPosition ID
 
@@ -18,6 +18,12 @@
       };
 
       sensorService.setupChannel(channelIdentifier, metadata);
+      sensorService.registerAttribute(sensorService.getDeviceId(), {
+        attribute_id: "geolocation",
+        attribute_type: "geolocation",
+        sampling_rate: 1,
+      });
+
       watchId = navigator.geolocation.watchPosition(
         (position) => {
           geolocationData = {
@@ -33,7 +39,7 @@
               accuracy: Number(geolocationData.accuracy.toFixed(1)),
             }),
             // Combine lat/long for simplicity
-            attribute_id: channelIdentifier,
+            attribute_id: "geolocation",
             timestamp: Math.round(new Date().getTime()), // Ensure consistent timestamp format
           };
 

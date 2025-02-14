@@ -7,7 +7,7 @@ defmodule Sensocto.Simulator.Application do
     IO.puts("Start simulator")
 
     children = [
-      #SensorSimulatorSupervisor,
+      # SensorSimulatorSupervisor,
       # %{id: :test, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
       %{id: :data_server_1, start: {Sensocto.BiosenseData.GenServer, :start_link, [1]}},
       %{id: :data_server_2, start: {Sensocto.BiosenseData.GenServer, :start_link, [2]}},

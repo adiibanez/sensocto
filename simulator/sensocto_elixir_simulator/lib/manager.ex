@@ -1,7 +1,14 @@
 defmodule Sensocto.Simulator.Manager do
   use GenServer
   require Logger
-  alias Sensocto.Simulator.Manager.State
+
+  defstruct [:connectors, :config_path]
+
+  @type t :: %__MODULE__{
+          # Map of connector_id => connector config
+          connectors: map(),
+          config_path: String.t()
+        }
 
   # Client API
   def start_link(config_path) do
@@ -19,7 +26,7 @@ defmodule Sensocto.Simulator.Manager do
   # Server Callbacks
   @impl true
   def init(config_path) do
-    state = %State{
+    state = %__MODULE__{
       connectors: %{},
       config_path: config_path
     }
@@ -45,7 +52,7 @@ defmodule Sensocto.Simulator.Manager do
   end
 
   # Private Functions
-  defp load_config(%State{config_path: path} = state) do
+  defp load_config(%__MODULE__{config_path: path} = state) do
     Logger.info("Loading config from #{path}")
 
     case YamlElixir.read_from_file(path) do
@@ -97,7 +104,10 @@ defmodule Sensocto.Simulator.Manager do
   end
 
   defp stop_connector(connector_id) do
-    DynamicSupervisor.terminate_child(Sensocto.Simulator.Manager.ManagerSupervisor, via_tuple(connector_id))
+    DynamicSupervisor.terminate_child(
+      Sensocto.Simulator.Manager.ManagerSupervisor,
+      via_tuple(connector_id)
+    )
   end
 
   defp via_tuple(connector_id), do: {:via, Registry, {Sensocto.Registry, connector_id}}

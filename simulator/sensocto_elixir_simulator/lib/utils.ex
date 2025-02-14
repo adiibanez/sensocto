@@ -2,16 +2,14 @@ defmodule Sensocto.Utils do
   def string_keys_to_atom_keys(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {key, value}, acc ->
       new_key = String.to_atom(key)
-      new_value = if is_map(value), do: string_keys_to_atom_keys(value), else: value
-      Map.put(acc, new_key, new_value)
+      Map.put(acc, new_key, value)
     end)
   end
 
   def atom_keys_to_string_keys(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {key, value}, acc ->
       new_key = Atom.to_string(key)
-      new_value = if is_map(value), do: atom_keys_to_string_keys(value), else: value
-      Map.put(acc, new_key, new_value)
+      Map.put(acc, new_key, value)
     end)
   end
 

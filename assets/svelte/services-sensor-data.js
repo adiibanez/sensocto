@@ -91,7 +91,7 @@ const processAccumulatorEvent = (store, sensor_id, attribute_id, e) => {
     // const sensorId = e?.detail?.data?.sensor_id;
 
     // batch update
-    if (Array.isArray(e?.detail?.data) && e?.detail?.data?.length > 0) {
+    if (Array.isArray(e?.detail?.data)) {
         updateData(store, sensor_id, attribute_id, e.detail.data);
         // single value update
     } else if (e?.detail?.data?.timestamp && e?.detail?.data?.payload) {
@@ -103,10 +103,9 @@ const processAccumulatorEvent = (store, sensor_id, attribute_id, e) => {
 
 const processSeedDataEvent = async (store, sensor_id, attribute_id, e) => {
     logger.log(loggerCtxName, "handleSeedDataEvent", e);
-
     const transformedData = transformStorageEventData(e.detail.data)
     // let newData = e.detail.data;
-    if (Array.isArray(transformedData) && transformedData?.length > 0) {
+    if (Array.isArray(transformedData)) {
         await setData(store, sensor_id, attribute_id, transformedData);
     } else {
         await setData(store, sensor_id, attribute_id, [])

@@ -277,41 +277,50 @@
             gamma: parseFloat(rotationAngles.z),
         };
 
+        // Calculate quaternion from Euler angles (rotationAngles)
+        const q = eulerToQuaternion(
+            rotationAngles.x,
+            rotationAngles.y,
+            rotationAngles.z,
+        );
+
         let output = {
             t: Math.round(new Date().getTime()), // time
             a: {
                 // acceleration
-                x: imuData.a.x.toFixed(4),
-                y: imuData.a.y.toFixed(4),
-                z: imuData.a.z.toFixed(4),
-            },
-            o: {
-                //  orientation
-                x: rotationAngles.x,
-                y: rotationAngles.y,
-                z: rotationAngles.z,
+                x: imuData.a.x,
+                y: imuData.a.y,
+                z: imuData.a.z,
             },
             r: {
                 // rotation rate
-                x: imuData.r.x.toFixed(4),
-                y: imuData.r.y.toFixed(4),
-                z: imuData.r.z.toFixed(4),
+                x: imuData.r.x,
+                y: imuData.r.y,
+                z: imuData.r.z,
             },
-            i: dt.toFixed(4), // interval
+            q: {
+                // Quaternion
+                w: q.w,
+                x: q.x,
+                y: q.y,
+                z: q.z,
+            },
         };
+
+        let imuString = `${output.t},${output.a.x.toFixed(3)},${output.a.y.toFixed(3)},${output.a.z.toFixed(3)},${output.r.x.toFixed(3)},${output.r.y.toFixed(3)},${output.r.z.toFixed(3)},${output.q.w.toFixed(3)},${output.q.x.toFixed(3)},${output.q.y.toFixed(3)},${output.q.z.toFixed(3)}`;
 
         logger.log(
             loggerCtxName,
             "handleMobileIMU",
             initialOrientation,
-            output.o,
+            output.q,
             dt,
         );
 
         imuOutput = output;
 
         let payload = {
-            payload: output,
+            payload: imuString, // Send as a string, like the visualization expects
             attribute_id: "imu",
             timestamp: Math.round(new Date().getTime()),
         };
@@ -319,6 +328,27 @@
         sensorService.sendChannelMessage(channelIdentifier, payload);
 
         //return JSON.stringify(output); // Return object as JSON string
+    }
+
+    function eulerToQuaternion(x, y, z) {
+        const cy = Math.cos(z * 0.5);
+        const sy = Math.sin(z * 0.5);
+        const cp = Math.cos(y * 0.5);
+        const sp = Math.sin(y * 0.5);
+        const cr = Math.cos(x * 0.5);
+        const sr = Math.sin(x * 0.5);
+
+        const w = cr * cp * cy + sr * sp * sy;
+        const x_quat = sr * cp * cy - cr * sp * sy;
+        const y_quat = cr * sp * cy + sr * cp * sy;
+        const z_quat = cr * cp * sy - sr * sp * cy;
+
+        return {
+            w: w,
+            x: x_quat,
+            y: y_quat,
+            z: z_quat,
+        };
     }
 
     function rotationRateToAngle(alpha, beta, gamma, initialOrientation, dt) {

@@ -90,6 +90,43 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  def render(%{:attribute_type => "imu"} = assigns) do
+    Logger.debug("AttributeComponent imu render #{inspect(assigns)}")
+
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_metadata.attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_metadata.attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_metadata.attribute_id}
+          attribute_name={@attribute_metadata.attribute_id}
+          timestamp={@attribute_data.timestamp}
+        >
+        </.render_attribute_header>
+
+        <p class="text-xs">
+          Lat: {@attribute_data.payload.latitude}, Lon: {@attribute_data.payload.longitude}, {@attribute_data.payload.accuracy}m
+        </p>
+        <.svelte
+          name="IMU"
+          props={
+            %{
+              imuData: @attribute_data.payload
+            }
+          }
+          socket={@socket}
+          class="w-full m-0 p-0"
+        />
+      </.container>
+    </div>
+    """
+  end
+
   def render(%{:attribute_type => "battery"} = assigns) do
     Logger.debug("AttributeComponent battery render #{inspect(assigns)}")
 

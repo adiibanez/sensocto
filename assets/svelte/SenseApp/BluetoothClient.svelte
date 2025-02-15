@@ -8,6 +8,8 @@
 
     import { logger } from "../logger_svelte.js";
 
+    import { BluetoothUtils } from "../bluetooth-utils.js";
+
     let sensorService = getContext("sensorService");
     let loggerCtxName = "BluetoothClient";
 
@@ -41,7 +43,7 @@
         const newDevice = await navigator.bluetooth
             .requestDevice({
                 // filters: [...] <- Prefer filters to save energy & show relevant devices.
-                /*filters: [
+                filters: [
                     {
                         namePrefix: "PressureSensor",
                     },
@@ -51,9 +53,9 @@
                     { namePrefix: "vívosmart" },
                     { namePrefix: "WH-" },
                     { namePrefix: "EdgeImpulse" },
-                ],*/
+                ],
                 //
-                acceptAllDevices: true,
+                //acceptAllDevices: true,
                 // lowercase required
                 optionalServices: [
                     "453b02b0-71a1-11ea-ab12-0800200c9a66", // pressure
@@ -137,6 +139,15 @@
     }
 
     function handleCharacteristic(characteristic) {
+        sensorService.registerAttribute(
+            getUniqueDeviceId(characteristic.service.device),
+            {
+                attribute_id: characteristic.uuid,
+                attribute_type: BluetoothUtils.name(characteristic.uuid),
+                sampling_rate: 1,
+            },
+        );
+
         logger.log(
             loggerCtxName,
             "> Service UUID:",

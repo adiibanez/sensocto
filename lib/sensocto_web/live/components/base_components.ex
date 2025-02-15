@@ -3,7 +3,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
   require Logger
   use Phoenix.LiveComponent
   use Timex
-  import SensoctoWeb.Components.RangeField
+  #import SensoctoWeb.Components.RangeField
   # import Phoenix.Component
   # use LiveComponent
 
@@ -124,7 +124,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
             </p>
           </div>
           <div class="flex-none">
-            <.range_field
+            <%!--<.range_field
               appearance="custom"
               value={@windowsize}
               color="warning"
@@ -147,7 +147,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
             >
               <:range_value position="start">1sec</:range_value>
               <:range_value position="end">60sec</:range_value>
-            </.range_field>
+            </.range_field>--%>
 
             <input
               type="number"
@@ -208,6 +208,9 @@ defmodule SensoctoWeb.Live.BaseComponents do
     ~H"""
     <p class="text-xs text-gray-500" id={"attribute_header#{@sensor_id}_#{@attribute_id}"}>
       {@attribute_name}
+
+      {time_ago_from_unix(@timestamp)}
+
       <Heroicons.icon
         id={"trash_#{@sensor_id}_#{@attribute_id}"}
         name="trash"
@@ -243,6 +246,22 @@ defmodule SensoctoWeb.Live.BaseComponents do
       />
     </svg>
     """
+  end
+
+  def time_ago_from_unix(timestamp) do
+    timestamp |> dbg()
+
+    diff = Timex.diff(Timex.now(), Timex.from_unix(timestamp, :millisecond), :millisecond)
+
+    case diff > 1000 do
+      true ->
+        timestamp
+        |> Timex.from_unix(:milliseconds)
+        |> Timex.format!("{relative}", :relative)
+
+      _ ->
+        "#{abs(diff)}ms ago"
+    end
   end
 
   def format_unix_timestamp(timestamp) do

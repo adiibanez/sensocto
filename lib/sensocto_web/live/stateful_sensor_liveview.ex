@@ -13,19 +13,16 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
   def mount(_params, %{"parent_pid" => parent_pid, "sensor" => sensor}, socket) do
     # send_test_event()
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement:#{sensor.metadata.sensor_id}")
-
-    Phoenix.PubSub.subscribe(
-      Sensocto.PubSub,
-      "measurements_batch:#{sensor.metadata.sensor_id}"
-    )
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor.metadata.sensor_id}")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor.metadata.sensor_id}")
 
     # https://www.richardtaylor.dev/articles/beautiful-animated-charts-for-liveview-with-echarts
     # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
 
     sensor_state =
       SimpleSensor.get_state(sensor.metadata.sensor_id)
+
+    # |> dbg()
 
     # |> dbg()
 
@@ -36,8 +33,8 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      |> assign(:sensor_id, sensor_state.metadata.sensor_id)
      |> assign(:sensor_name, sensor_state.metadata.sensor_name)
      |> assign(:sensor_type, sensor_state.metadata.sensor_type)
-     |> assign(:sensor_attributes_metadata, sensor_state.metadata.attributes)
-     |> assign(:sensor_attributes_data, sensor_state.attributes)
+     #  |> assign(:sensor_attributes_metadata, sensor_state.metadata.attributes)
+     #  |> assign(:sensor_attributes_data, sensor_state.attributes)
      |> assign(:highlighted, false)
      |> assign(
        :attributes_loaded,
@@ -45,78 +42,83 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      )}
   end
 
-  defp attributes_loaded?(assigns) do
-    is_map(assigns.sensor_attributes_metadata) and
-      Enum.count(assigns.sensor_attributes_metadata) > 0 and
-      is_map(assigns.sensor_attributes_data) and
-      Enum.count(assigns.sensor_attributes_data) > 0
-  end
+  # defp attributes_loaded?(assigns) do
+  #   is_map(assigns.metadata.attributes) and
+  #     Enum.count(assigns.metadata.attributes) > 0 and
+  #     is_map(assigns.sensor.attributes) and
+  #     Enum.count(assigns.sensor.attributes) > 0
+  # end
 
-  def _render(assigns) do
-    ~H"""
-    {inspect(assigns)}
-    """
-  end
+  # def _render(assigns) do
+  #   ~H"""
+  #   {inspect(assigns)}
+  #   """
+  # end
 
   @impl true
-  def render(assigns) do
-    ~H"""
-    <div
-      class="sensor flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray h-48"
-      style="border:0 solid green"
-    >
-      <div class="w-full h-full">
-        <p class="hidden">
-          Sensor metadata {inspect(@sensor)}
-        </p>
+  def handle_info(
+        {:measurement,
+         %{
+           :payload => payload,
+           :timestamp => timestamp,
+           :attribute_id => attribute_id,
+           :sensor_id => sensor_id
+         } =
+           _sensor_data},
+        socket
+      ) do
+    start = System.monotonic_time()
 
-        <p class="hidden">
-          Statefulsensor pid: {inspect(self())} Parent pid: {inspect(@parent_pid)} attributes: {inspect(
-            @attributes_loaded
-          )}
-        </p>
+    Logger.debug("Received single measurement for sensor #{sensor_id}")
 
-        <.render_sensor_header
-          sensor_id={@sensor_id}
-          sensor_name={@sensor_name}
-          highlighted={@highlighted}
-        >
-        </.render_sensor_header>
+    # update client
+    measurement = %{
+      :payload => payload,
+      :timestamp => timestamp,
+      :attribute_id => attribute_id,
+      :sensor_id => sensor_id
+    }
 
-        <div :if={not @attributes_loaded}>
-          {render_loading(8, "#{@sensor_id}", assigns)}
-        </div>
+    # measurement |> dbg()
 
-        <div>
-          <%!--<p>
-            Type: {@sensor_type} metadata: {inspect(@sensor_attributes_metadata)} data: {Enum.count(
-              @sensor_attributes_data
-            )} metadata: {is_map(@sensor_attributes_metadata)} data: {is_map(@sensor_attributes_data)}
-          </p>
+    pid = self()
 
-          <div :for={{attribute_id, attribute_meta} <- @sensor_attributes_metadata}>
-            <p>
-              Test Attribute: {inspect(attribute_meta)} Data: {inspect(
-                @sensor_attributes_data[attribute_id]
-              )}
-            </p>
-          </div>
-    --%>
-          <.live_component
-            :for={{attribute_id, attribute_meta} <- @sensor_attributes_metadata}
-            id={"attribute_#{@sensor_id}_#{attribute_id}"}
-            attribute_type={attribute_meta.attribute_type}
-            module={AttributeComponent}
-            attribute_metadata={attribute_meta}
-            attribute_data={@sensor_attributes_data[attribute_id]}
-            attribute_id={attribute_id}
-            sensor_id={@sensor_id}
-          >
-          </.live_component>
-        </div>
-      </div>
-    </div>
-    """
+    Task.start(fn ->
+      # Do something asynchronously
+      send_update(
+        pid,
+        AttributeComponent,
+        id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
+        attribute_data: measurement
+      )
+    end)
+
+    :telemetry.execute(
+      [:sensocto, :live, :handle_info, :measurement],
+      %{duration: System.monotonic_time() - start},
+      %{}
+    )
+
+    # measurement |> dbg()
+    Map.merge(socket.assigns.sensor.attributes, %{
+      String.to_atom(measurement.attribute_id) => measurement
+    })
+
+    # |> dbg()
+
+    {
+      :noreply,
+      socket
+      |> push_event("measurement", measurement)
+      |> assign(
+        :sensor,
+        update_in(
+          socket.assigns.sensor,
+          [:attributes],
+          fn _ -> Map.merge(socket.assigns.sensor.attributes, measurement) end
+        )
+      )
+    }
   end
 
   @impl true
@@ -152,7 +154,9 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       end)
       |> Enum.into(%{})
 
-    Map.merge(socket.assigns.sensor_attributes_data, new_attributes)
+    # |> Sensocto.Utils.string_keys_to_atom_keys()
+
+    Map.merge(socket.assigns.sensor.attributes, new_attributes)
 
     :telemetry.execute(
       [:sensocto, :live, :handle_info, :measurement_batch],
@@ -163,53 +167,44 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     Enum.all?(latest_measurements, fn measurement ->
       pid = self()
 
-      measurement |> dbg()
+      # measurement |> dbg()
 
       Task.start(fn ->
         # Do something asynchronously
-        send_update_after(
+        send_update(
           pid,
           AttributeComponent,
-          [
-            id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-            attribute_data: measurement
-            # sensor_id: sensor_id
-          ],
-          0
+          id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
+          attribute_data: measurement
         )
       end)
-
-      # send_update(AttributeComponent,
-      #   id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-      #   attribute: measurement
-      # )
     end)
 
     {:noreply,
      new_socket
      |> assign(
-       :sensor_attributes_data,
-       Map.merge(socket.assigns.sensor_attributes_data, new_attributes)
+       :sensor,
+       update_in(
+         socket.assigns.sensor,
+         [:attributes],
+         fn _ -> Map.merge(socket.assigns.sensor.attributes, new_attributes) end
+       )
      )}
   end
 
-  defp list_to_map(list) do
-    list
-    |> Enum.group_by(& &1.attribute_id)
-    |> Enum.map(fn {attribute_id, measurements} ->
-      {attribute_id, Enum.max_by(measurements, & &1.timestamp)}
-    end)
-    |> Enum.into(%{})
-  end
+  @impl true
+  def handle_info(
+        {:new_state, _sensor_id},
+        socket
+      ) do
+    Logger.debug("New state for sensor")
+    # socket.assigns |> dbg()
 
-  def cleanup(entry) do
-    case entry do
-      {attribute_id, [entry]} ->
-        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
-
-      {attribute_id, %{}} ->
-        {attribute_id, entry}
-    end
+    {
+      :noreply,
+      socket
+      |> assign(:sensor, SimpleSensor.get_state(socket.assigns.sensor_id))
+    }
   end
 
   @impl true
@@ -220,71 +215,16 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     {:noreply, socket |> assign(:attributes_loaded, true)}
   end
 
-  @impl true
-  def handle_info(
-        {:measurement,
-         %{
-           :payload => payload,
-           :timestamp => timestamp,
-           :attribute_id => attribute_id,
-           :sensor_id => sensor_id
-         } =
-           _sensor_data},
-        socket
-      ) do
-    start = System.monotonic_time()
+  # defp list_to_map(list) do
+  #   list
+  #   |> Enum.group_by(& &1.attribute_id)
+  #   |> Enum.map(fn {attribute_id, measurements} ->
+  #     {attribute_id, Enum.max_by(measurements, & &1.timestamp)}
+  #   end)
+  #   |> Enum.into(%{})
+  # end
 
-    Logger.debug("Received single measurement for sensor #{sensor_id}")
-
-    # update client
-    measurement = %{
-      :payload => payload,
-      :timestamp => timestamp,
-      :attribute_id => attribute_id,
-      :sensor_id => sensor_id
-    }
-
-    measurement |> dbg()
-
-    pid = self()
-
-    Task.start(fn ->
-      # Do something asynchronously
-      send_update_after(
-        pid,
-        AttributeComponent,
-        [
-          id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-          attribute_data: measurement
-        ],
-        0
-      )
-    end)
-
-    :telemetry.execute(
-      [:sensocto, :live, :handle_info, :measurement],
-      %{duration: System.monotonic_time() - start},
-      %{}
-    )
-
-    # measurement |> dbg()
-    Map.merge(socket.assigns.sensor_attributes_data, %{measurement.attribute_id => measurement})
-    # |> dbg()
-
-    {
-      :noreply,
-      socket
-      |> push_event("measurement", measurement)
-      |> assign(
-        :sensor_attributes_data,
-        Map.merge(socket.assigns.sensor_attributes_data, %{
-          measurement.attribute_id => measurement
-        })
-      )
-    }
-  end
-
-  def handle_event("toggle_highlight", %{"sensor_id" => sensor_id} = params, socket) do
+  def handle_event("toggle_highlight", %{"sensor_id" => _sensor_id} = params, socket) do
     Logger.info(
       "Received toggle event: #{inspect(params)} Current: #{socket.assigns.highlighted}"
     )
@@ -372,5 +312,15 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     )
 
     {:noreply, new_socket}
+  end
+
+  def cleanup(entry) do
+    case entry do
+      {attribute_id, [entry]} ->
+        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
+
+      {attribute_id, %{}} ->
+        {attribute_id, entry}
+    end
   end
 end

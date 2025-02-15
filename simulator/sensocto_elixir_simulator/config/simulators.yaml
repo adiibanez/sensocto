@@ -29,29 +29,29 @@ connectors:
             respiratory_rate: 15
             scr_number: 5
             burst_number: 5
-          # ecg:
-          #   attribute_id: "ecg_1"
-          #   sensor_type: "ecg"
-          #   batch_size: 100
-          #   batch_window: 2000
-          #   duration: 30
-          #   sampling_rate: 10
-          #   heart_rate: 50
-          #   respiratory_rate: 15
-          #   scr_number: 5
-          #   burst_number: 5
-          # patient_2:
-          #   sensor_id: "patient_2"
-          #   sensor_name: "Patient_2"
-          #   attributes:
-          #     heartrate:
-          #       attribute_id: "heartrate_2"
-          #       sensor_type: "heartrate"
-          #       batch_size: 5000
-          #       batch_window: 500
-          #       duration: 30
-          #       sampling_rate: 1
-          #       heart_rate: 100
-          #       respiratory_rate: 30
-          #       scr_number: 5
-          #       burst_number: 5
+          ecg:
+            attribute_id: "ecg_1"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 2000
+            duration: 30
+            sampling_rate: 10
+            heart_rate: 50
+            respiratory_rate: 15
+            scr_number: 5
+            burst_number: 5
+      patient_2:
+        sensor_id: "patient_2"
+        sensor_name: "Patient_2"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate_2"
+            sensor_type: "heartrate"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 1
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5

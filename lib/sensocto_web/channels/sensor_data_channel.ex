@@ -93,6 +93,35 @@ defmodule SensoctoWeb.SensorDataChannel do
     end
   end
 
+  def handle_in(
+        "update_attributes",
+        %{"action" => action, "attribute_id" => attribute_id, "metadata" => metadata},
+        socket
+      ) do
+    Logger.debug(
+      "update attributes action #{inspect(action)}, attribute_id: #{inspect(attribute_id)}, metadata: #{inspect(metadata)}"
+    )
+
+    with :ok <-
+           SimpleSensor.update_attribute_registry(
+             socket.assigns.sensor_id,
+             String.to_atom(action),
+             String.to_atom(attribute_id),
+             Sensocto.Utils.string_keys_to_atom_keys(metadata)
+           ) do
+      Logger.debug(
+        "SimpleSensor update_attribute_registry sensor_id: #{socket.assigns.sensor_id}, action: #{action}, attribute_id:  #{attribute_id}, metadata: #{inspect(metadata)}}"
+      )
+    else
+      {:error, _} ->
+        Logger.info(
+          "SimpleSensor update_attribute_registry error for sensor: #{socket.assigns.sensor_id},  attribute_id: #{attribute_id}"
+        )
+    end
+
+    {:noreply, socket}
+  end
+
   @impl true
   @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
           {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}
@@ -168,7 +197,7 @@ defmodule SensoctoWeb.SensorDataChannel do
         message,
         socket
       ) do
-    Logger.debug("Unknown measurement #{inspect(message)}")
+    Logger.debug("Unknown measurement, ignoring #{inspect(message)}")
     {:noreply, socket}
   end
 

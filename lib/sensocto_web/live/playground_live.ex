@@ -1,17 +1,12 @@
 defmodule SensoctoWeb.Live.PlaygroundLive do
   use SensoctoWeb, :live_view
   require Logger
-  import SensoctoWeb.Components.Button
+
   import SensoctoWeb.Components.RangeField
   import SensoctoWeb.Components.RadioField
   # import SensoctoWeb.Components.RadioGroup
-  import SensoctoWeb.Components.Tooltip
   import SensoctoWeb.Components.SpeedDial
-  import SensoctoWeb.Components.Navbar
   import SensoctoWeb.Components.Sidebar
-  alias SensoctoWeb.Components.Sidebar
-
-  use Phoenix.LiveView
 
   # import Phoenix.HTML.Form
   import LiveSvelte
@@ -40,28 +35,6 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
      |> assign(:attribute_id, "test2")
      |> assign(:sensor_ids, [1, 2, 3, 4, 5, 6])
      |> assign(:number, 10)}
-  end
-
-  @impl true
-  @spec handle_event(<<_::104>>, map(), map()) :: {:noreply, map()}
-  def handle_event("set_highlight", params, socket) do
-    Logger.info("Received highlight event: #{inspect(params)}")
-
-    updated_sensors =
-      socket.assigns.sensors
-      |> Map.new(fn {key, sensor} ->
-        if String.to_integer(params["id"]) == key do
-          Map.put(sensor, :highlighted, not sensor.highlighted)
-        else
-          Map.put(sensor, :highlighted, false)
-        end
-      end)
-      |> Map.values()
-      |> Enum.reduce(%{}, fn sensor, acc ->
-        Map.put(acc, sensor.id, sensor)
-      end)
-
-    {:noreply, assign(socket, :sensors, updated_sensors)}
   end
 
   # @impl true
@@ -115,18 +88,43 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
     """
   end
 
+  @impl true
+  @spec handle_event(<<_::104>>, map(), map()) :: {:noreply, map()}
+  def handle_event("set_highlight", params, socket) do
+    Logger.info("Received highlight event: #{inspect(params)}")
+
+    updated_sensors =
+      socket.assigns.sensors
+      |> Map.new(fn {key, sensor} ->
+        if String.to_integer(params["id"]) == key do
+          Map.put(sensor, :highlighted, not sensor.highlighted)
+        else
+          Map.put(sensor, :highlighted, false)
+        end
+      end)
+      |> Map.values()
+      |> Enum.reduce(%{}, fn sensor, acc ->
+        Map.put(acc, sensor.id, sensor)
+      end)
+
+    {:noreply, assign(socket, :sensors, updated_sensors)}
+  end
+
+  @impl true
   def handle_event("increment", _values, socket) do
     # This will increment the number when the increment events gets sent
     Logger.info("Incrementing number")
     {:noreply, assign(socket, :number, socket.assigns.number + 1)}
   end
 
+  @impl true
   def handle_event("decrement", _values, socket) do
     # This will increment the number when the increment events gets sent
     Logger.info("Decrementing number")
     {:noreply, assign(socket, :number, socket.assigns.number - 1)}
   end
 
+  @impl true
   def handle_event(
         "test",
         %{"windowsize" => windowsize} = params,
@@ -134,12 +132,15 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
       ) do
     Logger.info("Received test event: #{inspect(params)}")
 
-    {:noreply,
-     socket
-     |> assign(:windowsize, String.to_integer(windowsize))
-     |> assign(@form[:windowsize], String.to_integer(windowsize))}
+    {
+      :noreply,
+      socket
+      |> assign(:windowsize, String.to_integer(windowsize))
+      # |> assign(@form[:windowsize], String.to_integer(windowsize))
+    }
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <!--<script defer phx-track-static type="text/javascript" src={~p"/assets/sparkline.js"}>
@@ -150,25 +151,6 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
         <h2 class="text-white">Menu</h2>
       </div>
     </.sidebar>
-
-    <!--<sensocto-sparkline-wasm-svelte></sensocto-sparkline-wasm-svelte>-->
-    <.button
-      icon="hero-menu"
-      color="dark"
-      phx-click={Sidebar.show_sidebar(%JS{}, "sidebar-left", "left")}
-      size="extra_small"
-    >
-      Show Sidebar
-    </.button>
-
-    <.button
-      icon="hero-menu"
-      color="dark"
-      phx-click={Sidebar.hide_sidebar(%JS{}, "sidebar-left", "left")}
-      size="extra_small"
-    >
-      Hide Sidebar
-    </.button>
 
     <.speed_dial icon="hero-plus" space="large" icon_animated id="test-1" size="extra_small" clickable>
       <:item icon="hero-home" href="/examples/navbar" color="danger"></:item>
@@ -214,7 +196,6 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
       </.group_radio>
 
       <.radio_field
-        color="secondary"
         name="selection"
         value="option1"
         space="medium"
@@ -257,12 +238,6 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
         phx-value-attribute_id={@attribute_id}
       />
       <button type="submit">Update</button>
-
-      <.tooltip text="This is text" position="bottom">
-        <.icon name="hero-trash" size="sm">
-          This is Tooltip a long text for bottom tooltip
-        </.icon>
-      </.tooltip>
     </.form>
 
     <input

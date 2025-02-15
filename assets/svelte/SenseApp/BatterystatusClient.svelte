@@ -7,14 +7,7 @@
 
     const startBatterySensor = async () => {
         if ("getBattery" in navigator) {
-            const metadata = {
-                sensor_name: channelIdentifier,
-                sensor_id: channelIdentifier,
-                sensor_type: "battery",
-                sampling_rate: 1,
-            };
-
-            sensorService.setupChannel(channelIdentifier, metadata);
+            sensorService.setupChannel(channelIdentifier);
             sensorService.registerAttribute(sensorService.getDeviceId(), {
                 attribute_id: "battery",
                 attribute_type: "battery",
@@ -48,10 +41,10 @@
         };
 
         let payload = {
-            payload: JSON.stringify({
-                level: batteryData.level,
+            payload: {
+                level: parseInt(batteryData.level),
                 charging: batteryData.charging ? "yes" : "no",
-            }),
+            },
             attribute_id: "battery",
             timestamp: batteryData.timestamp,
         };
@@ -62,12 +55,20 @@
         const battery = await navigator.getBattery();
         battery.removeEventListener("levelchange", updateBatteryData);
         battery.removeEventListener("chargingchange", updateBatteryData);
-        sensorService.leaveChannel(channelIdentifier);
+
+        sensorService.unregisterAttribute(
+            sensorService.getDeviceId(),
+            "battery",
+        );
+
+        sensorService.leaveChannelIfUnused(channelIdentifier);
         batteryData = null;
     }
 
     onDestroy(() => {
-        sensorService.leaveChannel(channelIdentifier); // Important: Leave the channel
+        console.log("sensorService", sensorService);
+        stopBatterySensor();
+        sensorService.leaveChannelIfUnused(channelIdentifier); // Important: Leave the channel
     });
 </script>
 

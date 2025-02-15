@@ -1,5 +1,4 @@
 defmodule SensoctoWeb.Live.LvnEntryLive do
-  alias Sensocto.Sensors.Connector
   use SensoctoWeb, :live_view
   use SensoctoNative, :live_view
   require Logger
@@ -23,7 +22,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
     <div>
       <div :for={{peripheral_id, peripheral} <- @ble_state.peripherals}>
         <div>{inspect(peripheral)}</div>
-        <p>{peripheral.name} {peripheral.id}</p>
+        <p>{peripheral.name} {peripheral_id}</p>
         <p>RSSI: {peripheral.rssi}, State: {peripheral.state}</p>
 
         <%!--<div
@@ -83,7 +82,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
           "state" => peripheral_state,
           "rssi" => peripheral_rssi
         } =
-          peripheral,
+          _peripheral,
         socket
       ) do
     # Logger.info(
@@ -144,7 +143,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
           "is_primary" => is_primary,
           "name" => peripheral_name,
           "peripheral_id" => peripheral_id
-        } = service,
+        } = _service,
         socket
       ) do
     # Logger.info("ble-service-discovered #{inspect(service)}")
@@ -163,9 +162,9 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
         "ble-characteristics-discovered",
         %{
           "peripheral_id" => peripheral_id,
-          "service_id" => service_id,
+          "service_id" => _service_id,
           "characteristics" => characteristics
-        } = payload,
+        } = _payload,
         socket
       ) do
     # Logger.info(

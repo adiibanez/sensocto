@@ -196,7 +196,7 @@ defmodule Sensocto.Otp.BleConnectorGenServer do
 
       {:noreply, new_state}
     else
-      Logger.warn("Peripheral #{inspect(peripheral.id)} does not exist in state.")
+      Logger.warning("Peripheral #{inspect(peripheral.id)} does not exist in state.")
       {:noreply, state}
     end
   end
@@ -264,8 +264,8 @@ defmodule Sensocto.Otp.BleConnectorGenServer do
   #   end
   # end
 
-  defp via_tuple(sensor_id) do
-    # Sensocto.RegistryUtils.via_dynamic_registry(SimpleSensorRegistry, sensor_id)
-    {:via, Registry, {SimpleSensorRegistry, sensor_id}}
-  end
+  # defp via_tuple(identifier) do
+  #   # Sensocto.RegistryUtils.via_dynamic_registry(SimpleSensorRegistry, sensor_id)
+  #   {:via, Registry, {SimpleSensorRegistry, identifier}}
+  # end
 end

@@ -1,0 +1,39 @@
+<div class="sensor flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray h-96"
+    style="border:0 solid green">
+    <div class="w-full h-full">
+        <p class="hidden">
+            Sensor metadata {inspect(@sensor)}
+        </p>
+
+        <p class="hidden">
+            Statefulsensor pid: {inspect(self())} Parent pid: {inspect(@parent_pid)} attributes: {inspect(
+            @attributes_loaded
+            )}
+        </p>
+
+        <.render_sensor_header sensor_id={@sensor_id} sensor_name={@sensor_name} highlighted={@highlighted}>
+        </.render_sensor_header>
+
+        <div :if={not @attributes_loaded}>
+            {render_loading(8, "#{@sensor_id}", assigns)}
+        </div>
+
+        <div>
+            <div :for={{attribute_id, _attribute_meta} <- @sensor.metadata.attributes} class="hidden">
+                <p>
+                    Atom: {is_atom(attribute_id)}
+                    {attribute_id}{inspect(@sensor.metadata.attributes)} has_value: {is_nil(
+                    @sensor.attributes["#{attribute_id}"]
+                    )} Data: {inspect(@sensor.attributes["#{attribute_id}"])}
+                </p>
+            </div>
+
+            <.live_component :for={{attribute_id, attribute_meta} <- @sensor.metadata.attributes} :if={not
+                is_nil(@sensor.attributes["#{attribute_id}"])} id={"attribute_#{@sensor_id}_#{attribute_id}"}
+                attribute_type={attribute_meta.attribute_type} module={AttributeComponent}
+                attribute_metadata={attribute_meta} attribute_data={@sensor.attributes["#{attribute_id}"]}
+                attribute_id={attribute_id} sensor_id={@sensor_id}>
+            </.live_component>
+        </div>
+    </div>
+</div>

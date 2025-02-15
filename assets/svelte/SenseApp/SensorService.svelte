@@ -39,6 +39,7 @@
         registerAttribute,
         unregisterAttribute,
         sendChannelMessage,
+        leaveChannel,
         leaveChannelIfUnused,
         updateBatchConfig,
         getDeviceId,
@@ -81,20 +82,19 @@
                 sensor_id: sensorId,
                 sensor_type: attributeMetadata.sensor_type,
                 sampling_rate: attributeMetadata.sampling_rate,
-                attributes: sharedAttributes,
+                //attributes: sharedAttributes,
                 //attributes: {},
                 //[attributeMetadata.attribute_id]: attributeMetadata,
             });
-        } else {
-            // Update existing channel's attributes
-            const channel = sensorChannels[fullChannelName];
-            channel.push("update_attributes", {
-                attributes: {
-                    [attributeMetadata.attribute_id]: attributeMetadata,
-                },
-            });
-            return channel;
         }
+        // Update existing channel's attributes
+        const channel = sensorChannels[fullChannelName];
+        channel.push("update_attributes", {
+            action: "register",
+            attribute_id: attributeMetadata.attribute_id,
+            metadata: attributeMetadata,
+        });
+        return channel;
     }
 
     // New function to unregister an attribute from a channel
@@ -113,8 +113,10 @@
                 leaveChannelIfUnused(sensorId);
             } else {
                 // Notify server about attribute removal
-                sensorChannels[fullChannelName]?.push("remove_attribute", {
+                sensorChannels[fullChannelName]?.push("update_attributes", {
+                    action: "unregister",
                     attribute_id: attributeId,
+                    metadata: {},
                 });
             }
         }
@@ -141,7 +143,15 @@
 
     // ... existing helper functions (getDeviceId, etc.) ...
 
-    function setupChannel(sensorId, metadata) {
+    function setupChannel(
+        sensorId,
+        metadata = {
+            sensor_id: getDeviceId(),
+            sensor_name: getDeviceName(),
+            sensor_type: "html5",
+            sampling_rate: 1,
+        },
+    ) {
         if (!socket) {
             logger.warn(loggerCtxName, "socket is null", sensorId);
             return false;
@@ -149,11 +159,19 @@
 
         const fullChannelName = getFullChannelName(sensorId);
 
+        if (
+            sensorChannels[fullChannelName] &&
+            sensorChannels[fullChannelName].state == "joined"
+        ) {
+            console.log("Reuse channel", sensorChannels[fullChannelName]);
+            return sensorChannels[fullChannelName];
+        }
+
         const channel = socket.channel(fullChannelName, {
             connector_id: getDeviceId(),
             connector_name: getDeviceName(),
             ...metadata,
-            attributes: sharedAttributes,
+            attributes: metadata.attributes || {},
             batch_size: 1,
             bearer_token: "fake",
         });
@@ -182,6 +200,20 @@
     }
 
     function sendChannelMessage(sensorId, message) {
+        let fullChannelName = getFullChannelName(sensorId);
+        console.log(
+            "sendChannelMessage",
+            sensorId,
+            sensorChannels.length,
+            sensorChannels,
+            sensorChannels[fullChannelName],
+            message,
+        );
+
+        sensorChannels[fullChannelName].push("measurement", message);
+    }
+
+    function _sendChannelMessage(sensorId, message) {
         let fullChannelName = getFullChannelName(sensorId);
         logger.log(loggerCtxName, `sendChannelMessage ${sensorId}`, message);
 
@@ -236,7 +268,8 @@
 
             logger.log(
                 loggerCtxName,
-                "Flushing messages for ${channelName}",
+                "Flushing messages for ",
+                channelName,
                 sensorChannels[channelName],
                 messageQueues[channelName],
                 messageQueues[channelName].length,

@@ -1,5 +1,5 @@
 defmodule SensoctoWeb.Plugs.RequestLogger do
-  import Plug.Conn
+  # import Plug.Conn
   require Logger
 
   def init(opts) do

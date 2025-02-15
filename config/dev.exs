@@ -76,7 +76,7 @@ config :sensocto, SensoctoWeb.Endpoint,
 # Watch static and templates for browser reloading.
 config :sensocto, SensoctoWeb.Endpoint,
   live_reload: [
-    web_console_logger: true,
+    web_console_logger: false,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
@@ -98,8 +98,8 @@ config :logger, :logger_name,
   # override default levels
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
-    # [module: Sensocto.AttributeStorer, level: :debug]
-    # [module: SensoctoWeb.SensorDataChannel, level: :debug]
+    [module: Sensocto.AttributeStorer, level: :info],
+    [module: SensoctoWeb.SensorDataChannel, level: :info],
     [module: Phoenix.Logger, level: :debug],
     [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
     [module: Phoenix.LiveView.Channel, level: :debug]

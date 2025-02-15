@@ -1,7 +1,7 @@
 defmodule SensoctoWeb.Live.LvnSigninLive do
   use SensoctoWeb, :live_view
   use SensoctoNative, :live_view
-  alias Sensocto.Accounts.User
+  # alias Sensocto.Accounts.User
   alias AshAuthentication.Info
   alias AshAuthentication.Strategy
 

@@ -2,7 +2,7 @@ defmodule SensoctoWeb.LvnController do
   use SensoctoWeb, :controller
   use AshAuthentication.Phoenix.Controller
   require Logger
-  alias AshAuthentication.Info
+  # alias AshAuthentication.Info
   alias AshAuthentication.Strategy
   # alias AshAuthentication.Plug
   alias Plug.Conn

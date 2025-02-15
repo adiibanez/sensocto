@@ -1,7 +1,6 @@
 defmodule Sensocto.SimpleSensor do
   use GenServer
   require Logger
-  alias Sensocto.SensorsDynamicSupervisor
   alias Sensocto.AttributeStore
   alias Sensocto.SimpleSensorRegistry
 
@@ -20,136 +19,75 @@ defmodule Sensocto.SimpleSensor do
   @spec init(map()) :: {:ok, %{:message_timestamps => [], optional(any()) => any()}}
   def init(state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
-    # Initialize message counter and schedule mps calculation
-
-    state |> dbg()
-
-    # {:ok, state} = Sensocto.Utils.string_keys_to_atom_keys(state) |> dbg()
-
-    state =
-      state
-      # TODO: convert upstream
-
-      # |> Sensocto.Utils.string_keys_to_atom_keys()
-      |> Map.merge(%{message_timestamps: []})
-      |> Map.put(:mps_interval, 5000)
-      # |> Map.put(:attributes, atom_key_attributes)
-      |> dbg()
-
-    # |> dbg()
-
-    # |> dbg()
-
-    # |> Map.replace(
-    #  :attributes,
-    #  Sensocto.Utils.string_keys_to_atom_keys(state.attributes) |> dbg()
-    # )
-
-    # |> dbg()
 
     schedule_mps_calculation()
-    {:ok, state}
-  end
 
-  def get_state(sensor_id) do
-    case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-      [{pid, _}] ->
-        Logger.debug("Client: get_state #{inspect(pid)} #{inspect(sensor_id)}")
-        GenServer.call(pid, :get_state)
-
-      [] ->
-        Logger.debug("Client: get_state No sensor_found #{inspect(sensor_id)}")
-
-      _ ->
-        Logger.debug("Client: get_state ERROR #{inspect(sensor_id)}")
-    end
+    {:ok,
+     state
+     |> Map.put(:attributes, state.attributes || %{})
+     |> Map.merge(%{message_timestamps: []})
+     |> Map.put(:mps_interval, 5000)}
   end
 
   # client
-  def put_attribute(sensor_id, attribute) do
-    try do
-      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-        [{pid, _}] ->
-          # Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
-          GenServer.cast(pid, {:put_attribute, attribute})
+  def get_state(sensor_id) do
+    # Process.alive?(pid)
 
-        _ ->
-          Logger.debug("Client: put_attribute ERROR #{inspect(attribute)}")
-          {:error, "Whatever"}
-      end
-    rescue
-      _e ->
-        Logger.error(inspect(__STACKTRACE__))
-    end
+    GenServer.call(
+      via_tuple(sensor_id),
+      :get_state
+    )
+  end
+
+  def update_attribute_registry(
+        sensor_id,
+        action,
+        attribute_id,
+        metadata
+      ) do
+    Logger.debug(
+      "Client: update_attribute_registry #{inspect(sensor_id)} #{inspect(action)} #{inspect(attribute_id)} #{inspect(metadata)} "
+    )
+
+    GenServer.cast(
+      via_tuple(sensor_id),
+      {:update_attribute_registry, action, attribute_id, metadata}
+    )
+  end
+
+  def put_attribute(sensor_id, attribute) do
+    GenServer.cast(
+      via_tuple(sensor_id),
+      {:put_attribute, attribute}
+    )
   end
 
   def put_batch_attributes(sensor_id, attributes) do
-    try do
-      SensorsDynamicSupervisor.get_device_names()
-      # |> dbg()
-
-      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-        [{pid, _}] ->
-          # Logger.debug("Client: put_attribute #{inspect(pid)} #{inspect(attribute)}")
-          GenServer.cast(pid, {:put_batch_attributes, attributes})
-
-        _ ->
-          Logger.debug("Client: put_batch_attribute ERROR #{length(attributes)}")
-          {:error, "Whatever"}
-      end
-    rescue
-      _e ->
-        Logger.error(inspect(__STACKTRACE__))
-    end
+    GenServer.cast(
+      via_tuple(sensor_id),
+      {:put_batch_attributes, attributes}
+    )
   end
 
   def clear_attribute(sensor_id, attribute_id) do
-    try do
-      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-        [{pid, _}] ->
-          # Logger.debug("Client: clear_attribute #{inspect(pid)} #{inspect(attribute_id)}")
-          GenServer.cast(pid, {:clear_attribute, attribute_id})
-
-        _ ->
-          Logger.debug("Client: clear_attribute ERROR #{inspect(attribute_id)}")
-      end
-    rescue
-      _e ->
-        Logger.error(inspect(__STACKTRACE__))
-    end
+    GenServer.cast(
+      via_tuple(sensor_id),
+      {:clear_attribute, attribute_id}
+    )
   end
 
   def get_attribute(sensor_id, attribute_id, limit) do
-    try do
-      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-        [{pid, _}] ->
-          # Logger.debug("Client: Get attribute #{sensor_id}, #{attribute_id}, limit: #{limit}")
-          GenServer.call(pid, {:get_attribute, attribute_id, limit})
-
-        _ ->
-          Logger.debug("Client: Get attributes ERROR for id: #{inspect(sensor_id)}")
-          :error
-      end
-    rescue
-      _e ->
-        Logger.error(inspect(__STACKTRACE__))
-    end
+    GenServer.cast(
+      via_tuple(sensor_id),
+      {:get_attribute, attribute_id, limit}
+    )
   end
 
   def get_attribute(sensor_id, attribute_id, from \\ 0, to \\ :infinity, limit \\ :infinity) do
-    try do
-      case Registry.lookup(SimpleSensorRegistry, sensor_id) do
-        [{pid, _}] ->
-          GenServer.call(pid, {:get_attribute, attribute_id, from, to, limit})
-
-        _ ->
-          Logger.debug("Client: Get attribute ERROR for id: #{inspect(sensor_id)}")
-          :error
-      end
-    rescue
-      _e ->
-        Logger.error(inspect(__STACKTRACE__))
-    end
+    GenServer.call(
+      via_tuple(sensor_id),
+      {:get_attribute, attribute_id, from, to, limit}
+    )
   end
 
   # server
@@ -167,16 +105,6 @@ defmodule Sensocto.SimpleSensor do
     # Logger.debug("Sensor state: #{inspect(sensor_state)}")
 
     {:reply, sensor_state, state}
-  end
-
-  def cleanup(entry) do
-    case entry do
-      {attribute_id, [entry]} ->
-        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
-
-      {attribute_id, %{}} ->
-        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
-    end
   end
 
   @impl true
@@ -208,6 +136,39 @@ defmodule Sensocto.SimpleSensor do
 
   @impl true
   def handle_cast(
+        {:update_attribute_registry, action, attribute_id, metadata},
+        %{sensor_id: sensor_id} = state
+      ) do
+    Logger.debug(
+      "Server: :update_attribute_registry sensor_id: #{sensor_id} action: #{action} attribute_id:  #{attribute_id}"
+    )
+
+    new_attributes =
+      case action do
+        :register ->
+          Map.put(state.attributes, attribute_id, metadata)
+
+        :unregister ->
+          Map.delete(state.attributes, attribute_id)
+          # TODO cleanup state data
+      end
+
+    new_state = state |> update_in([:attributes], fn _ -> new_attributes end)
+
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "signal:#{sensor_id}",
+      {
+        :new_state,
+        sensor_id
+      }
+    )
+
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast(
         {:put_attribute,
          %{:attribute_id => attribute_id, :payload => payload, :timestamp => timestamp} =
            attribute},
@@ -221,7 +182,7 @@ defmodule Sensocto.SimpleSensor do
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
-      "measurement:#{sensor_id}",
+      "data:#{sensor_id}",
       {
         :measurement,
         attribute
@@ -260,7 +221,7 @@ defmodule Sensocto.SimpleSensor do
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
-      "measurements_batch:#{sensor_id}",
+      "data:#{sensor_id}",
       {
         :measurements_batch,
         {sensor_id, broadcast_messages_list}
@@ -317,8 +278,18 @@ defmodule Sensocto.SimpleSensor do
     Process.send_after(self(), :calculate_mps, @mps_interval)
   end
 
-  defp via_tuple(sensor_id) do
-    # Sensocto.RegistryUtils.via_dynamic_registry(SimpleSensorRegistry, sensor_id)
+  def cleanup(entry) do
+    case entry do
+      {attribute_id, [entry]} ->
+        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
+
+      {attribute_id, %{}} ->
+        {attribute_id, entry |> Map.put(:attribute_id, attribute_id)}
+    end
+  end
+
+  def via_tuple(sensor_id) do
     {:via, Registry, {SimpleSensorRegistry, sensor_id}}
+    # {:via, Horde.Registry, {SimpleSensorRegistry, sensor_id}}
   end
 end

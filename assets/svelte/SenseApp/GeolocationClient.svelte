@@ -10,14 +10,7 @@
 
   const startGeolocation = () => {
     if (navigator.geolocation) {
-      const metadata = {
-        sensor_name: channelIdentifier,
-        sensor_id: channelIdentifier,
-        sensor_type: "geolocation",
-        sampling_rate: 1,
-      };
-
-      sensorService.setupChannel(channelIdentifier, metadata);
+      sensorService.setupChannel(channelIdentifier);
       sensorService.registerAttribute(sensorService.getDeviceId(), {
         attribute_id: "geolocation",
         attribute_type: "geolocation",
@@ -33,11 +26,11 @@
             timestamp: position.timestamp,
           };
           let payload = {
-            payload: JSON.stringify({
+            payload: {
               latitude: geolocationData.latitude,
               longitude: geolocationData.longitude,
               accuracy: Number(geolocationData.accuracy.toFixed(1)),
-            }),
+            },
             // Combine lat/long for simplicity
             attribute_id: "geolocation",
             timestamp: Math.round(new Date().getTime()), // Ensure consistent timestamp format
@@ -62,14 +55,22 @@
       watchId = null;
       geolocationData = null; // Reset data
 
-      sensorService.leaveChannel(channelIdentifier);
+      sensorService.unregisterAttribute(
+        sensorService.getDeviceId(),
+        "geolocation",
+      );
+      sensorService.leaveChannelIfUnused(channelIdentifier);
     }
   };
 
   onDestroy(() => {
     console.log("onDestroy");
     stopGeolocation(); // Cleanup on component destroy
-    sensorService.leaveChannel(channelIdentifier); // ALWAYS leave channels on destroy!
+    sensorService.unregisterAttribute(
+      sensorService.getDeviceId(),
+      "geolocation",
+    );
+    sensorService.leaveChannelIfUnused(channelIdentifier); // ALWAYS leave channels on destroy!
   });
 </script>
 

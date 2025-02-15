@@ -9,7 +9,7 @@
     import PushButtonClient from "./SenseApp/PushButtonClient.svelte";
     import NetworkQualityMonitor from "./SenseApp/NetworkQualityMonitor.svelte";
 
-    import Map from "./GoogleMaps/Map.svelte";
+    import Map from "./Map.svelte";
     /*import Sparkline from "./Sparkline.svelte";
 
     let timeMode = "absolute";

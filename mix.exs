@@ -45,6 +45,7 @@ defmodule Sensocto.MixProject do
       {:phoenix_live_view, "== 1.0.1"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:flame, "~> 0.5"},
       # {:esbuild, "~> 0.8.2"},
       # {:esbuild, github: "evanw/esbuild", branch: "main", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
@@ -69,8 +70,8 @@ defmodule Sensocto.MixProject do
       # {:libcluster, "~> 3.3"},
       {:bandit, "~> 1.2"},
       # {:bandit, "~> 1.0", github: "mtrudel/bandit", branch: "gc_on_websocket"}
-      {:broadway, "~> 1.0"},
-      {:broadway_dashboard, "~> 0.4.0"},
+      # {:broadway, "~> 1.0"},
+      # {:broadway_dashboard, "~> 0.4.0"},
       # {:live_svelte, "~> 0.15.0-rc.6"},
       # ~> 0.14.1"},
       {:live_svelte, "~> 0.14.0"},
@@ -90,6 +91,7 @@ defmodule Sensocto.MixProject do
       {:nimble_csv, "~> 1.1", only: [:dev]},
       {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
+      {:daisy_ui_components, "~> 0.7"},
       {:timex, "~> 3.7"},
       # {:kino, "~> 0.8.0", only: :dev},
       {:kino, github: "adiibanez/kino", only: :dev},
@@ -135,7 +137,7 @@ defmodule Sensocto.MixProject do
 
   defp aliases do
     [
-      # format: ["remove_unused", "format"],
+      format: ["remove_unused", "format"],
       setup: [
         "deps.get",
         "ecto.setup",

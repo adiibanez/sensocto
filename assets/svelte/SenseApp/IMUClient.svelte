@@ -80,15 +80,8 @@
 
         if (imuType === "mobile") {
             try {
-                const metadata = {
-                    sensor_name: channelIdentifier,
-                    sensor_id: sensorService.getDeviceId() + ":imu",
-                    sensor_type: "imu",
-                    sampling_rate: imuFrequency,
-                };
-
-                sensorService.setupChannel(channelIdentifier, metadata);
-                sensorService.registerAttribute(sensorService.getDeviceId(), {
+                sensorService.setupChannel(channelIdentifier);
+                sensorService.registerAttribute(channelIdentifier, {
                     attribute_id: "imu",
                     attribute_type: "imu",
                     sampling_rate: imuFrequency,
@@ -165,7 +158,8 @@
             }
 
             readingIMU = false;
-            sensorService.leaveChannel(channelIdentifier);
+            sensorService.unregisterAttribute(channelIdentifier, "imu");
+            sensorService.leaveChannelIfUnused(channelIdentifier);
 
             imuData = null; // Reset data when stopped
         }
@@ -317,8 +311,8 @@
         imuOutput = output;
 
         let payload = {
-            payload: JSON.stringify(output),
-            attribute_id: channelIdentifier,
+            payload: output,
+            attribute_id: "imu",
             timestamp: Math.round(new Date().getTime()),
         };
 
@@ -352,6 +346,8 @@
 
     onDestroy(() => {
         stopIMU();
+        sensorService.unregisterAttribute(channelIdentifier, "imu");
+        sensorService.leaveChannelIfUnused(channelIdentifier);
     });
 </script>
 

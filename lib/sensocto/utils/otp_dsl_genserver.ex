@@ -15,7 +15,7 @@ defmodule Sensocto.Utils.OtpDsl.Genserver do
       import unquote(__MODULE__)
       require Logger
 
-      def my_name do
+      def my_name() do
         case unquote(register) do
           nil -> name_from(__MODULE__)
           _ -> elem(unquote(register), 1)

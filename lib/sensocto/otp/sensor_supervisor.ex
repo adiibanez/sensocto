@@ -21,17 +21,6 @@ defmodule Sensocto.SensorSupervisor do
     IO.puts("SensorSupervisor started #{inspect(configuration)}")
 
     children = [
-      # {SimpleSensor, configuration},
-      # {AttributeStore, configuration}
-      # %{
-      #  id: :stack,
-      #  start: {Stack, :start_link, []},
-      #  # start: {SimpleSensor, :start_link, [{:via, Registry, {SimpleSensorRegistry, configuration.sensor_id}}]},
-      #  shutdown: 5000,
-      #  restart: :permanent,
-      #  type: :worker
-      # }
-
       %{
         id: :sensor,
         start: {SimpleSensor, :start_link, [configuration]},

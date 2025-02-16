@@ -41,8 +41,8 @@ connectors:
             scr_number: 5
             burst_number: 5
       patient_2:
-        sensor_id: "patient_2"
-        sensor_name: "Patient_2"
+        sensor_id: "sensor_2"
+        sensor_name: "sensor_2"
         attributes:
           heartrate:
             attribute_id: "heartrate_2"
@@ -78,8 +78,8 @@ connectors:
             scr_number: 5
             burst_number: 5
       patient_3:
-        sensor_id: "patient_3"
-        sensor_name: "Patient_3"
+        sensor_id: "sensor_3"
+        sensor_name: "sensor_3"
         attributes:
           emg:
             attribute_id: "emg"

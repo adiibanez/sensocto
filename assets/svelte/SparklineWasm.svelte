@@ -207,7 +207,7 @@
         if (isDragging) {
             const deltaX = event.clientX - startX;
 
-            timewindow = Math.max(1000, initialTimewindow + deltaX * 100);
+            timewindow = Math.max(100, initialTimewindow + deltaX * 100);
 
             console.log(
                 "handle canvas drag ",
@@ -350,13 +350,8 @@
 
 {#if true}
     <div class="text-xs">
-        <!--Data points {data.length}, maxsamples: {maxsamples}, width: {width}-->
-        width: {width} height: {height} timewindow: {timewindow}
+        <!--Data points {data.length},  width: {width} width: {width} height: {height} cntOffsetWidth: {cntElement?.offsetWidth}-->
+        maxsamples: {maxsamples}, timewindow: {timewindow}
         <!--<pre>{JSON.stringify(data, null, 2)}</pre>-->
-
-        test: {id}
-        {JSON.stringify(availableSize)}
-
-        cntOffsetWidth: {cntElement?.offsetWidth}
     </div>
 {/if}

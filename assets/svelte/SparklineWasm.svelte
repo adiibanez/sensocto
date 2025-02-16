@@ -351,7 +351,7 @@
 {#if true}
     <div class="text-xs">
         <!--Data points {data.length},  width: {width} width: {width} height: {height} cntOffsetWidth: {cntElement?.offsetWidth}-->
-        maxsamples: {maxsamples}, timewindow: {timewindow}
+        data: {data.length}, max: {maxsamples}, timewindow: {timewindow}
         <!--<pre>{JSON.stringify(data, null, 2)}</pre>-->
     </div>
 {/if}

@@ -77,14 +77,14 @@ defmodule Sensocto.Simulator.AttributeGenServer do
 
   @impl true
   def handle_info(:delay_done, %{:attribute_id => attribute_id} = state) do
-    Logger.info("#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id}  Delay done")
+    Logger.debug("#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id}  Delay done")
     GenServer.cast(self(), :process_queue)
     {:noreply, state}
   end
 
   @impl true
   def handle_info({:process_queue, delay}, %{:attribute_id => attribute_id} = state) do
-    Logger.info(
+    Logger.debug(
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} handle_info:process_queue delayed #{delay} ms"
     )
     Process.send_after(self(), :delay_done, delay)
@@ -105,7 +105,7 @@ defmodule Sensocto.Simulator.AttributeGenServer do
 
   @impl true
   def handle_cast(:process_queue, %{:attribute_id => attribute_id, :messages_queue => []} = state) do
-    Logger.info(
+    Logger.debug(
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} Empty queue, get new data"
     )
 
@@ -126,7 +126,7 @@ defmodule Sensocto.Simulator.AttributeGenServer do
           :messages_queue => [head | tail]
         } = state
       ) do
-    Logger.info(
+    Logger.debug(
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} Got message, HEAD: #{inspect(head)} TAIL: #{Enum.count(tail)}"
     )
 
@@ -245,7 +245,7 @@ defmodule Sensocto.Simulator.AttributeGenServer do
 
     new_queue =
       batch_push_messages ++
-        [message |> Map.put(:timestamp, :os.system_time(:milli_seconds) + delay_ms)]
+        [message |> Map.put(:timestamp, :os.system_time(:milli_seconds))] # + delay_ms
 
     batch_size = state.config.batch_size || 10
     batch_window = state.config.batch_window || 5000
@@ -256,19 +256,19 @@ defmodule Sensocto.Simulator.AttributeGenServer do
       delay_ms_tmp
     )
 
-    Logger.info(
+    Logger.debug(
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id}  #{length(new_queue)}, batch_size: #{batch_size}, batch_window: #{batch_window}"
     )
 
     if length(new_queue) >= batch_size do
-      Logger.info(
+      Logger.debug(
         "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} send_batch, pushing #{length(new_queue)}"
       )
 
       GenServer.cast(self: {:push_batch, new_queue})
       {:no_reply, state}
     else
-      Logger.info(
+      Logger.debug(
         "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} adding messages to queue #{length(new_queue)}"
       )
 
@@ -296,10 +296,6 @@ defmodule Sensocto.Simulator.AttributeGenServer do
           }
         end)
 
-      Logger.info(
-        "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} Push batch: #{length(push_messages)}"
-      )
-
       Process.send_after(state.sensor_pid, {:push_batch, attribute_id, push_messages}, 0)
     end
 
@@ -315,7 +311,7 @@ defmodule Sensocto.Simulator.AttributeGenServer do
           :config => config
         } = state
       ) do
-    Logger.info(
+    Logger.debug(
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id}  batch timeout #{config.batch_window}ms batch_push_messages: #{length(batch_push_messages)}"
     )
 

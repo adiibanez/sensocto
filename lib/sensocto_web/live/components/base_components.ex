@@ -3,7 +3,8 @@ defmodule SensoctoWeb.Live.BaseComponents do
   require Logger
   use Phoenix.LiveComponent
   use Timex
-  #import SensoctoWeb.Components.RangeField
+  import LiveSvelte
+  # import SensoctoWeb.Components.RangeField
   # import Phoenix.Component
   # use LiveComponent
 
@@ -209,17 +210,28 @@ defmodule SensoctoWeb.Live.BaseComponents do
     <p class="text-xs text-gray-500" id={"attribute_header#{@sensor_id}_#{@attribute_id}"}>
       {@attribute_name}
 
-      {time_ago_from_unix(@timestamp)}
+      <span :if={@lastvalue}>
+        <.svelte
+          name="TimeDiff"
+          props={
+            %{
+              startTime: @lastvalue.timestamp
+            }
+          }
+        />
+        
+    <!--<span>{time_ago_from_unix(@lastvalue.timestamp)}</span>-->
 
-      <Heroicons.icon
-        id={"trash_#{@sensor_id}_#{@attribute_id}"}
-        name="trash"
-        type="outline"
-        class="h-4 w-4 float-right"
-        phx-click="clear-attribute"
-        phx-value-sensor_id={@sensor_id}
-        phx-value-attribute_id={@attribute_id}
-      />
+        <Heroicons.icon
+          id={"trash_#{@sensor_id}_#{@attribute_id}"}
+          name="trash"
+          type="outline"
+          class="h-4 w-4 float-right"
+          phx-click="clear-attribute"
+          phx-value-sensor_id={@sensor_id}
+          phx-value-attribute_id={@attribute_id}
+        />
+      </span>
     </p>
     """
   end

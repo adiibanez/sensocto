@@ -3,9 +3,9 @@ connectors:
     connector_id: "connector_1"
     connector_name: "Simulator_1"
     sensors:
-      patient_1:
-        sensor_id: "patient_1"
-        sensor_name: "Patient_1"
+      sensor_1:
+        sensor_id: "sensor_1"
+        sensor_name: "sensor_1"
         attributes:
           heartrate_1:
             attribute_id: "heartrate_1"
@@ -51,6 +51,54 @@ connectors:
             batch_window: 500
             duration: 30
             sampling_rate: 1
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+          ppg:
+            attribute_id: "ppg"
+            sensor_type: "ppg"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 10
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+          eda:
+            attribute_id: "eda"
+            sensor_type: "eda"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 10
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+      patient_3:
+        sensor_id: "patient_3"
+        sensor_name: "Patient_3"
+        attributes:
+          emg:
+            attribute_id: "emg"
+            sensor_type: "emg"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 10
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+          rsp:
+            attribute_id: "rsp"
+            sensor_type: "rsp"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 5
             heart_rate: 100
             respiratory_rate: 30
             scr_number: 5

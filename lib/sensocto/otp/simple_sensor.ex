@@ -31,12 +31,58 @@ defmodule Sensocto.SimpleSensor do
 
   # client
   def get_state(sensor_id) do
-    # Process.alive?(pid)
-
     GenServer.call(
       via_tuple(sensor_id),
       :get_state
     )
+  end
+
+  def get_view_state(sensor_id) do
+    get_state(sensor_id) |> transform_state()
+    # |> dbg()
+  end
+
+  defp transform_state(state) do
+    metadata = state.metadata
+    attributes = state.attributes
+
+    transformed_attributes =
+      metadata.attributes
+      |> Enum.map(fn {attribute_name_atom, attribute_metadata} ->
+        # Convert the attribute name atom to a string
+        attribute_name_string = Atom.to_string(attribute_name_atom)
+
+        # Grab the values from the original attributes
+        # Handle missing attribute gracefully
+        # Use string key here
+        values =
+          Map.get(attributes, attribute_name_string, [])
+          |> List.wrap()
+
+        # Get last value from original attributes
+        last_value = List.last(values)
+
+        {
+          # keep atom so that you can match your schema
+          attribute_name_atom,
+          Map.merge(attribute_metadata, %{
+            values: values,
+            lastvalue: last_value
+          })
+        }
+      end)
+      |> Enum.into(%{})
+
+    %{
+      sensor_id: metadata.sensor_id,
+      sensor_name: metadata.sensor_name,
+      sensor_type: metadata.sensor_type,
+      sampling_rate: metadata.sampling_rate,
+      batch_size: metadata.batch_size,
+      connector_id: metadata.connector_id,
+      connector_name: metadata.connector_name,
+      attributes: transformed_attributes
+    }
   end
 
   def update_attribute_registry(
@@ -93,6 +139,22 @@ defmodule Sensocto.SimpleSensor do
   # server
   @impl true
   def handle_call(:get_state, _from, %{sensor_id: sensor_id} = state) do
+    sensor_state = %{
+      metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
+      attributes:
+        AttributeStore.get_attributes(sensor_id, 1)
+        |> Enum.map(fn x -> cleanup(x) end)
+        |> Enum.into(%{})
+      #        |> dbg()
+    }
+
+    # Logger.debug("Sensor state: #{inspect(sensor_state)}")
+
+    {:reply, sensor_state, state}
+  end
+
+  @impl true
+  def handle_call(:get_view_state, _from, %{sensor_id: sensor_id} = state) do
     sensor_state = %{
       metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
       attributes:
@@ -202,7 +264,7 @@ defmodule Sensocto.SimpleSensor do
       ) do
     Logger.debug("Server: :put_batch_attributes #{length(attributes)} state: #{inspect(state)}")
 
-    attributes |> dbg()
+    # attributes |> dbg()
 
     broadcast_messages_list =
       Enum.map(attributes, fn attribute ->
@@ -268,10 +330,6 @@ defmodule Sensocto.SimpleSensor do
     # Schedule next calculation
     schedule_mps_calculation()
     {:noreply, %{state | message_timestamps: recent_timestamps}}
-  end
-
-  defp schedule_mps_calculation do
-    Process.send_after(self(), :calculate_mps, @mps_interval)
   end
 
   defp schedule_mps_calculation do

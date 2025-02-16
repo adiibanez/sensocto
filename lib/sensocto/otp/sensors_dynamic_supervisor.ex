@@ -1,6 +1,10 @@
 defmodule Sensocto.SensorsDynamicSupervisor do
   alias Sensocto.SimpleSensor
   use DynamicSupervisor
+
+  # use Horde.DynamicSupervisor
+  # alias Horde.DynamicSupervisor
+
   require Logger
 
   # https://kobrakai.de/kolumne/child-specs-in-elixir?utm_source=elixir-merge
@@ -96,12 +100,12 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end
   end
 
-  def get_all_sensors_state() do
+  def get_all_sensors_state(mode) do
     Enum.reduce(get_device_names(), %{}, fn sensor_id, acc ->
       case acc do
         %{} = __sensor_state ->
           if is_map(acc) do
-            sensor_state = get_sensor_state(sensor_id)
+            sensor_state = get_sensor_state(sensor_id, mode)
 
             if is_map(sensor_state) do
               Map.merge(acc, sensor_state)
@@ -119,18 +123,24 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end)
   end
 
-  def get_sensor_state(sensor_id) do
-    case SimpleSensor.get_state(sensor_id) do
+  def get_sensor_state(sensor_id, mode) do
+    data =
+      case mode do
+        :view -> SimpleSensor.get_view_state(sensor_id)
+        :default -> SimpleSensor.get_data(sensor_id)
+      end
+
+    case data do
       %{} = sensor_state ->
         %{
           "#{sensor_id}" => sensor_state
         }
 
       :ok ->
-        Logger.debug("get_sensor_state Got :ok for #{sensor_id}")
+        Logger.debug("get_sensor_state Got :ok for #{sensor_id}, mode: #{mode}")
 
       :error ->
-        Logger.debug("Failed to retrieve sensor state #{sensor_id}")
+        Logger.debug("Failed to retrieve sensor state #{sensor_id}, mode: #{mode}")
         :error
     end
   end
@@ -174,9 +184,4 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   def count_children do
     DynamicSupervisor.count_children(__MODULE__)
   end
-
-  # defp via_tuple(worker_name) do
-  #  # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
-  #  {:via, Registry, {Sensocto.Registry, worker_name}}
-  # end
 end

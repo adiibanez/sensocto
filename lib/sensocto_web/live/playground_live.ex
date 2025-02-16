@@ -59,35 +59,6 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
   #   """
   # end
 
-  # @impl true
-  def render_(assigns) do
-    ~V"""
-    <script socket={@socket} phx-endpoint={@endpoint} phx-ref={@ref}>
-      // We added export to make it reactive with the server
-      // Number is set to 10
-      export let number = 1
-
-      // Let's combine local state with server state
-      let number2 = 5
-
-      $: combined = number + number2
-    </script>
-
-    {number} + {number2} = {combined}
-
-    <button class="rounded" phx-click="increment">increment</button>
-    <button class="rounded" phx-click="decrement">decrement</button>
-
-
-    <style lang="stylus">
-      button
-        background-color black
-        color white
-        padding 0.5rem 1rem
-    </style>
-    """
-  end
-
   @impl true
   @spec handle_event(<<_::104>>, map(), map()) :: {:noreply, map()}
   def handle_event("set_highlight", params, socket) do
@@ -142,6 +113,25 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
 
   @impl true
   def render(assigns) do
+    ~V"""
+    <script>
+      export let number = 5
+      let other = 1
+
+      $: combined = other + number
+    </script>
+
+    <p>This is number: {number}</p>
+    <p>This is other: {other}</p>
+    <p>This is other + number: {combined}</p>
+
+    <button phx-click="increment">Increment</button>
+    <button on:click={() => other += 1}>Increment</button>
+    """
+  end
+
+  # @impl true
+  def _render(assigns) do
     ~H"""
     <!--<script defer phx-track-static type="text/javascript" src={~p"/assets/sparkline.js"}>
     </script>-->

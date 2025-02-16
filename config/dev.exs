@@ -77,6 +77,12 @@ config :sensocto, SensoctoWeb.Endpoint,
 config :sensocto, SensoctoWeb.Endpoint,
   live_reload: [
     web_console_logger: false,
+    notify: [
+      live_view: [
+        ~r"lib/sensocto_web/core_components.ex$",
+        ~r"lib/sensocto_web/(live|components)/.*(ex|heex)$"
+      ]
+    ],
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
@@ -88,7 +94,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :debug,
+  level: :info,
   backends: [{FlexLogger, :logger_name}]
 
 config :logger, :logger_name,
@@ -98,15 +104,14 @@ config :logger, :logger_name,
   # override default levels
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
-    [module: Sensocto.AttributeStorer, level: :info],
-    [module: SensoctoWeb.SensorDataChannel, level: :info],
-    [module: Phoenix.Logger, level: :debug],
-    [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
-    [module: Phoenix.LiveView.Channel, level: :debug]
-
+    # [module: Sensocto.AttributeStorer, level: :info],
+    # [module: SensoctoWeb.SensorDataChannel, level: :info],
+    # [module: Phoenix.Logger, level: :debug],
+    # [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
+    # [module: Phoenix.LiveView.Channel, level: :debug]
     # [module: SensoctoWeb.Live.PlaygroundLive, level: :debug]
-    #    [module: SensoctoWeb.IndexLive, level: :debug],
-    #   [module: SensoctoWeb.Live.BaseComponents, level: :debug]
+    # [module: SensoctoWeb.IndexLive, level: :debug],
+    # [module: SensoctoWeb.Live.BaseComponents, level: :debug]
   ],
   # backend specific configuration
   # format: "DEV [$time] [$level] $message\n"

@@ -23,7 +23,7 @@ config :logger, :logger_name,
   level_config: [
     # [module: Sensocto.SensorSimulatorGenServer, level: :debug]
     [module: Sensocto.AttributeGenServer, level: :info],
-    [module: Sensocto.ConnectorGenServer, level: :debug]
+    [module: Sensocto.ConnectorGenServer, level: :info]
     #    [module: Phoenix.Logger, level: :info]
   ]
 

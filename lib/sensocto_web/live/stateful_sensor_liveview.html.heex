@@ -19,20 +19,22 @@
         </div>
 
         <div>
-            <div :for={{attribute_id, _attribute_meta} <- @sensor.metadata.attributes} class="hidden">
+
+            <!-- <div :for={{attribute_id, _attribute_meta} <- @sensor.metadata.attributes} class="hidden">
                 <p>
                     Atom: {is_atom(attribute_id)}
                     {attribute_id}{inspect(@sensor.metadata.attributes)} has_value: {is_nil(
                     @sensor.attributes["#{attribute_id}"]
                     )} Data: {inspect(@sensor.attributes["#{attribute_id}"])}
                 </p>
-            </div>
-
-            <.live_component :for={{attribute_id, attribute_meta} <- @sensor.metadata.attributes} :if={not
-                is_nil(@sensor.attributes["#{attribute_id}"])} id={"attribute_#{@sensor_id}_#{attribute_id}"}
-                attribute_type={attribute_meta.attribute_type} module={AttributeComponent}
-                attribute_metadata={attribute_meta} attribute_data={@sensor.attributes["#{attribute_id}"]}
-                attribute_id={attribute_id} sensor_id={@sensor_id}>
+        </div>
+    :if={not is_nil(@sensor.attributes["#{attribute_id}"])} id={"attribute_#{@sensor_id}_#{attribute_id}"}
+    
+    -->
+            <.live_component :for={{attribute_id, attribute} <- @sensor.attributes}
+                id={"attribute_#{@sensor_id}_#{attribute_id}"} attribute_type={attribute.attribute_type}
+                module={AttributeComponent} attribute={attribute} attribute_id={attribute_id}
+                lastvalue={attribute.lastvalue} sensor_id={@sensor_id}>
             </.live_component>
         </div>
     </div>

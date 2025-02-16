@@ -42,7 +42,6 @@ defmodule Sensocto.SensorSupervisor do
   end
 
   defp via_tuple(sensor_id) do
-    # Sensocto.RegistryUtils.via_dynamic_registry(Sensocto.SensorPairRegistry, sensor_id)
     {:via, Registry, {Sensocto.SensorPairRegistry, sensor_id}}
   end
 end

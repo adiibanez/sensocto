@@ -13,16 +13,14 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
   def mount(_params, %{"parent_pid" => parent_pid, "sensor" => sensor}, socket) do
     # send_test_event()
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor.metadata.sensor_id}")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor.metadata.sensor_id}")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor.sensor_id}")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor.sensor_id}")
 
     # https://www.richardtaylor.dev/articles/beautiful-animated-charts-for-liveview-with-echarts
     # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
 
     sensor_state =
-      SimpleSensor.get_state(sensor.metadata.sensor_id)
-
-    # |> dbg()
+      SimpleSensor.get_view_state(sensor.sensor_id)
 
     # |> dbg()
 
@@ -30,24 +28,15 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      socket
      |> assign(:parent_pid, parent_pid)
      |> assign(:sensor, sensor_state)
-     |> assign(:sensor_id, sensor_state.metadata.sensor_id)
-     |> assign(:sensor_name, sensor_state.metadata.sensor_name)
-     |> assign(:sensor_type, sensor_state.metadata.sensor_type)
-     #  |> assign(:sensor_attributes_metadata, sensor_state.metadata.attributes)
-     #  |> assign(:sensor_attributes_data, sensor_state.attributes)
+     |> assign(:sensor_id, sensor_state.sensor_id)
+     |> assign(:sensor_name, sensor_state.sensor_name)
+     |> assign(:sensor_type, sensor_state.sensor_type)
      |> assign(:highlighted, false)
      |> assign(
        :attributes_loaded,
        true
      )}
   end
-
-  # defp attributes_loaded?(assigns) do
-  #   is_map(assigns.metadata.attributes) and
-  #     Enum.count(assigns.metadata.attributes) > 0 and
-  #     is_map(assigns.sensor.attributes) and
-  #     Enum.count(assigns.sensor.attributes) > 0
-  # end
 
   # def _render(assigns) do
   #   ~H"""
@@ -89,7 +78,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         pid,
         AttributeComponent,
         id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-        attribute_data: measurement
+        lastvalue: measurement
       )
     end)
 
@@ -106,19 +95,25 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
 
     # |> dbg()
 
-    {
-      :noreply,
+    new_socket =
       socket
       |> push_event("measurement", measurement)
-      |> assign(
-        :sensor,
-        update_in(
-          socket.assigns.sensor,
-          [:attributes],
-          fn _ -> Map.merge(socket.assigns.sensor.attributes, measurement) end
-        )
-      )
-    }
+
+    {:noreply, new_socket}
+
+    # {
+    #   :noreply,
+    #   socket
+    #   |> push_event("measurement", measurement)
+    #   |> assign(
+    #     :sensor,
+    #     update_in(
+    #       socket.assigns.sensor,
+    #       [:attributes],
+    #       fn _ -> Map.merge(socket.assigns.sensor.attributes, measurement) end
+    #     )
+    #   )
+    # }
   end
 
   @impl true
@@ -175,21 +170,23 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
           pid,
           AttributeComponent,
           id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-          attribute_data: measurement
+          lastvalue: measurement
         )
       end)
     end)
 
-    {:noreply,
-     new_socket
-     |> assign(
-       :sensor,
-       update_in(
-         socket.assigns.sensor,
-         [:attributes],
-         fn _ -> Map.merge(socket.assigns.sensor.attributes, new_attributes) end
-       )
-     )}
+    {:noreply, new_socket}
+
+    # {:noreply,
+    #  new_socket
+    #  |> assign(
+    #    :sensor,
+    #    update_in(
+    #      socket.assigns.sensor,
+    #      [:attributes],
+    #      fn _ -> Map.merge(socket.assigns.sensor.attributes, new_attributes) end
+    #    )
+    #  )}
   end
 
   @impl true
@@ -203,7 +200,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     {
       :noreply,
       socket
-      |> assign(:sensor, SimpleSensor.get_state(socket.assigns.sensor_id))
+      |> assign(:sensor, SimpleSensor.get_view_state(socket.assigns.sensor_id))
     }
   end
 

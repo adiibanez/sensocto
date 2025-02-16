@@ -40,7 +40,7 @@ defmodule SensoctoWeb.IndexLive do
         grid_cols_xl: @grid_cols_xl_default,
         grid_cols_2xl: @grid_cols_2xl_default
       )
-      |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state())
+      |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view))
 
     :telemetry.execute(
       [:sensocto, :live, :mount],
@@ -77,7 +77,7 @@ defmodule SensoctoWeb.IndexLive do
       |> assign(:grid_cols_lg, min(@grid_cols_lg_default, sensors_online_count))
       |> assign(:grid_cols_xl, min(@grid_cols_xl_default, sensors_online_count))
       |> assign(:grid_cols_2xl, min(@grid_cols_2xl_default, sensors_online_count))
-      |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state())
+      |> assign(:sensors, Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view))
     }
   end
 

@@ -1,4 +1,5 @@
 defmodule Sensocto.Accounts.User do
+  @derive {Jason.Encoder, only: [:id]}
   use Ash.Resource,
     data_layer: AshPostgres.DataLayer,
     otp_app: :sensocto,

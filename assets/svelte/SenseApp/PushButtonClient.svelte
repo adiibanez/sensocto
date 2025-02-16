@@ -29,6 +29,7 @@
     });
 </script>
 
+<p>Test2</p>
 <button class="btn btn-blue text-xs" on:click={sendPushButtonEvent}
     >Send Button Pressed</button
 >

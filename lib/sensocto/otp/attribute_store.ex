@@ -25,9 +25,12 @@ defmodule Sensocto.AttributeStore do
     # Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
     Agent.get(via_tuple(sensor_id), fn state ->
       Enum.reduce(state, %{}, fn {attribute_id, attr}, acc ->
+        attr |> dbg()
+        Logger.info("limit: #{limit}")
+
         limited_payloads =
           case attr do
-            %{payloads: payloads} -> Enum.take(Enum.reverse(payloads), limit)
+            %{payloads: payloads} -> Enum.take(payloads, limit)
             _ -> []
           end
 

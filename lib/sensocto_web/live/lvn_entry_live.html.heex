@@ -1,0 +1,27 @@
+<div :for={{sensor_id, sensor} <- @sensors} id="sensors">
+    <h3>{sensor_id}</h3>
+    <!--<div class="text-xs">{inspect(sensor)}</div>-->
+
+    <div :for={{attribute_id, attribute} <- sensor.attributes} id="attributes">
+        <strong>{attribute_id}</strong>
+
+        <p>Update: {time_ago_from_unix(attribute.lastvalue.timestamp)}</p>
+        <p>Value: {inspect(attribute.lastvalue.payload)}</p>
+        <p>Type: {inspect(attribute.attribute_type)}</p>
+        <p>Sampling rate: {inspect(attribute.sampling_rate)}</p>
+        <!--<div>{inspect(attribute)}</div>-->
+    </div>
+</div>
+
+<div id="bluetooth">
+    <div :for={{peripheral_id, peripheral} <- @ble_state.peripherals}>
+        <div>{inspect(peripheral)}</div>
+        <p>{peripheral.name} {peripheral_id}</p>
+        <p>RSSI: {peripheral.rssi}, State: {peripheral.state}</p>
+
+        <!--<div :for={ {characteristic_id, characteristic} <- @ble_state.peripheral_characteristics[peripheral_id] }
+            :if={is_map(@ble_state.peripheral_characteristics[peripheral_id])}>
+            {inspect(characteristic)}
+    </div>-->
+    </div>
+</div>

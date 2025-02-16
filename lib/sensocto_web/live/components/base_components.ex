@@ -261,8 +261,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def time_ago_from_unix(timestamp) do
-    timestamp |> dbg()
-
     diff = Timex.diff(Timex.now(), Timex.from_unix(timestamp, :millisecond), :millisecond)
 
     case diff > 1000 do

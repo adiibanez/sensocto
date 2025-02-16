@@ -12,7 +12,8 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
 
     {:ok,
      socket
-     |> assign(:form, to_form(%{"email" => "adi.ibanez@freestyleair.com"}))}
+     |> assign(:form, to_form(%{"email" => "adi.ibanez@freestyleair.com", "token" => ""}))
+     |> assign(:token_requested, false)}
   end
 
   def render(assigns) do
@@ -28,6 +29,8 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
     strategy = Info.strategy!(Sensocto.Accounts.User, :magic_link)
     Strategy.action(strategy, :request, %{"email" => email})
 
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(:token_requested, true)}
   end
 end

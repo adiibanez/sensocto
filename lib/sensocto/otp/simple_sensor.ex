@@ -30,15 +30,15 @@ defmodule Sensocto.SimpleSensor do
   end
 
   # client
-  def get_state(sensor_id) do
+  def get_state(sensor_id, values \\ 1) do
     GenServer.call(
       via_tuple(sensor_id),
-      :get_state
+      {:get_state, values}
     )
   end
 
-  def get_view_state(sensor_id) do
-    get_state(sensor_id) |> transform_state()
+  def get_view_state(sensor_id, values \\ 1) do
+    get_state(sensor_id, values) |> transform_state()
     # |> dbg()
   end
 
@@ -60,7 +60,7 @@ defmodule Sensocto.SimpleSensor do
           |> List.wrap()
 
         # Get last value from original attributes
-        last_value = List.last(values)
+        last_value = List.first(values)
 
         {
           # keep atom so that you can match your schema
@@ -138,28 +138,12 @@ defmodule Sensocto.SimpleSensor do
 
   # server
   @impl true
-  def handle_call(:get_state, _from, %{sensor_id: sensor_id} = state) do
+  def handle_call({:get_state, values}, _from, %{sensor_id: sensor_id} = state) do
     sensor_state = %{
       metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
       attributes:
-        AttributeStore.get_attributes(sensor_id, 1)
-        |> Enum.map(fn x -> cleanup(x) end)
-        |> Enum.into(%{})
-      #        |> dbg()
-    }
-
-    # Logger.debug("Sensor state: #{inspect(sensor_state)}")
-
-    {:reply, sensor_state, state}
-  end
-
-  @impl true
-  def handle_call(:get_view_state, _from, %{sensor_id: sensor_id} = state) do
-    sensor_state = %{
-      metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
-      attributes:
-        AttributeStore.get_attributes(sensor_id, 1)
-        |> Enum.map(fn x -> cleanup(x) end)
+        AttributeStore.get_attributes(sensor_id, values)
+        # |> Enum.map(fn x -> cleanup(x) end)
         |> Enum.into(%{})
       #        |> dbg()
     }

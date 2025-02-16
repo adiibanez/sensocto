@@ -14,10 +14,6 @@
         <.render_sensor_header sensor_id={@sensor_id} sensor_name={@sensor_name} highlighted={@highlighted}>
         </.render_sensor_header>
 
-        <div :if={not @attributes_loaded}>
-            {render_loading(8, "#{@sensor_id}", assigns)}
-        </div>
-
         <div>
 
             <!-- <div :for={{attribute_id, _attribute_meta} <- @sensor.metadata.attributes} class="hidden">

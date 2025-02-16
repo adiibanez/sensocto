@@ -100,12 +100,12 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end
   end
 
-  def get_all_sensors_state(mode) do
+  def get_all_sensors_state(mode \\ :default, values \\ 1) do
     Enum.reduce(get_device_names(), %{}, fn sensor_id, acc ->
       case acc do
         %{} = __sensor_state ->
           if is_map(acc) do
-            sensor_state = get_sensor_state(sensor_id, mode)
+            sensor_state = get_sensor_state(sensor_id, mode, values)
 
             if is_map(sensor_state) do
               Map.merge(acc, sensor_state)
@@ -123,11 +123,11 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end)
   end
 
-  def get_sensor_state(sensor_id, mode) do
+  def get_sensor_state(sensor_id, mode, values) do
     data =
       case mode do
-        :view -> SimpleSensor.get_view_state(sensor_id)
-        :default -> SimpleSensor.get_data(sensor_id)
+        :view -> SimpleSensor.get_view_state(sensor_id, values)
+        :default -> SimpleSensor.get_state(sensor_id, values)
       end
 
     case data do
@@ -137,10 +137,15 @@ defmodule Sensocto.SensorsDynamicSupervisor do
         }
 
       :ok ->
-        Logger.debug("get_sensor_state Got :ok for #{sensor_id}, mode: #{mode}")
+        Logger.debug(
+          "get_sensor_state Got :ok for #{sensor_id}, mode: #{mode}, values: #{values}"
+        )
 
       :error ->
-        Logger.debug("Failed to retrieve sensor state #{sensor_id}, mode: #{mode}")
+        Logger.debug(
+          "Failed to retrieve sensor state #{sensor_id}, mode: #{mode}, values: #{values}"
+        )
+
         :error
     end
   end

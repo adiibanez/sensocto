@@ -6,6 +6,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   attr :attribute_type, :string
 
+  @impl true
   def render(%{:attribute_type => "ecg"} = assigns) do
     Logger.debug("AttributeComponent ecg render #{inspect(assigns)}")
 
@@ -54,6 +55,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  @impl true
   def render(%{:attribute_type => "geolocation"} = assigns) do
     Logger.debug("AttributeComponent geolocation render #{inspect(assigns)}")
 
@@ -98,6 +100,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  @impl true
   def render(%{:attribute_type => "imu"} = assigns) do
     Logger.debug("AttributeComponent imu render #{inspect(assigns)}")
 
@@ -139,6 +142,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  @impl true
   def render(%{:attribute_type => "battery"} = assigns) do
     Logger.debug("AttributeComponent battery render #{inspect(assigns)}")
 
@@ -191,6 +195,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  @impl true
   def render(assigns) do
     Logger.debug("AttributeComponent default render #{inspect(assigns)}")
 

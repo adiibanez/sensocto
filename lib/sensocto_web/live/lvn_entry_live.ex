@@ -5,38 +5,52 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
   alias Phoenix.PubSub
   alias Sensocto.Otp.BleConnectorGenServer
 
+  @retrieve_values 5
+
   def mount(params, session, socket) do
     Logger.info("LVN entry main #{inspect(params)}, #{inspect(session)}")
 
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "ble_state")
 
+    sensors = get_sensors_state()
+
+    Enum.all?(sensors, fn {sensor_id, _sensor} ->
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
+    end)
+
     {:ok,
      socket
      |> assign(:ble_scan, false)
-     |> assign(:ble_state, BleConnectorGenServer.get_state())}
+     |> assign(:ble_state, BleConnectorGenServer.get_state())
+     |> assign(:sensors, sensors)}
   end
 
-  def render(assigns) do
-    ~H"""
-    <pre class="">{inspect(@ble_state, pretty: true)}</pre>
-    <div>
-      <div :for={{peripheral_id, peripheral} <- @ble_state.peripherals}>
-        <div>{inspect(peripheral)}</div>
-        <p>{peripheral.name} {peripheral_id}</p>
-        <p>RSSI: {peripheral.rssi}, State: {peripheral.state}</p>
+  def time_ago_from_unix(timestamp) do
+    timestamp |> dbg()
 
-        <%!--<div
-          :for={
-            {characteristic_id, characteristic} <-
-              @ble_state.peripheral_characteristics[peripheral_id]
-          }
-          :if={is_map(@ble_state.peripheral_characteristics[peripheral_id])}
-        >
-          {inspect(characteristic)}
-        </div>--%>
-      </div>
-    </div>
-    """
+    diff = Timex.diff(Timex.now(), Timex.from_unix(timestamp, :millisecond), :millisecond)
+
+    case diff > 1000 do
+      true ->
+        timestamp
+        |> Timex.from_unix(:milliseconds)
+        |> Timex.format!("{relative}", :relative)
+
+      _ ->
+        "#{abs(diff)}ms ago"
+    end
+  end
+
+  # @impl true
+  # def _render(assigns) do
+  #   ~H"""
+  #   <pre class="hidden">{inspect(@ble_state, pretty: true)}</pre>
+  #   """
+  # end
+
+  defp get_sensors_state() do
+    Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view, @retrieve_values)
   end
 
   def handle_info(:ble_state_changed, socket) do
@@ -47,6 +61,28 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
        socket,
        :ble_state,
        BleConnectorGenServer.get_state()
+     )}
+  end
+
+  def handle_info({:measurement, %{:sensor_id => sensor_id} = _measurement}, socket) do
+    Logger.info("handle_info measurement: #{sensor_id}")
+
+    {:noreply,
+     socket
+     |> assign(
+       :sensors,
+       get_sensors_state()
+     )}
+  end
+
+  def handle_info({:measurements_batch, _batch}, socket) do
+    Logger.info("handle_info measurements batch")
+
+    {:noreply,
+     socket
+     |> assign(
+       :sensors,
+       get_sensors_state()
      )}
   end
 

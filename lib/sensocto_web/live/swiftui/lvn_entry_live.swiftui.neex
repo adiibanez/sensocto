@@ -1,51 +1,32 @@
-<VStack
-    alignment="leading"
-    >
-    <Text>Swiftui {inspect(assigns)}</Text>
+<Group :for={{sensor_id, sensor} <- @sensors} id="sensors">
+    <Text>{sensor_id}</Text>
+    <!--<div class="text-xs">{inspect(sensor)}</div>-->
 
-    <%!--<HStack :for={{peripheral_id, p} <- @ble_state.peripherals}>
-    <Button phx-click="ble-connect" phx-value-peripheral_id={peripheral_id}>{p.id}</Button>
-    <Text> {p[:name]}</Text>
-    </HStack>--%>
-    <%!--<.simple_form for={@form} method="GET" action={~p"/auth/user/magic_link"} phx-update="ignore" id="login">
-    <.input name="token" value={@form[:token]}/>
-    <Button phx-click="login">Login</Button>
-    </.simple_form>--%>
-
-    <BLEClient phx-scan-devices={assigns.ble_scan}>
-
-    <%!--
-
-    <.input name="test2" type="DatePicker" label="toggle" value={1}></.input>
-
-<SwiftUI.input name="test" type="Toggle" label="toggle" value={1}></SwiftUI.input>
-    <SwiftUI.input name="test2" type="DatePicker" label="toggle" value={1}></SwiftUI.input>
+    <Group :for={{attribute_id, attribute} <- sensor.attributes} id="attributes">
+        <Text>{attribute_id}</Text>
+        <Text>Update: {time_ago_from_unix(attribute.lastvalue.timestamp)}</Text>
+        <Text>Value: {inspect(attribute.lastvalue.payload)}</Text>
+        <Text>Type: {inspect(attribute.attribute_type)}</Text>
+        <Text>Sampling rate: {inspect(attribute.sampling_rate)}</Text>
+        <!--<div>{inspect(attribute)}</div>-->
+    </Group>
+</Group>
 
 
-    <Box size="fill" background="system-blue">
-            <Text align="Center">
-                second_page
-            <Link destination="/nav/next">
-                    <Text class="bold">Next</Text>
-            </Link>
-            </Text>
-        </Box>
+<Group id="bluetooth">
+    <Group :for={{peripheral_id, peripheral} <- @ble_state.peripherals}>
+        <!--<div>{inspect(peripheral)}</div>-->
+        <Text>{peripheral.name} {peripheral_id}</Text>
+        <Text>RSSI: {peripheral.rssi}, State: {peripheral.state}</Text>
 
-        <Button
-        phx-click="send-ble-command"
-        phx-value-test2={1}
-    >Send cmd</Button>
+        <!--<div :for={ {characteristic_id, characteristic} <- @ble_state.peripheral_characteristics[peripheral_id] }
+            :if={is_map(@ble_state.peripheral_characteristics[peripheral_id])}>
+            {inspect(characteristic)}
+    </div>-->
+    </Group>
 
-    <Button
-        phx-click="toggle-scan"
-        phx-value-test2={1}
-        style="font(.system(size: 10));padding(.vertical, 5);padding(.horizontal, 5)"
-    >Toggle scan {@ble_scan}</Button>
---%>
+    <BLEClient/>
 
-
-</BLEClient>
-
-</VStack>
+</Group>
 
 <CustomURLOpener/>

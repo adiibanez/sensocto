@@ -9,5 +9,14 @@
           <.button type="submit">Request Magic link</.button>
         </:actions>
       </.simple_form>
+
+
+      <.simple_form id="tokenentry" for={@form} action={~p"/auth/user/magic_link"} method="GET">
+
+        <.input type="TextField" name="token" field={@form[:token]} label="Token"/>
+        <:actions>
+          <.button type="submit">Login</.button>
+        </:actions>
+      </.simple_form>
 <CustomURLOpener/>
 </VStack>

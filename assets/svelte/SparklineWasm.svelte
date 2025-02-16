@@ -295,6 +295,7 @@
     //$: maxsamples = (timewindow / 1000) * samplingrate * width;
     $: if (timewindow && width && samplingrate) {
         maxsamples = (timewindow / 1000) * samplingrate * width;
+        render();
     }
 
     $: if (availableSize) {

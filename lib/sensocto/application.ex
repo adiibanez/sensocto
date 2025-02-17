@@ -19,7 +19,7 @@ defmodule Sensocto.Application do
       # Registry added here
       {Registry, keys: :unique, name: Sensocto.Sensors.Registry},
       {Registry, keys: :unique, name: Sensocto.Sensors.SensorRegistry},
-      {Registry, keys: :unique, name: Sensocto.Sensors.SensorAttributeRegistry},
+      # {Registry, keys: :unique, name: Sensocto.Sensors.SensorAttributeRegistry},
       # Sensors
       # Sensocto.Sensors.SensorRegistry,
       # {Registry.Supervisor, [Sensocto.Sensors.SensorRegistry]},

@@ -58,7 +58,7 @@
     });
 
     function getFullChannelName(sensorId) {
-        return "sensor_data:" + sensorId;
+        return "sensocto:sensor:" + sensorId;
     }
 
     // New function to register an attribute with a channel
@@ -342,7 +342,7 @@
                 navigator.userAgent.match(
                     /(firefox|msie|chrome|safari|trident)/gi,
                 )?.[0] || "unknown_browser";
-            deviceName = `${platform}_${browserName}}`; // _${getDeviceId()
+            deviceName = `${platform}_${browserName}`; // _${getDeviceId()
             setCookie("device_name", deviceName);
         }
         return deviceName;

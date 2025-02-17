@@ -27,41 +27,6 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  # def handle_info(message) do
-  #   Logger.debug("Received: #{inspect(message)}")
-  # end
-
-  # @impl true
-  # def handle_infoaaaa(
-  #       %Phoenix.Socket.Broadcast{
-  #         topic: "sensordata:all",
-  #         event: "presence_diff",
-  #         payload: payload
-  #       },
-  #       state
-  #     ) do
-  #   # sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
-
-  #   Logger.debug("DynamicSupervisor #{inspect(payload)}")
-
-  #   # sensors_online_count = min(2, Enum.count(sensors_online))
-
-  #   # div_class =
-  #   #   "grid gap-2 grid-cols-1 md:grid-cols-" <>
-  #   #     Integer.to_string(min(2, sensors_online_count)) <>
-  #   #     " lg:grid-cols-" <>
-  #   #     Integer.to_string(min(4, sensors_online_count))
-
-  #   # div_class =
-  #   #   "grid gap-2 grid-cols-4 sd:grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
-
-  #   # socket_to_return =
-  #   #   Enum.reduce(payload.leaves, socket, fn {id, metas}, socket ->
-  #   #     sensor_dom_id = "sensor_data-" <> sanitize_sensor_id(id)
-  #   #     stream
-  #   {:ok, state}
-  # end
-
   def add_sensor(sensor_id, configuration) do
     child_spec = %{
       id: sensor_id,

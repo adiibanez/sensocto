@@ -1,6 +1,7 @@
 defmodule Sensocto.Simulator.SensorGenServer do
   use GenServer
   require Logger
+  alias PhoenixClient.{Socket, Channel, Message}
 
   defmodule State do
     defstruct [
@@ -9,6 +10,7 @@ defmodule Sensocto.Simulator.SensorGenServer do
       :connector_id,
       :phoenix_socket,
       :phoenix_channel,
+      :phoenix_retries,
       :attributes,
       :supervisor
     ]
@@ -37,6 +39,7 @@ defmodule Sensocto.Simulator.SensorGenServer do
       sensor_name: sensor_name,
       connector_id: connector_id,
       phoenix_socket: phoenix_socket,
+      phoenix_retries: 0,
       phoenix_channel: nil,
       attributes: attributes,
       supervisor: supervisor
@@ -46,8 +49,17 @@ defmodule Sensocto.Simulator.SensorGenServer do
   end
 
   @impl true
-  def handle_continue(:join_channel, state) do
-    topic = "sensor_data:#{state.sensor_id}"
+  def handle_continue(
+        :join_channel,
+        %{
+          :connector_id => connector_id,
+          :sensor_id => sensor_id,
+          :sensor_name => sensor_name,
+          :phoenix_retries => phoenix_retries,
+          :phoenix_socket => phoenix_socket
+        } = state
+      ) do
+    topic = "sensocto:sensor:#{sensor_id}"
 
     join_attributes =
       Enum.map(state.attributes, fn {attribute_id, attribute} ->
@@ -71,27 +83,31 @@ defmodule Sensocto.Simulator.SensorGenServer do
     # join_attributes = %{"test": 123}
 
     join_meta = %{
-      device_name: state.connector_id,
+      device_name: connector_id,
       batch_size: 1,
-      connector_id: state.connector_id,
-      connector_name: state.connector_id,
+      connector_id: connector_id,
+      connector_name: connector_id,
       attributes: join_attributes,
-      sensor_id: state.sensor_id,
-      sensor_name: state.sensor_name,
+      sensor_id: sensor_id,
+      sensor_name: sensor_name,
       sensor_type: "heartrate",
       bearer_token: "fake",
       sampling_rate: 1
     }
 
-    case PhoenixClient.Channel.join(state.phoenix_socket, topic, join_meta) do
+    case Channel.join(phoenix_socket, topic, join_meta) do
       {:ok, _response, channel} ->
-        new_state = %{state | phoenix_channel: channel}
+        new_state =
+          state
+          |> Map.put(:phoenix_channel, channel)
+          |> Map.put(:phoenix_retries, 0)
+
         {:noreply, new_state, {:continue, {:setup_attributes, state.attributes}}}
 
       {:error, reason} ->
         Logger.error("Failed to join channel: #{inspect(reason)}")
-        Process.send_after(self(), :retry_join, 5000)
-        {:noreply, state}
+        Process.send_after(self(), :retry_join, 1000) # phoenix_retries *
+        {:noreply, state |> Map.put(:phoenix_retries, phoenix_retries + 1)}
     end
   end
 
@@ -115,7 +131,7 @@ defmodule Sensocto.Simulator.SensorGenServer do
     if length(messages) == 1 do
       first = List.first(messages)
 
-      PhoenixClient.Channel.push_async(
+      Channel.push_async(
         state.phoenix_channel,
         "measurement",
         %{
@@ -125,7 +141,7 @@ defmodule Sensocto.Simulator.SensorGenServer do
         }
       )
     else
-      PhoenixClient.Channel.push_async(
+      Channel.push_async(
         state.phoenix_channel,
         "measurements_batch",
         messages
@@ -160,8 +176,19 @@ defmodule Sensocto.Simulator.SensorGenServer do
     end
   end
 
-  def handle_info(%PhoenixClient.Message{} = msg, state) do
-    Logger.debug("Sensor #{state.sensor_id} handle_info PHX catchall:  #{inspect(msg)}")
+  def handle_info(%Message{event: message, payload: payload}, %{:sensor_id => sensor_id} = state)
+      when message in ["phx_error", "phx_close"] do
+    Logger.info("Sensor #{sensor_id} handle_info: #{message}")
+    {:noreply, state, {:continue, :join_channel}}
+  end
+
+  def handle_info(:retry_join, %{:sensor_id => sensor_id} = state) do
+    Logger.info("Sensor #{sensor_id} retry join_channel")
+    {:noreply, state, {:continue, :join_channel}}
+  end
+
+  def handle_info(%Message{} = msg, %{:sensor_id => sensor_id} = state) do
+    Logger.info("Sensor #{sensor_id} handle_info PHX catchall:  #{inspect(msg)}")
     {:noreply, state}
   end
 

@@ -59,7 +59,7 @@ defmodule SensoctoWeb.RealitykitLive do
       end
 
     {rx_normalized, ry_normalized, rz_normalized} =
-      Sensocto.Vector.normalize({rx, ry, rz}) |> dbg()
+      Sensocto.Vector.normalize({rx, ry, rz})
 
     SensorsStateAgent.put_attribute(sensor_id, :rotation, %{
       x: rx_normalized,

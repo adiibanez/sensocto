@@ -87,6 +87,7 @@ defmodule Sensocto.Simulator.AttributeGenServer do
     Logger.debug(
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id} handle_info:process_queue delayed #{delay} ms"
     )
+
     Process.send_after(self(), :delay_done, delay)
     {:noreply, state}
   end
@@ -243,9 +244,10 @@ defmodule Sensocto.Simulator.AttributeGenServer do
       "#{state.connector_id}:#{state.sensor_id}:#{state.attribute_id}  push message: #{inspect(message)}"
     )
 
+    # + delay_ms
     new_queue =
       batch_push_messages ++
-        [message |> Map.put(:timestamp, :os.system_time(:milli_seconds))] # + delay_ms
+        [message |> Map.put(:timestamp, :os.system_time(:milli_seconds))]
 
     batch_size = state.config.batch_size || 10
     batch_window = state.config.batch_window || 5000

@@ -6,7 +6,7 @@ defmodule Sensocto.Simulator.ConnectorGenServer do
   @socket_opts [
     url: "ws://localhost:4000/socket/websocket"
     # url: "wss://sensocto.fly.dev/socket/websocket"
-    #url: "ws://192.168.1.195:4000/socket/websocket"
+    # url: "ws://192.168.1.195:4000/socket/websocket"
     # url: "wss://sensocto.ddns.net/socket/websocket"
     # https://sensocto.ddns.net/
   ]
@@ -16,6 +16,7 @@ defmodule Sensocto.Simulator.ConnectorGenServer do
       :connector_id,
       :connector_name,
       :phoenix_socket,
+      :phoenix_channel,
       :sensors,
       :supervisor
     ]
@@ -42,7 +43,8 @@ defmodule Sensocto.Simulator.ConnectorGenServer do
       connector_name: config.connector_name,
       sensors: config.sensors,
       supervisor: supervisor,
-      phoenix_socket: nil
+      phoenix_socket: nil,
+      phoenix_channel: nil
     }
 
     {:ok, state, {:continue, :connect_socket}}
@@ -53,14 +55,43 @@ defmodule Sensocto.Simulator.ConnectorGenServer do
     case connect_phoenix_socket() do
       {:ok, socket} ->
         new_state = %{state | phoenix_socket: socket}
-        {:noreply, new_state, {:continue, {:setup_sensors, state.sensors}}}
+
+        {:noreply, new_state, {:continue, :join_connector_channel}}
+
 
       {:error, reason} ->
         Logger.error("Failed to connect socket: #{inspect(reason)}")
-        Process.send_after(self(), :retry_connect, 5000)
+        Process.send_after(self(), :retry_connect, 1000)
         {:noreply, state}
     end
   end
+
+  @impl true
+  def handle_continue(:join_connector_channel, %{:connector_id => connector_id, :phoenix_socket => phoenix_socket, :sensors => sensors} = state) do
+    Logger.info("Connector: #{connector_id} join channel on socket #{inspect(phoenix_socket)}")
+
+    topic = "sensocto:connector:#{state.connector_id}"
+
+    join_meta = %{
+      connector_id: connector_id,
+      connector_name: connector_id,
+      connector_type: "simulator",
+      bearer_token: "fake",
+      features: %{}
+    }
+
+    case Channel.join(phoenix_socket, topic, join_meta) do
+      {:ok, _response, channel} ->
+        new_state = %{state | phoenix_channel: channel}
+        {:noreply, new_state, {:continue, {:setup_sensors, sensors}}}
+
+      {:error, reason} ->
+        Logger.error("Failed to join channel: #{inspect(reason)}")
+        Process.send_after(self(), :retry_join, 1000) # phoenix_retries *
+        {:noreply, state}
+    end
+  end
+
 
   @impl true
   def handle_continue({:setup_sensors, sensors}, state) do
@@ -133,13 +164,25 @@ defmodule Sensocto.Simulator.ConnectorGenServer do
     {:noreply, state}
   end
 
-  def handle_info(%Message{event: message, payload: payload}, %{:sensor_id => sensor_id} = state) do
-    Logger.info("#{sensor_id} Incoming Phoenix Message: #{message} #{inspect(payload)}")
-    {:noreply, state}
+
+  def handle_info(%Message{event: message, payload: payload}, %{:connector_id => connector_id} = state)
+      when message in ["phx_error", "phx_close"] do
+    Logger.info("Connector #{connector_id} handle_info: #{message}")
+    {:noreply, state, {:continue, :join_channel}}
   end
 
-  def handle_info(msg, %{:sensor_id => sensor_id} = state) do
-    Logger.info("#{sensor_id} handle_info:catch all: #{inspect(msg)}")
+  def handle_info(:retry_connect, %{:connector_id => connector_id} = state) do
+    Logger.info("Connector #{connector_id} retry connect_socket")
+    {:noreply, state, {:continue, :connect_socket}}
+  end
+
+  def handle_info(:retry_join, %{:connector_id => connector_id} = state) do
+    Logger.info("Connector #{connector_id} retry join_channel")
+    {:noreply, state, {:continue, :join_channel}}
+  end
+
+  def handle_info(%Message{} = msg, %{:connector_id => connector_id} = state) do
+    Logger.info("Connector #{connector_id} handle_info PHX catchall:  #{inspect(msg)}")
     {:noreply, state}
   end
 

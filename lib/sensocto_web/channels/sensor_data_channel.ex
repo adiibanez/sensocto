@@ -17,38 +17,60 @@ defmodule SensoctoWeb.SensorDataChannel do
   @impl true
   @spec join(<<_::32, _::_*8>>, map(), Phoenix.Socket.t()) ::
           {:ok, Phoenix.Socket.t()} | {:error, %{reason: String.t()}}
-
-  #   %{
-  #   "attributes" => %{
-  #     "battery" => %{
-  #       "attribute_id" => "battery",
-  #       "attribute_type" => "battery",
-  #       "sampling_rate" => 1
-  #     },
-  #     "geolocation" => %{
-  #       "attribute_id" => "geolocation",
-  #       "attribute_type" => "geolocation",
-  #       "sampling_rate" => 1
-  #     },
-  #     "imu" => %{
-  #       "attribute_id" => "imu",
-  #       "attribute_type" => "imu",
-  #       "sampling_rate" => 5
-  #     }
-  #   },
-  #   "batch_size" => 1,
-  #   "bearer_token" => "fake",
-  #   "connector_id" => "f6eb495578a6",
-  #   "connector_name" => "f6eb495578a6",
-  #   "sampling_rate" => 5,
-  #   "sensor_id" => "f6eb495578a6:imu",
-  #   "sensor_name" => "f6eb495578a6",
-  #   "sensor_type" => "imu"
-  # }
   def join(
-        "sensor_data:" <> sensor_id,
+        "sensocto:connector:" <> connector_id,
         %{
-          "connector_id" => _connector_id,
+          "connector_id" => connector_id,
+          "connector_name" => _connector_name,
+          "connector_type" => _connector_typ,
+          "features" => _features,
+          "bearer_token" => _bearer_token
+        } = params,
+        socket
+      ) do
+    Logger.debug("JOIN connector #{connector_id} : #{inspect(params)}")
+
+    {:ok, socket}
+
+    # if authorized?(params) do
+    #   send(self(), :after_join)
+
+    #   Logger.debug("socket join #{sensor_id}", params)
+
+    #   case Sensocto.SensorsDynamicSupervisor.add_sensor(
+    #          sensor_id,
+    #          Sensocto.Utils.string_keys_to_atom_keys(params)
+    #        ) do
+    #     {:ok, pid} when is_pid(pid) ->
+    #       Logger.debug("Added sensor #{sensor_id}")
+
+    #     {:ok, :already_started} ->
+    #       Logger.debug("Sensor already started #{sensor_id}")
+
+    #     {:error, reason} ->
+    #       Logger.debug("error adding sensor: #{inspect(reason)}")
+    #       # {:error, reason}
+    #   end
+
+    #   {
+    #     :ok,
+    #     socket
+    #     |> assign(:sensor_id, sensor_id)
+    #     # |> assign(:sensor_params, params)
+    #   }
+    # else
+    #   {:error, %{reason: "unauthorized"}}
+    # end
+  end
+
+  # Store the device ID in the socket's assigns when joining the channel
+  @impl true
+  @spec join(<<_::32, _::_*8>>, map(), Phoenix.Socket.t()) ::
+          {:ok, Phoenix.Socket.t()} | {:error, %{reason: String.t()}}
+  def join(
+        "sensocto:sensor:" <> sensor_id,
+        %{
+          "connector_id" => connector_id,
           "connector_name" => _connector_name,
           "sensor_id" => sensor_id,
           "sensor_name" => _sensor_name,
@@ -60,7 +82,7 @@ defmodule SensoctoWeb.SensorDataChannel do
         } = params,
         socket
       ) do
-    Logger.debug("JOIN #{inspect(params)}")
+    Logger.debug("JOIN sensor #{connector_id} : #{sensor_id}")
 
     if authorized?(params) do
       send(self(), :after_join)

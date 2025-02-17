@@ -53,6 +53,7 @@
                     { namePrefix: "vívosmart" },
                     { namePrefix: "WH-" },
                     { namePrefix: "EdgeImpulse" },
+                    { namePrefix: "Arduino" },
                 ],
                 //
                 //acceptAllDevices: true,

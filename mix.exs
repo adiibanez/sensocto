@@ -45,6 +45,7 @@ defmodule Sensocto.MixProject do
       {:phoenix_live_view, "== 1.0.1"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:live_ex_webrtc, "~> 0.6.0"},
       {:flame, "~> 0.5"},
       # {:esbuild, "~> 0.8.2"},
       # {:esbuild, github: "evanw/esbuild", branch: "main", runtime: Mix.env() == :dev},

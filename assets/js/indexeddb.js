@@ -97,7 +97,7 @@ export const handleAppendData = async (sensor_id, attribute_id, payload, maxLeng
             }
 
             // Sort dataPoints by timestamp
-            dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+            //dataPoints.sort((a, b) => a.timestamp - b.timestamp);
 
             const putRequest = store.put({ id: identifier, dataPoints });
 
@@ -154,7 +154,7 @@ export const handleAppendAndReadData = async (sensor_id, attribute_id, payload, 
                 dataPoints = dataPoints.slice(-maxLength);
             }
 
-            dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+            //dataPoints.sort((a, b) => a.timestamp - b.timestamp);
 
             logger.log(loggerCtxName, "STORAGE new data points length before put:", dataPoints.length);
 

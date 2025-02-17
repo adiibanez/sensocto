@@ -426,13 +426,17 @@
     }
 
     function ensureDeviceCleanup(device) {
-        logger.log(loggerCtxName, "Device disconnected", device?.id, device);
-        return;
+        logger.log(
+            loggerCtxName,
+            "Device cleanup",
+            device?.id,
+            getUniqueDeviceId(device),
+            Array.isArray(deviceCharacteristics[getUniqueDeviceId(device)]),
+        );
 
         try {
             if (
                 getUniqueDeviceId(device) &&
-                deviceCharacteristics?.length &&
                 Array.isArray(deviceCharacteristics[getUniqueDeviceId(device)])
             ) {
                 deviceCharacteristics[getUniqueDeviceId(device)].forEach(

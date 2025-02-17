@@ -55,7 +55,7 @@ class BluetoothUtils {
         "00002a24-0000-1000-8000-00805f9b34fb": ["modelNumberString", DataType.utf8String], // Model Number String
         "00002a6d-0000-1000-8000-00805f9b34fb": ["pressure", DataType.float], // Pressure
         // Thesma breathing pressure
-        "61d20a90-71a1-11ea-ab12-0800200c9a66": ["pressure", DataType.float], // Pressure
+        "61d20a90-71a1-11ea-ab12-0800200c9a66": ["breathingPressure", DataType.float], // Pressure
         "00002a78-0000-1000-8000-00805f9b34fb": ["rainfall", DataType.int32], // Rainfall
         "00002a25-0000-1000-8000-00805f9b34fb": ["serialNumberString", DataType.utf8String], // Serial Number String
         "00002a3b-0000-1000-8000-00805f9b34fb": ["serviceRequired", DataType.boolean], // Service Required

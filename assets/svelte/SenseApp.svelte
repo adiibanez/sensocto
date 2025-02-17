@@ -1,5 +1,10 @@
 <script>
-    import { onMount } from "svelte";
+    import {
+        getContext,
+        createEventDispatcher,
+        onDestroy,
+        onMount,
+    } from "svelte";
     import { Socket } from "phoenix";
     import SensorService from "./SenseApp/SensorService.svelte";
     import BluetoothClient from "./SenseApp/BluetoothClient.svelte";
@@ -86,9 +91,13 @@
     export let live;
 
     let socket = null;
+    let deviceName = null;
+    let sensorService = null;
+
     // ... other variables
 
     onMount(() => {
+        //sensorService = getContext("sensorService");
         // Initialize socket connection here
         console.log("initialize socket in SenseApp", live);
         socket = new Socket("/socket", {
@@ -97,6 +106,8 @@
         socket.connect();
         console.log("connected to socket", socket);
 
+        deviceName = sensorService.getDeviceName();
+        console.log("Device name", deviceName, sensorService);
         //SensorService.setupChannel("test", { sensor_type: "test" });
     });
 
@@ -115,8 +126,27 @@
 <!--<Sparkline bind:data={sparklineData} {timeMode} {timeWindow} />-->
 <!-- bind:data -->
 
-<SensorService bind:socket>
-    <NetworkQualityMonitor />
+<SensorService bind:socket bind:this={sensorService}>
+    <!--<NetworkQualityMonitor />-->
+
+    <label
+        for="first_name"
+        class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
+        >Connector name</label
+    >
+    <input
+        type="text"
+        bind:value={deviceName}
+        id="connector_name"
+        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+        placeholder={deviceName}
+        required
+    />
+    <button
+        class="btn btn-blue text-xs"
+        on:click={sensorService.setDeviceName(deviceName)}>Save</button
+    >
+
     <BluetoothClient />
     <IMUClient />
     <GeolocationClient />

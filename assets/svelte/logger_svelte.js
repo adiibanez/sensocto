@@ -7,7 +7,7 @@ let enabledComponents = [
     // "ECGVisualization",
     //     "IMUClient",
     // "ScaledPoints", "Sparkline",
-    //"BluetoothClient",
+    "BluetoothClient",
     "SensorService",
     //"SensorDataService",
     //"IndexedDB",

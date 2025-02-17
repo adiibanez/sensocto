@@ -11,7 +11,8 @@ module.exports = {
     "../lib/sensocto_web.ex",
     "../lib/sensocto_web/**/*.*ex",
     "../deps/ash_authentication_phoenix/**/*.*ex",
-    "../deps/daisy_ui_components/**/*.*ex"
+    "../deps/daisy_ui_components/**/*.*ex",
+    "../deps/live_ex_webrtc/**/*.*ex"
   ],
   //purge: [
   //"../lib/sensocto_web/**/*.*ex",

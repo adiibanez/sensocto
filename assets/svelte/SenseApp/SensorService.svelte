@@ -7,8 +7,8 @@
     let loggerCtxName = "SensorService";
 
     export let socket; // Make socket a prop so it can be shared
-    export let sensorChannels = {};
-    export let channelAttributes = {}; // Track attributes per channel
+    let sensorChannels = {};
+    let channelAttributes = {}; // Track attributes per channel
     let messageQueues = {};
     let batchTimeouts = {};
     let messagesSent = {};
@@ -43,6 +43,8 @@
         leaveChannelIfUnused,
         updateBatchConfig,
         getDeviceId,
+        getDeviceName,
+        setDeviceName,
     });
 
     onMount(() => {
@@ -321,12 +323,35 @@
         }
     }
 
+    import { v4 as uuidv4 } from "uuid";
+
     function getDeviceId() {
-        return getCookie("device_id")?.split("-")?.pop();
+        let deviceId = getCookie("device_id");
+        if (!deviceId) {
+            deviceId = uuidv4().split("-").pop();
+            setCookie("device_id", deviceId);
+        }
+        return deviceId;
     }
 
-    function getDeviceName() {
-        return getDeviceId();
+    export function getDeviceName() {
+        let deviceName = getCookie("device_name");
+        if (!deviceName) {
+            let platform = navigator.platform || "unknown_platform";
+            let browserName =
+                navigator.userAgent.match(
+                    /(firefox|msie|chrome|safari|trident)/gi,
+                )?.[0] || "unknown_browser";
+            deviceName = `${platform}_${browserName}_${getDeviceId()}`;
+            setCookie("device_name", deviceName);
+        }
+        return deviceName;
+    }
+
+    export function setDeviceName(deviceName) {
+        if (deviceName) {
+            setCookie("device_name", deviceName);
+        }
     }
 </script>
 

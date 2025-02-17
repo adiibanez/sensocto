@@ -1,0 +1,69 @@
+<VStack alignment="leading">
+  <Text style="font(.title)">Test Sensors</Text>
+
+  <!--<Grid id="sensors" style="padding()">
+  <GridRow>-->
+    <Group :for={{sensor_id, sensor} <- @sensors} alignment="leading">
+    <VStack>  
+    <Text style="font(.headline)">{sensor.connector_name} {sensor_id}</Text>
+      <Group :for={{attribute_id, attribute} <- sensor.attributes} id={"#{sensor_id}_attributes"} style="padding([.leading, .trailing])">
+
+
+        <ProgressView id={"loading_#{sensor_id}_#{attribute_id}"} :if={is_nil(attribute.lastvalue)}/>
+        <VStack id={"attribute_#{sensor_id}_#{attribute_id}"} :if={not is_nil(attribute.lastvalue)} alignment="leading" style="border(.bottom)">
+          <Text style="font(.subheadline)">{attribute_id}</Text>
+          <HStack id={"attribute_update_#{sensor_id}_#{attribute_id}"}>
+            <Text>Update:</Text>
+            <Text style="font(.callout)">{time_ago_from_unix(attribute.lastvalue.timestamp)}</Text>
+          </HStack>
+          <HStack id={"attribute_value_#{sensor_id}_#{attribute_id}"}>
+            <Text>Value:</Text>
+            <Text style="font(.callout)">{render_attribute_payload(attribute.lastvalue.payload)}</Text>
+          </HStack>
+          <HStack id={"attribute_type_#{sensor_id}_#{attribute_id}"}>
+            <Text>Type:</Text>
+            <Text style="font(.callout)">{inspect(attribute.attribute_type)}</Text>
+          </HStack>
+          <HStack id={"attribute_samplingrate_#{sensor_id}_#{attribute_id}"}>
+            <Text>Sampling rate:</Text>
+            <Text style="font(.callout)">{inspect(attribute.sampling_rate)}</Text>
+          </HStack>
+        </VStack>
+      </Group></VStack>
+    </Group>
+    
+    <!--</GridRow>
+  </Grid>-->
+
+  <Text style="font(.title)">Bluetooth</Text>
+
+  <Group id="bluetooth" style="padding()">
+    <Group :for={{peripheral_id, peripheral} <- @ble_state.peripherals} style="padding([.leading, .trailing])">
+      <VStack alignment="leading" style="border(.bottom)">
+        <Text style="font(.headline)">{peripheral.name} {peripheral_id}</Text>
+        <HStack>
+          <Text>RSSI:</Text>
+          <Text style="font(.callout)">{peripheral.rssi}</Text>
+          <Text>State:</Text>
+          <Text style="font(.callout)">{peripheral.state}</Text>
+        </HStack>
+
+        <!--<div :for={ {characteristic_id, characteristic} <- @ble_state.peripheral_characteristics[peripheral_id] }
+            :if={is_map(@ble_state.peripheral_characteristics[peripheral_id])}>
+            {inspect(characteristic)}
+    </div>-->
+      </VStack>
+    </Group>
+
+    <BLEClient>
+    <!--<Text>Test</Text>
+    <Button
+        phx-click="toggle-scan"
+        phx-value-test2={1}
+        style="font(.system(size: 10));padding(.vertical, 5);padding(.horizontal, 5)"
+    >Toggle scan {@ble_scan}</Button>-->
+    </BLEClient>
+  </Group>
+
+  <CustomURLOpener/>
+</VStack>

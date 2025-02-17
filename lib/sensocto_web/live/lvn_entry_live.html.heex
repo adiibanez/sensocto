@@ -1,14 +1,17 @@
-<div :for={{sensor_id, sensor} <- @sensors} id="sensors">
-    <h3>{sensor_id}</h3>
+<div :for={{sensor_id, sensor} <- @sensors}>
+    <h3>{sensor.connector_name} {sensor_id}</h3>
     <!--<div class="text-xs">{inspect(sensor)}</div>-->
 
-    <div :for={{attribute_id, attribute} <- sensor.attributes} id="attributes">
+    <div :for={{attribute_id, attribute} <- sensor.attributes}>
         <strong>{attribute_id}</strong>
 
-        <p>Update: {time_ago_from_unix(attribute.lastvalue.timestamp)}</p>
-        <p>Value: {inspect(attribute.lastvalue.payload)}</p>
-        <p>Type: {inspect(attribute.attribute_type)}</p>
-        <p>Sampling rate: {inspect(attribute.sampling_rate)}</p>
+        <div class="loading" :if={is_nil(attribute.lastvalue)}></div>
+        <div :if={not is_nil(attribute.lastvalue)}>
+            <p>Update: {time_ago_from_unix(attribute.lastvalue.timestamp)}</p>
+            <p>Value: {inspect(attribute.lastvalue.payload)}</p>
+            <p>Type: {inspect(attribute.attribute_type)}</p>
+            <p>Sampling rate: {inspect(attribute.sampling_rate)}</p>
+        </div>
         <!--<div>{inspect(attribute)}</div>-->
     </div>
 </div>
@@ -19,9 +22,15 @@
         <p>{peripheral.name} {peripheral_id}</p>
         <p>RSSI: {peripheral.rssi}, State: {peripheral.state}</p>
 
-        <!--<div :for={ {characteristic_id, characteristic} <- @ble_state.peripheral_characteristics[peripheral_id] }
-            :if={is_map(@ble_state.peripheral_characteristics[peripheral_id])}>
-            {inspect(characteristic)}
-    </div>-->
+
+        <!--<div style="border:1px solid red"> {inspect(@ble_state.peripheral_characteristics[peripheral_id])}</div>-->
+
+        <%= if is_map(@ble_state.peripheral_characteristics[peripheral_id]) do %>
+
+            <div :for={ {characteristic_id, characteristic} <- @ble_state.peripheral_characteristics[peripheral_id] }>
+                {inspect(characteristic)}
+            </div>
+
+            <% end %>
     </div>
 </div>

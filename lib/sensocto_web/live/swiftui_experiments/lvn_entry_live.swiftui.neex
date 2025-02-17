@@ -14,8 +14,6 @@
 
     <BLEClient phx-scan-devices={assigns.ble_scan}>
 
-    <%!--
-
     <.input name="test2" type="DatePicker" label="toggle" value={1}></.input>
 
 <SwiftUI.input name="test" type="Toggle" label="toggle" value={1}></SwiftUI.input>
@@ -41,7 +39,6 @@
         phx-value-test2={1}
         style="font(.system(size: 10));padding(.vertical, 5);padding(.horizontal, 5)"
     >Toggle scan {@ble_scan}</Button>
---%>
 
 
 </BLEClient>

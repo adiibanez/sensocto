@@ -1,0 +1,39 @@
+
+<Group :for={{sensor_id, sensor} <- @sensors} alignment="leading">
+<Text>{inspect(sensor)}</Text>
+  <Group :for={{attribute_id, attribute} <- sensor.attributes} id={"#{sensor_id}_attributes"}>
+    <Text>{attribute_id} {inspect(attribute)}</Text>
+  </Group>
+</Group>
+
+
+
+
+<Group alignment="leading">
+    <Group :for={{sensor_id, sensor} <- @sensors} alignment="leading">
+    <Text>{sensor.connector_name} {sensor_id}</Text>
+      <Group :for={{attribute_id, attribute} <- sensor.attributes} id={"#{sensor_id}_attributes"}>
+        <ProgressView id={"loading_#{sensor_id}_#{attribute_id}"} :if={is_nil(attribute.lastvalue)}/>
+        <Group id={"attribute_#{sensor_id}_#{attribute_id}"} :if={not is_nil(attribute.lastvalue)} alignment="leading">
+          <Text>{attribute_id}</Text>
+          <Group id={"attribute_update_#{sensor_id}_#{attribute_id}"}>
+            <Text>Update:</Text>
+            <Text >{time_ago_from_unix(attribute.lastvalue.timestamp)}</Text>
+          </Group>
+          <Group id={"attribute_value_#{sensor_id}_#{attribute_id}"}>
+            <Text>Value:</Text>
+            <Text >{render_attribute_payload(attribute.lastvalue.payload)}</Text>
+          </Group>
+          <Group id={"attribute_type_#{sensor_id}_#{attribute_id}"}>
+            <Text>Type:</Text>
+            <Text>{inspect(attribute.attribute_type)}</Text>
+          </Group>
+          <Group id={"attribute_samplingrate_#{sensor_id}_#{attribute_id}"}>
+            <Text>Sampling rate:</Text>
+            <Text>{inspect(attribute.sampling_rate)}</Text>
+          </Group>
+        </Group>
+      </Group>
+    </Group>
+
+</Group>

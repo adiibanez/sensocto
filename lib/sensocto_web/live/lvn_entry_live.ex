@@ -7,12 +7,16 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
 
   @retrieve_values 5
 
+  @spec mount(any(), any(), map()) :: {:ok, map()}
   def mount(params, session, socket) do
     Logger.info("LVN entry main #{inspect(params)}, #{inspect(session)}")
 
+    # presence joins / leaves
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "ble_state")
 
     sensors = get_sensors_state()
+    # |> dbg()
 
     Enum.all?(sensors, fn {sensor_id, _sensor} ->
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
@@ -23,11 +27,12 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
      socket
      |> assign(:ble_scan, false)
      |> assign(:ble_state, BleConnectorGenServer.get_state())
-     |> assign(:sensors, sensors)}
+     |> assign(:sensors, sensors)
+     |> assign(:flat_attributes, sensors |> flatten_attributes())}
   end
 
   def time_ago_from_unix(timestamp) do
-    timestamp |> dbg()
+    # timestamp |> dbg()
 
     diff = Timex.diff(Timex.now(), Timex.from_unix(timestamp, :millisecond), :millisecond)
 
@@ -64,26 +69,65 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
      )}
   end
 
+  def flatten_attributes(sensor_data) do
+    Enum.flat_map(sensor_data, fn {sensor_id, sensor} ->
+      Enum.map(sensor.attributes, fn {attribute_id, attribute} ->
+        Map.merge(attribute, %{sensor_id: sensor_id})
+      end)
+    end)
+    |> Map.new(fn attribute -> {attribute.attribute_id, attribute} end)
+  end
+
   def handle_info({:measurement, %{:sensor_id => sensor_id} = _measurement}, socket) do
     Logger.info("handle_info measurement: #{sensor_id}")
+
+    sensors = get_sensors_state()
 
     {:noreply,
      socket
      |> assign(
        :sensors,
-       get_sensors_state()
-     )}
+       sensors
+     )
+     |> assign(:flat_attributes, sensors |> flatten_attributes())}
   end
 
   def handle_info({:measurements_batch, _batch}, socket) do
     Logger.info("handle_info measurements batch")
 
+    sensors = get_sensors_state()
+
     {:noreply,
      socket
      |> assign(
        :sensors,
-       get_sensors_state()
-     )}
+       sensors
+     )
+     |> assign(:flat_attributes, sensors |> flatten_attributes())}
+  end
+
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          # topic: "sensordata:all",
+          event: "presence_diff",
+          payload: payload
+        },
+        socket
+      ) do
+    Logger.debug(
+      "presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
+    )
+
+    sensors = get_sensors_state()
+
+    {:noreply,
+     socket
+     |> assign(
+       :sensors,
+       sensors
+     )
+     |> assign(:flat_attributes, sensors |> flatten_attributes())}
   end
 
   def handle_event("test-event", params, socket) do
@@ -93,7 +137,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
 
   def handle_event("toggle-scan", params, socket) do
     Logger.debug("toggle-scan params: #{inspect(params)}")
-    {:noreply, socket}
+    {:noreply, socket |> assign(:ble_scan, !socket.assigns.ble_scan)}
   end
 
   def handle_event("ble-central-state-changed", state, socket) do

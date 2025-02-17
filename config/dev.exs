@@ -50,6 +50,14 @@ config :sensocto, SensoctoWeb.Endpoint,
     # live_svelte: {LiveSvelte, :init, []}
   ]
 
+config :live_debugger, browser_features?: true
+# config :live_debugger,
+# ip: {127, 0, 0, 1}, # IP on which LiveDebugger will be hosted
+# port: 4007, # Port on which LiveDebugger will be hosted
+# secret_key_base: <SECRET_KEY_BASE>, # Secret key used for LiveDebugger.Endpoint
+# signing_salt: "your_signing_salt", # Signing salt used for LiveDebugger.Endpoint
+# adapter: Bandit.PhoenixAdapter # Adapter used in LiveDebugger.Endpoint
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

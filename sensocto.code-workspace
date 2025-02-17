@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../elixir-examples/myapp"
+		},
+		{
+			"path": "../wasm-sparkline"
+		},
+		{
+			"path": "../elixir-examples/elixirconf_voxels"
+		},
+		{
+			"path": "../sensocto-xcodegen"
+		}
+	],
+	"settings": {
+		"editor.formatOnSave": false
+	}
+}

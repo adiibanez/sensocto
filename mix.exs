@@ -45,7 +45,11 @@ defmodule Sensocto.MixProject do
       {:phoenix_live_view, "== 1.0.1"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:live_ex_webrtc, "~> 0.6.0"},
+      {:live_view_native, "~> 0.4.0-rc.0"},
+      {:live_view_native_stylesheet, "~> 0.3.2"},
+      {:live_view_native_swiftui, "~> 0.4.0-rc.0"},
+      {:live_view_native_live_form, "~> 0.4.0-rc.0"},
+      # {:live_ex_webrtc, "~> 0.6.0"},
       {:flame, "~> 0.5"},
       # {:esbuild, "~> 0.8.2"},
       # {:esbuild, github: "evanw/esbuild", branch: "main", runtime: Mix.env() == :dev},
@@ -88,7 +92,7 @@ defmodule Sensocto.MixProject do
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},
       {:dialyxir, "~> 0.4", only: [:dev]},
-      # {:sourceror, "~> 1.7", only: [:dev, :test]},
+      {:sourceror, "~> 1.7", only: [:dev, :test], override: true},
       {:nimble_csv, "~> 1.1", only: [:dev]},
       # {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
@@ -99,16 +103,16 @@ defmodule Sensocto.MixProject do
       # {:kino,
       # local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/elixir-examples/kino"},
       {:observer_cli, "~> 1.8"},
-      {:exprof, "~> 0.2.4"},
+      # {:exprof, "~> 0.2.4"},
       {:guarded_struct, "~> 0.0.4"},
-      {:live_view_native, "~> 0.4.0-rc.0"},
-      {:live_view_native_stylesheet, "~> 0.3.2"},
-      {:live_view_native_swiftui, "~> 0.4.0-rc.0"},
-      {:live_view_native_live_form, "~> 0.4.0-rc.0"},
+      {:live_debugger,
+       git: "https://github.com/software-mansion-labs/live-debugger.git",
+       tag: "v0.1.0-rc.1",
+       only: :dev},
       {:qr_code, "~> 3.1.0"},
       {:nx, "~> 0.7.2"},
-      {:matplotex, "~> 0.4.6"},
-      {:remove_unused, github: "KristerV/remove_unused_ex"}
+      {:matplotex, "~> 0.4.6"}
+      # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer
       # https://github.com/gridpoint-com/plox

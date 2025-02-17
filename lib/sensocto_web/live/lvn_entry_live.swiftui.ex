@@ -30,6 +30,32 @@ defmodule SensoctoWeb.Live.LvnEntryLive.SwiftUI do
     """
   end
 
+  def ble_characteristic(assigns) do
+    ~LVN"""
+    <Group>
+      <VStack alignment="left" :if={not is_nil(@attribute.lastvalue) and not is_nil(@attribute.lastvalue.timestamp)}>
+      <Text style="font(.subheadline)">{@attribute_id}</Text>
+      <HStack>
+        <Text>Update:</Text>
+        <Text style="font(.callout)">{time_ago_from_unix(@attribute.lastvalue.timestamp)}</Text>
+      </HStack>
+      <HStack id={"attribute_value_#{@sensor_id}_#{@attribute_id}"}>
+        <Text>Value:</Text>
+        <Text style="font(.callout)">{render_attribute_payload(@attribute.lastvalue.payload)}</Text>
+      </HStack>
+      <HStack id={"attribute_type_#{@sensor_id}_#{@attribute_id}"}>
+        <Text>Type:</Text>
+        <Text style="font(.callout)">{inspect(@attribute.attribute_type)}</Text>
+      </HStack>
+      <HStack id={"attribute_samplingrate_#{@sensor_id}_#{@attribute_id}"}>
+        <Text>Sampling rate:</Text>
+        <Text style="font(.callout)">{inspect(@attribute.sampling_rate)}</Text>
+      </HStack>
+      </VStack>
+    </Group>
+    """
+  end
+
   def render_attribute_payload(payload) do
     case Sensocto.Utils.typeof(payload) do
       "integer" ->

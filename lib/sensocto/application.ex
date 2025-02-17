@@ -12,6 +12,8 @@ defmodule Sensocto.Application do
       SensoctoWeb.Telemetry,
       Sensocto.Repo,
       Sensocto.Otp.BleConnectorGenServer,
+      # realitykit
+      {SensorsStateAgent, name: SensorsStateAgent},
       {Registry, keys: :unique, name: Sensocto.TestRegistry},
       Sensocto.Otp.Connector,
       # Registry added here

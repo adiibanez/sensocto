@@ -58,6 +58,8 @@
         <%= if is_map(@ble_state.peripheral_characteristics[peripheral_id]) do %>
         <Group :for={ {characteristic_id, characteristic} <- @ble_state.peripheral_characteristics["#{peripheral_id}"] }
             :if={not is_nil(@ble_state.peripheral_characteristics) and is_map(@ble_state.peripheral_characteristics) and is_map(@ble_state.peripheral_characteristics["#{peripheral_id}"])}>
+
+            
             <Text>Characteristic: {inspect(characteristic)}</Text>
         </Group>
         <% end %>

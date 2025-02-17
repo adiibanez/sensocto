@@ -39,6 +39,8 @@ defmodule SensoctoWeb.Router do
   scope "/", SensoctoWeb do
     pipe_through [:browser]
 
+    live "/realitykit", RealitykitLive
+
     post "/lvn-auth", LvnController, :authenticate
     get "/lvn-auth", LvnController, :authenticate
     live "/lvn-signin", Live.LvnSigninLive, :index

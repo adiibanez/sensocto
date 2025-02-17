@@ -320,4 +320,20 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         {attribute_id, entry}
     end
   end
+
+  def show_sensor(js \\ %JS{}, id) do
+    js
+    |> JS.show(
+      to: "##{id}",
+      display: "inline-block",
+      transition: {"ease-out duration-3000", "opacity-0", "opacity-100"}
+    )
+    |> JS.show(
+      to: "##{id}-content",
+      display: "inline-block",
+      transition:
+        {"ease-out duration-3000", "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
+         "opacity-100 translate-y-0 sm:scale-100"}
+    )
+  end
 end

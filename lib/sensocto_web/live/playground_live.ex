@@ -115,18 +115,133 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
   def render(assigns) do
     ~V"""
     <script>
-      export let number = 5
-      let other = 1
+    import { onMount } from 'svelte';
+    import { onDestroy } from 'svelte';
 
-      $: combined = other + number
+    let chartDiv;
+    let chart;
+    let sciChartSurface;
+    let series;
+    let data = []; // Initial ECG data (empty)
+    let timer;
+
+    // Default ECG data update interval (milliseconds)
+    export let updateInterval = 10;
+
+    // Function to update the chart data
+    export function updateData(newData) {
+    if (series) {
+      data = newData;
+      series.dataSeries.clear();
+      series.dataSeries.appendRange(data.map((value, index) => index), data);
+    }
+    }
+
+    onMount(async () => {
+    // Load SciChart resources from CDN
+    await loadSciChartResources();
+
+    // Create the chart
+    createChart();
+
+    // Start the data update timer (optional)
+    startTimer();
+    });
+
+    onDestroy(() => {
+    // Dispose of the chart when the component unmounts
+    disposeChart();
+
+    // Stop the timer
+    stopTimer();
+    });
+
+    async function loadSciChartResources() {
+    const sciChartBaseUri = "https://cdn.jsdelivr.net/npm/scichart@3.3.401/"; // Replace with the desired SciChart version
+
+    // Load scichart.js
+    await loadScript(`${sciChartBaseUri}scichart.browser.js`);
+
+    // Load scichart.wasm (if needed - check SciChart documentation)
+    // You might need to adjust the path based on your SciChart version
+    // await loadScript(`${sciChartBaseUri}scichart.wasm`);
+
+    // Initialize SciChart (this is important!)
+    SciChartSurface.useWasmFromCDN();
+    }
+
+    function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    }
+
+    function createChart() {
+    // JSON definition for the chart
+    const chartDefinition = {
+      "series": [
+        {
+          "type": "LineSeries",
+          "options": {
+            "stroke": "#50C7E0",
+            "strokeThickness": 2,
+            "dataSeries": {
+              "type": "XyDataSeries",
+              "options": {
+                "xValues": [],
+                "yValues": data,
+                "metadata": { "seriesName": "ECG" }
+              }
+            }
+          }
+        }
+      ],
+      "chartOptions": {
+        "title": "ECG Chart",
+        "surface": {
+          "padding": { "top": 10, "right": 10, "bottom": 10, "left": 10 },
+          "xAxis": { "title": "Time" },
+          "yAxis": { "title": "Amplitude" }
+        },
+        "licenseKey": "" // Replace with your SciChart license key (if applicable)
+      }
+    };
+
+    // Create SciChartSurface from JSON
+    SciChartSurface.create(chartDefinition, chartDiv)
+      .then(surface => {
+        sciChartSurface = surface;
+        series = surface.series[0]; // Get the first series
+      })
+      .catch(err => console.error("Error creating SciChartSurface:", err));
+    }
+
+    function disposeChart() {
+    if (sciChartSurface) {
+      sciChartSurface.delete();
+    }
+    }
+
+    function startTimer() {
+    timer = setInterval(() => {
+      // Simulate new ECG data (replace with your actual data source)
+      const newData = Array.from({ length: 100 }, () => Math.sin(Date.now() / 100 + Math.random()) * 10);
+      updateData(newData);
+    }, updateInterval);
+    }
+
+    function stopTimer() {
+    if (timer) {
+      clearInterval(timer);
+    }
+    }
     </script>
 
-    <p>This is number: {number}</p>
-    <p>This is other: {other}</p>
-    <p>This is other + number: {combined}</p>
-
-    <button phx-click="increment">Increment</button>
-    <button on:click={() => other += 1}>Increment</button>
+    <div bind:this={chartDiv} style="width: 100%; height: 400px;"></div>
     """
   end
 

@@ -12,30 +12,59 @@
     let map: google.maps.Map;
     let mapElement: HTMLDivElement;
     const apiKey = "AIzaSyArOZ8ptnmLk0kJWktriaa5SX2oWQUzzow";
-    let marker: google.maps.Marker;
+    let marker: google.maps.marker.AdvancedMarkerElement;
 
     onMount(async () => {
+        initMap();
+
+        // map = new Map(mapElement, {
+        //     center: { lat: position.lat, lng: position.lng },
+        //     zoom: 8,
+        // });
+
+        // marker = new google.maps.marker.AdvancedMarkerElement({
+        //     map: map,
+        //     position: { lat: position.lat, lng: position.lng },
+        // });
+    });
+
+    async function initMap() {
         let loader = new Loader({
             apiKey: apiKey,
-            version: "weekly",
+            version: "beta",
         });
 
         await loader.load();
 
-        const { Map } = await loader.importLibrary("maps");
+        //const { Map } = await loader.importLibrary("maps");
 
         console.log("Position: ", position);
 
-        map = new Map(mapElement, {
-            center: { lat: position.lat, lng: position.lng },
-            zoom: 8,
+        /*map = new google.maps.Map(document.getElementById("map"), {
+            center: { lat: 37.4239163, lng: -122.0947209 },
+            zoom: 17,
+            mapId: "sensocto",
         });
 
-        marker = new google.maps.Marker({
-            map: map,
+        marker = new google.maps.marker.AdvancedMarkerElement({
+            map,
             position: { lat: position.lat, lng: position.lng },
         });
-    });
+
+        marker.addListener("click", ({ domEvent, latLng }) => {
+            const { target } = domEvent;
+            console.log("Map click", domEvent, latLng);
+        });
+    
+
+        
+        */
+    }
 </script>
 
-<div id="map" bind:this={mapElement} class="h-10" />
+<gmp-map class="h-10" center="{position.lat},{position.lng}" zoom="5">
+    <gmp-advanced-marker position="{position.lat},{position.lng}" title="Title"
+    ></gmp-advanced-marker>
+</gmp-map>
+
+<!--<div id="map" bind:this={mapElement} class="h-10" />-->

@@ -60,7 +60,7 @@ export const handleClearData = async (sensor_id, attribute_id) => {
     });
 };
 
-export const handleAppendData = async (sensor_id, attribute_id, payload, maxLength = 100000) => {
+export const handleAppendData = async (sensor_id, attribute_id, payload, maxLength = 5000) => {
     const identifier = `${sensor_id}_${attribute_id}`;
     if (!db) await openDatabase();
     if (debug) console.log(loggerCtxName, "STORAGE appendData called for:", identifier, "with payload:", payload, "and max length:", maxLength);

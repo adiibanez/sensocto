@@ -228,7 +228,7 @@ Hooks.SensorDataAccumulator = {
               const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: attributeId, data: relevantAttributes } });
               window.dispatchEvent(accumulatorEvent);
 
-              handleAppendData(event.sensor_id, attributeId, relevantAttributes, 100000).then((result) => {
+              handleAppendData(event.sensor_id, attributeId, relevantAttributes).then((result) => {
                 logger.log("Hooks.SensorDataAccumulator", " handleAppendData measurements_batch", event.sensor_id, attributeId, result);
               });
             }
@@ -243,7 +243,7 @@ Hooks.SensorDataAccumulator = {
           const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: this.el.dataset.attribute_id, data: event } });
           window.dispatchEvent(accumulatorEvent);
 
-          handleAppendData(event.sensor_id, event.attribute_id, event, 100000).then((result) => {
+          handleAppendData(event.sensor_id, event.attribute_id, event).then((result) => {
             logger.log("Hooks.SensorDataAccumulator", "handleAppendData measurement", event.sensor_id, event.attribute_id, result);
           });
         }
@@ -258,6 +258,9 @@ Hooks.SensorDataAccumulator = {
   },
 
   destroyed() {
+
+
+
     //workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
   },
 
@@ -265,23 +268,6 @@ Hooks.SensorDataAccumulator = {
 
   updated() {
 
-    //logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: Update event", typeof this.el.dataset.append, this.el.dataset.append);
-
-    if (false && this.el.dataset.append) {
-      try {
-
-        let identifier = this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id;
-
-        logger.log("Hooks.SensorDataAccumulator", "SensorDataAccumulator: About to send accumulator-data-event", identifier);
-        appendData = JSON.parse(this.el.dataset.append);
-        // weird sparkline doesn't see the first id TODO debug resp, normalize with storage worker event
-
-        const accumulatorEvent = new CustomEvent('accumulator-data-event', { id: identifier, detail: { data: appendData, id: identifier } });
-        window.dispatchEvent(accumulatorEvent);
-      } catch (e) {
-        logger.log("Hooks.SensorDataAccumulator", 'accumulator parsing error', this.el.dataset.append, e);
-      }
-    }
   }
 }
 // add one listener for all components

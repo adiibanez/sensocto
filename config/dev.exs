@@ -87,6 +87,7 @@ config :sensocto, SensoctoWeb.Endpoint,
     web_console_logger: false,
     notify: [
       live_view: [
+        ~r"assets/svelte/*.svelte$",
         ~r"lib/sensocto_web/core_components.ex$",
         ~r"lib/sensocto_web/(live|components)/.*(ex|heex)$"
       ]

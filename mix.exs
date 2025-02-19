@@ -71,7 +71,7 @@ defmodule Sensocto.MixProject do
       {:gettext, "~> 0.26 and >= 0.26.1"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
-      {:horde, "~> 0.8.5"},
+      {:horde, "~> 0.9.0"},
       # {:libcluster, "~> 3.3"},
       {:bandit, "~> 1.2"},
       # {:bandit, "~> 1.0", github: "mtrudel/bandit", branch: "gc_on_websocket"}
@@ -86,13 +86,14 @@ defmodule Sensocto.MixProject do
       # {:igniter, "~> 0.5", only: [:dev, :test]},
       # {:rewrite, "~> 1.1.1", only: [:dev], override: true},
       {:ash, "~> 3.0"},
-      {:ash_authentication, "~> 4.4.1"},
+      {:ash_authentication, "~> 4.5.1", override: true},
       {:ash_authentication_phoenix, "~> 2.4.2"},
-      {:ash_postgres, "~> 2.0.0"},
+      {:ash_postgres, "~> 2.5.5"},
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},
-      {:dialyxir, "~> 0.4", only: [:dev]},
-      {:sourceror, "~> 1.7", only: [:dev, :test], override: true},
+      {:dialyxir, "~> 1.4.5", only: [:dev]},
+      # only: [:dev, :test]
+      {:sourceror, "~> 1.7", override: true},
       {:nimble_csv, "~> 1.1", only: [:dev]},
       # {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
@@ -110,8 +111,9 @@ defmodule Sensocto.MixProject do
        tag: "v0.1.0-rc.1",
        only: :dev},
       {:qr_code, "~> 3.1.0"},
-      {:nx, "~> 0.7.2"},
-      {:matplotex, "~> 0.4.6"}
+      {:nx, "~> 0.9.2", override: true},
+      {:matplotex, "~> 0.4.6"},
+      {:stream_data, "~> 1.0"}
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

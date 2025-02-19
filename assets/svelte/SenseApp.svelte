@@ -88,9 +88,7 @@
     */
     //import DbAnalyzerClient from './DbAnalyzerClient.svelte';
 
-    export let live;
-
-    let socket = null;
+    export let live = null;
     let deviceName = null;
     let sensorService = null;
 
@@ -126,26 +124,27 @@
 <!--<Sparkline bind:data={sparklineData} {timeMode} {timeWindow} />-->
 <!-- bind:data -->
 
-<SensorService bind:socket bind:this={sensorService}>
+<SensorService bind:live bind:this={sensorService}>
     <!--<NetworkQualityMonitor />-->
-
-    <label
-        for="first_name"
-        class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-        >Connector name</label
-    >
-    <input
-        type="text"
-        bind:value={deviceName}
-        id="connector_name"
-        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-        placeholder={deviceName}
-        required
-    />
-    <button
-        class="btn btn-blue text-xs"
-        on:click={sensorService.setDeviceName(deviceName)}>Save</button
-    >
+    <div>
+        <label
+            for="first_name"
+            class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
+            >Connector name</label
+        >
+        <input
+            type="text"
+            bind:value={deviceName}
+            id="connector_name"
+            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            placeholder={deviceName}
+            required
+        />
+        <button
+            class="btn btn-blue text-xs"
+            on:click={sensorService.setDeviceName(deviceName)}>Save</button
+        >
+    </div>
 
     <BluetoothClient />
     <IMUClient />

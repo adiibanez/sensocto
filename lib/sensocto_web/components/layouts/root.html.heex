@@ -10,6 +10,11 @@
   </script>
   <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"} type="module">
   </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
   <%= if Application.get_env(:live_debugger, :browser_features?) do %>
     <script id="live-debugger-scripts" src={Application.get_env(:live_debugger, :assets_url)}>
     </script>

@@ -22,7 +22,6 @@
         <p>{peripheral.name} {peripheral_id}</p>
         <p>RSSI: {peripheral.rssi}, State: {peripheral.state}</p>
 
-
         <!--<div style="border:1px solid red"> {inspect(@ble_state.peripheral_characteristics[peripheral_id])}</div>-->
 
         <%= if is_map(@ble_state.peripheral_characteristics[peripheral_id]) do %>

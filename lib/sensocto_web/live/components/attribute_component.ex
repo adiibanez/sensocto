@@ -85,9 +85,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             name="Map"
             props={
               %{
+                identifier: "map_#{@sensor_id}_#{@attribute_id}",
                 position: %{
                   lat: @lastvalue.payload.latitude,
-                  lng: @lastvalue.payload.longitude
+                  lng: @lastvalue.payload.longitude,
+                  accuracy: @lastvalue.payload.accuracy
                 }
               }
             }

@@ -19,11 +19,6 @@
     </Group>
   </Group>
 
-  <NavigationLink destination={~p"/lvn"}>
-    <Text>Go to LVN</Text>
-  </NavigationLink>
-  
-
   <%= if @sensors_offline != %{} do %>
     <VStack class="list-disc list-inside ml-4">
       <%= for sensor_id <- Map.keys(@sensors_offline) do %>
@@ -32,5 +27,4 @@
     </VStack>
   <% end %>
 </Group>
-
 <CustomURLOpener/>

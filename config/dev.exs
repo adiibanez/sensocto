@@ -46,8 +46,8 @@ config :sensocto, SensoctoWeb.Endpoint,
   watchers: [
     node: ["build.js", "--watch", cd: Path.expand("../assets", __DIR__)],
     # esbuild: {Esbuild, :install_and_run, [:sensocto, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:sensocto, ~w(--watch)]}
-    # live_svelte: {LiveSvelte, :init, []}
+    tailwind: {Tailwind, :install_and_run, [:sensocto, ~w(--watch)]},
+    #live_svelte: {LiveSvelte, :init, []}
   ]
 
 config :live_debugger, browser_features?: true
@@ -103,7 +103,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :info,
+  level: :debug,
   backends: [{FlexLogger, :logger_name}]
 
 config :logger, :logger_name,
@@ -114,8 +114,8 @@ config :logger, :logger_name,
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
     # [module: Sensocto.AttributeStorer, level: :info],
-    # [module: SensoctoWeb.SensorDataChannel, level: :info],
-    # [module: Phoenix.Logger, level: :debug],
+    [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    [module: Phoenix.Logger, level: :debug]
     # [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
     # [module: Phoenix.LiveView.Channel, level: :debug]
     # [module: SensoctoWeb.Live.PlaygroundLive, level: :debug]

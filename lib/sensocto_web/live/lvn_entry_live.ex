@@ -12,7 +12,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
     Logger.info("LVN entry main #{inspect(params)}, #{inspect(session)}")
 
     # presence joins / leaves
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensocto:")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "ble_state")
 
     sensors = get_sensors_state()
@@ -61,11 +61,13 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
   def handle_info(:ble_state_changed, socket) do
     # Logger.debug("handle_info :ble_state_changed")
 
+    ble_state = BleConnectorGenServer.get_state()
+
     {:noreply,
-     assign(
-       socket,
+     socket
+     |> assign(
        :ble_state,
-       BleConnectorGenServer.get_state()
+       ble_state
      )}
   end
 
@@ -109,7 +111,6 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
   @impl true
   def handle_info(
         %Phoenix.Socket.Broadcast{
-          # topic: "sensordata:all",
           event: "presence_diff",
           payload: payload
         },
@@ -151,7 +152,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
     Logger.info("ble-scan-state-changed state: #{inspect(state)}")
 
     BleConnectorGenServer.update_state_type(:scan_state, state)
-    process_ble_state_change(socket)
+    process_ble_state_change(socket |> assign(:ble_scan, state == "scanning"))
   end
 
   def handle_event(

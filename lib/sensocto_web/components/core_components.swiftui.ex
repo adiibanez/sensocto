@@ -455,7 +455,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
   def button(%{type: "submit"} = assigns) do
     ~LVN"""
     <Section>
-      <LiveSubmitButton style={[
+      <LiveButton type="submit" style={[
         "buttonStyle(.borderedProminent)",
         "controlSize(.large)",
         "listRowInsets(EdgeInsets())",
@@ -467,7 +467,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
         ]}>
           <%= render_slot(@inner_block) %>
         </Group>
-      </LiveSubmitButton>
+      </LiveButton>
     </Section>
     """
   end

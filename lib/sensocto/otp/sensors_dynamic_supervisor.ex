@@ -23,7 +23,6 @@ defmodule Sensocto.SensorsDynamicSupervisor do
              strategy: :one_for_one
            }}
   def init(:no_args) do
-    # :ok = Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 

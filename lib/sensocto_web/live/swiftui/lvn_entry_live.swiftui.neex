@@ -1,8 +1,6 @@
 <VStack alignment="leading">
   <Text style="font(.title)">Test Sensors</Text>
 
-
-
 <!--<HStack>
     
         <VStack>  
@@ -37,10 +35,10 @@
 
   <BLEClient phx-scan-peripherals={@ble_scan}>
   <Button
+        class="btn"
         phx-click="toggle-scan"
         phx-value-test2={1}
-        style="font(.system(size: 20));padding(.vertical, 5);padding(.horizontal, 5)"
-    >Toggle scan {@ble_scan} phx</Button>
+    >PHX: Toggle scan {@ble_scan}</Button>
   
   </BLEClient>
 

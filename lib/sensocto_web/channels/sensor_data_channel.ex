@@ -13,6 +13,16 @@ defmodule SensoctoWeb.SensorDataChannel do
     Logger.info("Channel init #{inspect(args)}")
   end
 
+  def join(
+        "sensocto:lvntest:" <> connector_id,
+        params,
+        socket
+      ) do
+    Logger.debug("JOIN LVN test connector #{connector_id} : #{inspect(params)}")
+
+    {:ok, socket}
+  end
+
   # Store the device ID in the socket's assigns when joining the channel
   @impl true
   @spec join(<<_::32, _::_*8>>, map(), Phoenix.Socket.t()) ::
@@ -219,7 +229,7 @@ defmodule SensoctoWeb.SensorDataChannel do
         message,
         socket
       ) do
-    Logger.debug("Unknown measurement, ignoring #{inspect(message)}")
+    Logger.info("Unknown measurement, ignoring #{inspect(message)}")
     {:noreply, socket}
   end
 
@@ -236,6 +246,11 @@ defmodule SensoctoWeb.SensorDataChannel do
     {:noreply, socket}
   end
 
+  def handle_in(event, payload, socket) do
+    Logger.debug("CATCHALL: #{event} #{inspect(payload)}")
+    {:noreply, socket}
+  end
+
   @impl true
   @spec handle_info(:after_join | :disconnect, any()) :: {:noreply, any()}
   def handle_info(:disconnect, socket) do
@@ -243,7 +258,7 @@ defmodule SensoctoWeb.SensorDataChannel do
 
     Logger.debug("DISCONNECT #{inspect(socket.assigns)}")
     disconnect_sensor_supervisor(socket.assigns.sensor_id)
-    Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+    Presence.untrack(socket.channel_pid, "presence:all", socket.assigns.sensor_id)
     # push(socket, "presence_state", Presence.list(socket))
 
     {:noreply, socket}
@@ -252,7 +267,7 @@ defmodule SensoctoWeb.SensorDataChannel do
   def handle_info(:after_join, socket) do
     Logger.debug("after join")
 
-    Presence.track(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id, %{
+    Presence.track(socket.channel_pid, "presence:all", socket.assigns.sensor_id, %{
       sensor_id: socket.assigns.sensor_id,
       online_at: System.system_time(:millisecond)
     })
@@ -278,7 +293,7 @@ defmodule SensoctoWeb.SensorDataChannel do
       sensor_id when is_binary(sensor_id) ->
         Logger.debug("Channel terminated for sensor: #{sensor_id}, #{inspect(reason)}")
         disconnect_sensor_supervisor(socket.assigns.sensor_id)
-        Presence.untrack(socket.channel_pid, "sensordata:all", socket.assigns.sensor_id)
+        Presence.untrack(socket.channel_pid, "presence:all", socket.assigns.sensor_id)
 
       _ ->
         Logger.debug("Channel terminated for connection without sensor_id #{inspect(reason)}")

@@ -19,7 +19,7 @@ defmodule SensoctoWeb.IndexLive do
   def mount(_params, _session, socket) do
     start = System.monotonic_time()
 
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensordata:all")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurements_batch")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
@@ -54,7 +54,6 @@ defmodule SensoctoWeb.IndexLive do
   @impl true
   def handle_info(
         %Phoenix.Socket.Broadcast{
-          # topic: "sensordata:all",
           event: "presence_diff",
           payload: payload
         },

@@ -196,7 +196,7 @@ defmodule Sensocto.Otp.BleConnectorGenServer do
 
       {:noreply, new_state}
     else
-      Logger.warning("Peripheral #{inspect(peripheral.id)} does not exist in state.")
+      Logger.info("Peripheral #{inspect(peripheral.id)} does not exist in state.")
       {:noreply, state}
     end
   end

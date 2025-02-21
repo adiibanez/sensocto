@@ -1,5 +1,6 @@
 defmodule SensoctoWeb.UserSocket do
   use Phoenix.Socket
+  use Phoenix.LiveView.Socket
 
   # A Socket handler
   #
@@ -8,7 +9,7 @@ defmodule SensoctoWeb.UserSocket do
 
   ## Channels
 
-#  channel("sensor_data:*", SensoctoWeb.SensorDataChannel)
+  #  channel("sensor_data:*", SensoctoWeb.SensorDataChannel)
   channel("sensocto:*", SensoctoWeb.SensorDataChannel)
 
   # Socket params are passed from the client and can

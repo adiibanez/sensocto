@@ -4,16 +4,19 @@
 			"path": "."
 		},
 		{
-			"path": "../elixir-examples/myapp"
-		},
-		{
-			"path": "../wasm-sparkline"
-		},
-		{
-			"path": "../elixir-examples/elixirconf_voxels"
-		},
-		{
 			"path": "../sensocto-xcodegen"
+		},
+		{
+			"path": "../checkouts/rustler_btleplug"
+		},
+		{
+			"path": "../checkouts/rustler-specter"
+		},
+		{
+			"path": "../checkouts/btleplug"
+		},
+		{
+			"path": "../elixir-examples/phoenix_playbook"
 		}
 	],
 	"settings": {

@@ -40,7 +40,7 @@ connectors:
             respiratory_rate: 15
             scr_number: 5
             burst_number: 5
-      patient_2:
+      sensor_2:
         sensor_id: "sensor_2"
         sensor_name: "sensor_2"
         attributes:
@@ -55,6 +55,10 @@ connectors:
             respiratory_rate: 30
             scr_number: 5
             burst_number: 5
+      sensor_4:
+        sensor_id: "sensor_2"
+        sensor_name: "sensor_2"
+        attributes:
           ppg:
             attribute_id: "ppg"
             sensor_type: "ppg"
@@ -77,7 +81,7 @@ connectors:
             respiratory_rate: 30
             scr_number: 5
             burst_number: 5
-      patient_3:
+      sensor_4:
         sensor_id: "sensor_3"
         sensor_name: "sensor_3"
         attributes:

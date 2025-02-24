@@ -56,3 +56,7 @@ __pycache__/
 
 
 priv/resource_snapshots/
+
+.env
+
+sensocto.code-workspace

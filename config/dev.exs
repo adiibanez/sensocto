@@ -103,19 +103,20 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :debug,
+  level: :info,
   backends: [{FlexLogger, :logger_name}]
 
 config :logger, :logger_name,
   logger: :console,
   # this is the loggers default level
-  default_level: :debug,
+  default_level: :info,
   # override default levels
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
-    # [module: Sensocto.AttributeStorer, level: :info],
-    [module: SensoctoWeb.SensorDataChannel, level: :debug],
-    [module: Phoenix.Logger, level: :debug]
+    # [module: Sensocto.AttributeStorer, level: :debug],
+    # [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    # [module: Phoenix.Logger, level: :debug],
+    # [module: SensoctoWeb.Plugs.RequestLogger, level: :debug],
     # [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
     # [module: Phoenix.LiveView.Channel, level: :debug]
     # [module: SensoctoWeb.Live.PlaygroundLive, level: :debug]

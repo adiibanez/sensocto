@@ -14,14 +14,14 @@ defmodule SensoctoWeb.Plugs.RequestLogger do
   end
 
   defp log_cookies(conn) do
-    Logger.info("Cookies: #{inspect(conn.cookies)}")
+    Logger.debug("Cookies: #{inspect(conn.cookies)}")
   end
 
   defp log_headers(conn) do
-    Logger.info("Headers: #{inspect(conn.req_headers)}")
+    Logger.debug("Headers: #{inspect(conn.req_headers)}")
   end
 
   defp log_params(conn) do
-    Logger.info("Request Parameters: #{inspect(conn.params)}")
+    Logger.debug("Request Parameters: #{inspect(conn.params)}")
   end
 end

@@ -113,7 +113,15 @@ defmodule Sensocto.MixProject do
       {:qr_code, "~> 3.1.0"},
       {:nx, "~> 0.9.2", override: true},
       {:matplotex, "~> 0.4.6"},
-      {:stream_data, "~> 1.0"}
+      {:stream_data, "~> 1.0"},
+      
+      {:rustler_precompiled, "~> 0.8"},
+      #{:rustler_btleplug, "~> 0.0.3-alpha"},
+      {:rustler_btleplug,
+            path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/rustler_btleplug",
+            },
+
+      {:rustler, "~> 0.36.1", optional: true},
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

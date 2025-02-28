@@ -110,7 +110,7 @@ defmodule Sensocto.MixProject do
        git: "https://github.com/software-mansion-labs/live-debugger.git",
        tag: "v0.1.0-rc.1",
        only: :dev},
-      {:qr_code, "~> 3.1.0"},
+      {:qr_code, "~> 3.2.0"},
       {:nx, "~> 0.9.2", override: true},
       {:matplotex, "~> 0.4.6"},
       {:stream_data, "~> 1.0"},

@@ -42,7 +42,7 @@ defmodule Sensocto.MixProject do
       {:phoenix_html, "~> 4.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       # {:phoenix_live_view, "~> 0.20.2"},
-      {:phoenix_live_view, "== 1.0.1"},
+      {:phoenix_live_view, "== 1.0.5"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:live_view_native, "~> 0.4.0-rc.0"},

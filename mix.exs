@@ -155,7 +155,15 @@ defmodule Sensocto.MixProject do
 
   defp aliases do
     [
-      format: ["remove_unused", "format"],
+      reset_live_svelte: [
+        "cmd --cd assets rm -rf node_modules/*",
+        "deps.clean live_svelte",
+        "deps.get",
+        # "live_svelte.setup",
+        "cmd npm install --prefix ./assets --save-dev esbuild esbuild-svelte svelte svelte-preprocess esbuild-plugin-import-glob",
+        "cmd npm install --prefix ./assets --save ./deps/phoenix ./deps/phoenix_html ./deps/phoenix_live_view ./deps/live_svelte",
+        "assets.deploy"
+      ],
       setup: [
         "deps.get",
         "ecto.setup",

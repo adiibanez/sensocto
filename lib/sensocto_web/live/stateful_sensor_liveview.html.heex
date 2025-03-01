@@ -1,23 +1,30 @@
-<div id={"sensor_#{@sensor_id}"}
-    class="sensor flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray h-96"
-    style="border:0 solid green" phx-mounted={JS.transition("animate-ping", time: 100)}>
-    <div class="w-full h-full">
-        <p class="hidden">
-            Sensor metadata {inspect(@sensor)}
-        </p>
+<div
+  id={"sensor_#{@sensor_id}"}
+  class="sensor flex flex-col rounded-lg shadow-md p-2 sm:p-2 md:p-2 lg:p-2 xl:p-2 cursor-pointer bg-dark-gray text-light-gray h-96"
+  style="border:0 solid green"
+  phx-mounted={JS.transition("animate-ping", time: 100)}
+>
+  <div class="w-full h-full">
+    <p class="hidden">
+      Sensor metadata {inspect(@sensor)}
+    </p>
 
-        <p class="hidden">
-            Statefulsensor pid: {inspect(self())} Parent pid: {inspect(@parent_pid)} attributes: {inspect(
-            @attributes_loaded
-            )}
-        </p>
+    <p class="hidden">
+      Statefulsensor pid: {inspect(self())} Parent pid: {inspect(@parent_pid)} attributes: {inspect(
+        @attributes_loaded
+      )}
+    </p>
 
-        <.render_sensor_header sensor_id={@sensor_id} sensor_name={@sensor_name} highlighted={@highlighted}>
-        </.render_sensor_header>
+    <.render_sensor_header
+      sensor_id={@sensor_id}
+      sensor_name={@sensor_name}
+      highlighted={@highlighted}
+    >
+    </.render_sensor_header>
 
-        <div>
-
-            <!-- <div :for={{attribute_id, _attribute_meta} <- @sensor.metadata.attributes} class="hidden">
+    <div>
+      
+<!-- <div :for={{attribute_id, _attribute_meta} <- @sensor.metadata.attributes} class="hidden">
                 <p>
                     Atom: {is_atom(attribute_id)}
                     {attribute_id}{inspect(@sensor.metadata.attributes)} has_value: {is_nil(
@@ -28,11 +35,17 @@
     :if={not is_nil(@sensor.attributes["#{attribute_id}"])} id={"attribute_#{@sensor_id}_#{attribute_id}"}
     
     -->
-            <.live_component :for={{attribute_id, attribute} <- @sensor.attributes}
-                id={"attribute_#{@sensor_id}_#{attribute_id}"} attribute_type={attribute.attribute_type}
-                module={AttributeComponent} attribute={attribute} attribute_id={attribute_id}
-                lastvalue={attribute.lastvalue} sensor_id={@sensor_id}>
-            </.live_component>
-        </div>
+      <.live_component
+        :for={{attribute_id, attribute} <- @sensor.attributes}
+        id={"attribute_#{@sensor_id}_#{attribute_id}"}
+        attribute_type={attribute.attribute_type}
+        module={AttributeComponent}
+        attribute={attribute}
+        attribute_id={attribute_id}
+        lastvalue={attribute.lastvalue}
+        sensor_id={@sensor_id}
+      >
+      </.live_component>
     </div>
+  </div>
 </div>

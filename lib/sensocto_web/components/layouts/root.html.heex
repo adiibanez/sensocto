@@ -1,43 +1,28 @@
 <html lang="en" class="h-full bg-gray-900 text-white">
-
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="csrf-token" content={get_csrf_token()} />
-  <title>Sensocto | LiveView</title>
-  <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-  <script defer phx-track-static src={~p"/assets/sparkline_init.js"} type="module">
-  </script>
-  <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"} type="module">
-  </script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
-  <%= if Application.get_env(:live_debugger, :browser_features?) do %>
-    <script id="live-debugger-scripts" src={Application.get_env(:live_debugger, :assets_url)}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <title>Sensocto | LiveView</title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script defer phx-track-static src={~p"/assets/sparkline_init.js"} type="module">
     </script>
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"} type="module">
+    </script>
+    <%= if Application.get_env(:live_debugger, :browser_features?) do %>
+      <script id="live-debugger-scripts" src={Application.get_env(:live_debugger, :assets_url)}>
+      </script>
     <% end %>
+  </head>
 
-      <!--<script
-      defer
-      phx-track-static
-      type="text/javascript"
-      src={~p"/assets/sparkline-wasm-element.js"}
-    >
-    </script>-->
-</head>
-
-<body class="h-full text-white font-mono">
-  <header class="bg-gray-800 p-4 flex justify-between items-center">
-    <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto" />
-    <div>
-      <a href="#" class="text-gray-300 hover:text-white mr-4">Home</a>
-      <a href="#" class="text-gray-300 hover:text-white mr-4">About</a>
-    </div>
-  </header>
-  {@inner_content}
-</body>
-
+  <body class="h-full text-white font-mono">
+    <header class="bg-gray-800 p-4 flex justify-between items-center">
+      <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto" />
+      <div>
+        <a href="#" class="text-gray-300 hover:text-white mr-4">Home</a>
+        <a href="#" class="text-gray-300 hover:text-white mr-4">About</a>
+      </div>
+    </header>
+    {@inner_content}
+  </body>
 </html>

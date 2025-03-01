@@ -8,32 +8,29 @@ defmodule Sensocto.Repo.Migrations.RemoveIdFromTokensExtensions1 do
   use Ecto.Migration
 
   def up do
-    
-    
     execute("""
-        WITH duplicate_tokens AS (
-            SELECT jti
-            FROM tokens
-            GROUP BY jti
-            HAVING COUNT(*) > 1
-        ),
-        revocation_tokens AS (
-            SELECT DISTINCT ON (t.jti) t.id
-            FROM tokens t
-            JOIN duplicate_tokens d ON t.jti = d.jti
-            WHERE t.purpose = 'revocation'
-        ),
-        other_tokens AS (
-            SELECT t.*
-            FROM tokens t
-            JOIN duplicate_tokens d ON t.jti = d.jti
-            WHERE t.id NOT IN (SELECT id FROM revocation_tokens)
-        )
-        DELETE FROM tokens
-        WHERE id IN (SELECT id FROM other_tokens);
-        """)
-    
-    
+    WITH duplicate_tokens AS (
+        SELECT jti
+        FROM tokens
+        GROUP BY jti
+        HAVING COUNT(*) > 1
+    ),
+    revocation_tokens AS (
+        SELECT DISTINCT ON (t.jti) t.id
+        FROM tokens t
+        JOIN duplicate_tokens d ON t.jti = d.jti
+        WHERE t.purpose = 'revocation'
+    ),
+    other_tokens AS (
+        SELECT t.*
+        FROM tokens t
+        JOIN duplicate_tokens d ON t.jti = d.jti
+        WHERE t.id NOT IN (SELECT id FROM revocation_tokens)
+    )
+    DELETE FROM tokens
+    WHERE id IN (SELECT id FROM other_tokens);
+    """)
+
     execute("ALTER FUNCTION ash_raise_error(jsonb) STABLE;")
     execute("ALTER FUNCTION ash_raise_error(jsonb, ANYCOMPATIBLE) STABLE")
 

@@ -29,10 +29,10 @@ let optsClient = {
     logLevel: (deploy) ? "info" : "debug",
     sourcemap: watch ? "inline" : false,
     tsconfig: "./tsconfig.json",
-    // external: [
-    //     "/fonts/*",
-    //     "/images/*"
-    // ],
+    external: [
+        "/fonts/*",
+        "/images/*"
+    ],
     plugins: [
         importGlobPlugin(),
 
@@ -73,8 +73,6 @@ function copyFile(source, target) {
 }
 
 function copyAssets() {
-
-
     // copyFile('./js/wasm_sparkline_bg.js', '../priv/static/assets/wasm_sparkline_bg.js');
     // copyFile('./js/wasm_sparkline_bg.wasm', '../priv/static/assets/wasm_sparkline_bg.wasm');
 

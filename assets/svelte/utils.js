@@ -9,7 +9,7 @@ function getCookie(name) {
     return null; // Cookie not found
 }
 
-function setCookie(name, value, days) {
+function setCookie(name, value, days = 365) {
     let expires = "";
     if (days) {
         const date = new Date();
@@ -19,4 +19,10 @@ function setCookie(name, value, days) {
     document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/"; // Important: Set path=/ for site-wide access
 }
 
-export { getCookie, setCookie };
+function isMobile() {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    return isMobile;
+}
+
+
+export { getCookie, setCookie, isMobile };

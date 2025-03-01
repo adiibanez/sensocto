@@ -82,6 +82,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             Lat: {@lastvalue.payload.latitude}, Lon: {@lastvalue.payload.longitude}, {@lastvalue.payload.accuracy}m
           </p>
           <.svelte
+            phx-update="ignore"
             name="Map"
             props={
               %{

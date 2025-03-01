@@ -53,15 +53,15 @@ defmodule Sensocto.Sensors.AttributeStoreTest do
     sensor_id = "test_sensor_4"
     agent_pid = start_agent(sensor_id)
 
-    1..10005
+    1..10_005
     |> Enum.each(fn i ->
       AttributeStore.put_attribute(sensor_id, "heart_rate", i, i)
     end)
 
     %{"heart_rate" => %{values: values}} = AttributeStore.get_attributes(sensor_id)
-    assert length(values) == 10000
-    assert Enum.at(values, 0).timestamp == 10005
-    assert Enum.at(values, 9999).timestamp == 6
+    assert length(values) == 10_000
+    assert Enum.at(values, 0).timestamp == 10_005
+    assert Enum.at(values, 9_999).timestamp == 6
   end
 
   test "get_attribute/3 with limit returns last N values" do

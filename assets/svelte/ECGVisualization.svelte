@@ -18,7 +18,6 @@
     import { writable } from "svelte/store";
 
     export let id;
-    export let is_loading;
     export let sensor_id;
     export let attribute_id;
 

@@ -1,9 +1,26 @@
 <script>
     import { getContext, onDestroy, onMount } from "svelte";
+    import { usersettings, autostart } from "./stores.js";
+    import { logger } from "../logger_svelte.js";
+
+    let loggerCtxName = "BatteryStatusClient";
 
     let sensorService = getContext("sensorService");
     let channelIdentifier = sensorService.getDeviceId();
     let batteryData = null;
+
+    let unsubscribeSocket;
+
+    autostart.subscribe((value) => {
+        logger.log(loggerCtxName, "pre Autostart update", value, batteryData);
+
+        if (value == true && !batteryData) {
+            unsubscribeSocket = sensorService.onSocketReady(() => {
+                logger.log(loggerCtxName, "Autostart", value, autostart);
+                startBatterySensor();
+            });
+        }
+    });
 
     const startBatterySensor = async () => {
         if ("getBattery" in navigator) {
@@ -65,18 +82,40 @@
         batteryData = null;
     }
 
+    onMount(() => {
+        unsubscribeSocket = sensorService.onSocketReady(() => {
+            if (autostart == true) {
+                logger.log(
+                    loggerCtxName,
+                    "onMount onSocketReady Autostart going to start",
+                    autostart,
+                );
+                startBatterySensor();
+            }
+        });
+
+        sensorService.onSocketDisconnected(() => {
+            if (batteryData) {
+                stopBatterySensor();
+            }
+        });
+    });
+
     onDestroy(() => {
+        if (unsubscribeSocket) {
+            unsubscribeSocket();
+        }
         console.log("sensorService", sensorService);
         stopBatterySensor();
         sensorService.leaveChannelIfUnused(channelIdentifier); // Important: Leave the channel
     });
 </script>
 
-{#if batteryData != null}
+{#if !$autostart && batteryData != null}
     <button class="btn btn-blue text-xs" on:click={stopBatterySensor}
         >Stop Battery Status</button
     >
-{:else if "getBattery" in navigator}
+{:else if !$autostart && "getBattery" in navigator}
     <button class="btn btn-blue text-xs" on:click={startBatterySensor}
         >Start Battery Status</button
     >

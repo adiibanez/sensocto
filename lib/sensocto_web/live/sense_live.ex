@@ -34,12 +34,13 @@ defmodule SensoctoWeb.SenseLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <%= if assigns.bluetooth_enabled == true do %>
+    <.svelte name="SenseApp" props={%{}} socket={@socket} />
+    <!--<%= if assigns.bluetooth_enabled == true do %>
       <button class="btn btn-blue" phx-click="toggle_bluetooth">No sense</button>
       <.svelte name="SenseApp" props={%{}} socket={@socket} />
     <% else %>
       <button class="btn btn-blue" phx-click="toggle_bluetooth">Sense</button>
-    <% end %>
+    <% end %>-->
     """
   end
 

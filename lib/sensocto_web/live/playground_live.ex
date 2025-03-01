@@ -27,10 +27,10 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
      })
      # |> assign(:form, %Phoenix.HTML.Form{})
      |> assign(:form, %{
-       windowsize: 10000,
+       windowsize: 10_000,
        selection: "Option 1"
      })
-     |> assign(:windowsize, 10000)
+     |> assign(:windowsize, 10_000)
      |> assign(:sensor_id, "test1")
      |> assign(:attribute_id, "test2")
      |> assign(:sensor_ids, [1, 2, 3, 4, 5, 6])

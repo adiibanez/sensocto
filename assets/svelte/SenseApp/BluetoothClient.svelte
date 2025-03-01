@@ -492,10 +492,10 @@
     }
 
     function getUniqueDeviceName(device) {
-        if (device.name.startsWith("Movesense")) {
-            return device.name;
+        if (device?.name?.startsWith("Movesense")) {
+            return device?.name;
         }
-        return sensorService.getDeviceId() + ":" + device.name;
+        return sensorService?.getDeviceId() + ":" + device?.name;
     }
 
     function getUniqueDeviceId(device) {
@@ -505,10 +505,9 @@
     }
 
     function getDeviceSamplingRate(device) {
-        if (device.name.startsWith("Movesense")) {
+        if (device?.name?.startsWith("Movesense")) {
             return 1;
         }
-
         return 10;
     }
 

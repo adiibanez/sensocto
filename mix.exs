@@ -42,7 +42,7 @@ defmodule Sensocto.MixProject do
       {:phoenix_html, "~> 4.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       # {:phoenix_live_view, "~> 0.20.2"},
-      {:phoenix_live_view, "== 1.0.1"},
+      {:phoenix_live_view, "== 1.0.1", override: true},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:live_view_native, "~> 0.4.0-rc.0"},
@@ -62,6 +62,7 @@ defmodule Sensocto.MixProject do
        app: false,
        compile: false,
        depth: 1},
+      {:iconify_ex, "~> 0.1.0"},
       {:swoosh, "~> 1.5"},
       {:hackney, "~> 1.20"},
       {:req, "~> 0.5.0"},
@@ -100,9 +101,10 @@ defmodule Sensocto.MixProject do
       {:daisy_ui_components, "~> 0.7"},
       {:timex, "~> 3.7"},
       # {:kino, "~> 0.8.0", only: :dev},
-      {:kino, github: "adiibanez/kino", only: :dev},
-      # {:kino,
-      # local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/elixir-examples/kino"},
+      # {:kino, github: "adiibanez/kino", only: :dev},
+      {:kino,
+       local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/kino"},
+      {:mix_install_watcher, "~> 0.1.0"},
       {:observer_cli, "~> 1.8"},
       # {:exprof, "~> 0.2.4"},
       {:guarded_struct, "~> 0.0.4"},
@@ -114,14 +116,15 @@ defmodule Sensocto.MixProject do
       {:nx, "~> 0.9.2", override: true},
       {:matplotex, "~> 0.4.6"},
       {:stream_data, "~> 1.0"},
-      
-      {:rustler_precompiled, "~> 0.8"},
-      #{:rustler_btleplug, "~> 0.0.3-alpha"},
-      {:rustler_btleplug,
-            path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/rustler_btleplug",
-            },
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
 
-      {:rustler, "~> 0.36.1", optional: true},
+      # {:rustler_precompiled, "~> 0.8"},
+      # {:rustler_btleplug, "~> 0.0.3-alpha"},
+      # {:rustler_btleplug,
+      # path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/rustler_btleplug",
+      # },
+
+      # {:rustler, "~> 0.36.1", optional: true},
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

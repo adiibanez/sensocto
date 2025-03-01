@@ -59,7 +59,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
       |> Map.put(:id, "viz_#{assigns.sensor_id}_#{assigns.attribute_id}")
       |> Map.put(:attribute_name, assigns.attribute_id)
       # |> Map.put(:attribute_id, assigns.attribute_id)
-      |> Map.put(:windowsize, 10000)
+      |> Map.put(:windowsize, 10_000)
       |> Map.put(
         :timestamp_formated,
         format_unix_timestamp(Enum.at(assigns.attribute_data, 0).timestamp)

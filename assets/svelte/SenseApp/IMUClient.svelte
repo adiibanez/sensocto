@@ -5,10 +5,13 @@
         onDestroy,
         onMount,
     } from "svelte";
-
+    import { usersettings, autostart } from "./stores.js";
+    import { isMobile } from "../utils.js";
     import { logger } from "../logger_svelte.js";
 
     loggerCtxName = "IMUClient";
+
+    let unsubscribeSocket;
 
     //import { AHRSEKF } from 'js-ahrs';
 
@@ -16,9 +19,6 @@
     //import { AHRSEKF } from "../js/www-ahrs.js";
 
     const AHRS = require("ahrs");
-
-    console.log("AHRS", AHRS);
-
     const madgwick = new AHRS({
         //sampleInterval: 20,
         algorithm: "Madgwick",
@@ -40,6 +40,17 @@
     let readingIMU = false;
     let channelIdentifier = sensorService.getDeviceId(); // + ":imu";
 
+    autostart.subscribe((value) => {
+        logger.log(loggerCtxName, "pre Autostart update", value, readingIMU);
+
+        if (value == true && !readingIMU && imuAvailable()) {
+            unsubscribeSocket = sensorService.onSocketReady(() => {
+                logger.log(loggerCtxName, "Autostart", value, autostart);
+                startIMU();
+            });
+        }
+    });
+
     onMount(() => {
         // Now you can use sensorService.setupChannel, etc.
         if (!sensorService) {
@@ -53,6 +64,8 @@
     });
 
     function imuAvailable() {
+        if (!isMobile()) return false;
+
         if ("LinearAccelerationSensor" in window && "Gyroscope" in window) {
             // Both Linear Acceleration and Gyroscope sensors are available. This is ideal for mobile devices.
             return "mobile";
@@ -374,7 +387,29 @@
         };
     }
 
+    onMount(() => {
+        unsubscribeSocket = sensorService.onSocketReady(() => {
+            if (autostart == true) {
+                logger.log(
+                    loggerCtxName,
+                    "onMount onSocketReady Autostart going to start",
+                    autostart,
+                );
+                startIMU();
+            }
+        });
+
+        sensorService.onSocketDisconnected(() => {
+            if (readingIMU) {
+                stopIMU();
+            }
+        });
+    });
+
     onDestroy(() => {
+        if (unsubscribeSocket) {
+            unsubscribeSocket();
+        }
         stopIMU();
         sensorService.unregisterAttribute(channelIdentifier, "imu");
         sensorService.leaveChannelIfUnused(channelIdentifier);

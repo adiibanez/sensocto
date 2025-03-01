@@ -1,14 +1,17 @@
 
-let enabled = false;
+let enabled = true;
 let enabledComponents = [
     // "SensorDataService",
     // "SparklineWasm",
-    //     "ChartJS",
+    // "ChartJS",
     // "ECGVisualization",
     //     "IMUClient",
     // "ScaledPoints", "Sparkline",
-    "BluetoothClient",
-    "SensorService",
+    //"BluetoothClient",
+    //"SensorService",
+    "GeolocationClient",
+    "BatteryStatusClient",
+    "SenseApp",
     //"SensorDataService",
     //"IndexedDB",
     // "IndexedDB.Worker",

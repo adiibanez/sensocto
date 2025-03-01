@@ -20,6 +20,7 @@
     "esbuild-wasm": "^0.24.2",
     "google": "^2.1.0",
     "live_svelte": "file:../deps/live_svelte",
+    "maplibre-gl": "^5.1.1",
     "phoenix": "file:../deps/phoenix",
     "phoenix_html": "file:../deps/phoenix_html",
     "phoenix_live_view": "file:../deps/phoenix_live_view",

@@ -1,12 +1,32 @@
 <script>
-  import { getContext, onDestroy } from "svelte";
+  import { getContext, onMount, onDestroy } from "svelte";
   import { logger } from "../logger_svelte.js";
-  let loggerCtxName = "GoelocationClient";
+  import { usersettings, autostart } from "./stores.js";
+
+  console.log("Here2");
+
+  let loggerCtxName = "GeolocationClient";
 
   let sensorService = getContext("sensorService");
   let channelIdentifier = sensorService.getDeviceId();
   let geolocationData = null;
   let watchId = null; // To store the watchPosition ID
+
+  let unsubscribeSocket;
+
+  logger.log(loggerCtxName, "GeolocationClient");
+  console.log("GeolocationClient test");
+
+  autostart.subscribe((value) => {
+    logger.log(loggerCtxName, "pre Autostart", value, geolocationData);
+    if (value == true && !geolocationData) {
+      logger.log(loggerCtxName, "Autostart", value, autostart);
+
+      setTimeout(() => {
+        startGeolocation();
+      }, 1000);
+    }
+  });
 
   const startGeolocation = () => {
     if (navigator.geolocation) {
@@ -63,23 +83,41 @@
     }
   };
 
+  onMount(() => {
+    unsubscribeSocket = sensorService.onSocketReady(() => {
+      if (autostart == true) {
+        startGeolocation();
+      }
+    });
+
+    sensorService.onSocketDisconnected(() => {
+      if (geolocationData) {
+        stopGeolocation();
+      }
+    });
+  });
+
   onDestroy(() => {
     console.log("onDestroy");
-    stopGeolocation(); // Cleanup on component destroy
+    if (unsubscribeSocket) {
+      unsubscribeSocket();
+    }
+
+    stopGeolocation();
     sensorService.unregisterAttribute(
       sensorService.getDeviceId(),
       "geolocation",
     );
-    sensorService.leaveChannelIfUnused(channelIdentifier); // ALWAYS leave channels on destroy!
+    sensorService.leaveChannelIfUnused(channelIdentifier);
   });
 </script>
 
-{#if navigator.geolocation}
+{#if !$autostart && navigator.geolocation}
   {#if watchId}
     <button class="btn btn-blue text-xs" on:click={stopGeolocation}
       >Stop Geolocation</button
     >
-  {:else}
+  {:else if !$autostart}
     <button class="btn btn-blue text-xs" on:click={startGeolocation}
       >Start Geolocation</button
     >
@@ -88,9 +126,9 @@
     {#if geolocationData.error}
       <p style="color: red">{geolocationData.error}</p>
     {:else}
-      <p>Latitude: {geolocationData.latitude}</p>
-      <p>Longitude: {geolocationData.longitude}</p>
-      <p>Accuracy: {geolocationData.accuracy} meters</p>
+      <p>Lat: {geolocationData.latitude}</p>
+      <p>Lon: {geolocationData.longitude}</p>
+      <p>Acc: {geolocationData.accuracy}m</p>
     {/if}
   {/if}
 {/if}

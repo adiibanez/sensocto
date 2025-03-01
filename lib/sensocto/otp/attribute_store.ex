@@ -128,7 +128,7 @@ defmodule Sensocto.AttributeStore do
       end
 
     new_payloads = [%{payload: payload, timestamp: timestamp} | new_attribute.payloads]
-    limited_payloads = Enum.take(new_payloads, -10000)
+    limited_payloads = Enum.take(new_payloads, -10_000)
 
     Map.put(state, attribute_id, %{new_attribute | payloads: limited_payloads})
   end

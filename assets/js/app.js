@@ -27,14 +27,6 @@ import { getHooks } from "live_svelte"
 import * as Components from "../svelte/**/*.svelte"
 //import * as Components from "../svelte/SenseApp.svelte"
 
-//import init, { draw_sparkline } from "./wasm_sparkline_bg.js";
-
-/*async function initSparklineWasm() {
-  await init("/assets/wasm_sparkline_bg.wasm");
-  wasmInitialized = true;
-  logger.log(loggerCtxName, "Wasm initialized, yippie", draw_sparkline);
-}*/
-
 import {
   openDatabase,
   handleClearData,
@@ -45,8 +37,6 @@ import {
   handleGetAllLatestTimestamps,
   setDebug
 } from './indexeddb.js';
-
-
 
 window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
 let Hooks = {}
@@ -364,9 +354,9 @@ topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
-
 // connect if there are any LiveViews on the page
 liveSocket.connect()
+liveSocket.disableDebug();
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

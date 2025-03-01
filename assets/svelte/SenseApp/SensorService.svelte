@@ -2,34 +2,24 @@
     import { setContext, onMount } from "svelte";
     import { Socket } from "phoenix";
     import { getCookie, setCookie } from "../utils.js";
+    import { usersettings } from "./stores.js";
 
     import { logger } from "../logger_svelte.js";
     let loggerCtxName = "SensorService";
 
-    export let socket; // Make socket a prop so it can be shared
+    let socketState = "disconnected";
+    let stateCallbacks = {
+        ready: new Set(),
+        disconnected: new Set(),
+    };
+
+    export let socket;
+
     let sensorChannels = {};
-    let channelAttributes = {}; // Track attributes per channel
+    let channelAttributes = {};
     let messageQueues = {};
     let batchTimeouts = {};
     let messagesSent = {};
-
-    let sharedAttributes = {
-        imu: {
-            attribute_id: "imu",
-            attribute_type: "imu",
-            sampling_rate: 5,
-        },
-        geolocation: {
-            attribute_id: "geolocation",
-            attribute_type: "geolocation",
-            sampling_rate: 1,
-        },
-        battery: {
-            attribute_id: "battery",
-            attribute_type: "battery",
-            sampling_rate: 1,
-        },
-    };
 
     export let defaultBatchSize = 10;
     export let defaultBatchTimeout = 1000 / 24;
@@ -45,6 +35,20 @@
         getDeviceId,
         getDeviceName,
         setDeviceName,
+        onSocketReady: (callback) => {
+            stateCallbacks.ready.add(callback);
+            if (socketState === "ready") {
+                callback();
+            }
+            return () => stateCallbacks.ready.delete(callback);
+        },
+        onSocketDisconnected: (callback) => {
+            stateCallbacks.disconnected.add(callback);
+            if (socketState === "disconnected") {
+                callback();
+            }
+            return () => stateCallbacks.disconnected.delete(callback);
+        },
     });
 
     onMount(() => {
@@ -52,6 +56,17 @@
             socket = new Socket("/socket", {
                 params: { user_token: "some_token" },
             });
+
+            socket.onOpen(() => {
+                socketState = "ready";
+                stateCallbacks.ready.forEach((cb) => cb());
+            });
+
+            socket.onClose(() => {
+                socketState = "disconnected";
+                stateCallbacks.disconnected.forEach((cb) => cb());
+            });
+
             socket.connect();
             logger.log(loggerCtxName, "Socket initialized");
         }
@@ -84,9 +99,6 @@
                 sensor_id: sensorId,
                 sensor_type: attributeMetadata.sensor_type,
                 sampling_rate: attributeMetadata.sampling_rate,
-                //attributes: sharedAttributes,
-                //attributes: {},
-                //[attributeMetadata.attribute_id]: attributeMetadata,
             });
         }
         // Update existing channel's attributes
@@ -331,6 +343,7 @@
             deviceId = uuidv4().split("-").pop();
             setCookie("device_id", deviceId);
         }
+        $usersettings.deviceId = deviceId;
         return deviceId;
     }
 
@@ -343,6 +356,8 @@
                     /(firefox|msie|chrome|safari|trident)/gi,
                 )?.[0] || "unknown_browser";
             deviceName = `${platform}_${browserName}`; // _${getDeviceId()
+
+            $usersettings.deviceName = deviceName;
             setCookie("device_name", deviceName);
         }
         return deviceName;

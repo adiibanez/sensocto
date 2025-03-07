@@ -62,7 +62,7 @@ defmodule Sensocto.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:iconify_ex, "~> 0.1.0"},
+      {:iconify_ex, "~> 0.6.1"},
       {:swoosh, "~> 1.5"},
       {:hackney, "~> 1.20"},
       {:req, "~> 0.5.0"},
@@ -110,14 +110,14 @@ defmodule Sensocto.MixProject do
       # {:guarded_struct, "~> 0.0.4"},
       {:live_debugger,
        git: "https://github.com/software-mansion-labs/live-debugger.git",
-       tag: "v0.1.0-rc.1",
+       tag: "v0.1.0",
        only: :dev},
       {:qr_code, "~> 3.1.0"},
       {:nx, "~> 0.9.2", override: true},
       {:matplotex, "~> 0.4.6"},
       {:stream_data, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:machete, "~> 0.2.8", onlx: [:dev, :test], runtime: false}
+      {:machete, "~> 0.3.10", only: [:dev, :test], runtime: false}
 
       # {:rustler_precompiled, "~> 0.8"},
       # {:rustler_btleplug, "~> 0.0.3-alpha"},

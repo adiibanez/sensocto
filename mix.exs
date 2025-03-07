@@ -62,7 +62,7 @@ defmodule Sensocto.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:iconify_ex, "~> 0.1.0"},
+      {:iconify_ex, "~> 0.6.1"},
       {:swoosh, "~> 1.5"},
       {:hackney, "~> 1.20"},
       {:req, "~> 0.5.0"},

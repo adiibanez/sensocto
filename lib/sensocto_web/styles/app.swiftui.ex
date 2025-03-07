@@ -5,13 +5,6 @@ defmodule SensoctoWeb.Styles.App.SwiftUI do
   # Refer to your client's documentation on what the proper syntax
   # is for defining rules within classes
   ~SHEET"""
-  "btn" do
-      font(.system(size: 12))
-      padding(.vertical, 3)
-      padding(.horizontal, 3)
-      foregroundStyle(.red)
-      font(.title)
-    end
   """
 
   # If you need to have greater control over how your style rules are created

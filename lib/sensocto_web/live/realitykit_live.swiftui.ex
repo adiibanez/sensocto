@@ -70,7 +70,7 @@ defmodule SensoctoWeb.RealitykitLive.SwiftUI do
     """
   end
 
-  def sensor(assigns) do
+  def sensor(assigns, _interface) do
     ~LVN"""
     <Group>
 
@@ -144,7 +144,7 @@ defmodule SensoctoWeb.RealitykitLive.SwiftUI do
 
   attr :color, :any
 
-  def palette(assigns) do
+  def palette(assigns, _interface) do
     # assigns |> dbg()
 
     ~LVN"""

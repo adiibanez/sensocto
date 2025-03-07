@@ -2,7 +2,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive.SwiftUI do
   use SensoctoNative, [:render_component, format: :swiftui]
   require Logger
 
-  def attribute(assigns) do
+  def attribute(assigns, _interface) do
     ~LVN"""
     <Group>
       <ProgressView id={"loading_#{@sensor_id}_#{@attribute_id}"} :if={is_nil(@attribute.lastvalue) or is_nil(@attribute.lastvalue.timestamp)}/>
@@ -30,7 +30,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive.SwiftUI do
     """
   end
 
-  def ble_characteristic(assigns) do
+  def ble_characteristic(assigns, _interface) do
     ~LVN"""
     <Group>
       <VStack alignment="left" :if={not is_nil(@attribute.lastvalue) and not is_nil(@attribute.lastvalue.timestamp)}>

@@ -53,8 +53,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
   attr :type, :string,
     default: "TextField",
-    values:
-      ~w(TextFieldLink DatePicker MultiDatePicker Picker SecureField Slider Stepper TextEditor TextField Toggle hidden)
+    values: ~w(TextFieldLink DatePicker MultiDatePicker Picker SecureField Slider Stepper TextEditor TextField Toggle hidden)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: `@form[:email]`"
@@ -76,11 +75,12 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     default: "on",
     values: ~w(on off)
 
-  attr :rest, :global, include: ~w(disabled step)
+  attr :rest, :global,
+    include: ~w(disabled step)
 
   slot :inner_block
 
-  def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+  def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns, interface) do
     assigns =
       assigns
       |> assign(field: nil, id: assigns.id || field.id)
@@ -89,16 +89,11 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
       |> assign_new(:value, fn -> field.value end)
 
     styles =
-      [{:readonly, assigns.readonly}, {:autocomplete, assigns.autocomplete}]
+      [{:readonly, assigns.readonly} , {:autocomplete, assigns.autocomplete}]
       |> Enum.reduce([], fn
-        {:readyonly, true}, styles ->
-          ["disabled(true)" | styles]
-
-        {:autocomplete, "off"}, styles ->
-          ["textInputAutocapitalization(.never)", "autocorrectionDisabled()" | styles]
-
-        _, styles ->
-          styles
+        {:readyonly, true}, styles -> ["disabled(true)" | styles]
+        {:autocomplete, "off"}, styles -> ["textInputAutocapitalization(.never)", "autocorrectionDisabled()" | styles]
+        _, styles -> styles
       end)
 
     style =
@@ -107,16 +102,16 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
       |> Kernel.++(Enum.reverse(styles))
       |> Enum.join(";")
 
-    input(put_in(assigns, [:rest, :style], style))
+    input(put_in(assigns, [:rest, :style], style), interface)
   end
 
-  def input(%{type: "hidden"} = assigns) do
+  def input(%{type: "hidden"} = assigns, _interface) do
     ~LVN"""
     <LiveHiddenField id={@id} name={@name} value={@value} {@rest} />
     """
   end
 
-  def input(%{type: "TextFieldLink"} = assigns) do
+  def input(%{type: "TextFieldLink"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <LabeledContent>
@@ -130,7 +125,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "DatePicker"} = assigns) do
+  def input(%{type: "DatePicker"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <DatePicker id={@id} name={@name} selection={@value} {@rest}>
@@ -141,7 +136,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "MultiDatePicker"} = assigns) do
+  def input(%{type: "MultiDatePicker"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <LabeledContent>
@@ -153,7 +148,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "Picker"} = assigns) do
+  def input(%{type: "Picker"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <Picker id={@id} name={@name} selection={@value} {@rest}>
@@ -170,7 +165,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "Slider"} = assigns) do
+  def input(%{type: "Slider"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <LabeledContent>
@@ -182,7 +177,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "Stepper"} = assigns) do
+  def input(%{type: "Stepper"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <LabeledContent>
@@ -194,7 +189,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "TextEditor"} = assigns) do
+  def input(%{type: "TextEditor"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <LabeledContent>
@@ -206,7 +201,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "TextField"} = assigns) do
+  def input(%{type: "TextField"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <TextField id={@id} name={@name} text={@value} prompt={@prompt} {@rest}><%= @placeholder || @label %></TextField>
@@ -215,7 +210,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "SecureField"} = assigns) do
+  def input(%{type: "SecureField"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <SecureField id={@id} name={@name} text={@value} prompt={@prompt} {@rest}><%= @placeholder || @label %></SecureField>
@@ -224,7 +219,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def input(%{type: "Toggle"} = assigns) do
+  def input(%{type: "Toggle"} = assigns, _interface) do
     ~LVN"""
     <VStack alignment="leading">
       <LabeledContent>
@@ -242,7 +237,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
   @doc type: :component
   slot :inner_block, required: true
 
-  def error(assigns) do
+  def error(assigns, _interface) do
     ~LVN"""
     <Group style="font(.caption); foregroundStyle(.red)">
       <%= render_slot(@inner_block) %>
@@ -261,7 +256,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
   slot :subtitle
   slot :actions
 
-  def header(assigns) do
+  def header(assigns, _interface) do
     ~LVN"""
     <VStack style={[
       "navigationTitle(:title)",
@@ -303,7 +298,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
   attr :on_cancel, :string, default: nil
   slot :inner_block, required: true
 
-  def modal(assigns) do
+  def modal(assigns, _interface) do
     ~LVN"""
     <VStack
       id={@id}
@@ -335,7 +330,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
-  def flash(assigns) do
+  def flash(assigns, _interface) do
     assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
 
     ~LVN"""
@@ -367,7 +362,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
 
-  def flash_group(assigns) do
+  def flash_group(assigns, _interface) do
     ~LVN"""
     <Group id={@id}>
       <.flash kind={:info} title={"Success!"} flash={@flash} />
@@ -402,16 +397,13 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
   slot :inner_block, required: true, doc: "won't be rendered if section slots are passed in"
   slot :actions, doc: "the slot for form actions, such as a submit button"
-
   slot :section, required: false, doc: "slot for creating sections inside the form" do
-    attr :is_expanded, :boolean,
-      doc: "a boolean value that determines the section’s expansion state (expanded or collapsed)"
-
+    attr :is_expanded, :boolean, doc: "a boolean value that determines the section’s expansion state (expanded or collapsed)"
     attr :header, :string, doc: "text to use as a section's header"
     attr :footer, :string, doc: "text to use as a section's footer"
   end
 
-  def simple_form(assigns) do
+  def simple_form(assigns, _interface) do
     ~LVN"""
     <.form :let={f} for={@for} as={@as} {@rest}>
       <Form>
@@ -452,10 +444,10 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
   slot :inner_block, required: true
 
-  def button(%{type: "submit"} = assigns) do
+  def button(%{ type: "submit" } = assigns, _interface) do
     ~LVN"""
     <Section>
-      <LiveButton type="submit" style={[
+      <LiveButton style={[
         "buttonStyle(.borderedProminent)",
         "controlSize(.large)",
         "listRowInsets(EdgeInsets())",
@@ -472,7 +464,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  def button(assigns) do
+  def button(assigns, _interface) do
     ~LVN"""
     <Button {@rest}>
       <%= render_slot(@inner_block) %>
@@ -506,7 +498,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
   slot :action, doc: "the slot for showing user actions in the last table column"
 
-  def table(assigns) do
+  def table(assigns, _interface) do
     ~LVN"""
     <Table id={@id}>
       <Group template="columns">
@@ -546,7 +538,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     attr :title, :string, required: true
   end
 
-  def list(assigns) do
+  def list(assigns, _interface) do
     ~LVN"""
     <List>
       <LabeledContent :for={item <- @item}>
@@ -570,7 +562,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
   attr :name, :string, required: true
   attr :rest, :global
 
-  def icon(assigns) do
+  def icon(assigns, _interface) do
     ~LVN"""
     <Image systemName={@name} {@rest} />
     """
@@ -585,9 +577,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
   attr :url, :string, required: true
   attr :rest, :global
-
-  slot :empty,
-    doc: """
+  slot :empty, doc: """
     The empty state that will render before has successfully been downloaded.
 
         <.image url={~p"/assets/images/logo.png"}>
@@ -598,9 +588,7 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
 
     [See SwiftUI docs](https://developer.apple.com/documentation/swiftui/asyncimagephase/success(_:))
     """
-
-  slot :success,
-    doc: """
+  slot :success, doc: """
     The success state that will render when the image has successfully been downloaded.
 
         <.image url={~p"/assets/images/logo.png"}>
@@ -608,27 +596,27 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
         </.image>
 
     [See SwiftUI docs](https://developer.apple.com/documentation/swiftui/asyncimagephase/success(_:))
-    """ do
+    """
+  do
+    attr :class, :string
+    attr :style, :string
+  end
+  slot :failure, doc: """
+    The failure state that will render when the image fails to downloaded.
+
+        <.image url={~p"/assets/images/logo.png"}>
+          <:failure class="image-fail"/>
+        </.image>
+
+    [See SwiftUI docs](https://developer.apple.com/documentation/swiftui/asyncimagephase/failure(_:))
+
+  """
+  do
     attr :class, :string
     attr :style, :string
   end
 
-  slot :failure,
-    doc: """
-      The failure state that will render when the image fails to downloaded.
-
-          <.image url={~p"/assets/images/logo.png"}>
-            <:failure class="image-fail"/>
-          </.image>
-
-      [See SwiftUI docs](https://developer.apple.com/documentation/swiftui/asyncimagephase/failure(_:))
-
-    """ do
-    attr :class, :string
-    attr :style, :string
-  end
-
-  def image(assigns) do
+  def image(assigns, _interface) do
     ~LVN"""
     <AsyncImage url={@url} {@rest}>
       <Group template="phase.empty" :if={@empty != []}>
@@ -640,13 +628,13 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  defp image_success(%{slot: [%{inner_block: nil}]} = assigns) do
+  defp image_success(%{ slot: [%{ inner_block: nil }] } = assigns, _interface) do
     ~LVN"""
     <AsyncImage image template="phase.success" :for={slot <- @slot} class={Map.get(slot, :class)} {%{ style: Map.get(slot, :style) }} />
     """
   end
 
-  defp image_success(assigns) do
+  defp image_success(assigns, _interface) do
     ~LVN"""
     <Group template="phase.success" :if={@slot != []}>
       <%= render_slot(@slot) %>
@@ -654,13 +642,13 @@ defmodule SensoctoWeb.CoreComponents.SwiftUI do
     """
   end
 
-  defp image_failure(%{slot: [%{inner_block: nil}]} = assigns) do
+  defp image_failure(%{ slot: [%{ inner_block: nil }] } = assigns, _interface) do
     ~LVN"""
     <AsyncImage error template="phase.failure" :for={slot <- @slot} class={Map.get(slot, :class)} {%{ style: Map.get(slot, :style) }} />
     """
   end
 
-  defp image_failure(assigns) do
+  defp image_failure(assigns, _interface) do
     ~LVN"""
     <Group template="phase.failure" :if={@slot != []}>
       <%= render_slot(@slot) %>

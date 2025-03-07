@@ -110,7 +110,7 @@ defmodule Sensocto.MixProject do
       #{:guarded_struct, "~> 0.0.4"},
       {:live_debugger,
        git: "https://github.com/software-mansion-labs/live-debugger.git",
-       tag: "v0.1.0-rc.1",
+       tag: "v0.1.0",
        only: :dev},
       {:qr_code, "~> 3.1.0"},
       {:nx, "~> 0.9.2", override: true},

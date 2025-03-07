@@ -1,6 +1,6 @@
 defmodule SensoctoWeb.UserSocket do
   use Phoenix.Socket
-  use Phoenix.LiveView.Socket
+  # use Phoenix.LiveView.Socket
 
   # A Socket handler
   #

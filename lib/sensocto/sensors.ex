@@ -15,5 +15,9 @@ defmodule Sensocto.Sensors do
     resource Sensocto.Sensors.Room
     resource Sensocto.Sensors.SensorConnection
     resource Sensocto.Sensors.SensorSensorConnection
+
+    resource Sensocto.Sensors.SensorManager do
+      # define :validate_sensor, args: [:sensor_id, :connector_id, :connector_name, :sensor_name, :sensor_name], action: :validate_sensor
+    end
   end
 end

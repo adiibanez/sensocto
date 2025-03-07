@@ -111,12 +111,12 @@ config :logger,
 config :logger, :logger_name,
   logger: :console,
   # this is the loggers default level
-  default_level: :info,
+  # default_level: :info,
   # override default levels
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
     # [module: Sensocto.AttributeStorer, level: :debug],
-    # [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    [module: SensoctoWeb.SensorDataChannel, level: :debug]
     # [module: Phoenix.Logger, level: :debug],
     # [module: SensoctoWeb.Plugs.RequestLogger, level: :debug],
     # [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
@@ -129,7 +129,7 @@ config :logger, :logger_name,
   # format: "DEV [$time] [$level] $message\n"
   format: "DEV [$level] $message [ $metadata ] \n",
   # [$time][$node][$level]
-  metadata: [:file, :function, :line]
+  metadata: [:node, :pid, :file, :function, :line]
 
 # https://elixirforum.com/t/logger-format/8616/2
 

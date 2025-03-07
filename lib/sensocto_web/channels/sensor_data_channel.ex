@@ -1,4 +1,5 @@
 defmodule SensoctoWeb.SensorDataChannel do
+  @moduledoc false
   # alias Sensocto.Broadway.Counter
   use SensoctoWeb, :channel
   require Logger
@@ -10,6 +11,7 @@ defmodule SensoctoWeb.SensorDataChannel do
   alias SensoctoWeb.Sensocto.Presence
 
   def init(args) do
+    :logger.set_module_level(SensoctoWeb.SensorDataChannel, :debug)
     Logger.info("Channel init #{inspect(args)}")
   end
 
@@ -93,6 +95,57 @@ defmodule SensoctoWeb.SensorDataChannel do
         socket
       ) do
     Logger.debug("JOIN sensor #{connector_id} : #{sensor_id}")
+
+    Logger.debug("ASH params #{inspect(params)}")
+
+    request =
+      Sensocto.Utils.string_keys_to_atom_keys(params)
+      |> Map.delete(:bearer_token)
+      |> Map.delete(:attributes)
+      |> Map.delete(:batch_size)
+      |> Map.delete(:sampling_rate)
+
+    Logger.debug("ASH request #{inspect(request)}")
+
+    # Sensocto.Sensors.SensorManager.validate_sensor(request)
+
+    case Sensocto.Sensors.SensorManager
+         |> Ash.Changeset.for_create(:validate_sensor, request)
+         |> Ash.create!() do
+      {:ok, sensor} ->
+        Logger.debug("ASH validated and created sensor: #{inspect(sensor)}")
+
+      # Now 'sensor' contains the newly created sensor resource
+
+      {:error, changeset} ->
+        Logger.error("ASH changeset error: #{inspect(changeset)}")
+
+      {:error, :bad_request, changeset} ->
+        Logger.error("ASH bad request: #{inspect(changeset)}")
+
+      {:error, :unauthorized, reason} ->
+        Logger.warn("ASH unauthorized: #{reason}")
+
+      {:error, :not_found} ->
+        Logger.warn("ASH resource not found")
+
+      {:error, {:duplicate_record, details}} ->
+        Logger.error("ASH duplicate record: #{inspect(details)}")
+
+      {:error, error} ->
+        Logger.error("ASH unexpected error: #{inspect(error)}")
+
+      response ->
+        Logger.debug("ASH unknown response: #{inspect(response)}")
+    end
+
+    # with params do
+    #   {:ok, validated} <- Ash.create(Sensocto.Sensors.SensorManager, :validate_sensor, params)
+    #   {:ok, sensor} <-
+    #     Ash.read(Sensocto.Sensors.SensorManager, :get_sensor, %{sensor_id: sensor_id})
+    #   #{:ok, assign(socket, :sensor_id, sensor_id)}
+    #   Logger.debug("ASH Sensor #{inspect(sensor)}")
+    # end
 
     if authorized?(params) do
       send(self(), :after_join)

@@ -21,9 +21,9 @@ defmodule SensoctoWeb.Endpoint do
     websocket: true,
     longpoll: false
 
-  socket "/live", SensoctoWeb.UserSocket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: false
+  # socket "/live", SensoctoWeb.UserSocket,
+  #   websocket: [connect_info: [session: @session_options]],
+  #   longpoll: false
 
   # Serve at "/" the static files from "priv/static" directory.
   #

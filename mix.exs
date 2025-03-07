@@ -80,7 +80,7 @@ defmodule Sensocto.MixProject do
       # {:broadway_dashboard, "~> 0.4.0"},
       # {:live_svelte, "~> 0.15.0-rc.6"},
       # ~> 0.14.1"},
-      {:live_svelte, "0.14.1"},
+      {:live_svelte, "0.15.0"},
 
       # {:live_svelte, github: "woutdp/live_svelte"},
       # {:live_svelte, github: "woutdp/live_svelte", tag: "svelte-5"},

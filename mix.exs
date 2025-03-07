@@ -117,7 +117,7 @@ defmodule Sensocto.MixProject do
       {:matplotex, "~> 0.4.6"},
       {:stream_data, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:machete, "~> 0.2.8", onlx: [:dev, :test], runtime: false}
+      {:machete, "~> 0.3.10", onlx: [:dev, :test], runtime: false}
 
       # {:rustler_precompiled, "~> 0.8"},
       # {:rustler_btleplug, "~> 0.0.3-alpha"},

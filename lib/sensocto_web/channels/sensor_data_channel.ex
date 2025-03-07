@@ -124,10 +124,10 @@ defmodule SensoctoWeb.SensorDataChannel do
         Logger.error("ASH bad request: #{inspect(changeset)}")
 
       {:error, :unauthorized, reason} ->
-        Logger.warn("ASH unauthorized: #{reason}")
+        Logger.warning("ASH unauthorized: #{reason}")
 
       {:error, :not_found} ->
-        Logger.warn("ASH resource not found")
+        Logger.warning("ASH resource not found")
 
       {:error, {:duplicate_record, details}} ->
         Logger.error("ASH duplicate record: #{inspect(details)}")

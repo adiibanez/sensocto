@@ -104,7 +104,7 @@ defmodule Sensocto.MixProject do
       # {:kino, github: "adiibanez/kino", only: :dev},
       #{:kino,
       # local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/kino"},
-      {:mix_install_watcher, "~> 0.1.0"},
+      #{:mix_install_watcher, "~> 0.1.0"},
       {:observer_cli, "~> 1.8"},
       # {:exprof, "~> 0.2.4"},
       #{:guarded_struct, "~> 0.0.4"},

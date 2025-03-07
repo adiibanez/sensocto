@@ -138,7 +138,7 @@ defmodule SensorsStateAgent do
   def reset(config) do
     # Logger.debug("Agent reset config #{inspect(config)}")
 
-    Agent.update(:sensors_state_agent, fn state ->
+    Agent.update(:sensors_state_agent, fn _state ->
       create_state_from_config(config)
     end)
   end
@@ -192,7 +192,7 @@ defmodule Sensocto.SensorArrangement do
     generate_rgb_colors(number)
   end
 
-  def get_colors(number \\ 100) do
+  def get_colors(_) do
     @colors
   end
 
@@ -276,7 +276,7 @@ defmodule Sensocto.SensorArrangement do
     row_size_factor = config[:row_size_factor] || 0.002
     size_row_offset = config[:size_row_offset] || 0.01
     edge_density_factor = config[:edge_density_factor] || 3.0
-    size = config[:size] || 0.05
+    _size = config[:size] || 0.05
 
     shrink_factor = config[:shrink_factor] || 0.8
     z_offset_per_row = config[:z_offset_per_row] || 0.3

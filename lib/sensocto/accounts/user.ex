@@ -40,6 +40,10 @@ defmodule Sensocto.Accounts.User do
         end
       end
 
+      # single_use_tokens? false and token_lifetime
+      # there isn't like a can_use_tokens_n_times feature is all
+      # So if you wanted that, you'd have to turn single_use_tokens? false and add some custom logic
+
       magic_link do
         identity_field :email
         registration_enabled? true

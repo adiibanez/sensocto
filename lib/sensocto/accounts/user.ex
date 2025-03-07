@@ -52,9 +52,6 @@ defmodule Sensocto.Accounts.User do
         sender Sensocto.Accounts.User.Senders.SendMagicLinkEmail
       end
 
-      # client 708240357767-gaar1ph0fngc01mcj188vfo14mc3ilbn.apps.googleusercontent.com
-      # secret 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
-
       """
       password :password do
         identity_field :email

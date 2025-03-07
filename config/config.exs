@@ -109,24 +109,14 @@ config :mime, :types, %{
   "text/swiftui" => ["swiftui"]
 }
 
-config :sensocto,
-  google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
-  # ||raise("Missing environment variable `GOOGLE_SIGNING_SECRET`!"),
-  google_redirect_uri: System.get_env("GOOGLE_REDIRECT_URI"),
-  google_client_id: System.get_env("GOOGLE_CLIENT_ID")
-
-config :phoenix_template, :format_encoders, [
-  swiftui: Phoenix.HTML.Engine
-]
+config :phoenix_template, :format_encoders, swiftui: Phoenix.HTML.Engine
 
 config :live_view_native,
   plugins: [
     LiveViewNative.SwiftUI
   ]
 
-config :phoenix, :template_engines, [
-  neex: LiveViewNative.Engine
-]
+config :phoenix, :template_engines, neex: LiveViewNative.Engine
 
 config :live_view_native_stylesheet,
   content: [

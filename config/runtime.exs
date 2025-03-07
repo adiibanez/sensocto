@@ -117,6 +117,12 @@ if config_env() == :prod do
     adapter: Swoosh.Adapters.SMTP2GO,
     api_key: System.get_env("SMTP2GO_APIKEY")
 
+  config :sensocto,
+    google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
+    # ||raise("Missing environment variable `GOOGLE_SIGNING_SECRET`!"),
+    google_redirect_uri: System.get_env("GOOGLE_REDIRECT_URI"),
+    google_client_id: System.get_env("GOOGLE_CLIENT_ID")
+
   #
   # For this example you need include a HTTP client required by Swoosh API client.
   # Swoosh supports Hackney and Finch out of the box:

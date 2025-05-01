@@ -3,6 +3,8 @@ defmodule Sensocto.SimpleSensor do
   require Logger
   alias Sensocto.AttributeStore
   alias Sensocto.SimpleSensorRegistry
+  alias Sensocto.Sensors.Sensor
+  alias Sensocto.Sensors.SensorAttributeData
 
   # Add interval for mps calculation
   # 1 second
@@ -17,16 +19,27 @@ defmodule Sensocto.SimpleSensor do
 
   @impl true
   @spec init(map()) :: {:ok, %{:message_timestamps => [], optional(any()) => any()}}
-  def init(state) do
+  def init(%{:sensor_id => sensor_id, :sensor_name => sensor_name} = state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
 
     schedule_mps_calculation()
+
+    Sensor
+    |> Ash.Changeset.for_create(:create, %{name: sensor_id})
+    |> Ash.create()
+
+    GenServer.cast(:sensocto_repo_replicator, {:sensor_up, sensor_id})
 
     {:ok,
      state
      |> Map.put(:attributes, state.attributes || %{})
      |> Map.merge(%{message_timestamps: []})
      |> Map.put(:mps_interval, 5000)}
+  end
+
+  def terminate(reason, %{:sensor_id => sensor_id} = state) do
+    Sensor |> Ash.Changeset.for_create(:destroy, %{name: sensor_id}) |> Ash.destroy()
+    GenServer.cast(:sensocto_repo_replicator, {:sensor_down, sensor_id})
   end
 
   # client

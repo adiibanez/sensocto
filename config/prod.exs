@@ -12,7 +12,7 @@ config :swoosh, api_client: Swoosh.ApiClient.Finch, finch_name: Sensocto.Finch
 
 config :sensocto, Sensocto.Mailer,
   adapter: Swoosh.Adapters.SMTP2GO,
-  api_key: System.get_env("SMTP2GO_APIKEY")
+  api_key: System.get_env("SMTP2GO_APIKEY") || ""
 
 # Disable Swoosh Local Memory Storage
 config :swoosh, local: false

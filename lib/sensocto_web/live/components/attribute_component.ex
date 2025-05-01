@@ -242,6 +242,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           />
         </div>
       </.container>
+      <!--<div>{inspect(@lastvalue)}</div>-->
     </div>
     """
   end

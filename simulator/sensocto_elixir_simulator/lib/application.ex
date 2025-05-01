@@ -104,18 +104,18 @@ defmodule Sensocto.Simulator.Application do
     # Start new sensors with incremented numbers
     Enum.map(1..count, fn i ->
       number = max_number + i
-      device_name = "SensoctoSimEx_#{number}"
+      connector_name = "SensoctoSimEx_#{number}"
 
-      device_config = getconfig_for_device(device_name, config)
+      device_config = getconfig_for_device(connector_name, config)
 
       case SensorSimulatorSupervisor.start_sensor(device_config) do
         {:ok, _pid} = result ->
-          Logger.info("Started sensor #{device_name}")
+          Logger.info("Started sensor #{connector_name}")
           Process.sleep(ramp_up_delay)
           result
 
         {:error, reason} = error ->
-          Logger.error("Failed to start sensor #{device_name}: #{inspect(reason)}")
+          Logger.error("Failed to start sensor #{connector_name}: #{inspect(reason)}")
           error
       end
     end)
@@ -142,13 +142,13 @@ defmodule Sensocto.Simulator.Application do
     :ok
   end
 
-  defp getconfig_for_device(device_name, config) do
+  defp getconfig_for_device(connector_name, config) do
     IO.inspect(config, label: "config")
 
     merge_config = %{
-      device_name: device_name,
-      sensor_id: device_name,
-      sensor_name: device_name,
+      connector_name: connector_name,
+      sensor_id: connector_name,
+      sensor_name: connector_name,
       batch_size: 1,
       connector_id: "22222",
       connector_name: "SensoctoSim",
@@ -172,7 +172,7 @@ defmodule Sensocto.Simulator.Application do
 
       config ->
         Map.merge(merge_config, config)
-        |> Map.put(:sensor_id, "#{device_name}:#{config[:sensor_type]}")
+        |> Map.put(:sensor_id, "#{connector_name}:#{config[:sensor_type]}")
         |> IO.inspect(label: "result config")
 
         # |> Map.put(:sampling_rate, 20)

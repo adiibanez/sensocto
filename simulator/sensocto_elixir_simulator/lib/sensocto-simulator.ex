@@ -246,7 +246,7 @@ defmodule Sensocto.SensorSimulatorGenServer do
         Logger.debug("#{sensor_id} Connecting ... #{topic}")
 
         join_meta = %{
-          device_name: config[:device_name],
+          connector_name: config[:connector_name],
           batch_size: 1,
           connector_id: config[:connector_id],
           connector_name: config[:connector_name],

@@ -207,7 +207,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
   def render_attribute_header(assigns) do
     ~H"""
-    <p class="text-xs text-gray-500" id={"attribute_header#{@sensor_id}_#{@attribute_id}"}>
+    <p class="text-xs text-white-500" id={"attribute_header#{@sensor_id}_#{@attribute_id}"}>
       {@attribute_name}
 
       <span :if={@lastvalue}>
@@ -219,7 +219,7 @@ defmodule SensoctoWeb.Live.BaseComponents do
             }
           }
         />
-        
+
     <!--<span>{time_ago_from_unix(@lastvalue.timestamp)}</span>-->
 
         <Heroicons.icon

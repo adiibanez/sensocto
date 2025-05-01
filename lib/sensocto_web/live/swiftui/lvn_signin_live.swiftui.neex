@@ -1,22 +1,36 @@
 <VStack>
-    <Text>SwiftUI Signin 2</Text>
-    <Text>{inspect(@form[:email])}</Text>
+<!-- -->
+    <Text>SwiftUI Signin</Text>
+
+    <Button phx-click="test">Test</Button>
+
+    <Section>
+      <LiveButton phx-click="test">
+        <Group style={[
+          "frame(maxWidth: .infinity)",
+          "bold(true)"
+        ]}>
+          Test livebutton
+        </Group>
+      </LiveButton>
+    </Section>
+
+    <!--<Text>{inspect(@form[:email])}</Text>-->
     <.simple_form id="magiclink" for={@form} phx-submit="request_magiclink">
-
-    <.input type="TextField" field={@form[:email]} label="Email"/>
-
+      <.input type="TextField" field={@form[:email]} label="Email"/>
         <:actions>
           <.button type="submit">Request Magic link</.button>
         </:actions>
-      </.simple_form>
+    </.simple_form>
 
-
-      <.simple_form id="tokenentry" for={@form} action={~p"/auth/user/magic_link"} method="GET">
-
-        <.input type="TextField" name="token" field={@form[:token]} label="Token"/>
-        <:actions>
-          <.button type="submit">Login</.button>
-        </:actions>
-      </.simple_form>
+    <!--<.simple_form id="tokenentry" for={@form} phx-trigger-action="true" action={~p"/auth/user/magic_link"} method="GET">-->
+    <.simple_form id="tokenentry" for={@form} action={~p"/auth/user/magic_link"} method="GET">
+      <.input type="TextField" name="token" field={@form[:token]} label="Token"/>
+      <.input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}/>
+      <.input type="hidden" name="_format" value="swiftui"/>
+      <:actions>
+        <.button type="submit">Login</.button>
+      </:actions>
+    </.simple_form>
 <CustomURLOpener/>
 </VStack>

@@ -7,6 +7,15 @@ defmodule SensoctoWeb.Styles.App.SwiftUI do
   ~SHEET"""
   """
 
+  # "defaults" do
+  #   buttonStyle(.bordered)
+  #   controlSize(.small)
+  #   textFieldStyle(.roundedBorder)
+  #   listStyle(.insetGrouped)
+  #   tint(.blue)
+  #   padding()
+  # end
+
   # If you need to have greater control over how your style rules are created
   # you can use the function defintion style which is more verbose but allows
   # for more fine-grained controled

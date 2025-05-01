@@ -1,2 +1,4 @@
 <.flash_group flash={@flash} />
+<Group class="defaults_">
 {@inner_content}
+</Group>

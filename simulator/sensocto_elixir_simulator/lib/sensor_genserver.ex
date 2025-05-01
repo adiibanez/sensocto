@@ -83,7 +83,7 @@ defmodule Sensocto.Simulator.SensorGenServer do
     # join_attributes = %{"test": 123}
 
     join_meta = %{
-      device_name: connector_id,
+      connector_name: connector_id,
       batch_size: 1,
       connector_id: connector_id,
       connector_name: connector_id,

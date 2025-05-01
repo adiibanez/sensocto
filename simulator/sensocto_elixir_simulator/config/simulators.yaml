@@ -55,9 +55,9 @@ connectors:
             respiratory_rate: 30
             scr_number: 5
             burst_number: 5
-      sensor_4:
-        sensor_id: "sensor_2"
-        sensor_name: "sensor_2"
+      sensor_3:
+        sensor_id: "sensor_3"
+        sensor_name: "sensor_3"
         attributes:
           ppg:
             attribute_id: "ppg"
@@ -82,8 +82,8 @@ connectors:
             scr_number: 5
             burst_number: 5
       sensor_4:
-        sensor_id: "sensor_3"
-        sensor_name: "sensor_3"
+        sensor_id: "sensor_4"
+        sensor_name: "sensor_4"
         attributes:
           emg:
             attribute_id: "emg"
@@ -105,5 +105,42 @@ connectors:
             sampling_rate: 5
             heart_rate: 100
             respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+      sensor_5:
+        sensor_id: "sensor_5"
+        sensor_name: "sensor_5"
+        attributes:
+          emg:
+            attribute_id: "emg"
+            sensor_type: "emg"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 30
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+          rsp:
+            attribute_id: "rsp"
+            sensor_type: "rsp"
+            batch_size: 5000
+            batch_window: 500
+            duration: 30
+            sampling_rate: 5
+            heart_rate: 100
+            respiratory_rate: 30
+            scr_number: 5
+            burst_number: 5
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 30
+            sampling_rate: 50
+            heart_rate: 180
+            respiratory_rate: 45
             scr_number: 5
             burst_number: 5

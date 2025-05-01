@@ -49,6 +49,7 @@ defmodule Sensocto.Application do
 
       # initialize after pubsub
       Sensocto.SensorsDynamicSupervisor,
+      Sensocto.Otp.RepoReplicator,
       # Start the Finch HTTP client for sending emails
       {Finch, name: Sensocto.Finch},
       # Start a worker by calling: Sensocto.Worker.start_link(arg)
@@ -58,6 +59,8 @@ defmodule Sensocto.Application do
       {AshAuthentication.Supervisor, [otp_app: :sensocto]}
       # Sensocto.Broadway.MyBroadway,
       # Sensocto.Broadway.Counter2
+      # elixir desktop bridge
+      # Bridge
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

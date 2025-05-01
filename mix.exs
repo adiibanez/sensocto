@@ -90,6 +90,7 @@ defmodule Sensocto.MixProject do
       {:ash_authentication, "~> 4.5.1"},
       {:ash_authentication_phoenix, "~> 2.4.2"},
       {:ash_postgres, "~> 2.5.5"},
+      {:ash_ops, "~> 0.2.3"},
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},
       {:dialyxir, "~> 1.4.5", only: [:dev]},
@@ -105,27 +106,34 @@ defmodule Sensocto.MixProject do
       # {:kino,
       # local: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/kino"},
       # {:mix_install_watcher, "~> 0.1.0"},
-      {:observer_cli, "~> 1.8"},
+      {:observer_cli, "~> 1.8", only: :dev},
       # {:exprof, "~> 0.2.4"},
       # {:guarded_struct, "~> 0.0.4"},
       {:live_debugger,
        git: "https://github.com/software-mansion-labs/live-debugger.git",
        tag: "v0.1.0",
        only: :dev},
-      {:qr_code, "~> 3.1.0"},
+      # {:qr_code, "~> 3.1.0"},
       {:nx, "~> 0.9.2", override: true},
-      {:matplotex, "~> 0.4.6"},
-      {:stream_data, "~> 1.0"},
+      # {:matplotex, "~> 0.4.6"},
+      # {:stream_data, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:machete, "~> 0.3.10", only: [:dev, :test], runtime: false}
+      {:machete, "~> 0.3.10", only: [:dev, :test], runtime: false},
+      {:exacto_knife, "~> 0.1.5", only: [:dev, :test], runtime: false},
+      # {:bridge,
+      #  path:
+      #    "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/elixir-desktop-bridge"}
 
-      # {:rustler_precompiled, "~> 0.8"},
+      {:iroh_ex, "~> 0.0.4"},
+      #{:iroh_ex,
+      # path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/iroh_ex"},
+      {:rustler_precompiled, "~> 0.8"},
       # {:rustler_btleplug, "~> 0.0.3-alpha"},
       # {:rustler_btleplug,
       # path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/rustler_btleplug",
       # },
 
-      # {:rustler, "~> 0.36.1", optional: true},
+      {:rustler, "~> 0.36.1", optional: true}
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

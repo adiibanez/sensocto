@@ -44,6 +44,7 @@ defmodule SensoctoWeb.Router do
     post "/lvn-auth", LvnController, :authenticate
     get "/lvn-auth", LvnController, :authenticate
     live "/lvn-signin", Live.LvnSigninLive, :index
+    live "/iroh-gossip", Live.IrohGossipLive, :index
 
     # live "/users/:id", UserLive.Show, :show
     # live "/users/:id/show/edit", UserLive.Show, :edit

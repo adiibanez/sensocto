@@ -10,6 +10,14 @@ config :sensocto, Sensocto.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# postgresql://neondb_owner:npg_JYAldE0u5Xmk@ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+# config :sensocto, Sensocto.Repo,
+#   database: "neondb",
+#   username: "neondb_owner",
+#   password: "npg_JYAldE0u5Xmk",
+#   hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
+#   ssl: [cacerts: :public_key.cacerts_get()]
+
 config :tailwind,
   version: "3.4.0",
   sensocto: [
@@ -105,7 +113,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :logger,
-  level: :info,
+  level: :debug,
   backends: [{FlexLogger, :logger_name}]
 
 config :logger, :logger_name,
@@ -116,7 +124,8 @@ config :logger, :logger_name,
   level_config: [
     # [module: Sensocto.SimpleSensor, level: :debug],
     # [module: Sensocto.AttributeStorer, level: :debug],
-    [module: SensoctoWeb.SensorDataChannel, level: :debug]
+    [module: SensoctoWeb.SensorDataChannel, level: :debug],
+    [module: Sensocto.Otp.RepoReplicator, level: :debug]
     # [module: Phoenix.Logger, level: :debug],
     # [module: SensoctoWeb.Plugs.RequestLogger, level: :debug],
     # [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],

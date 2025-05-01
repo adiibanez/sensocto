@@ -19,7 +19,34 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
   def render(assigns) do
     ~H"""
     <div>HTML lvn signin</div>
+
+    <button phx-click="test">Test</button>
+
+    <.simple_form id="magiclink" for={@form} phx-submit="request_magiclink">
+      <.input type="TextField" field={@form[:email]} label="Email" />
+      <:actions>
+        <.button type="submit">Request Magic link</.button>
+      </:actions>
+    </.simple_form>
+
+    <.simple_form
+      id="tokenentry"
+      for={@form}
+      phx-trigger-action="true"
+      action={~p"/auth/user/magic_link"}
+      method="GET"
+    >
+      <.input type="TextField" name="token" field={@form[:token]} label="Token" />
+      <:actions>
+        <.button type="submit">Login</.button>
+      </:actions>
+    </.simple_form>
     """
+  end
+
+  def handle_event("test", _params, socket) do
+    Logger.debug("test")
+    {:noreply, socket}
   end
 
   @spec handle_event(<<_::136>>, map(), any()) :: {:noreply, any()}
@@ -32,5 +59,9 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
     {:noreply,
      socket
      |> assign(:token_requested, true)}
+  end
+
+  def terminate(reason, state) do
+    Logger.debug("LVN terminated")
   end
 end

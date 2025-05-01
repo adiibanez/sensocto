@@ -13,6 +13,6 @@ alias Sensocto.Sensors.Sensor
 
 # sensor_id: "Movesense 11119191991",
 # |> Ash.Changeset.change_attribute("name", "Test")
-Sensor |> Ash.Changeset.for_create(:create, %{name: "Movesense 11119191991"}) |> Ash.create()
-Sensor |> Ash.Changeset.for_create(:create, %{name: "Pressuresensor"}) |> Ash.create()
-Sensor |> Ash.Changeset.for_create(:create, %{name: "Flexsense"}) |> Ash.create()
+# Sensor |> Ash.Changeset.for_create(:create, %{name: "Movesense 11119191991"}) |> Ash.create()
+# Sensor |> Ash.Changeset.for_create(:create, %{name: "Pressuresensor"}) |> Ash.create()
+# Sensor |> Ash.Changeset.for_create(:create, %{name: "Flexsense"}) |> Ash.create()

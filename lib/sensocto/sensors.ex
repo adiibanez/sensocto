@@ -8,6 +8,7 @@ defmodule Sensocto.Sensors do
   resources do
     resource Sensocto.Sensors.Sensor
     resource Sensocto.Sensors.SensorAttribute
+    resource Sensocto.Sensors.SensorAttributeData
     resource Sensocto.Sensors.SensorType
     resource Sensocto.Sensors.Connector
     resource Sensocto.Sensors.ConnectorSensorType

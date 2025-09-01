@@ -89,7 +89,7 @@ defmodule Sensocto.MixProject do
       {:ash, "~> 3.0"},
       {:ash_authentication, "~> 4.5.1"},
       {:ash_authentication_phoenix, "~> 2.4.2"},
-      {:ash_postgres, "~> 2.5.5"},
+      {:ash_postgres, "~> 2.6.17"},
       {:ash_ops, "~> 0.2.3"},
       {:picosat_elixir, "~> 0.2"},
       {:flex_logger, "~> 0.2.1"},

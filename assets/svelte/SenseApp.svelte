@@ -74,7 +74,8 @@
     <div>
         <label
             for="first_name"
-            class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
+            class="block mb-2 text-sm font-medium"
+            style="color: #fbbf24;"
             >Connector name</label
         >
         <input
@@ -95,7 +96,8 @@
     <div>
         <label
             for="autostart"
-            class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
+            class="block mb-2 text-sm font-medium"
+            style="color: #fbbf24;"
             >Autostart</label
         >
         <input

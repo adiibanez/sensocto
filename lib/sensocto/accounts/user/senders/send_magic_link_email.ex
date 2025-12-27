@@ -38,7 +38,7 @@ defmodule Sensocto.Accounts.User.Senders.SendMagicLinkEmail do
     """
     Hello, #{params[:email]}! Click this link to sign in:
 
-    Web: #{url(~p"/auth/user/magic_link/?token=#{params[:token]}")}
+    Web: #{url(~p"/magic_link/#{params[:token]}")}
 
     """
   end

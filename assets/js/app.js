@@ -42,7 +42,19 @@ import {
 // Room-related hooks
 import { RoomStorage, CopyToClipboard, QRCode } from './hooks/room_storage.js';
 
-window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
+// Safari has limited support for module workers - wrap in try/catch to prevent app crash
+try {
+  window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
+} catch (e) {
+  console.warn('Module worker not supported, falling back to inline worker simulation');
+  // Create a mock worker for Safari that does nothing but doesn't break the app
+  window.workerStorage = {
+    postMessage: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    terminate: () => {}
+  };
+}
 let Hooks = {}
 
 // Register room hooks

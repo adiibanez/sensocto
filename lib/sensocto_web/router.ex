@@ -95,6 +95,15 @@ defmodule SensoctoWeb.Router do
     )
 
     reset_route(auth_routes_prefix: "/auth")
+
+    # Magic link confirmation page (for require_interaction? true)
+    magic_sign_in_route(
+      Sensocto.Accounts.User,
+      :magic_link,
+      auth_routes_prefix: "/auth",
+      live_view: SensoctoWeb.MagicSignInLive,
+      overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
+    )
   end
 
   scope "/admin", SensoctoWeb do

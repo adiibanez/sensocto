@@ -26,6 +26,8 @@ let optsClient = {
     // target: "es2017",
     conditions: ["svelte", "browser"],
     outdir: "../priv/static/assets",
+    // Output CSS to a different file to avoid overwriting Tailwind's app.css
+    outExtension: { ".css": ".bundle.css" },
     logLevel: (deploy) ? "info" : "debug",
     sourcemap: watch ? "inline" : false,
     tsconfig: "./tsconfig.json",

@@ -165,14 +165,10 @@ config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
 # Disable swoosh api client as it is only required for production adapters.
-# config :swoosh, :api_client, false
+config :swoosh, :api_client, false
 
-# config :swoosh, api_client: Swoosh.ApiClient.Hackney
-config :swoosh, :api_client, Swoosh.ApiClient.Req
-
-config :sensocto, Sensocto.Mailer,
-  adapter: Swoosh.Adapters.SMTP2GO,
-  api_key: System.get_env("SMTP2GO_APIKEY")
+# Use local adapter for development - emails viewable at /dev/mailbox
+config :sensocto, Sensocto.Mailer, adapter: Swoosh.Adapters.Local
 
 #
 

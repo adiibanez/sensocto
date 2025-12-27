@@ -14,6 +14,7 @@ defmodule Sensocto.Sensors do
     resource Sensocto.Sensors.ConnectorSensorType
     resource Sensocto.Sensors.RoomSensorType
     resource Sensocto.Sensors.Room
+    resource Sensocto.Sensors.RoomMembership
     resource Sensocto.Sensors.SensorConnection
     resource Sensocto.Sensors.SensorSensorConnection
 

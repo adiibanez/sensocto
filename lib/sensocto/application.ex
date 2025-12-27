@@ -31,6 +31,10 @@ defmodule Sensocto.Application do
       {Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       {Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
 
+      # Rooms
+      {Registry, keys: :unique, name: Sensocto.RoomRegistry},
+      {Registry, keys: :unique, name: Sensocto.RoomJoinCodeRegistry},
+
       # {Horde.Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
       # {Horde.Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       # {Horde.Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
@@ -49,6 +53,7 @@ defmodule Sensocto.Application do
 
       # initialize after pubsub
       Sensocto.SensorsDynamicSupervisor,
+      Sensocto.RoomsDynamicSupervisor,
       Sensocto.Otp.RepoReplicator,
       # Start the Finch HTTP client for sending emails
       {Finch, name: Sensocto.Finch},

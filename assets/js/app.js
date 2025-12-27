@@ -39,8 +39,16 @@ import {
   setDebug
 } from './indexeddb.js';
 
+// Room-related hooks
+import { RoomStorage, CopyToClipboard, QRCode } from './hooks/room_storage.js';
+
 window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
 let Hooks = {}
+
+// Register room hooks
+Hooks.RoomStorage = RoomStorage;
+Hooks.CopyToClipboard = CopyToClipboard;
+Hooks.QRCode = QRCode;
 
 
 Hooks.Formless = {

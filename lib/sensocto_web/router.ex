@@ -72,6 +72,19 @@ defmodule SensoctoWeb.Router do
       live "/sensors", SensorLive.Index, :index
       live "/sensors/:id", SensorLive.Show, :show
       live "/sensors/:id/edit", SensorLive.Show, :edit
+
+      # Rooms
+      live "/rooms", RoomListLive, :index
+      live "/rooms/new", RoomListLive, :new
+      live "/rooms/:id", RoomShowLive, :show
+      live "/rooms/:id/settings", RoomShowLive, :settings
+    end
+
+    # Room join can be accessed without authentication (shows preview)
+    # but requires auth to actually join
+    ash_authentication_live_session :authentication_optional,
+      on_mount: {LiveUserAuth, :live_user_optional} do
+      live "/rooms/join/:code", RoomJoinLive, :join
     end
 
     sign_in_route(

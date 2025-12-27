@@ -89,9 +89,18 @@ defmodule Sensocto.SensorsDynamicSupervisor do
 
   def get_sensor_state(sensor_id, mode, values) do
     data =
-      case mode do
-        :view -> SimpleSensor.get_view_state(sensor_id, values)
-        :default -> SimpleSensor.get_state(sensor_id, values)
+      try do
+        case mode do
+          :view -> SimpleSensor.get_view_state(sensor_id, values)
+          :default -> SimpleSensor.get_state(sensor_id, values)
+        end
+      catch
+        :exit, reason ->
+          Logger.debug(
+            "Sensor process not available #{sensor_id}, mode: #{mode}, reason: #{inspect(reason)}"
+          )
+
+          :error
       end
 
     case data do

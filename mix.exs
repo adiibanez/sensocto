@@ -136,7 +136,10 @@ defmodule Sensocto.MixProject do
 
       {:rustler, "~> 0.36 or ~> 0.37", optional: true},
       {:usage_rules, "~> 0.1", only: :dev},
-      {:tidewave, "~> 0.5", only: :dev}
+      {:tidewave, "~> 0.5", only: :dev},
+
+      # QR code generation for room sharing
+      {:eqrcode, "~> 0.1.10"}
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

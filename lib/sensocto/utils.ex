@@ -1,4 +1,27 @@
 defmodule Sensocto.Utils do
+  @moduledoc """
+  General utility functions.
+
+  **DEPRECATION WARNING**: The `string_keys_to_atom_keys/1` function is deprecated
+  due to atom exhaustion vulnerability. Use `Sensocto.Types.SafeKeys.safe_keys_to_atoms/1`
+  instead, which only converts whitelisted keys to atoms.
+  """
+
+  @doc """
+  Converts string keys to atom keys recursively.
+
+  **DEPRECATED**: This function creates atoms from arbitrary strings which can lead
+  to atom exhaustion attacks (DoS). The Erlang atom table is limited and atoms are
+  never garbage collected.
+
+  Use `Sensocto.Types.SafeKeys.safe_keys_to_atoms/1` instead.
+
+  ## Security Risk
+
+  If this function is called with untrusted input (e.g., WebSocket data, API requests),
+  an attacker can exhaust the atom table by sending unique strings, crashing the VM.
+  """
+  @deprecated "Use Sensocto.Types.SafeKeys.safe_keys_to_atoms/1 instead - this function is vulnerable to atom exhaustion attacks"
   def string_keys_to_atom_keys(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {key, value}, acc ->
       new_key = String.to_atom(key)
@@ -7,6 +30,10 @@ defmodule Sensocto.Utils do
     end)
   end
 
+  @doc """
+  Converts atom keys to string keys recursively.
+  This function is safe to use as it only converts atoms that already exist.
+  """
   def atom_keys_to_string_keys(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {key, value}, acc ->
       new_key = Atom.to_string(key)

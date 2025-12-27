@@ -4,6 +4,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
   require Logger
   alias Phoenix.PubSub
   alias Sensocto.Otp.BleConnectorGenServer
+  alias Sensocto.Types.SafeKeys
 
   @retrieve_values 5
 
@@ -252,11 +253,11 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
     #   "ble-characteristics-discovered #{peripheral_id}, #{service_id}, #{inspect(characteristics)}"
     # )
 
+    # Use safe key conversion to prevent atom exhaustion attacks
     characteristics_atoms =
       Enum.map(characteristics, fn characteristic ->
-        Enum.reduce(characteristic, %{}, fn {key, value}, acc ->
-          Map.put(acc, String.to_atom(key), value)
-        end)
+        {:ok, safe_char} = SafeKeys.safe_keys_to_atoms(characteristic)
+        safe_char
       end)
 
     BleConnectorGenServer.add_characteristics(%{:id => peripheral_id}, characteristics_atoms)

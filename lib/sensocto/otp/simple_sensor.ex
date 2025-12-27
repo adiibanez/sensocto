@@ -61,9 +61,14 @@ defmodule Sensocto.SimpleSensor do
 
     transformed_attributes =
       metadata.attributes
-      |> Enum.map(fn {attribute_name_atom, attribute_metadata} ->
-        # Convert the attribute name atom to a string
-        attribute_name_string = Atom.to_string(attribute_name_atom)
+      |> Enum.map(fn {attribute_name, attribute_metadata} ->
+        # Handle both atom and string keys (string is now preferred for safety)
+        attribute_name_string =
+          if is_atom(attribute_name) do
+            Atom.to_string(attribute_name)
+          else
+            to_string(attribute_name)
+          end
 
         # Grab the values from the original attributes
         # Handle missing attribute gracefully
@@ -75,13 +80,19 @@ defmodule Sensocto.SimpleSensor do
         # Get last value from original attributes
         last_value = List.first(values)
 
+        # Normalize attribute_type to atom key (templates expect this)
+        attribute_type = get_attribute_type(attribute_metadata)
+
         {
-          # keep atom so that you can match your schema
-          attribute_name_atom,
-          Map.merge(attribute_metadata, %{
+          # Use string key to prevent atom exhaustion
+          attribute_name_string,
+          %{
             values: values,
-            lastvalue: last_value
-          })
+            lastvalue: last_value,
+            attribute_id: attribute_name_string,
+            attribute_type: attribute_type,
+            sampling_rate: get_in_flexible(attribute_metadata, [:sampling_rate, "sampling_rate"])
+          }
         }
       end)
       |> Enum.into(%{})
@@ -331,6 +342,22 @@ defmodule Sensocto.SimpleSensor do
 
   defp schedule_mps_calculation do
     Process.send_after(self(), :calculate_mps, @mps_interval)
+  end
+
+  # Helper to get attribute_type from mixed key maps
+  defp get_attribute_type(metadata) do
+    # Try atom key first, then string key
+    case Map.get(metadata, :attribute_type) do
+      nil -> Map.get(metadata, "attribute_type")
+      val -> val
+    end
+  end
+
+  # Helper to get value from map with either atom or string key
+  defp get_in_flexible(map, keys) when is_list(keys) do
+    Enum.find_value(keys, fn key ->
+      Map.get(map, key)
+    end)
   end
 
   def cleanup(entry) do

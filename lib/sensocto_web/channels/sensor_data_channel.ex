@@ -1,13 +1,10 @@
 defmodule SensoctoWeb.SensorDataChannel do
   @moduledoc false
-  # alias Sensocto.Broadway.Counter
   use SensoctoWeb, :channel
   require Logger
-  # alias Sensocto.Broadway.BufferingProducer
-  # alias Sensocto.DeviceSupervisor
-  # alias Sensocto.Sensors.SensorAttributeAgent
-  # alias Sensocto.Sensors.SensorSupervisor
+
   alias Sensocto.SimpleSensor
+  alias Sensocto.Types.SafeKeys
   alias SensoctoWeb.Sensocto.Presence
 
   def init(args) do
@@ -98,8 +95,11 @@ defmodule SensoctoWeb.SensorDataChannel do
 
     Logger.debug("ASH params #{inspect(params)}")
 
+    # Use safe key conversion to prevent atom exhaustion attacks
+    {:ok, atom_params} = SafeKeys.safe_keys_to_atoms(params)
+
     request =
-      Sensocto.Utils.string_keys_to_atom_keys(params)
+      atom_params
       |> Map.delete(:bearer_token)
       |> Map.delete(:attributes)
       |> Map.delete(:batch_size)
@@ -152,10 +152,10 @@ defmodule SensoctoWeb.SensorDataChannel do
 
       Logger.debug("socket join #{sensor_id}", params)
 
-      case Sensocto.SensorsDynamicSupervisor.add_sensor(
-             sensor_id,
-             Sensocto.Utils.string_keys_to_atom_keys(params)
-           ) do
+      # Use safe key conversion to prevent atom exhaustion attacks
+      {:ok, safe_params} = SafeKeys.safe_keys_to_atoms(params)
+
+      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, safe_params) do
         {:ok, pid} when is_pid(pid) ->
           Logger.debug("Added sensor #{sensor_id}")
 
@@ -187,24 +187,40 @@ defmodule SensoctoWeb.SensorDataChannel do
       "update attributes action #{inspect(action)}, attribute_id: #{inspect(attribute_id)}, metadata: #{inspect(metadata)}"
     )
 
-    with :ok <-
-           SimpleSensor.update_attribute_registry(
-             socket.assigns.sensor_id,
-             String.to_atom(action),
-             String.to_atom(attribute_id),
-             Sensocto.Utils.string_keys_to_atom_keys(metadata)
-           ) do
-      Logger.debug(
-        "SimpleSensor update_attribute_registry sensor_id: #{socket.assigns.sensor_id}, action: #{action}, attribute_id:  #{attribute_id}, metadata: #{inspect(metadata)}}"
-      )
-    else
-      {:error, _} ->
-        Logger.info(
-          "SimpleSensor update_attribute_registry error for sensor: #{socket.assigns.sensor_id},  attribute_id: #{attribute_id}"
-        )
-    end
+    # Validate action and attribute_id to prevent atom exhaustion
+    with {:ok, validated_action} <- SafeKeys.validate_action(action),
+         {:ok, validated_attr_id} <- SafeKeys.validate_attribute_id(attribute_id),
+         {:ok, safe_metadata} <- SafeKeys.safe_keys_to_atoms(metadata) do
+      # Convert validated action to atom (safe since we validated it)
+      action_atom = String.to_existing_atom(validated_action)
 
-    {:noreply, socket}
+      SimpleSensor.update_attribute_registry(
+        socket.assigns.sensor_id,
+        action_atom,
+        validated_attr_id,
+        safe_metadata
+      )
+
+      Logger.debug(
+        "SimpleSensor update_attribute_registry sensor_id: #{socket.assigns.sensor_id}, action: #{action}, attribute_id: #{attribute_id}, metadata: #{inspect(metadata)}"
+      )
+
+      {:noreply, socket}
+    else
+      {:error, :invalid_action} ->
+        Logger.warning("Invalid action received: #{inspect(action)}")
+        {:reply, {:error, %{reason: "invalid_action"}}, socket}
+
+      {:error, :invalid_attribute_id} ->
+        Logger.warning("Invalid attribute_id received: #{inspect(attribute_id)}")
+        {:reply, {:error, %{reason: "invalid_attribute_id"}}, socket}
+
+      {:error, reason} ->
+        Logger.info(
+          "SimpleSensor update_attribute_registry error for sensor: #{socket.assigns.sensor_id}, attribute_id: #{attribute_id}, reason: #{inspect(reason)}"
+        )
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -218,22 +234,31 @@ defmodule SensoctoWeb.SensorDataChannel do
       ) do
     Logger.debug("SINGLE: #{inspect(sensor_measurement_data)}")
 
-    with :ok <-
-           SimpleSensor.put_attribute(
-             socket.assigns.sensor_id,
-             Sensocto.Utils.string_keys_to_atom_keys(sensor_measurement_data)
-           ) do
-      Logger.debug(
-        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, SINGLE: #{inspect(sensor_measurement_data)}}"
-      )
-    else
-      {:error, _} ->
-        Logger.info(
-          "SimpleSensor data error for sensor: #{socket.assigns.sensor_id},  attribute_id: #{attribute_id}"
-        )
-    end
+    # Validate measurement keys before processing
+    with {:ok, _} <- SafeKeys.validate_measurement_keys(sensor_measurement_data),
+         {:ok, safe_data} <- SafeKeys.safe_keys_to_atoms(sensor_measurement_data) do
+      SimpleSensor.put_attribute(socket.assigns.sensor_id, safe_data)
 
-    {:noreply, socket}
+      Logger.debug(
+        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, SINGLE: #{inspect(sensor_measurement_data)}"
+      )
+
+      {:noreply, socket}
+    else
+      {:error, :invalid_attribute_id} ->
+        Logger.warning("Invalid attribute_id in measurement: #{inspect(attribute_id)}")
+        {:reply, {:error, %{reason: "invalid_attribute_id"}}, socket}
+
+      {:error, {:missing_fields, fields}} ->
+        Logger.warning("Missing fields in measurement: #{inspect(fields)}")
+        {:reply, {:error, %{reason: "missing_fields", fields: fields}}, socket}
+
+      {:error, reason} ->
+        Logger.info(
+          "SimpleSensor data error for sensor: #{socket.assigns.sensor_id}, attribute_id: #{attribute_id}, reason: #{inspect(reason)}"
+        )
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -245,32 +270,38 @@ defmodule SensoctoWeb.SensorDataChannel do
         socket
       )
       when is_list(measurements_list) do
-    if Enum.all?(measurements_list, fn item ->
-         is_map(item) and
-           Map.has_key?(item, "attribute_id") and
-           Map.has_key?(item, "payload") and
-           Map.has_key?(item, "timestamp")
-       end) do
-      Logger.debug("BATCH: #{length(measurements_list)}")
+    # Validate and convert all measurements safely
+    validated_results =
+      Enum.map(measurements_list, fn item ->
+        with {:ok, _} <- SafeKeys.validate_measurement_keys(item),
+             {:ok, safe_item} <- SafeKeys.safe_keys_to_atoms(item) do
+          {:ok, safe_item}
+        else
+          error -> error
+        end
+      end)
 
-      atom_key_map = Enum.map(measurements_list, &Sensocto.Utils.string_keys_to_atom_keys/1)
+    # Check if all validations passed
+    {valid, invalid} = Enum.split_with(validated_results, &match?({:ok, _}, &1))
 
-      with :ok <-
-             SimpleSensor.put_batch_attributes(socket.assigns.sensor_id, atom_key_map) do
-        Logger.debug(
-          "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, BATCH: #{length(atom_key_map)}"
-        )
-      else
-        {:error, _} ->
-          Logger.info(
-            "SimpleSensor data error for sensor: #{socket.assigns.sensor_id}, BATCH: #{length(atom_key_map)}"
-          )
-      end
+    if Enum.empty?(invalid) do
+      safe_measurements = Enum.map(valid, fn {:ok, m} -> m end)
+
+      Logger.debug("BATCH: #{length(safe_measurements)}")
+
+      SimpleSensor.put_batch_attributes(socket.assigns.sensor_id, safe_measurements)
+
+      Logger.debug(
+        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, BATCH: #{length(safe_measurements)}"
+      )
 
       {:noreply, socket}
     else
-      Logger.debug("Invalid batch of measurements #{inspect(measurements_list)}")
-      {:noreply, socket}
+      Logger.warning(
+        "Invalid batch measurements rejected: #{length(invalid)} of #{length(measurements_list)} failed validation"
+      )
+
+      {:reply, {:error, %{reason: "invalid_batch", failed_count: length(invalid)}}, socket}
     end
   end
 

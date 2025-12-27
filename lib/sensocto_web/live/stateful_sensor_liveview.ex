@@ -88,12 +88,12 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       %{}
     )
 
-    # measurement |> dbg()
-    Map.merge(socket.assigns.sensor.attributes, %{
-      String.to_atom(measurement.attribute_id) => measurement
-    })
-
-    # |> dbg()
+    # Note: Using string keys for attribute_id to prevent atom exhaustion
+    # The attribute_id is already validated at the channel boundary
+    _merged_attributes =
+      Map.merge(socket.assigns.sensor.attributes, %{
+        measurement.attribute_id => measurement
+      })
 
     new_socket =
       socket

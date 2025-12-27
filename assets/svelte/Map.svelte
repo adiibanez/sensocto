@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, afterUpdate } from "svelte";
     import * as maplibregl from "maplibre-gl";
-    //import "maplibre-gl/dist/maplibre-gl.css";
+    import "maplibre-gl/dist/maplibre-gl.css";
 
     export let position: { lat: number; lng: number; accuracy: number };
     export let identifier = "map";
@@ -14,7 +14,7 @@
         // Use a reactive statement to trigger updates
         if (position && map && marker) {
             console.log("Updating map and marker:", position);
-            //map.setCenter([position.lng, position.lat]);
+            map.setCenter([position.lng, position.lat]);
             marker.setLngLat([position.lng, position.lat]);
         }
     }
@@ -37,21 +37,23 @@
             container: identifier,
             style: "https://demotiles.maplibre.org/style.json", // style URL
             center: [position.lng, position.lat], // starting position [lng, lat]
-            zoom: 5,
+            zoom: 12,
         });
-        //
-        marker = new maplibregl.Marker()
+
+        // Create marker with anchor at bottom to properly position the pin point
+        marker = new maplibregl.Marker({ anchor: "bottom" })
             .setLngLat([position.lng, position.lat])
             .addTo(map);
     }
 </script>
 
 <!--Pos: {JSON.stringify(position)}-->
-<div bind:this={mapContainer} id={identifier} class="map-container h-20"></div>
+<div bind:this={mapContainer} id={identifier} class="map-container"></div>
 
 <style>
     .map-container {
         width: 100%;
+        height: 150px; /* Fixed height for map - MapLibre overrides Tailwind classes */
         position: relative; /* Important for marker positioning */
     }
 </style>

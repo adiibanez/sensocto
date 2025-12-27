@@ -1,14 +1,32 @@
 defmodule SensoctoWeb.Live.Components.AttributeComponent do
+  @moduledoc """
+  LiveComponent for rendering sensor attributes.
+
+  Uses `Sensocto.Types.AttributeType` for render hints to determine
+  the appropriate visualization for each attribute type. This provides
+  a centralized, extensible way to add new attribute visualizations.
+
+  ## Adding New Attribute Types
+
+  To add a new attribute type visualization:
+  1. Add the type to `Sensocto.Types.AttributeType.@attribute_types`
+  2. Add render hints in `Sensocto.Types.AttributeType.render_hints/1`
+  3. Create any needed Svelte component in `assets/svelte/`
+  4. Optionally add a specific render clause here for complex layouts
+  """
+
   import SensoctoWeb.Live.BaseComponents
   use Phoenix.LiveComponent
   require Logger
   import LiveSvelte
 
+  alias Sensocto.Types.AttributeType
+
   attr :attribute_type, :string
 
   @impl true
   def render(%{:attribute_type => "ecg"} = assigns) do
-    Logger.debug("AttributeComponent ecg render #{inspect(assigns)}")
+    Logger.debug("AttributeComponent ecg render")
 
     ~H"""
     <div>
@@ -248,20 +266,34 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   def update(assigns, socket) do
-    Logger.debug("attribute update attribute: #{inspect(assigns)}")
+    # Handle partial updates (only lastvalue) vs full mount updates
+    # When send_update is called with just id and lastvalue, we only update lastvalue
+    if Map.has_key?(assigns, :attribute_id) do
+      Logger.debug("attribute update (full) attribute_id: #{assigns.attribute_id}")
 
-    {
-      :ok,
-      socket
-      |> assign_new(:id, fn _ -> assigns.id end)
-      |> assign_new(:attribute_id, fn _ -> assigns.attribute_id end)
-      |> assign_new(:attribute_type, fn _ -> assigns.attribute_type end)
-      |> assign_new(:sensor_id, fn _ -> assigns.sensor_id end)
-      |> assign_new(:attribute, fn _ -> assigns.attribute end)
-      |> assign_new(:lastvalue, fn _ -> assigns.attribute.lastvalue end)
-      # measurements only contain lastvalue
-      |> assign(:lastvalue, assigns.lastvalue)
-    }
+      # Get render hints from AttributeType for dynamic visualization selection
+      attribute_type = assigns.attribute_type || "unknown"
+      render_hints = AttributeType.render_hints(attribute_type)
+
+      {
+        :ok,
+        socket
+        |> assign_new(:id, fn _ -> assigns.id end)
+        |> assign_new(:attribute_id, fn _ -> assigns.attribute_id end)
+        |> assign_new(:attribute_type, fn _ -> attribute_type end)
+        |> assign_new(:sensor_id, fn _ -> assigns.sensor_id end)
+        |> assign_new(:attribute, fn _ -> assigns.attribute end)
+        |> assign_new(:lastvalue, fn _ -> assigns.attribute.lastvalue end)
+        |> assign_new(:render_hints, fn _ -> render_hints end)
+        # measurements only contain lastvalue
+        |> assign(:lastvalue, assigns.lastvalue)
+      }
+    else
+      # Partial update - only update lastvalue
+      Logger.debug("attribute update (partial) id: #{assigns.id}")
+
+      {:ok, assign(socket, :lastvalue, assigns.lastvalue)}
+    end
   end
 
   defp container(assigns) do

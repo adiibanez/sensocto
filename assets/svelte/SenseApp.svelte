@@ -24,10 +24,18 @@
 
     export let live = null;
     let deviceName = null;
+    let inputDeviceName = "";
     let sensorService = null;
+
+    // Track if initial load is complete to avoid saving cookie on mount
+    let initialLoadComplete = false;
 
     autostart.subscribe((value) => {
         logger.log(loggerCtxName, "Autostart update", value, autostart);
+        // Save to cookie whenever value changes (but not on initial load)
+        if (initialLoadComplete) {
+            setCookie("autostart", value);
+        }
     });
 
     onMount(() => {
@@ -39,6 +47,7 @@
         console.log("connected to socket", socket);
 
         deviceName = sensorService.getDeviceName();
+        inputDeviceName = deviceName;
         console.log("Device name", deviceName, sensorService);
 
         //SensorService.setupChannel("test", { sensor_type: "test" });
@@ -46,6 +55,7 @@
         cookieAutostart = getCookie("autostart");
         logger.log(loggerCtxName, "Cookie autostart", cookieAutostart);
         autostart.set(cookieAutostart == "true");
+        initialLoadComplete = true;
 
         usersettings.update((settings) => ({
             ...settings,
@@ -55,7 +65,7 @@
     onDestroy(() => {
         console.log("Destroy SenseApp");
         socket.disconnect();
-        setCookie("autostart", autostart.get());
+        // Cookie is now saved in the subscribe callback, no need to save here
     });
 </script>
 
@@ -71,12 +81,15 @@
             type="text"
             id="connector_name"
             class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            placeholder={deviceName}
+            bind:value={inputDeviceName}
             required
         />
         <button
             class="btn btn-blue text-xs"
-            on:click={sensorService.setDeviceName(deviceName)}>Save</button
+            on:click={() => {
+                sensorService.setDeviceName(inputDeviceName);
+                deviceName = inputDeviceName;
+            }}>Save</button
         >
     </div>
     <div>

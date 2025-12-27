@@ -1,4 +1,4 @@
-<script type="ts">
+<script lang="ts">
     import { setContext, onMount } from "svelte";
     import { Socket } from "phoenix";
     import { getCookie, setCookie } from "../utils.js";

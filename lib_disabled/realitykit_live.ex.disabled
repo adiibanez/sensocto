@@ -1,7 +1,7 @@
 defmodule SensoctoWeb.RealitykitLive do
   alias Phoenix.PubSub
   use SensoctoWeb, :live_view
-  # LVN_ACTIVATION use SensoctoNative, :live_view
+  use SensoctoNative, :live_view
   require Logger
   import SensoctoWeb.Live.Components.ControllerComponents
 

@@ -109,23 +109,23 @@ config :mime, :types, %{
   "text/swiftui" => ["swiftui"]
 }
 
-config :phoenix_template, :format_encoders, swiftui: Phoenix.HTML.Engine
+# LVN_ACTIVATION config :phoenix_template, :format_encoders, swiftui: Phoenix.HTML.Engine
 
-config :live_view_native,
-  plugins: [
-    LiveViewNative.SwiftUI
-  ]
+# LVN_ACTIVATION config :live_view_native,
+# LVN_ACTIVATION   plugins: [
+# LVN_ACTIVATION     LiveViewNative.SwiftUI
+# LVN_ACTIVATION   ]
 
-config :phoenix, :template_engines, neex: LiveViewNative.Engine
+# LVN_ACTIVATION config :phoenix, :template_engines, neex: LiveViewNative.Engine
 
-config :live_view_native_stylesheet,
-  content: [
-    swiftui: [
-      "lib/**/swiftui/*",
-      "lib/**/*swiftui*"
-    ]
-  ],
-  output: "priv/static/assets"
+# LVN_ACTIVATION config :live_view_native_stylesheet,
+# LVN_ACTIVATION   content: [
+# LVN_ACTIVATION     swiftui: [
+# LVN_ACTIVATION       "lib/**/swiftui/*",
+# LVN_ACTIVATION       "lib/**/*swiftui*"
+# LVN_ACTIVATION     ]
+# LVN_ACTIVATION   ],
+# LVN_ACTIVATION   output: "priv/static/assets"
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

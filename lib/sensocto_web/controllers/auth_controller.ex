@@ -60,7 +60,7 @@ defmodule SensoctoWeb.Controllers.AuthController do
     return_to = get_session(conn, :return_to) || ~p"/"
 
     conn
-    |> clear_session()
+    |> clear_session(:sensocto)
     |> redirect(to: return_to)
   end
 

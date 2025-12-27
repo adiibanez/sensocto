@@ -438,7 +438,7 @@
 </script>
 
 <div style="width:{width}px;height:{height}px; position: relative">
-    <canvas bind:this={canvas} {width} {height} />
+    <canvas bind:this={canvas} {width} {height}></canvas>
     <p class="text-xs hidden">
         ECG {JSON.stringify(ecgDimensions)}, data: {data.length} minValue: {minValue}
         maxValue: {maxValue} width: {width} height: {height} tw: {timewindow}

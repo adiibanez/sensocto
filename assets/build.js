@@ -1,7 +1,7 @@
 const esbuild = require("esbuild");
 const sveltePlugin = require("esbuild-svelte");
 const importGlobPlugin = require("esbuild-plugin-import-glob").default;
-const sveltePreprocess = require("svelte-preprocess");
+// svelte-preprocess removed - Svelte 5 has built-in TypeScript support
 //const { wasmLoader } = require('esbuild-plugin-wasm');
 
 const fs = require('fs');
@@ -29,16 +29,19 @@ let optsClient = {
     logLevel: (deploy) ? "info" : "debug",
     sourcemap: watch ? "inline" : false,
     tsconfig: "./tsconfig.json",
+    // Add node_modules to resolution path for deps folder imports
+    nodePaths: [path.resolve(__dirname, "node_modules")],
     external: [
         "/fonts/*",
-        "/images/*"
+        "/images/*",
+        // SSR is handled by Elixir, not needed in browser bundle
+        "svelte/server"
     ],
     plugins: [
         importGlobPlugin(),
 
         sveltePlugin({
-            preprocess: sveltePreprocess(),
-            compilerOptions: { dev: !deploy, hydratable: true, css: "injected", customElement: true },
+            compilerOptions: { dev: !deploy, css: "injected" },
         }),
 
         /*wasmLoader(
@@ -59,7 +62,7 @@ let optsClient = {
     //'.wasm': 'file'
     //},
     target: 'es2020',
-    format: 'esm'
+    format: 'iife'
 };
 
 function copyFile(source, target) {

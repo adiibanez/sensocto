@@ -1,6 +1,6 @@
 defmodule SensoctoWeb.Live.LvnEntryLive do
   use SensoctoWeb, :live_view
-  # LVN_ACTIVATION use SensoctoNative, :live_view
+  use SensoctoNative, :live_view
   require Logger
   alias Phoenix.PubSub
   alias Sensocto.Otp.BleConnectorGenServer

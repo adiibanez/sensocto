@@ -48,6 +48,7 @@ defmodule Sensocto.Accounts.User do
         identity_field :email
         registration_enabled? true
         token_lifetime 60 * 60
+        require_interaction? true
 
         sender Sensocto.Accounts.User.Senders.SendMagicLinkEmail
       end
@@ -72,6 +73,7 @@ defmodule Sensocto.Accounts.User do
         monitor_fields [:email]
         confirm_on_create? true
         confirm_on_update? false
+        require_interaction? true
 
         auto_confirm_actions [
           :sign_in_with_magic_link,

@@ -23,7 +23,8 @@ import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import logger from "./logger.js"
 // import Hooks from "./hooks"
-import { getHooks } from "live_svelte"
+// Import directly from hooks.svelte module to avoid svelte/server dependency (from render.js)
+import { getHooks } from "../../deps/live_svelte/assets/js/live_svelte/hooks.svelte"
 import * as Components from "../svelte/**/*.svelte"
 //import * as Components from "../svelte/SenseApp.svelte"
 

@@ -60,7 +60,9 @@ config :sensocto, SensoctoWeb.Endpoint,
     # live_svelte: {LiveSvelte, :init, []}
   ]
 
-config :live_debugger, browser_features?: true
+config :live_debugger,
+  browser_features?: true,
+  assets_url: "http://localhost:4007/assets/live_debugger/browser_features.js"
 # config :live_debugger,
 # ip: {127, 0, 0, 1}, # IP on which LiveDebugger will be hosted
 # port: 4007, # Port on which LiveDebugger will be hosted
@@ -157,6 +159,8 @@ config :phoenix, :plug_init_mode, :runtime
 config :phoenix_live_view,
   # Include HEEx debug annotations as HTML comments in rendered markup
   debug_heex_annotations: true,
+  # Enable debug attributes for Tidewave integration
+  debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
@@ -172,6 +176,6 @@ config :sensocto, Sensocto.Mailer,
 
 #
 
-config :live_view_native_stylesheet,
-  annotations: true,
-  pretty: true
+# LVN_ACTIVATION config :live_view_native_stylesheet,
+# LVN_ACTIVATION   annotations: true,
+# LVN_ACTIVATION   pretty: true

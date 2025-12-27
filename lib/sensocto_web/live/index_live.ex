@@ -1,7 +1,7 @@
 defmodule SensoctoWeb.IndexLive do
   # alias Sensocto.SimpleSensor
   use SensoctoWeb, :live_view
-  use SensoctoNative, :live_view
+  # LVN_ACTIVATION use SensoctoNative, :live_view
   require Logger
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLiveview

@@ -1,6 +1,6 @@
 defmodule SensoctoWeb.StatefulSensorLiveview do
   use SensoctoWeb, :live_view
-  # LVN_ACTIVATION use SensoctoNative, :live_view
+  use SensoctoNative, :live_view
   import Phoenix.LiveView
 
   alias Sensocto.SimpleSensor

@@ -48,6 +48,11 @@ config :sensocto,
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
 
+# Simulator configuration (disabled by default)
+config :sensocto, :simulator,
+  enabled: false,
+  config_path: "config/simulators.yaml"
+
 config :ex_heroicons, type: "outline"
 
 # Configures the endpoint

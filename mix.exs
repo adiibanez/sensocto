@@ -97,7 +97,8 @@ defmodule Sensocto.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev]},
       # only: [:dev, :test]
       {:sourceror, "~> 1.7 or ~> 1.8 or ~> 1.9 or ~> 1.10", override: true},
-      {:nimble_csv, "~> 1.1", only: [:dev]},
+      {:nimble_csv, "~> 1.1"},
+      {:yaml_elixir, "~> 2.11"},
       # {:brotli, "~> 0.3.2", only: [:dev]},
       {:mishka_chelekom, "~> 0.0.2", only: :dev},
       {:daisy_ui_components, "~> 0.7"},

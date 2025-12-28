@@ -1,0 +1,36 @@
+# Simulator configuration
+# This file defines simulated sensors that will appear in the application
+
+connectors:
+  sim_connector_1:
+    connector_id: "sim_connector_1"
+    connector_name: "Simulator_1"
+    sensors:
+      sim_heartrate:
+        sensor_id: "sim_heartrate"
+        sensor_name: "Heartrate_Sensor"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 10
+            batch_window: 1000
+            duration: 60
+            sampling_rate: 1
+            heart_rate: 75
+            respiratory_rate: 15
+            dummy_data: true
+      sim_ecg:
+        sensor_id: "sim_ecg"
+        sensor_name: "ECG_Sensor"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 30
+            sampling_rate: 50
+            heart_rate: 72
+            respiratory_rate: 14
+            dummy_data: true

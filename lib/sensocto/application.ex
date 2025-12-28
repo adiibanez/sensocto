@@ -68,6 +68,15 @@ defmodule Sensocto.Application do
       # Bridge
     ]
 
+    # Conditionally add simulator if enabled
+    children =
+      if Sensocto.Simulator.Supervisor.enabled?() do
+        IO.puts("Starting integrated simulator...")
+        children ++ [{Sensocto.Simulator.Supervisor, []}]
+      else
+        children
+      end
+
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Sensocto.Supervisor]

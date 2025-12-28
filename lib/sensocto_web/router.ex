@@ -109,6 +109,8 @@ defmodule SensoctoWeb.Router do
   scope "/admin", SensoctoWeb do
     pipe_through [:browser, :admins_only]
 
+    live "/simulator", SimulatorLive, :index
+
     live_dashboard "/dashboard",
       metrics: SensoctoWeb.Telemetry,
       additional_pages: [

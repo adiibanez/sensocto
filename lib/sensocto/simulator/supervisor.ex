@@ -1,0 +1,49 @@
+defmodule Sensocto.Simulator.Supervisor do
+  @moduledoc """
+  Top-level supervisor for the integrated simulator.
+  Manages the data server pool, manager, and connector supervisor.
+  """
+
+  use Supervisor
+  require Logger
+
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_opts) do
+    config = Application.get_env(:sensocto, :simulator, [])
+    config_path = Keyword.get(config, :config_path, "config/simulators.yaml")
+
+    Logger.info("Starting Simulator Supervisor with config: #{config_path}")
+
+    children = [
+      # Registry for simulator processes
+      {Registry, keys: :unique, name: Sensocto.Simulator.Registry},
+
+      # Data server pool (5 workers for parallel data generation)
+      Supervisor.child_spec({Sensocto.Simulator.DataServer, 1}, id: :data_server_1),
+      Supervisor.child_spec({Sensocto.Simulator.DataServer, 2}, id: :data_server_2),
+      Supervisor.child_spec({Sensocto.Simulator.DataServer, 3}, id: :data_server_3),
+      Supervisor.child_spec({Sensocto.Simulator.DataServer, 4}, id: :data_server_4),
+      Supervisor.child_spec({Sensocto.Simulator.DataServer, 5}, id: :data_server_5),
+
+      # Dynamic supervisor for connectors
+      {DynamicSupervisor, strategy: :one_for_one, name: Sensocto.Simulator.ConnectorSupervisor},
+
+      # Manager that loads config and starts connectors
+      {Sensocto.Simulator.Manager, config_path}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @doc """
+  Check if the simulator is enabled in config.
+  """
+  def enabled? do
+    config = Application.get_env(:sensocto, :simulator, [])
+    Keyword.get(config, :enabled, false)
+  end
+end

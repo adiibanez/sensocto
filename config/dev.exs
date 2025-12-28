@@ -175,3 +175,8 @@ config :sensocto, Sensocto.Mailer, adapter: Swoosh.Adapters.Local
 # LVN_ACTIVATION config :live_view_native_stylesheet,
 # LVN_ACTIVATION   annotations: true,
 # LVN_ACTIVATION   pretty: true
+
+# Simulator enabled in development
+config :sensocto, :simulator,
+  enabled: true,
+  config_path: "config/simulators.yaml"

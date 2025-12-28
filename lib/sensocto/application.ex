@@ -68,9 +68,9 @@ defmodule Sensocto.Application do
       # Bridge
     ]
 
-    # Conditionally add simulator if enabled
+    # Conditionally add simulator if enabled in config
     children =
-      if Sensocto.Simulator.Supervisor.enabled?() do
+      if Sensocto.Simulator.Supervisor.config_enabled?() do
         IO.puts("Starting integrated simulator...")
         children ++ [{Sensocto.Simulator.Supervisor, []}]
       else

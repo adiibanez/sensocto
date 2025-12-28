@@ -211,11 +211,25 @@ defmodule Sensocto.Simulator.Manager do
     removed_connectors = Map.keys(state.connectors) -- Map.keys(new_connectors_config)
     Enum.each(removed_connectors, &do_stop_connector/1)
 
-    # Start/Update connectors
-    Enum.reduce(new_connectors_config, %{state | connectors: %{}}, fn {connector_id, connector_config}, acc ->
-      connector_config = Map.put(connector_config, "connector_id", connector_id)
-      start_or_update_connector(acc, connector_id, connector_config)
-    end)
+    # Check if we should autostart connectors
+    simulator_config = Application.get_env(:sensocto, :simulator, [])
+    autostart = Keyword.get(simulator_config, :autostart, true)
+
+    if autostart do
+      # Start/Update connectors
+      Enum.reduce(new_connectors_config, %{state | connectors: %{}}, fn {connector_id, connector_config}, acc ->
+        connector_config = Map.put(connector_config, "connector_id", connector_id)
+        start_or_update_connector(acc, connector_id, connector_config)
+      end)
+    else
+      # Just store config without starting - connectors can be started manually
+      Logger.info("Autostart disabled - connectors loaded but not started")
+      new_connectors =
+        Map.new(new_connectors_config, fn {connector_id, connector_config} ->
+          {connector_id, Map.put(connector_config, "connector_id", connector_id)}
+        end)
+      %{state | connectors: new_connectors}
+    end
   end
 
   defp start_or_update_connector(state, connector_id, connector_config) do

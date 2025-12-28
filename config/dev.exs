@@ -63,6 +63,7 @@ config :sensocto, SensoctoWeb.Endpoint,
 config :live_debugger,
   browser_features?: true,
   assets_url: "http://localhost:4007/assets/live_debugger/browser_features.js"
+
 # config :live_debugger,
 # ip: {127, 0, 0, 1}, # IP on which LiveDebugger will be hosted
 # port: 4007, # Port on which LiveDebugger will be hosted
@@ -121,20 +122,21 @@ config :logger,
 config :logger, :logger_name,
   logger: :console,
   # this is the loggers default level
-  # default_level: :info,
+  default_level: :info,
   # override default levels
   level_config: [
-    # [module: Sensocto.SimpleSensor, level: :debug],
-    # [module: Sensocto.AttributeStorer, level: :debug],
-    [module: SensoctoWeb.SensorDataChannel, level: :debug],
-    [module: Sensocto.Otp.RepoReplicator, level: :debug]
-    # [module: Phoenix.Logger, level: :debug],
-    # [module: SensoctoWeb.Plugs.RequestLogger, level: :debug],
-    # [module: SensoctoWeb.Live.LvnEntryLive, level: :debug],
-    # [module: Phoenix.LiveView.Channel, level: :debug]
-    # [module: SensoctoWeb.Live.PlaygroundLive, level: :debug]
-    # [module: SensoctoWeb.IndexLive, level: :debug],
-    # [module: SensoctoWeb.Live.BaseComponents, level: :debug]
+    # Silence verbose simulator/sensor debug logs
+    [module: Sensocto.Simulator.AttributeServer, level: :info],
+    [module: Sensocto.Simulator.SensorServer, level: :info],
+    [module: Sensocto.Simulator.DataServer, level: :info],
+    [module: Sensocto.Otp.SimpleSensor, level: :info],
+    [module: Sensocto.Otp.RepoReplicator, level: :info],
+    [module: Sensocto.SimpleSensor, level: :info],
+    # Silence verbose channel/LiveView debug logs
+    [module: SensoctoWeb.SensorDataChannel, level: :info],
+    [module: SensoctoWeb.Live.Components.AttributeComponent, level: :info],
+    [module: SensoctoWeb.StatefulSensorLiveview, level: :info],
+    [module: SensoctoWeb.IndexLive, level: :info]
   ],
   # backend specific configuration
   # format: "DEV [$time] [$level] $message\n"
@@ -176,7 +178,8 @@ config :sensocto, Sensocto.Mailer, adapter: Swoosh.Adapters.Local
 # LVN_ACTIVATION   annotations: true,
 # LVN_ACTIVATION   pretty: true
 
-# Simulator enabled in development
+# Simulator starts but connectors are stopped by default - use /admin/simulator to start
 config :sensocto, :simulator,
   enabled: true,
+  autostart: false,
   config_path: "config/simulators.yaml"

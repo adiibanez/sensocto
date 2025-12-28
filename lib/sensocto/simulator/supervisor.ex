@@ -40,10 +40,34 @@ defmodule Sensocto.Simulator.Supervisor do
   end
 
   @doc """
-  Check if the simulator is enabled in config.
+  Check if the simulator is enabled in config (for startup decision).
   """
-  def enabled? do
+  def config_enabled? do
     config = Application.get_env(:sensocto, :simulator, [])
     Keyword.get(config, :enabled, false)
+  end
+
+  @doc """
+  Check if the simulator supervisor is currently running.
+  """
+  def enabled? do
+    case Process.whereis(__MODULE__) do
+      nil -> false
+      pid when is_pid(pid) -> Process.alive?(pid)
+    end
+  end
+
+  @doc """
+  Stop the simulator supervisor and all its children.
+  """
+  def stop do
+    case Process.whereis(__MODULE__) do
+      nil ->
+        {:error, :not_running}
+
+      pid when is_pid(pid) ->
+        Supervisor.stop(pid, :normal)
+        :ok
+    end
   end
 end

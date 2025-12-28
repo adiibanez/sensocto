@@ -9,10 +9,7 @@
     </script>
     <script defer phx-track-static src={~p"/assets/app.js"}>
     </script>
-    <%= if Application.get_env(:live_debugger, :browser_features?) do %>
-      <script id="live-debugger-scripts" src={Application.get_env(:live_debugger, :assets_url)}>
-      </script>
-    <% end %>
+<%= Application.get_env(:live_debugger, :live_debugger_tags) %>
   </head>
 
   <body class="h-full text-white font-mono">

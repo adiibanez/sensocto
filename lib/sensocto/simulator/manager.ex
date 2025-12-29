@@ -361,9 +361,10 @@ defmodule Sensocto.Simulator.Manager do
   end
 
   defp discover_scenarios do
-    scenarios_path = Path.join(File.cwd!(), @scenarios_dir)
+    # Try multiple paths for scenarios directory (release vs dev)
+    scenarios_path = find_scenarios_dir()
 
-    if File.exists?(scenarios_path) do
+    if scenarios_path && File.exists?(scenarios_path) do
       scenarios_path
       |> File.ls!()
       |> Enum.filter(&String.ends_with?(&1, ".yaml"))
@@ -384,8 +385,29 @@ defmodule Sensocto.Simulator.Manager do
       end)
       |> Enum.sort_by(& &1.attribute_count)
     else
-      Logger.warning("Scenarios directory not found: #{scenarios_path}")
+      Logger.warning("Scenarios directory not found: #{inspect(scenarios_path)}")
       []
+    end
+  end
+
+  defp find_scenarios_dir do
+    # Check multiple possible locations for scenarios directory
+    possible_paths = [
+      # Release: /app/config/simulator_scenarios
+      Path.join(Application.app_dir(:sensocto), "../config/simulator_scenarios"),
+      # Release alternative: relative to release root
+      "/app/config/simulator_scenarios",
+      # Development: config/simulator_scenarios relative to cwd
+      Path.join(File.cwd!(), @scenarios_dir)
+    ]
+
+    Enum.find(possible_paths, fn path ->
+      expanded = Path.expand(path)
+      File.exists?(expanded) && File.dir?(expanded)
+    end)
+    |> case do
+      nil -> nil
+      path -> Path.expand(path)
     end
   end
 

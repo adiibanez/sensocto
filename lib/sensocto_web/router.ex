@@ -78,6 +78,9 @@ defmodule SensoctoWeb.Router do
       live "/rooms/new", RoomListLive, :new
       live "/rooms/:id", RoomShowLive, :show
       live "/rooms/:id/settings", RoomShowLive, :settings
+
+      # Simulator
+      live "/simulator", SimulatorLive, :index
     end
 
     # Room join can be accessed without authentication (shows preview)
@@ -108,8 +111,6 @@ defmodule SensoctoWeb.Router do
 
   scope "/admin", SensoctoWeb do
     pipe_through [:browser, :admins_only]
-
-    live "/simulator", SimulatorLive, :index
 
     live_dashboard "/dashboard",
       metrics: SensoctoWeb.Telemetry,

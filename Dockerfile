@@ -110,7 +110,11 @@ RUN apt-get update -y && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 COPY simulator/requirements.txt /tmp/requirements.txt
-RUN uv pip install --system -r /tmp/requirements.txt
+# Create virtual environment and install dependencies (required for PEP 668 externally managed Python)
+RUN uv venv /opt/venv && \
+    . /opt/venv/bin/activate && \
+    uv pip install -r /tmp/requirements.txt
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
@@ -133,6 +137,9 @@ COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/sensocto ./
 
 # Copy simulator Python scripts for neurokit2-based data generation
 COPY --chown=nobody:root simulator /app/simulator
+
+# Copy simulator scenarios config files
+COPY --chown=nobody:root config/simulator_scenarios /app/config/simulator_scenarios
 
 USER nobody
 

@@ -20,6 +20,14 @@ if System.get_env("PHX_SERVER") do
   config :sensocto, SensoctoWeb.Endpoint, server: true
 end
 
+# Simulator configuration - can be enabled via environment variable
+if System.get_env("SIMULATOR_ENABLED") in ~w(true 1) do
+  config :sensocto, :simulator,
+    enabled: true,
+    autostart: System.get_env("SIMULATOR_AUTOSTART") in ~w(true 1),
+    config_path: System.get_env("SIMULATOR_CONFIG_PATH") || "config/simulators.yaml"
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

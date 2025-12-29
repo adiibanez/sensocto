@@ -43,6 +43,12 @@ export const AttentionTracker = {
     });
   },
 
+  updated() {
+    // Re-observe attributes after LiveView updates the DOM
+    // This ensures we track new/replaced elements
+    this.observeAttributes();
+  },
+
   destroyed() {
     // Clean up observers
     if (this.intersectionObserver) {
@@ -73,8 +79,16 @@ export const AttentionTracker = {
     elements.forEach(el => {
       const key = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
 
-      // Only observe if not already observed
-      if (!this.observers.has(key)) {
+      // Check if we're already observing this exact element (not just the key)
+      const existingEl = this.observers.get(key);
+
+      if (existingEl !== el) {
+        // Element changed or new - update observer
+        if (existingEl) {
+          // Stop observing the old element
+          this.intersectionObserver.unobserve(existingEl);
+        }
+
         this.observers.set(key, el);
         this.intersectionObserver.observe(el);
 
@@ -94,6 +108,13 @@ export const AttentionTracker = {
       if (!sensorId || !attributeId) return;
 
       const key = `${sensorId}:${attributeId}`;
+
+      // Ignore events for elements that are no longer the current observed element
+      // This happens when LiveView replaces DOM elements during updates
+      const currentEl = this.observers.get(key);
+      if (currentEl !== el) {
+        return;
+      }
 
       if (entry.isIntersecting) {
         // Element entered viewport

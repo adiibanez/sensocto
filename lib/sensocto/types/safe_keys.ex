@@ -54,7 +54,7 @@ defmodule Sensocto.Types.SafeKeys do
   @doc """
   Validates an attribute_id format without creating atoms.
   Attribute IDs must:
-  - Start with a letter
+  - Start with a letter or digit (to support Bluetooth GATT UUIDs)
   - Contain only alphanumeric characters, underscores, and hyphens
   - Be 1-64 characters long
 
@@ -63,15 +63,16 @@ defmodule Sensocto.Types.SafeKeys do
       iex> Sensocto.Types.SafeKeys.validate_attribute_id("heart_rate")
       {:ok, "heart_rate"}
 
-      iex> Sensocto.Types.SafeKeys.validate_attribute_id("123invalid")
-      {:error, :invalid_attribute_id}
+      iex> Sensocto.Types.SafeKeys.validate_attribute_id("00002a37-0000-1000-8000-00805f9b34fb")
+      {:ok, "00002a37-0000-1000-8000-00805f9b34fb"}
 
       iex> Sensocto.Types.SafeKeys.validate_attribute_id("")
       {:error, :invalid_attribute_id}
   """
   @spec validate_attribute_id(String.t()) :: validation_result()
   def validate_attribute_id(attribute_id) when is_binary(attribute_id) do
-    if Regex.match?(~r/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/, attribute_id) do
+    # Allow alphanumeric start to support Bluetooth GATT UUIDs (e.g., 00002a37-0000-1000-8000-00805f9b34fb)
+    if Regex.match?(~r/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/, attribute_id) do
       {:ok, attribute_id}
     else
       {:error, :invalid_attribute_id}

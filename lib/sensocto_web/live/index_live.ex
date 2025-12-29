@@ -4,7 +4,7 @@ defmodule SensoctoWeb.IndexLive do
   # LVN_ACTIVATION use SensoctoNative, :live_view
   require Logger
   use LiveSvelte.Components
-  alias SensoctoWeb.StatefulSensorLiveview
+  alias SensoctoWeb.StatefulSensorLive
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3

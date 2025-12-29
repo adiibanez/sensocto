@@ -183,7 +183,7 @@ AttentionTracker.get_all_battery_states()
 
 ## LiveView Integration
 
-The `StatefulSensorLiveview` handles all attention events from JS hooks:
+The `StatefulSensorLive` handles all attention events from JS hooks:
 
 ```elixir
 # Event handlers
@@ -207,8 +207,86 @@ Batch window multipliers are configured in `AttentionTracker`:
   high:   %{window_multiplier: 0.2, min_window: 100,  max_window: 500},
   medium: %{window_multiplier: 1.0, min_window: 500,  max_window: 2000},
   low:    %{window_multiplier: 4.0, min_window: 2000, max_window: 10000},
-  none:   %{window_multiplier: 10,  min_window: 5000, max_window: 30000}
+  none:   %{window_multiplier: 10.0, min_window: 5000, max_window: 30000}
 }
+```
+
+## Architecture
+
+### Data Flow
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              ATTENTION FLOW                                  │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────┐    pushEvent()    ┌─────────────────────┐                  │
+│  │   Browser   │ ─────────────────▶│  StatefulSensor     │                  │
+│  │  JS Hooks   │                   │  LiveView           │                  │
+│  │             │                   │                     │                  │
+│  │ • viewport  │                   │ handle_event/3:     │                  │
+│  │ • focus     │                   │ • view_enter/leave  │                  │
+│  │ • battery   │                   │ • focus/unfocus     │                  │
+│  └─────────────┘                   │ • battery_changed   │                  │
+│                                    └─────────┬───────────┘                  │
+│                                              │                              │
+│                                              ▼                              │
+│                                    ┌─────────────────────┐                  │
+│                                    │  AttentionTracker   │                  │
+│                                    │  (GenServer + ETS)  │                  │
+│                                    │                     │                  │
+│                                    │ • attention_state   │                  │
+│                                    │ • pinned_sensors    │                  │
+│                                    │ • battery_states    │                  │
+│                                    └─────────┬───────────┘                  │
+│                                              │                              │
+│                          PubSub broadcast    │                              │
+│                     ┌────────────────────────┼────────────────────────┐     │
+│                     │                        │                        │     │
+│                     ▼                        ▼                        ▼     │
+│           ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐ │
+│           │ AttributeServer │    │ SensorDataChannel│    │ LiveView UI     │ │
+│           │ (Simulator)     │    │ (Connectors)    │    │ (attention_badge│ │
+│           │                 │    │                 │    │  display)       │ │
+│           │ adjusts batch   │    │ pushes          │    │                 │ │
+│           │ window timing   │    │ backpressure_   │    │                 │ │
+│           │                 │    │ config          │    │                 │ │
+│           └─────────────────┘    └─────────────────┘    └─────────────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Battery State Modifier
+
+Battery state acts as a modifier that caps the maximum attention level:
+
+```
+Raw Attention Level → Battery Modifier → Effective Attention Level
+
+Examples:
+  :high   + :normal   = :high     (no cap)
+  :high   + :low      = :medium   (capped)
+  :high   + :critical = :low      (heavily capped)
+  :medium + :critical = :low      (capped)
+  :low    + :critical = :low      (already at cap)
+```
+
+### Multi-User Aggregation
+
+When multiple users view the same sensor, the **highest** attention level wins:
+
+```
+User A: viewing (medium) ─┐
+User B: focused (high)   ─┼──▶ Sensor attention = :high
+User C: not viewing      ─┘
+```
+
+But battery state uses the **worst** (most restrictive) state among viewers:
+
+```
+User A: battery normal ─┐
+User B: battery low    ─┼──▶ Effective cap = :low (most restrictive)
+User C: battery normal ─┘
 ```
 
 ## Roadmap

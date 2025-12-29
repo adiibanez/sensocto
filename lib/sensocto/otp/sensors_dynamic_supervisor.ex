@@ -9,7 +9,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
 
   # https://kobrakai.de/kolumne/child-specs-in-elixir?utm_source=elixir-merge
   def start_link(test) do
-    IO.puts("#{__MODULE__}: start_link, test: #{test}")
+    Logger.debug("#{__MODULE__}: start_link, test: #{test}")
     DynamicSupervisor.start_link(__MODULE__, :no_args, name: __MODULE__)
   end
 
@@ -132,7 +132,7 @@ defmodule Sensocto.SensorsDynamicSupervisor do
 
   # Function to extract device names (IDs) from the children list
   def get_device_names2 do
-    IO.inspect(children())
+    Logger.debug("children: #{inspect(children())}")
 
     Enum.map(children(), fn
       {:undefined, pid, :worker, [Sensocto.SensorSupervisor]} ->

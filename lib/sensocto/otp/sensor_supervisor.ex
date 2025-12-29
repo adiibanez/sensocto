@@ -18,7 +18,7 @@ defmodule Sensocto.SensorSupervisor do
               strategy: :one_for_all | :one_for_one | :rest_for_one
             }, [{any(), any(), any(), any(), any(), any()} | map()]}}
   def init(configuration) do
-    IO.puts("SensorSupervisor started #{inspect(configuration)}")
+    Logger.debug("SensorSupervisor started #{inspect(configuration)}")
 
     children = [
       %{

@@ -110,7 +110,7 @@ defmodule Bridge do
   end
 
   def bridge_call(module, method = :connect, args) do
-    IO.puts("bridge_cast: #{module}.#{method}(#{inspect(args)})")
+    Logger.debug("bridge_cast: #{module}.#{method}(#{inspect(args)})")
     ref = System.unique_integer([:positive]) + 10
     json = encode!([module, method, args ++ [self()]])
 
@@ -122,7 +122,7 @@ defmodule Bridge do
   end
 
   defp do_bridge_call(module, method, args) do
-    IO.puts("bridge_call: #{module}.#{method}(#{inspect(args)})")
+    Logger.debug("bridge_call: #{module}.#{method}(#{inspect(args)})")
     ref = System.unique_integer([:positive]) + 10
     json = encode!([module, method, args])
 
@@ -130,7 +130,7 @@ defmodule Bridge do
       GenServer.call(__MODULE__, {:bridge_call, ref, json})
       |> decode!()
 
-    IO.puts("bridge_call: #{module}.#{method}(#{inspect(args)}) => #{inspect(ret)}")
+    Logger.debug("bridge_call: #{module}.#{method}(#{inspect(args)}) => #{inspect(ret)}")
 
     ret
   end
@@ -251,10 +251,10 @@ defmodule Bridge do
     event = decode!(json)
 
     if [] == subscribers do
-      IO.puts("no subscriber for event #{inspect(event)}")
+      Logger.debug("no subscriber for event #{inspect(event)}")
       {:noreply, %Bridge{state | events: events ++ [event]}}
     else
-      IO.puts("sending event to subscribers #{inspect(event)}")
+      Logger.debug("sending event to subscribers #{inspect(event)}")
 
       for sub <- subscribers do
         send(sub, event)
@@ -272,10 +272,10 @@ defmodule Bridge do
 
     case Map.get(funs, fun_ref) do
       nil ->
-        IO.puts("no fun defined for fun_ref #{fun_ref} (#{inspect(args)})")
+        Logger.debug("no fun defined for fun_ref #{fun_ref} (#{inspect(args)})")
 
       fun ->
-        IO.puts("executing callback fun_ref #{fun_ref} (#{inspect(args)})")
+        Logger.debug("executing callback fun_ref #{fun_ref} (#{inspect(args)})")
         spawn(fn -> apply(fun, args) end)
     end
 

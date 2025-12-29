@@ -135,7 +135,7 @@ config :logger, :logger_name,
     # Silence verbose channel/LiveView debug logs
     [module: SensoctoWeb.SensorDataChannel, level: :info],
     [module: SensoctoWeb.Live.Components.AttributeComponent, level: :info],
-    [module: SensoctoWeb.StatefulSensorLiveview, level: :info],
+    [module: SensoctoWeb.StatefulSensorLive, level: :info],
     [module: SensoctoWeb.IndexLive, level: :info]
   ],
   # backend specific configuration

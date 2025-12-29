@@ -31,7 +31,7 @@ defmodule Sensocto.DeviceSupervisor do
       type: :worker
     }
 
-    IO.inspect(child_spec)
+    Logger.debug("child_spec: #{inspect(child_spec)}")
 
     # Enum.each(children, fn (c) -> Logger.debug(%{"msg": "children map", "cnt": Sensocto.Registry.whereis_name("7facc584-05b9-4dca-b4ff-c988838a89a6")}) end)
     # IO.inspect(Sensocto.Registry.whereis_name("a2e235f9-14df-4abf-8583-9eaa92e8aad6"))
@@ -48,8 +48,7 @@ defmodule Sensocto.DeviceSupervisor do
         {:ok, "#{device_id}"}
 
       {:error, reason} ->
-        Logger.debug("Device error?")
-        IO.inspect(reason)
+        Logger.debug("Device error: #{inspect(reason)}")
         {:error, "Other error"}
     end
   end
@@ -77,7 +76,7 @@ defmodule Sensocto.DeviceSupervisor do
 
   # Function to extract device names (IDs) from the children list
   def get_device_names2 do
-    IO.inspect(children())
+    Logger.debug("children: #{inspect(children())}")
 
     Enum.map(children(), fn
       {:undefined, pid, :worker, [Sensocto.Device]} ->
@@ -110,8 +109,8 @@ defmodule Sensocto.DeviceSupervisor do
 
   def via_tuple(device_id) do
     Logger.debug("via_tuple device_id: #{device_id}")
-    test = {:via, Registry, {Sensocto.Registry, device_id}}
-    IO.inspect(test)
-    test
+    tuple = {:via, Registry, {Sensocto.Registry, device_id}}
+    Logger.debug("via_tuple: #{inspect(tuple)}")
+    tuple
   end
 end

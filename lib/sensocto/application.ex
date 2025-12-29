@@ -4,6 +4,7 @@ defmodule Sensocto.Application do
   @moduledoc false
 
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
@@ -79,7 +80,7 @@ defmodule Sensocto.Application do
     # Conditionally add simulator if enabled in config
     children =
       if Sensocto.Simulator.Supervisor.config_enabled?() do
-        IO.puts("Starting integrated simulator...")
+        Logger.info("Starting integrated simulator...")
         children ++ [{Sensocto.Simulator.Supervisor, []}]
       else
         children

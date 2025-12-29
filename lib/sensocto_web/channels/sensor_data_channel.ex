@@ -4,6 +4,7 @@ defmodule SensoctoWeb.SensorDataChannel do
   require Logger
 
   alias Sensocto.SimpleSensor
+  alias Sensocto.AttentionTracker
   alias Sensocto.Types.SafeKeys
   alias SensoctoWeb.Sensocto.Presence
 
@@ -167,11 +168,16 @@ defmodule SensoctoWeb.SensorDataChannel do
           # {:error, reason}
       end
 
+      # Subscribe to attention changes for this sensor (backpressure protocol)
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
+
+      # Send initial backpressure configuration to connector
+      send(self(), :send_backpressure_config)
+
       {
         :ok,
         socket
         |> assign(:sensor_id, sensor_id)
-        # |> assign(:sensor_params, params)
       }
     else
       {:error, %{reason: "unauthorized"}}
@@ -360,6 +366,39 @@ defmodule SensoctoWeb.SensorDataChannel do
     {:noreply, socket}
   end
 
+  # Send initial backpressure configuration to connector
+  def handle_info(:send_backpressure_config, socket) do
+    case Map.get(socket.assigns, :sensor_id) do
+      nil ->
+        {:noreply, socket}
+
+      sensor_id ->
+        config = get_backpressure_config(sensor_id)
+        push(socket, "backpressure_config", config)
+        Logger.debug("Sent initial backpressure config for #{sensor_id}: #{inspect(config)}")
+        {:noreply, socket}
+    end
+  end
+
+  # Handle attention changes from AttentionTracker - push new backpressure config
+  def handle_info({:attention_changed, %{sensor_id: sensor_id, level: new_level}}, socket) do
+    if Map.get(socket.assigns, :sensor_id) == sensor_id do
+      config = get_backpressure_config(sensor_id)
+      push(socket, "backpressure_config", config)
+
+      Logger.info(
+        "Attention changed for sensor #{sensor_id} to #{new_level}, pushed backpressure config: #{inspect(config)}"
+      )
+    end
+
+    {:noreply, socket}
+  end
+
+  # Ignore attention changes for attributes (we only care about sensor-level)
+  def handle_info({:attention_changed, %{attribute_id: _}}, socket) do
+    {:noreply, socket}
+  end
+
   # Add authorization logic here as required.
   defp authorized?(%{"sensor_id" => sensor_id} = params) do
     if Map.has_key?(params, "bearer_token") do
@@ -397,5 +436,33 @@ defmodule SensoctoWeb.SensorDataChannel do
         Logger.debug("error removing sensor #{sensor_id}")
         # {:error, reason}
     end
+  end
+
+  # Calculate backpressure configuration based on current attention level
+  # This is pushed to connectors so they can adjust their data transmission rates
+  defp get_backpressure_config(sensor_id) do
+    # Get attention level, defaulting to :none if tracker not available
+    level =
+      try do
+        AttentionTracker.get_sensor_attention_level(sensor_id)
+      catch
+        :exit, {:noproc, _} -> :none
+      end
+
+    # Batch window and size recommendations based on attention level
+    {recommended_batch_window, recommended_batch_size} =
+      case level do
+        :high -> {100, 1}      # Fast updates, small batches
+        :medium -> {500, 5}    # Normal updates
+        :low -> {2000, 10}     # Slower updates, larger batches
+        :none -> {5000, 20}    # Minimal updates, large batches
+      end
+
+    %{
+      attention_level: level,
+      recommended_batch_window: recommended_batch_window,
+      recommended_batch_size: recommended_batch_size,
+      timestamp: System.system_time(:millisecond)
+    }
   end
 end

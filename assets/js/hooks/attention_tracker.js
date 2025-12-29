@@ -7,6 +7,8 @@
  */
 
 const DEBOUNCE_MS = 300;
+const BATTERY_LOW_THRESHOLD = 0.30;
+const BATTERY_CRITICAL_THRESHOLD = 0.15;
 
 export const AttentionTracker = {
   mounted() {
@@ -14,6 +16,8 @@ export const AttentionTracker = {
     this.debounceTimers = new Map();
     this.focusedElements = new Set();
     this.viewedElements = new Set();
+    this.batteryState = 'normal';  // 'normal', 'low', 'critical'
+    this.battery = null;
 
     // Set up intersection observer for visibility tracking
     this.intersectionObserver = new IntersectionObserver(
@@ -29,6 +33,9 @@ export const AttentionTracker = {
 
     // Set up page visibility tracking
     this.setupPageVisibility();
+
+    // Set up battery tracking for energy awareness
+    this.setupBatteryTracking();
 
     // Handle dynamic updates
     this.handleEvent("attributes_updated", () => {
@@ -176,6 +183,55 @@ export const AttentionTracker = {
         });
       }
     });
+  },
+
+  setupBatteryTracking() {
+    // Battery Status API - supported in Chrome, Edge, Opera
+    // Falls back gracefully if not available
+    if ('getBattery' in navigator) {
+      navigator.getBattery().then(battery => {
+        this.battery = battery;
+        this.updateBatteryState();
+
+        // Listen for battery level changes
+        battery.addEventListener('levelchange', () => this.updateBatteryState());
+        battery.addEventListener('chargingchange', () => this.updateBatteryState());
+      }).catch(err => {
+        console.debug('Battery API not available:', err);
+      });
+    }
+  },
+
+  updateBatteryState() {
+    if (!this.battery) return;
+
+    const level = this.battery.level;
+    const charging = this.battery.charging;
+    let newState = 'normal';
+
+    // Only apply battery constraints when not charging
+    if (!charging) {
+      if (level < BATTERY_CRITICAL_THRESHOLD) {
+        newState = 'critical';
+      } else if (level < BATTERY_LOW_THRESHOLD) {
+        newState = 'low';
+      }
+    }
+
+    // Only push event if state changed
+    if (newState !== this.batteryState) {
+      const oldState = this.batteryState;
+      this.batteryState = newState;
+
+      console.debug(`Battery state changed: ${oldState} -> ${newState} (level: ${Math.round(level * 100)}%, charging: ${charging})`);
+
+      // Notify server of battery state change
+      this.pushEvent("battery_state_changed", {
+        state: newState,
+        level: Math.round(level * 100),
+        charging: charging
+      });
+    }
   },
 
   debouncedPush(key, event, payload) {

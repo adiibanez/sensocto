@@ -8,8 +8,13 @@ defmodule Sensocto.AttentionTracker do
   - :low - Sensor connected but no users viewing
   - :none - No active connections
 
+  Battery states (applied as modifiers):
+  - :normal - No restrictions
+  - :low - Cap attention at :medium (battery < 30%)
+  - :critical - Cap attention at :low (battery < 15%)
+
   The tracker aggregates attention across all users and uses the highest
-  attention level to determine data transmission rates.
+  attention level to determine data transmission rates, modified by battery state.
   """
 
   use GenServer
@@ -33,6 +38,7 @@ defmodule Sensocto.AttentionTracker do
   defstruct [
     :attention_state,
     :pinned_sensors,
+    :battery_states,
     :last_cleanup
   ]
 
@@ -91,6 +97,61 @@ defmodule Sensocto.AttentionTracker do
   """
   def unregister_all(sensor_id, user_id) do
     GenServer.cast(__MODULE__, {:unregister_all, sensor_id, user_id})
+  end
+
+  @doc """
+  Report battery/energy state for a user.
+
+  Battery states: :normal, :low, :critical
+  - :normal - No restrictions (charging or battery >= 30%)
+  - :low - Cap attention at :medium (battery 15-30%, not charging)
+  - :critical - Cap attention at :low (battery < 15%, not charging)
+
+  Options (metadata about the source):
+  - :source - Where the battery info came from (:web_api, :native_ios, :native_android, :external_api)
+  - :level - Battery percentage (0-100)
+  - :charging - Whether device is charging
+  - :power_source - Power source type (:battery, :ac, :usb, :wireless)
+
+  ## Examples
+
+      # From web browser Battery API
+      report_battery_state(user_id, :low, source: :web_api, level: 25, charging: false)
+
+      # From native iOS app
+      report_battery_state(user_id, :critical, source: :native_ios, level: 10)
+
+      # From external energy API (e.g., grid carbon intensity)
+      report_battery_state(user_id, :low, source: :external_api, reason: :high_carbon_intensity)
+
+  """
+  def report_battery_state(user_id, state, opts \\ [])
+      when state in [:normal, :low, :critical] do
+    metadata = %{
+      source: Keyword.get(opts, :source, :unknown),
+      level: Keyword.get(opts, :level),
+      charging: Keyword.get(opts, :charging),
+      power_source: Keyword.get(opts, :power_source),
+      reason: Keyword.get(opts, :reason),
+      reported_at: DateTime.utc_now()
+    }
+
+    GenServer.cast(__MODULE__, {:battery_state, user_id, state, metadata})
+  end
+
+  @doc """
+  Get the battery state for a user.
+  Returns {state, metadata} tuple or {:normal, nil} if not set.
+  """
+  def get_battery_state(user_id) do
+    GenServer.call(__MODULE__, {:get_battery_state, user_id})
+  end
+
+  @doc """
+  Get all battery states (for debugging/dashboard).
+  """
+  def get_all_battery_states do
+    GenServer.call(__MODULE__, :get_all_battery_states)
   end
 
   @doc """
@@ -164,10 +225,11 @@ defmodule Sensocto.AttentionTracker do
     state = %__MODULE__{
       attention_state: %{},
       pinned_sensors: %{},
+      battery_states: %{},
       last_cleanup: DateTime.utc_now()
     }
 
-    Logger.info("AttentionTracker started with ETS caching")
+    Logger.info("AttentionTracker started with ETS caching and battery awareness")
     {:ok, state}
   end
 
@@ -292,6 +354,46 @@ defmodule Sensocto.AttentionTracker do
     broadcast_sensor_attention_change(sensor_id, new_level)
 
     {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast({:battery_state, user_id, battery_state, metadata}, state) do
+    {old_state, _old_metadata} = Map.get(state.battery_states, user_id, {:normal, nil})
+
+    if old_state != battery_state do
+      source_info = if metadata.source != :unknown, do: " (source: #{metadata.source})", else: ""
+      level_info = if metadata.level, do: ", level: #{metadata.level}%", else: ""
+
+      Logger.info(
+        "Battery state changed for user #{inspect(user_id)}: #{old_state} -> #{battery_state}#{source_info}#{level_info}"
+      )
+
+      new_battery_states = Map.put(state.battery_states, user_id, {battery_state, metadata})
+      new_state = %{state | battery_states: new_battery_states}
+
+      # Recalculate and broadcast attention for all sensors this user is viewing
+      # The battery modifier affects the effective attention level
+      broadcast_battery_affected_sensors(state, user_id)
+
+      {:noreply, new_state}
+    else
+      # State unchanged, but update metadata (e.g., new level reading)
+      new_battery_states = Map.put(state.battery_states, user_id, {battery_state, metadata})
+      {:noreply, %{state | battery_states: new_battery_states}}
+    end
+  end
+
+  @impl true
+  def handle_call({:get_battery_state, user_id}, _from, state) do
+    case Map.get(state.battery_states, user_id) do
+      {battery_state, metadata} -> {:reply, {battery_state, metadata}, state}
+      nil -> {:reply, {:normal, nil}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:get_all_battery_states, _from, state) do
+    {:reply, state.battery_states, state}
   end
 
   @impl true
@@ -503,6 +605,84 @@ defmodule Sensocto.AttentionTracker do
       "attention:#{sensor_id}",
       {:attention_changed, %{sensor_id: sensor_id, level: level}}
     )
+  end
+
+  # Broadcast attention changes for all sensors a user is viewing
+  # Called when battery state changes
+  defp broadcast_battery_affected_sensors(state, user_id) do
+    # Find all sensors where this user is a viewer
+    Enum.each(state.attention_state, fn {sensor_id, attributes} ->
+      user_is_viewing =
+        Enum.any?(attributes, fn {_attr_id, attr_state} ->
+          MapSet.member?(attr_state.viewers, user_id) or
+          MapSet.member?(attr_state.focused, user_id)
+        end)
+
+      if user_is_viewing do
+        # Recalculate and broadcast sensor-level attention
+        level = do_get_sensor_attention_level(state, sensor_id)
+        broadcast_sensor_attention_change(sensor_id, level)
+
+        # Also broadcast for each attribute
+        Enum.each(attributes, fn {attr_id, _attr_state} ->
+          attr_level = do_get_attention_level(state, sensor_id, attr_id)
+          update_ets_cache(sensor_id, attr_id, attr_level)
+
+          Phoenix.PubSub.broadcast(
+            Sensocto.PubSub,
+            "attention:#{sensor_id}:#{attr_id}",
+            {:attention_changed, %{sensor_id: sensor_id, attribute_id: attr_id, level: attr_level}}
+          )
+        end)
+      end
+    end)
+  end
+
+  # Apply battery modifier to cap attention level
+  # :critical caps at :low, :low caps at :medium, :normal has no effect
+  defp apply_battery_modifier(level, battery_state) do
+    case battery_state do
+      :critical -> lowest_level(level, :low)
+      :low -> lowest_level(level, :medium)
+      :normal -> level
+    end
+  end
+
+  defp lowest_level(a, b) do
+    priority = %{high: 3, medium: 2, low: 1, none: 0}
+    if priority[a] <= priority[b], do: a, else: b
+  end
+
+  # Get the worst (most restrictive) battery state among all users viewing a sensor
+  defp get_worst_battery_state(state, sensor_id) do
+    case Map.get(state.attention_state, sensor_id) do
+      nil ->
+        :normal
+
+      attributes ->
+        # Collect all users viewing this sensor
+        users =
+          Enum.flat_map(attributes, fn {_attr_id, attr_state} ->
+            MapSet.to_list(attr_state.viewers) ++ MapSet.to_list(attr_state.focused)
+          end)
+          |> Enum.uniq()
+
+        # Find the worst battery state among these users
+        Enum.reduce(users, :normal, fn user_id, acc ->
+          user_battery = extract_battery_state(Map.get(state.battery_states, user_id))
+          worse_battery_state(acc, user_battery)
+        end)
+    end
+  end
+
+  # Extract just the state atom from the {state, metadata} tuple
+  defp extract_battery_state(nil), do: :normal
+  defp extract_battery_state({state, _metadata}), do: state
+  defp extract_battery_state(state) when is_atom(state), do: state
+
+  defp worse_battery_state(a, b) do
+    priority = %{critical: 2, low: 1, normal: 0}
+    if priority[a] >= priority[b], do: a, else: b
   end
 
   defp schedule_cleanup do

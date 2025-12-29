@@ -84,6 +84,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      |> assign(:highlighted, false)
      |> assign(:attention_level, initial_attention)
      |> assign(:attributes_loaded, true)
+     |> assign(:battery_state, :normal)
      # Throttle buffer: accumulate measurements, flush periodically
      |> assign(:pending_measurements, [])}
   end
@@ -385,6 +386,44 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     user_id = get_user_id(socket)
     AttentionTracker.register_view(sensor_id, attr_id, user_id)
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event(
+        "battery_state_changed",
+        %{"state" => state_str, "level" => level, "charging" => charging} = params,
+        socket
+      ) do
+    user_id = get_user_id(socket)
+
+    # Convert string state to atom (validated set)
+    battery_state =
+      case state_str do
+        "critical" -> :critical
+        "low" -> :low
+        _ -> :normal
+      end
+
+    # Determine source from params or default to :web_api
+    source =
+      case Map.get(params, "source") do
+        "native_ios" -> :native_ios
+        "native_android" -> :native_android
+        "external_api" -> :external_api
+        _ -> :web_api
+      end
+
+    Logger.debug(
+      "Battery state changed for user #{user_id}: #{battery_state} (level: #{level}%, charging: #{charging}, source: #{source})"
+    )
+
+    AttentionTracker.report_battery_state(user_id, battery_state,
+      source: source,
+      level: level,
+      charging: charging
+    )
+
+    {:noreply, assign(socket, :battery_state, battery_state)}
   end
 
   defp get_user_id(socket) do

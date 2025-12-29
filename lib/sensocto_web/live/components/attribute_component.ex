@@ -99,7 +99,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={@lastvalue}>
           <p class="text-xs">
-            Lat: {@lastvalue.payload.latitude}, Lon: {@lastvalue.payload.longitude}, {@lastvalue.payload.accuracy}m
+            Lat: {Float.round(@lastvalue.payload.latitude / 1, 3)}, Lon: {Float.round(@lastvalue.payload.longitude / 1, 3)}, {Float.round(@lastvalue.payload.accuracy / 1, 1)}m
           </p>
           <.svelte
             phx-update="ignore"

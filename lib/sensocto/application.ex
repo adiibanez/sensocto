@@ -7,6 +7,11 @@ defmodule Sensocto.Application do
 
   @impl true
   def start(_type, _args) do
+    # Reapply hot code changes after container restart (FlyDeploy)
+    if Code.ensure_loaded?(FlyDeploy) do
+      FlyDeploy.startup_reapply_current(Application.app_dir(:sensocto))
+    end
+
     children = [
       # {NodeJS.Supervisor, [path: LiveSvelte.SSR.NodeJS.server_path(), pool_size: 4]},
       SensoctoWeb.Telemetry,

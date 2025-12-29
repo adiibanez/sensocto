@@ -2,7 +2,7 @@
 
 This guide covers two deployment strategies for Sensocto on Fly.io.
 
-## Standard Deployment (Current)
+## Standard Deployment
 
 Standard rolling deployments replace containers one at a time. This is the default and works for all changes.
 
@@ -27,7 +27,7 @@ fly deploy
 
 ---
 
-## Hot Code Upgrade Deployment (Optional)
+## Hot Code Upgrade Deployment
 
 Hot code upgrades update running code without restarting the BEAM VM, preserving WebSocket connections and process state.
 
@@ -37,58 +37,86 @@ Hot code upgrades update running code without restarting the BEAM VM, preserving
 - Minor feature additions
 - Changes that don't affect supervision tree or dependencies
 
-### Prerequisites
+---
 
-1. **Install FlyDeploy package**
+## One-Time Setup (Already Done)
 
-   Add to `mix.exs`:
+The following has already been configured in this project:
+
+1. **FlyDeploy package** added to `mix.exs`:
    ```elixir
-   {:fly_deploy, "~> 0.1"}
+   {:fly_deploy, "~> 0.1.15"}
    ```
 
-2. **Configure S3/Tigris storage**
-
-   Using Fly Tigris:
-   ```bash
-   fly storage create
-   fly secrets set AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret>
-   ```
-
-3. **Add startup integration**
-
-   In `lib/sensocto/application.ex`:
+2. **Startup integration** in `lib/sensocto/application.ex`:
    ```elixir
-   def start(_type, _args) do
-     # Reapply hot code changes after container restart
+   if Code.ensure_loaded?(FlyDeploy) do
      FlyDeploy.startup_reapply_current(Application.app_dir(:sensocto))
-
-     children = [
-       # ... existing children
-     ]
-     # ...
    end
    ```
 
-4. **Add code_change callbacks** (for stateful GenServers)
+3. **Runtime config** in `config/runtime.exs`:
    ```elixir
-   @impl true
-   def code_change(_old_vsn, state, _extra) do
-     # Handle state migration if needed
-     {:ok, state}
+   if bucket = System.get_env("FLY_DEPLOY_BUCKET") do
+     config :fly_deploy, bucket: bucket
    end
    ```
 
-### Deploy Command
+---
+
+## Fly.io Setup (Run Once)
+
+### Step 1: Create Tigris Storage Bucket
+```bash
+fly storage create
+```
+When prompted:
+- Choose a name (e.g., `sensocto-deploy`)
+- This automatically sets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` secrets
+
+### Step 2: Set the Bucket Name
+```bash
+fly secrets set FLY_DEPLOY_BUCKET=<bucket-name-from-step-1>
+```
+
+### Step 3: Create Machine Exec Token
+```bash
+fly secrets set FLY_API_TOKEN=$(fly tokens create machine-exec)
+```
+
+### Step 4: Initial Standard Deploy
+Deploy with the new fly_deploy package:
+```bash
+fly deploy
+```
+
+---
+
+## Using Hot Deploy
+
+After setup is complete:
+
+### Make a Code Change
+For example, edit `lib/sensocto_web/components/layouts/root.html.heex`:
+```html
+<!-- Change navbar text -->
+<a href="/simulator">Simulator</a>
+<!-- to -->
+<a href="/simulator">Sim</a>
+```
+
+### Deploy with Hot Upgrade
 ```bash
 mix fly_deploy.hot
 ```
 
-### Behavior
-- Code updates without VM restart
-- WebSocket connections preserved
-- LiveView sessions continue
-- Process state maintained
-- Automatic LiveView re-render
+### What Happens
+1. Mix task builds a tarball of changed `.beam` files
+2. Uploads tarball to Tigris storage
+3. Triggers RPC to each running machine
+4. Each machine downloads and loads new code
+5. LiveView processes automatically re-render
+6. WebSocket connections stay connected
 
 ---
 
@@ -98,11 +126,11 @@ mix fly_deploy.hot
 |--------|-----------------|------------------|
 | WebSocket continuity | Lost | Preserved |
 | Process state | Lost | Preserved |
-| Setup complexity | None | Medium |
+| Setup complexity | None | Medium (one-time) |
 | Dependency updates | Supported | Not supported |
 | Supervision changes | Supported | Not supported |
 | OTP/Elixir upgrades | Supported | Not supported |
-| Rollback | Deploy previous version | Deploy previous version |
+| Rollback | `fly deploy` previous | `fly deploy` previous |
 
 ---
 
@@ -114,31 +142,66 @@ mix fly_deploy.hot
 - Updating Elixir or OTP versions
 - Changes to application startup logic
 - Database schema changes (migrations still run separately)
+- NIFs or native code changes
 
-**Must use standard deploy for these changes.**
+**Must use standard `fly deploy` for these changes.**
 
 ---
 
-## Environment Variables
+## Environment Variables Reference
+
+### Hot Deploy
+```bash
+FLY_DEPLOY_BUCKET      # Tigris bucket name for beam artifacts
+AWS_ACCESS_KEY_ID      # Tigris access key (auto-set by fly storage create)
+AWS_SECRET_ACCESS_KEY  # Tigris secret key (auto-set by fly storage create)
+FLY_API_TOKEN          # Machine exec token for orchestration
+```
 
 ### Simulator Configuration
 ```bash
-# Enable simulator in production
-fly secrets set SIMULATOR_ENABLED=true
+SIMULATOR_ENABLED=true       # Enable simulator in production
+SIMULATOR_AUTOSTART=true     # Auto-start connectors on boot
+SIMULATOR_CONFIG_PATH=...    # Custom config path (optional)
+```
 
-# Auto-start simulator connectors on boot
-fly secrets set SIMULATOR_AUTOSTART=true
+---
 
-# Custom config path (optional)
-fly secrets set SIMULATOR_CONFIG_PATH=config/simulators.yaml
+## Troubleshooting
+
+### "No bucket configured"
+```bash
+fly secrets set FLY_DEPLOY_BUCKET=your-bucket-name
+```
+
+### "AWS credentials not found"
+```bash
+fly storage create  # Creates bucket and sets credentials
+```
+
+### "FLY_API_TOKEN not set"
+```bash
+fly secrets set FLY_API_TOKEN=$(fly tokens create machine-exec)
+```
+
+### Hot deploy fails silently
+Check logs:
+```bash
+fly logs
+```
+
+### Need to rollback
+Use standard deploy with previous version:
+```bash
+fly deploy
 ```
 
 ---
 
 ## Recommended Workflow
 
-1. **Development**: Use standard `fly deploy` for all changes
-2. **Production hotfixes**: Consider `fly_deploy.hot` for urgent code-only fixes
-3. **Major releases**: Always use standard `fly deploy`
+1. **Standard deploy first** - Always do initial deploy with `fly deploy`
+2. **Hot deploy for fixes** - Use `mix fly_deploy.hot` for code-only changes
+3. **Standard deploy for major changes** - Dependencies, config, supervision tree
 
 When in doubt, use `fly deploy` - it's simpler and always works.

@@ -28,6 +28,11 @@ if System.get_env("SIMULATOR_ENABLED") in ~w(true 1) do
     config_path: System.get_env("SIMULATOR_CONFIG_PATH") || "config/simulators.yaml"
 end
 
+# FlyDeploy hot code upgrade configuration
+if bucket = System.get_env("FLY_DEPLOY_BUCKET") do
+  config :fly_deploy, bucket: bucket
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

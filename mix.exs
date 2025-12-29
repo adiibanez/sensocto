@@ -140,7 +140,10 @@ defmodule Sensocto.MixProject do
       {:tidewave, "~> 0.5", only: :dev},
 
       # QR code generation for room sharing
-      {:eqrcode, "~> 0.1.10"}
+      {:eqrcode, "~> 0.1.10"},
+
+      # Hot code upgrades for Fly.io deployments
+      {:fly_deploy, "~> 0.1.15"}
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

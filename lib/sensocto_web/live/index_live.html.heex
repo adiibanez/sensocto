@@ -2,11 +2,8 @@
   Attempting to reconnect...
 </div>
 
-<!--<div class="text-l p-8 mb-8 bg-gray-800 rounded-lg">
-  Sensors online: {@sensors_online_count} Liveview pid: {inspect(self())}
-</div>-->
-
-<div id="cnt" phx-hook="ConnectionHandler">
+<%!-- Main content area with padding at bottom for footer --%>
+<div id="cnt" phx-hook="ConnectionHandler" class="pb-20 sm:pb-16">
   <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
     <div :for={{sensor_id, sensor} <- @sensors}>
       {live_render(@socket, StatefulSensorLiveview,
@@ -16,8 +13,9 @@
     </div>
   </div>
 </div>
-<%= if @sensors_offline !=%{} do %>
-  <div>
+
+<%= if @sensors_offline != %{} do %>
+  <div class="pb-20 sm:pb-16">
     <p class="text font-bold mt-8 mb-2">Recently disconnected sensors</p>
     <ul class="list-disc list-inside ml-4">
       <%= for sensor_id <- Map.keys(@sensors_offline) do %>
@@ -27,12 +25,50 @@
   </div>
 <% end %>
 
+<%!-- Footer toolbar - collapsible on mobile --%>
 <div
-  id="toolbar"
-  class="bg-gray-800 p-4 rounded-lg fixed bottom-0 right-0 w-64 max-h-[80%] overflow-y-auto"
+  id="footer-toolbar"
+  class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 z-50"
+  phx-hook="FooterToolbar"
 >
-  {live_render(@socket, SensoctoWeb.SenseLive,
-    id: "bluetooth",
-    session: %{"parent_id" => self()}
-  )}
+  <%!-- Mobile: Collapsed bar with toggle button --%>
+  <div class="sm:hidden">
+    <button
+      id="footer-toggle"
+      type="button"
+      class="w-full flex items-center justify-between p-3 text-sm text-gray-300 hover:bg-gray-700"
+      aria-expanded="false"
+      aria-controls="footer-content"
+    >
+      <span class="flex items-center gap-2">
+        <Heroicons.icon name="cog-6-tooth" type="outline" class="h-5 w-5" />
+        <span>Connector Settings</span>
+      </span>
+      <Heroicons.icon name="chevron-up" type="outline" class="h-5 w-5 footer-chevron transition-transform" />
+    </button>
+    <div id="footer-content-mobile" class="hidden max-h-[60vh] overflow-y-auto p-4">
+      {live_render(@socket, SensoctoWeb.SenseLive,
+        id: "bluetooth-mobile",
+        session: %{"parent_id" => self()}
+      )}
+    </div>
+  </div>
+
+  <%!-- Desktop: Horizontal footer bar --%>
+  <div class="hidden sm:block">
+    <div class="max-w-7xl mx-auto px-4 py-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 text-sm text-gray-400">
+          <Heroicons.icon name="signal" type="outline" class="h-4 w-4" />
+          <span>Connectors</span>
+        </div>
+        <div class="flex-1 mx-4 overflow-x-auto">
+          {live_render(@socket, SensoctoWeb.SenseLive,
+            id: "bluetooth",
+            session: %{"parent_id" => self()}
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
 </div>

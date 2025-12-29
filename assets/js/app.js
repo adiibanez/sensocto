@@ -158,6 +158,42 @@ Hooks.ConnectionHandler = {
   }
 }
 
+// FooterToolbar hook - handles mobile collapsible footer
+Hooks.FooterToolbar = {
+  mounted() {
+    this.toggleBtn = document.getElementById('footer-toggle');
+    this.content = document.getElementById('footer-content-mobile');
+    this.chevron = this.el.querySelector('.footer-chevron');
+    this.isExpanded = false;
+
+    if (this.toggleBtn && this.content) {
+      this.toggleBtn.addEventListener('click', () => this.toggle());
+    }
+  },
+
+  toggle() {
+    this.isExpanded = !this.isExpanded;
+
+    if (this.isExpanded) {
+      this.content.classList.remove('hidden');
+      this.toggleBtn.setAttribute('aria-expanded', 'true');
+      if (this.chevron) {
+        this.chevron.style.transform = 'rotate(180deg)';
+      }
+    } else {
+      this.content.classList.add('hidden');
+      this.toggleBtn.setAttribute('aria-expanded', 'false');
+      if (this.chevron) {
+        this.chevron.style.transform = 'rotate(0deg)';
+      }
+    }
+  },
+
+  destroyed() {
+    // Cleanup if needed
+  }
+}
+
 // TimeDiff hook - displays relative time that updates when data-timestamp changes
 Hooks.TimeDiff = {
   mounted() {

@@ -71,48 +71,91 @@
 
 <SensorService bind:live bind:this={sensorService}>
     <!--<NetworkQualityMonitor />-->
-    <div>
-        <label
-            for="first_name"
-            class="block mb-2 text-sm font-medium"
-            style="color: #fbbf24;"
-            >Connector name</label
-        >
-        <input
-            type="text"
-            id="connector_name"
-            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            bind:value={inputDeviceName}
-            required
-        />
-        <button
-            class="btn btn-blue text-xs"
-            on:click={() => {
-                sensorService.setDeviceName(inputDeviceName);
-                deviceName = inputDeviceName;
-            }}>Save</button
-        >
-    </div>
-    <div>
-        <label
-            for="autostart"
-            class="block mb-2 text-sm font-medium"
-            style="color: #fbbf24;"
-            >Autostart</label
-        >
-        <input
-            type="checkbox"
-            bind:checked={$autostart}
-            id="autostart"
-            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-        />
-        <!--<strong>{$autostart}</strong>-->
-    </div>
-    <BluetoothClient />
-    <div>
-        <IMUClient />
-        <GeolocationClient />
-        <BatterystatusClient />
-        <PushButtonClient />
+    <div class="sense-app-container">
+        <!-- Connector name input - compact on desktop -->
+        <div class="connector-name-section">
+            <label
+                for="connector_name"
+                class="text-xs font-medium text-amber-400 whitespace-nowrap"
+                >Connector</label
+            >
+            <div class="flex items-center gap-1">
+                <input
+                    type="text"
+                    id="connector_name"
+                    class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 w-28 focus:ring-blue-500 focus:border-blue-500"
+                    bind:value={inputDeviceName}
+                    required
+                />
+                <button
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded"
+                    on:click={() => {
+                        sensorService.setDeviceName(inputDeviceName);
+                        deviceName = inputDeviceName;
+                    }}>Save</button
+                >
+            </div>
+        </div>
+
+        <!-- Autostart toggle -->
+        <div class="autostart-section flex items-center gap-2">
+            <label
+                for="autostart"
+                class="text-xs font-medium text-amber-400 whitespace-nowrap"
+                >Autostart</label
+            >
+            <input
+                type="checkbox"
+                bind:checked={$autostart}
+                id="autostart"
+                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+            />
+        </div>
+
+        <!-- Sensor clients - inline on desktop -->
+        <div class="sensor-clients">
+            <BluetoothClient />
+            <IMUClient />
+            <GeolocationClient />
+            <BatterystatusClient />
+            <PushButtonClient />
+        </div>
     </div>
 </SensorService>
+
+<style>
+    .sense-app-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .sensor-clients {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    /* Desktop: horizontal layout */
+    @media (min-width: 640px) {
+        .sense-app-container {
+            flex-direction: row;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .connector-name-section {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sensor-clients {
+            flex-direction: row;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+    }
+</style>

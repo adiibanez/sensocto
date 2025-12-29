@@ -103,14 +103,14 @@ FROM ${RUNNER_IMAGE}
 
 RUN apt-get update -y && \
     apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates \
+    python3 python3-pip curl \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
-# RUN apt-get update -y && \
-#     apt-get install -y python3 python3-pip \
-#     && pip3 install --upgrade pip \
-#     && apt-get clean && rm -f /var/lib/apt/lists/*_*
-
-# RUN pip3 install --no-cache-dir neurokit2
+# Install uv package manager and Python dependencies for neurokit2 simulator
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+COPY simulator/requirements.txt /tmp/requirements.txt
+RUN uv pip install --system -r /tmp/requirements.txt
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
@@ -130,6 +130,9 @@ ENV MIX_ENV="prod"
 
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/sensocto ./
+
+# Copy simulator Python scripts for neurokit2-based data generation
+COPY --chown=nobody:root simulator /app/simulator
 
 USER nobody
 

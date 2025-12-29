@@ -167,7 +167,16 @@ Hooks.FooterToolbar = {
     this.isExpanded = false;
 
     if (this.toggleBtn && this.content) {
-      this.toggleBtn.addEventListener('click', () => this.toggle());
+      // Use both click and touchend for better mobile support
+      this.handleToggle = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggle();
+      };
+
+      this.toggleBtn.addEventListener('click', this.handleToggle);
+      // Add touchend for mobile devices that may not fire click reliably
+      this.toggleBtn.addEventListener('touchend', this.handleToggle, { passive: false });
     }
   },
 
@@ -190,7 +199,10 @@ Hooks.FooterToolbar = {
   },
 
   destroyed() {
-    // Cleanup if needed
+    if (this.toggleBtn && this.handleToggle) {
+      this.toggleBtn.removeEventListener('click', this.handleToggle);
+      this.toggleBtn.removeEventListener('touchend', this.handleToggle);
+    }
   }
 }
 

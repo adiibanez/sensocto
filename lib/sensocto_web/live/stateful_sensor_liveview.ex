@@ -10,6 +10,10 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
 
   require Logger
 
+  # Throttle push_events to prevent WebSocket message queue buildup
+  # Flush accumulated measurements every 100ms
+  @push_throttle_interval 100
+
   @doc """
   Renders an attention level badge with appropriate color and icon.
   """
@@ -65,6 +69,11 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         :exit, {:noproc, _} -> :none
       end
 
+    # Schedule the first throttle flush
+    if connected?(socket) do
+      Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
+    end
+
     {:ok,
      socket
      |> assign(:parent_pid, parent_pid)
@@ -74,10 +83,9 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      |> assign(:sensor_type, sensor_state.sensor_type)
      |> assign(:highlighted, false)
      |> assign(:attention_level, initial_attention)
-     |> assign(
-       :attributes_loaded,
-       true
-     )}
+     |> assign(:attributes_loaded, true)
+     # Throttle buffer: accumulate measurements, flush periodically
+     |> assign(:pending_measurements, [])}
   end
 
   # def _render(assigns) do
@@ -98,11 +106,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
            _sensor_data},
         socket
       ) do
-    start = System.monotonic_time()
-
-    Logger.debug("Received single measurement for sensor #{sensor_id}")
-
-    # update client
+    # Buffer single measurements for throttled push
     measurement = %{
       :payload => payload,
       :timestamp => timestamp,
@@ -110,47 +114,16 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       :sensor_id => sensor_id
     }
 
-    # measurement |> dbg()
-
-    # send_update is already non-blocking, no need to spawn Tasks
+    # Update the LiveComponent immediately for UI responsiveness
     send_update(
       AttributeComponent,
       id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
       lastvalue: measurement
     )
 
-    :telemetry.execute(
-      [:sensocto, :live, :handle_info, :measurement],
-      %{duration: System.monotonic_time() - start},
-      %{}
-    )
-
-    # Note: Using string keys for attribute_id to prevent atom exhaustion
-    # The attribute_id is already validated at the channel boundary
-    _merged_attributes =
-      Map.merge(socket.assigns.sensor.attributes, %{
-        measurement.attribute_id => measurement
-      })
-
-    new_socket =
-      socket
-      |> push_event("measurement", measurement)
-
-    {:noreply, new_socket}
-
-    # {
-    #   :noreply,
-    #   socket
-    #   |> push_event("measurement", measurement)
-    #   |> assign(
-    #     :sensor,
-    #     update_in(
-    #       socket.assigns.sensor,
-    #       [:attributes],
-    #       fn _ -> Map.merge(socket.assigns.sensor.attributes, measurement) end
-    #     )
-    #   )
-    # }
+    # Buffer measurement for throttled push to client (for JS charts)
+    pending = [measurement | socket.assigns.pending_measurements]
+    {:noreply, assign(socket, :pending_measurements, pending)}
   end
 
   @impl true
@@ -159,18 +132,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         socket
       )
       when is_list(measurements_list) do
-    start = System.monotonic_time()
-
-    Logger.debug("Received measurements_batch for sensor #{sensor_id}")
-
-    new_socket =
-      socket
-      # |> assign(:sensors, updated_data)
-      |> push_event("measurements_batch", %{
-        :sensor_id => sensor_id,
-        :attributes => measurements_list
-      })
-
+    # Get latest measurement per attribute for LiveComponent updates
     latest_measurements =
       measurements_list
       |> Enum.group_by(& &1.attribute_id)
@@ -178,25 +140,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         Enum.max_by(measurements, & &1.timestamp)
       end)
 
-    new_attributes =
-      latest_measurements
-      |> Enum.group_by(& &1.attribute_id)
-      |> Enum.map(fn {attribute_id, measurements} ->
-        {attribute_id, Enum.max_by(measurements, & &1.timestamp)}
-      end)
-      |> Enum.into(%{})
-
-    # |> Sensocto.Utils.string_keys_to_atom_keys()
-
-    Map.merge(socket.assigns.sensor.attributes, new_attributes)
-
-    :telemetry.execute(
-      [:sensocto, :live, :handle_info, :measurement_batch],
-      %{duration: System.monotonic_time() - start},
-      %{}
-    )
-
-    # send_update is already non-blocking, no need to spawn Tasks
+    # Update LiveComponents immediately for UI responsiveness
     Enum.each(latest_measurements, fn measurement ->
       send_update(
         AttributeComponent,
@@ -205,18 +149,9 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       )
     end)
 
-    {:noreply, new_socket}
-
-    # {:noreply,
-    #  new_socket
-    #  |> assign(
-    #    :sensor,
-    #    update_in(
-    #      socket.assigns.sensor,
-    #      [:attributes],
-    #      fn _ -> Map.merge(socket.assigns.sensor.attributes, new_attributes) end
-    #    )
-    #  )}
+    # Buffer all measurements for throttled push to client (for JS charts)
+    pending = measurements_list ++ socket.assigns.pending_measurements
+    {:noreply, assign(socket, :pending_measurements, pending)}
   end
 
   @impl true
@@ -257,6 +192,34 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
   # Ignore attention changes for other sensors
   @impl true
   def handle_info({:attention_changed, _}, socket), do: {:noreply, socket}
+
+  # Throttled flush: push accumulated measurements to client in batches
+  @impl true
+  def handle_info(:flush_throttled_measurements, socket) do
+    # Schedule next flush
+    Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
+
+    case socket.assigns.pending_measurements do
+      [] ->
+        # Nothing to flush
+        {:noreply, socket}
+
+      measurements ->
+        # Group by sensor_id (should all be the same, but be safe)
+        sensor_id = socket.assigns.sensor_id
+
+        # Push single batch event with all measurements
+        new_socket =
+          socket
+          |> push_event("measurements_batch", %{
+            sensor_id: sensor_id,
+            attributes: Enum.reverse(measurements)
+          })
+          |> assign(:pending_measurements, [])
+
+        {:noreply, new_socket}
+    end
+  end
 
   # defp list_to_map(list) do
   #   list

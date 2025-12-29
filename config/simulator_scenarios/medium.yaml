@@ -1,0 +1,77 @@
+# Medium simulator scenario - 2 sensors, moderate attributes
+# Includes ECG (high frequency) and environment sensor
+
+connectors:
+  sim_connector_1:
+    connector_id: "sim_connector_1"
+    connector_name: "Medical_Monitor"
+    sensors:
+      sim_patient_1:
+        sensor_id: "sim_patient_1"
+        sensor_name: "Patient_Monitor_ICU_1"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 5
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            heart_rate: 72
+            respiratory_rate: 14
+            dummy_data: true
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 0
+            sampling_rate: 50
+            heart_rate: 72
+            respiratory_rate: 14
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 5
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 36.5
+            max_value: 37.2
+            dummy_data: true
+
+      sim_environment:
+        sensor_id: "sim_environment"
+        sensor_name: "Environment_Monitor"
+        attributes:
+          room_temperature:
+            attribute_id: "room_temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 20.0
+            max_value: 23.0
+            dummy_data: true
+          humidity:
+            attribute_id: "humidity"
+            sensor_type: "humidity"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 60
+            dummy_data: true

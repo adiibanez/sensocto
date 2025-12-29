@@ -4,10 +4,43 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
   import Phoenix.LiveView
 
   alias Sensocto.SimpleSensor
+  alias Sensocto.AttentionTracker
   alias SensoctoWeb.Live.Components.AttributeComponent
   import SensoctoWeb.Live.BaseComponents
 
   require Logger
+
+  @doc """
+  Renders an attention level badge with appropriate color and icon.
+  """
+  attr :level, :atom, required: true
+
+  def attention_badge(assigns) do
+    {color_class, icon_name, label} =
+      case assigns.level do
+        :high -> {"text-green-400", "eye", "High"}
+        :medium -> {"text-yellow-400", "eye", "Medium"}
+        :low -> {"text-orange-400", "eye-slash", "Low"}
+        :none -> {"text-gray-500", "eye-slash", "None"}
+        _ -> {"text-gray-500", "eye-slash", "Unknown"}
+      end
+
+    assigns =
+      assigns
+      |> assign(:color_class, color_class)
+      |> assign(:icon_name, icon_name)
+      |> assign(:label, label)
+
+    ~H"""
+    <span
+      class={"flex items-center gap-1 text-xs #{@color_class}"}
+      title={"Attention: #{@label} - affects data update frequency"}
+    >
+      <Heroicons.icon name={@icon_name} type="outline" class="h-3 w-3" />
+      <span class="hidden sm:inline">{@label}</span>
+    </span>
+    """
+  end
 
   @impl true
   def mount(_params, %{"parent_pid" => parent_pid, "sensor" => sensor}, socket) do
@@ -15,6 +48,8 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor.sensor_id}")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor.sensor_id}")
+    # Subscribe to attention changes for this sensor
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor.sensor_id}")
 
     # https://www.richardtaylor.dev/articles/beautiful-animated-charts-for-liveview-with-echarts
     # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
@@ -22,7 +57,13 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
     sensor_state =
       SimpleSensor.get_view_state(sensor.sensor_id)
 
-    # |> dbg()
+    # Get initial attention level
+    initial_attention =
+      try do
+        AttentionTracker.get_sensor_attention_level(sensor.sensor_id)
+      catch
+        :exit, {:noproc, _} -> :none
+      end
 
     {:ok,
      socket
@@ -32,6 +73,7 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
      |> assign(:sensor_name, sensor_state.sensor_name)
      |> assign(:sensor_type, sensor_state.sensor_type)
      |> assign(:highlighted, false)
+     |> assign(:attention_level, initial_attention)
      |> assign(
        :attributes_loaded,
        true
@@ -70,17 +112,12 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
 
     # measurement |> dbg()
 
-    pid = self()
-
-    Task.start(fn ->
-      # Do something asynchronously
-      send_update(
-        pid,
-        AttributeComponent,
-        id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-        lastvalue: measurement
-      )
-    end)
+    # send_update is already non-blocking, no need to spawn Tasks
+    send_update(
+      AttributeComponent,
+      id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
+      lastvalue: measurement
+    )
 
     :telemetry.execute(
       [:sensocto, :live, :handle_info, :measurement],
@@ -159,20 +196,13 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       %{}
     )
 
-    Enum.all?(latest_measurements, fn measurement ->
-      pid = self()
-
-      # measurement |> dbg()
-
-      Task.start(fn ->
-        # Do something asynchronously
-        send_update(
-          pid,
-          AttributeComponent,
-          id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-          lastvalue: measurement
-        )
-      end)
+    # send_update is already non-blocking, no need to spawn Tasks
+    Enum.each(latest_measurements, fn measurement ->
+      send_update(
+        AttributeComponent,
+        id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
+        lastvalue: measurement
+      )
     end)
 
     {:noreply, new_socket}
@@ -195,13 +225,16 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
         socket
       ) do
     Logger.debug("New state for sensor")
-    # socket.assigns |> dbg()
 
-    {
-      :noreply,
-      socket
-      |> assign(:sensor, SimpleSensor.get_view_state(socket.assigns.sensor_id))
-    }
+    # Handle case where sensor process may have been terminated
+    try do
+      new_sensor_state = SimpleSensor.get_view_state(socket.assigns.sensor_id)
+      {:noreply, assign(socket, :sensor, new_sensor_state)}
+    catch
+      :exit, {:noproc, _} ->
+        Logger.warning("Sensor #{socket.assigns.sensor_id} process not found during state update")
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -211,6 +244,19 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
       ) do
     {:noreply, socket |> assign(:attributes_loaded, true)}
   end
+
+  # Handle sensor-level attention changes
+  @impl true
+  def handle_info(
+        {:attention_changed, %{sensor_id: sensor_id, level: new_level}},
+        %{assigns: %{sensor_id: sensor_id}} = socket
+      ) do
+    {:noreply, assign(socket, :attention_level, new_level)}
+  end
+
+  # Ignore attention changes for other sensors
+  @impl true
+  def handle_info({:attention_changed, _}, socket), do: {:noreply, socket}
 
   # defp list_to_map(list) do
   #   list
@@ -310,6 +356,82 @@ defmodule SensoctoWeb.StatefulSensorLiveview do
 
     {:noreply, new_socket}
   end
+
+  # Handle incomplete request-seed-data events (missing sensor_id/attribute_id)
+  @impl true
+  def handle_event("request-seed-data", params, socket) do
+    Logger.warning("Received incomplete request-seed-data event: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  # ============================================================================
+  # Attention Tracking Events
+  # ============================================================================
+
+  @impl true
+  def handle_event("view_enter", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.register_view(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("view_leave", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.unregister_view(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("focus", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.register_focus(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("unfocus", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.unregister_focus(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("pin_sensor", %{"sensor_id" => sensor_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.pin_sensor(sensor_id, user_id)
+    {:noreply, push_event(socket, "pin_state_changed", %{sensor_id: sensor_id, pinned: true})}
+  end
+
+  @impl true
+  def handle_event("unpin_sensor", %{"sensor_id" => sensor_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.unpin_sensor(sensor_id, user_id)
+    {:noreply, push_event(socket, "pin_state_changed", %{sensor_id: sensor_id, pinned: false})}
+  end
+
+  @impl true
+  def handle_event("page_hidden", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.unregister_view(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("page_visible", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.register_view(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  defp get_user_id(socket) do
+    # Use socket id as user identifier, or current_user if available
+    socket.id
+  end
+
+  # ============================================================================
+  # Helper Functions
+  # ============================================================================
 
   def cleanup(entry) do
     case entry do

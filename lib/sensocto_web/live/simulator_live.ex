@@ -94,13 +94,31 @@ defmodule SensoctoWeb.SimulatorLive do
     end
   end
 
+  @impl true
+  def handle_event("switch_scenario", %{"scenario" => scenario_name}, socket) do
+    case Manager.switch_scenario(scenario_name) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Switched to scenario: #{scenario_name}")
+         |> assign_status()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to switch scenario: #{inspect(reason)}")}
+    end
+  end
 
   defp assign_status(socket) do
-    {connectors, config} =
+    {connectors, config, scenarios, current_scenario} =
       if SimSupervisor.enabled?() do
-        {Manager.get_connectors(), Manager.get_config()}
+        {
+          Manager.get_connectors(),
+          Manager.get_config(),
+          Manager.list_scenarios(),
+          Manager.get_current_scenario()
+        }
       else
-        {%{}, %{}}
+        {%{}, %{}, [], nil}
       end
 
     # Count running connectors
@@ -110,6 +128,8 @@ defmodule SensoctoWeb.SimulatorLive do
     |> assign(:connectors, connectors)
     |> assign(:config, config)
     |> assign(:running_count, running_count)
+    |> assign(:scenarios, scenarios)
+    |> assign(:current_scenario, current_scenario)
   end
 
   @impl true
@@ -128,6 +148,44 @@ defmodule SensoctoWeb.SimulatorLive do
               {if @running_count > 0, do: "#{@running_count} Running", else: "Stopped"}
             </span>
           </div>
+        </div>
+
+        <!-- Scenario Selection -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <h2 class="text-xl font-semibold mb-4 text-orange-300">Simulation Scenarios</h2>
+          <p class="text-sm text-gray-400 mb-4">
+            Select a scenario to control simulator complexity. Lower complexity = less system load.
+          </p>
+
+          <%= if length(@scenarios) > 0 do %>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <%= for scenario <- @scenarios do %>
+                <div
+                  class={[
+                    "rounded-lg p-4 border-2 cursor-pointer transition-all hover:border-orange-400",
+                    @current_scenario == scenario.name && "border-orange-500 bg-gray-700",
+                    @current_scenario != scenario.name && "border-gray-600 bg-gray-700/50"
+                  ]}
+                  phx-click="switch_scenario"
+                  phx-value-scenario={scenario.name}
+                >
+                  <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-lg font-medium text-white capitalize">{scenario.name}</h3>
+                    <%= if @current_scenario == scenario.name do %>
+                      <span class="px-2 py-1 bg-orange-500 rounded text-xs font-medium">Active</span>
+                    <% end %>
+                  </div>
+                  <p class="text-sm text-gray-300 mb-2">{scenario.description}</p>
+                  <div class="flex gap-4 text-xs text-gray-400">
+                    <span>{scenario.sensor_count} sensors</span>
+                    <span>{scenario.attribute_count} attributes</span>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% else %>
+            <p class="text-gray-400">No scenarios found in config/simulator_scenarios/</p>
+          <% end %>
         </div>
 
         <div class="mb-6 flex gap-4">

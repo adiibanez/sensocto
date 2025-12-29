@@ -206,33 +206,35 @@ defmodule SensoctoWeb.Live.BaseComponents do
   end
 
   def render_attribute_header(assigns) do
+    # Ensure socket is available for LiveSvelte prop updates
+    assigns = assign_new(assigns, :socket, fn -> nil end)
+
     ~H"""
-    <p class="text-xs text-white-500" id={"attribute_header#{@sensor_id}_#{@attribute_id}"}>
-      {@attribute_name}
+    <div
+      class="flex items-center text-xs text-white-500"
+      id={"attribute_header#{@sensor_id}_#{@attribute_id}"}
+    >
+      <span class="flex-1">{@attribute_name}</span>
 
-      <span :if={@lastvalue}>
-        <.svelte
-          name="TimeDiff"
-          props={
-            %{
-              startTime: @lastvalue.timestamp
-            }
-          }
-        />
-
-    <!--<span>{time_ago_from_unix(@lastvalue.timestamp)}</span>-->
+      <span :if={@lastvalue} class="flex items-center gap-1">
+        <span
+          id={"timediff_#{@sensor_id}_#{@attribute_id}"}
+          phx-hook="TimeDiff"
+          data-timestamp={@lastvalue.timestamp}
+        >
+        </span>
 
         <Heroicons.icon
           id={"trash_#{@sensor_id}_#{@attribute_id}"}
           name="trash"
           type="outline"
-          class="h-4 w-4 float-right"
+          class="h-4 w-4 cursor-pointer hover:text-red-400"
           phx-click="clear-attribute"
           phx-value-sensor_id={@sensor_id}
           phx-value-attribute_id={@attribute_id}
         />
       </span>
-    </p>
+    </div>
     """
   end
 

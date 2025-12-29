@@ -51,6 +51,9 @@ defmodule Sensocto.Application do
       {Phoenix.PubSub, name: Sensocto.PubSub},
       SensoctoWeb.Sensocto.Presence,
 
+      # Attention tracking for back-pressure (must be after PubSub)
+      Sensocto.AttentionTracker,
+
       # initialize after pubsub
       Sensocto.SensorsDynamicSupervisor,
       Sensocto.RoomsDynamicSupervisor,

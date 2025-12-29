@@ -178,8 +178,8 @@ config :sensocto, Sensocto.Mailer, adapter: Swoosh.Adapters.Local
 # LVN_ACTIVATION   annotations: true,
 # LVN_ACTIVATION   pretty: true
 
-# Simulator starts but connectors are stopped by default - use /admin/simulator to start
+# Simulator starts and auto-starts connectors for testing
 config :sensocto, :simulator,
   enabled: true,
-  autostart: false,
+  autostart: true,
   config_path: "config/simulators.yaml"

@@ -41,6 +41,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           attribute_id={@attribute_id}
           attribute_name={@attribute_id}
           lastvalue={@lastvalue}
+          socket={@socket}
         >
         </.render_attribute_header>
 
@@ -90,6 +91,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           attribute_id={@attribute_id}
           attribute_name={@attribute_id}
           lastvalue={@lastvalue}
+          socket={@socket}
         >
         </.render_attribute_header>
 
@@ -138,6 +140,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           attribute_id={@attribute_id}
           attribute_name={@attribute_id}
           lastvalue={@lastvalue}
+          socket={@socket}
         >
         </.render_attribute_header>
 
@@ -180,6 +183,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           attribute_id={@attribute_id}
           attribute_name={@attribute_id}
           lastvalue={@lastvalue}
+          socket={@socket}
         >
         </.render_attribute_header>
 
@@ -234,6 +238,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           attribute_id={@attribute_id}
           attribute_name={@attribute_id}
           lastvalue={@lastvalue}
+          socket={@socket}
         >
         </.render_attribute_header>
 

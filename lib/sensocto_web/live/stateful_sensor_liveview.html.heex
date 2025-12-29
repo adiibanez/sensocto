@@ -4,7 +4,12 @@
   style="border:0 solid green"
   phx-mounted={JS.transition("animate-ping", time: 100)}
 >
-  <div class="w-full h-full">
+  <div
+    id={"sensor_content_#{@sensor_id}"}
+    class="w-full h-full"
+    phx-hook="AttentionTracker"
+    data-sensor_id={@sensor_id}
+  >
     <p class="hidden">
       Sensor metadata {inspect(@sensor)}
     </p>
@@ -15,12 +20,33 @@
       )}
     </p>
 
-    <.render_sensor_header
-      sensor_id={@sensor_id}
-      sensor_name={@sensor_name}
-      highlighted={@highlighted}
-    >
-    </.render_sensor_header>
+    <div class="flex items-center justify-between mb-1">
+      <.render_sensor_header
+        sensor_id={@sensor_id}
+        sensor_name={@sensor_name}
+        highlighted={@highlighted}
+      >
+      </.render_sensor_header>
+
+      <div class="flex items-center gap-2">
+        <.attention_badge level={@attention_level} />
+
+        <button
+          id={"pin_#{@sensor_id}"}
+          class="text-gray-400 hover:text-orange-400 transition-colors"
+          title="Pin sensor for high-frequency updates"
+          phx-hook="SensorPinControl"
+          data-sensor_id={@sensor_id}
+          data-pinned="false"
+        >
+          <Heroicons.icon
+            name="star"
+            type="outline"
+            class="h-4 w-4"
+          />
+        </button>
+      </div>
+    </div>
 
     <div>
       

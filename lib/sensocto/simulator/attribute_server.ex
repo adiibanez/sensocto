@@ -2,10 +2,15 @@ defmodule Sensocto.Simulator.AttributeServer do
   @moduledoc """
   Generates simulated data for a sensor attribute.
   Fetches data from DataServer, batches it, and sends to the parent SensorServer.
+
+  Supports dynamic batch window adjustment based on user attention levels,
+  enabling back-pressure when many sensors are active but few are being viewed.
   """
 
   use GenServer
   require Logger
+
+  alias Sensocto.AttentionTracker
 
   @enforce_keys [:attribute_id]
   defstruct @enforce_keys ++
@@ -16,18 +21,27 @@ defmodule Sensocto.Simulator.AttributeServer do
                 :paused,
                 :config,
                 :messages_queue,
-                :batch_push_messages
+                :batch_push_messages,
+                :attention_level,
+                :current_batch_window,
+                :base_batch_window,
+                # String version of attribute_id for consistent AttentionTracker lookups
+                :attribute_id_str
               ]
 
   @type t :: %__MODULE__{
-          attribute_id: String.t(),
+          attribute_id: String.t() | atom(),
+          attribute_id_str: String.t(),
           sensor_pid: pid(),
           sensor_id: String.t(),
           connector_id: String.t(),
           paused: boolean(),
           config: map(),
           messages_queue: list(),
-          batch_push_messages: list()
+          batch_push_messages: list(),
+          attention_level: atom(),
+          current_batch_window: non_neg_integer(),
+          base_batch_window: non_neg_integer()
         }
 
   def start_link(
@@ -48,20 +62,51 @@ defmodule Sensocto.Simulator.AttributeServer do
   def init(%{attribute_id: attribute_id} = config) do
     Logger.info("AttributeServer init: #{config.connector_id}/#{config.sensor_id}/#{attribute_id}")
 
+    sensor_id = Map.get(config, :sensor_id)
+    # Ensure attribute_id is a string for consistent AttentionTracker lookups
+    # (AttentionTracker receives string IDs from JavaScript frontend)
+    attribute_id_str = to_string(attribute_id)
+    base_window = config[:batch_window] || 500
+
+    # Subscribe to attention changes for this sensor/attribute
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}:#{attribute_id_str}")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
+
+    # Get initial attention level and calculate batch window
+    # Handle case where AttentionTracker might not be running yet
+    {initial_attention, initial_batch_window} =
+      try do
+        attention = AttentionTracker.get_attention_level(sensor_id, attribute_id_str)
+        batch_window = AttentionTracker.calculate_batch_window(base_window, sensor_id, attribute_id_str)
+        {attention, batch_window}
+      catch
+        :exit, {:noproc, _} ->
+          Logger.debug("AttentionTracker not available, using defaults for #{sensor_id}/#{attribute_id_str}")
+          {:none, base_window * 10}
+      end
+
     state = %__MODULE__{
       attribute_id: attribute_id,
+      attribute_id_str: attribute_id_str,
       sensor_pid: Map.get(config, :sensor_pid),
-      sensor_id: Map.get(config, :sensor_id),
+      sensor_id: sensor_id,
       connector_id: Map.get(config, :connector_id),
       paused: false,
       config: config,
       messages_queue: [],
-      batch_push_messages: []
+      batch_push_messages: [],
+      attention_level: initial_attention,
+      base_batch_window: base_window,
+      current_batch_window: initial_batch_window
     }
+
+    Logger.debug(
+      "AttributeServer #{sensor_id}/#{attribute_id} starting with attention=#{initial_attention}, batch_window=#{initial_batch_window}ms"
+    )
 
     # Start processing and batch window timer
     Process.send_after(self(), :process_queue, 100)
-    Process.send_after(self(), :batch_window, config[:batch_window] || 500)
+    Process.send_after(self(), :batch_window, initial_batch_window)
 
     {:ok, state}
   end
@@ -119,6 +164,7 @@ defmodule Sensocto.Simulator.AttributeServer do
   end
 
   # Push batch to sensor
+  # Note: Uses attribute_id_str (string) for consistency with SimpleSensor/AttributeStore
   @impl true
   def handle_cast({:push_batch, messages}, state) when length(messages) > 0 do
     unless state.paused do
@@ -127,11 +173,11 @@ defmodule Sensocto.Simulator.AttributeServer do
           %{
             "payload" => msg.payload,
             "timestamp" => msg.timestamp,
-            "attribute_id" => state.attribute_id
+            "attribute_id" => state.attribute_id_str
           }
         end)
 
-      send(state.sensor_pid, {:push_batch, state.attribute_id, push_messages})
+      send(state.sensor_pid, {:push_batch, state.attribute_id_str, push_messages})
     end
 
     {:noreply, state}
@@ -175,8 +221,7 @@ defmodule Sensocto.Simulator.AttributeServer do
 
   # Batch window timeout - push whatever is in the batch
   @impl true
-  def handle_info(:batch_window, %{batch_push_messages: messages, config: config} = state) do
-    batch_window = config[:batch_window] || 500
+  def handle_info(:batch_window, %{batch_push_messages: messages, current_batch_window: batch_window} = state) do
     Process.send_after(self(), :batch_window, batch_window)
 
     if length(messages) > 0 do
@@ -186,6 +231,54 @@ defmodule Sensocto.Simulator.AttributeServer do
       {:noreply, state}
     end
   end
+
+  # Handle attention level changes from AttentionTracker
+  # Note: PubSub messages use string attribute_id, so we match on attribute_id_str
+  @impl true
+  def handle_info(
+        {:attention_changed, %{sensor_id: sensor_id, attribute_id: attr_id, level: new_level}},
+        %{sensor_id: sensor_id, attribute_id_str: attr_id} = state
+      ) do
+    new_batch_window =
+      AttentionTracker.calculate_batch_window(state.base_batch_window, sensor_id, attr_id)
+
+    if new_level != state.attention_level do
+      Logger.info(
+        "AttributeServer #{sensor_id}/#{attr_id} attention changed: #{state.attention_level} -> #{new_level}, batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms"
+      )
+    end
+
+    {:noreply, %{state | attention_level: new_level, current_batch_window: new_batch_window}}
+  end
+
+  # Handle sensor-level attention changes (for pinning)
+  @impl true
+  def handle_info(
+        {:attention_changed, %{sensor_id: sensor_id, level: new_level}},
+        %{sensor_id: sensor_id} = state
+      ) do
+    # Recalculate based on attribute-specific attention (which considers sensor pins)
+    new_batch_window =
+      AttentionTracker.calculate_batch_window(
+        state.base_batch_window,
+        sensor_id,
+        state.attribute_id_str
+      )
+
+    new_attention = AttentionTracker.get_attention_level(sensor_id, state.attribute_id_str)
+
+    if new_attention != state.attention_level do
+      Logger.info(
+        "AttributeServer #{sensor_id}/#{state.attribute_id_str} sensor attention changed to #{new_level}, effective: #{new_attention}, batch_window: #{new_batch_window}ms"
+      )
+    end
+
+    {:noreply, %{state | attention_level: new_attention, current_batch_window: new_batch_window}}
+  end
+
+  # Ignore attention changes for other sensors/attributes
+  @impl true
+  def handle_info({:attention_changed, _}, state), do: {:noreply, state}
 
   defp via_tuple(identifier) do
     {:via, Registry, {Sensocto.Simulator.Registry, "attribute_#{identifier}"}}

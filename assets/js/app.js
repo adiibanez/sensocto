@@ -42,6 +42,9 @@ import {
 // Room-related hooks
 import { RoomStorage, CopyToClipboard, QRCode } from './hooks/room_storage.js';
 
+// Attention tracking hooks for back-pressure control
+import { AttentionTracker, SensorPinControl } from './hooks/attention_tracker.js';
+
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
   window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
@@ -61,6 +64,10 @@ let Hooks = {}
 Hooks.RoomStorage = RoomStorage;
 Hooks.CopyToClipboard = CopyToClipboard;
 Hooks.QRCode = QRCode;
+
+// Register attention tracking hooks
+Hooks.AttentionTracker = AttentionTracker;
+Hooks.SensorPinControl = SensorPinControl;
 
 
 Hooks.Formless = {
@@ -148,6 +155,83 @@ Hooks.ConnectionHandler = {
   },
   connected(event) {
     logger.log("Hooks.ConnectionHandler", "connected", event);
+  }
+}
+
+// TimeDiff hook - displays relative time that updates when data-timestamp changes
+Hooks.TimeDiff = {
+  mounted() {
+    this.startTime = parseInt(this.el.dataset.timestamp);
+    this.updateDisplay();
+    this.startTimer();
+
+    // Use MutationObserver to detect attribute changes since LiveView
+    // may not trigger updated() for attribute-only changes
+    this.observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'data-timestamp') {
+          const newTimestamp = parseInt(this.el.dataset.timestamp);
+          if (newTimestamp !== this.startTime) {
+            this.startTime = newTimestamp;
+            this.clearTimer();
+            this.updateDisplay();
+            this.startTimer();
+          }
+        }
+      }
+    });
+    this.observer.observe(this.el, { attributes: true });
+  },
+
+  updated() {
+    const newTimestamp = parseInt(this.el.dataset.timestamp);
+    if (newTimestamp !== this.startTime) {
+      this.startTime = newTimestamp;
+      this.clearTimer();
+      this.updateDisplay();
+      this.startTimer();
+    }
+  },
+
+  destroyed() {
+    this.clearTimer();
+    if (this.observer) {
+      this.observer.disconnect();
+    }
+  },
+
+  clearTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+  },
+
+  startTimer() {
+    const diff = Date.now() - this.startTime;
+    // Choose interval based on how old the timestamp is
+    const interval = diff < 1000 ? 100 : diff < 60000 ? 1000 : 60000;
+    this.timerInterval = setInterval(() => this.updateDisplay(), interval);
+  },
+
+  updateDisplay() {
+    const diff = Date.now() - this.startTime;
+    let text;
+
+    if (diff < 1000) {
+      text = `${diff.toFixed(0)} ms ago`;
+    } else if (diff < 60000) {
+      text = `${(diff / 1000).toFixed(1)} secs ago`;
+    } else if (diff < 3600000) {
+      const mins = Math.floor(diff / 60000);
+      text = `${mins} min${mins > 1 ? 's' : ''} ago`;
+    } else if (diff < 86400000) {
+      text = `${Math.floor(diff / 3600000)} hours ago`;
+    } else {
+      text = `${Math.floor(diff / 86400000)} days ago`;
+    }
+
+    this.el.textContent = text;
   }
 }
 

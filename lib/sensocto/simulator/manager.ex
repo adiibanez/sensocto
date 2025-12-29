@@ -2,16 +2,22 @@ defmodule Sensocto.Simulator.Manager do
   @moduledoc """
   Manages simulator connectors based on YAML configuration.
   Loads config on startup and supports hot-reloading.
+  Supports multiple scenario configurations with different complexity levels.
   """
 
   use GenServer
   require Logger
 
-  defstruct [:connectors, :config_path]
+  @scenarios_dir "config/simulator_scenarios"
+  @default_scenario "medium"
+
+  defstruct [:connectors, :config_path, :current_scenario, :available_scenarios]
 
   @type t :: %__MODULE__{
           connectors: map(),
-          config_path: String.t()
+          config_path: String.t(),
+          current_scenario: String.t() | nil,
+          available_scenarios: list(map())
         }
 
   # Client API
@@ -83,13 +89,39 @@ defmodule Sensocto.Simulator.Manager do
     GenServer.call(__MODULE__, :stop_all)
   end
 
+  @doc """
+  Get list of available scenarios.
+  """
+  def list_scenarios do
+    GenServer.call(__MODULE__, :list_scenarios)
+  end
+
+  @doc """
+  Get the current scenario name.
+  """
+  def get_current_scenario do
+    GenServer.call(__MODULE__, :get_current_scenario)
+  end
+
+  @doc """
+  Switch to a different scenario by name.
+  Stops all current connectors and starts the new scenario.
+  """
+  def switch_scenario(scenario_name) do
+    GenServer.call(__MODULE__, {:switch_scenario, scenario_name})
+  end
+
   # Server Callbacks
 
   @impl true
   def init(config_path) do
+    available_scenarios = discover_scenarios()
+
     state = %__MODULE__{
       connectors: %{},
-      config_path: config_path
+      config_path: config_path,
+      current_scenario: nil,
+      available_scenarios: available_scenarios
     }
 
     {:ok, state, {:continue, :load_config}}
@@ -176,6 +208,43 @@ defmodule Sensocto.Simulator.Manager do
   @impl true
   def handle_call(:get_config, _from, state) do
     {:reply, state.connectors, state}
+  end
+
+  @impl true
+  def handle_call(:list_scenarios, _from, state) do
+    {:reply, state.available_scenarios, state}
+  end
+
+  @impl true
+  def handle_call(:get_current_scenario, _from, state) do
+    {:reply, state.current_scenario, state}
+  end
+
+  @impl true
+  def handle_call({:switch_scenario, scenario_name}, _from, state) do
+    # Find the scenario
+    case Enum.find(state.available_scenarios, fn s -> s.name == scenario_name end) do
+      nil ->
+        {:reply, {:error, :scenario_not_found}, state}
+
+      scenario ->
+        # Stop all existing connectors
+        Enum.each(state.connectors, fn {connector_id, _} ->
+          do_stop_connector(connector_id)
+        end)
+
+        # Load the new scenario config
+        case YamlElixir.read_from_file(scenario.path) do
+          {:ok, config} ->
+            Logger.info("Switching to scenario: #{scenario_name}")
+            new_state = apply_config(%{state | connectors: %{}, current_scenario: scenario_name}, config)
+            {:reply, :ok, new_state}
+
+          {:error, reason} ->
+            Logger.error("Failed to load scenario #{scenario_name}: #{inspect(reason)}")
+            {:reply, {:error, reason}, state}
+        end
+    end
   end
 
   # Private Functions
@@ -289,5 +358,77 @@ defmodule Sensocto.Simulator.Manager do
         attributes: sensor_config["attributes"] || %{}
       }}
     end)
+  end
+
+  defp discover_scenarios do
+    scenarios_path = Path.join(File.cwd!(), @scenarios_dir)
+
+    if File.exists?(scenarios_path) do
+      scenarios_path
+      |> File.ls!()
+      |> Enum.filter(&String.ends_with?(&1, ".yaml"))
+      |> Enum.map(fn filename ->
+        name = String.replace_suffix(filename, ".yaml", "")
+        path = Path.join(scenarios_path, filename)
+
+        # Read the file to get description and count sensors/attributes
+        stats = get_scenario_stats(path)
+
+        %{
+          name: name,
+          path: path,
+          description: stats.description,
+          sensor_count: stats.sensor_count,
+          attribute_count: stats.attribute_count
+        }
+      end)
+      |> Enum.sort_by(& &1.attribute_count)
+    else
+      Logger.warning("Scenarios directory not found: #{scenarios_path}")
+      []
+    end
+  end
+
+  defp get_scenario_stats(path) do
+    case YamlElixir.read_from_file(path) do
+      {:ok, config} ->
+        connectors = config["connectors"] || %{}
+
+        {sensor_count, attribute_count} =
+          Enum.reduce(connectors, {0, 0}, fn {_id, connector}, {sensors, attrs} ->
+            sensors_config = connector["sensors"] || %{}
+            sensor_count = map_size(sensors_config)
+
+            attr_count =
+              Enum.reduce(sensors_config, 0, fn {_sid, sensor}, acc ->
+                acc + map_size(sensor["attributes"] || %{})
+              end)
+
+            {sensors + sensor_count, attrs + attr_count}
+          end)
+
+        # Extract description from first line comment if available
+        description =
+          case File.read(path) do
+            {:ok, content} ->
+              content
+              |> String.split("\n")
+              |> Enum.find("", &String.starts_with?(&1, "#"))
+              |> String.replace_prefix("# ", "")
+              |> String.trim()
+
+            _ ->
+              ""
+          end
+
+        %{
+          description: description,
+          sensor_count: sensor_count,
+          attribute_count: attribute_count
+        }
+
+      {:error, _} ->
+        %{description: "", sensor_count: 0, attribute_count: 0}
+    end
   end
 end

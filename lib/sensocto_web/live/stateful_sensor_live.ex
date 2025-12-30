@@ -47,7 +47,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
   end
 
   @impl true
-  def mount(_params, %{"parent_pid" => parent_pid, "sensor" => sensor}, socket) do
+  def mount(_params, %{"parent_pid" => parent_pid, "sensor" => sensor} = session, socket) do
     # send_test_event()
     # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor.sensor_id}")
@@ -59,7 +59,13 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
 
     sensor_state =
-      SimpleSensor.get_view_state(sensor.sensor_id)
+      try do
+        SimpleSensor.get_view_state(sensor.sensor_id)
+      catch
+        :exit, _ ->
+          # Sensor process no longer exists, use the cached sensor data from session
+          sensor
+      end
 
     # Get initial attention level
     initial_attention =
@@ -74,6 +80,10 @@ defmodule SensoctoWeb.StatefulSensorLive do
       Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
     end
 
+    # Determine view mode: :normal (optimized for <=3 sensors) or :summary (compact)
+    # Can be overridden via session
+    view_mode = Map.get(session, "view_mode", :normal)
+
     {:ok,
      socket
      |> assign(:parent_pid, parent_pid)
@@ -85,6 +95,9 @@ defmodule SensoctoWeb.StatefulSensorLive do
      |> assign(:attention_level, initial_attention)
      |> assign(:attributes_loaded, true)
      |> assign(:battery_state, :normal)
+     |> assign(:view_mode, view_mode)
+     |> assign(:show_map_modal, false)
+     |> assign(:show_detail_modal, false)
      # Throttle buffer: accumulate measurements, flush periodically
      |> assign(:pending_measurements, [])}
   end
@@ -244,6 +257,27 @@ defmodule SensoctoWeb.StatefulSensorLive do
     {:noreply,
      socket
      |> assign(:highlighted, not socket.assigns.highlighted)}
+  end
+
+  def handle_event("toggle_view_mode", _params, socket) do
+    new_mode = if socket.assigns.view_mode == :normal, do: :summary, else: :normal
+    {:noreply, assign(socket, :view_mode, new_mode)}
+  end
+
+  def handle_event("show_map_modal", _params, socket) do
+    {:noreply, assign(socket, :show_map_modal, true)}
+  end
+
+  def handle_event("close_map_modal", _params, socket) do
+    {:noreply, assign(socket, :show_map_modal, false)}
+  end
+
+  def handle_event("show_detail_modal", _params, socket) do
+    {:noreply, assign(socket, :show_detail_modal, true)}
+  end
+
+  def handle_event("close_detail_modal", _params, socket) do
+    {:noreply, assign(socket, :show_detail_modal, false)}
   end
 
   def handle_event("update-parameter", params, socket) do

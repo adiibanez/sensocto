@@ -24,6 +24,21 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   attr :attribute_type, :string
 
+  # Summary mode for ECG - show minimal indicator
+  @impl true
+  def render(%{:attribute_type => "ecg", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div class="flex items-center justify-between text-xs py-0.5">
+      <span class="text-gray-400">{@attribute_id}</span>
+      <span :if={@lastvalue} class="text-green-400 flex items-center gap-1">
+        <Heroicons.icon name="heart" type="solid" class="h-3 w-3 animate-pulse" />
+        active
+      </span>
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:attribute_type => "ecg"} = assigns) do
     Logger.debug("AttributeComponent ecg render")
@@ -68,6 +83,47 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             socket={@socket}
             class="w-full m-0 p-0"
           />
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "geolocation", :view_mode => :summary} = assigns) do
+    Logger.debug("AttributeComponent geolocation summary render")
+
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No location</div>
+
+        <div :if={@lastvalue} class="flex items-center justify-between text-xs">
+          <span class="text-gray-400">
+            {Float.round(@lastvalue.payload.latitude / 1, 3)}, {Float.round(@lastvalue.payload.longitude / 1, 3)}
+          </span>
+          <div class="flex items-center gap-2">
+            <a
+              href={"https://www.openstreetmap.org/?mlat=#{@lastvalue.payload.latitude}&mlon=#{@lastvalue.payload.longitude}&zoom=15"}
+              target="_blank"
+              class="text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              title="Open in OpenStreetMap"
+            >
+              <Heroicons.icon name="arrow-top-right-on-square" type="outline" class="h-3 w-3" />
+            </a>
+            <button
+              class="text-blue-400 hover:text-blue-300"
+              phx-click="show_map_modal"
+              title="Show map"
+            >
+              <Heroicons.icon name="map" type="outline" class="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </.container>
     </div>
@@ -123,6 +179,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  # Summary mode for IMU
+  @impl true
+  def render(%{:attribute_type => "imu", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div class="flex items-center justify-between text-xs py-0.5">
+      <span class="text-gray-400">{@attribute_id}</span>
+      <span :if={@lastvalue} class="text-blue-400">active</span>
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:attribute_type => "imu"} = assigns) do
     Logger.debug("AttributeComponent imu render #{inspect(assigns)}")
@@ -162,6 +230,32 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           />
         </div>
       </.container>
+    </div>
+    """
+  end
+
+  # Summary mode for battery
+  @impl true
+  def render(%{:attribute_type => "battery", :view_mode => :summary} = assigns) do
+    assigns = assign(assigns, :battery_info, extract_battery_info(assigns[:lastvalue]))
+
+    ~H"""
+    <div class="flex items-center justify-between text-xs py-0.5">
+      <span class="text-gray-400">{@attribute_id}</span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <span class={[
+          if(@battery_info.level < 20, do: "text-red-400", else: if(@battery_info.level < 50, do: "text-yellow-400", else: "text-green-400"))
+        ]}>
+          {Float.round(@battery_info.level, 0)}%
+        </span>
+        <Heroicons.icon
+          :if={@battery_info.charging == "yes"}
+          name="bolt"
+          type="solid"
+          class="h-3 w-3 text-yellow-400"
+        />
+      </div>
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
     </div>
     """
   end
@@ -231,6 +325,22 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
   defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
+  # Summary mode for button
+  @impl true
+  def render(%{:attribute_type => "button", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div class="flex items-center justify-between text-xs py-0.5">
+      <span class="text-gray-400">{@attribute_id}</span>
+      <div :if={@lastvalue} class="flex gap-0.5">
+        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")]}>1</div>
+        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")]}>2</div>
+        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")]}>3</div>
+      </div>
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:attribute_type => "button"} = assigns) do
     Logger.debug("AttributeComponent button render #{inspect(assigns)}")
@@ -277,6 +387,20 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           </div>
         </div>
       </.container>
+    </div>
+    """
+  end
+
+  # Summary mode for default/generic attributes (sparkline types)
+  @impl true
+  def render(%{:view_mode => :summary} = assigns) do
+    ~H"""
+    <div class="flex items-center justify-between text-xs py-0.5">
+      <span class="text-gray-400">{@attribute_id}</span>
+      <span :if={@lastvalue} class="text-white font-mono">
+        {format_payload(@lastvalue.payload)}
+      </span>
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
     </div>
     """
   end
@@ -340,6 +464,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       # Get render hints from AttributeType for dynamic visualization selection
       attribute_type = assigns.attribute_type || "unknown"
       render_hints = AttributeType.render_hints(attribute_type)
+      view_mode = Map.get(assigns, :view_mode, :normal)
 
       {
         :ok,
@@ -353,14 +478,29 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         |> assign_new(:render_hints, fn _ -> render_hints end)
         # measurements only contain lastvalue
         |> assign(:lastvalue, assigns.lastvalue)
+        |> assign(:view_mode, view_mode)
       }
     else
-      # Partial update - only update lastvalue
+      # Partial update - only update lastvalue (and view_mode if present)
       Logger.debug("attribute update (partial) id: #{assigns.id}")
 
-      {:ok, assign(socket, :lastvalue, assigns.lastvalue)}
+      socket = assign(socket, :lastvalue, assigns.lastvalue)
+      socket = if Map.has_key?(assigns, :view_mode), do: assign(socket, :view_mode, assigns.view_mode), else: socket
+      {:ok, socket}
     end
   end
+
+  # Helper to format payload values for summary display
+  defp format_payload(payload) when is_number(payload) do
+    if payload == trunc(payload) do
+      Integer.to_string(trunc(payload))
+    else
+      :erlang.float_to_binary(payload * 1.0, decimals: 1)
+    end
+  end
+  defp format_payload(payload) when is_map(payload), do: "..."
+  defp format_payload(payload) when is_binary(payload), do: payload
+  defp format_payload(_), do: "--"
 
   defp container(assigns) do
     assigns =

@@ -45,7 +45,8 @@ defmodule SensoctoWeb.IndexLive do
         sensors: sensors,
         lobby_sensors: lobby_sensors,
         my_rooms: my_rooms,
-        public_rooms: public_rooms_filtered
+        public_rooms: public_rooms_filtered,
+        global_view_mode: :summary
       )
 
     :telemetry.execute(
@@ -101,6 +102,12 @@ defmodule SensoctoWeb.IndexLive do
   def handle_info(msg, socket) do
     IO.inspect(msg, label: "Unknown Message")
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_all_view_mode", _params, socket) do
+    new_mode = if socket.assigns.global_view_mode == :summary, do: :normal, else: :summary
+    {:noreply, assign(socket, :global_view_mode, new_mode)}
   end
 
   @impl true

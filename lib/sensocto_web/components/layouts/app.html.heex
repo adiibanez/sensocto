@@ -1,12 +1,15 @@
 <header class="bg-gray-800 p-4 flex justify-between items-center">
   <div class="flex items-center gap-4">
-    <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto" />
+    <.link navigate={~p"/"}>
+      <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto hover:opacity-80 transition-opacity" />
+    </.link>
     <.live_component module={SensoctoWeb.SystemMetricsComponent} id="system-metrics" />
   </div>
   <div>
     <.link navigate={~p"/"} class="text-gray-300 hover:text-white mr-4">Home</.link>
-    <.link navigate={~p"/simulator"} class="text-gray-300 hover:text-white mr-4">Sim</.link>
     <.link navigate={~p"/lobby"} class="text-gray-300 hover:text-white mr-4">Lobby</.link>
+    <.link navigate={~p"/rooms"} class="text-gray-300 hover:text-white mr-4">Rooms</.link>
+    <.link navigate={~p"/simulator"} class="text-gray-300 hover:text-white mr-4">Sim</.link>
     <a href="/sign-out" class="text-gray-300 hover:text-white">Logout</a>
   </div>
 </header>

@@ -18,6 +18,7 @@ defmodule SensoctoWeb.RoomListLive do
       |> assign(:user_rooms, Rooms.list_user_rooms(user))
       |> assign(:public_rooms, Rooms.list_public_rooms())
       |> assign(:show_create_modal, false)
+      |> assign(:active_tab, :all)
       |> assign(:form, to_form(%{"name" => "", "description" => "", "is_public" => true, "is_persisted" => true}))
 
     {:ok, socket}
@@ -28,10 +29,17 @@ defmodule SensoctoWeb.RoomListLive do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
-  defp apply_action(socket, :index, _params) do
+  defp apply_action(socket, :index, params) do
+    tab = case params["tab"] do
+      "my" -> :my
+      "public" -> :public
+      _ -> :all
+    end
+
     socket
     |> assign(:page_title, "Rooms")
     |> assign(:show_create_modal, false)
+    |> assign(:active_tab, tab)
   end
 
   defp apply_action(socket, :new, _params) do
@@ -125,46 +133,97 @@ defmodule SensoctoWeb.RoomListLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container mx-auto px-4 py-8">
-      <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold">Rooms</h1>
+    <div>
+      <.breadcrumbs>
+        <:crumb>Rooms</:crumb>
+      </.breadcrumbs>
+
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">Rooms</h1>
         <button
           phx-click="open_create_modal"
-          class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
         >
+          <Heroicons.icon name="plus" type="outline" class="h-5 w-5" />
           Create Room
         </button>
       </div>
 
-      <div class="mb-12">
-        <h2 class="text-xl font-semibold mb-4">Your Rooms</h2>
-        <%= if Enum.empty?(@user_rooms) do %>
-          <p class="text-gray-400">You haven't created or joined any rooms yet.</p>
-        <% else %>
-          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <%= for room <- @user_rooms do %>
-              <.room_card room={room} current_user={@current_user} />
-            <% end %>
-          </div>
-        <% end %>
-      </div>
+      <.tabs>
+        <:tab patch={~p"/rooms"} active={@active_tab == :all}>All Rooms</:tab>
+        <:tab patch={~p"/rooms?tab=my"} active={@active_tab == :my}>My Rooms</:tab>
+        <:tab patch={~p"/rooms?tab=public"} active={@active_tab == :public}>Public Rooms</:tab>
+      </.tabs>
 
-      <div>
-        <h2 class="text-xl font-semibold mb-4">Public Rooms</h2>
-        <%= if Enum.empty?(@public_rooms) do %>
-          <p class="text-gray-400">No public rooms available.</p>
-        <% else %>
-          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <%= for room <- @public_rooms do %>
-              <.room_card room={room} current_user={@current_user} />
+      <%= case @active_tab do %>
+        <% :all -> %>
+          <%= if Enum.empty?(@user_rooms) and Enum.empty?(@public_rooms) do %>
+            <.empty_state />
+          <% else %>
+            <%= if not Enum.empty?(@user_rooms) do %>
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold mb-4 text-gray-300">Your Rooms</h2>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <%= for room <- @user_rooms do %>
+                    <.room_card room={room} current_user={@current_user} />
+                  <% end %>
+                </div>
+              </div>
             <% end %>
-          </div>
-        <% end %>
-      </div>
+            <%= if not Enum.empty?(@public_rooms) do %>
+              <div>
+                <h2 class="text-lg font-semibold mb-4 text-gray-300">Public Rooms</h2>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <%= for room <- @public_rooms do %>
+                    <.room_card room={room} current_user={@current_user} />
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          <% end %>
+
+        <% :my -> %>
+          <%= if Enum.empty?(@user_rooms) do %>
+            <.empty_state message="You haven't created or joined any rooms yet." />
+          <% else %>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <%= for room <- @user_rooms do %>
+                <.room_card room={room} current_user={@current_user} />
+              <% end %>
+            </div>
+          <% end %>
+
+        <% :public -> %>
+          <%= if Enum.empty?(@public_rooms) do %>
+            <.empty_state message="No public rooms available." />
+          <% else %>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <%= for room <- @public_rooms do %>
+                <.room_card room={room} current_user={@current_user} />
+              <% end %>
+            </div>
+          <% end %>
+      <% end %>
 
       <%= if @show_create_modal do %>
         <.create_room_modal form={@form} />
       <% end %>
+    </div>
+    """
+  end
+
+  defp empty_state(assigns) do
+    assigns = assign_new(assigns, :message, fn -> "No rooms found." end)
+    ~H"""
+    <div class="text-center py-12">
+      <Heroicons.icon name="home" type="outline" class="h-12 w-12 mx-auto mb-4 text-gray-500" />
+      <p class="text-gray-400"><%= @message %></p>
+      <button
+        phx-click="open_create_modal"
+        class="mt-4 text-blue-400 hover:text-blue-300"
+      >
+        Create your first room
+      </button>
     </div>
     """
   end

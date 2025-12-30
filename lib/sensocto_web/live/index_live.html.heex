@@ -10,17 +10,32 @@
         Lobby
         <span class="text-sm font-normal text-gray-400">({@sensors_online_count} sensors)</span>
       </h2>
-      <.link navigate={~p"/lobby"} class="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1">
-        View all
-        <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4" />
-      </.link>
+      <div class="flex items-center gap-4">
+        <button
+          :if={@lobby_sensors != %{}}
+          phx-click="toggle_all_view_mode"
+          class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
+          title={if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"}
+        >
+          <span>All:</span>
+          <Heroicons.icon
+            name={if @global_view_mode == :summary, do: "magnifying-glass-plus", else: "magnifying-glass-minus"}
+            type="outline"
+            class="h-4 w-4"
+          />
+        </button>
+        <.link navigate={~p"/lobby"} class="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1">
+          View all
+          <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4" />
+        </.link>
+      </div>
     </div>
 
-    <div :if={@lobby_sensors != %{}} class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div :if={@lobby_sensors != %{}} class="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       <div :for={{sensor_id, sensor} <- @lobby_sensors}>
         {live_render(@socket, StatefulSensorLive,
-          id: "stateful_sensor_#{sensor_id}",
-          session: %{"parent_pid" => self(), "sensor" => sensor}
+          id: "stateful_sensor_#{sensor_id}_#{@global_view_mode}",
+          session: %{"parent_pid" => self(), "sensor" => sensor, "view_mode" => @global_view_mode}
         )}
       </div>
     </div>

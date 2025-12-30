@@ -348,7 +348,7 @@
 
 <canvas class="resizeable_" bind:this={canvas} {width} {height}></canvas>
 
-{#if true}
+{#if false}
     <div class="text-xs">
         <!--Data points {data.length},  width: {width} width: {width} height: {height} cntOffsetWidth: {cntElement?.offsetWidth}-->
         data: {data.length}, max: {maxsamples.toFixed(2)}, timewindow: {timewindow}

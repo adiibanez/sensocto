@@ -269,15 +269,15 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container mx-auto px-4 py-8">
-      <div class="mb-8">
+    <div>
+      <.breadcrumbs>
+        <:crumb navigate={~p"/rooms"}>Rooms</:crumb>
+        <:crumb><%= @room.name %></:crumb>
+      </.breadcrumbs>
+
+      <div class="mb-6">
         <div class="flex items-center gap-4 mb-2">
-          <.link navigate={~p"/rooms"} class="text-gray-400 hover:text-white">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </.link>
-          <h1 class="text-3xl font-bold"><%= @room.name %></h1>
+          <h1 class="text-2xl font-bold"><%= @room.name %></h1>
           <div class="flex gap-2">
             <%= if @room.is_public do %>
               <span class="px-2 py-1 text-xs bg-green-600/20 text-green-400 rounded">Public</span>

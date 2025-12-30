@@ -178,28 +178,15 @@ defmodule SensoctoWeb.Live.BaseComponents do
     # |> Map.put(:sensor_name, assigns.sensor.sensor_name)
     # |> Map.put(:highlighted, get_in(assigns.sensor, [:highlighted]))
     # |> Map.put(:sensor_id, assigns.sensor.sensor_id)
+    assigns = assign_new(assigns, :view_mode, fn -> :normal end)
 
     ~H"""
-    <div class="flex items-right m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
-      <p class="flex-none font-bold text-s" style="border:0 solid white">
+    <div class="flex items-center m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
+      <p class={[
+        "flex-none font-bold",
+        if(@view_mode == :summary, do: "text-xs", else: "text-s")
+      ]} style="border:0 solid white">
         {@sensor_name}
-      </p>
-      <p class="flex-1 float-left items-right">
-        <Heroicons.icon
-          id={"highlight_button_#{@sensor_id}"}
-          name={
-            if @highlighted do
-              "magnifying-glass-minus"
-            else
-              "magnifying-glass-plus"
-            end
-          }
-          type="outline"
-          class="h-4 w-4"
-          phx-click="toggle_highlight"
-          phx-value-sensor_id={@sensor_id}
-          style="border:0 solid white"
-        />
       </p>
     </div>
     """

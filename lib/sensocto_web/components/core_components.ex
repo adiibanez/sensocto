@@ -681,4 +681,90 @@ defmodule SensoctoWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  Renders breadcrumb navigation.
+
+  ## Examples
+
+      <.breadcrumbs home={~p"/"}>
+        <:crumb navigate={~p"/rooms"}>Rooms</:crumb>
+        <:crumb>My Room</:crumb>
+      </.breadcrumbs>
+  """
+  attr :home, :string, default: "/"
+
+  slot :crumb, required: true do
+    attr :navigate, :string
+  end
+
+  def breadcrumbs(assigns) do
+    ~H"""
+    <nav class="flex items-center gap-2 text-sm text-gray-400 mb-4" aria-label="Breadcrumb">
+      <.link navigate={@home} class="hover:text-white">
+        <.icon name="hero-home-solid" class="h-4 w-4" />
+      </.link>
+      <span :for={crumb <- @crumb} class="flex items-center gap-2">
+        <.icon name="hero-chevron-right-mini" class="h-4 w-4 text-gray-600" />
+        <%= if crumb[:navigate] do %>
+          <.link navigate={crumb[:navigate]} class="hover:text-white">
+            {render_slot(crumb)}
+          </.link>
+        <% else %>
+          <span class="text-white font-medium">{render_slot(crumb)}</span>
+        <% end %>
+      </span>
+    </nav>
+    """
+  end
+
+  @doc """
+  Renders a tab navigation component.
+
+  ## Examples
+
+      <.tabs>
+        <:tab navigate={~p"/rooms"} active={@live_action == :index}>All Rooms</:tab>
+        <:tab navigate={~p"/rooms/my"} active={@live_action == :my}>My Rooms</:tab>
+      </.tabs>
+  """
+  slot :tab, required: true do
+    attr :navigate, :string
+    attr :active, :boolean
+    attr :patch, :string
+  end
+
+  def tabs(assigns) do
+    ~H"""
+    <div class="border-b border-gray-700 mb-6">
+      <nav class="flex gap-4" aria-label="Tabs">
+        <span :for={tab <- @tab}>
+          <%= if tab[:navigate] do %>
+            <.link
+              navigate={tab[:navigate]}
+              class={[
+                "py-2 px-1 border-b-2 text-sm font-medium transition-colors",
+                tab[:active] && "border-blue-500 text-blue-400",
+                !tab[:active] && "border-transparent text-gray-400 hover:text-white hover:border-gray-500"
+              ]}
+            >
+              {render_slot(tab)}
+            </.link>
+          <% else %>
+            <.link
+              patch={tab[:patch]}
+              class={[
+                "py-2 px-1 border-b-2 text-sm font-medium transition-colors",
+                tab[:active] && "border-blue-500 text-blue-400",
+                !tab[:active] && "border-transparent text-gray-400 hover:text-white hover:border-gray-500"
+              ]}
+            >
+              {render_slot(tab)}
+            </.link>
+          <% end %>
+        </span>
+      </nav>
+    </div>
+    """
+  end
 end

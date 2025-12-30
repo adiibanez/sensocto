@@ -3,25 +3,45 @@
 </div>
 
 <div class="pb-20 sm:pb-16">
+  <.breadcrumbs>
+    <:crumb>Lobby</:crumb>
+  </.breadcrumbs>
+
   <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center gap-2">
-      <.link navigate={~p"/"} class="text-gray-400 hover:text-white">
-        <Heroicons.icon name="arrow-left" type="outline" class="h-5 w-5" />
-      </.link>
-      <h1 class="text-xl font-bold text-white">Lobby</h1>
+    <h1 class="text-xl font-bold text-white">Lobby</h1>
+    <div class="flex items-center gap-4">
+      <button
+        :if={@sensors != %{}}
+        phx-click="toggle_all_view_mode"
+        class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
+        title={if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"}
+      >
+        <span>All:</span>
+        <Heroicons.icon
+          name={if @global_view_mode == :summary, do: "magnifying-glass-plus", else: "magnifying-glass-minus"}
+          type="outline"
+          class="h-4 w-4"
+        />
+      </button>
+      <span class="text-sm text-gray-400">{@sensors_online_count} sensors online</span>
     </div>
-    <span class="text-sm text-gray-400">{@sensors_online_count} sensors</span>
   </div>
 
   <div
     id="cnt"
     phx-hook="ConnectionHandler"
-    class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+    class={[
+      "grid grid-cols-1",
+      if(@global_view_mode == :summary,
+        do: "gap-2 sm:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+        else: "gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+      )
+    ]}
   >
     <div :for={{sensor_id, sensor} <- @sensors}>
       {live_render(@socket, StatefulSensorLive,
-        id: "stateful_sensor_#{sensor_id}",
-        session: %{"parent_pid" => self(), "sensor" => sensor}
+        id: "stateful_sensor_#{sensor_id}_#{@global_view_mode}",
+        session: %{"parent_pid" => self(), "sensor" => sensor, "view_mode" => @global_view_mode}
       )}
     </div>
   </div>

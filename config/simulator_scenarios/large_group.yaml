@@ -10,7 +10,7 @@ connectors:
       # === Persons 1-4: Have ECG (high frequency) + one low frequency sensor ===
       lg_person_1:
         sensor_id: "lg_person_1"
-        sensor_name: "LargeGroup_Person01"
+        sensor_name: "Person1"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -34,7 +34,7 @@ connectors:
 
       lg_person_2:
         sensor_id: "lg_person_2"
-        sensor_name: "LargeGroup_Person02"
+        sensor_name: "Person2"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -58,7 +58,7 @@ connectors:
 
       lg_person_3:
         sensor_id: "lg_person_3"
-        sensor_name: "LargeGroup_Person03"
+        sensor_name: "Person3"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -82,7 +82,7 @@ connectors:
 
       lg_person_4:
         sensor_id: "lg_person_4"
-        sensor_name: "LargeGroup_Person04"
+        sensor_name: "Person4"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -107,7 +107,7 @@ connectors:
       # === Persons 5-20: Low frequency sensors only ===
       lg_person_5:
         sensor_id: "lg_person_5"
-        sensor_name: "LargeGroup_Person05"
+        sensor_name: "Person5"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -131,7 +131,7 @@ connectors:
 
       lg_person_6:
         sensor_id: "lg_person_6"
-        sensor_name: "LargeGroup_Person06"
+        sensor_name: "Person6"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -155,7 +155,7 @@ connectors:
 
       lg_person_7:
         sensor_id: "lg_person_7"
-        sensor_name: "LargeGroup_Person07"
+        sensor_name: "Person7"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -179,7 +179,7 @@ connectors:
 
       lg_person_8:
         sensor_id: "lg_person_8"
-        sensor_name: "LargeGroup_Person08"
+        sensor_name: "Person8"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -203,7 +203,7 @@ connectors:
 
       lg_person_9:
         sensor_id: "lg_person_9"
-        sensor_name: "LargeGroup_Person09"
+        sensor_name: "Person9"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -227,7 +227,7 @@ connectors:
 
       lg_person_10:
         sensor_id: "lg_person_10"
-        sensor_name: "LargeGroup_Person10"
+        sensor_name: "Person10"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -251,7 +251,7 @@ connectors:
 
       lg_person_11:
         sensor_id: "lg_person_11"
-        sensor_name: "LargeGroup_Person11"
+        sensor_name: "Person11"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -275,7 +275,7 @@ connectors:
 
       lg_person_12:
         sensor_id: "lg_person_12"
-        sensor_name: "LargeGroup_Person12"
+        sensor_name: "Person12"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -299,7 +299,7 @@ connectors:
 
       lg_person_13:
         sensor_id: "lg_person_13"
-        sensor_name: "LargeGroup_Person13"
+        sensor_name: "Person13"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -323,7 +323,7 @@ connectors:
 
       lg_person_14:
         sensor_id: "lg_person_14"
-        sensor_name: "LargeGroup_Person14"
+        sensor_name: "Person14"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -347,7 +347,7 @@ connectors:
 
       lg_person_15:
         sensor_id: "lg_person_15"
-        sensor_name: "LargeGroup_Person15"
+        sensor_name: "Person15"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -371,7 +371,7 @@ connectors:
 
       lg_person_16:
         sensor_id: "lg_person_16"
-        sensor_name: "LargeGroup_Person16"
+        sensor_name: "Person16"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -395,7 +395,7 @@ connectors:
 
       lg_person_17:
         sensor_id: "lg_person_17"
-        sensor_name: "LargeGroup_Person17"
+        sensor_name: "Person17"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -419,7 +419,7 @@ connectors:
 
       lg_person_18:
         sensor_id: "lg_person_18"
-        sensor_name: "LargeGroup_Person18"
+        sensor_name: "Person18"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -443,7 +443,7 @@ connectors:
 
       lg_person_19:
         sensor_id: "lg_person_19"
-        sensor_name: "LargeGroup_Person19"
+        sensor_name: "Person19"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -467,7 +467,7 @@ connectors:
 
       lg_person_20:
         sensor_id: "lg_person_20"
-        sensor_name: "LargeGroup_Person20"
+        sensor_name: "Person20"
         attributes:
           heartrate:
             attribute_id: "heartrate"

@@ -9,7 +9,7 @@ connectors:
       # Person 1: ECG (high) + Temperature (low)
       sg_person_1:
         sensor_id: "sg_person_1"
-        sensor_name: "SmallGroup_Person1"
+        sensor_name: "Person1"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -34,7 +34,7 @@ connectors:
       # Person 2: Heartrate (medium) + SpO2 (medium)
       sg_person_2:
         sensor_id: "sg_person_2"
-        sensor_name: "SmallGroup_Person2"
+        sensor_name: "Person2"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -59,7 +59,7 @@ connectors:
       # Person 3: ECG (high) + Blood Pressure (low)
       sg_person_3:
         sensor_id: "sg_person_3"
-        sensor_name: "SmallGroup_Person3"
+        sensor_name: "Person3"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -84,7 +84,7 @@ connectors:
       # Person 4: Accelerometer (high) + GPS (medium)
       sg_person_4:
         sensor_id: "sg_person_4"
-        sensor_name: "SmallGroup_Person4"
+        sensor_name: "Person4"
         attributes:
           accelerometer_z:
             attribute_id: "accelerometer_z"
@@ -107,7 +107,7 @@ connectors:
       # Person 5: Heartrate (medium) + Temperature (low)
       sg_person_5:
         sensor_id: "sg_person_5"
-        sensor_name: "SmallGroup_Person5"
+        sensor_name: "Person5"
         attributes:
           heartrate:
             attribute_id: "heartrate"

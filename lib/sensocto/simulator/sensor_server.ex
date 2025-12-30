@@ -8,6 +8,7 @@ defmodule Sensocto.Simulator.SensorServer do
   require Logger
   alias Sensocto.SensorsDynamicSupervisor
   alias Sensocto.SimpleSensor
+  alias SensoctoWeb.Sensocto.Presence
 
   defmodule State do
     defstruct [
@@ -78,6 +79,14 @@ defmodule Sensocto.Simulator.SensorServer do
     case SensorsDynamicSupervisor.add_sensor(state.sensor_id, sensor_config) do
       {:ok, _} ->
         Logger.info("Created real sensor for simulator: #{state.sensor_id}")
+
+        # Track presence so LiveViews see the new sensor immediately
+        Presence.track(self(), "presence:all", state.sensor_id, %{
+          sensor_id: state.sensor_id,
+          online_at: System.system_time(:millisecond),
+          source: :simulator
+        })
+
         new_state = %{state | real_sensor_started: true}
         {:noreply, new_state, {:continue, :setup_attributes}}
 
@@ -125,6 +134,11 @@ defmodule Sensocto.Simulator.SensorServer do
   @impl true
   def terminate(reason, state) do
     Logger.info("SensorServer terminating: #{state.sensor_id}, reason: #{inspect(reason)}")
+
+    # Untrack presence so LiveViews see the sensor leave immediately
+    if state.real_sensor_started do
+      Presence.untrack(self(), "presence:all", state.sensor_id)
+    end
 
     # Remove the real sensor when simulator sensor stops
     if state.real_sensor_started do

@@ -69,10 +69,11 @@ Hooks.QRCode = QRCode;
 Hooks.AttentionTracker = AttentionTracker;
 Hooks.SensorPinControl = SensorPinControl;
 
-// Vibrate hook - vibrates device when data-value changes
+// Vibrate hook - vibrates device and plays sound when data-value changes
 Hooks.Vibrate = {
   mounted() {
     this.lastValue = this.el.dataset.value;
+    this.audioContext = null;
   },
 
   updated() {
@@ -82,6 +83,27 @@ Hooks.Vibrate = {
       if (navigator.vibrate) {
         navigator.vibrate(100);
       }
+      this.playBeep();
+    }
+  },
+
+  playBeep() {
+    try {
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      oscillator.frequency.value = 880;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+      oscillator.start(this.audioContext.currentTime);
+      oscillator.stop(this.audioContext.currentTime + 0.1);
+    } catch (e) {
+      console.warn('[Vibrate] Could not play beep:', e);
     }
   }
 };

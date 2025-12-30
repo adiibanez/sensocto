@@ -21,6 +21,7 @@
     "phoenix_html": "file:../deps/phoenix_html",
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "scichart": "^3.5.711",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "qrcode": "^1.5.4"
   }
 }

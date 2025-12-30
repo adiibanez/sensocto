@@ -60,6 +60,9 @@ defmodule Sensocto.Application do
       # Attention tracking for back-pressure (must be after PubSub)
       Sensocto.AttentionTracker,
 
+      # System load monitoring for back-pressure (must be after PubSub)
+      Sensocto.SystemLoadMonitor,
+
       # initialize after pubsub
       Sensocto.SensorsDynamicSupervisor,
       Sensocto.RoomsDynamicSupervisor,

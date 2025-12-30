@@ -1,5 +1,8 @@
 <header class="bg-gray-800 p-4 flex justify-between items-center">
-  <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto" />
+  <div class="flex items-center gap-4">
+    <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto" />
+    <.live_component module={SensoctoWeb.SystemMetricsComponent} id="system-metrics" />
+  </div>
   <div>
     <a href="/" class="text-gray-300 hover:text-white mr-4">Home</a>
     <a href="/simulator" class="text-gray-300 hover:text-white mr-4">Sim</a>

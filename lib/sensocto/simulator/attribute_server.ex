@@ -3,8 +3,12 @@ defmodule Sensocto.Simulator.AttributeServer do
   Generates simulated data for a sensor attribute.
   Fetches data from DataServer, batches it, and sends to the parent SensorServer.
 
-  Supports dynamic batch window adjustment based on user attention levels,
-  enabling back-pressure when many sensors are active but few are being viewed.
+  Supports dynamic batch window adjustment based on:
+  - User attention levels (viewport, focus, pinning)
+  - System load (CPU/scheduler utilization, message queues, memory)
+
+  This enables back-pressure when many sensors are active but few are being viewed,
+  and when the system is under heavy load.
   """
 
   use GenServer
@@ -23,6 +27,7 @@ defmodule Sensocto.Simulator.AttributeServer do
                 :messages_queue,
                 :batch_push_messages,
                 :attention_level,
+                :system_load_level,
                 :current_batch_window,
                 :base_batch_window,
                 # String version of attribute_id for consistent AttentionTracker lookups
@@ -72,6 +77,9 @@ defmodule Sensocto.Simulator.AttributeServer do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}:#{attribute_id_str}")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
 
+    # Subscribe to system load changes
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "system:load")
+
     # Get initial attention level and calculate batch window
     # Handle case where AttentionTracker might not be running yet
     {initial_attention, initial_batch_window} =
@@ -85,6 +93,14 @@ defmodule Sensocto.Simulator.AttributeServer do
           {:none, base_window * 10}
       end
 
+    # Get initial system load level
+    initial_load_level =
+      try do
+        Sensocto.SystemLoadMonitor.get_load_level()
+      catch
+        :exit, {:noproc, _} -> :normal
+      end
+
     state = %__MODULE__{
       attribute_id: attribute_id,
       attribute_id_str: attribute_id_str,
@@ -96,6 +112,7 @@ defmodule Sensocto.Simulator.AttributeServer do
       messages_queue: [],
       batch_push_messages: [],
       attention_level: initial_attention,
+      system_load_level: initial_load_level,
       base_batch_window: base_window,
       current_batch_window: initial_batch_window
     }
@@ -279,6 +296,32 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Ignore attention changes for other sensors/attributes
   @impl true
   def handle_info({:attention_changed, _}, state), do: {:noreply, state}
+
+  # Handle system load changes from SystemLoadMonitor
+  @impl true
+  def handle_info(
+        {:system_load_changed, %{level: new_level, multiplier: _multiplier} = load_info},
+        state
+      ) do
+    # Recalculate batch window with new system load
+    new_batch_window =
+      AttentionTracker.calculate_batch_window(
+        state.base_batch_window,
+        state.sensor_id,
+        state.attribute_id_str
+      )
+
+    if new_level != state.system_load_level do
+      Logger.info(
+        "AttributeServer #{state.sensor_id}/#{state.attribute_id_str} system load changed: " <>
+        "#{state.system_load_level} -> #{new_level}, " <>
+        "batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms " <>
+        "(scheduler: #{Float.round(load_info.scheduler_utilization * 100, 1)}%)"
+      )
+    end
+
+    {:noreply, %{state | system_load_level: new_level, current_batch_window: new_batch_window}}
+  end
 
   defp via_tuple(identifier) do
     {:via, Registry, {Sensocto.Simulator.Registry, "attribute_#{identifier}"}}

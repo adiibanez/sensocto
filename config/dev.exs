@@ -61,8 +61,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :live_debugger,
-  browser_features?: true,
-  assets_url: "http://localhost:4007/assets/live_debugger/browser_features.js"
+  browser_features?: true
 
 # config :live_debugger,
 # ip: {127, 0, 0, 1}, # IP on which LiveDebugger will be hosted

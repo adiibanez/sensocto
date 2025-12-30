@@ -190,12 +190,36 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @doc """
-  Calculate the adjusted batch window based on base window and attention.
+  Calculate the adjusted batch window based on base window, attention, and system load.
+
+  The calculation applies both attention multiplier and system load multiplier:
+  - Attention multiplier: 0.2x (high) to 10x (none) based on user attention
+  - System load multiplier: 1.0x (normal) to 5x (critical) based on CPU/memory pressure
+
+  These multipliers are combined to produce the final batch window, clamped
+  to the attention level's min/max bounds.
   """
   def calculate_batch_window(base_window, sensor_id, attribute_id) do
     config = get_attention_config(sensor_id, attribute_id)
-    adjusted = trunc(base_window * config.window_multiplier)
+
+    # Get system load multiplier (1.0 to 5.0)
+    load_multiplier = get_system_load_multiplier()
+
+    # Apply both attention and load multipliers
+    adjusted = trunc(base_window * config.window_multiplier * load_multiplier)
     max(config.min_window, min(adjusted, config.max_window))
+  end
+
+  @doc """
+  Get the current system load multiplier.
+  Falls back to 1.0 if SystemLoadMonitor is not available.
+  """
+  def get_system_load_multiplier do
+    try do
+      Sensocto.SystemLoadMonitor.get_load_multiplier()
+    catch
+      :exit, {:noproc, _} -> 1.0
+    end
   end
 
   @doc """

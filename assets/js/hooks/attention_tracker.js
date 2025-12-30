@@ -82,19 +82,27 @@ export const AttentionTracker = {
       // Check if we're already observing this exact element (not just the key)
       const existingEl = this.observers.get(key);
 
-      if (existingEl !== el) {
-        // Element changed or new - update observer
-        if (existingEl) {
-          // Stop observing the old element
-          this.intersectionObserver.unobserve(existingEl);
-        }
+      if (existingEl === el) {
+        // Same element, already observing - skip
+        return;
+      }
 
-        this.observers.set(key, el);
-        this.intersectionObserver.observe(el);
+      if (existingEl) {
+        // Element changed - stop observing the old element
+        this.intersectionObserver.unobserve(existingEl);
+        // Keep the viewed state - don't remove from viewedElements
+        // The new element will be observed and intersection callback will fire
+      }
 
-        // Add click listener for focus
-        el.addEventListener('click', () => this.handleClick(el));
-        el.addEventListener('mouseenter', () => this.handleMouseEnter(el));
+      this.observers.set(key, el);
+      this.intersectionObserver.observe(el);
+
+      // Add click listener for focus (use named function to avoid duplicates)
+      if (!el._attentionClickHandler) {
+        el._attentionClickHandler = () => this.handleClick(el);
+        el._attentionMouseEnterHandler = () => this.handleMouseEnter(el);
+        el.addEventListener('click', el._attentionClickHandler);
+        el.addEventListener('mouseenter', el._attentionMouseEnterHandler);
       }
     });
   },
@@ -121,12 +129,18 @@ export const AttentionTracker = {
         if (!this.viewedElements.has(key)) {
           this.debouncedPush(key, "view_enter", { sensor_id: sensorId, attribute_id: attributeId });
           this.viewedElements.add(key);
+          // Mark that we've confirmed this element is visible
+          el._confirmedVisible = true;
         }
       } else {
         // Element left viewport
-        if (this.viewedElements.has(key)) {
+        // Only fire view_leave if we previously confirmed the element was visible
+        // This prevents spurious view_leave events when elements are first observed
+        // but layout hasn't completed yet
+        if (this.viewedElements.has(key) && el._confirmedVisible) {
           this.debouncedPush(key, "view_leave", { sensor_id: sensorId, attribute_id: attributeId });
           this.viewedElements.delete(key);
+          el._confirmedVisible = false;
 
           // Also remove focus if was focused
           if (this.focusedElements.has(key)) {

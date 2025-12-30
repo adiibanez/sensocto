@@ -19,10 +19,26 @@ function setCookie(name, value, days = 365) {
     document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/"; // Important: Set path=/ for site-wide access
 }
 
+/**
+ * Get a session-scoped value (unique per browser tab).
+ * Uses sessionStorage which is not shared between tabs.
+ */
+function getSessionValue(name) {
+    return sessionStorage.getItem(name);
+}
+
+/**
+ * Set a session-scoped value (unique per browser tab).
+ * Uses sessionStorage which is not shared between tabs.
+ */
+function setSessionValue(name, value) {
+    sessionStorage.setItem(name, value);
+}
+
 function isMobile() {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     return isMobile;
 }
 
 
-export { getCookie, setCookie, isMobile };
+export { getCookie, setCookie, getSessionValue, setSessionValue, isMobile };

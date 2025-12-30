@@ -1,7 +1,7 @@
 <script lang="ts">
     import { setContext, onMount } from "svelte";
     import { Socket } from "phoenix";
-    import { getCookie, setCookie } from "../utils.js";
+    import { getCookie, setCookie, getSessionValue, setSessionValue } from "../utils.js";
     import { usersettings } from "./stores.js";
 
     import { logger } from "../logger_svelte.js";
@@ -338,10 +338,12 @@
     import { v4 as uuidv4 } from "uuid";
 
     function getDeviceId() {
-        let deviceId = getCookie("device_id");
+        // Use sessionStorage for device_id so each tab gets its own unique ID
+        // This prevents conflicts when multiple tabs are open
+        let deviceId = getSessionValue("device_id");
         if (!deviceId) {
             deviceId = uuidv4().split("-").pop();
-            setCookie("device_id", deviceId);
+            setSessionValue("device_id", deviceId);
         }
         $usersettings.deviceId = deviceId;
         return deviceId;

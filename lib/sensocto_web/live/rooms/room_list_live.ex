@@ -52,11 +52,12 @@ defmodule SensoctoWeb.RoomListLive do
 
   @impl true
   def handle_event("validate", %{"name" => name, "description" => description} = params, socket) do
+    # Checkboxes are only present in params when checked, absent when unchecked
     form = to_form(%{
       "name" => name,
       "description" => description,
-      "is_public" => Map.get(params, "is_public", "true") == "true",
-      "is_persisted" => Map.get(params, "is_persisted", "true") == "true"
+      "is_public" => Map.has_key?(params, "is_public"),
+      "is_persisted" => Map.has_key?(params, "is_persisted")
     })
 
     {:noreply, assign(socket, :form, form)}
@@ -66,11 +67,12 @@ defmodule SensoctoWeb.RoomListLive do
   def handle_event("create_room", %{"name" => name, "description" => description} = params, socket) do
     user = socket.assigns.current_user
 
+    # Checkboxes are only present in params when checked
     attrs = %{
       name: name,
       description: description,
-      is_public: Map.get(params, "is_public", "true") == "true",
-      is_persisted: Map.get(params, "is_persisted", "true") == "true"
+      is_public: Map.has_key?(params, "is_public"),
+      is_persisted: Map.has_key?(params, "is_persisted")
     }
 
     case Rooms.create_room(attrs, user) do

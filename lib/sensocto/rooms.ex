@@ -31,9 +31,11 @@ defmodule Sensocto.Rooms do
   end
 
   defp create_persisted_room(attrs, user) do
+    # Merge owner_id as an argument (required by the :create action)
+    attrs_with_owner = Map.put(attrs, :owner_id, user.id)
+
     Room
-    |> Ash.Changeset.for_create(:create, attrs, actor: user)
-    |> Ash.Changeset.force_change_attribute(:owner_id, user.id)
+    |> Ash.Changeset.for_create(:create, attrs_with_owner, actor: user)
     |> Ash.create()
     |> case do
       {:ok, room} ->

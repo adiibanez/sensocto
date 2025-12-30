@@ -143,6 +143,7 @@ defmodule Sensocto.RoomServer do
       is_public: state.is_public,
       is_persisted: false,
       configuration: state.configuration,
+      members: state.members,
       member_count: map_size(state.members),
       sensor_count: MapSet.size(state.sensor_ids),
       sensor_ids: MapSet.to_list(state.sensor_ids),

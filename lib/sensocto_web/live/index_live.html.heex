@@ -2,16 +2,73 @@
   Attempting to reconnect...
 </div>
 
-<%!-- Main content area with padding at bottom for footer --%>
-<div id="cnt" phx-hook="ConnectionHandler" class="pb-20 sm:pb-16">
-  <div class="grid gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-    <div :for={{sensor_id, sensor} <- @sensors}>
-      {live_render(@socket, StatefulSensorLive,
-        id: "stateful_sensor_#{sensor_id}",
-        session: %{"parent_pid" => self(), "sensor" => sensor}
-      )}
+<div id="cnt" phx-hook="ConnectionHandler" class="pb-20 sm:pb-16 space-y-8">
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-white flex items-center gap-2">
+        <Heroicons.icon name="signal" type="outline" class="h-5 w-5 text-gray-400" />
+        Lobby
+        <span class="text-sm font-normal text-gray-400">({@sensors_online_count} sensors)</span>
+      </h2>
+      <.link navigate={~p"/lobby"} class="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1">
+        View all
+        <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4" />
+      </.link>
     </div>
-  </div>
+
+    <div :if={@lobby_sensors != %{}} class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div :for={{sensor_id, sensor} <- @lobby_sensors}>
+        {live_render(@socket, StatefulSensorLive,
+          id: "stateful_sensor_#{sensor_id}",
+          session: %{"parent_pid" => self(), "sensor" => sensor}
+        )}
+      </div>
+    </div>
+
+    <div :if={@lobby_sensors == %{}} class="bg-gray-800 rounded-lg p-6 text-center">
+      <Heroicons.icon name="signal-slash" type="outline" class="h-10 w-10 mx-auto mb-3 text-gray-500" />
+      <p class="text-gray-400">No sensors connected</p>
+      <p class="text-sm text-gray-500 mt-1">Connect a sensor using the connectors below</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-white flex items-center gap-2">
+        <Heroicons.icon name="home" type="outline" class="h-5 w-5 text-gray-400" />
+        My Rooms
+      </h2>
+      <.link navigate={~p"/rooms/new"} class="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1">
+        <Heroicons.icon name="plus" type="outline" class="h-4 w-4" />
+        Create
+      </.link>
+    </div>
+
+    <div :if={@my_rooms != []} class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <.room_card :for={room <- @my_rooms} room={room} />
+    </div>
+
+    <div :if={@my_rooms == []} class="bg-gray-800 rounded-lg p-6 text-center">
+      <Heroicons.icon name="folder-open" type="outline" class="h-10 w-10 mx-auto mb-3 text-gray-500" />
+      <p class="text-gray-400">No rooms yet</p>
+      <p class="text-sm text-gray-500 mt-1">
+        <.link navigate={~p"/rooms/new"} class="text-blue-400 hover:text-blue-300">Create a room</.link> to organize your sensors
+      </p>
+    </div>
+  </section>
+
+  <section :if={@public_rooms != []}>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-white flex items-center gap-2">
+        <Heroicons.icon name="globe-alt" type="outline" class="h-5 w-5 text-gray-400" />
+        Public Rooms
+      </h2>
+    </div>
+
+    <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <.room_card :for={room <- @public_rooms} room={room} />
+    </div>
+  </section>
 </div>
 
 <%= if @sensors_offline != %{} do %>
@@ -25,13 +82,11 @@
   </div>
 <% end %>
 
-<%!-- Footer toolbar - collapsible on mobile --%>
 <div
   id="footer-toolbar"
   class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 z-50"
   phx-hook="FooterToolbar"
 >
-  <%!-- Mobile: Collapsed bar with toggle button --%>
   <div class="sm:hidden">
     <button
       id="footer-toggle"
@@ -40,7 +95,11 @@
       aria-expanded="false"
       aria-controls="footer-content"
     >
-      <Heroicons.icon name="chevron-up" type="solid" class="h-5 w-5 footer-chevron transition-transform flex-shrink-0" />
+      <Heroicons.icon
+        name="chevron-up"
+        type="solid"
+        class="h-5 w-5 footer-chevron transition-transform flex-shrink-0"
+      />
       <Heroicons.icon name="cog-6-tooth" type="outline" class="h-5 w-5 flex-shrink-0" />
       <span class="flex-1 text-left">Connectors</span>
     </button>
@@ -52,7 +111,6 @@
     </div>
   </div>
 
-  <%!-- Desktop: Horizontal footer bar --%>
   <div class="hidden sm:block">
     <div class="max-w-7xl mx-auto px-4 py-2">
       <div class="flex items-center justify-between">

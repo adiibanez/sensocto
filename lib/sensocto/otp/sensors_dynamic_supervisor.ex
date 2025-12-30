@@ -124,10 +124,11 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   end
 
   # Registry.lookup(Registry.ViaTest, "agent")
+  # Use SimpleSensorRegistry to get device names, not SensorPairRegistry.
+  # This avoids a race condition where SensorSupervisor is registered in SensorPairRegistry
+  # but SimpleSensor child hasn't started yet in SimpleSensorRegistry.
   def get_device_names do
-    Registry.select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
-
-    # Sensocto.RegistryUtils.dynamic_select(Sensocto.SensorPairRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    Registry.select(Sensocto.SimpleSensorRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
   # Function to extract device names (IDs) from the children list

@@ -70,6 +70,7 @@ Hooks.AttentionTracker = AttentionTracker;
 Hooks.SensorPinControl = SensorPinControl;
 
 // Vibrate hook - vibrates device and plays sound when data-value changes
+// Vibration duration is proportional to button number (button * 100ms)
 Hooks.Vibrate = {
   mounted() {
     this.lastValue = this.el.dataset.value;
@@ -80,18 +81,21 @@ Hooks.Vibrate = {
     const newValue = this.el.dataset.value;
     if (newValue !== this.lastValue) {
       this.lastValue = newValue;
+      const buttonNumber = parseInt(newValue, 10) || 1;
+      const vibrateDuration = buttonNumber * 100;
       if (navigator.vibrate) {
-        navigator.vibrate(100);
+        navigator.vibrate(vibrateDuration);
       }
-      this.playBeep();
+      this.playBeep(vibrateDuration);
     }
   },
 
-  playBeep() {
+  playBeep(duration = 100) {
     try {
       if (!this.audioContext) {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
+      const beepDuration = duration / 1000;
       const oscillator = this.audioContext.createOscillator();
       const gainNode = this.audioContext.createGain();
       oscillator.connect(gainNode);
@@ -99,9 +103,9 @@ Hooks.Vibrate = {
       oscillator.frequency.value = 880;
       oscillator.type = 'sine';
       gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + beepDuration);
       oscillator.start(this.audioContext.currentTime);
-      oscillator.stop(this.audioContext.currentTime + 0.1);
+      oscillator.stop(this.audioContext.currentTime + beepDuration);
     } catch (e) {
       console.warn('[Vibrate] Could not play beep:', e);
     }

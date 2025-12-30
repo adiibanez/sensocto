@@ -329,7 +329,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:attribute_type => "button", :view_mode => :summary} = assigns) do
     ~H"""
-    <div class="flex items-center justify-between text-xs py-0.5">
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
+      phx-hook="Vibrate"
+      data-value={@lastvalue && @lastvalue.payload}
+    >
       <span class="text-gray-400">{@attribute_id}</span>
       <div :if={@lastvalue} class="flex gap-0.5">
         <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")]}>1</div>

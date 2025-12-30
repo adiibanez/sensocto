@@ -153,7 +153,7 @@ defmodule Sensocto.Calls do
     user = %{id: user_id}
 
     with {:ok, room} <- Rooms.get_room(room_id),
-         true <- Rooms.member?(room, user) || Rooms.owner?(room, user) do
+         true <- room.is_public || Rooms.member?(room, user) || Rooms.owner?(room, user) do
       case participant_count(room_id) do
         {:ok, count} when count >= 20 -> {:error, :call_full}
         _ -> :ok

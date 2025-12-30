@@ -427,34 +427,52 @@ defmodule SensoctoWeb.RoomShowLive do
         <% end %>
       </div>
 
-      <div>
-        <h2 class="text-xl font-semibold mb-4">Sensors</h2>
-        <%= if Enum.empty?(@sensors) do %>
-          <div class="bg-gray-800 rounded-lg p-8 text-center">
-            <svg class="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-            </svg>
-            <p class="text-gray-400 mb-4">No sensors in this room yet.</p>
-            <%= if @can_manage do %>
-              <button
-                phx-click="open_add_sensor_modal"
-                class="text-blue-400 hover:text-blue-300"
-              >
-                Add your first sensor
-              </button>
-            <% end %>
-          </div>
-        <% else %>
-          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            <%= for sensor <- @sensors do %>
-              <.sensor_summary_card
-                sensor={sensor}
-                activity_status={get_activity_status(sensor.sensor_id, @sensor_activity)}
-                can_manage={@can_manage}
-              />
-            <% end %>
-          </div>
-        <% end %>
+      <%!-- Main content area: Video + Sensors side by side when in call --%>
+      <div class={if @in_call, do: "grid grid-cols-1 lg:grid-cols-2 gap-6", else: ""}>
+        <%!-- Video Conference Panel - only shows when in call or panel is open --%>
+        <.live_component
+          module={SensoctoWeb.Live.Calls.CallContainerComponent}
+          id="call-container"
+          room={@room}
+          user={@current_user}
+          in_call={@in_call}
+          participants={@call_participants}
+        />
+
+        <%!-- Sensors Panel --%>
+        <div class={if @in_call, do: "order-2", else: ""}>
+          <h2 class="text-xl font-semibold mb-4">Sensors</h2>
+          <%= if Enum.empty?(@sensors) do %>
+            <div class="bg-gray-800 rounded-lg p-8 text-center">
+              <svg class="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              <p class="text-gray-400 mb-4">No sensors in this room yet.</p>
+              <%= if @can_manage do %>
+                <button
+                  phx-click="open_add_sensor_modal"
+                  class="text-blue-400 hover:text-blue-300"
+                >
+                  Add your first sensor
+                </button>
+              <% end %>
+            </div>
+          <% else %>
+            <div class={
+              if @in_call,
+                do: "grid gap-3 grid-cols-1 xl:grid-cols-2",
+                else: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+            }>
+              <%= for sensor <- @sensors do %>
+                <.sensor_summary_card
+                  sensor={sensor}
+                  activity_status={get_activity_status(sensor.sensor_id, @sensor_activity)}
+                  can_manage={@can_manage}
+                />
+              <% end %>
+            </div>
+          <% end %>
+        </div>
       </div>
 
       <%= if @show_share_modal do %>
@@ -468,15 +486,6 @@ defmodule SensoctoWeb.RoomShowLive do
       <%= if @show_settings do %>
         <.settings_panel room={@room} is_owner={@is_owner} />
       <% end %>
-
-      <.live_component
-        module={SensoctoWeb.Live.Calls.CallContainerComponent}
-        id="call-container"
-        room={@room}
-        user={@current_user}
-        in_call={@in_call}
-        participants={@call_participants}
-      />
     </div>
     """
   end

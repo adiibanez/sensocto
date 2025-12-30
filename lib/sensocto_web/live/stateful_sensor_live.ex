@@ -151,6 +151,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
     end)
 
     # Buffer all measurements for throttled push to client (for JS charts)
+    # Prepend batch (newer batch at front), reverse at flush for chronological order
     pending = measurements_list ++ socket.assigns.pending_measurements
     {:noreply, assign(socket, :pending_measurements, pending)}
   end
@@ -209,12 +210,16 @@ defmodule SensoctoWeb.StatefulSensorLive do
         # Group by sensor_id (should all be the same, but be safe)
         sensor_id = socket.assigns.sensor_id
 
+        # Sort by timestamp to ensure chronological order
+        # (measurements may arrive in batches with mixed order due to prepend/concat)
+        sorted_measurements = Enum.sort_by(measurements, & &1.timestamp)
+
         # Push single batch event with all measurements
         new_socket =
           socket
           |> push_event("measurements_batch", %{
             sensor_id: sensor_id,
-            attributes: Enum.reverse(measurements)
+            attributes: sorted_measurements
           })
           |> assign(:pending_measurements, [])
 

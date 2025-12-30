@@ -61,7 +61,7 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 config :live_debugger,
-  browser_features?: true
+  browser_features?: false
 
 # config :live_debugger,
 # ip: {127, 0, 0, 1}, # IP on which LiveDebugger will be hosted

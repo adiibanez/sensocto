@@ -108,21 +108,14 @@
   });
 </script>
 
-{#if !$autostart && batteryData != null}
-  <button class="btn btn-blue text-xs" on:click={stopBatterySensor}
-    >Stop Battery Status</button
-  >
-{:else if !$autostart && "getBattery" in navigator}
-  <button class="btn btn-blue text-xs" on:click={startBatterySensor}
-    >Start Battery Status</button
-  >
-{/if}
-
-{#if batteryData}
-  {#if batteryData.error}
-    <p style="color: red">{batteryData.error}</p>
-    <!--{:else}
-        <p>Level: {batteryData.level}%</p>
-        <p>Charging: {batteryData.charging ? "Yes" : "No"}</p>-->
+{#if "getBattery" in navigator}
+  {#if !$autostart && batteryData != null}
+    <button class="btn btn-blue text-xs" on:click={stopBatterySensor}
+      >Stop Battery Status</button
+    >
+  {:else if !$autostart}
+    <button class="btn btn-blue text-xs" on:click={startBatterySensor}
+      >Start Battery Status</button
+    >
   {/if}
 {/if}

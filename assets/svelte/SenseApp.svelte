@@ -77,7 +77,7 @@
             <label
                 for="connector_name"
                 class="text-xs font-medium text-amber-400 whitespace-nowrap"
-                >Connector</label
+                >Name</label
             >
             <div class="flex items-center gap-1">
                 <input

@@ -24,10 +24,10 @@ defmodule SensoctoWeb.SystemMetricsComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id={@id} class="flex items-center gap-3 text-xs font-mono" phx-hook="SystemMetricsRefresh" phx-target={@myself}>
-      <div class="flex items-center gap-1.5" title="System Load Level">
+    <div id={@id} class="flex items-center gap-1.5 text-[10px] font-mono" phx-hook="SystemMetricsRefresh" phx-target={@myself}>
+      <div class="flex items-center gap-0.5" title="System Load Level">
         <span class={[
-          "w-2 h-2 rounded-full",
+          "w-1.5 h-1.5 rounded-full",
           load_level_color(@metrics.load_level)
         ]}></span>
         <span class="text-gray-400 uppercase">{@metrics.load_level}</span>
@@ -35,8 +35,8 @@ defmodule SensoctoWeb.SystemMetricsComponent do
 
       <div class="text-gray-600">|</div>
 
-      <div class="flex items-center gap-1" title="CPU/Scheduler Utilization">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div class="flex items-center gap-0.5" title="CPU/Scheduler Utilization">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
         </svg>
         <span class={cpu_color(@metrics.scheduler_utilization)}>
@@ -44,8 +44,8 @@ defmodule SensoctoWeb.SystemMetricsComponent do
         </span>
       </div>
 
-      <div class="flex items-center gap-1" title="Memory Pressure">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div class="flex items-center gap-0.5" title="Memory Pressure">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
         <span class={mem_color(@metrics.memory_pressure)}>
@@ -53,10 +53,10 @@ defmodule SensoctoWeb.SystemMetricsComponent do
         </span>
       </div>
 
-      <div class="flex items-center gap-1" title="Batch Window Multiplier (higher = slower updates when load is high)">
-        <span class="text-gray-500">mult:</span>
+      <div class="flex items-center gap-0.5" title="Batch Window Multiplier (higher = slower updates when load is high)">
+        <span class="text-gray-500">x</span>
         <span class={multiplier_color(@metrics.load_multiplier)}>
-          {Float.round(@metrics.load_multiplier, 1)}x
+          {Float.round(@metrics.load_multiplier, 1)}
         </span>
       </div>
     </div>

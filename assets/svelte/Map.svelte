@@ -49,6 +49,7 @@
       style: "https://demotiles.maplibre.org/style.json",
       center: [position.lng, position.lat],
       zoom: 6,
+      attributionControl: false,
     });
 
     // Wait for map to load before adding marker

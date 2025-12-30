@@ -364,7 +364,13 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No button pressed</div>
 
-        <div :if={@lastvalue} class="flex gap-1 items-center">
+        <div
+          :if={@lastvalue}
+          class="flex gap-1 items-center"
+          id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
+          phx-hook="Vibrate"
+          data-value={@lastvalue.payload}
+        >
           <div class="flex gap-1">
             <div class={[
               "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",

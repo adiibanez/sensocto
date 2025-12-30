@@ -1,3 +1,5 @@
+import QRCodeLib from 'qrcode';
+
 /**
  * RoomStorage Hook
  *
@@ -145,8 +147,7 @@ export const CopyToClipboard = {
 /**
  * QRCode Hook
  *
- * Generates a QR code for the given value.
- * Uses the browser-side qrcode library.
+ * Generates a QR code for the given value using the qrcode library.
  */
 export const QRCode = {
   mounted() {
@@ -157,7 +158,7 @@ export const QRCode = {
     this.generateQRCode();
   },
 
-  generateQRCode() {
+  async generateQRCode() {
     const value = this.el.dataset.value;
 
     if (!value) {
@@ -165,36 +166,21 @@ export const QRCode = {
       return;
     }
 
-    // Use a lightweight inline QR code generator
-    // For production, consider using a library like qrcode-generator
-    this.el.innerHTML = this.createQRCodeSVG(value);
-  },
-
-  /**
-   * Creates a simple QR code SVG using a basic implementation.
-   * For production, consider using qrcode-generator or similar library.
-   */
-  createQRCodeSVG(text) {
-    // Placeholder - in production, use a proper QR code library
-    // This creates a placeholder that indicates QR code should be here
-    const size = 192;
-
-    return `
-      <div style="width: ${size}px; height: ${size}px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: white; border-radius: 8px;">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="7" height="7" />
-          <rect x="14" y="3" width="7" height="7" />
-          <rect x="3" y="14" width="7" height="7" />
-          <rect x="14" y="14" width="4" height="4" />
-          <rect x="18" y="18" width="3" height="3" />
-        </svg>
-        <p style="font-size: 10px; color: #666; margin-top: 8px; text-align: center; word-break: break-all; padding: 0 8px;">
-          Scan to join
-        </p>
-        <p style="font-size: 8px; color: #999; margin-top: 4px;">
-          ${text.split('/').pop()}
-        </p>
-      </div>
-    `;
+    try {
+      const canvas = document.createElement('canvas');
+      await QRCodeLib.toCanvas(canvas, value, {
+        width: 192,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#ffffff'
+        }
+      });
+      this.el.innerHTML = '';
+      this.el.appendChild(canvas);
+    } catch (error) {
+      console.error('[QRCode] Failed to generate QR code:', error);
+      this.el.innerHTML = '<p style="color: red;">Failed to generate QR code</p>';
+    }
   }
 };

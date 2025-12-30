@@ -69,6 +69,22 @@ Hooks.QRCode = QRCode;
 Hooks.AttentionTracker = AttentionTracker;
 Hooks.SensorPinControl = SensorPinControl;
 
+// Vibrate hook - vibrates device when data-value changes
+Hooks.Vibrate = {
+  mounted() {
+    this.lastValue = this.el.dataset.value;
+  },
+
+  updated() {
+    const newValue = this.el.dataset.value;
+    if (newValue !== this.lastValue) {
+      this.lastValue = newValue;
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+    }
+  }
+};
 
 Hooks.Formless = {
   mounted() {
@@ -267,16 +283,16 @@ Hooks.TimeDiff = {
     let text;
 
     if (diff < 1000) {
-      text = `${diff.toFixed(0)} ms ago`;
+      text = `${diff.toFixed(0)} ms`;
     } else if (diff < 60000) {
-      text = `${(diff / 1000).toFixed(1)} secs ago`;
+      text = `${(diff / 1000).toFixed(1)} secs`;
     } else if (diff < 3600000) {
       const mins = Math.floor(diff / 60000);
-      text = `${mins} min${mins > 1 ? 's' : ''} ago`;
+      text = `${mins} min${mins > 1 ? 's' : ''}`;
     } else if (diff < 86400000) {
-      text = `${Math.floor(diff / 3600000)} hours ago`;
+      text = `${Math.floor(diff / 3600000)} hours`;
     } else {
-      text = `${Math.floor(diff / 86400000)} days ago`;
+      text = `${Math.floor(diff / 86400000)} days`;
     }
 
     this.el.textContent = text;

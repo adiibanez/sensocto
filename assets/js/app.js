@@ -283,6 +283,21 @@ Hooks.TimeDiff = {
   }
 }
 
+// SystemMetricsRefresh hook - triggers periodic refresh of system metrics display
+Hooks.SystemMetricsRefresh = {
+  mounted() {
+    this.interval = setInterval(() => {
+      // pushEventTo targets the LiveComponent by its phx-target (the element itself)
+      this.pushEventTo(this.el, "refresh", {});
+    }, 5000);
+  },
+  destroyed() {
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+  }
+}
+
 Hooks.SensorDataAccumulator = {
 
   workerEventListener(event) {

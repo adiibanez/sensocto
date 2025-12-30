@@ -13,20 +13,18 @@ defmodule SensoctoWeb.SystemMetricsComponent do
 
   @impl true
   def update(assigns, socket) do
-    socket = assign(socket, assigns)
+    {:ok, socket |> assign(assigns) |> assign(metrics: get_metrics())}
+  end
 
-    # Subscribe to system load changes if connected
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "system:load")
-    end
-
-    {:ok, assign(socket, metrics: get_metrics())}
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    {:noreply, assign(socket, metrics: get_metrics())}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div id={@id} class="flex items-center gap-3 text-xs font-mono" phx-hook="SystemMetrics">
+    <div id={@id} class="flex items-center gap-3 text-xs font-mono" phx-hook="SystemMetricsRefresh" phx-target={@myself}>
       <div class="flex items-center gap-1.5" title="System Load Level">
         <span class={[
           "w-2 h-2 rounded-full",

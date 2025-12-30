@@ -221,6 +221,56 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   @impl true
+  def render(%{:attribute_type => "button"} = assigns) do
+    Logger.debug("AttributeComponent button render #{inspect(assigns)}")
+
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name={@attribute_id}
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No button pressed</div>
+
+        <div :if={@lastvalue} class="flex gap-1 items-center">
+          <div class="flex gap-1">
+            <div class={[
+              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
+              if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")
+            ]}>
+              1
+            </div>
+            <div class={[
+              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
+              if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")
+            ]}>
+              2
+            </div>
+            <div class={[
+              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
+              if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")
+            ]}>
+              3
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  @impl true
   def render(assigns) do
     Logger.debug("AttributeComponent default render #{inspect(assigns)}")
 

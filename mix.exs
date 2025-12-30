@@ -50,7 +50,9 @@ defmodule Sensocto.MixProject do
       # LVN_ACTIVATION {:live_view_native_stylesheet, "~> 0.4.0-rc.1"},
       # LVN_ACTIVATION {:live_view_native_swiftui, "~> 0.4.0-rc.1"},
       # LVN_ACTIVATION {:live_view_native_live_form, "~> 0.4.0-rc.1"},
-      # {:live_ex_webrtc, "~> 0.6.0"},
+      # Video/Voice calling with Membrane RTC Engine (using ex_webrtc - pure Elixir)
+      {:membrane_rtc_engine, "~> 0.25.0"},
+      {:membrane_rtc_engine_ex_webrtc, "~> 0.2.0"},
       {:flame, "~> 0.5"},
       # {:esbuild, "~> 0.8.2"},
       # {:esbuild, github: "evanw/esbuild", branch: "main", runtime: Mix.env() == :dev},

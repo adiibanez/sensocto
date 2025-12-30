@@ -45,6 +45,9 @@ import { RoomStorage, CopyToClipboard, QRCode } from './hooks/room_storage.js';
 // Attention tracking hooks for back-pressure control
 import { AttentionTracker, SensorPinControl } from './hooks/attention_tracker.js';
 
+// Video/Voice call hooks
+import { CallHook, VideoTileHook, CallControlsHook } from './webrtc/call_hooks.js';
+
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
   window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
@@ -68,6 +71,11 @@ Hooks.QRCode = QRCode;
 // Register attention tracking hooks
 Hooks.AttentionTracker = AttentionTracker;
 Hooks.SensorPinControl = SensorPinControl;
+
+// Register video/voice call hooks
+Hooks.CallHook = CallHook;
+Hooks.VideoTileHook = VideoTileHook;
+Hooks.CallControlsHook = CallControlsHook;
 
 // Vibrate hook - vibrates device and plays sound when data-value changes
 // Vibration duration is proportional to button number (button * 100ms)

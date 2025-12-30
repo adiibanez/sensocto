@@ -53,6 +53,18 @@ config :sensocto, :simulator,
   enabled: false,
   config_path: "config/simulators.yaml"
 
+# Video/Voice calls configuration
+config :sensocto, :calls,
+  max_participants: 20,
+  default_quality_profile: :auto
+
+# Membrane RTC Engine ExWebRTC ICE configuration
+config :membrane_rtc_engine_ex_webrtc,
+  ice_servers: [
+    %{urls: "stun:stun.l.google.com:19302"},
+    %{urls: "stun:stun1.l.google.com:19302"}
+  ]
+
 config :ex_heroicons, type: "outline"
 
 # Configures the endpoint

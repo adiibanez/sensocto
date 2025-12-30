@@ -7,6 +7,7 @@ defmodule SensoctoWeb.RoomShowLive do
   require Logger
 
   alias Sensocto.Rooms
+  alias Sensocto.Calls
   alias Phoenix.PubSub
 
   @activity_check_interval 5000
@@ -24,10 +25,16 @@ defmodule SensoctoWeb.RoomShowLive do
             PubSub.subscribe(Sensocto.PubSub, "data:#{sensor.sensor_id}")
           end)
 
+          # Subscribe to call events for this room
+          PubSub.subscribe(Sensocto.PubSub, "call:#{room_id}")
+
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
 
         available_sensors = get_available_sensors(room)
+
+        # Check if there's an active call in this room
+        call_active = Calls.call_exists?(room_id)
 
         socket =
           socket
@@ -41,6 +48,10 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:is_owner, Rooms.owner?(room, user))
           |> assign(:can_manage, Rooms.can_manage?(room, user))
           |> assign(:sensor_activity, build_activity_map(room.sensors || []))
+          # Call-related assigns
+          |> assign(:call_active, call_active)
+          |> assign(:in_call, false)
+          |> assign(:call_participants, %{})
 
         {:ok, socket}
 
@@ -176,6 +187,63 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, put_flash(socket, :info, "Link copied to clipboard!")}
   end
 
+  # Call-related events from JS hooks
+  @impl true
+  def handle_event("call_joined", %{"endpoint_id" => _endpoint_id}, socket) do
+    {:noreply, assign(socket, :in_call, true)}
+  end
+
+  @impl true
+  def handle_event("call_left", _params, socket) do
+    {:noreply, assign(socket, :in_call, false)}
+  end
+
+  @impl true
+  def handle_event("call_error", params, socket) do
+    message = Map.get(params, "message", "Unknown error")
+    {:noreply, put_flash(socket, :error, "Call error: #{message}")}
+  end
+
+  @impl true
+  def handle_event("participant_joined", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("participant_left", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("track_ready", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("track_removed", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("connection_state_changed", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("quality_changed", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("participant_audio_changed", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("participant_video_changed", _params, socket) do
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:measurement, %{sensor_id: sensor_id}}, socket) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
@@ -208,6 +276,38 @@ defmodule SensoctoWeb.RoomShowLive do
   def handle_info(:update_activity, socket) do
     Process.send_after(self(), :update_activity, @activity_check_interval)
     {:noreply, assign(socket, :sensor_activity, socket.assigns.sensor_activity)}
+  end
+
+  # Handle call events from CallServer via PubSub
+  @impl true
+  def handle_info({:call_event, event}, socket) do
+    socket =
+      case event do
+        {:participant_joined, participant} ->
+          new_participants = Map.put(socket.assigns.call_participants, participant.user_id, participant)
+          assign(socket, :call_participants, new_participants)
+
+        {:participant_left, user_id} ->
+          new_participants = Map.delete(socket.assigns.call_participants, user_id)
+          assign(socket, :call_participants, new_participants)
+
+        :call_ended ->
+          socket
+          |> assign(:call_active, false)
+          |> assign(:in_call, false)
+          |> assign(:call_participants, %{})
+
+        _ ->
+          socket
+      end
+
+    {:noreply, socket}
+  end
+
+  # Handle push_event requests from call components
+  @impl true
+  def handle_info({:push_event, event, payload}, socket) do
+    {:noreply, push_event(socket, event, payload)}
   end
 
   @impl true
@@ -368,6 +468,15 @@ defmodule SensoctoWeb.RoomShowLive do
       <%= if @show_settings do %>
         <.settings_panel room={@room} is_owner={@is_owner} />
       <% end %>
+
+      <.live_component
+        module={SensoctoWeb.Live.Calls.CallContainerComponent}
+        id="call-container"
+        room={@room}
+        user={@current_user}
+        in_call={@in_call}
+        participants={@call_participants}
+      />
     </div>
     """
   end

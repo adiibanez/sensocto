@@ -33,6 +33,23 @@ if bucket = System.get_env("FLY_DEPLOY_BUCKET") do
   config :fly_deploy, bucket: bucket
 end
 
+# TURN server configuration for video/voice calls (Membrane RTC Engine ExWebRTC)
+if turn_url = System.get_env("TURN_SERVER_URL") do
+  turn_username = System.get_env("TURN_USERNAME")
+  turn_password = System.get_env("TURN_PASSWORD")
+
+  config :membrane_rtc_engine_ex_webrtc,
+    ice_servers: [
+      %{urls: "stun:stun.l.google.com:19302"},
+      %{urls: "stun:stun1.l.google.com:19302"},
+      %{
+        urls: turn_url,
+        username: turn_username,
+        credential: turn_password
+      }
+    ]
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

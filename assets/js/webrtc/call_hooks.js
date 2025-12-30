@@ -225,11 +225,18 @@ export const CallHook = {
   },
 
   handleTrackReady(ctx) {
-    console.log("Track ready:", ctx.trackId, ctx.track?.kind);
+    console.log("Track ready:", ctx.trackId, ctx.track?.kind, "endpoint:", ctx.endpoint?.id);
 
     if (ctx.track && ctx.endpoint) {
-      const peerId = ctx.endpoint.id;
-      const containerEl = document.getElementById(`participant-${peerId}`);
+      // endpoint.id format is "{user_id}_{random_number}", but DOM elements use just user_id
+      const endpointId = ctx.endpoint.id;
+      const userId = endpointId.includes("_") ? endpointId.substring(0, endpointId.lastIndexOf("_")) : endpointId;
+      const containerEl = document.getElementById(`participant-${userId}`);
+
+      if (!containerEl) {
+        console.warn(`Container element not found for participant-${userId}. Available elements:`,
+          Array.from(document.querySelectorAll('[id^="participant-"]')).map(el => el.id));
+      }
 
       if (containerEl) {
         if (ctx.track.kind === "video") {
@@ -248,7 +255,7 @@ export const CallHook = {
             videoEl.srcObject = stream;
           }
           stream.addTrack(ctx.track);
-          this.videoElements.set(ctx.trackId, { element: videoEl, peerId });
+          this.videoElements.set(ctx.trackId, { element: videoEl, peerId: userId });
         } else if (ctx.track.kind === "audio") {
           let audioEl = containerEl.querySelector("audio");
           if (!audioEl) {
@@ -291,20 +298,35 @@ export const CallHook = {
   },
 
   handleParticipantJoined(peer) {
-    if (!this.participants.has(peer.id || peer.user_id)) {
-      this.participants.set(peer.id || peer.user_id, peer);
+    // peer.id is the endpoint_id from Membrane (format: "{user_id}_{random}"),
+    // peer.user_id might be provided by server-side participant info
+    const endpointId = peer.id || peer.endpoint_id;
+    const userId = peer.user_id || (endpointId && endpointId.includes("_")
+      ? endpointId.substring(0, endpointId.lastIndexOf("_"))
+      : endpointId);
+
+    console.log("Participant joined:", { endpointId, userId, peer });
+
+    if (userId && !this.participants.has(userId)) {
+      this.participants.set(userId, { ...peer, resolvedUserId: userId });
       this.pushEvent("participant_joined", {
-        peer_id: peer.id || peer.user_id,
+        peer_id: userId,
         metadata: peer.metadata || peer.user_info,
       });
     }
   },
 
   handleParticipantLeft(peer) {
-    const peerId = peer.id || peer.user_id;
-    this.participants.delete(peerId);
+    // Same extraction logic as handleParticipantJoined
+    const endpointId = peer.id || peer.endpoint_id;
+    const userId = peer.user_id || (endpointId && endpointId.includes("_")
+      ? endpointId.substring(0, endpointId.lastIndexOf("_"))
+      : endpointId);
 
-    const containerEl = document.getElementById(`participant-${peerId}`);
+    console.log("Participant left:", { endpointId, userId });
+    this.participants.delete(userId);
+
+    const containerEl = document.getElementById(`participant-${userId}`);
     if (containerEl) {
       const videoEl = containerEl.querySelector("video");
       const audioEl = containerEl.querySelector("audio");
@@ -312,7 +334,7 @@ export const CallHook = {
       if (audioEl) audioEl.srcObject = null;
     }
 
-    this.pushEvent("participant_left", { peer_id: peerId });
+    this.pushEvent("participant_left", { peer_id: userId });
   },
 
   handleConnectionStateChange(state) {

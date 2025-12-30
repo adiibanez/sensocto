@@ -11,7 +11,7 @@ defmodule SensoctoWeb.IndexLive do
   alias SensoctoWeb.StatefulSensorLive
   alias Sensocto.Rooms
 
-  @lobby_preview_limit 4
+  @lobby_preview_limit 20
 
   @impl true
   @spec mount(any(), any(), any()) :: {:ok, any()}

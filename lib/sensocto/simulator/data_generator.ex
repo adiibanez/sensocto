@@ -120,6 +120,101 @@ defmodule Sensocto.Simulator.DataGenerator do
     base + breathing_effect + noise
   end
 
+  # GPS/Geolocation - slowly drifting position (walking simulation)
+  defp generate_value("geolocation_lat", config, i, _sampling_rate) do
+    base_lat = config[:base_lat] || 52.52
+    # Slow random walk for walking movement (~5m per step)
+    drift = :math.sin(i * 0.02) * 0.0001 + (:rand.uniform() - 0.5) * 0.00005
+    base_lat + drift + i * 0.000001
+  end
+
+  defp generate_value("geolocation_lng", config, i, _sampling_rate) do
+    base_lng = config[:base_lng] || 13.405
+    # Slow random walk for walking movement
+    drift = :math.cos(i * 0.02) * 0.0001 + (:rand.uniform() - 0.5) * 0.00005
+    base_lng + drift + i * 0.000001
+  end
+
+  defp generate_value("geolocation_alt", config, i, _sampling_rate) do
+    base_alt = config[:base_alt] || 35.0
+    # Small altitude variations (walking up/down slopes)
+    variation = :math.sin(i * 0.05) * 2 + (:rand.uniform() - 0.5) * 0.5
+    base_alt + variation
+  end
+
+  # Accelerometer - motion detection (m/s²)
+  defp generate_value("accelerometer_x", _config, i, _sampling_rate) do
+    # Walking motion with periodic steps
+    step_cycle = :math.sin(i * 0.5) * 2.0
+    noise = (:rand.uniform() - 0.5) * 0.5
+    step_cycle + noise
+  end
+
+  defp generate_value("accelerometer_y", _config, i, _sampling_rate) do
+    # Lateral sway while walking
+    sway = :math.sin(i * 0.25) * 1.0
+    noise = (:rand.uniform() - 0.5) * 0.3
+    sway + noise
+  end
+
+  defp generate_value("accelerometer_z", _config, i, _sampling_rate) do
+    # Gravity + vertical bounce while walking
+    gravity = 9.81
+    bounce = :math.sin(i * 0.5) * 0.5
+    noise = (:rand.uniform() - 0.5) * 0.2
+    gravity + bounce + noise
+  end
+
+  # Gyroscope - rotation rates (rad/s)
+  defp generate_value("gyroscope_x", _config, i, _sampling_rate) do
+    # Pitch rotation (nodding)
+    rotation = :math.sin(i * 0.3) * 0.2
+    noise = (:rand.uniform() - 0.5) * 0.1
+    rotation + noise
+  end
+
+  defp generate_value("gyroscope_y", _config, i, _sampling_rate) do
+    # Roll rotation (side-to-side tilt)
+    rotation = :math.sin(i * 0.4) * 0.15
+    noise = (:rand.uniform() - 0.5) * 0.08
+    rotation + noise
+  end
+
+  defp generate_value("gyroscope_z", _config, i, _sampling_rate) do
+    # Yaw rotation (turning)
+    rotation = :math.sin(i * 0.1) * 0.3
+    noise = (:rand.uniform() - 0.5) * 0.1
+    rotation + noise
+  end
+
+  # Light sensor (lux)
+  defp generate_value("light", config, i, _sampling_rate) do
+    base = config[:base_lux] || 500
+    # Slow variation (clouds passing, moving indoors/outdoors)
+    variation = :math.sin(i * 0.02) * 200
+    noise = (:rand.uniform() - 0.5) * 50
+    max(0, base + variation + noise)
+  end
+
+  # Sound level (dB)
+  defp generate_value("sound_level", config, i, _sampling_rate) do
+    base = config[:base_db] || 45
+    # Occasional spikes (conversations, vehicles)
+    spike = if :rand.uniform() < 0.05, do: :rand.uniform() * 30, else: 0
+    variation = :math.sin(i * 0.1) * 5
+    noise = (:rand.uniform() - 0.5) * 3
+    max(20, base + variation + noise + spike)
+  end
+
+  # Battery level (percentage) - very slow drain
+  defp generate_value("battery", config, i, _sampling_rate) do
+    initial = config[:initial_level] || 100.0
+    drain_rate = config[:drain_rate] || 0.001
+    # Slowly decreasing with small random variations
+    level = initial - i * drain_rate + (:rand.uniform() - 0.5) * 0.1
+    max(0, min(100, level))
+  end
+
   # Generic sensor with min/max range
   defp generate_value(_sensor_type, config, i, _sampling_rate) do
     {base_value, variation_range} =

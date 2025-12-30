@@ -62,7 +62,7 @@
         (error) => {
           console.error("Geolocation error:", error);
           geolocationData = { error: error.message }; // Store error for display
-        },
+        }
       );
     } else {
       geolocationData = { error: "Geolocation not supported" };
@@ -77,7 +77,7 @@
 
       sensorService.unregisterAttribute(
         sensorService.getDeviceId(),
-        "geolocation",
+        "geolocation"
       );
       sensorService.leaveChannelIfUnused(channelIdentifier);
     }
@@ -106,7 +106,7 @@
     stopGeolocation();
     sensorService.unregisterAttribute(
       sensorService.getDeviceId(),
-      "geolocation",
+      "geolocation"
     );
     sensorService.leaveChannelIfUnused(channelIdentifier);
   });
@@ -125,10 +125,10 @@
   {#if geolocationData}
     {#if geolocationData.error}
       <p style="color: red">{geolocationData.error}</p>
-    {:else}
+      <!--{:else}
       <p>Lat: {geolocationData.latitude}</p>
       <p>Lon: {geolocationData.longitude}</p>
-      <p>Acc: {geolocationData.accuracy}m</p>
+      <p>Acc: {geolocationData.accuracy}m</p>-->
     {/if}
   {/if}
 {/if}

@@ -170,6 +170,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   def render(%{:attribute_type => "battery"} = assigns) do
     Logger.debug("AttributeComponent battery render #{inspect(assigns)}")
 
+    # Extract battery level - handle both complex payload (%{level: x, charging: y}) and simple numeric payload
+    assigns = assign(assigns, :battery_info, extract_battery_info(assigns[:lastvalue]))
+
     ~H"""
     <div>
       <.container
@@ -190,7 +193,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <div :if={is_nil(@lastvalue)} class="loading"></div>
 
         <div :if={@lastvalue} class="flex">
-          <span class="text-xs">{@lastvalue.payload.level}%</span>
+          <span class="text-xs">{Float.round(@battery_info.level, 1)}%</span>
           <meter
             id={"fuel_#{@sensor_id}_#{@attribute_id}"}
             min="0"
@@ -198,14 +201,15 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             low="33"
             high="66"
             optimum="80"
-            value={@lastvalue.payload.level}
+            value={@battery_info.level}
           >
-            at {@lastvalue.payload.level}/100
+            at {Float.round(@battery_info.level, 1)}/100
           </meter>
 
           <Heroicons.icon
+            :if={@battery_info.charging != nil}
             name={
-              if @lastvalue.payload.charging == "yes" do
+              if @battery_info.charging == "yes" do
                 "bolt"
               else
                 "bolt-slash"
@@ -219,6 +223,13 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
+
+  # Extract battery level and charging status from various payload formats
+  defp extract_battery_info(nil), do: %{level: 0.0, charging: nil}
+  defp extract_battery_info(%{payload: %{level: level, charging: charging}}), do: %{level: level * 1.0, charging: charging}
+  defp extract_battery_info(%{payload: %{level: level}}), do: %{level: level * 1.0, charging: nil}
+  defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
+  defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
   @impl true
   def render(%{:attribute_type => "button"} = assigns) do

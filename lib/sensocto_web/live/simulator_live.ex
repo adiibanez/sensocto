@@ -16,7 +16,7 @@ defmodule SensoctoWeb.SimulatorLive do
       :timer.send_interval(2000, self(), :refresh_status)
     end
 
-    {:ok, assign_status(socket)}
+    {:ok, socket |> assign(:selected_scenario, nil) |> assign_status()}
   end
 
   @impl true
@@ -95,16 +95,28 @@ defmodule SensoctoWeb.SimulatorLive do
   end
 
   @impl true
-  def handle_event("switch_scenario", %{"scenario" => scenario_name}, socket) do
-    case Manager.switch_scenario(scenario_name) do
-      :ok ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Switched to scenario: #{scenario_name}")
-         |> assign_status()}
+  def handle_event("select_scenario", %{"scenario" => scenario_name}, socket) do
+    # Just select the scenario without starting it
+    {:noreply, assign(socket, :selected_scenario, scenario_name)}
+  end
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to switch scenario: #{inspect(reason)}")}
+  @impl true
+  def handle_event("load_scenario", _params, socket) do
+    scenario_name = socket.assigns[:selected_scenario]
+
+    if scenario_name do
+      case Manager.switch_scenario(scenario_name) do
+        :ok ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Loaded scenario: #{scenario_name}")
+           |> assign_status()}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Failed to load scenario: #{inspect(reason)}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "No scenario selected")}
     end
   end
 
@@ -152,10 +164,25 @@ defmodule SensoctoWeb.SimulatorLive do
 
         <!-- Scenario Selection -->
         <div class="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 class="text-xl font-semibold mb-4 text-orange-300">Simulation Scenarios</h2>
-          <p class="text-sm text-gray-400 mb-4">
-            Select a scenario to control simulator complexity. Lower complexity = less system load.
-          </p>
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-xl font-semibold text-orange-300">Simulation Scenarios</h2>
+              <p class="text-sm text-gray-400 mt-1">
+                Select a scenario, then click "Load Scenario" to apply it.
+              </p>
+            </div>
+            <button
+              phx-click="load_scenario"
+              disabled={is_nil(@selected_scenario)}
+              class={[
+                "px-4 py-2 rounded-lg transition-colors font-medium",
+                @selected_scenario && "bg-orange-600 hover:bg-orange-700 cursor-pointer",
+                is_nil(@selected_scenario) && "bg-gray-600 cursor-not-allowed opacity-50"
+              ]}
+            >
+              Load Scenario
+            </button>
+          </div>
 
           <%= if length(@scenarios) > 0 do %>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -163,17 +190,23 @@ defmodule SensoctoWeb.SimulatorLive do
                 <div
                   class={[
                     "rounded-lg p-4 border-2 cursor-pointer transition-all hover:border-orange-400",
-                    @current_scenario == scenario.name && "border-orange-500 bg-gray-700",
-                    @current_scenario != scenario.name && "border-gray-600 bg-gray-700/50"
+                    @current_scenario == scenario.name && "border-green-500 bg-gray-700",
+                    @selected_scenario == scenario.name && @current_scenario != scenario.name && "border-orange-500 bg-gray-700",
+                    @selected_scenario != scenario.name && @current_scenario != scenario.name && "border-gray-600 bg-gray-700/50"
                   ]}
-                  phx-click="switch_scenario"
+                  phx-click="select_scenario"
                   phx-value-scenario={scenario.name}
                 >
                   <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-lg font-medium text-white capitalize">{scenario.name}</h3>
-                    <%= if @current_scenario == scenario.name do %>
-                      <span class="px-2 py-1 bg-orange-500 rounded text-xs font-medium">Active</span>
-                    <% end %>
+                    <h3 class="text-lg font-medium text-white capitalize">{String.replace(scenario.name, "_", " ")}</h3>
+                    <div class="flex gap-1">
+                      <%= if @selected_scenario == scenario.name && @current_scenario != scenario.name do %>
+                        <span class="px-2 py-1 bg-orange-500 rounded text-xs font-medium">Selected</span>
+                      <% end %>
+                      <%= if @current_scenario == scenario.name do %>
+                        <span class="px-2 py-1 bg-green-600 rounded text-xs font-medium">Running</span>
+                      <% end %>
+                    </div>
                   </div>
                   <p class="text-sm text-gray-300 mb-2">{scenario.description}</p>
                   <div class="flex gap-4 text-xs text-gray-400">

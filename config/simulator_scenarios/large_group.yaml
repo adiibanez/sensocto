@@ -1,0 +1,490 @@
+# Large Group Study - 20 persons with 2 sensors each
+# Mostly low frequency, 4 persons have ECG (high frequency)
+# Use case: Large population study, remote monitoring
+
+connectors:
+  scenario_large_group:
+    connector_id: "scenario_large_group"
+    connector_name: "Large_Group_Study"
+    sensors:
+      # === Persons 1-4: Have ECG (high frequency) + one low frequency sensor ===
+      lg_person_1:
+        sensor_id: "lg_person_1"
+        sensor_name: "LargeGroup_Person01"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 0
+            sampling_rate: 50
+            heart_rate: 65
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.2
+            max_value: 36.8
+            dummy_data: true
+
+      lg_person_2:
+        sensor_id: "lg_person_2"
+        sensor_name: "LargeGroup_Person02"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 0
+            sampling_rate: 50
+            heart_rate: 78
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 130
+            max_value: 145
+            dummy_data: true
+
+      lg_person_3:
+        sensor_id: "lg_person_3"
+        sensor_name: "LargeGroup_Person03"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 0
+            sampling_rate: 50
+            heart_rate: 88
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 91
+            max_value: 96
+            dummy_data: true
+
+      lg_person_4:
+        sensor_id: "lg_person_4"
+        sensor_name: "LargeGroup_Person04"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 0
+            sampling_rate: 50
+            heart_rate: 72
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 14
+            max_value: 20
+            dummy_data: true
+
+      # === Persons 5-20: Low frequency sensors only ===
+      lg_person_5:
+        sensor_id: "lg_person_5"
+        sensor_name: "LargeGroup_Person05"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 68
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.4
+            max_value: 37.0
+            dummy_data: true
+
+      lg_person_6:
+        sensor_id: "lg_person_6"
+        sensor_name: "LargeGroup_Person06"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 74
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+
+      lg_person_7:
+        sensor_id: "lg_person_7"
+        sensor_name: "LargeGroup_Person07"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 80
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 115
+            max_value: 125
+            dummy_data: true
+
+      lg_person_8:
+        sensor_id: "lg_person_8"
+        sensor_name: "LargeGroup_Person08"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 66
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.6
+            max_value: 37.2
+            dummy_data: true
+
+      lg_person_9:
+        sensor_id: "lg_person_9"
+        sensor_name: "LargeGroup_Person09"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 72
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 96
+            max_value: 99
+            dummy_data: true
+
+      lg_person_10:
+        sensor_id: "lg_person_10"
+        sensor_name: "LargeGroup_Person10"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 78
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.3
+            max_value: 36.9
+            dummy_data: true
+
+      lg_person_11:
+        sensor_id: "lg_person_11"
+        sensor_name: "LargeGroup_Person11"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 70
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 120
+            max_value: 130
+            dummy_data: true
+
+      lg_person_12:
+        sensor_id: "lg_person_12"
+        sensor_name: "LargeGroup_Person12"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 82
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 94
+            max_value: 98
+            dummy_data: true
+
+      lg_person_13:
+        sensor_id: "lg_person_13"
+        sensor_name: "LargeGroup_Person13"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 76
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.5
+            max_value: 37.1
+            dummy_data: true
+
+      lg_person_14:
+        sensor_id: "lg_person_14"
+        sensor_name: "LargeGroup_Person14"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 64
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 12
+            max_value: 18
+            dummy_data: true
+
+      lg_person_15:
+        sensor_id: "lg_person_15"
+        sensor_name: "LargeGroup_Person15"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 86
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 135
+            max_value: 150
+            dummy_data: true
+
+      lg_person_16:
+        sensor_id: "lg_person_16"
+        sensor_name: "LargeGroup_Person16"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 71
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+
+      lg_person_17:
+        sensor_id: "lg_person_17"
+        sensor_name: "LargeGroup_Person17"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 77
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.4
+            max_value: 37.0
+            dummy_data: true
+
+      lg_person_18:
+        sensor_id: "lg_person_18"
+        sensor_name: "LargeGroup_Person18"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 69
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 110
+            max_value: 120
+            dummy_data: true
+
+      lg_person_19:
+        sensor_id: "lg_person_19"
+        sensor_name: "LargeGroup_Person19"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 83
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 93
+            max_value: 97
+            dummy_data: true
+
+      lg_person_20:
+        sensor_id: "lg_person_20"
+        sensor_name: "LargeGroup_Person20"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 75
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.7
+            max_value: 37.3
+            dummy_data: true

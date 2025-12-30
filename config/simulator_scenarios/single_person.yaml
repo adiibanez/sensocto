@@ -1,15 +1,26 @@
-# Light simulator scenario - 1 sensor, 4 attributes
-# Moderate load, good for development testing
+# Single Person Demo - 1 person with 5 sensors
+# Use case: Demo, detailed monitoring of one individual
 
 connectors:
-  sim_connector_1:
-    connector_id: "sim_connector_1"
-    connector_name: "Light_Monitor"
+  scenario_single_person:
+    connector_id: "scenario_single_person"
+    connector_name: "Single_Person_Demo"
     sensors:
-      sim_patient_1:
-        sensor_id: "sim_patient_1"
-        sensor_name: "Patient_Monitor_1"
+      person_1:
+        sensor_id: "person_1"
+        sensor_name: "SimPerson1"
         attributes:
+          # High frequency - ECG waveform
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 50
+            batch_window: 500
+            duration: 0
+            sampling_rate: 50
+            heart_rate: 72
+            dummy_data: true
+          # Medium frequency - vital signs
           heartrate:
             attribute_id: "heartrate"
             sensor_type: "heartrate"
@@ -18,7 +29,6 @@ connectors:
             duration: 0
             sampling_rate: 1
             heart_rate: 72
-            respiratory_rate: 14
             dummy_data: true
           spo2:
             attribute_id: "spo2"
@@ -27,26 +37,27 @@ connectors:
             batch_window: 1000
             duration: 0
             sampling_rate: 1
-            min_value: 95
+            min_value: 96
             max_value: 99
             dummy_data: true
+          # Low frequency - slow changing
           temperature:
             attribute_id: "temperature"
             sensor_type: "temperature"
             batch_size: 1
-            batch_window: 5000
+            batch_window: 60000
             duration: 0
-            sampling_rate: 0.2
-            min_value: 36.5
-            max_value: 37.2
+            sampling_rate: 0.017
+            min_value: 36.4
+            max_value: 37.0
             dummy_data: true
           blood_pressure_sys:
             attribute_id: "blood_pressure_sys"
             sensor_type: "blood_pressure"
             batch_size: 1
-            batch_window: 10000
+            batch_window: 60000
             duration: 0
-            sampling_rate: 0.1
-            min_value: 115
-            max_value: 125
+            sampling_rate: 0.017
+            min_value: 118
+            max_value: 128
             dummy_data: true

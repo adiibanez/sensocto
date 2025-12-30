@@ -135,8 +135,10 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_call(:reload_config, _from, state) do
-    Logger.info("Reloading simulator config")
-    new_state = load_config(state)
+    Logger.info("Reloading simulator config and rediscovering scenarios")
+    # Rediscover scenarios in case new files were added
+    available_scenarios = discover_scenarios()
+    new_state = load_config(%{state | available_scenarios: available_scenarios})
     {:reply, :ok, new_state}
   end
 

@@ -47,40 +47,42 @@ defmodule SensoctoWeb.StatefulSensorLive do
   end
 
   @impl true
-  def mount(_params, %{"parent_pid" => parent_pid, "sensor" => sensor} = session, socket) do
-    # send_test_event()
-    # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor.sensor_id}")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor.sensor_id}")
+  def mount(_params, %{"parent_pid" => parent_pid, "sensor_id" => sensor_id} = _session, socket) do
+    Logger.warning(">>> MOUNT StatefulSensorLive #{sensor_id} PID=#{inspect(self())}")
+
+    # Subscribe to PubSub topics for this sensor
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
     # Subscribe to attention changes for this sensor
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor.sensor_id}")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
+    # Subscribe to global UI view mode changes
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "ui:view_mode")
 
-    # https://www.richardtaylor.dev/articles/beautiful-animated-charts-for-liveview-with-echarts
-    # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
-
-    # Use short timeout (1 second) for sensor state to avoid blocking child mount sync
+    # Fetch sensor state directly - session only contains sensor_id to avoid re-mounts
+    # when sensor data changes (measurements, etc.)
     sensor_state =
       try do
         # Use Task with short timeout to prevent blocking
-        task = Task.async(fn -> SimpleSensor.get_view_state(sensor.sensor_id) end)
+        task = Task.async(fn -> SimpleSensor.get_view_state(sensor_id) end)
         Task.await(task, 1000)
       catch
         :exit, _ ->
-          # Sensor process no longer exists or timeout, use the cached sensor data from session
-          sensor
+          # Sensor process no longer exists or timeout, create minimal state
+          Logger.warning("Could not fetch sensor state for #{sensor_id}")
+          %{sensor_id: sensor_id, sensor_name: sensor_id, sensor_type: "unknown", attributes: %{}}
       end
 
     # Get initial attention level - now uses ETS lookup (fast, no GenServer call)
-    initial_attention = AttentionTracker.get_sensor_attention_level(sensor.sensor_id)
+    initial_attention = AttentionTracker.get_sensor_attention_level(sensor_id)
 
     # Schedule the first throttle flush
     if connected?(socket) do
       Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
     end
 
-    # Determine view mode: :normal (optimized for <=3 sensors) or :summary (compact)
-    # Can be overridden via session
-    view_mode = Map.get(session, "view_mode", :normal)
+    # Default to summary view mode - child manages its own view mode
+    # Parent can broadcast view mode changes via PubSub "ui:view_mode" topic
+    view_mode = :summary
 
     {:ok,
      socket
@@ -205,6 +207,13 @@ defmodule SensoctoWeb.StatefulSensorLive do
   # Ignore attention changes for other sensors
   @impl true
   def handle_info({:attention_changed, _}, socket), do: {:noreply, socket}
+
+  # Handle global view mode changes from parent pages
+  # This allows the "All:" toggle button to update all sensor tiles without re-mounting
+  @impl true
+  def handle_info({:global_view_mode_changed, new_mode}, socket) do
+    {:noreply, assign(socket, :view_mode, new_mode)}
+  end
 
   # Throttled flush: push accumulated measurements to client in batches
   @impl true
@@ -390,10 +399,24 @@ defmodule SensoctoWeb.StatefulSensorLive do
     {:noreply, socket}
   end
 
+  # Catch-all for malformed focus events (missing sensor_id or attribute_id)
+  @impl true
+  def handle_event("focus", _params, socket) do
+    Logger.debug("Ignoring malformed focus event with missing sensor_id or attribute_id")
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("unfocus", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
     user_id = get_user_id(socket)
     AttentionTracker.unregister_focus(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  # Catch-all for malformed unfocus events
+  @impl true
+  def handle_event("unfocus", _params, socket) do
+    Logger.debug("Ignoring malformed unfocus event with missing sensor_id or attribute_id")
     {:noreply, socket}
   end
 

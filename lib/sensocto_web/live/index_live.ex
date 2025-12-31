@@ -25,8 +25,9 @@ defmodule SensoctoWeb.IndexLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
 
-    # Limit sensors for lobby preview
+    # Limit sensors for lobby preview - extract stable list of sensor IDs
     lobby_sensors = sensors |> Enum.take(@lobby_preview_limit) |> Enum.into(%{})
+    lobby_sensor_ids = lobby_sensors |> Map.keys() |> Enum.sort()
 
     # Fetch rooms
     my_rooms = Rooms.list_user_rooms(user)
@@ -44,6 +45,7 @@ defmodule SensoctoWeb.IndexLive do
         sensors_offline: %{},
         sensors: sensors,
         lobby_sensors: lobby_sensors,
+        lobby_sensor_ids: lobby_sensor_ids,
         my_rooms: my_rooms,
         public_rooms: public_rooms_filtered,
         global_view_mode: :summary
@@ -92,13 +94,26 @@ defmodule SensoctoWeb.IndexLive do
     sensors_count = Enum.count(sensors)
     lobby_sensors = sensors |> Enum.take(@lobby_preview_limit) |> Enum.into(%{})
 
-    {
-      :noreply,
+    # Only update lobby_sensor_ids if the set of sensors has changed
+    # This prevents child LiveViews from being re-mounted when only sensor data changes
+    new_sensor_ids = lobby_sensors |> Map.keys() |> Enum.sort()
+    current_sensor_ids = socket.assigns.lobby_sensor_ids
+
+    updated_socket =
       socket
       |> assign(:sensors_online_count, sensors_count)
       |> assign(:sensors, sensors)
       |> assign(:lobby_sensors, lobby_sensors)
-    }
+
+    # Only assign new sensor_ids if they actually changed
+    updated_socket =
+      if new_sensor_ids != current_sensor_ids do
+        assign(updated_socket, :lobby_sensor_ids, new_sensor_ids)
+      else
+        updated_socket
+      end
+
+    {:noreply, updated_socket}
   end
 
   @impl true
@@ -122,6 +137,10 @@ defmodule SensoctoWeb.IndexLive do
   @impl true
   def handle_event("toggle_all_view_mode", _params, socket) do
     new_mode = if socket.assigns.global_view_mode == :summary, do: :normal, else: :summary
+
+    # Broadcast to all sensor LiveViews to update their view mode
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "ui:view_mode", {:global_view_mode_changed, new_mode})
+
     {:noreply, assign(socket, :global_view_mode, new_mode)}
   end
 

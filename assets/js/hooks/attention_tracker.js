@@ -323,6 +323,13 @@ export const AttentionTracker = {
   handleClick(el) {
     const sensorId = el.dataset.sensor_id;
     const attributeId = el.dataset.attribute_id;
+
+    // Guard: only handle focus for elements that have both sensor_id and attribute_id
+    // The container element only has sensor_id, so clicks on it should be ignored
+    if (!sensorId || !attributeId) {
+      return;
+    }
+
     const key = `${sensorId}:${attributeId}`;
 
     if (!this.focusedElements.has(key)) {

@@ -34,7 +34,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400">{@attribute_id}</span>
-      <span :if={@lastvalue} class="text-green-400 flex items-center gap-1">
+      <span :if={@lastvalue} class="text-white flex items-center gap-1">
         <Heroicons.icon name="heart" type="solid" class="h-3 w-3 animate-pulse" />
         active
       </span>

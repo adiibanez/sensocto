@@ -27,6 +27,8 @@ defmodule SensoctoWeb.LobbyLive do
 
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
+    # Extract stable list of sensor IDs - only changes when sensors are added/removed
+    sensor_ids = sensors |> Map.keys() |> Enum.sort()
 
     # Calculate max attributes across all sensors for view mode decision
     max_attributes = calculate_max_attributes(sensors)
@@ -41,7 +43,7 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_online_count: sensors_count,
         sensors_online: %{},
         sensors_offline: %{},
-        sensors: sensors,
+        sensor_ids: sensor_ids,
         global_view_mode: default_view_mode,
         grid_cols_sm: min(@grid_cols_sm_default, max(1, sensors_count)),
         grid_cols_lg: min(@grid_cols_lg_default, max(1, sensors_count)),
@@ -77,31 +79,51 @@ defmodule SensoctoWeb.LobbyLive do
         },
         socket
       ) do
-    Logger.debug(
-      "Lobby presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
-    )
+    # Only process if there are actual joins or leaves
+    if Enum.empty?(payload.joins) and Enum.empty?(payload.leaves) do
+      {:noreply, socket}
+    else
+      Logger.debug(
+        "Lobby presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
+      )
 
-    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-    sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
-    sensors_count = Enum.count(sensors)
+      sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+      sensors_count = Enum.count(sensors)
 
-    # Recalculate view mode when sensors change
-    max_attributes = calculate_max_attributes(sensors)
-    default_view_mode = determine_view_mode(sensors_count, max_attributes)
+      # Only update sensor_ids if the set of sensors has changed
+      # This prevents child LiveViews from being re-mounted when only sensor data changes
+      new_sensor_ids = sensors |> Map.keys() |> Enum.sort()
+      current_sensor_ids = socket.assigns.sensor_ids
 
-    {
-      :noreply,
-      socket
-      |> assign(:sensors_online_count, sensors_count)
-      |> assign(:sensors_online, sensors_online)
-      |> assign(:sensors_offline, payload.leaves)
-      |> assign(:global_view_mode, default_view_mode)
-      |> assign(:grid_cols_sm, min(@grid_cols_sm_default, max(1, sensors_count)))
-      |> assign(:grid_cols_lg, min(@grid_cols_lg_default, max(1, sensors_count)))
-      |> assign(:grid_cols_xl, min(@grid_cols_xl_default, max(1, sensors_count)))
-      |> assign(:grid_cols_2xl, min(@grid_cols_2xl_default, max(1, sensors_count)))
-      |> assign(:sensors, sensors)
-    }
+      # Only update if sensor list actually changed
+      if new_sensor_ids != current_sensor_ids do
+        sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
+
+        updated_socket =
+          socket
+          |> assign(:sensors_online_count, sensors_count)
+          |> assign(:sensors_online, sensors_online)
+          |> assign(:sensor_ids, new_sensor_ids)
+
+        # Only update sensors_offline if there are actual leaves
+        updated_socket =
+          if map_size(payload.leaves) > 0 do
+            assign(updated_socket, :sensors_offline, payload.leaves)
+          else
+            updated_socket
+          end
+
+        {:noreply, updated_socket}
+      else
+        # Sensor list unchanged - only update count if it actually changed
+        # Avoid updating sensors_online/sensors_offline maps to prevent template re-evaluation
+        if sensors_count != socket.assigns.sensors_online_count do
+          {:noreply, assign(socket, :sensors_online_count, sensors_count)}
+        else
+          {:noreply, socket}
+        end
+      end
+    end
   end
 
   @impl true
@@ -124,6 +146,10 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("toggle_all_view_mode", _params, socket) do
     new_mode = if socket.assigns.global_view_mode == :summary, do: :normal, else: :summary
+
+    # Broadcast to all sensor LiveViews to update their view mode
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "ui:view_mode", {:global_view_mode_changed, new_mode})
+
     {:noreply, assign(socket, :global_view_mode, new_mode)}
   end
 

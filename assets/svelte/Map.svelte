@@ -78,9 +78,10 @@
   .map-container {
     width: 100%;
     height: 100%;
-    min-height: 150px;
+    min-height: 120px;
+    max-height: 150px;
     position: relative;
-    overflow: visible;
+    overflow: hidden;
   }
 
   :global(.custom-marker) {

@@ -12,7 +12,7 @@
       </h2>
       <div class="flex items-center gap-4">
         <button
-          :if={@lobby_sensors != %{}}
+          :if={@lobby_sensor_ids != []}
           phx-click="toggle_all_view_mode"
           class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
           title={if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"}
@@ -31,16 +31,16 @@
       </div>
     </div>
 
-    <div :if={@lobby_sensors != %{}} class="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      <div :for={{sensor_id, sensor} <- @lobby_sensors}>
+    <div :if={@lobby_sensor_ids != []} class="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div :for={sensor_id <- @lobby_sensor_ids}>
         {live_render(@socket, StatefulSensorLive,
-          id: "stateful_sensor_#{sensor_id}_#{@global_view_mode}",
-          session: %{"parent_pid" => self(), "sensor" => sensor, "view_mode" => @global_view_mode}
+          id: "stateful_sensor_#{sensor_id}",
+          session: %{"parent_pid" => self(), "sensor_id" => sensor_id}
         )}
       </div>
     </div>
 
-    <div :if={@lobby_sensors == %{}} class="bg-gray-800 rounded-lg p-6 text-center">
+    <div :if={@lobby_sensor_ids == []} class="bg-gray-800 rounded-lg p-6 text-center">
       <Heroicons.icon name="signal-slash" type="outline" class="h-10 w-10 mx-auto mb-3 text-gray-500" />
       <p class="text-gray-400">No sensors connected</p>
       <p class="text-sm text-gray-500 mt-1">Connect a sensor using the connectors below</p>

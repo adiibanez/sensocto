@@ -8,6 +8,124 @@ import {v4 as uuidv4} from 'uuid';
 
 import Cookies from 'js-cookie'
 
+/**
+ * BackpressureManager - Handles message batching based on server recommendations.
+ *
+ * When users aren't actively viewing sensor data, the server sends backpressure_config
+ * messages that tell us to batch more aggressively (larger batches, longer windows).
+ * This reduces network overhead and server load.
+ */
+class BackpressureManager {
+    constructor(channel, log) {
+        this.channel = channel;
+        this.log = log;
+
+        // Default config (conservative - assume no one is watching)
+        this.config = {
+            attentionLevel: 'none',
+            batchWindowMs: 5000,
+            batchSize: 20,
+            timestamp: 0
+        };
+
+        // Message queue for batching
+        this.messageQueue = [];
+        this.batchTimer = null;
+
+        // Enable/disable backpressure (for debugging)
+        this.enabled = true;
+    }
+
+    /**
+     * Update configuration from server's backpressure_config message.
+     */
+    updateConfig(payload) {
+        this.config = {
+            attentionLevel: payload.attention_level || this.config.attentionLevel,
+            batchWindowMs: payload.recommended_batch_window || this.config.batchWindowMs,
+            batchSize: payload.recommended_batch_size || this.config.batchSize,
+            timestamp: payload.timestamp || Date.now()
+        };
+
+        this.log(`Backpressure config: level=${this.config.attentionLevel}, ` +
+                 `window=${this.config.batchWindowMs}ms, batch=${this.config.batchSize}`);
+
+        // If attention is high, flush immediately for responsiveness
+        if (this.config.attentionLevel === 'high') {
+            this.flush();
+        }
+    }
+
+    /**
+     * Queue a measurement for batched sending.
+     * Messages are sent when batch size is reached or timer expires.
+     */
+    queueMeasurement(measurement) {
+        if (!this.enabled) {
+            // Backpressure disabled - send immediately
+            this.channel.push('measurement', measurement);
+            return;
+        }
+
+        this.messageQueue.push(measurement);
+
+        // Check if batch size reached
+        if (this.messageQueue.length >= this.config.batchSize) {
+            this.flush();
+        } else {
+            // Start batch timer if not running
+            this.ensureBatchTimer();
+        }
+    }
+
+    /**
+     * Ensure batch timer is running.
+     */
+    ensureBatchTimer() {
+        if (this.batchTimer) return;
+
+        this.batchTimer = setTimeout(() => {
+            this.batchTimer = null;
+            this.flush();
+        }, this.config.batchWindowMs);
+    }
+
+    /**
+     * Flush all queued messages as a batch.
+     */
+    flush() {
+        if (this.batchTimer) {
+            clearTimeout(this.batchTimer);
+            this.batchTimer = null;
+        }
+
+        if (this.messageQueue.length === 0) return;
+
+        if (this.messageQueue.length === 1) {
+            // Single message - send as regular measurement
+            this.channel.push('measurement', this.messageQueue[0]);
+        } else {
+            // Multiple messages - send as batch
+            this.channel.push('measurements_batch', this.messageQueue);
+            this.log(`Sent batch of ${this.messageQueue.length} measurements`);
+        }
+
+        this.messageQueue = [];
+    }
+
+    /**
+     * Clean up timers on disconnect.
+     */
+    cleanup() {
+        if (this.batchTimer) {
+            clearTimeout(this.batchTimer);
+            this.batchTimer = null;
+        }
+        // Flush any remaining messages
+        this.flush();
+    }
+}
+
 export const setupBleGui = () => {
     const bleGui = document.querySelector('#bleGui');
 
@@ -38,6 +156,9 @@ export const setupBleGui = () => {
         let imuSimulatorInterval = 30;
         let imuSimulatorTimestamp = null;
 
+        // Backpressure manager (initialized after channel join)
+        let backpressure = null;
+
         var deviceId = Cookies.get('deviceId');
 
         var sensors = {};
@@ -67,10 +188,19 @@ export const setupBleGui = () => {
         channel.join()
             .receive("ok", resp => {
                 console.log("Joined successfully", resp)
+                // Initialize backpressure manager after successful join
+                backpressure = new BackpressureManager(channel, log);
             })
             .receive("error", resp => {
                 console.log("Unable to join", resp)
             })
+
+        // Listen for backpressure configuration updates from server
+        channel.on("backpressure_config", (payload) => {
+            if (backpressure) {
+                backpressure.updateConfig(payload);
+            }
+        });
 
         //channel.push('measurement', {'type': 'INHALE', 'value': 1.1, 'timestamp': Math.round((new Date()).getTime() / 1000) });
 
@@ -314,12 +444,18 @@ export const setupBleGui = () => {
             lastHeartbeatMeasurement = heartRate;
             lastHeartbeatTimestamp = Math.round((new Date()).getTime());
 
-            channel.push('measurement', {
+            // Use backpressure-aware push if available
+            const measurement = {
                 'type': 'heartrate',
                 'state': 0,
                 'value': v.getInt8(1),
                 'timestamp': Math.round((new Date()).getTime())
-            });
+            };
+            if (backpressure) {
+                backpressure.queueMeasurement(measurement);
+            } else {
+                channel.push('measurement', measurement);
+            }
 
             // calculate time until next pulse
             animationDuration = roundFloat(Math.max(0, (60 / heartRate) - 0.3));
@@ -361,12 +497,18 @@ export const setupBleGui = () => {
                     document.querySelector("#oximeter").classList.add('ready');
             }
 
-            channel.push('measurement', {
+            // Use backpressure-aware push if available
+            const measurement = {
                 'type': 'body',
                 'state': state,
                 'value': {state: state, hr: heartrate, spo2: spo2, c: confidence},
                 'timestamp': Math.round((new Date()).getTime())
-            });
+            };
+            if (backpressure) {
+                backpressure.queueMeasurement(measurement);
+            } else {
+                channel.push('measurement', measurement);
+            }
             // v.getInt32(0),
 
             document.querySelector("#oximeter .status").textContent = statusText;
@@ -392,12 +534,18 @@ export const setupBleGui = () => {
             //log('> flex ' + flexSenseLevel);
             document.querySelector("#flexsense").innerHTML = flexSenseLevel + '%';
 
-            channel.push('measurement', {
+            // Use backpressure-aware push if available
+            const measurement = {
                 'type': 'flexsense',
                 'state': 0,
                 'value': flexSenseLevel,
                 'timestamp': Math.round((new Date()).getTime())
-            });
+            };
+            if (backpressure) {
+                backpressure.queueMeasurement(measurement);
+            } else {
+                channel.push('measurement', measurement);
+            }
         }
 
         function processPressureUpdate(pressureLevel, threshHold = 0.1) {
@@ -415,12 +563,18 @@ export const setupBleGui = () => {
 
             // push anything breathing or first neutral measurement
             if (measurementType != 'NEUTRAL' || lastMeasurementReportedType != 'NEUTRAL') {
-                channel.push('measurement', {
+                // Use backpressure-aware push if available
+                const measurement = {
                     'type': 'pressure',
                     'state': measurementType,
                     'value': pressureLevel,
                     'timestamp': Math.round((new Date()).getTime())
-                });
+                };
+                if (backpressure) {
+                    backpressure.queueMeasurement(measurement);
+                } else {
+                    channel.push('measurement', measurement);
+                }
                 lastMeasurementReportedType = measurementType;
             }
         }
@@ -522,6 +676,11 @@ export const setupBleGui = () => {
 
             console.log('> Bluetooth Device disconnected ' + device.name);
             console.log('disconnect device', device.name);
+
+            // Flush any remaining queued messages before disconnect
+            if (backpressure) {
+                backpressure.cleanup();
+            }
 
             if (device.name.startsWith('PressureSensor')) {
 

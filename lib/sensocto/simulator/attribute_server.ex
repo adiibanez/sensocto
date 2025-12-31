@@ -158,10 +158,15 @@ defmodule Sensocto.Simulator.AttributeServer do
   def handle_cast(:process_queue, %{paused: true} = state), do: {:noreply, state}
 
   # Push message to batch
+  # Applies backpressure by adjusting delay based on attention level
   @impl true
   def handle_cast({:push_message, message}, state) do
     {delay_s, _} = Float.parse("#{message.delay}")
-    delay_ms = round(delay_s * 1000.0)
+    base_delay_ms = round(delay_s * 1000.0)
+
+    # Apply backpressure: multiply delay by attention-based factor
+    # This slows down data generation when no one is watching
+    effective_delay_ms = apply_backpressure_delay(base_delay_ms, state.attention_level)
 
     timestamp = :os.system_time(:millisecond)
     new_message = Map.put(message, :timestamp, timestamp)
@@ -169,8 +174,8 @@ defmodule Sensocto.Simulator.AttributeServer do
     new_batch = state.batch_push_messages ++ [new_message]
     batch_size = state.config[:batch_size] || 10
 
-    # Schedule next message processing with delay
-    Process.send_after(self(), :process_queue, delay_ms)
+    # Schedule next message processing with backpressure-adjusted delay
+    Process.send_after(self(), :process_queue, effective_delay_ms)
 
     if length(new_batch) >= batch_size do
       GenServer.cast(self(), {:push_batch, new_batch})
@@ -178,6 +183,30 @@ defmodule Sensocto.Simulator.AttributeServer do
     else
       {:noreply, %{state | batch_push_messages: new_batch}}
     end
+  end
+
+  # Apply backpressure by multiplying the delay based on attention level
+  # This effectively slows down data generation when users aren't watching
+  defp apply_backpressure_delay(base_delay_ms, attention_level) do
+    # Also incorporate system load multiplier
+    load_multiplier = AttentionTracker.get_system_load_multiplier()
+
+    attention_multiplier = case attention_level do
+      :high -> 1.0      # Full speed when user is focused
+      :medium -> 1.0    # Normal speed when in viewport
+      :low -> 4.0       # 4x slower when not viewing
+      :none -> 10.0     # 10x slower when no one watching
+      _ -> 1.0
+    end
+
+    # Combine both multipliers
+    total_multiplier = attention_multiplier * load_multiplier
+
+    # Ensure minimum delay when base is 0 (first message in batch has delay: 0.0)
+    # Without this, backpressure has no effect when multiplying 0
+    effective_base = if base_delay_ms == 0, do: 50, else: base_delay_ms
+
+    round(effective_base * total_multiplier)
   end
 
   # Push batch to sensor

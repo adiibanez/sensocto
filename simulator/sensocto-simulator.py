@@ -8,11 +8,14 @@ import numpy as np
 import asyncio
 import logging
 
-from python_phoenix_client import PhoenixChannelClient
+from python_phoenix_client import PhoenixChannelClient, BackpressureConfig
 import uuid
 import argparse
 
 logging.basicConfig(level=logging.INFO)  # Set Logging Level
+
+# Global backpressure state for the simulator
+current_backpressure_config = None
 
 
 def generate_heart_rate(
@@ -160,32 +163,55 @@ def time_delta(samples, delta, noise_range_percentage=1):
     return dt_list, dt_list_noisy
 
 
-async def stream_sensor_data(client, sensor_id, events, channel):
+async def stream_sensor_data(client, sensor_id, events, channel, use_backpressure=True):
+    """
+    Stream sensor data to the server.
+
+    When use_backpressure=True (default), messages are queued and batched according
+    to the server's backpressure recommendations. This reduces network overhead
+    when users aren't actively viewing the sensor data.
+
+    When use_backpressure=False, messages are sent immediately (legacy behavior).
+    """
     for event in events:
         try:
-
             if not "payload" in event:
                 event["payload"] = event["value"]
 
             payload = {
                 "timestamp": int(time.time() * 1000),
                 "payload": event["payload"],
-                "uuid": event["sensor_type"],
+                "attribute_id": event["sensor_type"],
             }
 
-            print(payload)
-            print(sensor_id)
-            await client.push(channel, "measurement", payload)
+            if use_backpressure:
+                # Use backpressure-aware push - batches messages according to server config
+                await client.push_with_backpressure(channel, "measurement", payload)
+            else:
+                # Legacy: immediate push
+                await client.push(channel, "measurement", payload)
+
         except Exception as e:
             logging.error(f"Error pushing message: {e}")
             return
+
+        # Still sleep between generating samples (simulates real sensor timing)
+        # But actual transmission is controlled by backpressure batching
         await asyncio.sleep(event["delay"] / 1000)
 
 
 def handle_message(topic, event, payload):
-    logging.info(
-        f"Received message on topic: {topic}, event: {event}, payload: {payload}"
-    )
+    global current_backpressure_config
+    if event == "backpressure_config":
+        logging.info(
+            f"Backpressure config received: attention={payload.get('attention_level')}, "
+            f"window={payload.get('recommended_batch_window')}ms, "
+            f"batch_size={payload.get('recommended_batch_size')}"
+        )
+    else:
+        logging.debug(
+            f"Received message on topic: {topic}, event: {event}, payload: {payload}"
+        )
 
 
 async def send_sensor_data(
@@ -298,8 +324,20 @@ async def main():
         default="ws://localhost:4000/socket/websocket",
         help="Socket target",
     )
+    parser.add_argument(
+        "--backpressure",
+        action="store_true",
+        default=True,
+        help="Enable backpressure support (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-backpressure",
+        action="store_true",
+        help="Disable backpressure support (send immediately)",
+    )
 
     args = parser.parse_args()
+    use_backpressure = args.backpressure and not args.no_backpressure
     mode = args.mode
     output = args.output
     socket_url = args.socket_url
@@ -313,7 +351,7 @@ async def main():
     burst_number = args.burst_number
 
     if mode == "phoenix":
-        logging.info(f"Start Phoenix {sensor_type} handshake")
+        logging.info(f"Start Phoenix {sensor_type} handshake (backpressure={'enabled' if use_backpressure else 'disabled'})")
         connector_id = str(uuid.UUID(int=uuid.getnode()))
         connector_name = sensor_id
         sensor_id_string = f"{sensor_id}:{sensor_type}"
@@ -327,12 +365,14 @@ async def main():
             "sampling_rate": sampling_rate,
             "batch_size": 1,
             "bearer_token": "fake",
+            "attributes": [sensor_type],
         }
 
         client = PhoenixChannelClient(socket_url, handle_message)
         logging.info(f"Connecting to: {socket_url}")
 
-        channel = f"sensor_data:{sensor_id_string}"
+        # Use the correct channel topic format for SensorDataChannel
+        channel = f"sensocto:sensor:{sensor_id_string}"
         await client.subscribe(channel, join_params)
         await client.connect()
 
@@ -350,9 +390,9 @@ async def main():
                 burst_number,
             )
 
-            logging.info(f"About to stream events {events} to channel {channel} ...")
-            await stream_sensor_data(client, sensor_id, events, channel)
-            logging.info("Finished sending data")
+            logging.info(f"About to stream {len(events)} events to channel {channel} (backpressure={'on' if use_backpressure else 'off'})...")
+            await stream_sensor_data(client, sensor_id, events, channel, use_backpressure=use_backpressure)
+            logging.info("Finished sending data batch")
 
     elif mode == "csv":
         try:

@@ -152,15 +152,103 @@ export const AttentionTracker = {
         el.addEventListener('mouseleave', el._attentionMouseLeaveHandler);
       }
     });
+
+    // Also track sensor-level hover on the container element itself
+    // This enables attention tracking when hovering over the sensor header/tile
+    this.setupSensorLevelTracking();
+  },
+
+  setupSensorLevelTracking() {
+    // The hook element (this.el) may have data-sensor_id for sensor-level tracking
+    const sensorId = this.el.dataset.sensor_id;
+    if (!sensorId) return;
+
+    // Only set up once
+    if (this._sensorLevelTrackingSetup) return;
+    this._sensorLevelTrackingSetup = true;
+
+    // Track sensor-level hover using a synthetic "_sensor" attribute id
+    // This enables hover attention even when mouse is over header/empty areas
+    this.el.addEventListener('mouseenter', () => {
+      this.handleSensorMouseEnter(sensorId);
+    });
+
+    this.el.addEventListener('mouseleave', () => {
+      this.handleSensorMouseLeave(sensorId);
+    });
+
+    // Also observe the container for intersection (sensor visibility)
+    this.intersectionObserver.observe(this.el);
+    this.observers.set(`${sensorId}:_sensor`, this.el);
+  },
+
+  handleSensorMouseEnter(sensorId) {
+    const key = `${sensorId}:_sensor`;
+    const eventStart = performance.now();
+
+    // Cancel any pending hover_leave (user re-entered before boost expired)
+    if (this.hoverBoostTimers.has(key)) {
+      clearTimeout(this.hoverBoostTimers.get(key));
+      this.hoverBoostTimers.delete(key);
+      return;
+    }
+
+    // Send hover event for ALL attributes of this sensor (boost them all)
+    if (!this.hoveredElements.has(key)) {
+      // Find all attribute elements and send hover_enter for each
+      const elements = this.el.querySelectorAll('[data-sensor_id][data-attribute_id]');
+      elements.forEach(el => {
+        const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
+        if (!this.hoveredElements.has(attrKey)) {
+          this.pushEvent("hover_enter", {
+            sensor_id: el.dataset.sensor_id,
+            attribute_id: el.dataset.attribute_id
+          });
+          this.hoveredElements.add(attrKey);
+        }
+      });
+      this.hoveredElements.add(key);
+      recordEventLatency(eventStart);
+    }
+  },
+
+  handleSensorMouseLeave(sensorId) {
+    const key = `${sensorId}:_sensor`;
+
+    // If we're tracking sensor-level hover, schedule the boost expiry
+    if (this.hoveredElements.has(key)) {
+      const boostDuration = Math.max(HOVER_BOOST_DURATION_MS, getAdaptiveDebounce() * 10);
+
+      const timer = setTimeout(() => {
+        if (this.hoveredElements.has(key)) {
+          // Send hover_leave for all attributes
+          const elements = this.el.querySelectorAll('[data-sensor_id][data-attribute_id]');
+          elements.forEach(el => {
+            const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
+            if (this.hoveredElements.has(attrKey)) {
+              this.pushEvent("hover_leave", {
+                sensor_id: el.dataset.sensor_id,
+                attribute_id: el.dataset.attribute_id
+              });
+              this.hoveredElements.delete(attrKey);
+            }
+          });
+          this.hoveredElements.delete(key);
+        }
+        this.hoverBoostTimers.delete(key);
+      }, boostDuration);
+      this.hoverBoostTimers.set(key, timer);
+    }
   },
 
   handleIntersection(entries) {
     entries.forEach(entry => {
       const el = entry.target;
       const sensorId = el.dataset.sensor_id;
-      const attributeId = el.dataset.attribute_id;
+      // For sensor container element (no attribute_id), use synthetic "_sensor"
+      const attributeId = el.dataset.attribute_id || '_sensor';
 
-      if (!sensorId || !attributeId) return;
+      if (!sensorId) return;
 
       const key = `${sensorId}:${attributeId}`;
 
@@ -171,10 +259,28 @@ export const AttentionTracker = {
         return;
       }
 
+      // Handle sensor container separately (synthetic _sensor attribute)
+      const isSensorContainer = attributeId === '_sensor';
+
       if (entry.isIntersecting) {
         // Element entered viewport
         if (!this.viewedElements.has(key)) {
-          this.debouncedPush(key, "view_enter", { sensor_id: sensorId, attribute_id: attributeId });
+          if (isSensorContainer) {
+            // Sensor container visible - send view_enter for all child attributes
+            const childElements = el.querySelectorAll('[data-sensor_id][data-attribute_id]');
+            childElements.forEach(childEl => {
+              const childKey = `${childEl.dataset.sensor_id}:${childEl.dataset.attribute_id}`;
+              if (!this.viewedElements.has(childKey)) {
+                this.debouncedPush(childKey, "view_enter", {
+                  sensor_id: childEl.dataset.sensor_id,
+                  attribute_id: childEl.dataset.attribute_id
+                });
+                this.viewedElements.add(childKey);
+              }
+            });
+          } else {
+            this.debouncedPush(key, "view_enter", { sensor_id: sensorId, attribute_id: attributeId });
+          }
           this.viewedElements.add(key);
           // Mark that we've confirmed this element is visible
           el._confirmedVisible = true;
@@ -185,12 +291,27 @@ export const AttentionTracker = {
         // This prevents spurious view_leave events when elements are first observed
         // but layout hasn't completed yet
         if (this.viewedElements.has(key) && el._confirmedVisible) {
-          this.debouncedPush(key, "view_leave", { sensor_id: sensorId, attribute_id: attributeId });
+          if (isSensorContainer) {
+            // Sensor container left viewport - send view_leave for all child attributes
+            const childElements = el.querySelectorAll('[data-sensor_id][data-attribute_id]');
+            childElements.forEach(childEl => {
+              const childKey = `${childEl.dataset.sensor_id}:${childEl.dataset.attribute_id}`;
+              if (this.viewedElements.has(childKey)) {
+                this.debouncedPush(childKey, "view_leave", {
+                  sensor_id: childEl.dataset.sensor_id,
+                  attribute_id: childEl.dataset.attribute_id
+                });
+                this.viewedElements.delete(childKey);
+              }
+            });
+          } else {
+            this.debouncedPush(key, "view_leave", { sensor_id: sensorId, attribute_id: attributeId });
+          }
           this.viewedElements.delete(key);
           el._confirmedVisible = false;
 
-          // Also remove focus if was focused
-          if (this.focusedElements.has(key)) {
+          // Also remove focus if was focused (only for real attributes)
+          if (!isSensorContainer && this.focusedElements.has(key)) {
             this.pushEvent("unfocus", { sensor_id: sensorId, attribute_id: attributeId });
             this.focusedElements.delete(key);
           }

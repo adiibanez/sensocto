@@ -65,6 +65,21 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @doc """
+  Register that a user is hovering over an attribute (mouse entered).
+  Hover provides a temporary attention boost between viewing and focus.
+  """
+  def register_hover(sensor_id, attribute_id, user_id) do
+    GenServer.cast(__MODULE__, {:register_hover, sensor_id, attribute_id, user_id})
+  end
+
+  @doc """
+  Unregister hover from an attribute (mouse left).
+  """
+  def unregister_hover(sensor_id, attribute_id, user_id) do
+    GenServer.cast(__MODULE__, {:unregister_hover, sensor_id, attribute_id, user_id})
+  end
+
+  @doc """
   Register that a user has focused on an attribute (clicked, interacting).
   """
   def register_focus(sensor_id, attribute_id, user_id) do
@@ -272,6 +287,20 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @impl true
+  def handle_cast({:register_hover, sensor_id, attribute_id, user_id}, state) do
+    new_state = update_attention(state, sensor_id, attribute_id, user_id, :add_hover)
+    maybe_broadcast_change(state, new_state, sensor_id, attribute_id)
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast({:unregister_hover, sensor_id, attribute_id, user_id}, state) do
+    new_state = update_attention(state, sensor_id, attribute_id, user_id, :remove_hover)
+    maybe_broadcast_change(state, new_state, sensor_id, attribute_id)
+    {:noreply, new_state}
+  end
+
+  @impl true
   def handle_cast({:register_focus, sensor_id, attribute_id, user_id}, state) do
     new_state = update_attention(state, sensor_id, attribute_id, user_id, :add_focus)
     maybe_broadcast_change(state, new_state, sensor_id, attribute_id)
@@ -337,13 +366,19 @@ defmodule Sensocto.AttentionTracker do
         attributes ->
           updated_attributes =
             Enum.reduce(attributes, %{}, fn {attr_id, attr_state}, acc ->
+              # Ensure hovered key exists for backward compatibility
+              attr_state = Map.put_new(attr_state, :hovered, MapSet.new())
+
               new_attr_state = %{
                 attr_state |
                 viewers: MapSet.delete(attr_state.viewers, user_id),
+                hovered: MapSet.delete(attr_state.hovered, user_id),
                 focused: MapSet.delete(attr_state.focused, user_id)
               }
 
-              if MapSet.size(new_attr_state.viewers) == 0 and MapSet.size(new_attr_state.focused) == 0 do
+              if MapSet.size(new_attr_state.viewers) == 0 and
+                 MapSet.size(new_attr_state.hovered) == 0 and
+                 MapSet.size(new_attr_state.focused) == 0 do
                 acc
               else
                 Map.put(acc, attr_id, new_attr_state)
@@ -490,6 +525,9 @@ defmodule Sensocto.AttentionTracker do
     # Get existing attribute state, or create new one
     attr_state = Map.get(attributes, attribute_id, new_attribute_state(now))
 
+    # Ensure attr_state has all keys (for backward compatibility with existing state)
+    attr_state = Map.put_new(attr_state, :hovered, MapSet.new())
+
     # Apply the action
     updated_attr_state =
       case action do
@@ -499,9 +537,20 @@ defmodule Sensocto.AttentionTracker do
         :remove_viewer ->
           %{attr_state | viewers: MapSet.delete(attr_state.viewers, user_id), last_updated: now}
 
+        :add_hover ->
+          %{attr_state |
+            hovered: MapSet.put(attr_state.hovered, user_id),
+            viewers: MapSet.put(attr_state.viewers, user_id),
+            last_updated: now
+          }
+
+        :remove_hover ->
+          %{attr_state | hovered: MapSet.delete(attr_state.hovered, user_id), last_updated: now}
+
         :add_focus ->
           %{attr_state |
             focused: MapSet.put(attr_state.focused, user_id),
+            hovered: MapSet.put(attr_state.hovered, user_id),
             viewers: MapSet.put(attr_state.viewers, user_id),
             last_updated: now
           }
@@ -520,6 +569,7 @@ defmodule Sensocto.AttentionTracker do
   defp new_attribute_state(now) do
     %{
       viewers: MapSet.new(),
+      hovered: MapSet.new(),
       focused: MapSet.new(),
       last_updated: now
     }
@@ -532,9 +582,15 @@ defmodule Sensocto.AttentionTracker do
     else
       case get_in(state.attention_state, [sensor_id, attribute_id]) do
         nil -> :none
-        %{focused: focused, viewers: viewers} ->
+        attr_state ->
+          # Handle both old state (without hovered) and new state (with hovered)
+          focused = Map.get(attr_state, :focused, MapSet.new())
+          hovered = Map.get(attr_state, :hovered, MapSet.new())
+          viewers = Map.get(attr_state, :viewers, MapSet.new())
+
           cond do
             MapSet.size(focused) > 0 -> :high
+            MapSet.size(hovered) > 0 -> :high  # Hover also gives high attention for responsiveness
             MapSet.size(viewers) > 0 -> :medium
             true -> :low
           end
@@ -552,9 +608,15 @@ defmodule Sensocto.AttentionTracker do
         attributes ->
           # Get highest attention level across all attributes
           Enum.reduce(attributes, :none, fn {_attr_id, attr_state}, acc ->
+            # Handle both old state (without hovered) and new state (with hovered)
+            focused = Map.get(attr_state, :focused, MapSet.new())
+            hovered = Map.get(attr_state, :hovered, MapSet.new())
+            viewers = Map.get(attr_state, :viewers, MapSet.new())
+
             level = cond do
-              MapSet.size(attr_state.focused) > 0 -> :high
-              MapSet.size(attr_state.viewers) > 0 -> :medium
+              MapSet.size(focused) > 0 -> :high
+              MapSet.size(hovered) > 0 -> :high
+              MapSet.size(viewers) > 0 -> :medium
               true -> :low
             end
             highest_level(acc, level)

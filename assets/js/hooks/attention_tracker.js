@@ -7,8 +7,36 @@
  */
 
 const DEBOUNCE_MS = 300;
+// Hover is now immediate on first entry, debounce only prevents rapid re-entry
+const HOVER_DEBOUNCE_MIN_MS = 50;   // Minimum debounce when system is responsive
+const HOVER_DEBOUNCE_MAX_MS = 500;  // Maximum debounce when system is under load
+const HOVER_BOOST_DURATION_MS = 2000;  // How long hover boost lasts after mouse leaves
 const BATTERY_LOW_THRESHOLD = 0.30;
 const BATTERY_CRITICAL_THRESHOLD = 0.15;
+
+// Adaptive debouncing based on system responsiveness
+let lastEventTime = 0;
+let eventLatencies = [];
+const MAX_LATENCY_SAMPLES = 10;
+
+function getAdaptiveDebounce() {
+  if (eventLatencies.length < 3) {
+    return HOVER_DEBOUNCE_MIN_MS;
+  }
+  // Average latency of recent events
+  const avgLatency = eventLatencies.reduce((a, b) => a + b, 0) / eventLatencies.length;
+  // Scale debounce based on latency (higher latency = more debounce)
+  const scaled = Math.min(HOVER_DEBOUNCE_MAX_MS, Math.max(HOVER_DEBOUNCE_MIN_MS, avgLatency * 2));
+  return Math.round(scaled);
+}
+
+function recordEventLatency(startTime) {
+  const latency = performance.now() - startTime;
+  eventLatencies.push(latency);
+  if (eventLatencies.length > MAX_LATENCY_SAMPLES) {
+    eventLatencies.shift();
+  }
+}
 
 export const AttentionTracker = {
   mounted() {
@@ -16,6 +44,9 @@ export const AttentionTracker = {
     this.debounceTimers = new Map();
     this.focusedElements = new Set();
     this.viewedElements = new Set();
+    this.hoveredElements = new Set();  // Track currently hovered elements
+    this.hoverBoostTimers = new Map();  // Timers to expire hover boost
+    this.hoverDebounceTimers = new Map();  // Debounce timers for hover events
     this.batteryState = 'normal';  // 'normal', 'low', 'critical'
     this.battery = null;
 
@@ -59,6 +90,20 @@ export const AttentionTracker = {
     this.debounceTimers.forEach(timer => clearTimeout(timer));
     this.debounceTimers.clear();
 
+    // Clear hover debounce timers
+    this.hoverDebounceTimers.forEach(timer => clearTimeout(timer));
+    this.hoverDebounceTimers.clear();
+
+    // Clear hover boost timers
+    this.hoverBoostTimers.forEach(timer => clearTimeout(timer));
+    this.hoverBoostTimers.clear();
+
+    // Unregister all hover boosts
+    this.hoveredElements.forEach(key => {
+      const [sensorId, attributeId] = key.split(':');
+      this.pushEvent("hover_leave", { sensor_id: sensorId, attribute_id: attributeId });
+    });
+
     // Unregister all views
     this.viewedElements.forEach(key => {
       const [sensorId, attributeId] = key.split(':');
@@ -97,12 +142,14 @@ export const AttentionTracker = {
       this.observers.set(key, el);
       this.intersectionObserver.observe(el);
 
-      // Add click listener for focus (use named function to avoid duplicates)
+      // Add click and hover listeners (use named function to avoid duplicates)
       if (!el._attentionClickHandler) {
         el._attentionClickHandler = () => this.handleClick(el);
         el._attentionMouseEnterHandler = () => this.handleMouseEnter(el);
+        el._attentionMouseLeaveHandler = () => this.handleMouseLeave(el);
         el.addEventListener('click', el._attentionClickHandler);
         el.addEventListener('mouseenter', el._attentionMouseEnterHandler);
+        el.addEventListener('mouseleave', el._attentionMouseLeaveHandler);
       }
     });
   },
@@ -174,15 +221,66 @@ export const AttentionTracker = {
   },
 
   handleMouseEnter(el) {
-    // Optionally boost attention on hover (lighter than click focus)
-    // For now, just ensure it's registered as viewed
+    const sensorId = el.dataset.sensor_id;
+    const attributeId = el.dataset.attribute_id;
+    const key = `${sensorId}:${attributeId}`;
+    const eventStart = performance.now();
+
+    // Ensure it's registered as viewed first
+    if (!this.viewedElements.has(key)) {
+      this.pushEvent("view_enter", { sensor_id: sensorId, attribute_id: attributeId });
+      this.viewedElements.add(key);
+    }
+
+    // Cancel any pending hover_leave (user re-entered before boost expired)
+    if (this.hoverBoostTimers.has(key)) {
+      clearTimeout(this.hoverBoostTimers.get(key));
+      this.hoverBoostTimers.delete(key);
+      // User re-entered while still "boosted" - no need to send another event
+      return;
+    }
+
+    // Cancel any pending hover debounce timer
+    if (this.hoverDebounceTimers.has(key)) {
+      clearTimeout(this.hoverDebounceTimers.get(key));
+      this.hoverDebounceTimers.delete(key);
+    }
+
+    // Send hover event immediately if not already hovered
+    // This makes the initial hover response instant
+    if (!this.hoveredElements.has(key)) {
+      this.pushEvent("hover_enter", { sensor_id: sensorId, attribute_id: attributeId });
+      this.hoveredElements.add(key);
+      recordEventLatency(eventStart);
+    }
+  },
+
+  handleMouseLeave(el) {
     const sensorId = el.dataset.sensor_id;
     const attributeId = el.dataset.attribute_id;
     const key = `${sensorId}:${attributeId}`;
 
-    if (!this.viewedElements.has(key)) {
-      this.pushEvent("view_enter", { sensor_id: sensorId, attribute_id: attributeId });
-      this.viewedElements.add(key);
+    // Cancel any pending hover_enter debounce (user left before it fired)
+    if (this.hoverDebounceTimers.has(key)) {
+      clearTimeout(this.hoverDebounceTimers.get(key));
+      this.hoverDebounceTimers.delete(key);
+    }
+
+    // If we're currently tracking this as hovered, schedule the boost expiry
+    if (this.hoveredElements.has(key)) {
+      // Keep the hover boost active for a short duration after mouse leaves
+      // This prevents flickering when moving between elements
+      // Use adaptive duration based on system load
+      const boostDuration = Math.max(HOVER_BOOST_DURATION_MS, getAdaptiveDebounce() * 10);
+
+      const timer = setTimeout(() => {
+        if (this.hoveredElements.has(key)) {
+          this.pushEvent("hover_leave", { sensor_id: sensorId, attribute_id: attributeId });
+          this.hoveredElements.delete(key);
+        }
+        this.hoverBoostTimers.delete(key);
+      }, boostDuration);
+      this.hoverBoostTimers.set(key, timer);
     }
   },
 

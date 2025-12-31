@@ -28,7 +28,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:attribute_type => "ecg", :view_mode => :summary} = assigns) do
     ~H"""
-    <div class="flex items-center justify-between text-xs py-0.5">
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
       <span class="text-gray-400">{@attribute_id}</span>
       <span :if={@lastvalue} class="text-green-400 flex items-center gap-1">
         <Heroicons.icon name="heart" type="solid" class="h-3 w-3 animate-pulse" />
@@ -183,7 +187,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:attribute_type => "imu", :view_mode => :summary} = assigns) do
     ~H"""
-    <div class="flex items-center justify-between text-xs py-0.5">
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
       <span class="text-gray-400">{@attribute_id}</span>
       <span :if={@lastvalue} class="text-blue-400">active</span>
       <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
@@ -240,7 +248,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     assigns = assign(assigns, :battery_info, extract_battery_info(assigns[:lastvalue]))
 
     ~H"""
-    <div class="flex items-center justify-between text-xs py-0.5">
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
       <span class="text-gray-400">{@attribute_id}</span>
       <div :if={@lastvalue} class="flex items-center gap-1">
         <span class={[
@@ -334,6 +346,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
       phx-hook="Vibrate"
       data-value={@lastvalue && @lastvalue.payload}
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400">{@attribute_id}</span>
       <div :if={@lastvalue} class="flex gap-0.5">
@@ -406,7 +420,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:view_mode => :summary} = assigns) do
     ~H"""
-    <div class="flex items-center justify-between text-xs py-0.5">
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
       <span class="text-gray-400">{@attribute_id}</span>
       <span :if={@lastvalue} class="text-white font-mono">
         {format_payload(@lastvalue.payload)}

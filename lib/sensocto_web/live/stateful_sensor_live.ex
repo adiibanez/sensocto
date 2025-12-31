@@ -400,6 +400,20 @@ defmodule SensoctoWeb.StatefulSensorLive do
   end
 
   @impl true
+  def handle_event("hover_enter", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.register_hover(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("hover_leave", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
+    user_id = get_user_id(socket)
+    AttentionTracker.unregister_hover(sensor_id, attr_id, user_id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("pin_sensor", %{"sensor_id" => sensor_id}, socket) do
     user_id = get_user_id(socket)
     AttentionTracker.pin_sensor(sensor_id, user_id)

@@ -297,13 +297,36 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_event("participant_joined", _params, socket) do
-    {:noreply, socket}
+  def handle_event("participant_joined", params, socket) do
+    # Update participants from JS event (for WebRTC endpoint events)
+    user_id = params["user_id"] || params["peer_id"]
+
+    if user_id && user_id != to_string(socket.assigns.current_user.id) do
+      participant = %{
+        user_id: user_id,
+        endpoint_id: params["endpoint_id"],
+        user_info: params["user_info"] || params["metadata"] || %{},
+        audio_enabled: true,
+        video_enabled: true
+      }
+
+      new_participants = Map.put(socket.assigns.call_participants, user_id, participant)
+      {:noreply, assign(socket, :call_participants, new_participants)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
-  def handle_event("participant_left", _params, socket) do
-    {:noreply, socket}
+  def handle_event("participant_left", params, socket) do
+    user_id = params["user_id"] || params["peer_id"]
+
+    if user_id do
+      new_participants = Map.delete(socket.assigns.call_participants, user_id)
+      {:noreply, assign(socket, :call_participants, new_participants)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true

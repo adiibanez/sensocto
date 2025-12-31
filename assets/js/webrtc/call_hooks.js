@@ -28,6 +28,10 @@ export const CallHook = {
 
     this.participants = new Map();
     this.videoElements = new Map();
+    // Buffer for tracks that arrive before their participant container is rendered
+    this.pendingTracks = new Map();
+    // MutationObserver to watch for new participant containers
+    this.containerObserver = null;
 
     this.handleEvent("join_call", (data) => this.handleJoinCall(data));
     this.handleEvent("leave_call", () => this.handleLeaveCall());
@@ -73,6 +77,9 @@ export const CallHook = {
         });
 
         await this.membraneClient.connect(this.iceServers);
+
+        // Set up MutationObserver to watch for new participant containers
+        this.setupContainerObserver();
 
         if (withVideo) {
           this.localStream = await this.mediaManager.getMediaStream();
@@ -229,49 +236,13 @@ export const CallHook = {
     console.log("Track ready:", ctx.trackId, ctx.track?.kind, "endpoint:", ctx.endpoint?.id);
 
     if (ctx.track && ctx.endpoint) {
-      // endpoint.id format is "{user_id}_{random_number}", but DOM elements use just user_id
       const endpointId = ctx.endpoint.id;
-      const userId = endpointId.includes("_") ? endpointId.substring(0, endpointId.lastIndexOf("_")) : endpointId;
-      const containerEl = document.getElementById(`participant-${userId}`);
+      const userId = this.extractUserId(endpointId);
 
-      if (!containerEl) {
-        console.warn(`Container element not found for participant-${userId}. Available elements:`,
-          Array.from(document.querySelectorAll('[id^="participant-"]')).map(el => el.id));
-      }
-
-      if (containerEl) {
-        if (ctx.track.kind === "video") {
-          let videoEl = containerEl.querySelector("video");
-          if (!videoEl) {
-            videoEl = document.createElement("video");
-            videoEl.autoplay = true;
-            videoEl.playsInline = true;
-            videoEl.classList.add("w-full", "h-full", "object-cover", "rounded-lg");
-            containerEl.appendChild(videoEl);
-          }
-
-          let stream = videoEl.srcObject;
-          if (!stream) {
-            stream = new MediaStream();
-            videoEl.srcObject = stream;
-          }
-          stream.addTrack(ctx.track);
-          this.videoElements.set(ctx.trackId, { element: videoEl, peerId: userId });
-        } else if (ctx.track.kind === "audio") {
-          let audioEl = containerEl.querySelector("audio");
-          if (!audioEl) {
-            audioEl = document.createElement("audio");
-            audioEl.autoplay = true;
-            containerEl.appendChild(audioEl);
-          }
-
-          let stream = audioEl.srcObject;
-          if (!stream) {
-            stream = new MediaStream();
-            audioEl.srcObject = stream;
-          }
-          stream.addTrack(ctx.track);
-        }
+      // Try to attach the track, or buffer it if container not ready
+      if (!this.attachTrackToContainer(userId, ctx)) {
+        console.log(`Buffering track ${ctx.trackId} for participant ${userId} - container not ready yet`);
+        this.bufferTrack(userId, ctx);
       }
     }
 
@@ -280,6 +251,135 @@ export const CallHook = {
       kind: ctx.track?.kind,
       peer_id: ctx.endpoint?.id,
     });
+  },
+
+  // Extract user_id from endpoint_id (format: "{user_id}_{random_number}")
+  extractUserId(endpointId) {
+    if (!endpointId) return null;
+    return endpointId.includes("_")
+      ? endpointId.substring(0, endpointId.lastIndexOf("_"))
+      : endpointId;
+  },
+
+  // Buffer a track for later attachment when container becomes available
+  bufferTrack(userId, ctx) {
+    if (!this.pendingTracks.has(userId)) {
+      this.pendingTracks.set(userId, []);
+    }
+    this.pendingTracks.get(userId).push(ctx);
+  },
+
+  // Try to attach a track to its participant container
+  // Returns true if successful, false if container not found
+  attachTrackToContainer(userId, ctx) {
+    const containerEl = document.getElementById(`participant-${userId}`);
+
+    if (!containerEl) {
+      return false;
+    }
+
+    if (ctx.track.kind === "video") {
+      let videoEl = containerEl.querySelector("video");
+      if (!videoEl) {
+        videoEl = document.createElement("video");
+        videoEl.autoplay = true;
+        videoEl.playsInline = true;
+        videoEl.classList.add("w-full", "h-full", "object-cover", "rounded-lg");
+        containerEl.appendChild(videoEl);
+      }
+
+      let stream = videoEl.srcObject;
+      if (!stream) {
+        stream = new MediaStream();
+        videoEl.srcObject = stream;
+      }
+
+      // Check if track already in stream
+      const existingTrack = stream.getVideoTracks().find(t => t.id === ctx.track.id);
+      if (!existingTrack) {
+        stream.addTrack(ctx.track);
+      }
+
+      this.videoElements.set(ctx.trackId, { element: videoEl, peerId: userId });
+      console.log(`Attached video track ${ctx.trackId} to participant-${userId}`);
+    } else if (ctx.track.kind === "audio") {
+      let audioEl = containerEl.querySelector("audio");
+      if (!audioEl) {
+        audioEl = document.createElement("audio");
+        audioEl.autoplay = true;
+        containerEl.appendChild(audioEl);
+      }
+
+      let stream = audioEl.srcObject;
+      if (!stream) {
+        stream = new MediaStream();
+        audioEl.srcObject = stream;
+      }
+
+      // Check if track already in stream
+      const existingTrack = stream.getAudioTracks().find(t => t.id === ctx.track.id);
+      if (!existingTrack) {
+        stream.addTrack(ctx.track);
+      }
+      console.log(`Attached audio track ${ctx.trackId} to participant-${userId}`);
+    }
+
+    return true;
+  },
+
+  // Attach any buffered tracks for a user when their container becomes available
+  attachBufferedTracks(userId) {
+    const pendingTracksForUser = this.pendingTracks.get(userId);
+    if (!pendingTracksForUser || pendingTracksForUser.length === 0) {
+      return;
+    }
+
+    console.log(`Attaching ${pendingTracksForUser.length} buffered tracks for participant ${userId}`);
+
+    for (const ctx of pendingTracksForUser) {
+      this.attachTrackToContainer(userId, ctx);
+    }
+
+    // Clear the buffer for this user
+    this.pendingTracks.delete(userId);
+  },
+
+  // Set up MutationObserver to watch for new participant containers
+  setupContainerObserver() {
+    if (this.containerObserver) {
+      this.containerObserver.disconnect();
+    }
+
+    this.containerObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            // Check if the added node is a participant container
+            if (node.id && node.id.startsWith("participant-")) {
+              const userId = node.id.replace("participant-", "");
+              console.log(`Detected new participant container: ${node.id}`);
+              this.attachBufferedTracks(userId);
+            }
+            // Also check children of added nodes
+            const participantContainers = node.querySelectorAll?.('[id^="participant-"]') || [];
+            for (const container of participantContainers) {
+              const userId = container.id.replace("participant-", "");
+              console.log(`Detected new participant container (nested): ${container.id}`);
+              this.attachBufferedTracks(userId);
+            }
+          }
+        }
+      }
+    });
+
+    // Start observing the call container and its subtree
+    const callContainer = document.getElementById("call-container");
+    if (callContainer) {
+      this.containerObserver.observe(callContainer, {
+        childList: true,
+        subtree: true
+      });
+    }
   },
 
   handleTrackRemoved(ctx) {
@@ -302,30 +402,44 @@ export const CallHook = {
     // peer.id is the endpoint_id from Membrane (format: "{user_id}_{random}"),
     // peer.user_id might be provided by server-side participant info
     const endpointId = peer.id || peer.endpoint_id;
-    const userId = peer.user_id || (endpointId && endpointId.includes("_")
-      ? endpointId.substring(0, endpointId.lastIndexOf("_"))
-      : endpointId);
+    const userId = peer.user_id || this.extractUserId(endpointId);
 
     console.log("Participant joined:", { endpointId, userId, peer });
 
     if (userId && !this.participants.has(userId)) {
-      this.participants.set(userId, { ...peer, resolvedUserId: userId });
+      const participantInfo = {
+        ...peer,
+        resolvedUserId: userId,
+        user_id: userId,
+        endpoint_id: endpointId,
+      };
+      this.participants.set(userId, participantInfo);
+
+      // Push event with full participant info so LiveView can render the container
       this.pushEvent("participant_joined", {
         peer_id: userId,
-        metadata: peer.metadata || peer.user_info,
+        user_id: userId,
+        endpoint_id: endpointId,
+        metadata: peer.metadata || peer.user_info || {},
+        user_info: peer.metadata || peer.user_info || {},
       });
+
+      // Also try to attach any tracks that arrived before this participant was registered
+      // (though this is unlikely since tracks arrive after endpoints)
+      setTimeout(() => this.attachBufferedTracks(userId), 100);
     }
   },
 
   handleParticipantLeft(peer) {
     // Same extraction logic as handleParticipantJoined
     const endpointId = peer.id || peer.endpoint_id;
-    const userId = peer.user_id || (endpointId && endpointId.includes("_")
-      ? endpointId.substring(0, endpointId.lastIndexOf("_"))
-      : endpointId);
+    const userId = peer.user_id || this.extractUserId(endpointId);
 
     console.log("Participant left:", { endpointId, userId });
     this.participants.delete(userId);
+
+    // Clear any pending tracks for this user
+    this.pendingTracks.delete(userId);
 
     const containerEl = document.getElementById(`participant-${userId}`);
     if (containerEl) {
@@ -335,7 +449,7 @@ export const CallHook = {
       if (audioEl) audioEl.srcObject = null;
     }
 
-    this.pushEvent("participant_left", { peer_id: userId });
+    this.pushEvent("participant_left", { peer_id: userId, user_id: userId });
   },
 
   handleConnectionStateChange(state) {
@@ -364,6 +478,13 @@ export const CallHook = {
     });
     this.videoElements.clear();
     this.participants.clear();
+    this.pendingTracks.clear();
+
+    // Disconnect the observer
+    if (this.containerObserver) {
+      this.containerObserver.disconnect();
+      this.containerObserver = null;
+    }
   },
 
   destroyed() {

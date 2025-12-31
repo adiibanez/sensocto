@@ -58,6 +58,8 @@ defmodule SensoctoWeb.CallChannel do
     user_id = socket.assigns.user_id
     user_info = socket.assigns.user_info
 
+    IO.puts(">>> CallChannel: User #{user_id} attempting to join call in room #{room_id}")
+
     case Calls.join_call(room_id, user_id, user_info: user_info) do
       {:ok, endpoint_id} ->
         socket = assign(socket, :joined_call, true)
@@ -105,6 +107,7 @@ defmodule SensoctoWeb.CallChannel do
       room_id = socket.assigns.room_id
       user_id = socket.assigns.user_id
 
+      Logger.info("CallChannel: Received media event from #{user_id}: #{inspect(data, limit: 200)}")
       Calls.handle_media_event(room_id, user_id, data)
 
       {:noreply, socket}
@@ -218,6 +221,7 @@ defmodule SensoctoWeb.CallChannel do
   @impl true
   def handle_info({:media_event, event}, socket) do
     # Forward media events from RTC Engine to the client
+    IO.puts(">>> CallChannel: Forwarding media event to #{socket.assigns.user_id}")
     push(socket, "media_event", %{data: event})
     {:noreply, socket}
   end

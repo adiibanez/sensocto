@@ -33,6 +33,10 @@ export const CallHook = {
     // MutationObserver to watch for new participant containers
     this.containerObserver = null;
 
+    // Expose hook globally for debugging
+    window.__callHook = this;
+    console.log("CallHook mounted, exposed as window.__callHook");
+
     this.handleEvent("join_call", (data) => this.handleJoinCall(data));
     this.handleEvent("leave_call", () => this.handleLeaveCall());
     this.handleEvent("toggle_audio", (data) => this.handleToggleAudio(data));
@@ -45,7 +49,28 @@ export const CallHook = {
     if (localVideoEl && this.localStream) {
       localVideoEl.srcObject = this.localStream;
       localVideoEl.muted = true;
+      console.log("Attached local stream to video element");
+      return true;
     }
+    console.log("Local video element not found, will retry...");
+    return false;
+  },
+
+  // Retry attaching local stream with exponential backoff
+  attachLocalStreamWithRetry(maxRetries = 10, delay = 100) {
+    let attempts = 0;
+    const tryAttach = () => {
+      if (this.attachLocalStream()) {
+        return;
+      }
+      attempts++;
+      if (attempts < maxRetries) {
+        setTimeout(tryAttach, delay * Math.min(attempts, 5));
+      } else {
+        console.error("Failed to attach local stream after", maxRetries, "attempts");
+      }
+    };
+    tryAttach();
   },
 
   async handleJoinCall(data) {
@@ -91,11 +116,12 @@ export const CallHook = {
           await this.membraneClient.addLocalTrack(track);
         }
 
-        // Attach local stream to the local video element
-        this.attachLocalStream();
-
         this.inCall = true;
         this.pushEvent("call_joined", { endpoint_id: this.endpointId });
+
+        // Attach local stream to the local video element
+        // Use retry because LiveView needs time to render the video element after call_joined
+        this.attachLocalStreamWithRetry();
 
         Object.values(response.participants || {}).forEach((p) => {
           this.handleParticipantJoined(p);

@@ -211,12 +211,20 @@ Hooks.ConnectionHandler = {
 // FooterToolbar hook - handles mobile collapsible footer
 Hooks.FooterToolbar = {
   mounted() {
+    this.setupElements();
+    this.isExpanded = false;
+    this.setupEventListeners();
+  },
+
+  // Re-query elements - needed after LiveView DOM patches
+  setupElements() {
     this.toggleBtn = document.getElementById('footer-toggle');
     this.content = document.getElementById('footer-content-mobile');
     this.chevron = this.el.querySelector('.footer-chevron');
-    this.isExpanded = false;
+  },
 
-    if (this.toggleBtn && this.content) {
+  setupEventListeners() {
+    if (this.toggleBtn && !this.listenersAttached) {
       // Use both click and touchend for better mobile support
       this.handleToggle = (e) => {
         e.preventDefault();
@@ -227,11 +235,33 @@ Hooks.FooterToolbar = {
       this.toggleBtn.addEventListener('click', this.handleToggle);
       // Add touchend for mobile devices that may not fire click reliably
       this.toggleBtn.addEventListener('touchend', this.handleToggle, { passive: false });
+      this.listenersAttached = true;
     }
+  },
+
+  // Called by LiveView after DOM patches - crucial for state synchronization
+  updated() {
+    // Re-query elements in case they were re-rendered
+    this.setupElements();
+
+    // Restore visual state to match our tracked isExpanded state
+    // This fixes the issue where LiveView patches reset the DOM but our state is stale
+    this.applyState();
+
+    // Re-attach listeners if needed (in case button was re-rendered)
+    this.setupEventListeners();
   },
 
   toggle() {
     this.isExpanded = !this.isExpanded;
+    this.applyState();
+  },
+
+  // Apply the current isExpanded state to the DOM
+  applyState() {
+    if (!this.content || !this.toggleBtn) {
+      return;
+    }
 
     if (this.isExpanded) {
       this.content.classList.remove('hidden');
@@ -253,6 +283,7 @@ Hooks.FooterToolbar = {
       this.toggleBtn.removeEventListener('click', this.handleToggle);
       this.toggleBtn.removeEventListener('touchend', this.handleToggle);
     }
+    this.listenersAttached = false;
   }
 }
 

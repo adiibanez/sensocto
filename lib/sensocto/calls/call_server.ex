@@ -137,10 +137,29 @@ defmodule Sensocto.Calls.CallServer do
 
   @impl true
   def handle_call({:add_participant, user_id, user_info}, _from, state) do
-    cond do
-      Map.has_key?(state.participants, user_id) ->
-        {:reply, {:error, :already_joined}, state}
+    # Handle reconnection: if user is already in call, remove old endpoint first
+    state =
+      case Map.get(state.participants, user_id) do
+        nil ->
+          state
 
+        old_participant ->
+          Logger.info("User #{user_id} reconnecting - removing old endpoint #{old_participant.endpoint_id}")
+          # Remove old endpoint from RTC Engine
+          Engine.remove_endpoint(state.engine_pid, old_participant.endpoint_id)
+          # Clean up tracks from old endpoint
+          new_track_registry =
+            state.track_registry
+            |> Enum.reject(fn {_track_id, track_info} ->
+              track_info.endpoint_id == old_participant.endpoint_id
+            end)
+            |> Map.new()
+          # Remove from participants
+          {_, new_participants} = Map.pop(state.participants, user_id)
+          %{state | participants: new_participants, track_registry: new_track_registry}
+      end
+
+    cond do
       map_size(state.participants) >= state.max_participants ->
         {:reply, {:error, :call_full}, state}
 
@@ -201,7 +220,15 @@ defmodule Sensocto.Calls.CallServer do
         # Remove endpoint from RTC Engine
         Engine.remove_endpoint(state.engine_pid, participant.endpoint_id)
 
-        new_state = %{state | participants: new_participants}
+        # Clean up tracks from this endpoint
+        new_track_registry =
+          state.track_registry
+          |> Enum.reject(fn {_track_id, track_info} ->
+            track_info.endpoint_id == participant.endpoint_id
+          end)
+          |> Map.new()
+
+        new_state = %{state | participants: new_participants, track_registry: new_track_registry}
 
         # Broadcast participant left
         broadcast_call_event(state.room_id, {:participant_left, user_id})
@@ -267,12 +294,15 @@ defmodule Sensocto.Calls.CallServer do
   # Handle RTC Engine notifications
   @impl true
   def handle_info(%Message.EndpointMessage{endpoint_id: endpoint_id, message: {:media_event, event}}, state) do
+    IO.puts(">>> CallServer: EndpointMessage media_event from #{endpoint_id}")
     # Forward media event to the participant's channel
     case find_participant_by_endpoint(state.participants, endpoint_id) do
       nil ->
+        IO.puts(">>> CallServer: No participant found for endpoint #{endpoint_id}")
         {:noreply, state}
 
       {user_id, _participant} ->
+        IO.puts(">>> CallServer: Forwarding to user #{user_id}")
         broadcast_to_participant(state.room_id, user_id, {:media_event, event})
         {:noreply, state}
     end
@@ -288,7 +318,7 @@ defmodule Sensocto.Calls.CallServer do
         },
         state
       ) do
-    Logger.debug("Track added: #{track_id} from endpoint #{endpoint_id}")
+    IO.puts(">>> CallServer: TrackAdded #{track_type} from #{endpoint_id}")
 
     track_info = %{
       track_id: track_id,
@@ -327,6 +357,16 @@ defmodule Sensocto.Calls.CallServer do
   def handle_info(%Message.EndpointRemoved{endpoint_id: endpoint_id}, state) do
     Logger.debug("Endpoint removed: #{endpoint_id}")
 
+    # Clean up tracks from this endpoint
+    new_track_registry =
+      state.track_registry
+      |> Enum.reject(fn {_track_id, track_info} ->
+        track_info.endpoint_id == endpoint_id
+      end)
+      |> Map.new()
+
+    state = %{state | track_registry: new_track_registry}
+
     # Clean up participant if endpoint was removed unexpectedly
     case find_participant_by_endpoint(state.participants, endpoint_id) do
       nil ->
@@ -342,6 +382,16 @@ defmodule Sensocto.Calls.CallServer do
   @impl true
   def handle_info(%Message.EndpointCrashed{endpoint_id: endpoint_id, reason: reason}, state) do
     Logger.error("Endpoint crashed: #{endpoint_id}, reason: #{inspect(reason)}")
+
+    # Clean up tracks from this endpoint
+    new_track_registry =
+      state.track_registry
+      |> Enum.reject(fn {_track_id, track_info} ->
+        track_info.endpoint_id == endpoint_id
+      end)
+      |> Map.new()
+
+    state = %{state | track_registry: new_track_registry}
 
     case find_participant_by_endpoint(state.participants, endpoint_id) do
       nil ->

@@ -11,11 +11,59 @@
   let channelIdentifier = sensorService.getDeviceId();
   let geolocationData = null;
   let watchId = null; // To store the watchPosition ID
+  let permissionState = null; // Track permission state
 
   let unsubscribeSocket;
 
   logger.log(loggerCtxName, "GeolocationClient");
   console.log("GeolocationClient test");
+
+  // Check geolocation permission status
+  const checkPermission = async () => {
+    if (!navigator.permissions) {
+      // Permissions API not supported, try geolocation directly
+      return "prompt";
+    }
+
+    try {
+      const result = await navigator.permissions.query({ name: "geolocation" });
+      permissionState = result.state;
+
+      // Listen for permission changes
+      result.onchange = () => {
+        permissionState = result.state;
+        logger.log(loggerCtxName, "Permission state changed:", permissionState);
+
+        if (permissionState === "denied") {
+          stopGeolocation();
+          geolocationData = { error: "Location permission denied. Please enable it in your browser settings." };
+        }
+      };
+
+      return result.state;
+    } catch (error) {
+      logger.log(loggerCtxName, "Permission check failed:", error);
+      return "prompt";
+    }
+  };
+
+  // Request permission and start geolocation
+  const requestAndStartGeolocation = async () => {
+    if (!navigator.geolocation) {
+      geolocationData = { error: "Geolocation not supported by this browser" };
+      return;
+    }
+
+    const permission = await checkPermission();
+
+    if (permission === "denied") {
+      geolocationData = { error: "Location permission denied. Please enable it in your browser settings." };
+      return;
+    }
+
+    // For "prompt" or "granted", proceed with geolocation
+    startGeolocationInternal();
+  };
 
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "pre Autostart", value, geolocationData);
@@ -23,12 +71,16 @@
       logger.log(loggerCtxName, "Autostart", value, autostart);
 
       setTimeout(() => {
-        startGeolocation();
+        requestAndStartGeolocation();
       }, 1000);
     }
   });
 
   const startGeolocation = () => {
+    requestAndStartGeolocation();
+  };
+
+  const startGeolocationInternal = () => {
     if (navigator.geolocation) {
       sensorService.setupChannel(channelIdentifier);
       sensorService.registerAttribute(sensorService.getDeviceId(), {
@@ -39,6 +91,7 @@
 
       watchId = navigator.geolocation.watchPosition(
         (position) => {
+          permissionState = "granted";
           geolocationData = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -60,8 +113,29 @@
           sensorService.sendChannelMessage(channelIdentifier, payload);
         },
         (error) => {
-          console.error("Geolocation error:", error);
-          geolocationData = { error: error.message }; // Store error for display
+          // Handle specific error codes
+          let errorMessage;
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              permissionState = "denied";
+              errorMessage = "Location permission denied. Please enable it in your browser settings.";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = "Location unavailable. Please check your device's location services.";
+              break;
+            case error.TIMEOUT:
+              errorMessage = "Location request timed out. Please try again.";
+              break;
+            default:
+              errorMessage = error.message || "Unknown geolocation error";
+          }
+          logger.log(loggerCtxName, "Geolocation error:", error.code, errorMessage);
+          geolocationData = { error: errorMessage };
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
         }
       );
     } else {
@@ -113,22 +187,23 @@
 </script>
 
 {#if !$autostart && navigator.geolocation}
-  {#if watchId}
+  {#if permissionState === "denied"}
+    <div class="text-xs text-red-400 p-2 bg-red-900/20 rounded">
+      <p>Location permission denied.</p>
+      <p class="text-gray-400 mt-1">Enable in browser settings to use geolocation.</p>
+    </div>
+  {:else if watchId}
     <button class="btn btn-blue text-xs" on:click={stopGeolocation}
       >Stop Geolocation</button
     >
-  {:else if !$autostart}
+  {:else}
     <button class="btn btn-blue text-xs" on:click={startGeolocation}
       >Start Geolocation</button
     >
   {/if}
   {#if geolocationData}
-    {#if geolocationData.error}
-      <p style="color: red">{geolocationData.error}</p>
-      <!--{:else}
-      <p>Lat: {geolocationData.latitude}</p>
-      <p>Lon: {geolocationData.longitude}</p>
-      <p>Acc: {geolocationData.accuracy}m</p>-->
+    {#if geolocationData.error && permissionState !== "denied"}
+      <p class="text-xs text-yellow-400 mt-1">{geolocationData.error}</p>
     {/if}
   {/if}
 {/if}

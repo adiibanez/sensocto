@@ -3,6 +3,10 @@ defmodule SensoctoWeb.RoomComponents do
   Reusable components for the rooms feature.
   """
   use Phoenix.Component
+  use Phoenix.VerifiedRoutes,
+    endpoint: SensoctoWeb.Endpoint,
+    router: SensoctoWeb.Router,
+    statics: SensoctoWeb.static_paths()
 
   @doc """
   Renders a room card for listing pages.
@@ -18,7 +22,7 @@ defmodule SensoctoWeb.RoomComponents do
   def room_card(assigns) do
     ~H"""
     <div class="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors">
-      <a href={"/rooms/#{@room.id}"} class="block">
+      <.link navigate={~p"/rooms/#{@room.id}"} class="block">
         <div class="flex items-start justify-between mb-2">
           <h3 class="text-lg font-semibold truncate"><%= @room.name %></h3>
           <div class="flex gap-1">
@@ -39,7 +43,7 @@ defmodule SensoctoWeb.RoomComponents do
             <%= Map.get(@room, :member_count, 0) %> members
           </span>
         </div>
-      </a>
+      </.link>
       <%= if @room.owner_id == @current_user.id && @on_delete do %>
         <div class="mt-3 pt-3 border-t border-gray-700 flex justify-end">
           <button

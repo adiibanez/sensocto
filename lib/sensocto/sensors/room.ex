@@ -44,6 +44,11 @@ defmodule Sensocto.Sensors.Room do
       allow_nil? false
     end
 
+    attribute :calls_enabled, :boolean do
+      default true
+      allow_nil? false
+    end
+
     attribute :join_code, :string do
       allow_nil? true
       constraints min_length: 6, max_length: 12
@@ -89,7 +94,7 @@ defmodule Sensocto.Sensors.Room do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:name, :description, :configuration, :is_public, :is_persisted]
+      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled]
       argument :owner_id, :uuid, allow_nil?: false
 
       change set_attribute(:owner_id, arg(:owner_id))
@@ -101,7 +106,7 @@ defmodule Sensocto.Sensors.Room do
     end
 
     update :update do
-      accept [:name, :description, :configuration, :is_public]
+      accept [:name, :description, :configuration, :is_public, :calls_enabled]
     end
 
     update :regenerate_join_code do

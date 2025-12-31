@@ -19,7 +19,7 @@ defmodule SensoctoWeb.RoomListLive do
       |> assign(:public_rooms, Rooms.list_public_rooms())
       |> assign(:show_create_modal, false)
       |> assign(:active_tab, :all)
-      |> assign(:form, to_form(%{"name" => "", "description" => "", "is_public" => true, "is_persisted" => true}))
+      |> assign(:form, to_form(%{"name" => "", "description" => "", "is_public" => true, "is_persisted" => true, "calls_enabled" => true}))
 
     {:ok, socket}
   end
@@ -65,7 +65,8 @@ defmodule SensoctoWeb.RoomListLive do
       "name" => name,
       "description" => description,
       "is_public" => Map.has_key?(params, "is_public"),
-      "is_persisted" => Map.has_key?(params, "is_persisted")
+      "is_persisted" => Map.has_key?(params, "is_persisted"),
+      "calls_enabled" => Map.has_key?(params, "calls_enabled")
     })
 
     {:noreply, assign(socket, :form, form)}
@@ -80,7 +81,8 @@ defmodule SensoctoWeb.RoomListLive do
       name: name,
       description: description,
       is_public: Map.has_key?(params, "is_public"),
-      is_persisted: Map.has_key?(params, "is_persisted")
+      is_persisted: Map.has_key?(params, "is_persisted"),
+      calls_enabled: Map.has_key?(params, "calls_enabled")
     }
 
     case Rooms.create_room(attrs, user) do
@@ -317,25 +319,37 @@ defmodule SensoctoWeb.RoomListLive do
             ><%= @form[:description].value %></textarea>
           </div>
 
-          <div class="flex items-center gap-6">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                name="is_public"
-                checked={@form[:is_public].value}
-                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <span class="text-sm text-gray-300">Public room</span>
-            </label>
+          <div class="space-y-3">
+            <div class="flex items-center gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="is_public"
+                  checked={@form[:is_public].value}
+                  class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+                />
+                <span class="text-sm text-gray-300">Public room</span>
+              </label>
+
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="is_persisted"
+                  checked={@form[:is_persisted].value}
+                  class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+                />
+                <span class="text-sm text-gray-300">Persist to database</span>
+              </label>
+            </div>
 
             <label class="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                name="is_persisted"
-                checked={@form[:is_persisted].value}
+                name="calls_enabled"
+                checked={@form[:calls_enabled].value}
                 class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
               />
-              <span class="text-sm text-gray-300">Persist to database</span>
+              <span class="text-sm text-gray-300">Enable video/audio calls</span>
             </label>
           </div>
 

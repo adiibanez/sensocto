@@ -41,8 +41,15 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
   end
 
   @impl true
+  def handle_event("join_call", %{"mode" => mode}, socket) do
+    video_enabled = mode == "video"
+    send(self(), {:push_event, "join_call", %{mode: mode}})
+    {:noreply, assign(socket, :video_enabled, video_enabled)}
+  end
+
+  @impl true
   def handle_event("join_call", _, socket) do
-    send(self(), {:push_event, "join_call", %{}})
+    send(self(), {:push_event, "join_call", %{mode: "video"}})
     {:noreply, socket}
   end
 
@@ -77,50 +84,38 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       data-user-name={@user.email |> to_string()}
       class={if @in_call || @show_call_panel, do: "order-1", else: ""}
     >
-      <%= if @in_call || @show_call_panel do %>
-        <%!-- Integrated video panel - displays inline with sensors --%>
+      <%= if @in_call do %>
+        <%!-- Compact in-call panel --%>
         <div class="bg-gray-800 rounded-lg overflow-hidden">
-          <%!-- Header with title and controls --%>
-          <div class="flex items-center justify-between px-4 py-3 bg-gray-900/50 border-b border-gray-700">
-            <div class="flex items-center gap-3">
-              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-              <h2 class="text-lg font-semibold text-white">Video Call</h2>
-              <%= if @in_call do %>
-                <span class="px-2 py-0.5 text-xs bg-green-600/30 text-green-400 rounded-full flex items-center gap-1">
-                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                  Live
-                </span>
-              <% end %>
+          <%!-- Compact header --%>
+          <div class="flex items-center justify-between px-3 py-2 bg-gray-900/50 border-b border-gray-700">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              <span class="text-sm text-green-400">Live</span>
             </div>
             <button
               phx-click="toggle_call_panel"
               phx-target={@myself}
-              class="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+              class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
               title="Close"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          <%!-- Video area --%>
-          <div class="p-3">
-            <%= if @in_call do %>
-              <.video_grid
-                participants={@participants}
-                user={@user}
-                audio_enabled={@audio_enabled}
-                video_enabled={@video_enabled}
-              />
-            <% else %>
-              <.call_preview user={@user} />
-            <% end %>
+          <%!-- Video grid --%>
+          <div class="p-2">
+            <.video_grid
+              participants={@participants}
+              user={@user}
+              audio_enabled={@audio_enabled}
+              video_enabled={@video_enabled}
+            />
           </div>
 
-          <%!-- Controls --%>
+          <%!-- Compact controls --%>
           <.call_controls
             in_call={@in_call}
             audio_enabled={@audio_enabled}
@@ -129,17 +124,60 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
           />
         </div>
       <% else %>
-        <%!-- Floating join call button when panel is closed --%>
-        <button
-          phx-click="toggle_call_panel"
-          phx-target={@myself}
-          class="fixed bottom-36 right-4 z-30 p-4 rounded-full shadow-lg transition-colors bg-blue-600 hover:bg-blue-700"
-          title="Start Video Call"
-        >
-          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-        </button>
+        <%= if @show_call_panel do %>
+          <%!-- Compact join options panel --%>
+          <div class="bg-gray-800 rounded-lg overflow-hidden">
+            <div class="flex items-center justify-between px-3 py-2 bg-gray-900/50 border-b border-gray-700">
+              <span class="text-sm text-gray-300">Join Call</span>
+              <button
+                phx-click="toggle_call_panel"
+                phx-target={@myself}
+                class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+                title="Close"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div class="p-3 flex gap-2">
+              <button
+                phx-click="join_call"
+                phx-value-mode="video"
+                phx-target={@myself}
+                class="flex-1 py-2 px-3 rounded-lg bg-green-600 hover:bg-green-500 transition-colors text-white text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Video
+              </button>
+              <button
+                phx-click="join_call"
+                phx-value-mode="audio"
+                phx-target={@myself}
+                class="flex-1 py-2 px-3 rounded-lg bg-gray-600 hover:bg-gray-500 transition-colors text-white text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                Voice
+              </button>
+            </div>
+          </div>
+        <% else %>
+          <%!-- Floating join call button when panel is closed --%>
+          <button
+            phx-click="toggle_call_panel"
+            phx-target={@myself}
+            class="fixed bottom-36 right-4 z-30 p-3 rounded-full shadow-lg transition-colors bg-blue-600 hover:bg-blue-700"
+            title="Join Call"
+          >
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        <% end %>
       <% end %>
     </div>
     """
@@ -226,89 +264,55 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
     """
   end
 
-  defp call_preview(assigns) do
-    ~H"""
-    <div class="flex flex-col items-center py-4">
-      <div class="w-full max-w-xs aspect-video rounded-lg overflow-hidden bg-gray-900 mb-4">
-        <video
-          id="local-video-preview"
-          autoplay
-          playsinline
-          muted
-          class="w-full h-full object-cover"
-        >
-        </video>
-      </div>
-      <p class="text-gray-400 text-sm text-center">Preview your camera before joining</p>
-    </div>
-    """
-  end
-
   defp call_controls(assigns) do
     ~H"""
-    <div class="px-4 py-3 bg-gray-900/50 border-t border-gray-700">
-      <div class="flex items-center justify-center gap-3">
-        <%= if @in_call do %>
-          <button
-            phx-click="toggle_audio"
-            phx-target={@target}
-            class={"p-3 rounded-full transition-colors " <>
-              if(@audio_enabled, do: "bg-gray-700 hover:bg-gray-600", else: "bg-red-600 hover:bg-red-500")}
-            title={if @audio_enabled, do: "Mute microphone", else: "Unmute microphone"}
-          >
-            <%= if @audio_enabled do %>
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            <% else %>
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-              </svg>
-            <% end %>
-          </button>
-
-          <button
-            phx-click="toggle_video"
-            phx-target={@target}
-            class={"p-3 rounded-full transition-colors " <>
-              if(@video_enabled, do: "bg-gray-700 hover:bg-gray-600", else: "bg-red-600 hover:bg-red-500")}
-            title={if @video_enabled, do: "Turn off camera", else: "Turn on camera"}
-          >
-            <%= if @video_enabled do %>
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            <% else %>
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18" />
-              </svg>
-            <% end %>
-          </button>
-
-          <button
-            phx-click="leave_call"
-            phx-target={@target}
-            class="px-4 py-2 rounded-full bg-red-600 hover:bg-red-500 transition-colors text-white text-sm font-medium flex items-center gap-2"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
+    <div class="px-3 py-2 bg-gray-900/50 border-t border-gray-700">
+      <div class="flex items-center justify-center gap-2">
+        <button
+          phx-click="toggle_audio"
+          phx-target={@target}
+          class={"p-2 rounded-full transition-colors " <>
+            if(@audio_enabled, do: "bg-gray-700 hover:bg-gray-600", else: "bg-red-600 hover:bg-red-500")}
+          title={if @audio_enabled, do: "Mute microphone", else: "Unmute microphone"}
+        >
+          <%= if @audio_enabled do %>
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
-            Leave
-          </button>
-        <% else %>
-          <button
-            phx-click="join_call"
-            phx-target={@target}
-            class="px-6 py-3 rounded-full bg-green-600 hover:bg-green-500 transition-colors text-white font-semibold flex items-center gap-2"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <% else %>
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+            </svg>
+          <% end %>
+        </button>
+
+        <button
+          phx-click="toggle_video"
+          phx-target={@target}
+          class={"p-2 rounded-full transition-colors " <>
+            if(@video_enabled, do: "bg-gray-700 hover:bg-gray-600", else: "bg-red-600 hover:bg-red-500")}
+          title={if @video_enabled, do: "Turn off camera", else: "Turn on camera"}
+        >
+          <%= if @video_enabled do %>
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
-            Join Call
-          </button>
-        <% end %>
+          <% else %>
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18" />
+            </svg>
+          <% end %>
+        </button>
+
+        <button
+          phx-click="leave_call"
+          phx-target={@target}
+          class="px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-500 transition-colors text-white text-xs font-medium"
+        >
+          Leave
+        </button>
       </div>
     </div>
     """

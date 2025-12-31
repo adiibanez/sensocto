@@ -22,18 +22,19 @@
       )}
     </p>
 
-    <div class="flex items-center justify-between mb-1">
-      <.render_sensor_header
-        sensor_id={@sensor_id}
-        sensor_name={@sensor_name}
-        highlighted={@highlighted}
-        view_mode={@view_mode}
-      >
-      </.render_sensor_header>
-
-      <div class="flex items-center gap-2">
+    <div class="mb-1">
+      <div class="flex items-center justify-between">
+        <.render_sensor_header
+          sensor_id={@sensor_id}
+          sensor_name={@sensor_name}
+          highlighted={@highlighted}
+          view_mode={@view_mode}
+        >
+        </.render_sensor_header>
         <.attention_badge level={@attention_level} />
+      </div>
 
+      <div class="flex items-center gap-2 mt-1">
         <button
           id={"detail_#{@sensor_id}"}
           class="text-gray-400 hover:text-green-400 transition-colors"

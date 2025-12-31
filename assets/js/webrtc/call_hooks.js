@@ -34,25 +34,22 @@ export const CallHook = {
     this.handleEvent("toggle_audio", (data) => this.handleToggleAudio(data));
     this.handleEvent("toggle_video", (data) => this.handleToggleVideo(data));
     this.handleEvent("set_quality", (data) => this.handleSetQuality(data));
-
-    this.setupLocalVideoPreview();
   },
 
-  async setupLocalVideoPreview() {
-    const previewEl = document.getElementById("local-video-preview");
-    if (previewEl) {
-      try {
-        const stream = await this.mediaManager.getMediaStream();
-        previewEl.srcObject = stream;
-        this.localStream = stream;
-      } catch (error) {
-        console.error("Failed to setup video preview:", error);
-      }
+  attachLocalStream() {
+    const localVideoEl = document.querySelector("#local-video video");
+    if (localVideoEl && this.localStream) {
+      localVideoEl.srcObject = this.localStream;
+      localVideoEl.muted = true;
     }
   },
 
   async handleJoinCall(data) {
     if (this.inCall) return;
+
+    const mode = data?.mode || "video";
+    const withVideo = mode === "video";
+    this.videoEnabled = withVideo;
 
     try {
       await this.connectToChannel();
@@ -77,14 +74,18 @@ export const CallHook = {
 
         await this.membraneClient.connect(this.iceServers);
 
-        if (this.localStream) {
-          for (const track of this.localStream.getTracks()) {
-            await this.membraneClient.addLocalTrack(track);
-          }
+        if (withVideo) {
+          this.localStream = await this.mediaManager.getMediaStream();
         } else {
-          await this.membraneClient.addLocalMedia({ audio: true, video: true });
-          this.localStream = this.membraneClient.localStream;
+          this.localStream = await this.mediaManager.getAudioOnlyStream();
         }
+
+        for (const track of this.localStream.getTracks()) {
+          await this.membraneClient.addLocalTrack(track);
+        }
+
+        // Attach local stream to the local video element
+        this.attachLocalStream();
 
         this.inCall = true;
         this.pushEvent("call_joined", { endpoint_id: this.endpointId });
@@ -377,31 +378,12 @@ export const CallHook = {
 
 /**
  * Video Tile Hook - manages individual participant video tiles
+ * Note: Local video stream is attached by CallHook, not auto-captured here
  */
 export const VideoTileHook = {
   mounted() {
     this.peerId = this.el.dataset.peerId;
     this.isLocal = this.el.dataset.isLocal === "true";
-
-    if (this.isLocal) {
-      this.setupLocalVideo();
-    }
-  },
-
-  async setupLocalVideo() {
-    const videoEl = this.el.querySelector("video");
-    if (videoEl) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: true,
-        });
-        videoEl.srcObject = stream;
-        videoEl.muted = true;
-      } catch (error) {
-        console.error("Failed to setup local video:", error);
-      }
-    }
   },
 
   destroyed() {

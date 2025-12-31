@@ -10,6 +10,9 @@ defmodule SensoctoWeb.CallChannel do
   alias Sensocto.Calls
   alias Phoenix.PubSub
 
+  # Intercept broadcast events so handle_out/3 is called
+  intercept ["participant_audio_changed", "participant_video_changed"]
+
   @impl true
   def join("call:" <> room_id, params, socket) do
     user_id = params["user_id"]
@@ -115,7 +118,6 @@ defmodule SensoctoWeb.CallChannel do
     if socket.assigns.joined_call do
       # For now, just acknowledge. Audio track enabling/disabling
       # is handled client-side. We broadcast the state change.
-      room_id = socket.assigns.room_id
       user_id = socket.assigns.user_id
 
       broadcast!(socket, "participant_audio_changed", %{
@@ -132,7 +134,6 @@ defmodule SensoctoWeb.CallChannel do
   @impl true
   def handle_in("toggle_video", %{"enabled" => enabled}, socket) do
     if socket.assigns.joined_call do
-      room_id = socket.assigns.room_id
       user_id = socket.assigns.user_id
 
       broadcast!(socket, "participant_video_changed", %{
@@ -224,6 +225,19 @@ defmodule SensoctoWeb.CallChannel do
   @impl true
   def handle_info(msg, socket) do
     Logger.debug("CallChannel received unknown message: #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  # Handle outgoing broadcasts - these are required when using broadcast!/3
+  @impl true
+  def handle_out("participant_audio_changed", payload, socket) do
+    push(socket, "participant_audio_changed", payload)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_out("participant_video_changed", payload, socket) do
+    push(socket, "participant_video_changed", payload)
     {:noreply, socket}
   end
 

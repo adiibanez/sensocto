@@ -90,7 +90,8 @@ defmodule Sensocto.Rooms do
       {:error, :not_found} ->
         Room
         |> Ash.Query.for_read(:by_id, %{id: room_id})
-        |> Ash.read_one()
+        |> Ash.Query.load(:owner)
+        |> Ash.read_one(authorize?: false)
     end
   end
 
@@ -440,6 +441,14 @@ defmodule Sensocto.Rooms do
       |> Ash.read_one!()
       |> Ash.Changeset.for_update(:update, attrs, actor: user)
       |> Ash.update()
+      |> case do
+        {:ok, updated_room} ->
+          # Reload with owner relationship
+          {:ok, Ash.load!(updated_room, :owner, authorize?: false)}
+
+        error ->
+          error
+      end
     else
       {:error, :temporary_rooms_immutable}
     end

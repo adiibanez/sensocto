@@ -44,10 +44,12 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:available_sensors, available_sensors)
           |> assign(:show_share_modal, false)
           |> assign(:show_add_sensor_modal, false)
+          |> assign(:show_edit_modal, false)
           |> assign(:show_settings, false)
           |> assign(:is_owner, Rooms.owner?(room, user))
           |> assign(:can_manage, Rooms.can_manage?(room, user))
           |> assign(:sensor_activity, build_activity_map(room.sensors || []))
+          |> assign(:edit_form, build_edit_form(room))
           # Call-related assigns
           |> assign(:call_active, call_active)
           |> assign(:in_call, false)
@@ -104,6 +106,75 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_event("close_add_sensor_modal", _params, socket) do
     {:noreply, assign(socket, :show_add_sensor_modal, false)}
+  end
+
+  @impl true
+  def handle_event("open_edit_modal", _params, socket) do
+    room = socket.assigns.room
+    {:noreply, socket |> assign(:show_edit_modal, true) |> assign(:edit_form, build_edit_form(room))}
+  end
+
+  @impl true
+  def handle_event("close_edit_modal", _params, socket) do
+    {:noreply, assign(socket, :show_edit_modal, false)}
+  end
+
+  @impl true
+  def handle_event("validate_edit", params, socket) do
+    form = to_form(%{
+      "name" => params["name"] || "",
+      "description" => params["description"] || "",
+      "is_public" => Map.has_key?(params, "is_public"),
+      "calls_enabled" => Map.has_key?(params, "calls_enabled")
+    })
+    {:noreply, assign(socket, :edit_form, form)}
+  end
+
+  @impl true
+  def handle_event("save_room", params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    attrs = %{
+      name: params["name"],
+      description: params["description"],
+      is_public: Map.has_key?(params, "is_public"),
+      calls_enabled: Map.has_key?(params, "calls_enabled")
+    }
+
+    case Rooms.update_room(room, attrs, user) do
+      {:ok, updated_room} ->
+        socket =
+          socket
+          |> assign(:room, normalize_room(updated_room))
+          |> assign(:page_title, updated_room.name)
+          |> assign(:show_edit_modal, false)
+          |> put_flash(:info, "Room updated successfully")
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update room")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_room", _params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    case Rooms.delete_room(room, user) do
+      :ok ->
+        socket =
+          socket
+          |> put_flash(:info, "Room deleted successfully")
+          |> push_navigate(to: ~p"/rooms")
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete room")}
+    end
   end
 
   @impl true
@@ -185,6 +256,27 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_event("copy_link", _params, socket) do
     {:noreply, put_flash(socket, :info, "Link copied to clipboard!")}
+  end
+
+  @impl true
+  def handle_event("toggle_calls_enabled", _params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    new_calls_enabled = not Map.get(room, :calls_enabled, true)
+
+    case Rooms.update_room(room, %{calls_enabled: new_calls_enabled}, user) do
+      {:ok, updated_room} ->
+        socket =
+          socket
+          |> assign(:room, normalize_room(updated_room))
+          |> put_flash(:info, if(new_calls_enabled, do: "Calls enabled", else: "Calls disabled"))
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update room settings")}
+    end
   end
 
   # Call-related events from JS hooks
@@ -335,20 +427,41 @@ defmodule SensoctoWeb.RoomShowLive do
     |> Enum.into(%{})
   end
 
+  defp build_edit_form(room) do
+    to_form(%{
+      "name" => room.name || "",
+      "description" => room.description || "",
+      "is_public" => Map.get(room, :is_public, true),
+      "calls_enabled" => Map.get(room, :calls_enabled, true)
+    })
+  end
+
   defp normalize_room(%Sensocto.Sensors.Room{} = room) do
     %{
       id: room.id,
       name: room.name,
       description: room.description,
       owner_id: room.owner_id,
+      owner: room.owner,
       join_code: room.join_code,
       is_public: room.is_public,
       is_persisted: true,
+      calls_enabled: room.calls_enabled,
       configuration: room.configuration
     }
   end
 
   defp normalize_room(room), do: room
+
+  defp get_owner_name(room) do
+    case Map.get(room, :owner) do
+      %{email: email} when not is_nil(email) ->
+        email |> to_string() |> String.split("@") |> List.first()
+
+      _ ->
+        "Unknown"
+    end
+  end
 
   defp get_activity_status(sensor_id, activity_map) do
     case Map.get(activity_map, sensor_id) do
@@ -389,8 +502,11 @@ defmodule SensoctoWeb.RoomShowLive do
             <% end %>
           </div>
         </div>
+        <p class="text-sm text-gray-500">
+          by <%= get_owner_name(@room) %>
+        </p>
         <%= if @room.description do %>
-          <p class="text-gray-400"><%= @room.description %></p>
+          <p class="text-gray-400 mt-1"><%= @room.description %></p>
         <% end %>
       </div>
 
@@ -414,33 +530,46 @@ defmodule SensoctoWeb.RoomShowLive do
             </svg>
             Add Sensor
           </button>
-          <.link
-            patch={~p"/rooms/#{@room.id}/settings"}
+        <% end %>
+        <%= if @is_owner do %>
+          <button
+            phx-click="open_edit_modal"
             class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            Settings
-          </.link>
+            Edit
+          </button>
+          <button
+            phx-click="delete_room"
+            data-confirm="Are you sure you want to delete this room? This action cannot be undone."
+            class="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete
+          </button>
         <% end %>
       </div>
 
       <%!-- Main content area: Video + Sensors side by side when in call --%>
-      <div class={if @in_call, do: "grid grid-cols-1 lg:grid-cols-2 gap-6", else: ""}>
-        <%!-- Video Conference Panel - only shows when in call or panel is open --%>
-        <.live_component
-          module={SensoctoWeb.Live.Calls.CallContainerComponent}
-          id="call-container"
-          room={@room}
-          user={@current_user}
-          in_call={@in_call}
-          participants={@call_participants}
-        />
+      <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "grid grid-cols-1 lg:grid-cols-2 gap-6", else: ""}>
+        <%!-- Video Conference Panel - only shows when calls are enabled --%>
+        <%= if Map.get(@room, :calls_enabled, true) do %>
+          <.live_component
+            module={SensoctoWeb.Live.Calls.CallContainerComponent}
+            id="call-container"
+            room={@room}
+            user={@current_user}
+            in_call={@in_call}
+            participants={@call_participants}
+          />
+        <% end %>
 
         <%!-- Sensors Panel --%>
-        <div class={if @in_call, do: "order-2", else: ""}>
+        <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
           <h2 class="text-xl font-semibold mb-4">Sensors</h2>
           <%= if Enum.empty?(@sensors) do %>
             <div class="bg-gray-800 rounded-lg p-8 text-center">
@@ -481,6 +610,10 @@ defmodule SensoctoWeb.RoomShowLive do
 
       <%= if @show_add_sensor_modal do %>
         <.add_sensor_modal available_sensors={@available_sensors} />
+      <% end %>
+
+      <%= if @show_edit_modal do %>
+        <.edit_room_modal form={@edit_form} room={@room} />
       <% end %>
 
       <%= if @show_settings do %>
@@ -661,6 +794,87 @@ defmodule SensoctoWeb.RoomShowLive do
     """
   end
 
+  defp edit_room_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_edit_modal">
+      <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" phx-click={%JS{}}>
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-xl font-semibold">Edit Room</h2>
+          <button phx-click="close_edit_modal" class="text-gray-400 hover:text-white">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <.form for={@form} phx-submit="save_room" phx-change="validate_edit" class="space-y-4">
+          <div>
+            <label for="name" class="block text-sm font-medium text-gray-300 mb-1">Room Name</label>
+            <input
+              type="text"
+              name="name"
+              id="name"
+              value={@form[:name].value}
+              required
+              class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter room name..."
+            />
+          </div>
+
+          <div>
+            <label for="description" class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+            <textarea
+              name="description"
+              id="description"
+              rows="3"
+              class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Optional description..."
+            ><%= @form[:description].value %></textarea>
+          </div>
+
+          <div class="space-y-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                name="is_public"
+                checked={@form[:is_public].value}
+                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+              />
+              <span class="text-sm text-gray-300">Public room</span>
+            </label>
+
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                name="calls_enabled"
+                checked={@form[:calls_enabled].value}
+                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+              />
+              <span class="text-sm text-gray-300">Enable video/audio calls</span>
+            </label>
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button
+              type="button"
+              phx-click="close_edit_modal"
+              class="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Save Changes
+            </button>
+          </div>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
   defp settings_panel(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -701,6 +915,22 @@ defmodule SensoctoWeb.RoomShowLive do
               </div>
             </dl>
           </div>
+
+          <%= if @is_owner do %>
+            <div class="p-4 bg-gray-700 rounded-lg">
+              <h3 class="font-medium mb-3">Features</h3>
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm text-gray-300">Video/Audio Calls</span>
+                <button
+                  type="button"
+                  phx-click="toggle_calls_enabled"
+                  class={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors #{if Map.get(@room, :calls_enabled, true), do: "bg-blue-600", else: "bg-gray-600"}"}
+                >
+                  <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform #{if Map.get(@room, :calls_enabled, true), do: "translate-x-6", else: "translate-x-1"}"} />
+                </button>
+              </label>
+            </div>
+          <% end %>
         </div>
       </div>
     </div>

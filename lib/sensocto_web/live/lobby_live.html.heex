@@ -11,7 +11,7 @@
     <h1 class="text-xl font-bold text-white">Lobby</h1>
     <div class="flex items-center gap-4">
       <button
-        :if={@sensor_ids != []}
+        :if={@sensor_ids != [] && @live_action == :sensors}
         phx-click="toggle_all_view_mode"
         class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
         title={if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"}
@@ -27,29 +27,100 @@
     </div>
   </div>
 
-  <div
-    id="cnt"
-    phx-hook="ConnectionHandler"
-    class={[
-      "grid grid-cols-1",
-      if(@global_view_mode == :summary,
-        do: "gap-2 sm:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
-        else: "gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-      )
-    ]}
-  >
-    <div :for={sensor_id <- @sensor_ids} id={"sensor_container_#{sensor_id}"}>
-      {live_render(@socket, StatefulSensorLive,
-        id: "stateful_sensor_#{sensor_id}",
-        session: %{"parent_pid" => self(), "sensor_id" => sensor_id}
-      )}
+  <.tabs>
+    <:tab patch={~p"/lobby"} active={@live_action == :sensors}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="squares-2x2" type="outline" class="h-4 w-4" />
+        Sensors
+      </span>
+    </:tab>
+    <:tab patch={~p"/lobby/heartrate"} active={@live_action == :heartrate}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="heart" type="outline" class="h-4 w-4" />
+        Heartrate
+      </span>
+    </:tab>
+    <:tab patch={~p"/lobby/imu"} active={@live_action == :imu}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="cube" type="outline" class="h-4 w-4" />
+        IMU
+      </span>
+    </:tab>
+    <:tab patch={~p"/lobby/location"} active={@live_action == :location}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="map-pin" type="outline" class="h-4 w-4" />
+        Location
+      </span>
+    </:tab>
+  </.tabs>
+
+  <div :if={@live_action == :sensors}>
+    <div
+      id="cnt"
+      phx-hook="ConnectionHandler"
+      class={[
+        "grid grid-cols-1",
+        if(@global_view_mode == :summary,
+          do: "gap-2 sm:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+          else: "gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+        )
+      ]}
+    >
+      <div :for={sensor_id <- @sensor_ids} id={"sensor_container_#{sensor_id}"}>
+        {live_render(@socket, StatefulSensorLive,
+          id: "stateful_sensor_#{sensor_id}",
+          session: %{"parent_pid" => self(), "sensor_id" => sensor_id}
+        )}
+      </div>
+    </div>
+
+    <div :if={@sensor_ids == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
     </div>
   </div>
 
-  <div :if={@sensor_ids == []} class="text-center py-12 text-gray-400">
-    <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
-    <p class="text-lg">No sensors connected</p>
-    <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
+  <div :if={@live_action == :heartrate} id="composite-heartrate" phx-hook="CompositeMeasurementHandler">
+    <.svelte
+      name="CompositeHeartrate"
+      props={%{sensors: @heartrate_sensors}}
+      socket={@socket}
+      class="w-full"
+    />
+    <div :if={@heartrate_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="heart" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No heartrate sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with heartrate capability</p>
+    </div>
+  </div>
+
+  <div :if={@live_action == :imu} id="composite-imu" phx-hook="CompositeMeasurementHandler">
+    <.svelte
+      name="CompositeIMU"
+      props={%{sensors: @imu_sensors}}
+      socket={@socket}
+      class="w-full"
+    />
+    <div :if={@imu_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="cube" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No IMU sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with IMU capability</p>
+    </div>
+  </div>
+
+  <div :if={@live_action == :location} id="composite-location" phx-hook="CompositeMeasurementHandler">
+    <.svelte
+      name="CompositeMap"
+      props={%{positions: @location_sensors}}
+      socket={@socket}
+      class="w-full h-96"
+    />
+    <div :if={@location_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="map-pin" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No location sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with geolocation capability</p>
+    </div>
   </div>
 </div>
 

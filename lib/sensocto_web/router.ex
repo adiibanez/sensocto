@@ -68,7 +68,10 @@ defmodule SensoctoWeb.Router do
       live "/playground", Live.PlaygroundLive, :index
       live "/lvn", Live.LvnEntryLive, :index
       live "/", IndexLive, :index
-      live "/lobby", LobbyLive, :index
+      live "/lobby", LobbyLive, :sensors
+      live "/lobby/heartrate", LobbyLive, :heartrate
+      live "/lobby/imu", LobbyLive, :imu
+      live "/lobby/location", LobbyLive, :location
       live "/sense", SenseLive, :index
       live "/sensors", SensorLive.Index, :index
       live "/sensors/:id", SensorLive.Show, :show

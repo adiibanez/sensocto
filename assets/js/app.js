@@ -208,6 +208,26 @@ Hooks.ConnectionHandler = {
   }
 }
 
+// CompositeMeasurementHandler hook - receives server-pushed measurements for composite views
+// and dispatches them as window events for Svelte components to consume
+Hooks.CompositeMeasurementHandler = {
+  mounted() {
+    logger.log("Hooks.CompositeMeasurementHandler", "mounted");
+
+    this.handleEvent("composite_measurement", (event) => {
+      logger.log("Hooks.CompositeMeasurementHandler", "composite_measurement", event);
+      const customEvent = new CustomEvent('composite-measurement-event', {
+        detail: event
+      });
+      window.dispatchEvent(customEvent);
+    });
+  },
+
+  destroyed() {
+    logger.log("Hooks.CompositeMeasurementHandler", "destroyed");
+  }
+}
+
 // FooterToolbar hook - handles mobile collapsible footer
 Hooks.FooterToolbar = {
   mounted() {

@@ -160,21 +160,23 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <p class="text-xs">
             Lat: {Float.round(@lastvalue.payload.latitude / 1, 3)}, Lon: {Float.round(@lastvalue.payload.longitude / 1, 3)}, {Float.round(@lastvalue.payload.accuracy / 1, 1)}m
           </p>
-          <.svelte
-            name="Map"
-            props={
-              %{
-                identifier: "map_#{@sensor_id}_#{@attribute_id}",
-                position: %{
-                  lat: @lastvalue.payload.latitude,
-                  lng: @lastvalue.payload.longitude,
-                  accuracy: @lastvalue.payload.accuracy
+          <div class="h-[150px]">
+            <.svelte
+              name="Map"
+              props={
+                %{
+                  identifier: "map_#{@sensor_id}_#{@attribute_id}",
+                  position: %{
+                    lat: @lastvalue.payload.latitude,
+                    lng: @lastvalue.payload.longitude,
+                    accuracy: @lastvalue.payload.accuracy
+                  }
                 }
               }
-            }
-            socket={@socket}
-            class="w-full m-0 p-0"
-          />
+              socket={@socket}
+              class="w-full h-full m-0 p-0"
+            />
+          </div>
         </div>
       </.container>
     </div>
@@ -251,10 +253,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-sensor_id={@sensor_id}
       data-attribute_id={@attribute_id}
     >
-      <span class="text-gray-400">{@attribute_id}</span>
+      <span class="text-white">{@attribute_id}</span>
       <div :if={@lastvalue} class="flex items-center gap-1">
         <span class={[
-          if(@battery_info.level < 20, do: "text-red-400", else: if(@battery_info.level < 50, do: "text-yellow-400", else: "text-green-400"))
+          if(@battery_info.level < 20, do: "text-red-400", else: if(@battery_info.level < 50, do: "text-yellow-400", else: "text-white"))
         ]}>
           {Float.round(@battery_info.level, 0)}%
         </span>
@@ -406,6 +408,86 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
               if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")
             ]}>
               3
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  # Summary mode for heartrate - shows pulsating heart with BPM (peak detection driven)
+  @impl true
+  def render(%{:attribute_type => "heartrate", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-white flex items-center gap-1">
+        <.svelte
+          name="HeartbeatVisualization"
+          props={
+            %{
+              sensor_id: @sensor_id,
+              attribute_id: @attribute_id,
+              bpm: if(@lastvalue, do: @lastvalue.payload, else: 0),
+              size: "small"
+            }
+          }
+          socket={@socket}
+        />
+        {String.replace(to_string(@attribute_id), "_", " ")}
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {round(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">bpm</span>
+      </span>
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+    </div>
+    """
+  end
+
+  # Normal/detailed mode for heartrate - larger pulsating heart with BPM display (peak detection driven)
+  @impl true
+  def render(%{:attribute_type => "heartrate"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+        attribute={@attribute}
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name={@attribute_id}
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center justify-center py-4">
+          <div class="flex flex-col items-center gap-2">
+            <.svelte
+              name="HeartbeatVisualization"
+              props={
+                %{
+                  sensor_id: @sensor_id,
+                  attribute_id: @attribute_id,
+                  bpm: @lastvalue.payload,
+                  size: "large"
+                }
+              }
+              socket={@socket}
+            />
+            <div class="text-center">
+              <span class="text-3xl font-bold text-white">{round(@lastvalue.payload)}</span>
+              <span class="text-sm text-gray-400 ml-1">bpm</span>
             </div>
           </div>
         </div>

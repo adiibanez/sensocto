@@ -1,7 +1,13 @@
 <header class="bg-gray-800 p-4 flex justify-between items-center">
   <div class="flex items-center gap-4">
     <.link navigate={~p"/"}>
-      <img src={~p"/images/octopus_simplified.svg"} alt="Logo" class="h-12 w-auto hover:opacity-80 transition-opacity" />
+      <img
+        id="pulsating-logo"
+        phx-hook="PulsatingLogo"
+        src={~p"/images/octopus_simplified.svg"}
+        alt="Logo"
+        class="pulsating-logo h-12 w-auto hover:opacity-80 transition-opacity"
+      />
     </.link>
     <.live_component module={SensoctoWeb.SystemMetricsComponent} id="system-metrics" />
   </div>

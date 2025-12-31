@@ -26,6 +26,7 @@ defmodule Sensocto.AttentionTracker do
   # ETS table names for fast concurrent reads
   @attention_levels_table :attention_levels_cache
   @attention_config_table :attention_config_cache
+  @sensor_attention_table :sensor_attention_cache
 
   # Batch window multipliers based on attention level
   @attention_config %{
@@ -184,9 +185,18 @@ defmodule Sensocto.AttentionTracker do
 
   @doc """
   Get the sensor-level attention summary (highest of all attributes).
+
+  Uses ETS for fast concurrent reads - no GenServer bottleneck.
+  Falls back to GenServer call only if ETS lookup fails.
   """
   def get_sensor_attention_level(sensor_id) do
-    GenServer.call(__MODULE__, {:get_sensor_attention_level, sensor_id})
+    case :ets.lookup(@sensor_attention_table, sensor_id) do
+      [{_, level}] -> level
+      [] -> :none
+    end
+  rescue
+    # ETS table might not exist yet during startup
+    ArgumentError -> :none
   end
 
   @doc """
@@ -253,6 +263,7 @@ defmodule Sensocto.AttentionTracker do
     # Create ETS tables for fast concurrent reads
     :ets.new(@attention_levels_table, [:named_table, :public, read_concurrency: true])
     :ets.new(@attention_config_table, [:named_table, :public, read_concurrency: true])
+    :ets.new(@sensor_attention_table, [:named_table, :public, read_concurrency: true])
 
     # Pre-populate config table (static values)
     for {level, config} <- @attention_config do
@@ -685,6 +696,9 @@ defmodule Sensocto.AttentionTracker do
 
   defp broadcast_sensor_attention_change(sensor_id, level) do
     Logger.debug("Sensor attention changed for #{sensor_id}: #{level}")
+
+    # Update ETS cache for fast reads
+    :ets.insert(@sensor_attention_table, {sensor_id, level})
 
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,

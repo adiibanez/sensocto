@@ -58,22 +58,20 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # https://www.richardtaylor.dev/articles/beautiful-animated-charts-for-liveview-with-echarts
     # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
 
+    # Use short timeout (1 second) for sensor state to avoid blocking child mount sync
     sensor_state =
       try do
-        SimpleSensor.get_view_state(sensor.sensor_id)
+        # Use Task with short timeout to prevent blocking
+        task = Task.async(fn -> SimpleSensor.get_view_state(sensor.sensor_id) end)
+        Task.await(task, 1000)
       catch
         :exit, _ ->
-          # Sensor process no longer exists, use the cached sensor data from session
+          # Sensor process no longer exists or timeout, use the cached sensor data from session
           sensor
       end
 
-    # Get initial attention level
-    initial_attention =
-      try do
-        AttentionTracker.get_sensor_attention_level(sensor.sensor_id)
-      catch
-        :exit, {:noproc, _} -> :none
-      end
+    # Get initial attention level - now uses ETS lookup (fast, no GenServer call)
+    initial_attention = AttentionTracker.get_sensor_attention_level(sensor.sensor_id)
 
     # Schedule the first throttle flush
     if connected?(socket) do

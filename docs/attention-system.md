@@ -18,10 +18,10 @@ The Sensocto attention system provides intelligent back-pressure control for sen
 
 | Level | Trigger | Batch Window | Batch Size | Use Case |
 |-------|---------|--------------|------------|----------|
-| `:high` | Focus/click on attribute | 100ms | 1 | User actively interacting |
-| `:medium` | Attribute in viewport | 500ms | 5 | User viewing sensor |
-| `:low` | Sensor connected, not viewed | 2000ms | 10 | Background monitoring |
-| `:none` | No active connections | 5000ms | 20 | Idle/disconnected |
+| `:high` | Focus/click OR hover on attribute | 100-500ms | 1 | User actively interacting |
+| `:medium` | Attribute in viewport | 500-2000ms | 5 | User viewing sensor |
+| `:low` | Sensor connected, not viewed | 2000-10000ms | 10 | Background monitoring |
+| `:none` | No active connections | 5000-30000ms | 20 | Idle/disconnected |
 
 ## Components
 
@@ -30,8 +30,12 @@ The Sensocto attention system provides intelligent back-pressure control for sen
 Central GenServer that tracks attention state across all users and sensors.
 
 **Features:**
-- ETS-backed for fast concurrent reads (no GenServer bottleneck)
+- **Triple ETS caching** for fast concurrent reads (no GenServer bottleneck):
+  - `:attention_levels_cache` - Per-attribute attention levels
+  - `:sensor_attention_cache` - Sensor-level attention (highest across attributes)
+  - `:attention_config_cache` - Static configuration
 - PubSub broadcasts on attention changes
+- Hover tracking with 2-second boost duration (prevents flicker)
 - Sensor pinning for guaranteed high-frequency updates
 - Battery/energy state tracking with source metadata
 - Automatic cleanup of stale records (60s threshold)
@@ -43,7 +47,11 @@ Central GenServer that tracks attention state across all users and sensors.
 AttentionTracker.register_view(sensor_id, attribute_id, user_id)
 AttentionTracker.unregister_view(sensor_id, attribute_id, user_id)
 
-# Focus tracking (higher priority than view)
+# Hover tracking (triggers :high attention)
+AttentionTracker.register_hover(sensor_id, attribute_id, user_id)
+AttentionTracker.unregister_hover(sensor_id, attribute_id, user_id)
+
+# Focus tracking (click/focus, highest priority)
 AttentionTracker.register_focus(sensor_id, attribute_id, user_id)
 AttentionTracker.unregister_focus(sensor_id, attribute_id, user_id)
 
@@ -58,7 +66,7 @@ AttentionTracker.report_battery_state(user_id, :low,
   charging: false
 )
 
-# Query functions (ETS-backed, fast)
+# Query functions (ETS-backed, O(1) lookups)
 AttentionTracker.get_attention_level(sensor_id, attribute_id)
 AttentionTracker.get_sensor_attention_level(sensor_id)
 AttentionTracker.calculate_batch_window(base_window, sensor_id, attribute_id)
@@ -70,10 +78,23 @@ Client-side attention detection for web browsers.
 
 **Features:**
 - `IntersectionObserver` for viewport visibility (10% threshold, 50px margin)
+- **Instant hover detection** - hover triggers immediately on mouse enter
+- **Hover boost duration** (2 seconds) - prevents flicker when moving between elements
 - Click/focus tracking for high attention
 - Page visibility API integration (hidden/visible tabs)
 - Battery Status API integration
-- Debounced events (300ms) to reduce server load
+- **Adaptive debouncing** (50-500ms) based on system responsiveness
+- Latency tracking to adjust debounce dynamically
+
+**Debounce Settings:**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `HOVER_DEBOUNCE_MIN_MS` | 50ms | Fast response on responsive systems |
+| `HOVER_DEBOUNCE_MAX_MS` | 500ms | Throttle on slow/loaded systems |
+| `HOVER_BOOST_DURATION_MS` | 2000ms | Keep `:high` attention after mouse leaves |
+| `BATTERY_LOW_THRESHOLD` | 30% | Trigger `:low` battery state |
+| `BATTERY_CRITICAL_THRESHOLD` | 15% | Trigger `:critical` battery state |
 
 **Usage in templates:**
 
@@ -189,6 +210,8 @@ The `StatefulSensorLive` handles all attention events from JS hooks:
 # Event handlers
 handle_event("view_enter", ...)   # Attribute entered viewport
 handle_event("view_leave", ...)   # Attribute left viewport
+handle_event("hover_enter", ...)  # Mouse entered attribute
+handle_event("hover_leave", ...)  # Mouse left attribute
 handle_event("focus", ...)        # User clicked/focused attribute
 handle_event("unfocus", ...)      # User unfocused
 handle_event("pin_sensor", ...)   # Pin for high-frequency
@@ -297,6 +320,55 @@ See `.claude/plans/snazzy-herding-octopus.md` for the full roadmap including:
 - **P2**: Scroll-aware tracking, predictive pre-warming
 - **P3**: Distributed attention (gossip protocol), energy scheduler, self-tuning
 
+## Performance Optimizations
+
+### ETS-Based Lookups
+
+All attention queries use ETS tables with `read_concurrency: true`:
+
+```elixir
+# O(1) lookups, no GenServer call required
+AttentionTracker.get_attention_level(sensor_id, attribute_id)
+AttentionTracker.get_sensor_attention_level(sensor_id)
+```
+
+This prevents GenServer bottlenecks during LiveView child mount synchronization.
+
+### Async Write Pattern
+
+All state modifications use `GenServer.cast` (fire-and-forget):
+
+```elixir
+# Non-blocking - returns immediately
+AttentionTracker.register_hover(sensor_id, attribute_id, user_id)
+```
+
+Users experience no latency from attention tracking operations.
+
+### LiveView Mount Safety
+
+To prevent child LiveView mount timeouts (5-second sync limit):
+
+1. **Parent LiveView** (`IndexLive`): Defers expensive operations via `send(self(), :refresh_sensors)` instead of blocking in `handle_info`
+
+2. **Child LiveView** (`StatefulSensorLive`): Uses Task with 1-second timeout for sensor state fetch, falling back to session-cached data
+
+3. **Attention queries**: Now use ETS directly instead of GenServer calls
+
+### Adaptive Debouncing (Client-Side)
+
+The JS hook tracks event latencies and adjusts debounce timing:
+
+```javascript
+// Scales between 50ms (responsive) and 500ms (loaded)
+const avgLatency = eventLatencies.reduce((a, b) => a + b, 0) / eventLatencies.length;
+const debounce = Math.min(500, Math.max(50, avgLatency * 2));
+```
+
+## Scalability
+
+See `docs/scalability.md` for detailed analysis of multi-user scalability characteristics and recommendations for high-scale deployments.
+
 ## Files
 
 | File | Purpose |
@@ -304,5 +376,7 @@ See `.claude/plans/snazzy-herding-octopus.md` for the full roadmap including:
 | `lib/sensocto/otp/attention_tracker.ex` | Core GenServer, ETS caching, battery tracking |
 | `assets/js/hooks/attention_tracker.js` | Browser attention detection, Battery API |
 | `lib/sensocto_web/channels/sensor_data_channel.ex` | Backpressure protocol for connectors |
-| `lib/sensocto_web/live/stateful_sensor_liveview.ex` | LiveView event handlers |
+| `lib/sensocto_web/live/stateful_sensor_live.ex` | LiveView event handlers |
+| `lib/sensocto_web/live/index_live.ex` | Parent LiveView with async sensor refresh |
 | `lib/sensocto/simulator/attribute_server.ex` | Dynamic batch window adjustment |
+| `docs/scalability.md` | Multi-user scalability guide |

@@ -70,17 +70,32 @@ defmodule SensoctoWeb.IndexLive do
       "presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
     )
 
+    # Update online/offline immediately with payload data (fast)
+    sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
+
+    # Schedule async refresh of full sensor state to avoid blocking parent LiveView
+    # This prevents child mount timeouts when get_all_sensors_state is slow
+    send(self(), :refresh_sensors)
+
+    {
+      :noreply,
+      socket
+      |> assign(:sensors_online, sensors_online)
+      |> assign(:sensors_offline, payload.leaves)
+    }
+  end
+
+  @impl true
+  def handle_info(:refresh_sensors, socket) do
+    # Fetch full sensor state asynchronously - this won't block child mounts
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
-    sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
     lobby_sensors = sensors |> Enum.take(@lobby_preview_limit) |> Enum.into(%{})
 
     {
       :noreply,
       socket
       |> assign(:sensors_online_count, sensors_count)
-      |> assign(:sensors_online, sensors_online)
-      |> assign(:sensors_offline, payload.leaves)
       |> assign(:sensors, sensors)
       |> assign(:lobby_sensors, lobby_sensors)
     }

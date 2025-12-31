@@ -7,7 +7,7 @@ defmodule SensoctoWeb.RealitykitLive do
 
   @colors ["red", "green", "blue", "black", "yellow", "orange"]
 
-  def handle_params(_params, uri, socket) do
+  def handle_params(_params, _uri, socket) do
     {:noreply, socket}
   end
 
@@ -37,7 +37,7 @@ defmodule SensoctoWeb.RealitykitLive do
           "translation.z" => translation_z,
           "rotation_axis" => rotation_axis,
           "rotation_angle" => rotation_angle
-        } = params,
+        } = _params,
         socket
       ) do
     SensorsStateAgent.put_attribute(sensor_id, :color, color)
@@ -85,13 +85,13 @@ defmodule SensoctoWeb.RealitykitLive do
 
   defp get_rounded_float(str_value) do
     {float_value, _} = Float.parse(str_value)
-    rounded_value = round(float_value * 1000.0) / 1000.0
+    round(float_value * 1000.0) / 1000.0
   end
 
   def handle_event(
         "config_sensors",
         %{
-          "_target" => target,
+          "_target" => _target,
           "rotation" => rotation,
           "scale" => scale,
           "width" => width,

@@ -5,7 +5,6 @@
 
   export let position: { lat: number; lng: number; accuracy: number };
   export let identifier = "map";
-  export let live = null;
   let mapContainer: HTMLDivElement;
   let map: maplibregl.Map | null = null;
   let marker: maplibregl.Marker | null = null;

@@ -12,8 +12,10 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
   @delay_after_connect 3000
   #
   @delay_after_send 3000
+  # Reserved for future use
   @max_send_concurrency 16
   @msg_timeout 30_000
+  _ = {@max_send_concurrency, @msg_timeout}
 
   def mount(_params, _session, socket) do
     Process.send_after(self(), :setup_nodes, 0)
@@ -32,6 +34,7 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
      )}
   end
 
+  @impl true
   def handle_info(:setup_nodes, socket) do
     pid = self()
     mothership_node_ref = Native.create_node(pid)
@@ -55,6 +58,7 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
      )}
   end
 
+  @impl true
   def handle_info(:connect_nodes, socket) do
     pid = self()
 
@@ -78,11 +82,9 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
      |> put_flash(:info, "Nodes connected, sending messages ...")}
   end
 
+  @impl true
   def handle_info(:send_messages, socket) do
-    pid = self()
-
     nodes = socket.assigns.nodes
-    ticket = socket.assigns.ticket
 
     send_messages(nodes)
 
@@ -93,6 +95,7 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
      |> put_flash(:info, "Messages sent, delivering ... ")}
   end
 
+  @impl true
   def handle_info(:inc_connected, socket) do
     {:noreply, assign(socket, nodes_connected: socket.assigns.nodes_connected + 1)}
   end
@@ -122,6 +125,7 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
     |> Enum.to_list()
   end
 
+  @impl true
   def handle_info(msg, state) do
     # IO.puts("Catchall: #{inspect(msg)}")
     messages = state.assigns.messages ++ [msg]
@@ -132,7 +136,8 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
      |> assign(:message_cnt, Enum.count(messages))}
   end
 
-  def handle_event("reset", params, state) do
+  @impl true
+  def handle_event("reset", _params, state) do
     {:noreply,
      state
      |> assign(:nodes, [])

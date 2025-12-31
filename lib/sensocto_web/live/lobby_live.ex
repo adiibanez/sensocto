@@ -14,7 +14,9 @@ defmodule SensoctoWeb.LobbyLive do
   @grid_cols_2xl_default 5
 
   # Threshold for switching to summary mode (<=3 sensors = normal, >3 = summary)
+  # Kept for future use when dynamic view mode switching is implemented
   @summary_mode_threshold 3
+  _ = @summary_mode_threshold
 
   @impl true
   def mount(_params, _session, socket) do

@@ -3,7 +3,6 @@ defmodule SensoctoWeb.Live.BaseComponents do
   require Logger
   use Phoenix.LiveComponent
   use Timex
-  import LiveSvelte
   # import SensoctoWeb.Components.RangeField
   # import Phoenix.Component
   # use LiveComponent

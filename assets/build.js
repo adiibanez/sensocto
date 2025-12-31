@@ -30,6 +30,10 @@ let optsClient = {
     outExtension: { ".css": ".bundle.css" },
     logLevel: (deploy) ? "info" : "debug",
     sourcemap: watch ? "inline" : false,
+    // Suppress Svelte 5 source map warnings (known compiler issue)
+    logOverride: {
+        'invalid-source-mappings': 'silent'
+    },
     tsconfig: "./tsconfig.json",
     // Add node_modules to resolution path for deps folder imports
     nodePaths: [path.resolve(__dirname, "node_modules")],

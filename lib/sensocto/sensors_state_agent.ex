@@ -3,7 +3,7 @@ defmodule SensorsStateAgent do
   use Agent
   require Logger
 
-  def start_link(params) do
+  def start_link(_params) do
     configuration = get_default_config()
 
     Logger.debug("SensorsStateAgent start_link2: #{inspect(configuration)}")
@@ -97,7 +97,7 @@ defmodule SensorsStateAgent do
 
   def put_sensor(sensor_id, payload) do
     Agent.update(:sensors_state_agent, fn state ->
-      update_in(state, [:sensors, sensor_id], fn sensor ->
+      update_in(state, [:sensors, sensor_id], fn _sensor ->
         # Logger.debug("Updating sensor: Old: #{inspect(sensor)} New: #{inspect(payload)}")
         payload
       end)
@@ -106,7 +106,7 @@ defmodule SensorsStateAgent do
 
   def put_attribute(sensor_id, attribute, payload) do
     Agent.update(:sensors_state_agent, fn state ->
-      update_in(state, [:sensors, sensor_id, attribute], fn attribute ->
+      update_in(state, [:sensors, sensor_id, attribute], fn _attribute ->
         # Logger.debug("Updating attribute: Old: #{inspect(attribute)} New: #{inspect(payload)}")
         payload
       end)
@@ -197,45 +197,6 @@ defmodule Sensocto.SensorArrangement do
   end
 
   @doc """
-  Arranges sensors in multiple rows, shrinking additional rows.
-
-  Args:
-    config: A map containing configuration options, including:
-      - `number_of_sensors`: Total number of sensors.
-      - `sensors_per_row`: Maximum number of sensors per row (optional, defaults to 10).
-      - `x_min`: Minimum X coordinate for the first row (optional, defaults to -0.3).
-      - `x_max`: Maximum X coordinate for the first row (optional, defaults to 0.3).
-      - `y_min`: Minimum Y coordinate for the first row (optional, defaults to -0.1).
-      - `y_max`: Maximum Y coordinate for the first row (optional, defaults to 0.2).
-      - `z_amplitude`: Z amplitude (optional, defaults to 0.25).
-      - `z_offset`: Z offset (optional, defaults to 0.0).
-      - `size`: Initial sensor size (optional, defaults to 0.03).
-      - `shrink_factor`: Percentage to shrink all config on each new row.
-        (optional, defaults to 0.8, so each additional row is 80% the size of the previous)
-
-  Returns:
-    A map where keys are sensor IDs and values are sensor properties.
-  """
-  @doc """
-  Arranges sensors in multiple rows, shrinking the X/Y bounds and stacking rows in Z.
-
-  Args:
-    config: A map containing configuration options:
-      - `number_of_sensors`: Total number of sensors.
-      - `sensors_per_row`: Maximum number of sensors per row (optional, defaults to 10).
-      - `x_min`: Minimum X coordinate for the first row (optional, defaults to -0.3).
-      - `x_max`: Maximum X coordinate for the first row (optional, defaults to 0.3).
-      - `y_min`: Minimum Y coordinate for the first row (optional, defaults to -0.1).
-      - `y_max`: Maximum Y coordinate for the first row (optional, defaults to 0.2).
-      - `z_offset_per_row`: Increase Z coordinate for each new row, this value should be large enough to stack correctly.
-      - `z_amplitude`: Z amplitude (optional, defaults to 0.25).
-      - `size`: Initial sensor size (optional, defaults to 0.03 - this size remains mostly constant).
-      - `shrink_factor`: Percentage to shrink X and Y bounds on each new row (optional, defaults to 0.8).
-
-  Returns:
-    A map where keys are sensor IDs and values are sensor properties.
-  """
-  @doc """
   Arranges sensors in multiple rows with denser edges, adjusts size based on row count, and stacks in Z.
 
   Args:
@@ -248,13 +209,14 @@ defmodule Sensocto.SensorArrangement do
       - `y_max`: Maximum Y coordinate (optional, defaults to 0.2).
       - `z_amplitude`: Z amplitude (optional, defaults to 0.25).
       - `z_offset`: Random Z position offset (optional, defaults to 0.0).
+      - `z_offset_per_row`: Z spacing between rows (optional, defaults to 0.3).
       - `rotation_randomize`: Random rotation adjust.
       - `size`: Base size.
-      -`base_size`: Base value of size.
+      - `base_size`: Base value of size.
       - `row_size_factor`: Amount to multiply size by for every sensor in a row.
       - `size_row_offset`: Additional size value for each row.
       - `edge_density_factor`: Higher value for more density.
-      - `z_offset_per_row`: Z spacing between rows (optional, defaults to 0.3).
+      - `shrink_factor`: Percentage to shrink X and Y bounds on each new row (optional, defaults to 0.8).
       - `arc_intensity`: Power of the arc on sensors curve.
 
   Returns:

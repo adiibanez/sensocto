@@ -1,5 +1,3 @@
-<svelte:options customElement="sensocto-chartjs" />
-
 <script>
     // https://medium.com/@jonnyeberhardt7/building-dynamic-dashboards-in-phoenix-liveview-chart-js-integration-and-interactive-drag-and-drop-6b76c45ee412
     // https://www.chartjs.org/docs/latest/configuration/animations.html#looping-tension-[property]

@@ -117,7 +117,6 @@
         <%= for {attribute_id, attribute} <- @sensor.attributes do %>
           <%= if attribute.attribute_type == "geolocation" && attribute.lastvalue do %>
             <.svelte
-              phx-update="ignore"
               name="Map"
               props={
                 %{
@@ -187,7 +186,6 @@
                 <% "geolocation" -> %>
                   <%= if attribute.lastvalue do %>
                     <.svelte
-                      phx-update="ignore"
                       name="Map"
                       props={
                         %{
@@ -210,7 +208,6 @@
 
                 <% "imu" -> %>
                   <.svelte
-                    phx-update="ignore"
                     name="ImuVisualization"
                     props={
                       %{

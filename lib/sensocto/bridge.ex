@@ -206,7 +206,7 @@ defmodule Bridge do
     end
   end
 
-  def handle_cast({:lastURL, uri}, state) do
+  def handle_cast({:lastURL, uri}, %Bridge{} = state) do
     {:noreply, %Bridge{state | lastURL: uri}}
   end
 
@@ -304,7 +304,7 @@ defmodule Bridge do
         {:tcp, _port, <<ref::unsigned-size(64), json::binary>>},
         state = %Bridge{requests: reqs}
       ) do
-    {from, message} = reqs[ref]
+    {from, _message} = reqs[ref]
 
     if json == "use_mock" do
       # Bridge.Mock.send(Bridge.Mock, message)

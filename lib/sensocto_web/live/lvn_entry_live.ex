@@ -8,6 +8,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
 
   @retrieve_values 5
 
+  @impl true
   @spec mount(any(), any(), map()) :: {:ok, map()}
   def mount(params, session, socket) do
     Logger.info("LVN entry main #{inspect(params)}, #{inspect(session)}")
@@ -59,28 +60,22 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
     Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view, @retrieve_values)
   end
 
-  def handle_info(:ble_state_changed, socket) do
-    # Logger.debug("handle_info :ble_state_changed")
-
-    ble_state = BleConnectorGenServer.get_state()
-
-    {:noreply,
-     socket
-     |> assign(
-       :ble_state,
-       ble_state
-     )}
-  end
-
-  def flatten_attributes(sensor_data) do
+  defp flatten_attributes(sensor_data) do
     Enum.flat_map(sensor_data, fn {sensor_id, sensor} ->
-      Enum.map(sensor.attributes, fn {attribute_id, attribute} ->
+      Enum.map(sensor.attributes, fn {_attribute_id, attribute} ->
         Map.merge(attribute, %{sensor_id: sensor_id})
       end)
     end)
     |> Map.new(fn attribute -> {attribute.attribute_id, attribute} end)
   end
 
+  @impl true
+  def handle_info(:ble_state_changed, socket) do
+    ble_state = BleConnectorGenServer.get_state()
+    {:noreply, assign(socket, :ble_state, ble_state)}
+  end
+
+  @impl true
   def handle_info({:measurement, %{:sensor_id => sensor_id} = _measurement}, socket) do
     Logger.info("handle_info measurement: #{sensor_id}")
 
@@ -95,6 +90,7 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
      |> assign(:flat_attributes, sensors |> flatten_attributes())}
   end
 
+  @impl true
   def handle_info({:measurements_batch, _batch}, socket) do
     Logger.info("handle_info measurements batch")
 
@@ -132,16 +128,19 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
      |> assign(:flat_attributes, sensors |> flatten_attributes())}
   end
 
+  @impl true
   def handle_event("test-event", params, socket) do
     Logger.debug("test-event params: #{inspect(params)}")
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("toggle-scan", params, socket) do
     Logger.debug("toggle-scan params: #{inspect(params)}")
     {:noreply, socket |> assign(:ble_scan, !socket.assigns.ble_scan)}
   end
 
+  @impl true
   def handle_event("ble-central-state-changed", state, socket) do
     Logger.info("ble-central-state-changed state: #{inspect(state)}")
 

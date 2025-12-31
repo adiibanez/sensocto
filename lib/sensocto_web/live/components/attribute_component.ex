@@ -76,7 +76,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
                 attribute_id: @attribute.attribute_id,
                 samplingrate: @attribute.sampling_rate,
                 timewindow: 10000,
-                timemode: "relative",
                 minvalue: 0,
                 maxvalue: 0,
                 height: 70,
@@ -162,7 +161,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             Lat: {Float.round(@lastvalue.payload.latitude / 1, 3)}, Lon: {Float.round(@lastvalue.payload.longitude / 1, 3)}, {Float.round(@lastvalue.payload.accuracy / 1, 1)}m
           </p>
           <.svelte
-            phx-update="ignore"
             name="Map"
             props={
               %{
@@ -469,7 +467,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
                 attribute_id: @attribute.attribute_id,
                 samplingrate: @attribute.sampling_rate,
                 timewindow: 10000,
-                timemode: "relative",
                 minvalue: 0,
                 maxvalue: 0
               }
@@ -484,6 +481,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  @impl true
   def update(assigns, socket) do
     # Handle partial updates (only lastvalue) vs full mount updates
     # When send_update is called with just id and lastvalue, we only update lastvalue

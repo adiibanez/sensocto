@@ -23,7 +23,7 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
     <button phx-click="test">Test</button>
 
     <.simple_form id="magiclink" for={@form} phx-submit="request_magiclink">
-      <.input type="TextField" field={@form[:email]} label="Email" />
+      <.input type="text" field={@form[:email]} label="Email" />
       <:actions>
         <.button type="submit">Request Magic link</.button>
       </:actions>
@@ -36,7 +36,7 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
       action={~p"/auth/user/magic_link"}
       method="GET"
     >
-      <.input type="TextField" name="token" field={@form[:token]} label="Token" />
+      <.input type="text" name="token" field={@form[:token]} label="Token" />
       <:actions>
         <.button type="submit">Login</.button>
       </:actions>
@@ -61,7 +61,7 @@ defmodule SensoctoWeb.Live.LvnSigninLive do
      |> assign(:token_requested, true)}
   end
 
-  def terminate(reason, state) do
+  def terminate(_reason, _state) do
     Logger.debug("LVN terminated")
   end
 end

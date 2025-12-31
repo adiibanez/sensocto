@@ -16,15 +16,12 @@
     let wasmInitialized = false;
 
     export let id;
-    export let live;
     export let width = 30;
     export let height = 30;
     export let sensor_id;
     export let attribute_id;
     export let samplingrate;
     export let timewindow;
-    export let timemode;
-    export let style;
     export let minvalue;
     export let maxvalue;
     let maxsamples = 1000;

@@ -50,7 +50,7 @@ defmodule Sensocto.Otp.RepoReplicator do
       ) do
     Logger.debug("Received measurement for sensor #{sensor_id}: #{inspect(attribute)}")
 
-    {:ok, datetime} = DateTime.from_unix(timestamp, :milliseconds)
+    {:ok, datetime} = DateTime.from_unix(timestamp, :millisecond)
 
     changeset =
       SensorAttributeData

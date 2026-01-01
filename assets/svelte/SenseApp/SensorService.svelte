@@ -11,11 +11,13 @@
     let stateCallbacks = {
         ready: new Set(),
         disconnected: new Set(),
+        error: new Set(),
     };
 
     export let socket;
 
     let sensorChannels = {};
+    let channelStates = {}; // Track channel states: 'joining', 'joined', 'error', 'closed'
     let channelAttributes = {};
     let messageQueues = {};
     let batchTimeouts = {};
@@ -49,6 +51,18 @@
             }
             return () => stateCallbacks.disconnected.delete(callback);
         },
+        onSocketError: (callback) => {
+            stateCallbacks.error.add(callback);
+            return () => stateCallbacks.error.delete(callback);
+        },
+        getChannelState: (sensorId) => {
+            const fullChannelName = getFullChannelName(sensorId);
+            return channelStates[fullChannelName] || 'unknown';
+        },
+        isChannelReady: (sensorId) => {
+            const fullChannelName = getFullChannelName(sensorId);
+            return channelStates[fullChannelName] === 'joined';
+        },
     });
 
     onMount(() => {
@@ -64,7 +78,17 @@
 
             socket.onClose(() => {
                 socketState = "disconnected";
+                // Mark all channels as closed
+                Object.keys(channelStates).forEach(ch => {
+                    channelStates[ch] = 'closed';
+                });
                 stateCallbacks.disconnected.forEach((cb) => cb());
+            });
+
+            socket.onError((error) => {
+                logger.warn(loggerCtxName, "Socket error", error);
+                socketState = "error";
+                stateCallbacks.error.forEach((cb) => cb(error));
             });
 
             socket.connect();
@@ -143,6 +167,7 @@
             if (sensorChannels[fullChannelName]) {
                 sensorChannels[fullChannelName].leave();
                 delete sensorChannels[fullChannelName];
+                delete channelStates[fullChannelName];
                 delete channelAttributes[fullChannelName];
                 delete messageQueues[fullChannelName];
                 delete batchTimeouts[fullChannelName];
@@ -167,7 +192,13 @@
         },
     ) {
         if (!socket) {
-            logger.warn(loggerCtxName, "socket is null", sensorId);
+            logger.warn(loggerCtxName, "socket is null - cannot setup channel", sensorId);
+            return false;
+        }
+
+        // Check if socket is connected
+        if (!socket.isConnected()) {
+            logger.warn(loggerCtxName, "socket not connected - cannot setup channel", sensorId);
             return false;
         }
 
@@ -190,18 +221,51 @@
             bearer_token: "fake",
         });
 
+        // Track channel state
+        channelStates[fullChannelName] = 'joining';
+
         channel
             .join()
-            .receive("ok", (resp) =>
-                logger.log(loggerCtxName, `Joined ${fullChannelName}`, resp),
-            )
-            .receive("error", (resp) =>
-                logger.log(
+            .receive("ok", (resp) => {
+                channelStates[fullChannelName] = 'joined';
+                logger.log(loggerCtxName, `Joined ${fullChannelName}`, resp);
+                // Flush any messages that were queued while joining
+                if (messageQueues[fullChannelName]?.length > 0) {
+                    logger.log(loggerCtxName, `Flushing ${messageQueues[fullChannelName].length} queued messages for ${fullChannelName}`);
+                    const queuedMessages = [...messageQueues[fullChannelName]];
+                    messageQueues[fullChannelName] = [];
+                    queuedMessages.forEach(msg => {
+                        channel.push("measurement", msg);
+                    });
+                }
+            })
+            .receive("error", (resp) => {
+                channelStates[fullChannelName] = 'error';
+                logger.warn(
                     loggerCtxName,
                     `Error joining ${fullChannelName}`,
                     resp,
-                ),
-            );
+                );
+            })
+            .receive("timeout", () => {
+                channelStates[fullChannelName] = 'timeout';
+                logger.warn(
+                    loggerCtxName,
+                    `Timeout joining ${fullChannelName} - server may be unreachable`,
+                );
+            });
+
+        // Handle channel errors after join
+        channel.onError((err) => {
+            channelStates[fullChannelName] = 'error';
+            logger.warn(loggerCtxName, `Channel error for ${fullChannelName}`, err);
+        });
+
+        // Handle channel close
+        channel.onClose(() => {
+            channelStates[fullChannelName] = 'closed';
+            logger.log(loggerCtxName, `Channel closed: ${fullChannelName}`);
+        });
 
         sensorChannels[fullChannelName] = channel;
         messageQueues[fullChannelName] = [];
@@ -215,16 +279,40 @@
 
     function sendChannelMessage(sensorId, message) {
         let fullChannelName = getFullChannelName(sensorId);
-        console.log(
+        const channel = sensorChannels[fullChannelName];
+        const channelState = channelStates[fullChannelName];
+
+        // Check if channel exists and is in a valid state
+        if (!channel) {
+            logger.warn(loggerCtxName, `Cannot send message - channel not found: ${fullChannelName}`);
+            return false;
+        }
+
+        if (channelState !== 'joined') {
+            logger.warn(
+                loggerCtxName,
+                `Cannot send message - channel not ready: ${fullChannelName}, state: ${channelState}`,
+            );
+            // Queue message for later if channel is still joining
+            if (channelState === 'joining') {
+                if (!messageQueues[fullChannelName]) {
+                    messageQueues[fullChannelName] = [];
+                }
+                messageQueues[fullChannelName].push(message);
+                logger.log(loggerCtxName, `Message queued for ${fullChannelName}, queue size: ${messageQueues[fullChannelName].length}`);
+            }
+            return false;
+        }
+
+        logger.log(
+            loggerCtxName,
             "sendChannelMessage",
             sensorId,
-            sensorChannels.length,
-            sensorChannels,
-            sensorChannels[fullChannelName],
             message,
         );
 
-        sensorChannels[fullChannelName].push("measurement", message);
+        channel.push("measurement", message);
+        return true;
     }
 
     function _sendChannelMessage(sensorId, message) {

@@ -314,7 +314,7 @@ defmodule Sensocto.Simulator.AttributeServer do
     new_attention = AttentionTracker.get_attention_level(sensor_id, state.attribute_id_str)
 
     if new_attention != state.attention_level do
-      Logger.info(
+      Logger.debug(
         "AttributeServer #{sensor_id}/#{state.attribute_id_str} sensor attention changed to #{new_level}, effective: #{new_attention}, batch_window: #{new_batch_window}ms"
       )
     end

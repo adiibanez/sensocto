@@ -14,7 +14,7 @@ connectors:
     sensors:
       person_1:
         sensor_id: "person_1"
-        sensor_name: "Sim_Person1"
+        sensor_name: "Person1"
         attributes:
           # High frequency - ECG waveform (100Hz)
           ecg:

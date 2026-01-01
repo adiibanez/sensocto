@@ -48,6 +48,12 @@ config :sensocto,
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
 
+# Neo4j/Boltx configuration (override in environment configs)
+config :boltx, Bolt,
+  uri: "bolt://localhost:7687",
+  auth: [username: "neo4j", password: "sensocto123"],
+  pool_size: 10
+
 # Simulator configuration (disabled by default)
 config :sensocto, :simulator,
   enabled: false,

@@ -54,7 +54,8 @@ defmodule Sensocto.Simulator.DataGenerator do
     Enum.map(0..(batch_size - 1), fn i ->
       battery_data = Sensocto.Simulator.BatteryState.get_battery_data(sensor_id, config)
       timestamp = now + i * interval_ms
-      delay = if i == 0, do: 0.0, else: 1.0 / sampling_rate
+      # For batch_size 1, we still need the sampling_rate delay since each fetch is one sample
+      delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
 
       %{
         timestamp: timestamp,
@@ -119,7 +120,9 @@ defmodule Sensocto.Simulator.DataGenerator do
     data_lines =
       Enum.map(0..(num_samples - 1), fn i ->
         timestamp = now + i * interval_ms
-        delay = if i == 0, do: 0.0, else: 1.0 / sampling_rate
+        # For batch_size 1, we still need the sampling_rate delay since each fetch is one sample
+        # Only skip delay for the first sample in multi-sample batches
+        delay = if i == 0 and num_samples > 1, do: 0.0, else: 1.0 / sampling_rate
         value = generate_value(sensor_type, config, i, sampling_rate)
         "#{timestamp},#{delay},#{Float.round(value * 1.0, 2)}"
       end)

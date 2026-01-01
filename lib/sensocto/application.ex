@@ -17,6 +17,8 @@ defmodule Sensocto.Application do
       # {NodeJS.Supervisor, [path: LiveSvelte.SSR.NodeJS.server_path(), pool_size: 4]},
       SensoctoWeb.Telemetry,
       Sensocto.Repo,
+      # Neo4j connection via Boltx (configured in config/config.exs)
+      {Boltx, Application.get_env(:boltx, Bolt)},
       Sensocto.Otp.BleConnectorGenServer,
       # realitykit
       {SensorsStateAgent, name: SensorsStateAgent},

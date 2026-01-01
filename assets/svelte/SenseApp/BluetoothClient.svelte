@@ -9,15 +9,54 @@
   import { logger } from "../logger_svelte.js";
 
   import { BluetoothUtils } from "../bluetooth-utils.js";
+  import { bleDevices, bleCharacteristics, bleValues } from "./stores.js";
 
   let sensorService = getContext("sensorService");
   let loggerCtxName = "BluetoothClient";
 
-  export let devices = [];
-  export let deviceCharacteristics = {};
-  export let characteristicValues = {};
+  // Use stores for persistent state across LiveView navigations
+  // Local reactive variables that sync with stores
+  let devices = [];
+  let deviceCharacteristics = {};
+  let characteristicValues = {};
+
+  // Subscribe to stores
+  const unsubDevices = bleDevices.subscribe(value => devices = value);
+  const unsubCharacteristics = bleCharacteristics.subscribe(value => deviceCharacteristics = value);
+  const unsubValues = bleValues.subscribe(value => characteristicValues = value);
 
   const dispatch = createEventDispatcher();
+
+  // On mount, restore connections and re-register attributes for existing devices
+  onMount(() => {
+    const globalDevices = bleDevices.getGlobal();
+    if (globalDevices.length > 0) {
+      logger.log(loggerCtxName, "Restoring BLE state from previous session", globalDevices.length, "devices");
+
+      // Re-register attributes for all connected devices
+      globalDevices.forEach(device => {
+        if (device.gatt?.connected) {
+          const deviceId = getUniqueDeviceId(device);
+          const characteristics = bleCharacteristics.getGlobal()[deviceId] || [];
+
+          // Re-register the sensor channel
+          sensorService.setupChannel(deviceId);
+
+          // Re-register each characteristic as an attribute
+          characteristics.forEach(characteristic => {
+            const normalizedType = BluetoothUtils.normalizedType(characteristic.uuid);
+            sensorService.registerAttribute(deviceId, {
+              attribute_id: normalizedType,
+              attribute_type: normalizedType,
+              sampling_rate: 1,
+            });
+          });
+
+          logger.log(loggerCtxName, "Restored device", deviceId, "with", characteristics.length, "characteristics");
+        }
+      });
+    }
+  });
 
   async function requestLEScan() {
     navigator.bluetooth
@@ -90,7 +129,7 @@
         keepRepeatedDevices: true, // Keep receiving advertisements from the same device
       })
       .then((device) => {
-        devices = [...devices, device];
+        bleDevices.add(device);
         device.addEventListener("gattserverdisconnected", onDisconnected);
 
         const sensorIdentifier = getUniqueDeviceId(device);
@@ -153,11 +192,16 @@
   }
 
   function handleCharacteristic(characteristic) {
+    // Use normalized type for both attribute_id and attribute_type
+    // This ensures human-readable names are displayed in the UI
+    // and matches Elixir's AttributeType for proper rendering
+    const normalizedType = BluetoothUtils.normalizedType(characteristic.uuid);
+
     sensorService.registerAttribute(
       getUniqueDeviceId(characteristic.service.device),
       {
-        attribute_id: characteristic.uuid,
-        attribute_type: BluetoothUtils.name(characteristic.uuid),
+        attribute_id: normalizedType,
+        attribute_type: normalizedType,
         sampling_rate: 1,
       }
     );
@@ -221,25 +265,17 @@
             handleCharacteristicChanged
           );
 
-          if (
-            deviceCharacteristics[
-              getUniqueDeviceId(characteristic.service.device)
-            ] == undefined
-          ) {
-            deviceCharacteristics[
-              getUniqueDeviceId(characteristic.service.device)
-            ] = [];
-          }
-          deviceCharacteristics[
-            getUniqueDeviceId(characteristic.service.device)
-          ].push(characteristic);
+          // Update the store with the new characteristic
+          const deviceId = getUniqueDeviceId(characteristic.service.device);
+          bleCharacteristics.update(current => {
+            const existing = current[deviceId] || [];
+            return { ...current, [deviceId]: [...existing, characteristic] };
+          });
 
           logger.log(
             loggerCtxName,
             "deviceCharacteristics",
-            deviceCharacteristics[
-              getUniqueDeviceId(characteristic.service.device)
-            ]
+            deviceCharacteristics[deviceId]
           );
           logger.log(
             loggerCtxName,
@@ -324,11 +360,14 @@
             valueObj.getInt8(0)
           );
           characteristicValue = valueObj.getInt8(0);
-          characteristicValues[characteristic.uuid] = characteristicValue;
+          bleValues.setValue(characteristic.uuid, characteristicValue);
+
+          // Use normalized type for attribute_id to match what was registered
+          const normalizedAttrId = BluetoothUtils.normalizedType(characteristic.uuid);
 
           var payLoad = {
             payload: characteristicValue,
-            attribute_id: characteristic.uuid,
+            attribute_id: normalizedAttrId,
             timestamp: Math.round(new Date().getTime()),
           };
 
@@ -394,9 +433,12 @@
     if (sensorValue !== null) {
       logger.log(loggerCtxName, "sensorValue", event.target.uuid, sensorValue);
 
+      // Use normalized type for attribute_id to match what was registered
+      const normalizedAttrId = BluetoothUtils.normalizedType(event.target.uuid);
+
       var payLoad = {
         payload: sensorValue,
-        attribute_id: event.target.uuid,
+        attribute_id: normalizedAttrId,
         timestamp: Math.round(new Date().getTime()),
       };
       /*live.pushEvent("ingest", );*/
@@ -412,7 +454,7 @@
         //logger.log(loggerCtxName, "no change", event.target.uuid, sensorValue);
       }
 
-      characteristicValues[event.target.uuid] = sensorValue;
+      bleValues.setValue(event.target.uuid, sensorValue);
     }
   }
 
@@ -428,20 +470,18 @@
   }
 
   function ensureDeviceCleanup(device) {
+    const deviceId = getUniqueDeviceId(device);
     logger.log(
       loggerCtxName,
       "Device cleanup",
       device?.id,
-      getUniqueDeviceId(device),
-      Array.isArray(deviceCharacteristics[getUniqueDeviceId(device)])
+      deviceId,
+      Array.isArray(deviceCharacteristics[deviceId])
     );
 
     try {
-      if (
-        getUniqueDeviceId(device) &&
-        Array.isArray(deviceCharacteristics[getUniqueDeviceId(device)])
-      ) {
-        deviceCharacteristics[getUniqueDeviceId(device)].forEach(
+      if (deviceId && Array.isArray(deviceCharacteristics[deviceId])) {
+        deviceCharacteristics[deviceId].forEach(
           function (characteristic) {
             if (characteristic) {
               characteristic.removeEventListener(
@@ -456,14 +496,18 @@
             }
           }
         );
-        delete deviceCharacteristics[getUniqueDeviceId(device)];
+        // Remove from store
+        bleCharacteristics.update(current => {
+          const { [deviceId]: removed, ...rest } = current;
+          return rest;
+        });
       }
 
-      var channelName = getUniqueDeviceId(device);
+      var channelName = deviceId;
       logger.log(loggerCtxName, "Leaving channel", channelName);
       sensorService.leaveChannel(channelName);
 
-      devices = devices.filter((d) => d.id !== device.id);
+      bleDevices.remove(device);
       logger.log(
         loggerCtxName,
         "Devices after cleanup: ",
@@ -529,7 +573,14 @@
   }
 
   onDestroy(() => {
-    ensureDeviceCleanup();
+    // Unsubscribe from stores but DO NOT clean up devices
+    // We want them to persist across LiveView navigations
+    unsubDevices();
+    unsubCharacteristics();
+    unsubValues();
+
+    // Only log that we're unmounting - devices stay connected
+    logger.log(loggerCtxName, "Component unmounting, BLE connections preserved", devices.length, "devices");
   });
 </script>
 
@@ -541,30 +592,14 @@
 
 {#if "bluetooth" in navigator}
   <button on:click={scanDevices} class="btn btn-blue text-xs">Scan BLE</button>
-  <ul class="py-3">
+  <ul class="flex gap-2">
     {#each devices as device}
-      <li>
-        <strong alt="ID: {getUniqueDeviceId(device)}"
-          >{getUniqueDeviceName(device)}</strong
-        >
-        <ul>
-          {#if deviceCharacteristics[getUniqueDeviceId(device)]}
-            {#each deviceCharacteristics[getUniqueDeviceId(device)] as characteristic}
-              <li class="text-xs">
-                <div data-tooltip={characteristic.uuid}>
-                  <p>Name: {BluetoothUtils.name(characteristic.uuid)}</p>
-                  <p>Value: {characteristicValues[characteristic.uuid]}</p>
-                </div>
-              </li>
-            {/each}
-          {:else}
-            <li>No attributes</li>
-          {/if}
-        </ul>
+      <li class="text-xs">
         <button
-          class="btn btn-blue text-xs"
-          on:click={() => disconnectBLEDevice(device)}>Bye</button
-        >
+          class="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
+          on:click={() => disconnectBLEDevice(device)}
+          title="Click to disconnect"
+        >{getUniqueDeviceName(device)} ✕</button>
       </li>
     {/each}
   </ul>

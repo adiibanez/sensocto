@@ -141,6 +141,70 @@ class BluetoothUtils {
         "00002a38-0000-1000-8000-00805f9b34fb": ["bodySensorLocation", DataType.uint8] //short UUID mock for body temperature
     };
 
+    // Mapping from BLE characteristic names to normalized sensor attribute types
+    // These match Elixir's Sensocto.Types.AttributeType for proper backend rendering
+    static bleTypeToSensorType = {
+        // Heart/Health
+        "heartRateMeasurement": "heartrate",
+        "bodySensorLocation": "body_location",
+
+        // Device
+        "batteryLevel": "battery",
+        "batteryService": "battery",
+        "deviceName": "device_name",
+        "firmwareRevisionString": "firmware",
+        "hardwareRevisionString": "hardware",
+        "softwareRevisionString": "software",
+        "manufacturerNameString": "manufacturer",
+        "modelNumberString": "model",
+        "serialNumberString": "serial",
+
+        // Environment
+        "temperature": "temperature",
+        "temperatureCharacteristic": "temperature",
+        "temperatureCelsius": "temperature",
+        "temperatureFahrenheit": "temperature",
+        "humidity": "humidity",
+        "humidityCharacteristic": "humidity",
+        "pressure": "pressure",
+        "pressureCharacteristic": "pressure",
+        "breathingPressure": "pressure",
+        "altitude": "altitude",
+
+        // Motion/IMU - Thingy:52 specific
+        "quaternionCharacteristic": "imu",
+        "rawDataCharacteristic": "imu",
+        "eulerAngleCharacteristic": "imu",
+        "rotationMatrixCharacteristic": "imu",
+        "headingCharacteristic": "heading",
+        "gravityVectorCharacteristic": "gravity",
+        "stepCounterCharacteristic": "steps",
+        "orientationCharacteristic": "orientation",
+        "tapCharacteristic": "tap",
+
+        // Air quality
+        "airQualityCharacteristic": "air_quality",
+        "colorCharacteristic": "color",
+
+        // UI/Controls
+        "buttonCharacteristic": "button",
+        "ledCharacteristic": "led",
+
+        // Puffer sensor
+        "pufferClassification": "classification",
+        "pufferImuRawdata": "imu",
+
+        // FlexSense
+        "flexsense": "flex",
+    };
+
+    // Get a normalized attribute type name from UUID
+    // Returns a name that matches Elixir's AttributeType for proper rendering
+    static normalizedType(uuid) {
+        const name = BluetoothUtils.name(uuid);
+        return BluetoothUtils.bleTypeToSensorType[name] || name;
+    }
+
     static name(uuid) {
         const uuidString = uuid.toLowerCase();
         const expandedUuidString = BluetoothUtils.expandShortUUID(uuidString);
@@ -269,7 +333,7 @@ class BluetoothUtils {
             }
             const heartRateValue = data.getUint8(1); // Extract uint8
             console.log(`Decoded uint8 heartrate: ${heartRateValue}`);
-            return heartRateValue.toString();
+            return heartRateValue; // Return as number, not string
         } else { // uint16 format
             if (data.byteLength < 3) {
                 console.log("Data is too short for uint16 heartrate (flags set, but no 16-bit value)");
@@ -278,7 +342,7 @@ class BluetoothUtils {
             const heartRateValue = data.getUint16(1, true); // Extract UInt16 (little endian)
 
             console.log(`Decoded uint16 heartrate: ${heartRateValue}`);
-            return heartRateValue.toString();
+            return heartRateValue; // Return as number, not string
         }
     }
 

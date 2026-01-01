@@ -17,7 +17,7 @@ connectors:
       # Person 1: ECG (high) + Temperature (low) + Battery
       sg_person_1:
         sensor_id: "sg_person_1"
-        sensor_name: "Sim_Person1"
+        sensor_name: "Person1"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -52,7 +52,7 @@ connectors:
       # Person 2: Heartrate (low) + SpO2 (low) + Battery
       sg_person_2:
         sensor_id: "sg_person_2"
-        sensor_name: "Sim_Person2"
+        sensor_name: "Person2"
         attributes:
           heartrate:
             attribute_id: "heartrate"
@@ -87,7 +87,7 @@ connectors:
       # Person 3: ECG (high) + Blood Pressure (low) + Battery
       sg_person_3:
         sensor_id: "sg_person_3"
-        sensor_name: "Sim_Person3"
+        sensor_name: "Person3"
         attributes:
           ecg:
             attribute_id: "ecg"
@@ -122,7 +122,7 @@ connectors:
       # Person 4: Accelerometer (high) + GPS (low) + Battery
       sg_person_4:
         sensor_id: "sg_person_4"
-        sensor_name: "Sim_Person4"
+        sensor_name: "Person4"
         attributes:
           accelerometer_z:
             attribute_id: "accelerometer_z"
@@ -155,7 +155,7 @@ connectors:
       # Person 5: Heartrate (low) + Temperature (low) + Battery
       sg_person_5:
         sensor_id: "sg_person_5"
-        sensor_name: "Sim_Person5"
+        sensor_name: "Person5"
         attributes:
           heartrate:
             attribute_id: "heartrate"

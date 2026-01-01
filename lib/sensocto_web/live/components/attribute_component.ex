@@ -38,7 +38,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <Heroicons.icon name="heart" type="solid" class="h-3 w-3 animate-pulse" />
         active
       </span>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -194,7 +194,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     >
       <span class="text-gray-400">{@attribute_id}</span>
       <span :if={@lastvalue} class="text-blue-400">active</span>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -276,7 +276,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           class={["h-3 w-3", if(@battery_info.charging == "yes", do: "text-yellow-400", else: "text-gray-500")]}
         />
       </div>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -364,7 +364,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")]}>2</div>
         <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")]}>3</div>
       </div>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -450,9 +450,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         {String.replace(to_string(@attribute_id), "_", " ")}
       </span>
       <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
-        {round(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">bpm</span>
+        {safe_round(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">bpm</span>
       </span>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -495,7 +495,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
               socket={@socket}
             />
             <div class="text-center">
-              <span class="text-3xl font-bold text-white">{round(@lastvalue.payload)}</span>
+              <span class="text-3xl font-bold text-white">{safe_round(@lastvalue.payload)}</span>
               <span class="text-sm text-gray-400 ml-1">bpm</span>
             </div>
           </div>
@@ -504,6 +504,79 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
+
+  # Body sensor location - show human-readable location name
+  # BLE Body Sensor Location characteristic (0x2A38) standard values
+  @body_sensor_locations %{
+    0 => "Other",
+    1 => "Chest",
+    2 => "Wrist",
+    3 => "Finger",
+    4 => "Hand",
+    5 => "Ear Lobe",
+    6 => "Foot"
+  }
+
+  @impl true
+  def render(%{:attribute_type => "body_location", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="user" type="outline" class="h-3 w-3" />
+        Location
+      </span>
+      <span :if={@lastvalue} class="text-white">
+        {body_location_name(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "body_location"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Sensor Location"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center gap-2 py-2">
+          <Heroicons.icon name="user" type="outline" class="h-5 w-5 text-blue-400" />
+          <span class="text-lg text-white">{body_location_name(@lastvalue.payload)}</span>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp body_location_name(value) when is_integer(value) do
+    Map.get(@body_sensor_locations, value, "Unknown (#{value})")
+  end
+  defp body_location_name(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {num, _} -> body_location_name(num)
+      :error -> "Unknown"
+    end
+  end
+  defp body_location_name(_), do: "Unknown"
 
   # Summary mode for default/generic attributes (sparkline types)
   @impl true
@@ -518,7 +591,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       <span :if={@lastvalue} class="text-white font-mono">
         {format_payload(@lastvalue.payload)}
       </span>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -619,6 +692,32 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp format_payload(payload) when is_map(payload), do: "..."
   defp format_payload(payload) when is_binary(payload), do: payload
   defp format_payload(_), do: "--"
+
+  # Helper to safely round payload values (handles both numbers and strings)
+  defp safe_round(payload) when is_number(payload), do: round(payload)
+  defp safe_round(payload) when is_binary(payload) do
+    case Integer.parse(payload) do
+      {num, _} -> num
+      :error ->
+        case Float.parse(payload) do
+          {num, _} -> round(num)
+          :error -> 0
+        end
+    end
+  end
+  defp safe_round(_), do: 0
+
+  # Small inline loading spinner for summary mode
+  defp loading_spinner(assigns) do
+    ~H"""
+    <span class="inline-flex items-center">
+      <svg class="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+    </span>
+    """
+  end
 
   defp container(assigns) do
     assigns =

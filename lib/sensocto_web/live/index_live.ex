@@ -10,8 +10,10 @@ defmodule SensoctoWeb.IndexLive do
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLive
   alias Sensocto.Rooms
+  alias Sensocto.AttentionTracker
 
-  @lobby_preview_limit 20
+  @lobby_preview_options [10, 20, 30]
+  @default_lobby_limit 10
 
   @impl true
   @spec mount(any(), any(), any()) :: {:ok, any()}
@@ -25,9 +27,9 @@ defmodule SensoctoWeb.IndexLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
 
-    # Limit sensors for lobby preview - extract stable list of sensor IDs
-    lobby_sensors = sensors |> Enum.take(@lobby_preview_limit) |> Enum.into(%{})
-    lobby_sensor_ids = lobby_sensors |> Map.keys() |> Enum.sort()
+    # Get lobby preview limit with attention-based sorting
+    lobby_limit = @default_lobby_limit
+    lobby_sensor_ids = get_sorted_sensor_ids(sensors, lobby_limit)
 
     # Fetch rooms
     my_rooms = Rooms.list_user_rooms(user)
@@ -44,8 +46,9 @@ defmodule SensoctoWeb.IndexLive do
         sensors_online: %{},
         sensors_offline: %{},
         sensors: sensors,
-        lobby_sensors: lobby_sensors,
         lobby_sensor_ids: lobby_sensor_ids,
+        lobby_limit: lobby_limit,
+        lobby_limit_options: @lobby_preview_options,
         my_rooms: my_rooms,
         public_rooms: public_rooms_filtered,
         global_view_mode: :summary
@@ -92,18 +95,16 @@ defmodule SensoctoWeb.IndexLive do
     # Fetch full sensor state asynchronously - this won't block child mounts
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
-    lobby_sensors = sensors |> Enum.take(@lobby_preview_limit) |> Enum.into(%{})
+    lobby_limit = socket.assigns.lobby_limit
 
-    # Only update lobby_sensor_ids if the set of sensors has changed
-    # This prevents child LiveViews from being re-mounted when only sensor data changes
-    new_sensor_ids = lobby_sensors |> Map.keys() |> Enum.sort()
+    # Get sorted sensor IDs with attention-based sorting
+    new_sensor_ids = get_sorted_sensor_ids(sensors, lobby_limit)
     current_sensor_ids = socket.assigns.lobby_sensor_ids
 
     updated_socket =
       socket
       |> assign(:sensors_online_count, sensors_count)
       |> assign(:sensors, sensors)
-      |> assign(:lobby_sensors, lobby_sensors)
 
     # Only assign new sensor_ids if they actually changed
     updated_socket =
@@ -145,9 +146,37 @@ defmodule SensoctoWeb.IndexLive do
   end
 
   @impl true
+  def handle_event("set_lobby_limit", %{"limit" => limit_str}, socket) do
+    limit = String.to_integer(limit_str)
+    sensors = socket.assigns.sensors
+    new_sensor_ids = get_sorted_sensor_ids(sensors, limit)
+
+    {:noreply,
+     socket
+     |> assign(:lobby_limit, limit)
+     |> assign(:lobby_sensor_ids, new_sensor_ids)}
+  end
+
+  @impl true
   def handle_event(type, params, socket) do
     Logger.debug("Unknown event: #{type} #{inspect(params)}")
     {:noreply, socket}
+  end
+
+  # Sort sensors by attention level (highest first) and take the limit
+  defp get_sorted_sensor_ids(sensors, limit) do
+    attention_priority = %{high: 4, medium: 3, low: 2, none: 1}
+
+    sensors
+    |> Map.keys()
+    |> Enum.map(fn sensor_id ->
+      attention_level = AttentionTracker.get_sensor_attention_level(sensor_id)
+      priority = Map.get(attention_priority, attention_level, 0)
+      {sensor_id, priority}
+    end)
+    |> Enum.sort_by(fn {sensor_id, priority} -> {-priority, sensor_id} end)
+    |> Enum.take(limit)
+    |> Enum.map(fn {sensor_id, _priority} -> sensor_id end)
   end
 
   attr :room, :map, required: true

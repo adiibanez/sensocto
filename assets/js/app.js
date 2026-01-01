@@ -440,12 +440,11 @@ Hooks.PulsatingLogo = {
       this.beatInterval = null;
     }
 
-    if (multiplier <= 1.0) {
-      return;
-    }
-
-    const baseInterval = 2000;
-    const msPerBeat = baseInterval / multiplier;
+    // Always pulsate, but at different rates based on load
+    // When multiplier <= 1.0, pulsate very slowly (every 10 seconds)
+    // When multiplier > 1.0, pulsate faster based on load
+    const baseInterval = multiplier <= 1.0 ? 10000 : 2000;
+    const msPerBeat = multiplier <= 1.0 ? baseInterval : baseInterval / multiplier;
 
     this.triggerPulse();
 

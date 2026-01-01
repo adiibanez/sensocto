@@ -1,23 +1,31 @@
 # Small Group Study - 5 persons with 2 sensors each (mixed frequency)
 # Use case: Small study group, clinical trial
+#
+# Realistic Sampling Rates:
+# - ECG: 100Hz (batch_size: 100, batch_window: 1000ms)
+# - Accelerometer: 50Hz (batch_size: 50, batch_window: 1000ms)
+# - Heartrate/SpO2: 0.2Hz (every 5 seconds)
+# - GPS/Geolocation: 0.2Hz (every 5 seconds)
+# - Temperature/Blood Pressure: 0.017Hz (once per minute)
+# - Battery: 0.1Hz (every 10 seconds)
 
 connectors:
   scenario_small_group:
     connector_id: "scenario_small_group"
     connector_name: "Small_Group_Study"
     sensors:
-      # Person 1: ECG (high) + Temperature (low)
+      # Person 1: ECG (high) + Temperature (low) + Battery
       sg_person_1:
         sensor_id: "sg_person_1"
-        sensor_name: "Person1"
+        sensor_name: "Sim_Person1"
         attributes:
           ecg:
             attribute_id: "ecg"
             sensor_type: "ecg"
-            batch_size: 50
-            batch_window: 500
+            batch_size: 100
+            batch_window: 1000
             duration: 0
-            sampling_rate: 50
+            sampling_rate: 100
             heart_rate: 68
             dummy_data: true
           temperature:
@@ -30,44 +38,64 @@ connectors:
             min_value: 36.3
             max_value: 36.9
             dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 95
+            dummy_data: true
 
-      # Person 2: Heartrate (medium) + SpO2 (medium)
+      # Person 2: Heartrate (low) + SpO2 (low) + Battery
       sg_person_2:
         sensor_id: "sg_person_2"
-        sensor_name: "Person2"
+        sensor_name: "Sim_Person2"
         attributes:
           heartrate:
             attribute_id: "heartrate"
             sensor_type: "heartrate"
-            batch_size: 5
-            batch_window: 1000
+            batch_size: 1
+            batch_window: 5000
             duration: 0
-            sampling_rate: 1
+            sampling_rate: 0.2
             heart_rate: 75
             dummy_data: true
           spo2:
             attribute_id: "spo2"
             sensor_type: "spo2"
-            batch_size: 5
-            batch_window: 1000
+            batch_size: 1
+            batch_window: 5000
             duration: 0
-            sampling_rate: 1
+            sampling_rate: 0.2
             min_value: 94
             max_value: 98
             dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 45
+            max_value: 70
+            dummy_data: true
 
-      # Person 3: ECG (high) + Blood Pressure (low)
+      # Person 3: ECG (high) + Blood Pressure (low) + Battery
       sg_person_3:
         sensor_id: "sg_person_3"
-        sensor_name: "Person3"
+        sensor_name: "Sim_Person3"
         attributes:
           ecg:
             attribute_id: "ecg"
             sensor_type: "ecg"
-            batch_size: 50
-            batch_window: 500
+            batch_size: 100
+            batch_window: 1000
             duration: 0
-            sampling_rate: 50
+            sampling_rate: 100
             heart_rate: 82
             dummy_data: true
           blood_pressure_sys:
@@ -80,17 +108,27 @@ connectors:
             min_value: 125
             max_value: 135
             dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 25
+            max_value: 50
+            dummy_data: true
 
-      # Person 4: Accelerometer (high) + GPS (medium)
+      # Person 4: Accelerometer (high) + GPS (low) + Battery
       sg_person_4:
         sensor_id: "sg_person_4"
-        sensor_name: "Person4"
+        sensor_name: "Sim_Person4"
         attributes:
           accelerometer_z:
             attribute_id: "accelerometer_z"
             sensor_type: "accelerometer_z"
             batch_size: 50
-            batch_window: 500
+            batch_window: 1000
             duration: 0
             sampling_rate: 50
             dummy_data: true
@@ -98,24 +136,34 @@ connectors:
             attribute_id: "latitude"
             sensor_type: "geolocation_lat"
             batch_size: 1
-            batch_window: 1000
+            batch_window: 5000
             duration: 0
-            sampling_rate: 1
+            sampling_rate: 0.2
             base_lat: 52.52
             dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 85
+            dummy_data: true
 
-      # Person 5: Heartrate (medium) + Temperature (low)
+      # Person 5: Heartrate (low) + Temperature (low) + Battery
       sg_person_5:
         sensor_id: "sg_person_5"
-        sensor_name: "Person5"
+        sensor_name: "Sim_Person5"
         attributes:
           heartrate:
             attribute_id: "heartrate"
             sensor_type: "heartrate"
-            batch_size: 5
-            batch_window: 1000
+            batch_size: 1
+            batch_window: 5000
             duration: 0
-            sampling_rate: 1
+            sampling_rate: 0.2
             heart_rate: 70
             dummy_data: true
           temperature:
@@ -127,4 +175,14 @@ connectors:
             sampling_rate: 0.017
             min_value: 36.5
             max_value: 37.1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 100
             dummy_data: true

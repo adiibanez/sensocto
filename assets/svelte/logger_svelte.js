@@ -28,7 +28,13 @@ export function log(componentName, message, ...args) {
     }
 }
 
+export function warn(componentName, message, ...args) {
+    // Always show warnings
+    console.warn(`[${componentName}]: ${message}`, ...args);
+}
+
 export const logger = {
     setLogging,
     log,
+    warn,
 };

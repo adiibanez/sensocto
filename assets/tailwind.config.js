@@ -8,11 +8,17 @@ const path = require("path")
 module.exports = {
   content: [
     "./js/**/*.js",
+    "./css/**/*.css",
     "../lib/sensocto_web.ex",
     "../lib/sensocto_web/**/*.*ex",
     "../deps/ash_authentication_phoenix/**/*.*ex",
     "../deps/daisy_ui_components/**/*.*ex",
     // "../deps/live_ex_webrtc/**/*.*ex"
+  ],
+  safelist: [
+    // Ensure pulsating logo classes are never purged (used by JS hook)
+    'pulsating-logo',
+    'pulsing',
   ],
   //purge: [
   //"../lib/sensocto_web/**/*.*ex",

@@ -15,6 +15,8 @@ defmodule SensoctoWeb.IndexLive do
   @lobby_preview_options [10, 20, 30]
   @default_lobby_limit 10
 
+  @attention_debounce_ms 200
+
   @impl true
   @spec mount(any(), any(), any()) :: {:ok, any()}
   def mount(_params, _session, socket) do
@@ -22,6 +24,7 @@ defmodule SensoctoWeb.IndexLive do
 
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
 
     user = socket.assigns.current_user
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
@@ -51,7 +54,8 @@ defmodule SensoctoWeb.IndexLive do
         lobby_limit_options: @lobby_preview_options,
         my_rooms: my_rooms,
         public_rooms: public_rooms_filtered,
-        global_view_mode: :summary
+        global_view_mode: :summary,
+        attention_debounce_ref: nil
       )
 
     :telemetry.execute(
@@ -127,6 +131,37 @@ defmodule SensoctoWeb.IndexLive do
   @impl true
   def handle_info({:trigger_parent_flash, message}, socket) do
     {:noreply, put_flash(socket, :info, message)}
+  end
+
+  # Handle attention changes from any sensor - debounce to avoid excessive re-sorting
+  @impl true
+  def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do
+    # Cancel any pending debounce timer
+    if socket.assigns.attention_debounce_ref do
+      Process.cancel_timer(socket.assigns.attention_debounce_ref)
+    end
+
+    # Schedule debounced resort
+    ref = Process.send_after(self(), :resort_lobby_by_attention, @attention_debounce_ms)
+    {:noreply, assign(socket, :attention_debounce_ref, ref)}
+  end
+
+  # Perform the actual resort after debounce period
+  @impl true
+  def handle_info(:resort_lobby_by_attention, socket) do
+    sensors = socket.assigns.sensors
+    lobby_limit = socket.assigns.lobby_limit
+    new_sensor_ids = get_sorted_sensor_ids(sensors, lobby_limit)
+    current_sensor_ids = socket.assigns.lobby_sensor_ids
+
+    updated_socket =
+      if new_sensor_ids != current_sensor_ids do
+        assign(socket, :lobby_sensor_ids, new_sensor_ids)
+      else
+        socket
+      end
+
+    {:noreply, assign(updated_socket, :attention_debounce_ref, nil)}
   end
 
   @impl true

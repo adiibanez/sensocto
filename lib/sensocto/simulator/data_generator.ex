@@ -13,26 +13,58 @@ defmodule Sensocto.Simulator.DataGenerator do
   """
   def fetch_sensor_data(config) do
     try do
-      result =
-        case config[:dummy_data] do
-          true -> {:ok, fetch_fake_sensor_data(config)}
-          _ -> fetch_python_data(config)
+      sensor_type = config[:sensor_type] || "generic"
+
+      # Battery uses special handling for structured payload
+      if sensor_type == "battery" do
+        {:ok, fetch_battery_data(config)}
+      else
+        result =
+          case config[:dummy_data] do
+            true -> {:ok, fetch_fake_sensor_data(config)}
+            _ -> fetch_python_data(config)
+          end
+
+        case result do
+          {:ok, csv_output} ->
+            data = parse_csv_output(csv_output)
+            {:ok, data}
+
+          {:error, reason} ->
+            Logger.warning("Python data fetch failed, using fake data: #{inspect(reason)}")
+            {:ok, parse_csv_output(fetch_fake_sensor_data(config))}
         end
-
-      case result do
-        {:ok, csv_output} ->
-          data = parse_csv_output(csv_output)
-          {:ok, data}
-
-        {:error, reason} ->
-          Logger.warning("Python data fetch failed, using fake data: #{inspect(reason)}")
-          {:ok, parse_csv_output(fetch_fake_sensor_data(config))}
       end
     rescue
       e ->
         Logger.error("Error fetching sensor data: #{inspect(e)}")
         {:ok, parse_csv_output(fetch_fake_sensor_data(config))}
     end
+  end
+
+  # Special handler for battery data that includes charging status in payload
+  defp fetch_battery_data(config) do
+    sensor_id = config[:sensor_id] || "unknown"
+    batch_size = config[:batch_size] || 1
+    sampling_rate = max(config[:sampling_rate] || 0.1, 0.01)
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+
+    Enum.map(0..(batch_size - 1), fn i ->
+      battery_data = Sensocto.Simulator.BatteryState.get_battery_data(sensor_id, config)
+      timestamp = now + i * interval_ms
+      delay = if i == 0, do: 0.0, else: 1.0 / sampling_rate
+
+      %{
+        timestamp: timestamp,
+        delay: delay,
+        payload: %{
+          level: battery_data.level,
+          charging: battery_data.charging
+        }
+      }
+    end)
   end
 
   defp fetch_python_data(config) do
@@ -89,7 +121,7 @@ defmodule Sensocto.Simulator.DataGenerator do
         timestamp = now + i * interval_ms
         delay = if i == 0, do: 0.0, else: 1.0 / sampling_rate
         value = generate_value(sensor_type, config, i, sampling_rate)
-        "#{timestamp},#{delay},#{Float.round(value, 2)}"
+        "#{timestamp},#{delay},#{Float.round(value * 1.0, 2)}"
       end)
 
     [header | data_lines] |> Enum.join("\n")
@@ -206,13 +238,15 @@ defmodule Sensocto.Simulator.DataGenerator do
     max(20, base + variation + noise + spike)
   end
 
-  # Battery level (percentage) - very slow drain
-  defp generate_value("battery", config, i, _sampling_rate) do
-    initial = config[:initial_level] || 100.0
-    drain_rate = config[:drain_rate] || 0.001
-    # Slowly decreasing with small random variations
-    level = initial - i * drain_rate + (:rand.uniform() - 0.5) * 0.1
-    max(0, min(100, level))
+  # Battery level (percentage) - uses stateful BatteryState for realistic simulation
+  defp generate_value("battery", config, _i, _sampling_rate) do
+    sensor_id = config[:sensor_id] || "unknown"
+
+    # Get battery data from stateful manager (includes charging state)
+    battery_data = Sensocto.Simulator.BatteryState.get_battery_data(sensor_id, config)
+
+    # Return just the level - charging status is handled separately
+    battery_data.level * 1.0
   end
 
   # Generic sensor with min/max range

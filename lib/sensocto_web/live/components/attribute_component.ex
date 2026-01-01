@@ -112,12 +112,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           </span>
           <div class="flex items-center gap-2">
             <a
-              href={"https://www.openstreetmap.org/?mlat=#{@lastvalue.payload.latitude}&mlon=#{@lastvalue.payload.longitude}&zoom=15"}
+              href={"https://earth.google.com/web/@#{@lastvalue.payload.latitude},#{@lastvalue.payload.longitude},0a,1000d,35y,0h,0t,0r"}
               target="_blank"
               class="text-blue-400 hover:text-blue-300 flex items-center gap-1"
-              title="Open in OpenStreetMap"
+              title="Open in Google Earth"
             >
-              <Heroicons.icon name="arrow-top-right-on-square" type="outline" class="h-3 w-3" />
+              <Heroicons.icon name="globe-alt" type="outline" class="h-3 w-3" />
             </a>
             <button
               class="text-blue-400 hover:text-blue-300"
@@ -255,16 +255,25 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     >
       <span class="text-white">{@attribute_id}</span>
       <div :if={@lastvalue} class="flex items-center gap-1">
-        <span class={[
-          if(@battery_info.level < 20, do: "text-red-400", else: if(@battery_info.level < 50, do: "text-yellow-400", else: "text-white"))
-        ]}>
+        <span class="text-white text-[10px]">
           {Float.round(@battery_info.level, 0)}%
         </span>
+        <meter
+          id={"fuel_summary_#{@sensor_id}_#{@attribute_id}"}
+          min="0"
+          max="100"
+          low="33"
+          high="66"
+          optimum="80"
+          value={@battery_info.level}
+          class="h-3 w-8"
+        >
+        </meter>
         <Heroicons.icon
-          :if={@battery_info.charging == "yes"}
-          name="bolt"
-          type="solid"
-          class="h-3 w-3 text-yellow-400"
+          :if={@battery_info.charging != nil}
+          name={if @battery_info.charging == "yes", do: "bolt", else: "bolt-slash"}
+          type={if @battery_info.charging == "yes", do: "solid", else: "outline"}
+          class={["h-3 w-3", if(@battery_info.charging == "yes", do: "text-yellow-400", else: "text-gray-500")]}
         />
       </div>
       <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>

@@ -22,6 +22,9 @@ defmodule Sensocto.Simulator.Supervisor do
       # Registry for simulator processes
       {Registry, keys: :unique, name: Sensocto.Simulator.Registry},
 
+      # Battery state manager (for realistic battery simulation)
+      Sensocto.Simulator.BatteryState,
+
       # Data server pool (5 workers for parallel data generation)
       Supervisor.child_spec({Sensocto.Simulator.DataServer, 1}, id: :data_server_1),
       Supervisor.child_spec({Sensocto.Simulator.DataServer, 2}, id: :data_server_2),

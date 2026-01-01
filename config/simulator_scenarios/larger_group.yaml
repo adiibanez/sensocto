@@ -1,0 +1,1717 @@
+# Larger Group Study - 50 persons for stress testing
+# 10 persons have ECG (high frequency), 40 have low frequency sensors only
+# All persons include battery status for realistic device simulation
+# Use case: Stress testing, scalability validation, hospital ward simulation
+#
+# Realistic Sampling Rates:
+# - ECG: 100Hz (batch_size: 100, batch_window: 1000ms)
+# - Heartrate/SpO2/Respiratory: 0.2Hz (every 5 seconds)
+# - Temperature/Blood Pressure: 0.017Hz (once per minute)
+# - Battery: 0.1Hz (every 10 seconds)
+
+connectors:
+  scenario_larger_group:
+    connector_id: "scenario_larger_group"
+    connector_name: "Larger_Group_Study"
+    sensors:
+      # === Persons 1-10: Have ECG (high frequency) + one low frequency sensor + battery ===
+      lg_person_1:
+        sensor_id: "lg_person_1"
+        sensor_name: "Sim_Person1"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 65
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.2
+            max_value: 36.8
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 75
+            max_value: 100
+            dummy_data: true
+
+      lg_person_2:
+        sensor_id: "lg_person_2"
+        sensor_name: "Sim_Person2"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 78
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 85
+            dummy_data: true
+
+      lg_person_3:
+        sensor_id: "lg_person_3"
+        sensor_name: "Sim_Person3"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 88
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 130
+            max_value: 145
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 65
+            dummy_data: true
+
+      lg_person_4:
+        sensor_id: "lg_person_4"
+        sensor_name: "Sim_Person4"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 72
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 14
+            max_value: 20
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 85
+            max_value: 100
+            dummy_data: true
+
+      lg_person_5:
+        sensor_id: "lg_person_5"
+        sensor_name: "Sim_Person5"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 68
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.5
+            max_value: 37.1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 80
+            dummy_data: true
+
+      lg_person_6:
+        sensor_id: "lg_person_6"
+        sensor_name: "Sim_Person6"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 82
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 94
+            max_value: 98
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 20
+            max_value: 45
+            dummy_data: true
+
+      lg_person_7:
+        sensor_id: "lg_person_7"
+        sensor_name: "Sim_Person7"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 75
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 118
+            max_value: 128
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      lg_person_8:
+        sensor_id: "lg_person_8"
+        sensor_name: "Sim_Person8"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 90
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.3
+            max_value: 36.9
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 45
+            max_value: 70
+            dummy_data: true
+
+      lg_person_9:
+        sensor_id: "lg_person_9"
+        sensor_name: "Sim_Person9"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 66
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 96
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 100
+            dummy_data: true
+
+      lg_person_10:
+        sensor_id: "lg_person_10"
+        sensor_name: "Sim_Person10"
+        attributes:
+          ecg:
+            attribute_id: "ecg"
+            sensor_type: "ecg"
+            batch_size: 100
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 100
+            heart_rate: 79
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 12
+            max_value: 18
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 30
+            max_value: 55
+            dummy_data: true
+
+      # === Persons 11-50: Low frequency sensors only (heartrate + one other + battery) ===
+      lg_person_11:
+        sensor_id: "lg_person_11"
+        sensor_name: "Sim_Person11"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 68
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.4
+            max_value: 37.0
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 65
+            max_value: 90
+            dummy_data: true
+
+      lg_person_12:
+        sensor_id: "lg_person_12"
+        sensor_name: "Sim_Person12"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 74
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 75
+            dummy_data: true
+
+      lg_person_13:
+        sensor_id: "lg_person_13"
+        sensor_name: "Sim_Person13"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 80
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 115
+            max_value: 125
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 35
+            max_value: 60
+            dummy_data: true
+
+      lg_person_14:
+        sensor_id: "lg_person_14"
+        sensor_name: "Sim_Person14"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 66
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.6
+            max_value: 37.2
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 85
+            max_value: 100
+            dummy_data: true
+
+      lg_person_15:
+        sensor_id: "lg_person_15"
+        sensor_name: "Sim_Person15"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 72
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 96
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      lg_person_16:
+        sensor_id: "lg_person_16"
+        sensor_name: "Sim_Person16"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 78
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.3
+            max_value: 36.9
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 25
+            max_value: 50
+            dummy_data: true
+
+      lg_person_17:
+        sensor_id: "lg_person_17"
+        sensor_name: "Sim_Person17"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 70
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 120
+            max_value: 130
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 80
+            dummy_data: true
+
+      lg_person_18:
+        sensor_id: "lg_person_18"
+        sensor_name: "Sim_Person18"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 82
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 94
+            max_value: 98
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 65
+            dummy_data: true
+
+      lg_person_19:
+        sensor_id: "lg_person_19"
+        sensor_name: "Sim_Person19"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 76
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.5
+            max_value: 37.1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 100
+            dummy_data: true
+
+      lg_person_20:
+        sensor_id: "lg_person_20"
+        sensor_name: "Sim_Person20"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 64
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 12
+            max_value: 18
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 85
+            dummy_data: true
+
+      lg_person_21:
+        sensor_id: "lg_person_21"
+        sensor_name: "Sim_Person21"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 86
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 135
+            max_value: 150
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 15
+            max_value: 40
+            dummy_data: true
+
+      lg_person_22:
+        sensor_id: "lg_person_22"
+        sensor_name: "Sim_Person22"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 71
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 75
+            max_value: 100
+            dummy_data: true
+
+      lg_person_23:
+        sensor_id: "lg_person_23"
+        sensor_name: "Sim_Person23"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 77
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.4
+            max_value: 37.0
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 75
+            dummy_data: true
+
+      lg_person_24:
+        sensor_id: "lg_person_24"
+        sensor_name: "Sim_Person24"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 69
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 110
+            max_value: 120
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 30
+            max_value: 55
+            dummy_data: true
+
+      lg_person_25:
+        sensor_id: "lg_person_25"
+        sensor_name: "Sim_Person25"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 83
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 93
+            max_value: 97
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 65
+            max_value: 90
+            dummy_data: true
+
+      lg_person_26:
+        sensor_id: "lg_person_26"
+        sensor_name: "Sim_Person26"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 75
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.7
+            max_value: 37.3
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 45
+            max_value: 70
+            dummy_data: true
+
+      lg_person_27:
+        sensor_id: "lg_person_27"
+        sensor_name: "Sim_Person27"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 67
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 14
+            max_value: 20
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 85
+            max_value: 100
+            dummy_data: true
+
+      lg_person_28:
+        sensor_id: "lg_person_28"
+        sensor_name: "Sim_Person28"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 81
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 122
+            max_value: 132
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 20
+            max_value: 45
+            dummy_data: true
+
+      lg_person_29:
+        sensor_id: "lg_person_29"
+        sensor_name: "Sim_Person29"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 73
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 96
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 85
+            dummy_data: true
+
+      lg_person_30:
+        sensor_id: "lg_person_30"
+        sensor_name: "Sim_Person30"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 79
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.2
+            max_value: 36.8
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      lg_person_31:
+        sensor_id: "lg_person_31"
+        sensor_name: "Sim_Person31"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 65
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 116
+            max_value: 126
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 35
+            max_value: 60
+            dummy_data: true
+
+      lg_person_32:
+        sensor_id: "lg_person_32"
+        sensor_name: "Sim_Person32"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 84
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 94
+            max_value: 98
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 80
+            dummy_data: true
+
+      lg_person_33:
+        sensor_id: "lg_person_33"
+        sensor_name: "Sim_Person33"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 70
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.5
+            max_value: 37.1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 100
+            dummy_data: true
+
+      lg_person_34:
+        sensor_id: "lg_person_34"
+        sensor_name: "Sim_Person34"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 88
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 13
+            max_value: 19
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 65
+            dummy_data: true
+
+      lg_person_35:
+        sensor_id: "lg_person_35"
+        sensor_name: "Sim_Person35"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 74
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 128
+            max_value: 138
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 25
+            max_value: 50
+            dummy_data: true
+
+      lg_person_36:
+        sensor_id: "lg_person_36"
+        sensor_name: "Sim_Person36"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 68
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      lg_person_37:
+        sensor_id: "lg_person_37"
+        sensor_name: "Sim_Person37"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 76
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.3
+            max_value: 36.9
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 75
+            dummy_data: true
+
+      lg_person_38:
+        sensor_id: "lg_person_38"
+        sensor_name: "Sim_Person38"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 82
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 118
+            max_value: 128
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 15
+            max_value: 40
+            dummy_data: true
+
+      lg_person_39:
+        sensor_id: "lg_person_39"
+        sensor_name: "Sim_Person39"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 66
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 96
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 65
+            max_value: 90
+            dummy_data: true
+
+      lg_person_40:
+        sensor_id: "lg_person_40"
+        sensor_name: "Sim_Person40"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 78
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.6
+            max_value: 37.2
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 85
+            max_value: 100
+            dummy_data: true
+
+      lg_person_41:
+        sensor_id: "lg_person_41"
+        sensor_name: "Sim_Person41"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 72
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 14
+            max_value: 20
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 45
+            max_value: 70
+            dummy_data: true
+
+      lg_person_42:
+        sensor_id: "lg_person_42"
+        sensor_name: "Sim_Person42"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 85
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 132
+            max_value: 142
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 30
+            max_value: 55
+            dummy_data: true
+
+      lg_person_43:
+        sensor_id: "lg_person_43"
+        sensor_name: "Sim_Person43"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 69
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 94
+            max_value: 98
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 85
+            dummy_data: true
+
+      lg_person_44:
+        sensor_id: "lg_person_44"
+        sensor_name: "Sim_Person44"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 77
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.4
+            max_value: 37.0
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 75
+            max_value: 100
+            dummy_data: true
+
+      lg_person_45:
+        sensor_id: "lg_person_45"
+        sensor_name: "Sim_Person45"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 71
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 114
+            max_value: 124
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 65
+            dummy_data: true
+
+      lg_person_46:
+        sensor_id: "lg_person_46"
+        sensor_name: "Sim_Person46"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 83
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 95
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 80
+            dummy_data: true
+
+      lg_person_47:
+        sensor_id: "lg_person_47"
+        sensor_name: "Sim_Person47"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 67
+            dummy_data: true
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 36.5
+            max_value: 37.1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 20
+            max_value: 45
+            dummy_data: true
+
+      lg_person_48:
+        sensor_id: "lg_person_48"
+        sensor_name: "Sim_Person48"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 79
+            dummy_data: true
+          respiratory_rate:
+            attribute_id: "respiratory_rate"
+            sensor_type: "respiratory"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 12
+            max_value: 18
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      lg_person_49:
+        sensor_id: "lg_person_49"
+        sensor_name: "Sim_Person49"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 75
+            dummy_data: true
+          blood_pressure_sys:
+            attribute_id: "blood_pressure_sys"
+            sensor_type: "blood_pressure"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 124
+            max_value: 134
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 35
+            max_value: 60
+            dummy_data: true
+
+      lg_person_50:
+        sensor_id: "lg_person_50"
+        sensor_name: "Sim_Person50"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 81
+            dummy_data: true
+          spo2:
+            attribute_id: "spo2"
+            sensor_type: "spo2"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 96
+            max_value: 99
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 100
+            dummy_data: true

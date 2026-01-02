@@ -8,7 +8,9 @@ config :sensocto, Sensocto.Repo,
   database: "sensocto_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  pool_size: 20,
+  queue_target: 5000,
+  queue_interval: 1000
 
 # postgresql://neondb_owner:npg_JYAldE0u5Xmk@ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
 # config :sensocto, Sensocto.Repo,

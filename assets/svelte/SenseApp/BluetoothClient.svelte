@@ -192,6 +192,15 @@
   }
 
   function handleCharacteristic(characteristic) {
+    // Skip config-only characteristics that never produce readable data
+    if (BluetoothUtils.isConfigOnly(characteristic.uuid)) {
+      logger.log(
+        loggerCtxName,
+        "Skipping config-only characteristic: " + BluetoothUtils.name(characteristic.uuid)
+      );
+      return;
+    }
+
     // Use normalized type for both attribute_id and attribute_type
     // This ensures human-readable names are displayed in the UI
     // and matches Elixir's AttributeType for proper rendering

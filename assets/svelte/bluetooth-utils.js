@@ -90,9 +90,9 @@ class BluetoothUtils {
 
         // https://nordicsemiconductor.github.io/Nordic-Thingy52-FW/documentation/firmware_architecture.html
         // Thingy:52 Characteristics (using full lowercase UUIDs)
-        "ef680101-9b35-4933-9b10-52ffa9740042": ["temperatureCharacteristic", DataType.float],
-        "ef680102-9b35-4933-9b10-52ffa9740042": ["pressureCharacteristic", DataType.float],
-        "ef680103-9b35-4933-9b10-52ffa9740042": ["humidityCharacteristic", DataType.float],
+        "ef680101-9b35-4933-9b10-52ffa9740042": ["temperatureCharacteristic", DataType.rawData, BluetoothUtils.decodeThingyTemperature],
+        "ef680102-9b35-4933-9b10-52ffa9740042": ["pressureCharacteristic", DataType.rawData, BluetoothUtils.decodeThingyPressure],
+        "ef680103-9b35-4933-9b10-52ffa9740042": ["humidityCharacteristic", DataType.uint8],
         "ef680104-9b35-4933-9b10-52ffa9740042": ["airQualityCharacteristic", DataType.rawData, BluetoothUtils.decodeAirQuality], // Parse eCO2 and TVOC
         "ef680105-9b35-4933-9b10-52ffa9740042": ["colorCharacteristic", DataType.rawData, BluetoothUtils.decodeColor], // Parse R, G, B, Clear
         "ef680106-9b35-4933-9b10-52ffa9740042": ["environmentConfigCharacteristic", DataType.rawData],
@@ -197,6 +197,25 @@ class BluetoothUtils {
         // FlexSense
         "flexsense": "flex",
     };
+
+    // Config/write-only characteristics that shouldn't be shown in UI
+    // These never produce readable data, only used for configuration
+    static configOnlyCharacteristics = [
+        "environmentConfigCharacteristic",
+        "uiConfigCharacteristic",
+        "soundConfigCharacteristic",
+        "motionConfigCharacteristic",
+        "speakerDataCharacteristic",
+        "unknownSoundCharacteristic1",
+        "unknownSoundCharacteristic2",
+        "unknownSoundCharacteristic3",
+    ];
+
+    // Check if this is a config-only characteristic that shouldn't be registered as an attribute
+    static isConfigOnly(uuid) {
+        const name = BluetoothUtils.name(uuid);
+        return BluetoothUtils.configOnlyCharacteristics.includes(name);
+    }
 
     // Get a normalized attribute type name from UUID
     // Returns a name that matches Elixir's AttributeType for proper rendering
@@ -348,18 +367,47 @@ class BluetoothUtils {
 
     // Thingy decoders
 
+    static decodeThingyTemperature(dataView) {
+        // Thingy:52 temperature is NOT a float32
+        // It's sent as 2 bytes: integer (int8) + decimal (uint8, in 1/100ths)
+        // See: https://nordicsemiconductor.github.io/Nordic-Thingy52-FW/documentation/firmware_architecture.html
+        if (dataView.byteLength < 2) {
+            console.error("DataView too short for Thingy temperature data.");
+            return null;
+        }
+        const integer = dataView.getInt8(0);
+        const decimal = dataView.getUint8(1);
+        const temperature = integer + (decimal / 100.0);
+        console.log(`Decoded Thingy temperature: ${integer}.${decimal} = ${temperature}°C`);
+        return temperature;
+    }
+
     static decodeTemperature(dataView) {
-        // Thingy:52 temperature is a float (Celsius)
+        // Generic BLE temperature is a float (Celsius)
         return dataView.getFloat32(0, true);
     }
 
+    static decodeThingyPressure(dataView) {
+        // Thingy:52 pressure is 5 bytes: int32_t (integer) + uint8_t (decimal)
+        // Pressure is in hectopascals (hPa)
+        if (dataView.byteLength < 5) {
+            console.error("DataView too short for Thingy pressure data.");
+            return null;
+        }
+        const integer = dataView.getInt32(0, true);
+        const decimal = dataView.getUint8(4);
+        const pressure = integer + (decimal / 100.0);
+        console.log(`Decoded Thingy pressure: ${integer}.${decimal} = ${pressure} hPa`);
+        return pressure;
+    }
+
     static decodePressure(dataView) {
-        // Thingy:52 pressure is a float (Pascals)
+        // Generic BLE pressure is a float (Pascals)
         return dataView.getFloat32(0, true);
     }
 
     static decodeHumidity(dataView) {
-        // Thingy:52 humidity is a float (%)
+        // Generic BLE humidity is a float (%)
         return dataView.getFloat32(0, true);
     }
 

@@ -72,13 +72,24 @@ Hooks.QRCode = QRCode;
 Hooks.AttentionTracker = AttentionTracker;
 Hooks.SensorPinControl = SensorPinControl;
 
+// ExpandOnHover hook - expands view mode when hovering over the expand button
+// The expanded state is "sticky" - it persists after mouse leaves
+Hooks.ExpandOnHover = {
+  mounted() {
+    this.el.addEventListener('mouseenter', () => {
+      this.pushEvent("expand_view_mode", {});
+    });
+  }
+};
+
 // Register video/voice call hooks
 Hooks.CallHook = CallHook;
 Hooks.VideoTileHook = VideoTileHook;
 Hooks.CallControlsHook = CallControlsHook;
 
-// Vibrate hook - vibrates device and plays sound when data-value changes
+// Vibrate hook - vibrates device when data-value changes
 // Vibration duration is proportional to button number (button * 100ms)
+// Sound is optional and only plays when data-play-sound="true" is set
 Hooks.Vibrate = {
   mounted() {
     this.lastValue = this.el.dataset.value;
@@ -94,7 +105,10 @@ Hooks.Vibrate = {
       if (navigator.vibrate) {
         navigator.vibrate(vibrateDuration);
       }
-      this.playBeep(vibrateDuration);
+      // Only play sound if explicitly enabled via data-play-sound attribute
+      if (this.el.dataset.playSound === 'true') {
+        this.playBeep(vibrateDuration);
+      }
     }
   },
 

@@ -7,10 +7,6 @@ app = 'sensocto'
 primary_region = 'ams'
 kill_signal = 'SIGTERM'
 
-[mounts]
-  source = "data"
-  destination = "/data"
-
 [build]
 
 [deploy]

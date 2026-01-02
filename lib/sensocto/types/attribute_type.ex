@@ -40,6 +40,12 @@ defmodule Sensocto.Types.AttributeType do
     "accelerometer",
     "gyroscope",
     "magnetometer",
+    "quaternion",
+    "euler",
+    "heading",
+    "gravity",
+    "tap",
+    "orientation",
 
     # Location
     "geolocation",
@@ -52,10 +58,17 @@ defmodule Sensocto.Types.AttributeType do
     "pressure",
     "light",
     "proximity",
+    "gas",
+    "air_quality",
+    "color",
 
     # Device
     "battery",
     "button",
+    "led",
+    "speaker",
+    "microphone",
+    "body_location",
 
     # Activity
     "steps",
@@ -137,10 +150,10 @@ defmodule Sensocto.Types.AttributeType do
   def category(type) when is_binary(type) do
     case String.downcase(type) do
       t when t in ~w(ecg hrv hr heartrate spo2 respiration) -> :health
-      t when t in ~w(imu accelerometer gyroscope magnetometer) -> :motion
+      t when t in ~w(imu accelerometer gyroscope magnetometer quaternion euler heading gravity tap orientation) -> :motion
       t when t in ~w(geolocation altitude speed) -> :location
-      t when t in ~w(temperature humidity pressure light proximity) -> :environment
-      t when t in ~w(battery button) -> :device
+      t when t in ~w(temperature humidity pressure light proximity gas air_quality color) -> :environment
+      t when t in ~w(battery button led speaker microphone body_location) -> :device
       t when t in ~w(steps calories distance) -> :activity
       "buttplug" -> :specialty
       _ -> :unknown
@@ -172,11 +185,50 @@ defmodule Sensocto.Types.AttributeType do
       t when t in ~w(hr heartrate hrv) ->
         %{chart_type: :sparkline, color: "#ff4444", component: "SparklineWasm"}
 
-      t when t in ~w(accelerometer gyroscope magnetometer imu) ->
+      t when t in ~w(accelerometer gyroscope magnetometer imu gravity) ->
         %{chart_type: :multi_axis, component: "IMU"}
 
       "temperature" ->
-        %{chart_type: :gauge, unit: "°C", component: "TemperatureGauge"}
+        %{chart_type: :gauge, unit: "°C", color: "#f59e0b", component: "TemperatureGauge"}
+
+      "humidity" ->
+        %{chart_type: :gauge, unit: "%", color: "#3b82f6", component: "HumidityGauge"}
+
+      "pressure" ->
+        %{chart_type: :gauge, unit: "hPa", color: "#8b5cf6", component: "PressureGauge"}
+
+      t when t in ~w(gas air_quality) ->
+        %{chart_type: :gauge, component: "AirQualityGauge", color: "#10b981"}
+
+      "color" ->
+        %{chart_type: :color_swatch, component: "ColorSwatch"}
+
+      t when t in ~w(quaternion euler) ->
+        %{chart_type: :orientation, component: "Orientation3D"}
+
+      "heading" ->
+        %{chart_type: :compass, component: "Compass"}
+
+      "steps" ->
+        %{chart_type: :counter, component: "StepCounter", color: "#22c55e"}
+
+      "tap" ->
+        %{chart_type: :event, component: "TapIndicator"}
+
+      "orientation" ->
+        %{chart_type: :orientation, component: "DeviceOrientation"}
+
+      "led" ->
+        %{chart_type: :control, component: "LEDControl", interactive: true}
+
+      "speaker" ->
+        %{chart_type: :control, component: "SpeakerControl", interactive: true}
+
+      "microphone" ->
+        %{chart_type: :level_meter, component: "AudioLevel"}
+
+      "body_location" ->
+        %{chart_type: :info, component: "BodyLocation"}
 
       _ ->
         %{chart_type: :sparkline, component: "SparklineWasm"}
@@ -196,12 +248,24 @@ defmodule Sensocto.Types.AttributeType do
       "battery" -> ["level"]
       t when t in ~w(hr heartrate) -> ["bpm"]
       "hrv" -> ["rmssd", "sdnn"]
-      t when t in ~w(accelerometer gyroscope magnetometer) -> ["x", "y", "z"]
+      t when t in ~w(accelerometer gyroscope magnetometer gravity) -> ["x", "y", "z"]
       "imu" -> ["accelerometer", "gyroscope", "magnetometer"]
       "temperature" -> ["value"]
       "humidity" -> ["value"]
       "pressure" -> ["value"]
+      t when t in ~w(gas air_quality) -> ["eco2", "tvoc"]
+      "color" -> ["r", "g", "b"]
+      "quaternion" -> ["w", "x", "y", "z"]
+      "euler" -> ["roll", "pitch", "yaw"]
+      "heading" -> ["value"]
+      "steps" -> ["count"]
+      "tap" -> ["direction"]
+      "orientation" -> ["value"]
       "button" -> ["pressed"]
+      "led" -> ["mode", "r", "g", "b"]
+      "speaker" -> ["frequency"]
+      "microphone" -> ["level"]
+      "body_location" -> ["value"]
       "buttplug" -> ["command"]
       _ -> []
     end

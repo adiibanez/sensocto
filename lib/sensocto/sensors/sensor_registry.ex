@@ -20,18 +20,22 @@ defmodule Sensocto.Sensors.SensorRegistry do
       {:ok, %{bpm: 72}}
   """
 
-  alias Sensocto.Sensors.Types.{ECGSensor, IMUSensor, HTML5Sensor, ButtplugSensor}
+  alias Sensocto.Sensors.Types.{ECGSensor, IMUSensor, HTML5Sensor, ButtplugSensor, Thingy52Sensor}
 
   @sensor_types %{
     "ecg" => ECGSensor,
     "imu" => IMUSensor,
     "html5" => HTML5Sensor,
     "buttplug" => ButtplugSensor,
+    "thingy52" => Thingy52Sensor,
     # Aliases
     "hrm" => ECGSensor,
     "heart_rate_monitor" => ECGSensor,
     "motion" => IMUSensor,
-    "browser" => HTML5Sensor
+    "browser" => HTML5Sensor,
+    "thingy" => Thingy52Sensor,
+    "thingy:52" => Thingy52Sensor,
+    "nordic_thingy" => Thingy52Sensor
   }
 
   @type sensor_module :: module()

@@ -24,20 +24,42 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   attr :attribute_type, :string
 
-  # Summary mode for ECG - show minimal indicator
+  # Summary mode for ECG - show mini inline sparkline
   @impl true
   def render(%{:attribute_type => "ecg", :view_mode => :summary} = assigns) do
     ~H"""
     <div
+      id={"cnt_summary_#{@sensor_id}_#{@attribute_id}"}
       class="flex items-center justify-between text-xs py-0.5"
       data-sensor_id={@sensor_id}
       data-attribute_id={@attribute_id}
+      phx-hook="SensorDataAccumulator"
     >
-      <span class="text-gray-400">{@attribute_id}</span>
-      <span :if={@lastvalue} class="text-white flex items-center gap-1">
-        <Heroicons.icon name="heart" type="solid" class="h-3 w-3 animate-pulse" />
-        active
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="heart" type="solid" class="h-3 w-3 text-red-400" />
+        {String.replace(to_string(@attribute_id), "_", " ")}
       </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <.svelte
+          name="MiniECGSparkline"
+          props={
+            %{
+              id: "cnt_summary_#{@sensor_id}_#{@attribute_id}",
+              sensor_id: @sensor_id,
+              attribute_id: @attribute.attribute_id,
+              samplingrate: @attribute.sampling_rate,
+              timewindow: 3000,
+              width: 60,
+              height: 16,
+              color: "#22c55e",
+              showBackpressure: true,
+              attentionLevel: "medium",
+              batchWindow: 500
+            }
+          }
+          socket={@socket}
+        />
+      </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
@@ -273,7 +295,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           :if={@battery_info.charging != nil}
           name={if @battery_info.charging == "yes", do: "bolt", else: "bolt-slash"}
           type={if @battery_info.charging == "yes", do: "solid", else: "outline"}
-          class={["h-3 w-3", if(@battery_info.charging == "yes", do: "text-yellow-400", else: "text-gray-500")]}
+          class={["h-3 w-3", if(@battery_info.charging == "yes", do: "text-white", else: "text-gray-400")]}
         />
       </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
@@ -347,6 +369,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
   # Summary mode for button
+  # Supports both single-button (Thingy:52: 0=released, 1=pressed) and multi-button devices
   @impl true
   def render(%{:attribute_type => "button", :view_mode => :summary} = assigns) do
     ~H"""
@@ -354,15 +377,21 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       class="flex items-center justify-between text-xs py-0.5"
       id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
       phx-hook="Vibrate"
-      data-value={@lastvalue && @lastvalue.payload}
+      data-value={@lastvalue && extract_button_value(@lastvalue.payload)}
       data-sensor_id={@sensor_id}
       data-attribute_id={@attribute_id}
     >
-      <span class="text-gray-400">{@attribute_id}</span>
-      <div :if={@lastvalue} class="flex gap-0.5">
-        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")]}>1</div>
-        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")]}>2</div>
-        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")]}>3</div>
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="hand-raised" type="outline" class="h-3 w-3 text-amber-400" />
+        Button
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <div class={[
+          "px-2 py-0.5 rounded text-xs font-bold",
+          if(button_pressed?(@lastvalue.payload), do: "bg-amber-500 text-white animate-pulse", else: "bg-gray-600 text-gray-400")
+        ]}>
+          {if button_pressed?(@lastvalue.payload), do: "PRESSED", else: "Released"}
+        </div>
       </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
@@ -384,39 +413,39 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <.render_attribute_header
           sensor_id={@sensor_id}
           attribute_id={@attribute_id}
-          attribute_name={@attribute_id}
+          attribute_name="Button"
           lastvalue={@lastvalue}
           socket={@socket}
         >
         </.render_attribute_header>
 
-        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No button pressed</div>
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">Waiting for button press...</div>
 
         <div
           :if={@lastvalue}
-          class="flex gap-1 items-center"
+          class="flex items-center gap-3 py-2"
           id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
           phx-hook="Vibrate"
-          data-value={@lastvalue.payload}
+          data-value={extract_button_value(@lastvalue.payload)}
         >
-          <div class="flex gap-1">
-            <div class={[
-              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
-              if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")
-            ]}>
-              1
+          <div class={[
+            "w-12 h-12 rounded-full flex items-center justify-center transition-all duration-150",
+            if(button_pressed?(@lastvalue.payload),
+              do: "bg-amber-500 shadow-lg shadow-amber-500/50 scale-110",
+              else: "bg-gray-700 border-2 border-gray-600")
+          ]}>
+            <Heroicons.icon
+              name="hand-raised"
+              type={if button_pressed?(@lastvalue.payload), do: "solid", else: "outline"}
+              class={["h-6 w-6", if(button_pressed?(@lastvalue.payload), do: "text-white", else: "text-gray-400")]}
+            />
+          </div>
+          <div>
+            <div class={["text-lg font-bold", if(button_pressed?(@lastvalue.payload), do: "text-amber-400", else: "text-gray-400")]}>
+              {if button_pressed?(@lastvalue.payload), do: "PRESSED", else: "Released"}
             </div>
-            <div class={[
-              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
-              if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")
-            ]}>
-              2
-            </div>
-            <div class={[
-              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
-              if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")
-            ]}>
-              3
+            <div class="text-xs text-gray-500">
+              Raw value: {extract_button_value(@lastvalue.payload)}
             </div>
           </div>
         </div>
@@ -424,6 +453,21 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
+
+  # Helper functions for button state
+  # Thingy:52 button characteristic sends 0=released, 1=pressed
+  # Only exact value of 1 means pressed; all other values (0, 193, etc.) mean released
+  defp button_pressed?(payload) when is_integer(payload), do: payload == 1
+  defp button_pressed?(%{pressed: pressed}) when is_boolean(pressed), do: pressed
+  defp button_pressed?(%{pressed: 1}), do: true
+  defp button_pressed?(%{pressed: "1"}), do: true
+  defp button_pressed?(%{value: value}) when is_integer(value), do: value == 1
+  defp button_pressed?(_), do: false
+
+  defp extract_button_value(payload) when is_integer(payload), do: payload
+  defp extract_button_value(%{pressed: pressed}) when is_integer(pressed), do: pressed
+  defp extract_button_value(%{value: value}) when is_integer(value), do: value
+  defp extract_button_value(_), do: 0
 
   # Summary mode for heartrate - shows pulsating heart with BPM (peak detection driven)
   @impl true
@@ -577,6 +621,1140 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     end
   end
   defp body_location_name(_), do: "Unknown"
+
+  # ============================================================================
+  # TEMPERATURE - Thermometer gauge with color gradient
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "temperature", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="fire" type="outline" class="h-3 w-3 text-orange-400" />
+        Temp
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {format_temperature(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">°C</span>
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "temperature"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Temperature"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center gap-4 py-2">
+          <div class="flex items-center gap-2">
+            <div class={["w-3 h-12 rounded-full", temperature_gradient_class(@lastvalue.payload)]}></div>
+            <div class="text-center">
+              <span class="text-2xl font-bold text-white">{format_temperature(@lastvalue.payload)}</span>
+              <span class="text-sm text-gray-400 ml-1">°C</span>
+            </div>
+          </div>
+          <div class="text-xs text-gray-500">
+            {temperature_comfort_label(@lastvalue.payload)}
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_temperature(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_temperature(value) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_temperature(_), do: "--"
+
+  defp temperature_gradient_class(%{value: value}) when is_number(value), do: temperature_gradient_class(value)
+  defp temperature_gradient_class(value) when is_number(value) do
+    cond do
+      value < 10 -> "bg-gradient-to-t from-blue-600 to-blue-400"
+      value < 18 -> "bg-gradient-to-t from-cyan-500 to-cyan-300"
+      value < 24 -> "bg-gradient-to-t from-green-500 to-green-300"
+      value < 30 -> "bg-gradient-to-t from-yellow-500 to-orange-400"
+      true -> "bg-gradient-to-t from-red-600 to-red-400"
+    end
+  end
+  defp temperature_gradient_class(_), do: "bg-gray-600"
+
+  defp temperature_comfort_label(%{value: value}) when is_number(value), do: temperature_comfort_label(value)
+  defp temperature_comfort_label(value) when is_number(value) do
+    cond do
+      value < 10 -> "Cold"
+      value < 18 -> "Cool"
+      value < 24 -> "Comfortable"
+      value < 30 -> "Warm"
+      true -> "Hot"
+    end
+  end
+  defp temperature_comfort_label(_), do: ""
+
+  # ============================================================================
+  # HUMIDITY - Water drop gauge
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "humidity", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <svg class="h-3 w-3 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+        </svg>
+        Humidity
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {format_humidity(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">%</span>
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "humidity"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Humidity"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center gap-4 py-2">
+          <div class="relative w-16 h-16">
+            <svg class="w-full h-full text-blue-500" viewBox="0 0 24 24" fill="currentColor" style={"opacity: #{humidity_opacity(@lastvalue.payload)}"}>
+              <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <span class="text-xs font-bold text-white">{format_humidity(@lastvalue.payload)}%</span>
+            </div>
+          </div>
+          <div class="text-xs text-gray-500">
+            {humidity_comfort_label(@lastvalue.payload)}
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_humidity(%{value: value}) when is_number(value), do: round(value)
+  defp format_humidity(value) when is_number(value), do: round(value)
+  defp format_humidity(_), do: "--"
+
+  defp humidity_opacity(%{value: value}) when is_number(value), do: humidity_opacity(value)
+  defp humidity_opacity(value) when is_number(value), do: max(0.3, min(1.0, value / 100))
+  defp humidity_opacity(_), do: 0.5
+
+  defp humidity_comfort_label(%{value: value}) when is_number(value), do: humidity_comfort_label(value)
+  defp humidity_comfort_label(value) when is_number(value) do
+    cond do
+      value < 30 -> "Dry"
+      value < 50 -> "Comfortable"
+      value < 70 -> "Humid"
+      true -> "Very Humid"
+    end
+  end
+  defp humidity_comfort_label(_), do: ""
+
+  # ============================================================================
+  # PRESSURE - Barometric pressure gauge
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "pressure", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="arrow-down-on-square" type="outline" class="h-3 w-3 text-purple-400" />
+        Pressure
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {format_pressure(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">hPa</span>
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "pressure"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Pressure"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center gap-4 py-2">
+          <div class="text-center">
+            <span class="text-2xl font-bold text-white">{format_pressure(@lastvalue.payload)}</span>
+            <span class="text-sm text-gray-400 ml-1">hPa</span>
+          </div>
+          <div class="text-xs text-gray-500 flex flex-col">
+            <span>{pressure_weather_indicator(@lastvalue.payload)}</span>
+            <span class="text-gray-600">≈ {pressure_to_altitude(@lastvalue.payload)}m ASL</span>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_pressure(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_pressure(value) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_pressure(_), do: "--"
+
+  defp pressure_weather_indicator(%{value: value}) when is_number(value), do: pressure_weather_indicator(value)
+  defp pressure_weather_indicator(value) when is_number(value) do
+    cond do
+      value < 1000 -> "Low pressure - stormy"
+      value < 1013 -> "Below average"
+      value < 1020 -> "Normal"
+      true -> "High pressure - fair"
+    end
+  end
+  defp pressure_weather_indicator(_), do: ""
+
+  defp pressure_to_altitude(%{value: value}) when is_number(value), do: pressure_to_altitude(value)
+  defp pressure_to_altitude(value) when is_number(value) do
+    # Simplified barometric formula: h ≈ 44330 * (1 - (P/P0)^0.1903)
+    # P0 = 1013.25 hPa (sea level)
+    round(44330 * (1 - :math.pow(value / 1013.25, 0.1903)))
+  end
+  defp pressure_to_altitude(_), do: 0
+
+  # ============================================================================
+  # GAS / AIR QUALITY - eCO2 and TVOC display
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => attr, :view_mode => :summary} = assigns) when attr in ["gas", "air_quality"] do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="cloud" type="outline" class={"h-3 w-3 #{air_quality_color(@lastvalue)}"} />
+        Air Quality
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-2">
+        <span class={["font-mono", air_quality_color(@lastvalue)]}>{air_quality_label(@lastvalue.payload)}</span>
+      </div>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => attr} = assigns) when attr in ["gas", "air_quality"] do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Air Quality"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="flex items-center gap-4 mb-2">
+            <div class={["text-lg font-bold", air_quality_color(@lastvalue)]}>
+              {air_quality_label(@lastvalue.payload)}
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4 text-xs">
+            <div class="bg-gray-800 rounded p-2">
+              <div class="text-gray-400">eCO₂</div>
+              <div class="text-white font-mono text-lg">
+                {get_in(@lastvalue, [:payload, :eco2]) || "--"}
+                <span class="text-gray-400 text-xs">ppm</span>
+              </div>
+            </div>
+            <div class="bg-gray-800 rounded p-2">
+              <div class="text-gray-400">TVOC</div>
+              <div class="text-white font-mono text-lg">
+                {get_in(@lastvalue, [:payload, :tvoc]) || "--"}
+                <span class="text-gray-400 text-xs">ppb</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp air_quality_label(%{eco2: eco2}) when is_number(eco2) do
+    cond do
+      eco2 < 600 -> "Excellent"
+      eco2 < 800 -> "Good"
+      eco2 < 1000 -> "Moderate"
+      eco2 < 1500 -> "Poor"
+      true -> "Bad"
+    end
+  end
+  defp air_quality_label(_), do: "--"
+
+  defp air_quality_color(%{payload: %{eco2: eco2}}) when is_number(eco2) do
+    cond do
+      eco2 < 600 -> "text-green-400"
+      eco2 < 800 -> "text-green-300"
+      eco2 < 1000 -> "text-yellow-400"
+      eco2 < 1500 -> "text-orange-400"
+      true -> "text-red-400"
+    end
+  end
+  defp air_quality_color(_), do: "text-gray-400"
+
+  # ============================================================================
+  # COLOR - RGB color swatch with color temperature
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "color", :view_mode => :summary} = assigns) do
+    assigns = assign(assigns, :color_data, extract_color_data(assigns[:lastvalue]))
+
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="swatch" type="solid" class="h-3 w-3 text-pink-400" />
+        Color
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <div
+          class="w-4 h-4 rounded border border-gray-600"
+          style={"background-color: #{@color_data.hex}"}
+        />
+        <span class="text-gray-400 font-mono text-[10px]">{@color_data.hex}</span>
+      </div>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "color"} = assigns) do
+    assigns = assign(assigns, :color_data, extract_color_data(assigns[:lastvalue]))
+
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Color Sensor"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="flex items-center gap-4 mb-3">
+            <div
+              class="w-16 h-16 rounded-lg border-2 border-gray-600 shadow-lg"
+              style={"background-color: #{@color_data.hex}"}
+            />
+            <div>
+              <div class="text-white font-mono text-lg">{@color_data.hex}</div>
+              <div :if={@color_data.color_temperature} class="text-xs text-gray-400">
+                ~{@color_data.color_temperature}K
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-4 gap-2 text-xs">
+            <div class="text-center">
+              <div class="text-red-400 font-mono">{@color_data.r}</div>
+              <div class="text-gray-500">R</div>
+            </div>
+            <div class="text-center">
+              <div class="text-green-400 font-mono">{@color_data.g}</div>
+              <div class="text-gray-500">G</div>
+            </div>
+            <div class="text-center">
+              <div class="text-blue-400 font-mono">{@color_data.b}</div>
+              <div class="text-gray-500">B</div>
+            </div>
+            <div class="text-center">
+              <div class="text-gray-300 font-mono">{@color_data.clear || "--"}</div>
+              <div class="text-gray-500">Clear</div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  # Extract color data from various payload formats
+  defp extract_color_data(nil), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+  defp extract_color_data(%{payload: %{hex: hex} = payload}) when is_binary(hex) do
+    %{
+      r: Map.get(payload, :r, 0),
+      g: Map.get(payload, :g, 0),
+      b: Map.get(payload, :b, 0),
+      clear: Map.get(payload, :clear),
+      hex: hex,
+      color_temperature: Map.get(payload, :color_temperature)
+    }
+  end
+  defp extract_color_data(%{payload: %{r: r, g: g, b: b} = payload}) when is_integer(r) and is_integer(g) and is_integer(b) do
+    hex = "#" <> Base.encode16(<<min(255, r), min(255, g), min(255, b)>>, case: :lower)
+    %{
+      r: r,
+      g: g,
+      b: b,
+      clear: Map.get(payload, :clear),
+      hex: hex,
+      color_temperature: Map.get(payload, :color_temperature)
+    }
+  end
+  defp extract_color_data(%{payload: value}) when is_integer(value) do
+    # Raw integer - could be a palette index or single value
+    %{r: value, g: value, b: value, clear: nil, hex: "#808080", color_temperature: nil}
+  end
+  defp extract_color_data(_), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+
+  # ============================================================================
+  # QUATERNION / EULER - 3D orientation visualization
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "quaternion", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="cube" type="outline" class="h-3 w-3 text-indigo-400" />
+        Orientation
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono text-[10px]">
+        Q({format_quat_component(@lastvalue.payload, :w)}, {format_quat_component(@lastvalue.payload, :x)}, {format_quat_component(@lastvalue.payload, :y)}, {format_quat_component(@lastvalue.payload, :z)})
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "quaternion"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Quaternion"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="grid grid-cols-4 gap-2 text-xs">
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-gray-400">W</div>
+              <div class="text-white font-mono">{format_quat_component(@lastvalue.payload, :w)}</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-red-400">X</div>
+              <div class="text-white font-mono">{format_quat_component(@lastvalue.payload, :x)}</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-green-400">Y</div>
+              <div class="text-white font-mono">{format_quat_component(@lastvalue.payload, :y)}</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-blue-400">Z</div>
+              <div class="text-white font-mono">{format_quat_component(@lastvalue.payload, :z)}</div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_quat_component(payload, key) do
+    case Map.get(payload, key) do
+      nil -> "--"
+      val when is_number(val) -> Float.round(val * 1.0, 3)
+      _ -> "--"
+    end
+  end
+
+  @impl true
+  def render(%{:attribute_type => "euler", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="arrows-pointing-out" type="outline" class="h-3 w-3 text-indigo-400" />
+        Euler
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono text-[10px]">
+        R:{format_euler(@lastvalue.payload, :roll)}° P:{format_euler(@lastvalue.payload, :pitch)}° Y:{format_euler(@lastvalue.payload, :yaw)}°
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "euler"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Euler Angles"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-red-400">Roll</div>
+              <div class="text-white font-mono text-lg">{format_euler(@lastvalue.payload, :roll)}°</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-green-400">Pitch</div>
+              <div class="text-white font-mono text-lg">{format_euler(@lastvalue.payload, :pitch)}°</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-blue-400">Yaw</div>
+              <div class="text-white font-mono text-lg">{format_euler(@lastvalue.payload, :yaw)}°</div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_euler(payload, key) do
+    case Map.get(payload, key) do
+      nil -> "--"
+      val when is_number(val) -> round(val)
+      _ -> "--"
+    end
+  end
+
+  # ============================================================================
+  # HEADING - Compass display
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "heading", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="arrow-up" type="solid" class="h-3 w-3 text-cyan-400" style={"transform: rotate(#{heading_rotation(@lastvalue)}deg)"} />
+        Heading
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {format_heading(@lastvalue.payload)}° <span class="text-cyan-400">{heading_direction(@lastvalue.payload)}</span>
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "heading"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Compass Heading"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center justify-center py-4">
+          <div class="relative w-24 h-24">
+            <div class="absolute inset-0 rounded-full border-2 border-gray-600">
+              <div class="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">N</div>
+              <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">S</div>
+              <div class="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">W</div>
+              <div class="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">E</div>
+            </div>
+            <Heroicons.icon
+              name="arrow-up"
+              type="solid"
+              class="absolute top-1/2 left-1/2 w-8 h-8 text-cyan-400 -translate-x-1/2 -translate-y-1/2"
+              style={"transform: translate(-50%, -50%) rotate(#{heading_rotation(@lastvalue)}deg)"}
+            />
+          </div>
+          <div class="ml-4 text-center">
+            <div class="text-2xl font-bold text-white">{format_heading(@lastvalue.payload)}°</div>
+            <div class="text-cyan-400">{heading_direction(@lastvalue.payload)}</div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_heading(%{value: value}) when is_number(value), do: round(value)
+  defp format_heading(value) when is_number(value), do: round(value)
+  defp format_heading(_), do: 0
+
+  defp heading_rotation(%{payload: %{value: value}}) when is_number(value), do: value
+  defp heading_rotation(%{payload: value}) when is_number(value), do: value
+  defp heading_rotation(_), do: 0
+
+  defp heading_direction(%{value: _value, direction: dir}) when is_binary(dir), do: dir
+  defp heading_direction(%{value: value}) when is_number(value), do: heading_to_dir(value)
+  defp heading_direction(value) when is_number(value), do: heading_to_dir(value)
+  defp heading_direction(_), do: "N"
+
+  defp heading_to_dir(heading) do
+    cond do
+      heading >= 337.5 or heading < 22.5 -> "N"
+      heading >= 22.5 and heading < 67.5 -> "NE"
+      heading >= 67.5 and heading < 112.5 -> "E"
+      heading >= 112.5 and heading < 157.5 -> "SE"
+      heading >= 157.5 and heading < 202.5 -> "S"
+      heading >= 202.5 and heading < 247.5 -> "SW"
+      heading >= 247.5 and heading < 292.5 -> "W"
+      heading >= 292.5 and heading < 337.5 -> "NW"
+      true -> "?"
+    end
+  end
+
+  # ============================================================================
+  # STEPS - Step counter display
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "steps", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="user" type="outline" class="h-3 w-3 text-green-400" />
+        Steps
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono">
+        {format_steps(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "steps"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Step Counter"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center justify-center py-4">
+          <Heroicons.icon name="user" type="outline" class="h-8 w-8 text-green-400 mr-3" />
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white">{format_steps(@lastvalue.payload)}</div>
+            <div class="text-sm text-gray-400">steps</div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_steps(%{count: count}) when is_integer(count), do: Integer.to_string(count)
+  defp format_steps(count) when is_integer(count), do: Integer.to_string(count)
+  defp format_steps(_), do: "0"
+
+  # ============================================================================
+  # TAP - Tap detection indicator
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "tap", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="hand-raised" type="outline" class="h-3 w-3 text-amber-400" />
+        Tap
+      </span>
+      <span :if={@lastvalue} class="text-amber-400 font-mono">
+        {tap_direction(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "tap"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Tap Detection"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No tap detected</div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="flex items-center gap-3">
+            <Heroicons.icon name="hand-raised" type="solid" class="h-8 w-8 text-amber-400" />
+            <div>
+              <div class="text-white font-bold">{tap_direction(@lastvalue.payload)}</div>
+              <div class="text-xs text-gray-400">
+                Tap count: {get_in(@lastvalue, [:payload, :count]) || 1}
+              </div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp tap_direction(%{direction: dir}) when is_binary(dir), do: dir
+  defp tap_direction(_), do: "--"
+
+  # ============================================================================
+  # ORIENTATION - Device orientation (portrait/landscape/face up/down)
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "orientation", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="device-phone-mobile" type="outline" class={"h-3 w-3 text-teal-400 #{orientation_rotation(@lastvalue)}"} />
+        Orientation
+      </span>
+      <span :if={@lastvalue} class="text-white">
+        {orientation_label(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "orientation"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Device Orientation"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center justify-center py-4">
+          <Heroicons.icon name="device-phone-mobile" type="outline" class={"h-12 w-12 text-teal-400 #{orientation_rotation(@lastvalue)}"} />
+          <div class="ml-4 text-center">
+            <div class="text-xl font-bold text-white">{orientation_label(@lastvalue.payload)}</div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp orientation_label(%{orientation: orient}) when is_binary(orient) do
+    orient
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+  defp orientation_label(_), do: "Unknown"
+
+  defp orientation_rotation(%{payload: %{orientation: orient}}) do
+    case orient do
+      "landscape" -> "rotate-90"
+      "reverse_landscape" -> "-rotate-90"
+      "reverse_portrait" -> "rotate-180"
+      _ -> ""
+    end
+  end
+  defp orientation_rotation(_), do: ""
+
+  # ============================================================================
+  # LED - RGB LED control (bidirectional)
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "led", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="light-bulb" type="solid" class="h-3 w-3 text-yellow-400" />
+        LED
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <div
+          class="w-4 h-4 rounded-full border border-gray-600"
+          style={"background-color: rgb(#{get_in(@lastvalue, [:payload, :r]) || 0}, #{get_in(@lastvalue, [:payload, :g]) || 0}, #{get_in(@lastvalue, [:payload, :b]) || 0})"}
+        />
+        <span class="text-gray-400">{get_in(@lastvalue, [:payload, :mode]) || "off"}</span>
+      </div>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "led"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="RGB LED Control"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">LED state unknown</div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="flex items-center gap-4 mb-3">
+            <div
+              class="w-12 h-12 rounded-full border-2 border-gray-600 shadow-lg"
+              style={"background-color: rgb(#{get_in(@lastvalue, [:payload, :r]) || 0}, #{get_in(@lastvalue, [:payload, :g]) || 0}, #{get_in(@lastvalue, [:payload, :b]) || 0}); box-shadow: 0 0 15px rgb(#{get_in(@lastvalue, [:payload, :r]) || 0}, #{get_in(@lastvalue, [:payload, :g]) || 0}, #{get_in(@lastvalue, [:payload, :b]) || 0})"}
+            />
+            <div>
+              <div class="text-white font-bold capitalize">{get_in(@lastvalue, [:payload, :mode]) || "off"}</div>
+              <div class="text-xs text-gray-400">
+                Intensity: {get_in(@lastvalue, [:payload, :intensity]) || 100}%
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-red-400">R</div>
+              <div class="text-white font-mono">{get_in(@lastvalue, [:payload, :r]) || 0}</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-green-400">G</div>
+              <div class="text-white font-mono">{get_in(@lastvalue, [:payload, :g]) || 0}</div>
+            </div>
+            <div class="bg-gray-800 rounded p-2 text-center">
+              <div class="text-blue-400">B</div>
+              <div class="text-white font-mono">{get_in(@lastvalue, [:payload, :b]) || 0}</div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # SPEAKER - Speaker control (bidirectional)
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "speaker", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="speaker-wave" type="outline" class="h-3 w-3 text-violet-400" />
+        Speaker
+      </span>
+      <span :if={@lastvalue} class="text-violet-400">
+        {format_speaker_status(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "speaker"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Speaker"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">Speaker idle</div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="flex items-center gap-3">
+            <Heroicons.icon name="speaker-wave" type="outline" class="h-8 w-8 text-violet-400" />
+            <div>
+              <div class="text-white">{format_speaker_status(@lastvalue.payload)}</div>
+              <div :if={get_in(@lastvalue, [:payload, :frequency])} class="text-xs text-gray-400">
+                {get_in(@lastvalue, [:payload, :frequency])} Hz
+              </div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_speaker_status(%{frequency: freq}) when is_number(freq), do: "#{freq} Hz"
+  defp format_speaker_status(%{sample: sample}) when is_integer(sample), do: "Sample ##{sample}"
+  defp format_speaker_status(_), do: "Idle"
+
+  # ============================================================================
+  # MICROPHONE - Audio level meter
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "microphone", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <Heroicons.icon name="microphone" type="outline" class="h-3 w-3 text-rose-400" />
+        Mic
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <meter
+          min="0"
+          max="100"
+          value={mic_level_normalized(@lastvalue.payload)}
+          class="h-2 w-12"
+        />
+        <span class="text-gray-400 font-mono text-[10px]">{format_mic_level(@lastvalue.payload)}</span>
+      </div>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "microphone"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Microphone"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="py-2">
+          <div class="flex items-center gap-4">
+            <Heroicons.icon name="microphone" type="outline" class="h-8 w-8 text-rose-400" />
+            <div class="flex-1">
+              <meter
+                min="0"
+                max="100"
+                low="33"
+                high="66"
+                optimum="50"
+                value={mic_level_normalized(@lastvalue.payload)}
+                class="w-full h-4"
+              />
+              <div class="text-xs text-gray-400 mt-1">
+                {format_mic_level(@lastvalue.payload)} dB
+              </div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  defp format_mic_level(%{level: level}) when is_number(level), do: round(level)
+  defp format_mic_level(_), do: 0
+
+  defp mic_level_normalized(%{level: level}) when is_number(level) do
+    # Normalize dB to 0-100 range (assuming -60dB to 0dB range)
+    normalized = (level + 60) / 60 * 100
+    max(0, min(100, normalized))
+  end
+  defp mic_level_normalized(_), do: 0
 
   # Summary mode for default/generic attributes (sparkline types)
   @impl true

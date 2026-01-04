@@ -1,6 +1,7 @@
+#!/bin/bash
 #sudo sysctl -w kern.maxfiles=100000
 #sudo sysctl -w kern.maxfilesperproc=100000
-source .env
+. .env
 
 # BEAM VM memory and performance options:
 # +hms - Sets the default heap size (in words) for processes

@@ -1,0 +1,587 @@
+# Sensocto Neo4j Graph Integration Demo
+
+```elixir
+Mix.install([
+  {:ash_neo4j, "~> 0.2.12"},
+  {:boltx, "~> 0.0.6"},
+  {:ash, "~> 3.0"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Introduction
+
+This livebook demonstrates how to use Neo4j to model **graph relationships** in Sensocto. While PostgreSQL stores your primary data, Neo4j excels at representing complex relationships between:
+
+* **Sensors** and their connections
+* **Connectors** (Web BLE, Native Apps, Python clients)
+* **Sensor Attributes** (heart rate, battery, geolocation, etc.)
+* **Users** and their room memberships
+* **Rooms** containing sensors
+
+## Connection Setup
+
+```elixir
+# Configure Boltx connection to Neo4j
+neo4j_config = [
+  uri: "bolt://localhost:7687",
+  auth: [username: "neo4j", password: "sensocto123"],
+  pool_size: 5,
+  name: Bolt
+]
+
+# Start the Boltx connection
+{:ok, _pid} = Boltx.start_link(neo4j_config)
+IO.puts("Connected to Neo4j!")
+```
+
+## Define the Domain First
+
+```elixir
+defmodule SensoctoGraph do
+  @moduledoc """
+  Ash Domain for Sensocto graph modeling using Neo4j.
+  Models relationships between sensors, connectors, users, and rooms.
+  """
+  use Ash.Domain, validate_config_inclusion?: false
+
+  resources do
+    allow_unregistered? true
+  end
+end
+```
+
+## Sensocto Graph Resources
+
+### Sensor Node
+
+```elixir
+defmodule SensoctoGraph.Sensor do
+  @moduledoc """
+  Graph representation of a sensor.
+  Models connections to rooms, connectors, and other sensors.
+  """
+  use Ash.Resource,
+    domain: SensoctoGraph,
+    data_layer: AshNeo4j.DataLayer
+
+  neo4j do
+    label :Sensor
+  end
+
+  actions do
+    default_accept :*
+    defaults [:create, :read, :update, :destroy]
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :name, :string, allow_nil?: false, public?: true
+    attribute :mac_address, :string, allow_nil?: true, public?: true
+    attribute :sensor_type, :string, allow_nil?: true, public?: true
+    attribute :firmware_version, :string, allow_nil?: true, public?: true
+    attribute :battery_level, :integer, allow_nil?: true, public?: true
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+end
+```
+
+### Connector Node
+
+```elixir
+defmodule SensoctoGraph.Connector do
+  @moduledoc """
+  Graph representation of a connector.
+  Connectors are the bridge between sensors and Sensocto (Web BLE, Native App, Python).
+  """
+  use Ash.Resource,
+    domain: SensoctoGraph,
+    data_layer: AshNeo4j.DataLayer
+
+  neo4j do
+    label :Connector
+  end
+
+  actions do
+    default_accept :*
+    defaults [:create, :read, :update, :destroy]
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :name, :string, allow_nil?: false, public?: true
+    # :web_ble, :native_ios, :native_android, :python, :raspberry_pi
+    attribute :connector_type, :string, allow_nil?: false, public?: true
+    attribute :version, :string, allow_nil?: true, public?: true
+    attribute :last_seen, :utc_datetime, allow_nil?: true, public?: true
+    create_timestamp :inserted_at
+  end
+end
+```
+
+### User Node
+
+```elixir
+defmodule SensoctoGraph.User do
+  @moduledoc """
+  Graph representation of a user.
+  Models room ownership and membership relationships.
+  """
+  use Ash.Resource,
+    domain: SensoctoGraph,
+    data_layer: AshNeo4j.DataLayer
+
+  neo4j do
+    label :User
+  end
+
+  actions do
+    default_accept :*
+    defaults [:create, :read, :update, :destroy]
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :email, :string, allow_nil?: false, public?: true
+    attribute :display_name, :string, allow_nil?: true, public?: true
+    create_timestamp :inserted_at
+  end
+end
+```
+
+### Room Node
+
+```elixir
+defmodule SensoctoGraph.Room do
+  @moduledoc """
+  Graph representation of a room.
+  Rooms group sensors and users together.
+  """
+  use Ash.Resource,
+    domain: SensoctoGraph,
+    data_layer: AshNeo4j.DataLayer
+
+  neo4j do
+    label :Room
+  end
+
+  actions do
+    default_accept :*
+    defaults [:create, :read, :update, :destroy]
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :name, :string, allow_nil?: false, public?: true
+    attribute :description, :string, allow_nil?: true, public?: true
+    attribute :join_code, :string, allow_nil?: true, public?: true
+    attribute :is_public, :boolean, default: true, public?: true
+    create_timestamp :inserted_at
+  end
+end
+```
+
+## Creating Demo Data
+
+### Create Users
+
+```elixir
+# Create some users
+users = [
+  %{email: "alice@example.com", display_name: "Alice"},
+  %{email: "bob@example.com", display_name: "Bob"},
+  %{email: "charlie@example.com", display_name: "Charlie"}
+]
+
+created_users = Enum.map(users, fn attrs ->
+  {:ok, user} = SensoctoGraph.User
+  |> Ash.Changeset.for_create(:create, attrs)
+  |> Ash.create()
+  user
+end)
+
+IO.inspect(Enum.map(created_users, & &1.display_name), label: "Created Users")
+```
+
+### Create Rooms
+
+```elixir
+# Create rooms
+rooms = [
+  %{name: "Living Room", description: "Main sensor hub", join_code: "LIVING01", is_public: true},
+  %{name: "Gym", description: "Fitness tracking sensors", join_code: "GYM001", is_public: false},
+  %{name: "Office", description: "Work environment sensors", join_code: "OFFICE01", is_public: true}
+]
+
+created_rooms = Enum.map(rooms, fn attrs ->
+  {:ok, room} = SensoctoGraph.Room
+  |> Ash.Changeset.for_create(:create, attrs)
+  |> Ash.create()
+  room
+end)
+
+IO.inspect(Enum.map(created_rooms, & &1.name), label: "Created Rooms")
+```
+
+### Create Connectors
+
+```elixir
+# Create connectors of different types
+# Note: Avoid apostrophes in names due to Cypher escaping issues in ash_neo4j
+connectors = [
+  %{name: "Alice iPhone", connector_type: "native_ios", version: "2.1.0"},
+  %{name: "Bob Android", connector_type: "native_android", version: "2.0.5"},
+  %{name: "Web Dashboard", connector_type: "web_ble", version: "1.5.0"},
+  %{name: "Raspberry Pi Gateway", connector_type: "raspberry_pi", version: "1.0.0"},
+  %{name: "Python Data Collector", connector_type: "python", version: "3.2.1"}
+]
+
+created_connectors = Enum.map(connectors, fn attrs ->
+  {:ok, connector} = SensoctoGraph.Connector
+  |> Ash.Changeset.for_create(:create, attrs)
+  |> Ash.create()
+  connector
+end)
+
+IO.inspect(Enum.map(created_connectors, & &1.name), label: "Created Connectors")
+```
+
+### Create Sensors
+
+```elixir
+# Create sensors with different types
+sensors = [
+  %{name: "Heart Rate Monitor", sensor_type: "polar_h10", mac_address: "AA:BB:CC:DD:EE:01", battery_level: 85},
+  %{name: "Smart Watch", sensor_type: "apple_watch", mac_address: "AA:BB:CC:DD:EE:02", battery_level: 72},
+  %{name: "Environment Sensor", sensor_type: "ruuvi_tag", mac_address: "AA:BB:CC:DD:EE:03", battery_level: 95},
+  %{name: "Motion Tracker", sensor_type: "movesense", mac_address: "AA:BB:CC:DD:EE:04", battery_level: 60},
+  %{name: "GPS Tracker", sensor_type: "gps_beacon", mac_address: "AA:BB:CC:DD:EE:05", battery_level: 45}
+]
+
+created_sensors = Enum.map(sensors, fn attrs ->
+  {:ok, sensor} = SensoctoGraph.Sensor
+  |> Ash.Changeset.for_create(:create, attrs)
+  |> Ash.create()
+  sensor
+end)
+
+IO.inspect(Enum.map(created_sensors, & &1.name), label: "Created Sensors")
+```
+
+## Creating Relationships with Cypher
+
+Now let's create the graph relationships using direct Cypher queries.
+
+### User Owns/Joins Rooms
+
+```elixir
+# Alice owns Living Room, Bob owns Gym, Charlie owns Office
+ownership_queries = [
+  {"Alice", "Living Room"},
+  {"Bob", "Gym"},
+  {"Charlie", "Office"}
+]
+
+Enum.each(ownership_queries, fn {user_name, room_name} ->
+  query = """
+  MATCH (u:User {displayName: $user_name})
+  MATCH (r:Room {name: $room_name})
+  MERGE (u)-[:OWNS]->(r)
+  RETURN u.displayName, r.name
+  """
+  Boltx.query(Bolt, query, %{user_name: user_name, room_name: room_name})
+end)
+
+# Users join each other's rooms
+join_queries = [
+  {"Alice", "Gym"},
+  {"Bob", "Living Room"},
+  {"Charlie", "Living Room"},
+  {"Charlie", "Gym"}
+]
+
+Enum.each(join_queries, fn {user_name, room_name} ->
+  query = """
+  MATCH (u:User {displayName: $user_name})
+  MATCH (r:Room {name: $room_name})
+  MERGE (u)-[:MEMBER_OF]->(r)
+  RETURN u.displayName, r.name
+  """
+  Boltx.query(Bolt, query, %{user_name: user_name, room_name: room_name})
+end)
+
+IO.puts("Room memberships created!")
+```
+
+### Sensors Located In Rooms
+
+```elixir
+# Place sensors in rooms
+sensor_room_assignments = [
+  {"Heart Rate Monitor", "Gym"},
+  {"Smart Watch", "Gym"},
+  {"Motion Tracker", "Gym"},
+  {"Environment Sensor", "Living Room"},
+  {"GPS Tracker", "Office"}
+]
+
+Enum.each(sensor_room_assignments, fn {sensor_name, room_name} ->
+  query = """
+  MATCH (s:Sensor {name: $sensor_name})
+  MATCH (r:Room {name: $room_name})
+  MERGE (s)-[:LOCATED_IN]->(r)
+  RETURN s.name, r.name
+  """
+  Boltx.query(Bolt, query, %{sensor_name: sensor_name, room_name: room_name})
+end)
+
+IO.puts("Sensors placed in rooms!")
+```
+
+### Connectors Connect To Sensors
+
+```elixir
+# Connectors bridge to sensors
+connector_sensor_links = [
+  {"Alice iPhone", "Heart Rate Monitor"},
+  {"Alice iPhone", "Smart Watch"},
+  {"Bob Android", "Motion Tracker"},
+  {"Web Dashboard", "Environment Sensor"},
+  {"Raspberry Pi Gateway", "Environment Sensor"},
+  {"Raspberry Pi Gateway", "GPS Tracker"},
+  {"Python Data Collector", "GPS Tracker"}
+]
+
+Enum.each(connector_sensor_links, fn {connector_name, sensor_name} ->
+  query = """
+  MATCH (c:Connector {name: $connector_name})
+  MATCH (s:Sensor {name: $sensor_name})
+  MERGE (c)-[:CONNECTS_TO]->(s)
+  RETURN c.name, s.name
+  """
+  Boltx.query(Bolt, query, %{connector_name: connector_name, sensor_name: sensor_name})
+end)
+
+IO.puts("Connector-sensor links created!")
+```
+
+### User Uses Connector
+
+```elixir
+# Users use connectors
+user_connector_links = [
+  {"Alice", "Alice iPhone"},
+  {"Alice", "Web Dashboard"},
+  {"Bob", "Bob Android"},
+  {"Bob", "Web Dashboard"},
+  {"Charlie", "Raspberry Pi Gateway"},
+  {"Charlie", "Python Data Collector"}
+]
+
+Enum.each(user_connector_links, fn {user_name, connector_name} ->
+  query = """
+  MATCH (u:User {displayName: $user_name})
+  MATCH (c:Connector {name: $connector_name})
+  MERGE (u)-[:USES]->(c)
+  RETURN u.displayName, c.name
+  """
+  Boltx.query(Bolt, query, %{user_name: user_name, connector_name: connector_name})
+end)
+
+IO.puts("User-connector links created!")
+```
+
+## Graph Queries
+
+### View All Relationships
+
+```elixir
+viz_query = """
+MATCH (n)-[r]->(m)
+WHERE n:User OR n:Sensor OR n:Connector OR n:Room
+RETURN
+  labels(n)[0] as source_type,
+  coalesce(n.name, n.displayName, n.email) as source,
+  type(r) as relationship,
+  labels(m)[0] as target_type,
+  coalesce(m.name, m.displayName, m.email) as target
+ORDER BY source_type, source
+"""
+
+{:ok, result} = Boltx.query(Bolt, viz_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+### Find All Sensors a User Can Access
+
+```elixir
+# Find all sensors Alice can access through her rooms
+access_query = """
+MATCH (u:User {displayName: $user_name})-[:OWNS|MEMBER_OF]->(r:Room)<-[:LOCATED_IN]-(s:Sensor)
+RETURN DISTINCT
+  s.name as sensor,
+  s.sensorType as type,
+  s.batteryLevel as battery,
+  r.name as room,
+  CASE WHEN (u)-[:OWNS]->(r) THEN 'owner' ELSE 'member' END as access_type
+"""
+
+{:ok, result} = Boltx.query(Bolt, access_query, %{user_name: "Alice"})
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+### Find Sensor-to-Connector Path
+
+```elixir
+# What connectors can reach a specific sensor?
+connector_path_query = """
+MATCH (s:Sensor {name: $sensor_name})<-[:CONNECTS_TO]-(c:Connector)<-[:USES]-(u:User)
+RETURN
+  s.name as sensor,
+  c.name as connector,
+  c.connectorType as connector_type,
+  u.displayName as user
+"""
+
+{:ok, result} = Boltx.query(Bolt, connector_path_query, %{sensor_name: "Environment Sensor"})
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+### Room Sensor Statistics
+
+```elixir
+# Sensors per room with average battery level
+room_stats_query = """
+MATCH (r:Room)
+OPTIONAL MATCH (s:Sensor)-[:LOCATED_IN]->(r)
+RETURN
+  r.name as room,
+  count(s) as sensor_count,
+  avg(s.batteryLevel) as avg_battery,
+  collect(s.name) as sensors
+ORDER BY sensor_count DESC
+"""
+
+{:ok, result} = Boltx.query(Bolt, room_stats_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+### Connector Type Distribution
+
+```elixir
+# Count connectors by type
+connector_stats_query = """
+MATCH (c:Connector)
+RETURN c.connectorType as type, count(c) as count
+ORDER BY count DESC
+"""
+
+{:ok, result} = Boltx.query(Bolt, connector_stats_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+### Find Users Who Share Rooms
+
+```elixir
+# Find users who are in the same rooms
+shared_rooms_query = """
+MATCH (u1:User)-[:OWNS|MEMBER_OF]->(r:Room)<-[:OWNS|MEMBER_OF]-(u2:User)
+WHERE u1.displayName < u2.displayName
+RETURN
+  u1.displayName as user1,
+  u2.displayName as user2,
+  collect(r.name) as shared_rooms,
+  count(r) as room_count
+ORDER BY room_count DESC
+"""
+
+{:ok, result} = Boltx.query(Bolt, shared_rooms_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+### Low Battery Sensors Alert
+
+```elixir
+# Find sensors with low battery and their responsible users
+low_battery_query = """
+MATCH (s:Sensor)-[:LOCATED_IN]->(r:Room)<-[:OWNS]-(u:User)
+WHERE s.batteryLevel < 70
+RETURN
+  s.name as sensor,
+  s.batteryLevel as battery,
+  r.name as room,
+  u.displayName as owner,
+  u.email as contact_email
+ORDER BY s.batteryLevel ASC
+"""
+
+{:ok, result} = Boltx.query(Bolt, low_battery_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+## Graph Statistics
+
+```elixir
+# Overall graph statistics
+stats_query = """
+MATCH (n)
+WHERE n:User OR n:Sensor OR n:Connector OR n:Room
+RETURN labels(n)[0] as node_type, count(n) as count
+ORDER BY count DESC
+"""
+
+{:ok, result} = Boltx.query(Bolt, stats_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+```elixir
+# Relationship statistics
+rel_stats_query = """
+MATCH ()-[r]->()
+RETURN type(r) as relationship_type, count(r) as count
+ORDER BY count DESC
+"""
+
+{:ok, result} = Boltx.query(Bolt, rel_stats_query)
+data = Enum.map(result.records, fn record -> Enum.zip(result.fields, record) |> Map.new() end)
+Kino.DataTable.new(data)
+```
+
+## Cleanup
+
+```elixir
+# Clean up demo data
+cleanup_query = """
+MATCH (n)
+WHERE n:User OR n:Sensor OR n:Connector OR n:Room
+DETACH DELETE n
+"""
+
+Boltx.query(Bolt, cleanup_query)
+IO.puts("Demo data cleaned up!")
+```
+
+## Use Cases for Neo4j in Sensocto
+
+1. **Access Control**: Quickly determine which users can access which sensors through room memberships
+2. **Connector Discovery**: Find the path from a user to a sensor through connectors
+3. **Network Topology**: Visualize how sensors, connectors, and rooms are interconnected
+4. **Impact Analysis**: When a connector goes offline, find all affected sensors and users
+5. **Collaboration**: Find users who share rooms for collaboration features
+6. **Alerting**: Query for sensors with issues and find responsible room owners
+
+## Resources
+
+* [ash_neo4j Documentation](https://hexdocs.pm/ash_neo4j/)
+* [Boltx Documentation](https://hexdocs.pm/boltx/)
+* [Neo4j Cypher Manual](https://neo4j.com/docs/cypher-manual/current/)
+* [Neo4j Browser](http://localhost:7474) - Visualize your graph

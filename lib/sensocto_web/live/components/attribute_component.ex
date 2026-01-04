@@ -368,8 +368,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
   defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
-  # Summary mode for button
-  # Supports both single-button (Thingy:52: 0=released, 1=pressed) and multi-button devices
+  # Summary mode for button - 3 colored buttons with vibrate feedback
   @impl true
   def render(%{:attribute_type => "button", :view_mode => :summary} = assigns) do
     ~H"""
@@ -377,23 +376,15 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       class="flex items-center justify-between text-xs py-0.5"
       id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
       phx-hook="Vibrate"
-      data-value={@lastvalue && extract_button_value(@lastvalue.payload)}
-      data-sensor_id={@sensor_id}
-      data-attribute_id={@attribute_id}
+      data-value={@lastvalue && @lastvalue.payload}
     >
-      <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="hand-raised" type="outline" class="h-3 w-3 text-amber-400" />
-        Button
-      </span>
-      <div :if={@lastvalue} class="flex items-center gap-1">
-        <div class={[
-          "px-2 py-0.5 rounded text-xs font-bold",
-          if(button_pressed?(@lastvalue.payload), do: "bg-amber-500 text-white animate-pulse", else: "bg-gray-600 text-gray-400")
-        ]}>
-          {if button_pressed?(@lastvalue.payload), do: "PRESSED", else: "Released"}
-        </div>
+      <span class="text-gray-400">{@attribute_id}</span>
+      <div :if={@lastvalue} class="flex gap-0.5">
+        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")]}>1</div>
+        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")]}>2</div>
+        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")]}>3</div>
       </div>
-      <.loading_spinner :if={is_nil(@lastvalue)} />
+      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
     </div>
     """
   end
@@ -413,39 +404,39 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <.render_attribute_header
           sensor_id={@sensor_id}
           attribute_id={@attribute_id}
-          attribute_name="Button"
+          attribute_name={@attribute_id}
           lastvalue={@lastvalue}
           socket={@socket}
         >
         </.render_attribute_header>
 
-        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">Waiting for button press...</div>
+        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No button pressed</div>
 
         <div
           :if={@lastvalue}
-          class="flex items-center gap-3 py-2"
+          class="flex gap-1 items-center"
           id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
           phx-hook="Vibrate"
-          data-value={extract_button_value(@lastvalue.payload)}
+          data-value={@lastvalue.payload}
         >
-          <div class={[
-            "w-12 h-12 rounded-full flex items-center justify-center transition-all duration-150",
-            if(button_pressed?(@lastvalue.payload),
-              do: "bg-amber-500 shadow-lg shadow-amber-500/50 scale-110",
-              else: "bg-gray-700 border-2 border-gray-600")
-          ]}>
-            <Heroicons.icon
-              name="hand-raised"
-              type={if button_pressed?(@lastvalue.payload), do: "solid", else: "outline"}
-              class={["h-6 w-6", if(button_pressed?(@lastvalue.payload), do: "text-white", else: "text-gray-400")]}
-            />
-          </div>
-          <div>
-            <div class={["text-lg font-bold", if(button_pressed?(@lastvalue.payload), do: "text-amber-400", else: "text-gray-400")]}>
-              {if button_pressed?(@lastvalue.payload), do: "PRESSED", else: "Released"}
+          <div class="flex gap-1">
+            <div class={[
+              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
+              if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")
+            ]}>
+              1
             </div>
-            <div class="text-xs text-gray-500">
-              Raw value: {extract_button_value(@lastvalue.payload)}
+            <div class={[
+              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
+              if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")
+            ]}>
+              2
+            </div>
+            <div class={[
+              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
+              if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")
+            ]}>
+              3
             </div>
           </div>
         </div>
@@ -453,21 +444,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  # Helper functions for button state
-  # Thingy:52 button characteristic sends 0=released, 1=pressed
-  # Only exact value of 1 means pressed; all other values (0, 193, etc.) mean released
-  defp button_pressed?(payload) when is_integer(payload), do: payload == 1
-  defp button_pressed?(%{pressed: pressed}) when is_boolean(pressed), do: pressed
-  defp button_pressed?(%{pressed: 1}), do: true
-  defp button_pressed?(%{pressed: "1"}), do: true
-  defp button_pressed?(%{value: value}) when is_integer(value), do: value == 1
-  defp button_pressed?(_), do: false
-
-  defp extract_button_value(payload) when is_integer(payload), do: payload
-  defp extract_button_value(%{pressed: pressed}) when is_integer(pressed), do: pressed
-  defp extract_button_value(%{value: value}) when is_integer(value), do: value
-  defp extract_button_value(_), do: 0
 
   # Summary mode for heartrate - shows pulsating heart with BPM (peak detection driven)
   @impl true

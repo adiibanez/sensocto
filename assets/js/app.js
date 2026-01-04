@@ -72,16 +72,6 @@ Hooks.QRCode = QRCode;
 Hooks.AttentionTracker = AttentionTracker;
 Hooks.SensorPinControl = SensorPinControl;
 
-// ExpandOnHover hook - expands view mode when hovering over the expand button
-// The expanded state is "sticky" - it persists after mouse leaves
-Hooks.ExpandOnHover = {
-  mounted() {
-    this.el.addEventListener('mouseenter', () => {
-      this.pushEvent("expand_view_mode", {});
-    });
-  }
-};
-
 // Register video/voice call hooks
 Hooks.CallHook = CallHook;
 Hooks.VideoTileHook = VideoTileHook;

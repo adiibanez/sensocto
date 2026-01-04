@@ -97,7 +97,8 @@ defmodule Sensocto.MixProject do
       {:boltx, "~> 0.0.6"},
       {:ash_ops, "~> 0.2.3"},
       {:picosat_elixir, "~> 0.2"},
-      {:flex_logger, "~> 0.2.1"},
+      #{:flex_logger, "~> 0.2.1"},
+      {:flex_logger, git: "https://github.com/adiibanez/elixir-flex-logger"},
       {:dialyxir, "~> 1.4", only: [:dev]},
       # only: [:dev, :test]
       {:sourceror, "~> 1.7 or ~> 1.8 or ~> 1.9 or ~> 1.10", override: true},

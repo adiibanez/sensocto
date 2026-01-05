@@ -5,6 +5,7 @@
     let channelIdentifier = sensorService.getDeviceId();
 
     var channel = null;
+    let unsubscribeSocket;
 
     // Track currently pressed buttons (for visual feedback and simultaneous presses)
     let pressedButtons = new Set();
@@ -106,17 +107,24 @@
     };
 
     onMount(() => {
-        // Register the button attribute immediately on mount so the UI renders the button visualization
-        ensureChannel();
+        // Wait for socket to be ready before registering the button attribute
+        // This ensures the channel is established and the attribute shows up in the UI
+        unsubscribeSocket = sensorService.onSocketReady(() => {
+            ensureChannel();
+        });
 
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
     });
 
     onDestroy(() => {
+        if (unsubscribeSocket) {
+            unsubscribeSocket();
+        }
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
-        sensorService.leaveChannelIfUnused(channelIdentifier, "button");
+        sensorService.unregisterAttribute(sensorService.getDeviceId(), "button");
+        sensorService.leaveChannelIfUnused(channelIdentifier);
     });
 
     const getButtonStyle = (button, isPressed) => {

@@ -135,13 +135,30 @@ defmodule Sensocto.Rooms do
   end
 
   defp get_room_sensors_state(room) when is_map(room) do
-    sensor_ids = get_sensor_ids(room)
+    room_id = Map.get(room, :id)
 
-    sensor_ids
+    # Get sensor IDs from multiple sources (priority order):
+    # 1. GenServer (fast in-memory)
+    # 2. Traditional room storage (sensor_connections, sensor_ids)
+    # 3. Neo4j graph (backend source of truth fallback)
+    genserver_sensor_ids = Sensocto.RoomPresenceServer.get_room_sensors(room_id)
+    traditional_sensor_ids = get_sensor_ids(room)
+    graph_sensor_ids = get_room_sensors_from_graph(room_id)
+
+    # Merge and deduplicate
+    all_sensor_ids =
+      (genserver_sensor_ids ++ traditional_sensor_ids ++ graph_sensor_ids)
+      |> Enum.uniq()
+
+    all_sensor_ids
     |> Enum.map(fn sensor_id ->
-      case Sensocto.SimpleSensor.get_view_state(sensor_id) do
-        nil -> nil
-        state -> Map.put(state, :activity_status, get_sensor_activity_status(room, sensor_id))
+      try do
+        case Sensocto.SimpleSensor.get_view_state(sensor_id) do
+          nil -> nil
+          state -> Map.put(state, :activity_status, get_sensor_activity_status(room, sensor_id))
+        end
+      catch
+        :exit, _ -> nil
       end
     end)
     |> Enum.reject(&is_nil/1)
@@ -280,10 +297,38 @@ defmodule Sensocto.Rooms do
     |> Ash.Changeset.force_change_attribute(:user_id, user.id)
     |> Ash.create()
     |> case do
-      {:ok, _membership} -> {:ok, get_room!(room_id)}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, _membership} ->
+        {:ok, get_room!(room_id)}
+
+      {:error, %{errors: errors} = changeset} ->
+        # Check if user is already a member (identity constraint violation)
+        if already_member_error?(errors) do
+          {:ok, get_room!(room_id)}
+        else
+          {:error, changeset}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
+
+  defp already_member_error?(errors) when is_list(errors) do
+    Enum.any?(errors, fn error ->
+      case error do
+        %Ash.Error.Changes.InvalidChanges{fields: fields} when is_list(fields) ->
+          :room_id in fields or :user_id in fields
+
+        %{class: :invalid} ->
+          true
+
+        _ ->
+          false
+      end
+    end)
+  end
+
+  defp already_member_error?(_), do: false
 
   defp join_temporary_room(room_id, user) do
     case RoomServer.add_member(room_id, user.id) do
@@ -293,11 +338,56 @@ defmodule Sensocto.Rooms do
   end
 
   @doc """
+  Joins a user to a room with all their available sensors.
+  This syncs the membership to Neo4j for graph-based queries.
+
+  Returns {:ok, room} on success.
+  """
+  def join_room_with_sensors(room, user) when is_map(room) do
+    # First join using the traditional method (PostgreSQL/in-memory)
+    with {:ok, updated_room} <- join_room(room, user) do
+      role = if owner?(room, user), do: :owner, else: :member
+
+      # Get all currently connected sensors for this user
+      sensor_ids =
+        Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+        |> Map.keys()
+
+      # Register in GenServer for fast in-memory access
+      Sensocto.RoomPresenceServer.join_room(room.id, user.id, sensor_ids, role: role)
+
+      # Async sync to Neo4j graph (source of truth)
+      sync_to_graph(room, user, role)
+
+      {:ok, updated_room}
+    end
+  end
+
+  defp sync_to_graph(room, user, role) do
+    # Async sync to Neo4j - don't block on graph operations
+    Task.start(fn ->
+      case Sensocto.Graph.Context.join_room_with_sensors(room, user, role: role) do
+        {:ok, _presence} ->
+          Logger.debug("Synced user #{user.id} to room #{room.id} in Neo4j graph")
+
+        {:error, reason} ->
+          Logger.warning("Failed to sync to Neo4j graph: #{inspect(reason)}")
+      end
+    end)
+  end
+
+  @doc """
   Removes a user from a room.
   """
   def leave_room(room, user) when is_map(room) do
     room_id = Map.get(room, :id)
     is_persisted = Map.get(room, :is_persisted, true)
+
+    # Remove from GenServer (in-memory)
+    Sensocto.RoomPresenceServer.leave_room(room_id, user.id)
+
+    # Remove from Neo4j graph
+    remove_from_graph(room, user)
 
     if is_persisted do
       leave_persisted_room(room_id, user)
@@ -314,6 +404,46 @@ defmodule Sensocto.Rooms do
       nil -> {:error, :not_member}
       membership -> Ash.destroy(membership)
     end
+  end
+
+  defp remove_from_graph(room, user) do
+    # Async removal from Neo4j - don't block
+    Task.start(fn ->
+      case Sensocto.Graph.Context.leave_room(room, user) do
+        {:ok, :left} ->
+          Logger.debug("Removed user #{user.id} from room #{room.id} in Neo4j graph")
+
+        {:error, :not_in_room} ->
+          # User wasn't in graph, that's fine
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Failed to remove from Neo4j graph: #{inspect(reason)}")
+      end
+    end)
+  end
+
+  @doc """
+  Gets all sensor IDs associated with a room via the Neo4j graph.
+  Returns sensors from all users present in the room.
+  """
+  def get_room_sensors_from_graph(room_id) do
+    Sensocto.Graph.Context.get_room_sensor_ids(room_id)
+  end
+
+  @doc """
+  Lists all users present in a room with their associated sensors.
+  Uses the Neo4j graph for real-time presence data.
+  """
+  def list_room_presences(room_id) do
+    Sensocto.Graph.Context.list_room_presences(room_id)
+  end
+
+  @doc """
+  Checks if a user is currently present in a room (via graph).
+  """
+  def user_in_room?(user_id, room_id) do
+    Sensocto.Graph.Context.in_room?(user_id, room_id)
   end
 
   @doc """

@@ -77,47 +77,75 @@ Hooks.CallHook = CallHook;
 Hooks.VideoTileHook = VideoTileHook;
 Hooks.CallControlsHook = CallControlsHook;
 
-// Vibrate hook - vibrates device when data-value changes
-// Vibration duration is proportional to button number (button * 100ms)
-// Sound is optional and only plays when data-play-sound="true" is set
+// Vibrate hook - vibrates device and plays sound on every button press
+// Supports repetitive clicks on same button (uses timestamp to detect)
+// Sound plays by default (set data-play-sound="false" to disable)
 Hooks.Vibrate = {
   mounted() {
     this.lastValue = this.el.dataset.value;
+    this.lastTimestamp = this.el.dataset.timestamp || '0';
     this.audioContext = null;
+
+    // Trigger notification on first mount if there's a value
+    if (this.lastValue && this.lastValue !== 'null' && this.lastValue !== 'undefined') {
+      this.triggerNotification(this.lastValue);
+    }
   },
 
   updated() {
     const newValue = this.el.dataset.value;
-    if (newValue !== this.lastValue) {
+    const newTimestamp = this.el.dataset.timestamp || Date.now().toString();
+
+    // Trigger if value changed OR if timestamp changed (for repetitive clicks)
+    const valueChanged = newValue !== this.lastValue;
+    const timestampChanged = newTimestamp !== this.lastTimestamp;
+
+    if (valueChanged || timestampChanged) {
       this.lastValue = newValue;
-      const buttonNumber = parseInt(newValue, 10) || 1;
-      const vibrateDuration = buttonNumber * 100;
-      if (navigator.vibrate) {
-        navigator.vibrate(vibrateDuration);
-      }
-      // Only play sound if explicitly enabled via data-play-sound attribute
-      if (this.el.dataset.playSound === 'true') {
-        this.playBeep(vibrateDuration);
+      this.lastTimestamp = newTimestamp;
+
+      if (newValue && newValue !== 'null' && newValue !== 'undefined') {
+        this.triggerNotification(newValue);
       }
     }
   },
 
-  playBeep(duration = 100) {
+  triggerNotification(value) {
+    const buttonNumber = parseInt(value, 10) || 1;
+    const vibrateDuration = buttonNumber * 100;
+
+    // Always vibrate
+    if (navigator.vibrate) {
+      navigator.vibrate(vibrateDuration);
+    }
+
+    // Play sound unless explicitly disabled
+    if (this.el.dataset.playSound !== 'false') {
+      this.playBeep(buttonNumber);
+    }
+  },
+
+  playBeep(buttonNumber = 1) {
     try {
       if (!this.audioContext) {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
-      const beepDuration = duration / 1000;
+
+      // Different frequency for each button: 1=low, 2=mid, 3=high
+      const frequencies = { 1: 440, 2: 660, 3: 880 };
+      const frequency = frequencies[buttonNumber] || 440;
+      const duration = 0.15;
+
       const oscillator = this.audioContext.createOscillator();
       const gainNode = this.audioContext.createGain();
       oscillator.connect(gainNode);
       gainNode.connect(this.audioContext.destination);
-      oscillator.frequency.value = 880;
+      oscillator.frequency.value = frequency;
       oscillator.type = 'sine';
       gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + beepDuration);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
       oscillator.start(this.audioContext.currentTime);
-      oscillator.stop(this.audioContext.currentTime + beepDuration);
+      oscillator.stop(this.audioContext.currentTime + duration);
     } catch (e) {
       console.warn('[Vibrate] Could not play beep:', e);
     }

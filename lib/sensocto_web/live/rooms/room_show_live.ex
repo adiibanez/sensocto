@@ -28,8 +28,27 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to call events for this room
           PubSub.subscribe(Sensocto.PubSub, "call:#{room_id}")
 
+          # Subscribe to global sensor connections to auto-register sensors for this room
+          PubSub.subscribe(Sensocto.PubSub, "presence:all")
+
+          # Register all currently connected sensors to this room
+          all_connected_sensors =
+            Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+            |> Map.keys()
+
+          if Enum.any?(all_connected_sensors) do
+            register_sensors_to_room(room_id, user.id, all_connected_sensors)
+          end
+
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
+
+        # Reload room with sensors after registration
+        room =
+          case Rooms.get_room_with_sensors(room_id) do
+            {:ok, updated} -> updated
+            _ -> room
+          end
 
         available_sensors = get_available_sensors(room)
 
@@ -174,6 +193,38 @@ defmodule SensoctoWeb.RoomShowLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to delete room")}
+    end
+  end
+
+  @impl true
+  def handle_event("leave_room", _params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    # Don't allow owner to leave their own room
+    if Rooms.owner?(room, user) do
+      {:noreply, put_flash(socket, :error, "Room owners cannot leave. Transfer ownership or delete the room.")}
+    else
+      case Rooms.leave_room(room, user) do
+        :ok ->
+          socket =
+            socket
+            |> put_flash(:info, "Left room: #{room.name}")
+            |> push_navigate(to: ~p"/lobby")
+
+          {:noreply, socket}
+
+        {:error, :not_member} ->
+          socket =
+            socket
+            |> put_flash(:info, "Left room: #{room.name}")
+            |> push_navigate(to: ~p"/lobby")
+
+          {:noreply, socket}
+
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "Failed to leave room")}
+      end
     end
   end
 
@@ -425,10 +476,68 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, push_event(socket, event, payload)}
   end
 
+  # Handle presence_diff events for auto-registering sensors to the room
+  @impl true
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", payload: %{joins: joins}}, socket) when map_size(joins) > 0 do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    # For each new sensor that joined globally, add it to the room's GenServer
+    new_sensor_ids = Map.keys(joins)
+
+    # Ensure the user is in the room's GenServer, then add the sensors
+    register_sensors_to_room(room.id, user.id, new_sensor_ids)
+
+    # Subscribe to data from these sensors
+    Enum.each(new_sensor_ids, fn sensor_id ->
+      PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
+    end)
+
+    # Refresh the room to show the new sensors
+    case Rooms.get_room_with_sensors(room.id) do
+      {:ok, updated_room} ->
+        socket =
+          socket
+          |> assign(:room, updated_room)
+          |> assign(:sensors, updated_room.sensors || [])
+          |> assign(:available_sensors, get_available_sensors(updated_room))
+
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
+    # Handle leaves or empty joins - just ignore
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(msg, socket) do
     Logger.debug("RoomShowLive received unknown message: #{inspect(msg)}")
     {:noreply, socket}
+  end
+
+  defp register_sensors_to_room(room_id, user_id, new_sensor_ids) do
+    # Get current sensors for this room
+    current_sensors = Sensocto.RoomPresenceServer.get_room_sensors(room_id)
+
+    # Merge with new sensors
+    all_sensors = Enum.uniq(current_sensors ++ new_sensor_ids)
+
+    # Check if user is already in the room
+    case Sensocto.RoomPresenceServer.in_room?(room_id, user_id) do
+      true ->
+        # User already in room, just update their sensors
+        Sensocto.RoomPresenceServer.update_sensors(room_id, user_id, all_sensors)
+
+      false ->
+        # User not in room yet, join them with the sensors
+        Sensocto.RoomPresenceServer.join_room(room_id, user_id, all_sensors, role: :member)
+    end
   end
 
   defp get_available_sensors(room) do
@@ -574,6 +683,17 @@ defmodule SensoctoWeb.RoomShowLive do
             </svg>
             Delete
           </button>
+        <% else %>
+          <button
+            phx-click="leave_room"
+            data-confirm="Are you sure you want to leave this room? Your sensors will be disconnected from the room."
+            class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Leave Room
+          </button>
         <% end %>
       </div>
 
@@ -616,11 +736,12 @@ defmodule SensoctoWeb.RoomShowLive do
                 else: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
             }>
               <%= for sensor <- @sensors do %>
-                <.sensor_summary_card
-                  sensor={sensor}
-                  activity_status={get_activity_status(sensor.sensor_id, @sensor_activity)}
-                  can_manage={@can_manage}
-                />
+                <div id={"room_sensor_container_#{sensor.sensor_id}"}>
+                  {live_render(@socket, SensoctoWeb.StatefulSensorLive,
+                    id: "room_sensor_#{sensor.sensor_id}",
+                    session: %{"parent_pid" => self(), "sensor_id" => sensor.sensor_id}
+                  )}
+                </div>
               <% end %>
             </div>
           <% end %>

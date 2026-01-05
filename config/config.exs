@@ -46,7 +46,7 @@ config :spark,
 config :sensocto,
   ecto_repos: [Sensocto.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
+  ash_domains: [Sensocto.Accounts, Sensocto.Sensors, Sensocto.Graph]
 
 # Neo4j/Boltx configuration (override in environment configs)
 config :boltx, Bolt,

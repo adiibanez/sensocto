@@ -11,6 +11,13 @@
     <h1 class="text-xl font-bold text-white">Lobby</h1>
     <div class="flex items-center gap-4">
       <button
+        phx-click="open_join_modal"
+        class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1"
+      >
+        <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" />
+        Join Room
+      </button>
+      <button
         :if={@sensor_ids != [] && @live_action == :sensors}
         phx-click="toggle_all_view_mode"
         class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
@@ -132,5 +139,76 @@
         <li>{sensor_id}</li>
       <% end %>
     </ul>
+  </div>
+<% end %>
+
+<%!-- Join Room Modal --%>
+<%= if @show_join_modal do %>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_join_modal">
+    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto" phx-click={%JS{}}>
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-semibold">Join a Room</h2>
+        <button phx-click="close_join_modal" class="text-gray-400 hover:text-white">
+          <Heroicons.icon name="x-mark" type="outline" class="h-6 w-6" />
+        </button>
+      </div>
+
+      <%!-- Join by Code --%>
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-300 mb-2">Enter Room Code</label>
+        <form phx-submit="join_room_by_code" class="flex gap-2">
+          <input
+            type="text"
+            name="join_code"
+            value={@join_code}
+            phx-change="update_join_code"
+            placeholder="ABCD1234"
+            class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white uppercase tracking-wider font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            maxlength="12"
+            autocomplete="off"
+          />
+          <button
+            type="submit"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+          >
+            Join
+          </button>
+        </form>
+        <p class="text-xs text-gray-500 mt-1">Enter the room's join code to connect with your sensors</p>
+      </div>
+
+      <%!-- Public Rooms List --%>
+      <%= if @public_rooms != [] do %>
+        <div class="border-t border-gray-700 pt-4">
+          <h3 class="text-sm font-medium text-gray-300 mb-3">Or join a public room</h3>
+          <div class="space-y-2 max-h-60 overflow-y-auto">
+            <%= for room <- @public_rooms do %>
+              <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-white truncate">{room.name}</p>
+                  <p :if={room.description} class="text-xs text-gray-400 truncate">{room.description}</p>
+                </div>
+                <button
+                  phx-click="join_room"
+                  phx-value-room_id={room.id}
+                  class="ml-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-3 rounded transition-colors flex-shrink-0"
+                >
+                  Join
+                </button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <div class="mt-6 pt-4 border-t border-gray-700">
+        <.link
+          navigate={~p"/rooms/new"}
+          class="block w-full text-center bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+        >
+          Create New Room
+        </.link>
+      </div>
+    </div>
   </div>
 <% end %>

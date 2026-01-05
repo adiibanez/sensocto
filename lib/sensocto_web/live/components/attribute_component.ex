@@ -368,7 +368,27 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
   defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
-  # Summary mode for button - 3 colored buttons with vibrate feedback
+  # Button colors for 8 buttons (hex values for inline styles)
+  @button_colors %{
+    1 => "#ef4444",  # red
+    2 => "#f97316",  # orange
+    3 => "#eab308",  # yellow
+    4 => "#22c55e",  # green
+    5 => "#14b8a6",  # teal
+    6 => "#3b82f6",  # blue
+    7 => "#6366f1",  # indigo
+    8 => "#a855f7"   # purple
+  }
+
+  defp button_style(payload, button_id) do
+    if payload == button_id do
+      "background-color: #{@button_colors[button_id]}; color: white;"
+    else
+      "background-color: #4b5563; color: #9ca3af;"
+    end
+  end
+
+  # Summary mode for button - 8 colored buttons with vibrate feedback
   @impl true
   def render(%{:attribute_type => "button", :view_mode => :summary} = assigns) do
     ~H"""
@@ -377,12 +397,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
       phx-hook="Vibrate"
       data-value={@lastvalue && @lastvalue.payload}
+      data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
     >
       <span class="text-gray-400">{@attribute_id}</span>
       <div :if={@lastvalue} class="flex gap-0.5">
-        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")]}>1</div>
-        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")]}>2</div>
-        <div class={["w-4 h-4 rounded text-center text-xs font-bold", if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")]}>3</div>
+        <%= for btn_id <- 1..8 do %>
+          <div
+            class="w-4 h-4 rounded text-center text-xs font-bold flex items-center justify-center"
+            style={button_style(@lastvalue.payload, btn_id)}
+          >
+            {btn_id}
+          </div>
+        <% end %>
       </div>
       <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
     </div>
@@ -418,26 +444,17 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
           phx-hook="Vibrate"
           data-value={@lastvalue.payload}
+          data-timestamp={@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond)}
         >
-          <div class="flex gap-1">
-            <div class={[
-              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
-              if(@lastvalue.payload == 1, do: "bg-red-500 text-white", else: "bg-gray-600 text-gray-400")
-            ]}>
-              1
-            </div>
-            <div class={[
-              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
-              if(@lastvalue.payload == 2, do: "bg-green-500 text-white", else: "bg-gray-600 text-gray-400")
-            ]}>
-              2
-            </div>
-            <div class={[
-              "w-6 h-6 rounded flex items-center justify-center text-xs font-bold",
-              if(@lastvalue.payload == 3, do: "bg-blue-500 text-white", else: "bg-gray-600 text-gray-400")
-            ]}>
-              3
-            </div>
+          <div class="flex gap-1 flex-wrap">
+            <%= for btn_id <- 1..8 do %>
+              <div
+                class="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
+                style={button_style(@lastvalue.payload, btn_id)}
+              >
+                {btn_id}
+              </div>
+            <% end %>
           </div>
         </div>
       </.container>

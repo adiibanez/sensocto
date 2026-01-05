@@ -42,6 +42,8 @@ defmodule Sensocto.Application do
       # Rooms
       {Registry, keys: :unique, name: Sensocto.RoomRegistry},
       {Registry, keys: :unique, name: Sensocto.RoomJoinCodeRegistry},
+      # Room presence tracking (in-memory with Neo4j backend)
+      Sensocto.RoomPresenceServer,
 
       # Calls (Video/Voice)
       {Registry, keys: :unique, name: Sensocto.CallRegistry},

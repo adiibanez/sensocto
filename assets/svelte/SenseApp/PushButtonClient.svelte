@@ -6,13 +6,26 @@
 
     var channel = null;
 
+    // Track currently pressed buttons (for visual feedback and simultaneous presses)
+    let pressedButtons = new Set();
+
     const buttons = [
-        { id: 1, color: "bg-red-500 hover:bg-red-600", label: "1" },
-        { id: 2, color: "bg-green-500 hover:bg-green-600", label: "2" },
-        { id: 3, color: "bg-blue-500 hover:bg-blue-600", label: "3" },
+        { id: 1, style: "background-color: #ef4444;", hoverStyle: "background-color: #dc2626;", label: "1", key: "1" },
+        { id: 2, style: "background-color: #f97316;", hoverStyle: "background-color: #ea580c;", label: "2", key: "2" },
+        { id: 3, style: "background-color: #eab308;", hoverStyle: "background-color: #ca8a04;", label: "3", key: "3" },
+        { id: 4, style: "background-color: #22c55e;", hoverStyle: "background-color: #16a34a;", label: "4", key: "4" },
+        { id: 5, style: "background-color: #14b8a6;", hoverStyle: "background-color: #0d9488;", label: "5", key: "5" },
+        { id: 6, style: "background-color: #3b82f6;", hoverStyle: "background-color: #2563eb;", label: "6", key: "6" },
+        { id: 7, style: "background-color: #6366f1;", hoverStyle: "background-color: #4f46e5;", label: "7", key: "7" },
+        { id: 8, style: "background-color: #a855f7;", hoverStyle: "background-color: #9333ea;", label: "8", key: "8" },
     ];
 
-    const sendPushButtonEvent = async (buttonId) => {
+    const keyToButtonId = {
+        "1": 1, "2": 2, "3": 3, "4": 4,
+        "5": 5, "6": 6, "7": 7, "8": 8
+    };
+
+    const ensureChannel = () => {
         if (channel === null) {
             channel = sensorService.setupChannel(channelIdentifier);
             sensorService.registerAttribute(sensorService.getDeviceId(), {
@@ -21,27 +34,119 @@
                 sampling_rate: 1,
             });
         }
+    };
 
+    const sendButtonPress = (buttonId) => {
+        ensureChannel();
         let payload = {
             payload: buttonId,
             attribute_id: "button",
             timestamp: Math.round(new Date().getTime()),
+            event: "press"
         };
         sensorService.sendChannelMessage(channelIdentifier, payload);
     };
 
+    const sendButtonRelease = (buttonId) => {
+        ensureChannel();
+        let payload = {
+            payload: buttonId,
+            attribute_id: "button",
+            timestamp: Math.round(new Date().getTime()),
+            event: "release"
+        };
+        sensorService.sendChannelMessage(channelIdentifier, payload);
+    };
+
+    const handleKeyDown = (event) => {
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+            return;
+        }
+        if (event.repeat) return;
+
+        const buttonId = keyToButtonId[event.key];
+        if (buttonId && !pressedButtons.has(buttonId)) {
+            pressedButtons.add(buttonId);
+            pressedButtons = pressedButtons;
+            sendButtonPress(buttonId);
+        }
+    };
+
+    const handleKeyUp = (event) => {
+        const buttonId = keyToButtonId[event.key];
+        if (buttonId && pressedButtons.has(buttonId)) {
+            pressedButtons.delete(buttonId);
+            pressedButtons = pressedButtons;
+            sendButtonRelease(buttonId);
+        }
+    };
+
+    const handleMouseDown = (buttonId) => {
+        if (!pressedButtons.has(buttonId)) {
+            pressedButtons.add(buttonId);
+            pressedButtons = pressedButtons;
+            sendButtonPress(buttonId);
+        }
+    };
+
+    const handleMouseUp = (buttonId) => {
+        if (pressedButtons.has(buttonId)) {
+            pressedButtons.delete(buttonId);
+            pressedButtons = pressedButtons;
+            sendButtonRelease(buttonId);
+        }
+    };
+
+    const handleMouseLeave = (buttonId) => {
+        if (pressedButtons.has(buttonId)) {
+            pressedButtons.delete(buttonId);
+            pressedButtons = pressedButtons;
+            sendButtonRelease(buttonId);
+        }
+    };
+
+    onMount(() => {
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+    });
+
     onDestroy(() => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
         sensorService.leaveChannelIfUnused(channelIdentifier, "button");
     });
+
+    const getButtonStyle = (button, isPressed) => {
+        return isPressed ? button.hoverStyle : button.style;
+    };
 </script>
 
-<div class="flex gap-1">
+<div class="flex gap-1 flex-wrap">
     {#each buttons as button}
         <button
-            class="w-6 h-6 rounded text-white text-xs font-bold {button.color} flex items-center justify-center"
-            on:click={() => sendPushButtonEvent(button.id)}
+            class="push-button w-6 h-6 rounded text-white text-xs font-bold flex items-center justify-center"
+            class:pressed={pressedButtons.has(button.id)}
+            style={getButtonStyle(button, pressedButtons.has(button.id))}
+            on:mousedown={() => handleMouseDown(button.id)}
+            on:mouseup={() => handleMouseUp(button.id)}
+            on:mouseleave={() => handleMouseLeave(button.id)}
+            on:touchstart|preventDefault={() => handleMouseDown(button.id)}
+            on:touchend|preventDefault={() => handleMouseUp(button.id)}
+            title="Press '{button.key}' key"
         >
             {button.label}
         </button>
     {/each}
 </div>
+
+<style>
+    .push-button {
+        cursor: pointer;
+        transition: background-color 0.15s ease, transform 0.1s ease;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    .push-button.pressed {
+        transform: scale(0.9);
+    }
+</style>

@@ -44,6 +44,10 @@ defmodule SensoctoWeb.LobbyLive do
     # Extract composite visualization data
     {heartrate_sensors, imu_sensors, location_sensors} = extract_composite_data(sensors)
 
+    # Get available rooms for join UI
+    user = socket.assigns[:current_user]
+    public_rooms = if user, do: Sensocto.Rooms.list_public_rooms(), else: []
+
     new_socket =
       socket
       |> assign(
@@ -59,7 +63,10 @@ defmodule SensoctoWeb.LobbyLive do
         grid_cols_2xl: min(@grid_cols_2xl_default, max(1, sensors_count)),
         heartrate_sensors: heartrate_sensors,
         imu_sensors: imu_sensors,
-        location_sensors: location_sensors
+        location_sensors: location_sensors,
+        public_rooms: public_rooms,
+        show_join_modal: false,
+        join_code: ""
       )
 
     :telemetry.execute(
@@ -299,6 +306,70 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.broadcast(Sensocto.PubSub, "ui:view_mode", {:global_view_mode_changed, new_mode})
 
     {:noreply, assign(socket, :global_view_mode, new_mode)}
+  end
+
+  # Room join/leave events
+  @impl true
+  def handle_event("open_join_modal", _params, socket) do
+    {:noreply, assign(socket, :show_join_modal, true)}
+  end
+
+  @impl true
+  def handle_event("close_join_modal", _params, socket) do
+    {:noreply, assign(socket, show_join_modal: false, join_code: "")}
+  end
+
+  @impl true
+  def handle_event("update_join_code", %{"join_code" => code}, socket) do
+    {:noreply, assign(socket, :join_code, String.upcase(code))}
+  end
+
+  @impl true
+  def handle_event("join_room_by_code", %{"join_code" => code}, socket) do
+    user = socket.assigns.current_user
+
+    case Sensocto.Rooms.join_by_code(String.trim(code), user) do
+      {:ok, room} ->
+        # Join with sensors via Neo4j graph
+        Sensocto.Rooms.join_room_with_sensors(room, user)
+
+        socket =
+          socket
+          |> put_flash(:info, "Joined room: #{room.name}")
+          |> push_navigate(to: ~p"/rooms/#{room.id}")
+
+        {:noreply, socket}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Room not found with that code")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to join room")}
+    end
+  end
+
+  @impl true
+  def handle_event("join_room", %{"room_id" => room_id}, socket) do
+    user = socket.assigns.current_user
+
+    case Sensocto.Rooms.get_room(room_id) do
+      {:ok, room} ->
+        case Sensocto.Rooms.join_room_with_sensors(room, user) do
+          {:ok, _room} ->
+            socket =
+              socket
+              |> put_flash(:info, "Joined room: #{room.name}")
+              |> push_navigate(to: ~p"/rooms/#{room_id}")
+
+            {:noreply, socket}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to join room")}
+        end
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Room not found")}
+    end
   end
 
   @impl true

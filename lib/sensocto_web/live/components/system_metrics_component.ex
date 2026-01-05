@@ -25,11 +25,16 @@ defmodule SensoctoWeb.SystemMetricsComponent do
   def render(assigns) do
     ~H"""
     <div id={@id} class="flex items-center gap-1.5 text-[10px] font-mono" phx-hook="SystemMetricsRefresh" phx-target={@myself}>
-      <div class="flex items-center gap-0.5" title="System Load Level">
-        <span class={[
-          "w-1.5 h-1.5 rounded-full",
-          load_level_color(@metrics.load_level)
-        ]}></span>
+      <div class="flex items-center gap-1" title="System Load Level">
+        <div
+          id="system-pulse-heart"
+          phx-hook="PulsatingLogo"
+          class={["system-pulse-heart", "load-#{@metrics.load_level}"]}
+        >
+          <svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor">
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+          </svg>
+        </div>
         <span class="text-gray-400 uppercase">{@metrics.load_level}</span>
       </div>
 

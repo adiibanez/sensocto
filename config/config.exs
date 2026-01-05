@@ -54,6 +54,20 @@ config :boltx, Bolt,
   auth: [username: "neo4j", password: "sensocto123"],
   pool_size: 10
 
+# System pulse (load monitoring) weights configuration
+# These weights determine how much each factor contributes to overall system load.
+# Higher values mean that factor has more influence on the system pulse.
+# The weights are normalized, so they don't need to sum to 1.0
+config :sensocto, :system_pulse,
+  # CPU (scheduler utilization) - primary indicator of compute load
+  cpu_weight: 0.45,
+  # PubSub pressure - indicates message broadcasting backlog (IO bound)
+  pubsub_weight: 0.30,
+  # Message queue pressure - indicates process mailbox backlog
+  queue_weight: 0.15,
+  # Memory pressure has lowest weight - high memory is often fine in development
+  memory_weight: 0.10
+
 # Simulator configuration (disabled by default)
 config :sensocto, :simulator,
   enabled: false,

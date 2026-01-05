@@ -403,12 +403,15 @@ Hooks.SystemMetricsRefresh = {
   }
 }
 
-// PulsatingLogo hook - makes logo pulsate based on system load multiplier
+// PulsatingLogo hook - CSS heart animation based on system load
+// Uses pure CSS animation that works reliably on fly.io and other platforms
 Hooks.PulsatingLogo = {
   mounted() {
     this.currentMultiplier = 1.0;
-    this.beatInterval = null;
+    this.currentLoadLevel = 'normal';
 
+    // Apply initial styles
+    this.applyHeartStyles();
     this.updateFromMetrics();
 
     this.observer = new MutationObserver(() => {
@@ -423,57 +426,135 @@ Hooks.PulsatingLogo = {
     this.refreshInterval = setInterval(() => this.updateFromMetrics(), 2000);
   },
 
+  applyHeartStyles() {
+    // Inject CSS for heart animation if not already present
+    if (!document.getElementById('system-pulse-heart-styles')) {
+      const style = document.createElement('style');
+      style.id = 'system-pulse-heart-styles';
+      style.textContent = `
+        .system-pulse-heart {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.3s ease;
+        }
+        .system-pulse-heart svg {
+          animation: heartbeat var(--heartbeat-duration, 2s) ease-in-out infinite;
+        }
+        @keyframes heartbeat {
+          0%, 100% { transform: scale(1); }
+          14% { transform: scale(1.15); }
+          28% { transform: scale(1); }
+          42% { transform: scale(1.1); }
+          56% { transform: scale(1); }
+        }
+        .system-pulse-heart.load-normal { color: #22c55e; --heartbeat-duration: 3s; }
+        .system-pulse-heart.load-elevated { color: #eab308; --heartbeat-duration: 1.5s; }
+        .system-pulse-heart.load-high { color: #f97316; --heartbeat-duration: 0.8s; }
+        .system-pulse-heart.load-critical { color: #ef4444; --heartbeat-duration: 0.4s; }
+        .system-pulse-heart:hover { opacity: 0.8; }
+      `;
+      document.head.appendChild(style);
+    }
+  },
+
   updateFromMetrics() {
     const metricsEl = document.querySelector('[id="system-metrics"]');
     if (!metricsEl) return;
 
-    const multiplierText = metricsEl.textContent || '';
-    const match = multiplierText.match(/x\s*([\d.]+)/);
-    if (match) {
-      const newMultiplier = parseFloat(match[1]);
-      if (!isNaN(newMultiplier) && newMultiplier !== this.currentMultiplier) {
+    const metricsText = metricsEl.textContent || '';
+
+    // Extract load level from the text (NORMAL, ELEVATED, HIGH, CRITICAL)
+    const loadMatch = metricsText.match(/\b(normal|elevated|high|critical)\b/i);
+    if (loadMatch) {
+      const newLevel = loadMatch[1].toLowerCase();
+      if (newLevel !== this.currentLoadLevel) {
+        this.currentLoadLevel = newLevel;
+        this.updateHeartState(newLevel);
+      }
+    }
+
+    // Also update based on multiplier for fine-grained control
+    const multiplierMatch = metricsText.match(/x\s*([\d.]+)/);
+    if (multiplierMatch) {
+      const newMultiplier = parseFloat(multiplierMatch[1]);
+      if (!isNaN(newMultiplier)) {
         this.currentMultiplier = newMultiplier;
-        this.startPulsating(newMultiplier);
       }
     }
   },
 
-  startPulsating(multiplier) {
-    if (this.beatInterval) {
-      clearInterval(this.beatInterval);
-      this.beatInterval = null;
-    }
-
-    // Always pulsate, but at different rates based on load
-    // When multiplier <= 1.0, pulsate very slowly (every 10 seconds)
-    // When multiplier > 1.0, pulsate faster based on load
-    const baseInterval = multiplier <= 1.0 ? 10000 : 2000;
-    const msPerBeat = multiplier <= 1.0 ? baseInterval : baseInterval / multiplier;
-
-    this.triggerPulse();
-
-    this.beatInterval = setInterval(() => {
-      this.triggerPulse();
-    }, msPerBeat);
-  },
-
-  triggerPulse() {
-    this.el.classList.add('pulsing');
-    setTimeout(() => {
-      this.el.classList.remove('pulsing');
-    }, 200);
+  updateHeartState(level) {
+    // Remove all load classes
+    this.el.classList.remove('load-normal', 'load-elevated', 'load-high', 'load-critical');
+    // Add current load class
+    this.el.classList.add(`load-${level}`);
   },
 
   destroyed() {
-    if (this.beatInterval) {
-      clearInterval(this.beatInterval);
-    }
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
     if (this.observer) {
       this.observer.disconnect();
     }
+  }
+}
+
+// MobileMenu hook - hamburger menu toggle for mobile navigation
+Hooks.MobileMenu = {
+  mounted() {
+    this.button = this.el.querySelector('#mobile-menu-button');
+    this.dropdown = this.el.querySelector('#mobile-menu-dropdown');
+    this.isOpen = false;
+
+    if (this.button && this.dropdown) {
+      this.button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggle();
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (this.isOpen && !this.el.contains(e.target)) {
+          this.close();
+        }
+      });
+
+      // Close menu when pressing Escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.isOpen) {
+          this.close();
+        }
+      });
+
+      // Close menu when a link is clicked
+      this.dropdown.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+          this.close();
+        });
+      });
+    }
+  },
+
+  toggle() {
+    this.isOpen ? this.close() : this.open();
+  },
+
+  open() {
+    this.dropdown.classList.remove('hidden');
+    this.isOpen = true;
+    this.button.setAttribute('aria-expanded', 'true');
+  },
+
+  close() {
+    this.dropdown.classList.add('hidden');
+    this.isOpen = false;
+    this.button.setAttribute('aria-expanded', 'false');
+  },
+
+  destroyed() {
+    // Cleanup is handled by garbage collection
   }
 }
 

@@ -4,6 +4,7 @@ defmodule Sensocto.SystemLoadMonitor do
 
   Tracks:
   - Scheduler utilization (CPU load across BEAM schedulers)
+  - PubSub pressure (message broadcasting backlog - IO bound)
   - Message queue depths (process mailbox sizes)
   - Memory pressure
 
@@ -26,6 +27,15 @@ defmodule Sensocto.SystemLoadMonitor do
   # ETS table for fast concurrent reads
   @load_state_table :system_load_cache
 
+  # Default weights for system pulse calculation (can be overridden in config)
+  # Biased towards CPU and PubSub IO
+  @default_weights %{
+    cpu_weight: 0.45,
+    pubsub_weight: 0.30,
+    queue_weight: 0.15,
+    memory_weight: 0.10
+  }
+
   # Load thresholds (scheduler utilization 0.0 - 1.0)
   @load_thresholds %{
     normal: 0.5,
@@ -45,10 +55,12 @@ defmodule Sensocto.SystemLoadMonitor do
   defstruct [
     :current_load_level,
     :scheduler_utilization,
+    :pubsub_pressure,
     :message_queue_pressure,
     :memory_pressure,
     :last_scheduler_sample,
-    :scheduler_history
+    :scheduler_history,
+    :weights
   ]
 
   # ============================================================================
@@ -106,20 +118,25 @@ defmodule Sensocto.SystemLoadMonitor do
     # Start scheduler utilization sampling
     :scheduler.sample()
 
+    # Load weights from config, fall back to defaults
+    weights = load_weights_from_config()
+
     state = %__MODULE__{
       current_load_level: :normal,
       scheduler_utilization: 0.0,
+      pubsub_pressure: 0.0,
       message_queue_pressure: 0.0,
       memory_pressure: 0.0,
       last_scheduler_sample: nil,
-      scheduler_history: []
+      scheduler_history: [],
+      weights: weights
     }
 
     # Schedule first sample
     Process.send_after(self(), :sample_scheduler, @scheduler_sample_interval)
     Process.send_after(self(), :calculate_load, @sample_interval)
 
-    Logger.info("SystemLoadMonitor started")
+    Logger.info("SystemLoadMonitor started with weights: cpu=#{weights.cpu}, pubsub=#{weights.pubsub}, queue=#{weights.queue}, mem=#{weights.memory}")
     {:ok, state}
   end
 
@@ -153,6 +170,9 @@ defmodule Sensocto.SystemLoadMonitor do
 
   @impl true
   def handle_info(:calculate_load, state) do
+    # Calculate PubSub pressure (message broadcasting backlog)
+    pubsub_pressure = calculate_pubsub_pressure()
+
     # Calculate message queue pressure (sample key processes)
     msg_pressure = calculate_message_queue_pressure()
 
@@ -167,11 +187,21 @@ defmodule Sensocto.SystemLoadMonitor do
         state.scheduler_utilization
       end
 
-    # Determine overall load level (use max of all pressures)
-    overall_pressure = max(smoothed_util, max(msg_pressure, mem_pressure))
+    # Calculate weighted overall pressure (normalized)
+    # Biased towards CPU and PubSub IO
+    weights = state.weights
+    total_weight = weights.cpu + weights.pubsub + weights.queue + weights.memory
+
+    overall_pressure =
+      (smoothed_util * weights.cpu +
+       pubsub_pressure * weights.pubsub +
+       msg_pressure * weights.queue +
+       mem_pressure * weights.memory) / total_weight
+
     new_level = determine_load_level(overall_pressure)
 
     new_state = %{state |
+      pubsub_pressure: pubsub_pressure,
       message_queue_pressure: msg_pressure,
       memory_pressure: mem_pressure,
       scheduler_utilization: smoothed_util
@@ -181,8 +211,9 @@ defmodule Sensocto.SystemLoadMonitor do
     if new_level != state.current_load_level do
       Logger.info(
         "System load changed: #{state.current_load_level} -> #{new_level} " <>
-        "(scheduler: #{Float.round(smoothed_util * 100, 1)}%, " <>
-        "msg_queue: #{Float.round(msg_pressure * 100, 1)}%, " <>
+        "(cpu: #{Float.round(smoothed_util * 100, 1)}%, " <>
+        "pubsub: #{Float.round(pubsub_pressure * 100, 1)}%, " <>
+        "queue: #{Float.round(msg_pressure * 100, 1)}%, " <>
         "memory: #{Float.round(mem_pressure * 100, 1)}%)"
       )
 
@@ -199,11 +230,13 @@ defmodule Sensocto.SystemLoadMonitor do
     metrics = %{
       load_level: state.current_load_level,
       scheduler_utilization: state.scheduler_utilization,
+      pubsub_pressure: state.pubsub_pressure,
       message_queue_pressure: state.message_queue_pressure,
       memory_pressure: state.memory_pressure,
       load_multiplier: get_load_multiplier(),
       thresholds: @load_thresholds,
-      config: @load_config
+      config: @load_config,
+      weights: state.weights
     }
     {:reply, metrics, state}
   end
@@ -239,6 +272,59 @@ defmodule Sensocto.SystemLoadMonitor do
         else
           0.0
         end
+    end
+  end
+
+  defp calculate_pubsub_pressure do
+    # Measure PubSub Local process queue lengths
+    # Phoenix.PubSub uses pg (process groups) and local dispatchers
+    pubsub_processes =
+      Process.list()
+      |> Enum.filter(fn pid ->
+        case Process.info(pid, :registered_name) do
+          {:registered_name, name} when is_atom(name) ->
+            name_str = Atom.to_string(name)
+            String.contains?(name_str, "PubSub") or String.contains?(name_str, "Phoenix.PubSub")
+          _ -> false
+        end
+      end)
+
+    # Also check pg (process groups) processes used by PubSub
+    pg_processes =
+      Process.list()
+      |> Enum.filter(fn pid ->
+        case Process.info(pid, :dictionary) do
+          {:dictionary, dict} ->
+            Keyword.get(dict, :"$initial_call") in [
+              {:pg, :init, 1},
+              {Phoenix.PubSub.PG2, :init, 1}
+            ]
+          _ -> false
+        end
+      end)
+
+    all_pubsub_pids = pubsub_processes ++ pg_processes
+
+    queue_lengths =
+      all_pubsub_pids
+      |> Enum.map(fn pid ->
+        case Process.info(pid, :message_queue_len) do
+          {:message_queue_len, len} -> len
+          nil -> 0
+        end
+      end)
+
+    max_queue = Enum.max(queue_lengths, fn -> 0 end)
+    avg_queue = if length(queue_lengths) > 0, do: Enum.sum(queue_lengths) / length(queue_lengths), else: 0
+
+    # Normalize: PubSub queue > 500 is critical, > 200 is high, > 50 is elevated
+    cond do
+      max_queue > 500 -> 1.0
+      max_queue > 200 -> 0.85
+      max_queue > 50 -> 0.7
+      avg_queue > 20 -> 0.5
+      avg_queue > 5 -> 0.3
+      true -> avg_queue / 50
     end
   end
 
@@ -337,9 +423,21 @@ defmodule Sensocto.SystemLoadMonitor do
         level: level,
         multiplier: config.window_multiplier,
         scheduler_utilization: state.scheduler_utilization,
+        pubsub_pressure: state.pubsub_pressure,
         message_queue_pressure: state.message_queue_pressure,
         memory_pressure: state.memory_pressure
       }}
     )
+  end
+
+  defp load_weights_from_config do
+    config = Application.get_env(:sensocto, :system_pulse, [])
+
+    cpu = Keyword.get(config, :cpu_weight, @default_weights.cpu_weight)
+    pubsub = Keyword.get(config, :pubsub_weight, @default_weights.pubsub_weight)
+    queue = Keyword.get(config, :queue_weight, @default_weights.queue_weight)
+    memory = Keyword.get(config, :memory_weight, @default_weights.memory_weight)
+
+    %{cpu: cpu, pubsub: pubsub, queue: queue, memory: memory}
   end
 end

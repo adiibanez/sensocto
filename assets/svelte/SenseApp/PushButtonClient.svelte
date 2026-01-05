@@ -106,6 +106,9 @@
     };
 
     onMount(() => {
+        // Register the button attribute immediately on mount so the UI renders the button visualization
+        ensureChannel();
+
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
     });

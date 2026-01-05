@@ -103,8 +103,12 @@ config :sensocto, SensoctoWeb.Endpoint,
   pubsub_server: Sensocto.PubSub,
   live_view: [signing_salt: "LfxsxGaX"]
 
-# config :sensocto, Sensocto.PubSub,
-#  adapter: Phoenix.PubSub.PG2
+# PubSub clustering configuration
+# For single-node development, PG2 still works but adds no overhead
+# For multi-node production, this enables distributed PubSub across cluster
+config :sensocto, Sensocto.PubSub,
+  adapter: Phoenix.PubSub.PG2,
+  pool_size: 10
 
 # Configures the mailer
 #

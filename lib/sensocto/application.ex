@@ -74,7 +74,8 @@ defmodule Sensocto.Application do
       Sensocto.SensorsDynamicSupervisor,
       Sensocto.RoomsDynamicSupervisor,
       Sensocto.Calls.CallSupervisor,
-      Sensocto.Otp.RepoReplicator,
+      # Pooled RepoReplicator for scalability (replaces single RepoReplicator)
+      {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
       # Start the Finch HTTP client for sending emails
       {Finch, name: Sensocto.Finch},
       # Start a worker by calling: Sensocto.Worker.start_link(arg)

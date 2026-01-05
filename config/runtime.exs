@@ -63,7 +63,12 @@ if config_env() == :prod do
   config :sensocto, Sensocto.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    # Increased default pool for sensor scale (was 10)
+    # For 1000+ sensors, set POOL_SIZE=100 in environment
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "50"),
+    # Queue settings for high-load scenarios
+    queue_target: 5000,
+    queue_interval: 1000,
     socket_options: maybe_ipv6
 
   # The secret key base is used to sign/encrypt cookies and other secrets.

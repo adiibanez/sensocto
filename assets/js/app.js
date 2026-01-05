@@ -131,23 +131,65 @@ Hooks.Vibrate = {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
 
-      // Different frequency for each button: 1=low, 2=mid, 3=high
-      const frequencies = { 1: 440, 2: 660, 3: 880 };
-      const frequency = frequencies[buttonNumber] || 440;
-      const duration = 0.15;
+      const ctx = this.audioContext;
+      const now = ctx.currentTime;
 
-      const oscillator = this.audioContext.createOscillator();
-      const gainNode = this.audioContext.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(this.audioContext.destination);
-      oscillator.frequency.value = frequency;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-      oscillator.start(this.audioContext.currentTime);
-      oscillator.stop(this.audioContext.currentTime + duration);
+      // Pleasant "blob" frequencies - pentatonic scale for musical harmony
+      const blobFrequencies = {
+        1: 261.6,  // C4
+        2: 293.7,  // D4
+        3: 329.6,  // E4
+        4: 392.0,  // G4
+        5: 440.0,  // A4
+        6: 523.3,  // C5
+        7: 587.3,  // D5
+        8: 659.3   // E5
+      };
+      const baseFreq = blobFrequencies[buttonNumber] || 392.0;
+
+      // Create main oscillator with slight detune for warmth
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      const filterNode = ctx.createBiquadFilter();
+
+      // Route through low-pass filter for softer sound
+      osc1.connect(filterNode);
+      osc2.connect(filterNode);
+      filterNode.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      // Oscillator setup - triangle waves are softer than sine
+      osc1.type = 'triangle';
+      osc2.type = 'sine';
+      osc1.frequency.setValueAtTime(baseFreq, now);
+      osc2.frequency.setValueAtTime(baseFreq * 2, now); // Octave harmonic
+
+      // Frequency "plop" - start higher and drop quickly for blob effect
+      osc1.frequency.setValueAtTime(baseFreq * 1.5, now);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, now + 0.08);
+      osc2.frequency.setValueAtTime(baseFreq * 3, now);
+      osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.6, now + 0.06);
+
+      // Low-pass filter for rounded, bubbly tone
+      filterNode.type = 'lowpass';
+      filterNode.frequency.setValueAtTime(2000, now);
+      filterNode.frequency.exponentialRampToValueAtTime(400, now + 0.15);
+      filterNode.Q.value = 2;
+
+      // Volume envelope - quick attack, smooth decay
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.25, now + 0.01); // Quick attack
+      gainNode.gain.exponentialRampToValueAtTime(0.08, now + 0.1);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      // Start and stop
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.3);
+      osc2.stop(now + 0.3);
     } catch (e) {
-      console.warn('[Vibrate] Could not play beep:', e);
+      console.warn('[Vibrate] Could not play blob sound:', e);
     }
   }
 };

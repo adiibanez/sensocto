@@ -34,6 +34,7 @@ defmodule Sensocto.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:claude, "~> 0.5", only: [:dev], runtime: false},
       {:ash_admin, "~> 0.12"},
       {:bcrypt_elixir, "~> 3.0"},
       {:phoenix, "~> 1.7"},
@@ -97,7 +98,7 @@ defmodule Sensocto.MixProject do
       {:boltx, "~> 0.0.6"},
       {:ash_ops, "~> 0.2.3"},
       {:picosat_elixir, "~> 0.2"},
-      #{:flex_logger, "~> 0.2.1"},
+      # {:flex_logger, "~> 0.2.1"},
       {:flex_logger, git: "https://github.com/adiibanez/elixir-flex-logger"},
       {:dialyxir, "~> 1.4", only: [:dev]},
       # only: [:dev, :test]

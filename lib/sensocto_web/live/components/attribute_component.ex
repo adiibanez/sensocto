@@ -388,9 +388,23 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     end
   end
 
-  # Summary mode for button - 8 colored buttons with vibrate feedback
+  # Button style for multi-press support using MapSet
+  defp button_style_multi(pressed_buttons, button_id) do
+    if MapSet.member?(pressed_buttons, button_id) do
+      "background-color: #{@button_colors[button_id]}; color: white;"
+    else
+      "background-color: #4b5563; color: #9ca3af;"
+    end
+  end
+
+  # Summary mode for button - 8 colored buttons with vibrate feedback and multi-press support
   @impl true
   def render(%{:attribute_type => "button", :view_mode => :summary} = assigns) do
+    # Get pressed buttons from assigns or compute from lastvalue
+    pressed_buttons = Map.get(assigns, :pressed_buttons, MapSet.new())
+
+    assigns = assign(assigns, :pressed_buttons, pressed_buttons)
+
     ~H"""
     <div
       class="flex items-center justify-between text-xs py-0.5"
@@ -400,17 +414,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
     >
       <span class="text-gray-400">{@attribute_id}</span>
-      <div :if={@lastvalue} class="flex gap-0.5">
+      <div class="flex gap-0.5">
         <%= for btn_id <- 1..8 do %>
           <div
-            class="w-4 h-4 rounded text-center text-xs font-bold flex items-center justify-center"
-            style={button_style(@lastvalue.payload, btn_id)}
+            class={"w-4 h-4 rounded text-center text-[10px] font-bold flex items-center justify-center transition-all duration-100 #{if MapSet.member?(@pressed_buttons, btn_id), do: "scale-90", else: ""}"}
+            style={button_style_multi(@pressed_buttons, btn_id)}
           >
             {btn_id}
           </div>
         <% end %>
       </div>
-      <span :if={is_nil(@lastvalue)} class="text-gray-500">--</span>
     </div>
     """
   end
@@ -418,6 +431,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:attribute_type => "button"} = assigns) do
     Logger.debug("AttributeComponent button render #{inspect(assigns)}")
+
+    # Get pressed buttons from assigns or initialize empty
+    pressed_buttons = Map.get(assigns, :pressed_buttons, MapSet.new())
+
+    assigns = assign(assigns, :pressed_buttons, pressed_buttons)
 
     ~H"""
     <div>
@@ -436,21 +454,20 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         >
         </.render_attribute_header>
 
-        <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No button pressed</div>
+        <div :if={is_nil(@lastvalue) and MapSet.size(@pressed_buttons) == 0} class="text-xs text-gray-400">No button pressed</div>
 
         <div
-          :if={@lastvalue}
           class="flex gap-1 items-center"
           id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
           phx-hook="Vibrate"
-          data-value={@lastvalue.payload}
-          data-timestamp={@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond)}
+          data-value={@lastvalue && @lastvalue.payload}
+          data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
         >
           <div class="flex gap-1 flex-wrap">
             <%= for btn_id <- 1..8 do %>
               <div
-                class="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
-                style={button_style(@lastvalue.payload, btn_id)}
+                class={"w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-all duration-100 #{if MapSet.member?(@pressed_buttons, btn_id), do: "scale-90", else: ""}"}
+                style={button_style_multi(@pressed_buttons, btn_id)}
               >
                 {btn_id}
               </div>
@@ -1843,11 +1860,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         |> assign(:view_mode, view_mode)
       }
     else
-      # Partial update - only update lastvalue (and view_mode if present)
+      # Partial update - only update lastvalue (and view_mode/pressed_buttons if present)
       Logger.debug("attribute update (partial) id: #{assigns.id}")
 
       socket = assign(socket, :lastvalue, assigns.lastvalue)
       socket = if Map.has_key?(assigns, :view_mode), do: assign(socket, :view_mode, assigns.view_mode), else: socket
+      socket = if Map.has_key?(assigns, :pressed_buttons), do: assign(socket, :pressed_buttons, assigns.pressed_buttons), else: socket
       {:ok, socket}
     end
   end

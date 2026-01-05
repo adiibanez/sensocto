@@ -25,6 +25,7 @@ defmodule Sensocto.Types.SafeKeys do
     batch_size bearer_token action metadata features
     attributes values level charging latitude longitude
     accuracy x y z bpm rmssd sdnn value attribute_type
+    event
   )
 
   @type validation_result :: {:ok, String.t()} | {:error, :invalid_attribute_id}

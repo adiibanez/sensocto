@@ -99,7 +99,9 @@ defmodule SensoctoWeb.StatefulSensorLive do
      |> assign(:show_map_modal, false)
      |> assign(:show_detail_modal, false)
      # Throttle buffer: accumulate measurements, flush periodically
-     |> assign(:pending_measurements, [])}
+     |> assign(:pending_measurements, [])
+     # Track pressed buttons for multi-press visualization
+     |> assign(:pressed_buttons, %{})}
   end
 
   # def _render(assigns) do
@@ -107,6 +109,54 @@ defmodule SensoctoWeb.StatefulSensorLive do
   #   {inspect(assigns)}
   #   """
   # end
+
+  # Handle button measurements with press/release events for multi-press support
+  @impl true
+  def handle_info(
+        {:measurement,
+         %{
+           :payload => payload,
+           :timestamp => timestamp,
+           :attribute_id => "button" = attribute_id,
+           :sensor_id => sensor_id,
+           :event => event_type
+         } =
+           _sensor_data},
+        socket
+      )
+      when event_type in ["press", "release"] do
+    # Update pressed buttons state
+    button_id = payload
+    current_pressed = Map.get(socket.assigns.pressed_buttons, attribute_id, MapSet.new())
+
+    new_pressed =
+      case event_type do
+        "press" -> MapSet.put(current_pressed, button_id)
+        "release" -> MapSet.delete(current_pressed, button_id)
+      end
+
+    pressed_buttons = Map.put(socket.assigns.pressed_buttons, attribute_id, new_pressed)
+
+    measurement = %{
+      :payload => payload,
+      :timestamp => timestamp,
+      :attribute_id => attribute_id,
+      :sensor_id => sensor_id,
+      :event => event_type
+    }
+
+    # Update the LiveComponent with pressed buttons state
+    send_update(
+      AttributeComponent,
+      id: "attribute_#{sensor_id}_#{attribute_id}",
+      lastvalue: measurement,
+      pressed_buttons: new_pressed
+    )
+
+    # Buffer measurement for throttled push to client (for JS charts)
+    pending = [measurement | socket.assigns.pending_measurements]
+    {:noreply, socket |> assign(:pending_measurements, pending) |> assign(:pressed_buttons, pressed_buttons)}
+  end
 
   @impl true
   def handle_info(

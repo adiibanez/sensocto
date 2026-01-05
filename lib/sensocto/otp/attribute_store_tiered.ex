@@ -1,8 +1,8 @@
 defmodule Sensocto.AttributeStoreTiered do
   @moduledoc """
-  Tiered storage for sensor attribute data with memory-efficient design.
+  Tiered in-memory storage for sensor attribute data.
 
-  ## Storage Tiers
+  ## Storage Tiers (all in-memory)
 
   1. **Hot tier** (process memory): Last @hot_limit entries per attribute
      - Fastest access, used for real-time display
@@ -10,17 +10,17 @@ defmodule Sensocto.AttributeStoreTiered do
 
   2. **Warm tier** (ETS): Next @warm_limit entries per attribute
      - Fast concurrent reads
-     - Automatically managed with overflow
+     - Automatically managed with overflow from hot tier
 
-  3. **Cold tier** (Database): Historical data beyond warm tier
-     - Persisted via RepoReplicatorPool
-     - Query via Ash/Ecto when needed
+  Database persistence is opt-in and not yet implemented.
+  All data lives in memory for maximum performance.
 
-  ## Memory Savings
+  ## Memory Budget
 
-  With 1000 sensors, 5 attributes each:
-  - Old approach: 10,000 entries × 200 bytes = 10 GB
-  - New approach: 100 entries × 200 bytes = 100 MB (100x reduction)
+  With default limits (500 hot + 10,000 warm = 10,500 per attribute):
+  - 1000 sensors × 5 attributes × 10,500 entries × 200 bytes ≈ 10 GB
+
+  Adjust @hot_limit and @warm_limit based on available memory.
 
   ## Usage
 
@@ -29,13 +29,18 @@ defmodule Sensocto.AttributeStoreTiered do
   use Agent
   require Logger
 
-  # Tier limits
-  @hot_limit 100
-  @warm_limit 1_000
-  @default_query_limit 100
+  # Tier limits - all in-memory (configurable via application env)
+  # Hot: fastest access, in process memory
+  @default_hot_limit 500
+  # Warm: fast concurrent reads via ETS
+  @default_warm_limit 10_000
+  @default_query_limit 500
 
   # ETS table name prefix
   @warm_table_prefix :attribute_store_warm_
+
+  defp hot_limit, do: Application.get_env(:sensocto, :attribute_store_hot_limit, @default_hot_limit)
+  defp warm_limit, do: Application.get_env(:sensocto, :attribute_store_warm_limit, @default_warm_limit)
 
   def start_link(%{sensor_id: sensor_id} = configuration) do
     Logger.debug("AttributeStoreTiered start_link: #{inspect(configuration)}")
@@ -119,7 +124,7 @@ defmodule Sensocto.AttributeStoreTiered do
   Get attribute data including warm tier.
   Use this when you need more historical data than hot tier provides.
   """
-  def get_attribute_extended(sensor_id, attribute_id, limit \\ @warm_limit) do
+  def get_attribute_extended(sensor_id, attribute_id, limit \\ @default_warm_limit) do
     Agent.get(via_tuple(sensor_id), fn state ->
       hot_data = get_hot_data(state, attribute_id)
       warm_data = get_warm_data(sensor_id, attribute_id)
@@ -201,7 +206,7 @@ defmodule Sensocto.AttributeStoreTiered do
     new_payloads = [new_entry | current_attr.payloads]
 
     # Check if we need to overflow to warm tier
-    {hot_payloads, overflow} = Enum.split(new_payloads, @hot_limit)
+    {hot_payloads, overflow} = Enum.split(new_payloads, hot_limit())
 
     # Push overflow to warm tier
     if overflow != [] do
@@ -223,7 +228,7 @@ defmodule Sensocto.AttributeStoreTiered do
         end
 
       # Prepend new entries and limit
-      new_warm = Enum.take(entries ++ existing, @warm_limit)
+      new_warm = Enum.take(entries ++ existing, warm_limit())
       :ets.insert(warm_table, {attribute_id, new_warm})
     end
   end

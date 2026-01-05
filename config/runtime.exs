@@ -63,10 +63,10 @@ if config_env() == :prod do
   config :sensocto, Sensocto.Repo,
     # ssl: true,
     url: database_url,
-    # Increased default pool for sensor scale (was 10)
-    # For 1000+ sensors, set POOL_SIZE=100 in environment
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "50"),
-    # Queue settings for high-load scenarios
+    # Conservative default - increase via POOL_SIZE env var when scaling
+    # Each connection uses ~5-10MB RAM on Postgres side
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "15"),
+    # Queue settings help during connection pressure
     queue_target: 5000,
     queue_interval: 1000,
     socket_options: maybe_ipv6

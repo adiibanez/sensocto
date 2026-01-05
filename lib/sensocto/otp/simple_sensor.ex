@@ -1,7 +1,7 @@
 defmodule Sensocto.SimpleSensor do
   use GenServer
   require Logger
-  alias Sensocto.AttributeStore
+  alias Sensocto.AttributeStoreTiered, as: AttributeStore
   alias Sensocto.SimpleSensorRegistry
   alias Sensocto.Sensors.Sensor
   alias Sensocto.Sensors.SensorAttributeData
@@ -37,9 +37,11 @@ defmodule Sensocto.SimpleSensor do
      |> Map.put(:mps_interval, 5000)}
   end
 
-  def terminate(reason, %{:sensor_id => sensor_id} = state) do
+  def terminate(_reason, %{:sensor_id => sensor_id} = _state) do
     Sensor |> Ash.Changeset.for_create(:destroy, %{name: sensor_id}) |> Ash.destroy()
     GenServer.cast(:sensocto_repo_replicator, {:sensor_down, sensor_id})
+    # Cleanup ETS warm tier tables
+    AttributeStore.cleanup(sensor_id)
   end
 
   # client

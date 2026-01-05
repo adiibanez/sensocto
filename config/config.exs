@@ -54,6 +54,14 @@ config :boltx, Bolt,
   auth: [username: "neo4j", password: "sensocto123"],
   pool_size: 10
 
+# AttributeStore tiered storage limits (all in-memory)
+# Hot tier: fastest access, in Agent process memory
+# Warm tier: fast concurrent reads via ETS
+# Total capacity per attribute = hot_limit + warm_limit
+config :sensocto,
+  attribute_store_hot_limit: 500,
+  attribute_store_warm_limit: 10_000
+
 # System pulse (load monitoring) weights configuration
 # These weights determine how much each factor contributes to overall system load.
 # Higher values mean that factor has more influence on the system pulse.

@@ -1,7 +1,7 @@
 defmodule Sensocto.SensorSupervisor do
   use Supervisor
   require Logger
-  alias Sensocto.AttributeStore
+  alias Sensocto.AttributeStoreTiered
   alias Sensocto.SimpleSensor
 
   def start_link(configuration) do
@@ -31,7 +31,7 @@ defmodule Sensocto.SensorSupervisor do
       },
       %{
         id: :attribute_store,
-        start: {AttributeStore, :start_link, [configuration]},
+        start: {AttributeStoreTiered, :start_link, [configuration]},
         shutdown: 5000,
         restart: :permanent,
         type: :worker

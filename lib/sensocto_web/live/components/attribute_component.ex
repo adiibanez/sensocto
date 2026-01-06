@@ -411,6 +411,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
       phx-hook="Vibrate"
       data-value={@lastvalue && @lastvalue.payload}
+      data-event={@lastvalue && @lastvalue[:event]}
       data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
     >
       <span class="text-gray-400">{@attribute_id}</span>
@@ -461,6 +462,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           id={"vibrate_#{@sensor_id}_#{@attribute_id}"}
           phx-hook="Vibrate"
           data-value={@lastvalue && @lastvalue.payload}
+          data-event={@lastvalue && @lastvalue[:event]}
           data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
         >
           <div class="flex gap-1 flex-wrap">

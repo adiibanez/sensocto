@@ -84,17 +84,23 @@ Hooks.Vibrate = {
   mounted() {
     this.lastValue = this.el.dataset.value;
     this.lastTimestamp = this.el.dataset.timestamp || '0';
+    this.lastEvent = this.el.dataset.event;
     this.audioContext = null;
 
-    // Trigger notification on first mount if there's a value
+    // Trigger notification on first mount if there's a value and it's a press event
+    const event = this.el.dataset.event;
     if (this.lastValue && this.lastValue !== 'null' && this.lastValue !== 'undefined') {
-      this.triggerNotification(this.lastValue);
+      // Only vibrate on press events (not release)
+      if (!event || event === 'press') {
+        this.triggerNotification(this.lastValue);
+      }
     }
   },
 
   updated() {
     const newValue = this.el.dataset.value;
     const newTimestamp = this.el.dataset.timestamp || Date.now().toString();
+    const newEvent = this.el.dataset.event;
 
     // Trigger if value changed OR if timestamp changed (for repetitive clicks)
     const valueChanged = newValue !== this.lastValue;
@@ -103,9 +109,13 @@ Hooks.Vibrate = {
     if (valueChanged || timestampChanged) {
       this.lastValue = newValue;
       this.lastTimestamp = newTimestamp;
+      this.lastEvent = newEvent;
 
       if (newValue && newValue !== 'null' && newValue !== 'undefined') {
-        this.triggerNotification(newValue);
+        // Only vibrate on press events (not release)
+        if (!newEvent || newEvent === 'press') {
+          this.triggerNotification(newValue);
+        }
       }
     }
   },
@@ -114,9 +124,12 @@ Hooks.Vibrate = {
     const buttonNumber = parseInt(value, 10) || 1;
     const vibrateDuration = buttonNumber * 100;
 
-    // Always vibrate
+    // Vibrate on mobile devices
     if (navigator.vibrate) {
-      navigator.vibrate(vibrateDuration);
+      const result = navigator.vibrate(vibrateDuration);
+      console.log(`[Vibrate] button=${buttonNumber}, duration=${vibrateDuration}ms, success=${result}`);
+    } else {
+      console.log('[Vibrate] navigator.vibrate not available');
     }
 
     // Play sound unless explicitly disabled

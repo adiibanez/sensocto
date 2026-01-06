@@ -1049,9 +1049,30 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <Heroicons.icon name="arrow-down-on-square" type="outline" class="h-3 w-3 text-purple-400" />
         Pressure
       </span>
-      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
-        {format_pressure(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">hPa</span>
-      </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <.svelte
+          name="MiniPressureSparkline"
+          props={
+            %{
+              id: "cnt_summary_#{@sensor_id}_#{@attribute_id}",
+              sensor_id: @sensor_id,
+              attribute_id: @attribute.attribute_id,
+              samplingrate: @attribute.sampling_rate,
+              timewindow: 60000,
+              width: 60,
+              height: 16,
+              color: "#8b5cf6",
+              showBackpressure: true,
+              attentionLevel: "medium",
+              batchWindow: 500
+            }
+          }
+          socket={@socket}
+        />
+        <span class="text-white font-mono text-[11px]">
+          {format_pressure(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">hPa</span>
+        </span>
+      </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
@@ -1077,15 +1098,36 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={is_nil(@lastvalue)} class="loading"></div>
 
-        <div :if={@lastvalue} class="flex items-center gap-4 py-2">
-          <div class="text-center">
-            <span class="text-2xl font-bold text-white">{format_pressure(@lastvalue.payload)}</span>
-            <span class="text-sm text-gray-400 ml-1">hPa</span>
+        <div :if={@lastvalue}>
+          <div class="flex items-center gap-4 py-2 mb-2">
+            <div class="text-center">
+              <span class="text-2xl font-bold text-white">{format_pressure(@lastvalue.payload)}</span>
+              <span class="text-sm text-gray-400 ml-1">hPa</span>
+            </div>
+            <div class="text-xs text-gray-500 flex flex-col">
+              <span>{pressure_weather_indicator(@lastvalue.payload)}</span>
+              <span class="text-gray-600">≈ {pressure_to_altitude(@lastvalue.payload)}m ASL</span>
+            </div>
           </div>
-          <div class="text-xs text-gray-500 flex flex-col">
-            <span>{pressure_weather_indicator(@lastvalue.payload)}</span>
-            <span class="text-gray-600">≈ {pressure_to_altitude(@lastvalue.payload)}m ASL</span>
-          </div>
+          <.svelte
+            name="PressureVisualization"
+            props={
+              %{
+                id: "cnt_#{@sensor_id}_#{@attribute_id}",
+                sensor_id: @sensor_id,
+                attribute_id: @attribute.attribute_id,
+                samplingrate: @attribute.sampling_rate,
+                timewindow: 60,
+                width: 300,
+                height: 100,
+                color: "#8b5cf6",
+                backgroundColor: "transparent",
+                minValue: 950,
+                maxValue: 1050
+              }
+            }
+            socket={@socket}
+          />
         </div>
       </.container>
     </div>

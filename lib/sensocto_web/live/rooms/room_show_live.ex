@@ -8,6 +8,7 @@ defmodule SensoctoWeb.RoomShowLive do
 
   alias Sensocto.Rooms
   alias Sensocto.Calls
+  alias Sensocto.Media.MediaPlayerServer
   alias Phoenix.PubSub
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
 
@@ -443,6 +444,34 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, socket}
   end
 
+  # Media player hook events
+  @impl true
+  def handle_event("report_duration", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("request_media_sync", _params, socket) do
+    # JS hook requests current state when player becomes ready
+    # This ensures new tabs get properly synchronized
+    # NOTE: Only push media_sync for position/state - do NOT push media_load_video
+    # as that would reload the video and reset playback position
+    room_id = socket.assigns.room.id
+
+    case MediaPlayerServer.get_state(room_id) do
+      {:ok, state} ->
+        socket = push_event(socket, "media_sync", %{
+          state: state.state,
+          position_seconds: state.position_seconds
+        })
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info({:measurement, %{sensor_id: sensor_id}}, socket) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
@@ -548,7 +577,7 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, socket}
   end
 
-  # Media player events - forward to component via send_update
+  # Media player events - forward to component via send_update AND push events to JS hook
   @impl true
   def handle_info({:media_state_changed, state}, socket) do
     room_id = socket.assigns.room.id
@@ -559,6 +588,12 @@ defmodule SensoctoWeb.RoomShowLive do
       position_seconds: state.position_seconds,
       current_item: state.current_item
     )
+
+    # Push sync event directly to JS hook from parent LiveView
+    socket = push_event(socket, "media_sync", %{
+      state: state.state,
+      position_seconds: state.position_seconds
+    })
 
     {:noreply, socket}
   end
@@ -571,6 +606,12 @@ defmodule SensoctoWeb.RoomShowLive do
       id: "room-media-player-#{room_id}",
       current_item: item
     )
+
+    # Push video change event directly to JS hook from parent LiveView
+    socket = push_event(socket, "media_load_video", %{
+      video_id: item.youtube_video_id,
+      start_seconds: 0
+    })
 
     {:noreply, socket}
   end
@@ -588,7 +629,7 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_info({:media_controller_changed, %{user_id: user_id, user_name: user_name}}, socket) do
+  def handle_info({:media_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
     room_id = socket.assigns.room.id
 
     send_update(MediaPlayerComponent,

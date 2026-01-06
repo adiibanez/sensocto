@@ -141,8 +141,11 @@ Hooks.MediaPlayerHook = {
         console.log('[MediaPlayer] Mounted for room:', this.roomId, 'initial state:', this.lastKnownState);
 
         // Load YouTube API and initialize player
+        // Use requestAnimationFrame to ensure DOM is fully rendered before initializing
         loadYouTubeAPI().then(() => {
-            this.initializePlayer();
+            requestAnimationFrame(() => {
+                this.initializePlayer();
+            });
         });
 
         // Handle sync events from server
@@ -266,10 +269,13 @@ Hooks.MediaPlayerHook = {
         }
     },
 
-    initializePlayer() {
+    initializePlayer(retryCount = 0) {
         const playerEl = this.el.querySelector('[id^="youtube-player-"]');
         if (!playerEl) {
-            console.log('[MediaPlayer] No player element found');
+            console.log('[MediaPlayer] No player element found, retry:', retryCount);
+            if (retryCount < 5) {
+                setTimeout(() => this.initializePlayer(retryCount + 1), 200);
+            }
             return;
         }
 
@@ -278,7 +284,10 @@ Hooks.MediaPlayerHook = {
         const startSeconds = parseInt(playerEl.dataset.start) || 0;
 
         if (!videoId) {
-            console.log('[MediaPlayer] No video ID');
+            console.log('[MediaPlayer] No video ID, retry:', retryCount);
+            if (retryCount < 5) {
+                setTimeout(() => this.initializePlayer(retryCount + 1), 200);
+            }
             return;
         }
 
@@ -326,6 +335,11 @@ Hooks.MediaPlayerHook = {
             this.player.playVideo();
             this.pendingPlay = false;
         }
+
+        // Request current state from server to ensure sync
+        // This is critical for new tabs that may have stale DOM state
+        console.log('[MediaPlayer] Requesting sync from server');
+        this.pushEvent("request_media_sync", {});
 
         // Start sync interval
         this.startSyncInterval();
@@ -413,22 +427,27 @@ Hooks.MediaPlayerHook = {
         const currentPosition = this.player.getCurrentTime() || 0;
         const drift = Math.abs(currentPosition - serverPosition);
 
-        console.log('[MediaPlayer] Sync - server:', serverPosition, 'current:', currentPosition, 'drift:', drift);
+        console.log('[MediaPlayer] Sync - server:', serverPosition.toFixed(1), 'current:', currentPosition.toFixed(1), 'drift:', drift.toFixed(1));
 
-        // Correct drift if > 2 seconds
-        if (drift > 2) {
-            console.log('[MediaPlayer] Correcting drift');
+        // Sync play/pause state FIRST (before seeking)
+        const playerState = this.player.getPlayerState();
+        const isPlaying = playerState === YT.PlayerState.PLAYING;
+        const isBuffering = playerState === YT.PlayerState.BUFFERING;
+        const shouldPlay = data.state === 'playing';
+
+        // Correct drift if > 1 second (lowered from 2s for tighter sync)
+        // Always seek if drift is significant, regardless of play state
+        if (drift > 1) {
+            console.log('[MediaPlayer] Correcting drift of', drift.toFixed(1), 'seconds');
             this.player.seekTo(serverPosition, true);
         }
 
-        // Sync play/pause state
-        const playerState = this.player.getPlayerState();
-        const isPlaying = playerState === YT.PlayerState.PLAYING;
-        const shouldPlay = data.state === 'playing';
-
-        if (shouldPlay && !isPlaying) {
+        // Sync play/pause state (handle buffering state as "in progress")
+        if (shouldPlay && !isPlaying && !isBuffering) {
+            console.log('[MediaPlayer] Starting playback to sync');
             this.player.playVideo();
-        } else if (!shouldPlay && isPlaying) {
+        } else if (!shouldPlay && (isPlaying || isBuffering)) {
+            console.log('[MediaPlayer] Pausing to sync');
             this.player.pauseVideo();
         }
     },
@@ -438,14 +457,14 @@ Hooks.MediaPlayerHook = {
             clearInterval(this.syncInterval);
         }
 
-        // Report position every 3 seconds for sync verification
+        // Request sync from server every 5 seconds to stay synchronized
+        // This ensures all tabs stay in sync even if PubSub events are missed
         this.syncInterval = setInterval(() => {
             if (this.isReady && this.player) {
-                const position = this.player.getCurrentTime();
-                // Could send to server for drift detection if needed
-                // this.pushEvent("report_position", { position: position });
+                // Request current state from server
+                this.pushEvent("request_media_sync", {});
             }
-        }, 3000);
+        }, 5000);
     }
 };
 

@@ -8,6 +8,7 @@ defmodule SensoctoWeb.LobbyLive do
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLive
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
+  alias Sensocto.Media.MediaPlayerServer
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -425,6 +426,32 @@ defmodule SensoctoWeb.LobbyLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Room not found")}
+    end
+  end
+
+  # Media player hook events
+  @impl true
+  def handle_event("report_duration", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("request_media_sync", _params, socket) do
+    # JS hook requests current state when player becomes ready
+    # This ensures new tabs get properly synchronized
+    # NOTE: Only push media_sync for position/state - do NOT push media_load_video
+    # as that would reload the video and reset playback position
+    case MediaPlayerServer.get_state(:lobby) do
+      {:ok, state} ->
+        socket = push_event(socket, "media_sync", %{
+          state: state.state,
+          position_seconds: state.position_seconds
+        })
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, socket}
     end
   end
 

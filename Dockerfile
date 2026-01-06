@@ -28,8 +28,16 @@ FROM ${BUILDER_IMAGE} as builder
 
 # install build dependencies
 # pkg-config and libssl-dev are required for ex_dtls (Membrane RTC Engine dependency)
-RUN apt-get update -y && apt-get install -y build-essential git pkg-config libssl-dev \
+# curl is needed for rustup installation
+# libclang-dev and clang are required for bindgen (used by cozodb's Rust dependencies)
+# liburing-dev is required for cozodb's io-uring feature
+RUN apt-get update -y && apt-get install -y build-essential git pkg-config libssl-dev curl clang libclang-dev liburing-dev \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Install Rust/Cargo for cozodb dependency (uses rebar3_cargo)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+ENV LIBCLANG_PATH="/usr/lib/llvm-14/lib"
 
 # prepare build dir
 WORKDIR /app

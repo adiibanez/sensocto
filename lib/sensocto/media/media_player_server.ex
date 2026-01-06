@@ -192,14 +192,23 @@ defmodule Sensocto.Media.MediaPlayerServer do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    current_item =
-      if state.current_item_id do
-        Media.get_item(state.current_item_id)
-      else
-        nil
-      end
-
     playlist_items = Media.get_playlist_items(state.playlist_id)
+
+    # If no current item but playlist has items, auto-select the first one
+    {current_item, state} =
+      case {state.current_item_id, playlist_items} do
+        {nil, [first | _]} ->
+          # Auto-select first item
+          Logger.info("Auto-selecting first playlist item #{first.id} on get_state")
+          new_state = %{state | current_item_id: first.id, position_seconds: 0.0}
+          {first, new_state}
+
+        {item_id, _} when not is_nil(item_id) ->
+          {Media.get_item(item_id), state}
+
+        _ ->
+          {nil, state}
+      end
 
     response = %{
       state: state.state,

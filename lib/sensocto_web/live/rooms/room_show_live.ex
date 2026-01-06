@@ -33,27 +33,11 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to media events for this room
           PubSub.subscribe(Sensocto.PubSub, "media:#{room_id}")
 
-          # Subscribe to global sensor connections to auto-register sensors for this room
-          PubSub.subscribe(Sensocto.PubSub, "presence:all")
-
-          # Register all currently connected sensors to this room
-          all_connected_sensors =
-            Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-            |> Map.keys()
-
-          if Enum.any?(all_connected_sensors) do
-            register_sensors_to_room(room_id, user.id, all_connected_sensors)
-          end
+          # NOTE: Sensors must be manually added to rooms via the "Add Sensor" button.
+          # Auto-registration has been removed - simulator sensors stay in the lobby only.
 
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
-
-        # Reload room with sensors after registration
-        room =
-          case Rooms.get_room_with_sensors(room_id) do
-            {:ok, updated} -> updated
-            _ -> room
-          end
 
         available_sensors = get_available_sensors(room)
 
@@ -538,44 +522,9 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, push_event(socket, event, payload)}
   end
 
-  # Handle presence_diff events for auto-registering sensors to the room
-  @impl true
-  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", payload: %{joins: joins}}, socket) when map_size(joins) > 0 do
-    room = socket.assigns.room
-    user = socket.assigns.current_user
-
-    # For each new sensor that joined globally, add it to the room's GenServer
-    new_sensor_ids = Map.keys(joins)
-
-    # Ensure the user is in the room's GenServer, then add the sensors
-    register_sensors_to_room(room.id, user.id, new_sensor_ids)
-
-    # Subscribe to data from these sensors
-    Enum.each(new_sensor_ids, fn sensor_id ->
-      PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
-    end)
-
-    # Refresh the room to show the new sensors
-    case Rooms.get_room_with_sensors(room.id) do
-      {:ok, updated_room} ->
-        socket =
-          socket
-          |> assign(:room, updated_room)
-          |> assign(:sensors, updated_room.sensors || [])
-          |> assign(:available_sensors, get_available_sensors(updated_room))
-
-        {:noreply, socket}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
-    # Handle leaves or empty joins - just ignore
-    {:noreply, socket}
-  end
+  # NOTE: Auto-registration of sensors to rooms has been removed.
+  # Sensors must be manually added via the "Add Sensor" button.
+  # Simulator sensors stay in the lobby only.
 
   # Media player events - forward to component via send_update AND push events to JS hook
   @impl true
@@ -647,25 +596,6 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, socket}
   end
 
-  defp register_sensors_to_room(room_id, user_id, new_sensor_ids) do
-    # Get current sensors for this room
-    current_sensors = Sensocto.RoomPresenceServer.get_room_sensors(room_id)
-
-    # Merge with new sensors
-    all_sensors = Enum.uniq(current_sensors ++ new_sensor_ids)
-
-    # Check if user is already in the room
-    case Sensocto.RoomPresenceServer.in_room?(room_id, user_id) do
-      true ->
-        # User already in room, just update their sensors
-        Sensocto.RoomPresenceServer.update_sensors(room_id, user_id, all_sensors)
-
-      false ->
-        # User not in room yet, join them with the sensors
-        Sensocto.RoomPresenceServer.join_room(room_id, user_id, all_sensors, role: :member)
-    end
-  end
-
   defp get_available_sensors(room) do
     room_sensor_ids =
       (room.sensors || [])
@@ -718,22 +648,6 @@ defmodule SensoctoWeb.RoomShowLive do
 
       _ ->
         "Unknown"
-    end
-  end
-
-  defp get_activity_status(sensor_id, activity_map) do
-    case Map.get(activity_map, sensor_id) do
-      nil ->
-        :inactive
-
-      last_activity ->
-        diff_ms = DateTime.diff(DateTime.utc_now(), last_activity, :millisecond)
-
-        cond do
-          diff_ms < 5000 -> :active
-          diff_ms < 60_000 -> :idle
-          true -> :inactive
-        end
     end
   end
 
@@ -916,41 +830,6 @@ defmodule SensoctoWeb.RoomShowLive do
     """
   end
 
-  defp sensor_summary_card(assigns) do
-    ~H"""
-    <div class="bg-gray-800 rounded-lg p-4">
-      <div class="flex items-start justify-between mb-3">
-        <div class="flex items-center gap-3">
-          <div class="p-2 bg-gray-700 rounded-lg">
-            <.sensor_icon type={@sensor.sensor_type} />
-          </div>
-          <div>
-            <h3 class="font-semibold truncate max-w-[120px]"><%= @sensor.sensor_name %></h3>
-            <p class="text-xs text-gray-500"><%= @sensor.sensor_type %></p>
-          </div>
-        </div>
-        <.activity_indicator status={@activity_status} />
-      </div>
-
-      <div class="text-sm text-gray-400">
-        <%= length(Map.keys(@sensor.attributes || %{})) %> attributes
-      </div>
-
-      <%= if @can_manage do %>
-        <div class="mt-3 pt-3 border-t border-gray-700">
-          <button
-            phx-click="remove_sensor"
-            phx-value-sensor_id={@sensor.sensor_id}
-            class="text-red-400 hover:text-red-300 text-sm"
-          >
-            Remove
-          </button>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
   defp sensor_icon(assigns) do
     ~H"""
     <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -963,31 +842,6 @@ defmodule SensoctoWeb.RoomShowLive do
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
       <% end %>
     </svg>
-    """
-  end
-
-  defp activity_indicator(assigns) do
-    ~H"""
-    <div class="relative flex items-center gap-1">
-      <%= case @status do %>
-        <% :active -> %>
-          <span class="relative flex h-3 w-3">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-          </span>
-          <span class="text-xs text-green-400">Active</span>
-        <% :idle -> %>
-          <span class="relative flex h-3 w-3">
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
-          </span>
-          <span class="text-xs text-yellow-400">Idle</span>
-        <% _ -> %>
-          <span class="relative flex h-3 w-3">
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
-          </span>
-          <span class="text-xs text-gray-400">Inactive</span>
-      <% end %>
-    </div>
     """
   end
 

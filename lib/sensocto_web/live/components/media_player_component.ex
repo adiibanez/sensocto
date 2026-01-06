@@ -427,6 +427,16 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                 >
                   Release
                 </button>
+              <% else %>
+                <%= if @current_user do %>
+                  <button
+                    phx-click="take_control"
+                    phx-target={@myself}
+                    class="text-blue-400 hover:text-blue-300"
+                  >
+                    Take Control
+                  </button>
+                <% end %>
               <% end %>
             <% else %>
               <span>No controller</span>

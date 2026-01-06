@@ -851,30 +851,30 @@ defmodule SensoctoWeb.RoomShowLive do
     assigns = assign(assigns, :share_url, share_url)
 
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_share_modal">
-      <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" phx-click-away="close_share_modal">
-        <div class="flex justify-between items-center mb-6">
-          <h2 class="text-xl font-semibold">Share Room</h2>
-          <button phx-click="close_share_modal" class="text-gray-400 hover:text-white">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6" phx-click="close_share_modal">
+      <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" phx-click-away="close_share_modal">
+        <div class="flex justify-between items-center mb-4 sm:mb-6">
+          <h2 class="text-lg sm:text-xl font-semibold">Share Room</h2>
+          <button phx-click="close_share_modal" class="text-gray-400 hover:text-white p-1">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div class="text-center mb-6">
-          <p class="text-gray-400 mb-2">Join Code</p>
-          <p class="text-4xl font-mono font-bold tracking-wider"><%= @room.join_code %></p>
+        <div class="text-center mb-4 sm:mb-6">
+          <p class="text-gray-400 text-sm mb-2">Join Code</p>
+          <p class="text-2xl sm:text-4xl font-mono font-bold tracking-wider"><%= @room.join_code %></p>
         </div>
 
-        <div class="mb-6">
+        <div class="mb-4 sm:mb-6">
           <p class="text-gray-400 text-sm mb-2">Share Link</p>
-          <div class="flex gap-2">
+          <div class="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               readonly
               value={@share_url}
-              class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white text-sm"
+              class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2 text-white text-xs sm:text-sm truncate"
               id="share-url-input"
             />
             <button
@@ -882,15 +882,15 @@ defmodule SensoctoWeb.RoomShowLive do
               phx-hook="CopyToClipboard"
               id="copy-link-btn"
               data-copy-text={@share_url}
-              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm sm:text-base whitespace-nowrap"
             >
-              Copy
+              Copy Link
             </button>
           </div>
         </div>
 
-        <div class="flex justify-center p-4 bg-white rounded-lg">
-          <div id="qr-code" phx-hook="QRCode" data-value={@share_url} class="w-48 h-48"></div>
+        <div class="flex justify-center p-3 sm:p-4 bg-white rounded-lg">
+          <div id="qr-code" phx-hook="QRCode" data-value={@share_url} class="w-36 h-36 sm:w-48 sm:h-48"></div>
         </div>
       </div>
     </div>

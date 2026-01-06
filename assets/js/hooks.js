@@ -244,7 +244,7 @@ Hooks.MediaPlayerHook = {
         this.observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 if (mutation.type === 'childList' || mutation.type === 'attributes') {
-                    this.checkForNewVideo();
+                    this.checkForPlayerChanges();
                 }
             }
         });
@@ -257,14 +257,37 @@ Hooks.MediaPlayerHook = {
         });
     },
 
+    checkForPlayerChanges() {
+        const playerEl = this.el.querySelector('[id^="youtube-player-"]');
+
+        if (!playerEl && this.player) {
+            console.log('[MediaPlayer] Player element removed (collapsed), cleaning up');
+            try {
+                this.player.destroy();
+            } catch (e) {
+                console.log('[MediaPlayer] Error destroying player:', e);
+            }
+            this.player = null;
+            this.isReady = false;
+        } else if (playerEl) {
+            this.checkForNewVideo();
+        }
+    },
+
     checkForNewVideo() {
         const playerEl = this.el.querySelector('[id^="youtube-player-"]');
         if (playerEl) {
             const newVideoId = playerEl.dataset.videoId;
+            const autoplay = playerEl.dataset.autoplay === '1';
+            const startSeconds = parseInt(playerEl.dataset.start) || 0;
+
             if (newVideoId && newVideoId !== this.currentVideoId) {
-                const autoplay = playerEl.dataset.autoplay === '1';
-                const startSeconds = parseInt(playerEl.dataset.start) || 0;
                 this.loadVideo(newVideoId, startSeconds, autoplay);
+            } else if (newVideoId && !this.player) {
+                console.log('[MediaPlayer] Player element reappeared, reinitializing');
+                this.currentVideoId = null;
+                this.isReady = false;
+                this.initializePlayer();
             }
         }
     },

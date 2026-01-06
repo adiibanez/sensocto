@@ -300,21 +300,37 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     >
       <%!-- Header --%>
       <div class="flex items-center justify-between px-3 py-2 bg-gray-900/50 border-b border-gray-700">
-        <div class="flex items-center gap-2">
-          <svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
           </svg>
-          <span class="text-sm text-gray-300">
-            <%= if @is_lobby, do: "Lobby Music", else: "Room Music" %>
-          </span>
-          <%= if @player_state == :playing do %>
-            <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+          <%= if @collapsed && @current_item do %>
+            <%!-- Collapsed: show thumbnail and title --%>
+            <img
+              src={@current_item.thumbnail_url || "https://via.placeholder.com/40x24?text=Video"}
+              alt=""
+              class="w-10 h-6 object-cover rounded flex-shrink-0"
+            />
+            <span class="text-sm text-white truncate" title={@current_item.title}>
+              <%= @current_item.title || "Unknown" %>
+            </span>
+            <%= if @player_state == :playing do %>
+              <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></span>
+            <% end %>
+          <% else %>
+            <%!-- Expanded: show label and playing indicator --%>
+            <span class="text-sm text-gray-300">
+              Collab Media Playback
+            </span>
+            <%= if @player_state == :playing do %>
+              <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            <% end %>
           <% end %>
         </div>
         <button
           phx-click="toggle_collapsed"
           phx-target={@myself}
-          class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+          class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white flex-shrink-0"
         >
           <svg class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />

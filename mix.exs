@@ -96,6 +96,8 @@ defmodule Sensocto.MixProject do
       {:ash_postgres, "~> 2.5"},
       {:ash_neo4j, "~> 0.2.12"},
       {:boltx, "~> 0.0.6"},
+      # {:cozodb, git: "https://github.com/leapsight/cozodb.git", branch: "master"},
+      {:cozodb, git: "https://github.com/Leapsight/cozodb.git", tag: "0.2.9"},
       {:ash_ops, "~> 0.2.3"},
       {:picosat_elixir, "~> 0.2"},
       # {:flex_logger, "~> 0.2.1"},

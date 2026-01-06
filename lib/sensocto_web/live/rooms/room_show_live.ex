@@ -9,6 +9,7 @@ defmodule SensoctoWeb.RoomShowLive do
   alias Sensocto.Rooms
   alias Sensocto.Calls
   alias Phoenix.PubSub
+  alias SensoctoWeb.Live.Components.MediaPlayerComponent
 
   @activity_check_interval 5000
 
@@ -27,6 +28,9 @@ defmodule SensoctoWeb.RoomShowLive do
 
           # Subscribe to call events for this room
           PubSub.subscribe(Sensocto.PubSub, "call:#{room_id}")
+
+          # Subscribe to media events for this room
+          PubSub.subscribe(Sensocto.PubSub, "media:#{room_id}")
 
           # Subscribe to global sensor connections to auto-register sensors for this room
           PubSub.subscribe(Sensocto.PubSub, "presence:all")
@@ -66,6 +70,7 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:show_edit_modal, false)
           |> assign(:show_settings, false)
           |> assign(:is_owner, Rooms.owner?(room, user))
+          |> assign(:is_member, Rooms.member?(room, user))
           |> assign(:can_manage, Rooms.can_manage?(room, user))
           |> assign(:sensor_activity, build_activity_map(room.sensors || []))
           |> assign(:edit_form, build_edit_form(room))
@@ -225,6 +230,34 @@ defmodule SensoctoWeb.RoomShowLive do
         {:error, _reason} ->
           {:noreply, put_flash(socket, :error, "Failed to leave room")}
       end
+    end
+  end
+
+  @impl true
+  def handle_event("join_room", _params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    case Rooms.join_room(room, user) do
+      {:ok, _membership} ->
+        socket =
+          socket
+          |> assign(:is_member, true)
+          |> assign(:can_manage, Rooms.can_manage?(room, user))
+          |> put_flash(:info, "Joined room: #{room.name}")
+
+        {:noreply, socket}
+
+      {:error, :already_member} ->
+        socket =
+          socket
+          |> assign(:is_member, true)
+          |> put_flash(:info, "You are already a member of this room")
+
+        {:noreply, socket}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to join room")}
     end
   end
 
@@ -515,6 +548,58 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, socket}
   end
 
+  # Media player events - forward to component via send_update
+  @impl true
+  def handle_info({:media_state_changed, state}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(MediaPlayerComponent,
+      id: "room-media-player-#{room_id}",
+      player_state: state.state,
+      position_seconds: state.position_seconds,
+      current_item: state.current_item
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:media_video_changed, %{item: item}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(MediaPlayerComponent,
+      id: "room-media-player-#{room_id}",
+      current_item: item
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:media_playlist_updated, %{items: items}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(MediaPlayerComponent,
+      id: "room-media-player-#{room_id}",
+      playlist_items: items
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:media_controller_changed, %{user_id: user_id, user_name: user_name}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(MediaPlayerComponent,
+      id: "room-media-player-#{room_id}",
+      controller_user_id: user_id,
+      controller_user_name: user_name
+    )
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(msg, socket) do
     Logger.debug("RoomShowLive received unknown message: #{inspect(msg)}")
@@ -684,16 +769,28 @@ defmodule SensoctoWeb.RoomShowLive do
             Delete
           </button>
         <% else %>
-          <button
-            phx-click="leave_room"
-            data-confirm="Are you sure you want to leave this room? Your sensors will be disconnected from the room."
-            class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Leave Room
-          </button>
+          <%= if @is_member do %>
+            <button
+              phx-click="leave_room"
+              data-confirm="Are you sure you want to leave this room? Your sensors will be disconnected from the room."
+              class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Leave Room
+            </button>
+          <% else %>
+            <button
+              phx-click="join_room"
+              class="bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              Join Room
+            </button>
+          <% end %>
         <% end %>
       </div>
 
@@ -710,6 +807,17 @@ defmodule SensoctoWeb.RoomShowLive do
             participants={@call_participants}
           />
         <% end %>
+
+        <%!-- Media Player Panel --%>
+        <div class="mb-6">
+          <.live_component
+            module={MediaPlayerComponent}
+            id={"room-media-player-#{@room.id}"}
+            room_id={@room.id}
+            current_user={@current_user}
+            can_manage={@can_manage}
+          />
+        </div>
 
         <%!-- Sensors Panel --%>
         <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>

@@ -7,6 +7,7 @@ defmodule SensoctoWeb.LobbyLive do
   require Logger
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLive
+  alias SensoctoWeb.Live.Components.MediaPlayerComponent
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -24,6 +25,7 @@ defmodule SensoctoWeb.LobbyLive do
 
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "media:lobby")
 
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
@@ -290,6 +292,60 @@ defmodule SensoctoWeb.LobbyLive do
       _ ->
         {:noreply, socket}
     end
+  end
+
+  # Media player events - forward to component via send_update AND push events to JS hook
+  @impl true
+  def handle_info({:media_state_changed, state}, socket) do
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      player_state: state.state,
+      position_seconds: state.position_seconds,
+      current_item: state.current_item
+    )
+
+    # Push sync event directly to JS hook from parent LiveView
+    socket = push_event(socket, "media_sync", %{
+      state: state.state,
+      position_seconds: state.position_seconds
+    })
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:media_video_changed, %{item: item}}, socket) do
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      current_item: item
+    )
+
+    # Push video change event directly to JS hook from parent LiveView
+    socket = push_event(socket, "media_load_video", %{
+      video_id: item.youtube_video_id,
+      start_seconds: 0
+    })
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:media_playlist_updated, %{items: items}}, socket) do
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      playlist_items: items
+    )
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:media_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      controller_user_id: user_id,
+      controller_user_name: user_name
+    )
+    {:noreply, socket}
   end
 
   @impl true

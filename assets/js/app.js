@@ -22,7 +22,8 @@ import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import logger from "./logger.js"
-// import Hooks from "./hooks"
+// Import hooks including MediaPlayerHook for YouTube playback
+import BaseHooks from "./hooks"
 // Import directly from hooks.svelte module to avoid svelte/server dependency (from render.js)
 import { getHooks } from "../../deps/live_svelte/assets/js/live_svelte/hooks.svelte"
 import * as Components from "../svelte/**/*.svelte"
@@ -855,8 +856,8 @@ workerStorage.addEventListener('message', Hooks.SensorDataAccumulator.workerEven
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-//let mergedHooks = { ...getHooks(Components), ...Hooks };
-let mergedHooks = { ...getHooks(Components), ...Hooks };
+// Merge all hooks: Svelte component hooks, base hooks from hooks.js (includes MediaPlayerHook), and app.js hooks
+let mergedHooks = { ...getHooks(Components), ...BaseHooks, ...Hooks };
 
 let liveSocket = new LiveSocket("/live", Socket, { hooks: mergedHooks, params: { _csrf_token: csrfToken } })
 

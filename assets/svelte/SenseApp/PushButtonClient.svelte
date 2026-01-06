@@ -1,5 +1,6 @@
 <script>
     import { getContext, onDestroy, onMount } from "svelte";
+    import { isMobile } from "../utils.js";
 
     let sensorService = getContext("sensorService");
     let channelIdentifier = sensorService.getDeviceId();
@@ -9,6 +10,16 @@
 
     // Track currently pressed buttons (for visual feedback and simultaneous presses)
     let pressedButtons = new Set();
+
+    // Check if we're on desktop (requires Space key for buttons)
+    let isDesktop = false;
+
+    // Track if Space key is currently held down (for desktop modifier)
+    let spaceKeyHeld = false;
+
+    onMount(() => {
+        isDesktop = !isMobile();
+    });
 
     const buttons = [
         { id: 1, style: "background-color: #ef4444;", hoverStyle: "background-color: #dc2626;", label: "1", key: "1" },
@@ -65,6 +76,11 @@
         }
         if (event.repeat) return;
 
+        // On desktop, require Space key to be held down
+        if (isDesktop && !spaceKeyHeld) {
+            return;
+        }
+
         const buttonId = keyToButtonId[event.key];
         if (buttonId && !pressedButtons.has(buttonId)) {
             pressedButtons.add(buttonId);
@@ -82,7 +98,12 @@
         }
     };
 
-    const handleMouseDown = (buttonId) => {
+    const handleMouseDown = (event, buttonId) => {
+        // On desktop, require Space key to be held down
+        if (isDesktop && !spaceKeyHeld) {
+            return;
+        }
+
         if (!pressedButtons.has(buttonId)) {
             pressedButtons.add(buttonId);
             pressedButtons = pressedButtons;
@@ -106,6 +127,25 @@
         }
     };
 
+    const handleSpaceDown = (event) => {
+        if (event.code === 'Space' && !event.repeat) {
+            event.preventDefault();
+            spaceKeyHeld = true;
+        }
+    };
+
+    const handleSpaceUp = (event) => {
+        if (event.code === 'Space') {
+            spaceKeyHeld = false;
+            // Release all pressed buttons when space is released
+            pressedButtons.forEach(buttonId => {
+                sendButtonRelease(buttonId);
+            });
+            pressedButtons.clear();
+            pressedButtons = pressedButtons;
+        }
+    };
+
     onMount(() => {
         // Wait for socket to be ready before registering the button attribute
         // This ensures the channel is established and the attribute shows up in the UI
@@ -115,6 +155,8 @@
 
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
+        window.addEventListener('keydown', handleSpaceDown);
+        window.addEventListener('keyup', handleSpaceUp);
     });
 
     onDestroy(() => {
@@ -123,6 +165,8 @@
         }
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
+        window.removeEventListener('keydown', handleSpaceDown);
+        window.removeEventListener('keyup', handleSpaceUp);
         sensorService.unregisterAttribute(sensorService.getDeviceId(), "button");
         sensorService.leaveChannelIfUnused(channelIdentifier);
     });
@@ -132,18 +176,21 @@
     };
 </script>
 
-<div class="flex gap-1 flex-wrap">
+<div class="flex gap-1 flex-wrap items-center">
+    {#if isDesktop}
+        <span class="text-xs text-gray-400 font-mono mr-1" class:space-active={spaceKeyHeld}>Space +</span>
+    {/if}
     {#each buttons as button}
         <button
             class="push-button w-6 h-6 rounded text-white text-xs font-bold flex items-center justify-center"
             class:pressed={pressedButtons.has(button.id)}
             style={getButtonStyle(button, pressedButtons.has(button.id))}
-            on:mousedown={() => handleMouseDown(button.id)}
+            on:mousedown={(e) => handleMouseDown(e, button.id)}
             on:mouseup={() => handleMouseUp(button.id)}
             on:mouseleave={() => handleMouseLeave(button.id)}
-            on:touchstart|preventDefault={() => handleMouseDown(button.id)}
+            on:touchstart|preventDefault={(e) => handleMouseDown(e, button.id)}
             on:touchend|preventDefault={() => handleMouseUp(button.id)}
-            title="Press '{button.key}' key"
+            title={isDesktop ? `Hold Space + click or press '${button.key}'` : `Tap button ${button.key}`}
         >
             {button.label}
         </button>
@@ -159,5 +206,9 @@
     }
     .push-button.pressed {
         transform: scale(0.9);
+    }
+    .space-active {
+        color: #22c55e;
+        font-weight: bold;
     }
 </style>

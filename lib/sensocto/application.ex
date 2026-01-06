@@ -48,6 +48,9 @@ defmodule Sensocto.Application do
       # Calls (Video/Voice)
       {Registry, keys: :unique, name: Sensocto.CallRegistry},
 
+      # Media (YouTube/Spotify playback)
+      {Registry, keys: :unique, name: Sensocto.MediaRegistry},
+
       # {Horde.Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
       # {Horde.Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       # {Horde.Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
@@ -74,6 +77,7 @@ defmodule Sensocto.Application do
       Sensocto.SensorsDynamicSupervisor,
       Sensocto.RoomsDynamicSupervisor,
       Sensocto.Calls.CallSupervisor,
+      Sensocto.Media.MediaPlayerSupervisor,
       # Pooled RepoReplicator for scalability (replaces single RepoReplicator)
       {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
       # Start the Finch HTTP client for sending emails

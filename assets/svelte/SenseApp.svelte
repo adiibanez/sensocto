@@ -13,6 +13,7 @@
     import GeolocationClient from "./SenseApp/GeolocationClient.svelte";
     import BatterystatusClient from "./SenseApp/BatterystatusClient.svelte";
     import PushButtonClient from "./SenseApp/PushButtonClient.svelte";
+    import RichPresenceClient from "./SenseApp/RichPresenceClient.svelte";
     import NetworkQualityMonitor from "./SenseApp/NetworkQualityMonitor.svelte";
 
     import { usersettings, autostart } from "./SenseApp/stores.js";
@@ -119,6 +120,7 @@
             <GeolocationClient />
             <BatterystatusClient />
             <PushButtonClient />
+            <RichPresenceClient />
         </div>
     </div>
 </SensorService>

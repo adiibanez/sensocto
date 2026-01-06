@@ -61,6 +61,17 @@
     </:tab>
   </.tabs>
 
+  <%!-- Media Player Panel --%>
+  <div class="mb-6">
+    <.live_component
+      module={SensoctoWeb.Live.Components.MediaPlayerComponent}
+      id="lobby-media-player"
+      is_lobby={true}
+      current_user={@current_user}
+      can_manage={true}
+    />
+  </div>
+
   <div :if={@live_action == :sensors}>
     <div
       id="cnt"

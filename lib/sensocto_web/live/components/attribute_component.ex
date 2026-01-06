@@ -462,6 +462,139 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
   defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
+  # Summary mode for rich_presence - shows current media with artwork
+  @impl true
+  def render(%{:attribute_type => "rich_presence", :view_mode => :summary} = assigns) do
+    assigns = assign(assigns, :presence, extract_rich_presence(assigns[:lastvalue]))
+
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <%= case @presence.state do %>
+          <% "playing" -> %>
+            <Heroicons.icon name="play" type="solid" class="h-3 w-3 text-green-400" />
+          <% "paused" -> %>
+            <Heroicons.icon name="pause" type="solid" class="h-3 w-3 text-yellow-400" />
+          <% _ -> %>
+            <Heroicons.icon name="musical-note" type="outline" class="h-3 w-3 text-gray-500" />
+        <% end %>
+        Media
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-2 max-w-[180px]">
+        <%= if @presence.title do %>
+          <%= if @presence.state == "playing" do %>
+            <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></span>
+          <% else %>
+            <span class="w-2 h-2 bg-yellow-400 rounded-full flex-shrink-0"></span>
+          <% end %>
+          <div class="truncate text-right">
+            <span class="text-white text-[10px]">{@presence.title}</span>
+            <%= if @presence.artist do %>
+              <span class="text-gray-400 text-[10px]"> - {@presence.artist}</span>
+            <% end %>
+          </div>
+        <% else %>
+          <span class="text-gray-500 text-[10px] italic">Play media in browser</span>
+        <% end %>
+      </div>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  # Detailed mode for rich_presence - shows album art and full info
+  @impl true
+  def render(%{:attribute_type => "rich_presence"} = assigns) do
+    assigns = assign(assigns, :presence, extract_rich_presence(assigns[:lastvalue]))
+
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Rich Presence"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-start gap-3 p-2">
+          <%!-- Album artwork or placeholder --%>
+          <div class="w-12 h-12 rounded bg-gray-700 flex-shrink-0 overflow-hidden">
+            <%= if @presence.artwork_url && @presence.artwork_url != "" do %>
+              <img src={@presence.artwork_url} alt="Album art" class="w-full h-full object-cover" />
+            <% else %>
+              <div class="w-full h-full flex items-center justify-center">
+                <Heroicons.icon name="musical-note" type="solid" class="h-6 w-6 text-gray-500" />
+              </div>
+            <% end %>
+          </div>
+
+          <%!-- Media info --%>
+          <div class="flex-1 min-w-0">
+            <%= if @presence.title do %>
+              <p class="text-sm font-medium text-white truncate">{@presence.title}</p>
+              <p :if={@presence.artist} class="text-xs text-gray-400 truncate">{@presence.artist}</p>
+              <p :if={@presence.album} class="text-xs text-gray-500 truncate">{@presence.album}</p>
+            <% else %>
+              <p class="text-sm text-gray-500">No media playing</p>
+            <% end %>
+
+            <%!-- Playback state indicator --%>
+            <div class="mt-1 flex items-center gap-1">
+              <%= case @presence.state do %>
+                <% "playing" -> %>
+                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span class="text-xs text-green-400">Playing</span>
+                <% "paused" -> %>
+                  <span class="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                  <span class="text-xs text-yellow-400">Paused</span>
+                <% _ -> %>
+                  <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
+                  <span class="text-xs text-gray-500">Idle</span>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  # Extract rich presence data from payload
+  defp extract_rich_presence(nil), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
+  defp extract_rich_presence(%{payload: %{title: title, artist: artist, album: album, artwork_url: artwork, state: state}}) do
+    %{
+      title: if(title == "", do: nil, else: title),
+      artist: if(artist == "", do: nil, else: artist),
+      album: if(album == "", do: nil, else: album),
+      artwork_url: artwork,
+      state: state || "none"
+    }
+  end
+  defp extract_rich_presence(%{payload: payload}) when is_map(payload) do
+    %{
+      title: Map.get(payload, :title) || Map.get(payload, "title"),
+      artist: Map.get(payload, :artist) || Map.get(payload, "artist"),
+      album: Map.get(payload, :album) || Map.get(payload, "album"),
+      artwork_url: Map.get(payload, :artwork_url) || Map.get(payload, "artwork_url"),
+      state: Map.get(payload, :state) || Map.get(payload, "state") || "none"
+    }
+  end
+  defp extract_rich_presence(_), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
+
   # Button colors for 8 buttons (hex values for inline styles)
   @button_colors %{
     1 => "#ef4444",  # red

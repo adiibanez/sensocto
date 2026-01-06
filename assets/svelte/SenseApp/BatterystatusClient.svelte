@@ -1,5 +1,6 @@
 <script>
   import { getContext, onDestroy, onMount } from "svelte";
+  import { get } from "svelte/store";
   import { usersettings, autostart } from "./stores.js";
   import { logger } from "../logger_svelte.js";
 
@@ -12,6 +13,7 @@
   let batteryRef = null; // Store battery reference for cleanup
 
   let unsubscribeSocket;
+  let batteryStarted = false; // Track if battery sensor was started
 
   // Check if Battery Status API is available
   const checkBatterySupport = () => {
@@ -22,12 +24,22 @@
     return true;
   };
 
-  autostart.subscribe((value) => {
-    logger.log(loggerCtxName, "pre Autostart update", value, batteryData);
+  // Track if we've subscribed to socket ready
+  let autostartUnsubscribe = null;
 
-    if (value == true && !batteryData) {
-      unsubscribeSocket = sensorService.onSocketReady(() => {
-        logger.log(loggerCtxName, "Autostart", value, autostart);
+  autostart.subscribe((value) => {
+    logger.log(loggerCtxName, "Autostart update", value, "batteryStarted:", batteryStarted);
+
+    if (value === true && !batteryStarted) {
+      // Clean up previous subscription if any
+      if (autostartUnsubscribe) {
+        autostartUnsubscribe();
+        autostartUnsubscribe = null;
+      }
+
+      // Register for socket ready - this will fire immediately if socket is already ready
+      autostartUnsubscribe = sensorService.onSocketReady(() => {
+        logger.log(loggerCtxName, "Autostart triggered via subscribe, starting battery");
         requestAndStartBattery();
       });
     }
@@ -47,7 +59,13 @@
   };
 
   const startBatterySensorInternal = async () => {
+    if (batteryStarted) {
+      logger.log(loggerCtxName, "Battery sensor already started, skipping");
+      return;
+    }
+
     if ("getBattery" in navigator) {
+      batteryStarted = true;
       sensorService.setupChannel(channelIdentifier);
       sensorService.registerAttribute(sensorService.getDeviceId(), {
         attribute_id: "battery",
@@ -124,15 +142,17 @@
 
     batteryData = null;
     batteryStatus = null;
+    batteryStarted = false;
   }
 
   onMount(() => {
     unsubscribeSocket = sensorService.onSocketReady(() => {
-      if (autostart == true) {
+      const autostartValue = get(autostart);
+      if (autostartValue === true) {
         logger.log(
           loggerCtxName,
           "onMount onSocketReady Autostart going to start",
-          autostart
+          autostartValue
         );
         startBatterySensor();
       }
@@ -149,32 +169,36 @@
     if (unsubscribeSocket) {
       unsubscribeSocket();
     }
-    console.log("sensorService", sensorService);
+    if (autostartUnsubscribe) {
+      autostartUnsubscribe();
+    }
+    logger.log(loggerCtxName, "onDestroy - cleaning up");
     stopBatterySensor();
-    sensorService.leaveChannelIfUnused(channelIdentifier); // Important: Leave the channel
+    sensorService.leaveChannelIfUnused(channelIdentifier);
   });
 </script>
 
-{#if !$autostart}
-  {#if batteryStatus === "unsupported" || !("getBattery" in navigator)}
-    <div class="text-xs text-gray-400 p-2 bg-gray-800/50 rounded">
-      <p>Battery Status not available</p>
-      <p class="text-gray-500 mt-1">Safari and iOS don't support the Battery API.</p>
-    </div>
-  {:else if batteryStatus === "error"}
-    <div class="text-xs text-yellow-400 p-2 bg-yellow-900/20 rounded">
-      <p>Battery Status error</p>
-      {#if batteryData?.error}
-        <p class="text-gray-400 mt-1">{batteryData.error}</p>
-      {/if}
-    </div>
-  {:else if batteryStatus === "active" && batteryData != null}
+{#if batteryStatus === "unsupported" || !("getBattery" in navigator)}
+  <div class="text-xs text-gray-400 p-2 bg-gray-800/50 rounded">
+    <p>Battery Status not available</p>
+    <p class="text-gray-500 mt-1">Safari and iOS don't support the Battery API.</p>
+  </div>
+{:else if batteryStatus === "error"}
+  <div class="text-xs text-yellow-400 p-2 bg-yellow-900/20 rounded">
+    <p>Battery Status error</p>
+    {#if batteryData?.error}
+      <p class="text-gray-400 mt-1">{batteryData.error}</p>
+    {/if}
+  </div>
+{:else if !$autostart}
+  <!-- Manual controls when autostart is disabled -->
+  {#if batteryStatus === "active" && batteryData != null}
     <button class="btn btn-blue text-xs" on:click={stopBatterySensor}
-      >Stop Battery Status</button
+      >Stop Battery</button
     >
   {:else}
     <button class="btn btn-blue text-xs" on:click={startBatterySensor}
-      >Start Battery Status</button
+      >Start Battery</button
     >
   {/if}
 {/if}

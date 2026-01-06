@@ -5,11 +5,12 @@
         onDestroy,
         onMount,
     } from "svelte";
+    import { get } from "svelte/store";
     import { usersettings, autostart } from "./stores.js";
     import { isMobile } from "../utils.js";
     import { logger } from "../logger_svelte.js";
 
-    loggerCtxName = "IMUClient";
+    let loggerCtxName = "IMUClient";
 
     let unsubscribeSocket;
 
@@ -40,12 +41,20 @@
     let readingIMU = false;
     let channelIdentifier = sensorService.getDeviceId(); // + ":imu";
 
+    let autostartUnsubscribe = null;
+
     autostart.subscribe((value) => {
         logger.log(loggerCtxName, "pre Autostart update", value, readingIMU);
 
-        if (value == true && !readingIMU && imuAvailable()) {
-            unsubscribeSocket = sensorService.onSocketReady(() => {
-                logger.log(loggerCtxName, "Autostart", value, autostart);
+        if (value === true && !readingIMU && imuAvailable()) {
+            // Clean up previous subscription if any
+            if (autostartUnsubscribe) {
+                autostartUnsubscribe();
+                autostartUnsubscribe = null;
+            }
+
+            autostartUnsubscribe = sensorService.onSocketReady(() => {
+                logger.log(loggerCtxName, "Autostart triggered via subscribe, starting IMU");
                 startIMU();
             });
         }
@@ -89,8 +98,6 @@
     async function startIMU() {
         let imuType = imuAvailable();
 
-        console.log("IMU type: ", imuType);
-
         if (imuType === "mobile") {
             try {
                 sensorService.setupChannel(channelIdentifier);
@@ -99,8 +106,6 @@
                     attribute_type: "imu",
                     sampling_rate: imuFrequency,
                 });
-
-                console.log("IMU frequency", imuFrequency, "Hz");
 
                 accelerometer = new LinearAccelerationSensor({
                     frequency: imuFrequency,
@@ -153,7 +158,6 @@
             let imuType = imuAvailable();
 
             if (imuType === "mobile") {
-                console.log("stop mobileIMU");
                 accelerometer.removeEventListener("reading", () =>
                     handleMobileIMU(),
                 );
@@ -179,7 +183,6 @@
     }
 
     function handleDeviceMotion(event) {
-        console.log("handleDeviceMotion");
         imuData = {
             acceleration: {
                 x: event.acceleration.x,
@@ -233,14 +236,6 @@
         //  * compass.x,
         //     compass.y,
         //     compass.z,
-
-        console.log(
-            madgwick.toVector(),
-            gyroscope,
-            accelerometer,
-            absoluteorientation,
-        );
-        //console.log(madgwick.getEulerAngles(), gyroscope, accelerometer, absoluteorientation);
     }
 
     function handleMobileIMU(event) {
@@ -389,11 +384,12 @@
 
     onMount(() => {
         unsubscribeSocket = sensorService.onSocketReady(() => {
-            if (autostart == true) {
+            const autostartValue = get(autostart);
+            if (autostartValue === true) {
                 logger.log(
                     loggerCtxName,
                     "onMount onSocketReady Autostart going to start",
-                    autostart,
+                    autostartValue,
                 );
                 startIMU();
             }
@@ -409,6 +405,9 @@
     onDestroy(() => {
         if (unsubscribeSocket) {
             unsubscribeSocket();
+        }
+        if (autostartUnsubscribe) {
+            autostartUnsubscribe();
         }
         stopIMU();
         sensorService.unregisterAttribute(channelIdentifier, "imu");
@@ -426,8 +425,6 @@
                 class="btn btn-blue text-xs">Cal</button
             >
             {imuFrequency} Hz
-
-            <p>{JSON.stringify(imuOutput)}</p>
         {/if}
         {#if !readingIMU}
             <button on:click={() => startIMU()} class="btn btn-blue text-xs"

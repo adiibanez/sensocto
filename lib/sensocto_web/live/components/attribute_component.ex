@@ -2108,8 +2108,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   def update(assigns, socket) do
     # Handle partial updates (only lastvalue) vs full mount updates
     # When send_update is called with just id and lastvalue, we only update lastvalue
-    if Map.has_key?(assigns, :attribute_id) do
-      Logger.debug("attribute update (full) attribute_id: #{assigns.attribute_id}")
+    # Full mount passes :attribute map; partial updates pass :lastvalue directly
+    if Map.has_key?(assigns, :attribute) do
+      attribute = assigns.attribute
+      Logger.debug("attribute update (full) attribute_id: #{attribute.attribute_id}")
 
       # Get render hints from AttributeType for dynamic visualization selection
       attribute_type = assigns.attribute_type || "unknown"
@@ -2120,14 +2122,13 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         :ok,
         socket
         |> assign_new(:id, fn _ -> assigns.id end)
-        |> assign_new(:attribute_id, fn _ -> assigns.attribute_id end)
+        |> assign_new(:attribute_id, fn _ -> attribute.attribute_id end)
         |> assign_new(:attribute_type, fn _ -> attribute_type end)
         |> assign_new(:sensor_id, fn _ -> assigns.sensor_id end)
-        |> assign_new(:attribute, fn _ -> assigns.attribute end)
-        |> assign_new(:lastvalue, fn _ -> assigns.attribute.lastvalue end)
+        |> assign_new(:attribute, fn _ -> attribute end)
         |> assign_new(:render_hints, fn _ -> render_hints end)
-        # measurements only contain lastvalue
-        |> assign(:lastvalue, assigns.lastvalue)
+        # Use lastvalue from attribute on full mount
+        |> assign(:lastvalue, attribute.lastvalue)
         |> assign(:view_mode, view_mode)
       }
     else

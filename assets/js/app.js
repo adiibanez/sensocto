@@ -81,21 +81,15 @@ Hooks.CallControlsHook = CallControlsHook;
 // Vibrate hook - vibrates device and plays sound on every button press
 // Supports repetitive clicks on same button (uses timestamp to detect)
 // Sound plays by default (set data-play-sound="false" to disable)
+// NOTE: Does NOT trigger on mount - only on actual button press updates
 Hooks.Vibrate = {
   mounted() {
     this.lastValue = this.el.dataset.value;
     this.lastTimestamp = this.el.dataset.timestamp || '0';
     this.lastEvent = this.el.dataset.event;
     this.audioContext = null;
-
-    // Trigger notification on first mount if there's a value and it's a press event
-    const event = this.el.dataset.event;
-    if (this.lastValue && this.lastValue !== 'null' && this.lastValue !== 'undefined') {
-      // Only vibrate on press events (not release)
-      if (!event || event === 'press') {
-        this.triggerNotification(this.lastValue);
-      }
-    }
+    // Don't trigger notification on mount - only on actual updates
+    // This prevents sound/vibration when joining/leaving pages
   },
 
   updated() {

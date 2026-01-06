@@ -491,4 +491,134 @@ Hooks.MediaPlayerHook = {
     }
 };
 
+Hooks.BottomNav = {
+    mounted() {
+        this.updateActiveState();
+
+        window.addEventListener('popstate', () => this.updateActiveState());
+
+        window.addEventListener('phx:page-loading-stop', () => {
+            setTimeout(() => this.updateActiveState(), 50);
+        });
+    },
+
+    updateActiveState() {
+        const currentPath = window.location.pathname;
+        const navItems = this.el.querySelectorAll('.bottom-nav-item');
+
+        navItems.forEach(item => {
+            const itemPath = item.dataset.path;
+            const isActive = this.isPathActive(currentPath, itemPath);
+
+            item.classList.remove('text-blue-400', 'text-gray-400');
+
+            if (isActive) {
+                item.classList.add('text-blue-400');
+            } else {
+                item.classList.add('text-gray-400');
+            }
+        });
+    },
+
+    isPathActive(currentPath, itemPath) {
+        if (itemPath === '/') {
+            return currentPath === '/';
+        }
+        return currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+    },
+
+    destroyed() {
+        window.removeEventListener('popstate', () => this.updateActiveState());
+        window.removeEventListener('phx:page-loading-stop', () => this.updateActiveState());
+    }
+};
+
+Hooks.FooterToolbar = {
+    mounted() {
+        const toggle = this.el.querySelector('#footer-toggle');
+        const content = this.el.querySelector('#footer-content-mobile');
+        const chevron = this.el.querySelector('.footer-chevron');
+
+        if (toggle && content) {
+            toggle.addEventListener('click', () => {
+                const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+                toggle.setAttribute('aria-expanded', !isExpanded);
+                content.classList.toggle('hidden');
+                if (chevron) {
+                    chevron.classList.toggle('rotate-180');
+                }
+            });
+        }
+    }
+};
+
+Hooks.MobileMenu = {
+    mounted() {
+        const button = this.el.querySelector('#mobile-menu-button');
+        const dropdown = this.el.querySelector('#mobile-menu-dropdown');
+
+        if (button && dropdown) {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dropdown.classList.toggle('hidden');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!this.el.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        }
+    }
+};
+
+Hooks.ResizeDetection = {
+    mounted() {
+        this.handleResize = () => {
+            const isMobile = window.innerWidth < 768;
+            this.pushEvent('viewport_changed', { is_mobile: isMobile, width: window.innerWidth });
+        };
+
+        window.addEventListener('resize', this.handleResize);
+        this.handleResize();
+    },
+
+    destroyed() {
+        window.removeEventListener('resize', this.handleResize);
+    }
+};
+
+Hooks.GlobalSearch = {
+    mounted() {
+        this.handleKeyDown = (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                this.pushEvent('open', {});
+            }
+        };
+
+        this.handleOpenSearch = () => {
+            this.pushEvent('open', {});
+        };
+
+        document.addEventListener('keydown', this.handleKeyDown);
+        document.addEventListener('open-search', this.handleOpenSearch);
+    },
+
+    destroyed() {
+        document.removeEventListener('keydown', this.handleKeyDown);
+        document.removeEventListener('open-search', this.handleOpenSearch);
+    }
+};
+
+Hooks.SearchPaletteInput = {
+    mounted() {
+        this.handleEvent('focus-search-input', () => {
+            setTimeout(() => this.el.focus(), 50);
+        });
+
+        setTimeout(() => this.el.focus(), 100);
+    }
+};
+
 export default Hooks;

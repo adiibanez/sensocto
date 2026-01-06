@@ -80,6 +80,9 @@ defmodule Sensocto.Application do
       Sensocto.Media.MediaPlayerSupervisor,
       # Pooled RepoReplicator for scalability (replaces single RepoReplicator)
       {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
+
+      # Search index for global search (must be after dynamic supervisors)
+      Sensocto.Search.SearchIndex,
       # Start the Finch HTTP client for sending emails
       {Finch, name: Sensocto.Finch},
       # Start a worker by calling: Sensocto.Worker.start_link(arg)

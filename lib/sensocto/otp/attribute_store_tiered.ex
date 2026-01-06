@@ -114,7 +114,7 @@ defmodule Sensocto.AttributeStoreTiered do
       filtered =
         all_data
         |> maybe_filter_time(from_timestamp, to_timestamp)
-        |> Enum.take(limit)
+        |> maybe_take(limit)
 
       {:ok, filtered}
     end)
@@ -265,6 +265,12 @@ defmodule Sensocto.AttributeStoreTiered do
       ts >= from_timestamp && ts <= to_timestamp
     end)
   end
+
+  # Handle nil, :infinity, or missing limit by returning all data
+  defp maybe_take(payloads, nil), do: payloads
+  defp maybe_take(payloads, :infinity), do: payloads
+  defp maybe_take(payloads, limit) when is_integer(limit) and limit > 0, do: Enum.take(payloads, limit)
+  defp maybe_take(payloads, _), do: payloads
 
   defp warm_table_name(sensor_id) do
     # Convert sensor_id to atom-safe format

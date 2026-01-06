@@ -344,13 +344,10 @@ defmodule SensoctoWeb.SensorDataChannel do
   @impl true
   @spec handle_info(:after_join | :disconnect, any()) :: {:noreply, any()}
   def handle_info(:disconnect, socket) do
-    # Explicitly remove a sensor from presence when it disconnects
-
-    Logger.debug("DISCONNECT #{inspect(socket.assigns)}")
-    disconnect_sensor_supervisor(socket.assigns.sensor_id)
-    Presence.untrack(socket.channel_pid, "presence:all", socket.assigns.sensor_id)
-    # push(socket, "presence_state", Presence.list(socket))
-
+    # Note: We no longer remove the sensor here - termination is handled in terminate/2
+    # This prevents the dual-termination race condition where both :disconnect and
+    # terminate/2 would try to remove the sensor
+    Logger.debug("DISCONNECT event received for #{inspect(socket.assigns.sensor_id)} - deferring cleanup to terminate/2")
     {:noreply, socket}
   end
 
@@ -412,17 +409,33 @@ defmodule SensoctoWeb.SensorDataChannel do
   @impl true
   @spec terminate(any(), Phoenix.Socket.t()) :: :ok
   def terminate(reason, socket) do
-    case socket.assigns.sensor_id do
+    case Map.get(socket.assigns, :sensor_id) do
       sensor_id when is_binary(sensor_id) ->
         Logger.debug("Channel terminated for sensor: #{sensor_id}, #{inspect(reason)}")
-        disconnect_sensor_supervisor(socket.assigns.sensor_id)
-        Presence.untrack(socket.channel_pid, "presence:all", socket.assigns.sensor_id)
+
+        # First untrack this connection from presence
+        Presence.untrack(socket.channel_pid, "presence:all", sensor_id)
+
+        # Small delay to let presence state propagate
+        Process.sleep(50)
+
+        # Check if there are other active connections for this sensor
+        # Only remove the sensor if no other connections exist
+        presence_list = Presence.list("presence:all")
+        other_connections = Map.get(presence_list, sensor_id, %{metas: []})
+
+        case other_connections do
+          %{metas: [_ | _] = metas} ->
+            Logger.debug("Sensor #{sensor_id} still has #{length(metas)} other connections - keeping sensor alive")
+
+          _ ->
+            Logger.debug("Sensor #{sensor_id} has no other connections - removing sensor")
+            disconnect_sensor_supervisor(sensor_id)
+        end
 
       _ ->
         Logger.debug("Channel terminated for connection without sensor_id #{inspect(reason)}")
     end
-
-    push(socket, "presence_state", Presence.list(socket))
 
     :ok
   end

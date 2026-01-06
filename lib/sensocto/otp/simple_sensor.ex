@@ -5,6 +5,7 @@ defmodule Sensocto.SimpleSensor do
   alias Sensocto.SimpleSensorRegistry
   alias Sensocto.Sensors.Sensor
   alias Sensocto.Sensors.SensorAttributeData
+  alias Sensocto.Otp.RepoReplicatorPool
 
   # Add interval for mps calculation
   # 1 second
@@ -28,7 +29,7 @@ defmodule Sensocto.SimpleSensor do
     |> Ash.Changeset.for_create(:create, %{name: sensor_id})
     |> Ash.create()
 
-    GenServer.cast(:sensocto_repo_replicator, {:sensor_up, sensor_id})
+    RepoReplicatorPool.sensor_up(sensor_id)
 
     {:ok,
      state
@@ -38,10 +39,15 @@ defmodule Sensocto.SimpleSensor do
   end
 
   def terminate(_reason, %{:sensor_id => sensor_id} = _state) do
-    Sensor |> Ash.Changeset.for_create(:destroy, %{name: sensor_id}) |> Ash.destroy()
-    GenServer.cast(:sensocto_repo_replicator, {:sensor_down, sensor_id})
+    # Notify repo replicator pool (using correct pool API)
+    RepoReplicatorPool.sensor_down(sensor_id)
+
     # Cleanup ETS warm tier tables
     AttributeStore.cleanup(sensor_id)
+
+    # Note: Removed Ash sensor destroy - it was causing crashes due to incorrect API usage
+    # The sensor record cleanup can be handled by the repo_replicator if needed
+    :ok
   end
 
   # client

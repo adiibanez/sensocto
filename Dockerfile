@@ -88,10 +88,10 @@ RUN apt-get update -y && apt-get install -y -f nodejs \
 RUN node --version
 RUN npm --version
 
-RUN cd assets && npm install esbuild --save-dev && npm install ../deps/phoenix ../deps/phoenix_html ../deps/phoenix_live_view --save && cd
+# Install ALL npm dependencies from package.json (includes esbuild, svelte, esbuild-svelte, etc.)
+RUN cd assets && npm install
 
-#RUN npm install ../deps/phoenix ../deps/phoenix_html ../deps/phoenix_live_view --save
-# compile assets
+# compile assets (runs build.js --deploy which minifies JS, and tailwind --minify for CSS)
 RUN mix assets.deploy
 
 # Compile the release

@@ -1,3 +1,5 @@
+import Sortable from 'sortablejs';
+
 let Hooks = {};
 
 Hooks.SensorDataAccumulator = {
@@ -618,6 +620,57 @@ Hooks.SearchPaletteInput = {
         });
 
         setTimeout(() => this.el.focus(), 100);
+    }
+};
+
+Hooks.SortablePlaylist = {
+    mounted() {
+        console.log('[SortablePlaylist] mounted, element:', this.el.id);
+        this.initSortable();
+    },
+
+    updated() {
+        console.log('[SortablePlaylist] updated');
+        // Re-initialize if DOM changed significantly
+        if (this.sortable) {
+            this.sortable.destroy();
+        }
+        this.initSortable();
+    },
+
+    destroyed() {
+        console.log('[SortablePlaylist] destroyed');
+        if (this.sortable) {
+            this.sortable.destroy();
+        }
+    },
+
+    initSortable() {
+        console.log('[SortablePlaylist] initSortable called');
+        try {
+            this.sortable = new Sortable(this.el, {
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'opacity-50',
+                chosenClass: 'bg-gray-600',
+                dragClass: 'shadow-lg',
+                onStart: (evt) => {
+                    console.log('[SortablePlaylist] drag started', evt.oldIndex);
+                },
+                onEnd: (evt) => {
+                    console.log('[SortablePlaylist] drag ended', evt.oldIndex, '->', evt.newIndex);
+                    const itemIds = Array.from(this.el.querySelectorAll('[data-item-id]'))
+                        .map(el => el.dataset.itemId);
+                    console.log('[SortablePlaylist] new order:', itemIds);
+                    this.pushEvent('reorder_playlist', { item_ids: itemIds });
+                }
+            });
+            console.log('[SortablePlaylist] Sortable initialized successfully');
+            // Store reference on element for debugging
+            this.el._sortableInstance = this.sortable;
+        } catch (e) {
+            console.error('[SortablePlaylist] Error initializing Sortable:', e);
+        }
     }
 };
 

@@ -47,6 +47,9 @@ defmodule SensoctoWeb.LobbyLive do
     # Extract composite visualization data
     {heartrate_sensors, imu_sensors, location_sensors} = extract_composite_data(sensors)
 
+    # Group sensors by connector (user)
+    sensors_by_user = group_sensors_by_user(sensors)
+
     # Get available rooms for join UI
     user = socket.assigns[:current_user]
     public_rooms = if user, do: Sensocto.Rooms.list_public_rooms(), else: []
@@ -67,6 +70,7 @@ defmodule SensoctoWeb.LobbyLive do
         heartrate_sensors: heartrate_sensors,
         imu_sensors: imu_sensors,
         location_sensors: location_sensors,
+        sensors_by_user: sensors_by_user,
         public_rooms: public_rooms,
         show_join_modal: false,
         join_code: ""
@@ -163,6 +167,51 @@ defmodule SensoctoWeb.LobbyLive do
     {heartrate_sensors, imu_sensors, location_sensors}
   end
 
+  defp group_sensors_by_user(sensors) do
+    sensors
+    |> Enum.group_by(fn {_id, sensor} -> {sensor.connector_id, sensor.connector_name} end)
+    |> Enum.map(fn {{connector_id, connector_name}, sensor_list} ->
+      # Collect all attribute types and latest values across sensors
+      all_attributes =
+        sensor_list
+        |> Enum.flat_map(fn {_id, sensor} ->
+          (sensor.attributes || %{})
+          |> Map.values()
+          |> Enum.map(fn attr ->
+            %{
+              type: attr.attribute_type,
+              name: Map.get(attr, :attribute_name, attr.attribute_id),
+              value: attr.lastvalue && attr.lastvalue.payload,
+              timestamp: attr.lastvalue && attr.lastvalue.timestamp
+            }
+          end)
+        end)
+
+      # Group by attribute type for summary
+      attributes_summary =
+        all_attributes
+        |> Enum.group_by(& &1.type)
+        |> Enum.map(fn {type, attrs} ->
+          # Get latest value for this type
+          latest = Enum.max_by(attrs, fn a -> a.timestamp || 0 end, fn -> %{value: nil} end)
+          %{type: type, count: length(attrs), latest_value: latest.value}
+        end)
+        |> Enum.sort_by(& &1.type)
+
+      %{
+        connector_id: connector_id,
+        connector_name: connector_name || "Unknown",
+        sensor_count: length(sensor_list),
+        sensors: Enum.map(sensor_list, fn {id, s} ->
+          %{sensor_id: id, sensor_name: s.sensor_name}
+        end),
+        attributes_summary: attributes_summary,
+        total_attributes: length(all_attributes)
+      }
+    end)
+    |> Enum.sort_by(& &1.connector_name)
+  end
+
   @impl true
   def handle_info(
         %Phoenix.Socket.Broadcast{
@@ -202,6 +251,7 @@ defmodule SensoctoWeb.LobbyLive do
           |> assign(:heartrate_sensors, heartrate_sensors)
           |> assign(:imu_sensors, imu_sensors)
           |> assign(:location_sensors, location_sensors)
+          |> assign(:sensors_by_user, group_sensors_by_user(sensors))
 
         # Only update sensors_offline if there are actual leaves
         updated_socket =

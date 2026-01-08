@@ -161,6 +161,17 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   @impl true
+  def handle_event("reorder_playlist", %{"item_ids" => item_ids}, socket) do
+    playlist_id = get_playlist_id(socket)
+
+    if playlist_id do
+      Media.reorder_playlist(playlist_id, item_ids)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("take_control", _, socket) do
     user = socket.assigns.current_user
     user_name = user.email || user.name || "Unknown"
@@ -506,23 +517,40 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
           <%!-- Playlist Items --%>
           <%= if @show_playlist do %>
-            <div class="max-h-60 overflow-y-auto space-y-1">
+            <div
+              id={"playlist-items-#{@room_id}"}
+              phx-hook="SortablePlaylist"
+              phx-target={@myself}
+              class="max-h-60 overflow-y-auto space-y-1"
+            >
               <%= if Enum.empty?(@playlist_items) do %>
                 <p class="text-gray-500 text-sm text-center py-4">No videos in playlist</p>
               <% else %>
                 <%= for item <- @playlist_items do %>
                   <div
-                    class={"flex items-center gap-2 p-2 rounded group #{if @current_item && @current_item.id == item.id, do: "bg-gray-700 border-l-2 border-red-500", else: ""} #{if user_can_control, do: "hover:bg-gray-700 cursor-pointer", else: "cursor-default"}"}
-                    phx-click={if user_can_control, do: "play_item"}
-                    phx-value-item-id={item.id}
-                    phx-target={@myself}
+                    data-item-id={item.id}
+                    class={"flex items-center gap-2 p-2 rounded group #{if @current_item && @current_item.id == item.id, do: "bg-gray-700 border-l-2 border-red-500", else: ""} #{if user_can_control, do: "hover:bg-gray-700", else: "cursor-default"}"}
                   >
+                    <%!-- Drag Handle --%>
+                    <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+                      </svg>
+                    </div>
                     <img
                       src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
                       alt=""
-                      class="w-16 h-9 object-cover rounded flex-shrink-0"
+                      class={"w-16 h-9 object-cover rounded flex-shrink-0 #{if user_can_control, do: "cursor-pointer"}"}
+                      phx-click={if user_can_control, do: "play_item"}
+                      phx-value-item-id={item.id}
+                      phx-target={@myself}
                     />
-                    <div class="flex-1 min-w-0">
+                    <div
+                      class={"flex-1 min-w-0 #{if user_can_control, do: "cursor-pointer"}"}
+                      phx-click={if user_can_control, do: "play_item"}
+                      phx-value-item-id={item.id}
+                      phx-target={@myself}
+                    >
                       <p class="text-sm text-white truncate"><%= item.title || "Unknown" %></p>
                       <p class="text-xs text-gray-400">
                         <%= if item.duration_seconds, do: format_duration(item.duration_seconds), else: "" %>

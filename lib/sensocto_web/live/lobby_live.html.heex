@@ -41,6 +41,12 @@
         Sensors
       </span>
     </:tab>
+    <:tab patch={~p"/lobby/users"} active={@live_action == :users}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="users" type="outline" class="h-4 w-4" />
+        By User
+      </span>
+    </:tab>
     <:tab patch={~p"/lobby/heartrate"} active={@live_action == :heartrate}>
       <span class="flex items-center gap-1">
         <Heroicons.icon name="heart" type="outline" class="h-4 w-4" />
@@ -138,6 +144,114 @@
       <Heroicons.icon name="map-pin" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No location sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with geolocation capability</p>
+    </div>
+  </div>
+
+  <%!-- Users/Connectors Summary View --%>
+  <div :if={@live_action == :users}>
+    <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No users connected</p>
+      <p class="text-sm mt-2">Connect a sensor to see user summaries</p>
+    </div>
+
+    <div :if={@sensors_by_user != []} class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      <%= for user <- @sensors_by_user do %>
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors">
+          <%!-- User Header --%>
+          <div class="flex items-center gap-3 mb-3 pb-3 border-b border-gray-700">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+              <%= String.first(user.connector_name) |> String.upcase() %>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h3 class="text-white font-semibold truncate text-base"><%= user.connector_name %></h3>
+              <p class="text-gray-400 text-xs">
+                <%= user.sensor_count %> sensor<%= if user.sensor_count != 1, do: "s" %> · <%= user.total_attributes %> attributes
+              </p>
+            </div>
+            <div class="flex-shrink-0">
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 animate-pulse"></span>
+                Online
+              </span>
+            </div>
+          </div>
+
+          <%!-- Sensors List --%>
+          <div class="mb-3">
+            <p class="text-gray-500 text-xs uppercase tracking-wide mb-2">Sensors</p>
+            <div class="flex flex-wrap gap-1.5">
+              <%= for sensor <- user.sensors do %>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300">
+                  <%= sensor.sensor_name %>
+                </span>
+              <% end %>
+            </div>
+          </div>
+
+          <%!-- Attributes Summary --%>
+          <div>
+            <p class="text-gray-500 text-xs uppercase tracking-wide mb-2">Data Types</p>
+            <div class="grid grid-cols-2 gap-2">
+              <%= for attr <- user.attributes_summary do %>
+                <div class="bg-gray-700/50 rounded p-2">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <%= case attr.type do %>
+                      <% "heartrate" -> %>
+                        <Heroicons.icon name="heart" type="solid" class="h-3.5 w-3.5 text-red-400" />
+                      <% "hr" -> %>
+                        <Heroicons.icon name="heart" type="solid" class="h-3.5 w-3.5 text-red-400" />
+                      <% "battery" -> %>
+                        <Heroicons.icon name="battery-50" type="solid" class="h-3.5 w-3.5 text-yellow-400" />
+                      <% "temperature" -> %>
+                        <Heroicons.icon name="fire" type="solid" class="h-3.5 w-3.5 text-orange-400" />
+                      <% "spo2" -> %>
+                        <Heroicons.icon name="beaker" type="solid" class="h-3.5 w-3.5 text-blue-400" />
+                      <% "ecg" -> %>
+                        <Heroicons.icon name="chart-bar" type="solid" class="h-3.5 w-3.5 text-green-400" />
+                      <% "blood_pressure" -> %>
+                        <Heroicons.icon name="arrow-trending-up" type="solid" class="h-3.5 w-3.5 text-purple-400" />
+                      <% "respiratory" -> %>
+                        <Heroicons.icon name="cloud" type="solid" class="h-3.5 w-3.5 text-cyan-400" />
+                      <% "imu" -> %>
+                        <Heroicons.icon name="cube" type="solid" class="h-3.5 w-3.5 text-indigo-400" />
+                      <% "geolocation" -> %>
+                        <Heroicons.icon name="map-pin" type="solid" class="h-3.5 w-3.5 text-emerald-400" />
+                      <% "button" -> %>
+                        <Heroicons.icon name="cursor-arrow-rays" type="solid" class="h-3.5 w-3.5 text-pink-400" />
+                      <% _ -> %>
+                        <Heroicons.icon name="signal" type="solid" class="h-3.5 w-3.5 text-gray-400" />
+                    <% end %>
+                    <span class="text-xs text-gray-300 capitalize"><%= String.replace(attr.type, "_", " ") %></span>
+                  </div>
+                  <div class="text-sm font-mono text-white">
+                    <%= cond do %>
+                      <% attr.latest_value == nil -> %>
+                        <span class="text-gray-500">--</span>
+                      <% attr.type in ["heartrate", "hr"] and is_number(attr.latest_value) -> %>
+                        <%= "#{round(attr.latest_value)} bpm" %>
+                      <% attr.type == "battery" and is_map(attr.latest_value) -> %>
+                        <%= "#{round(attr.latest_value[:level] || attr.latest_value["level"] || 0)}%" %>
+                      <% attr.type == "battery" and is_number(attr.latest_value) -> %>
+                        <%= "#{round(attr.latest_value)}%" %>
+                      <% attr.type == "temperature" and is_number(attr.latest_value) -> %>
+                        <%= "#{Float.round(attr.latest_value * 1.0, 1)}°" %>
+                      <% attr.type == "spo2" and is_number(attr.latest_value) -> %>
+                        <%= "#{round(attr.latest_value)}%" %>
+                      <% is_map(attr.latest_value) -> %>
+                        <span class="text-gray-400 text-xs">data</span>
+                      <% is_number(attr.latest_value) -> %>
+                        <%= "#{Float.round(attr.latest_value * 1.0, 1)}" %>
+                      <% true -> %>
+                        <span class="text-gray-400 text-xs">--</span>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
     </div>
   </div>
 </div>

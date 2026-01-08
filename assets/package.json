@@ -24,6 +24,7 @@
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "qrcode": "^1.5.4",
     "scichart": "^3.5.711",
+    "sortablejs": "^1.15.6",
     "uuid": "^13.0.0"
   }
 }

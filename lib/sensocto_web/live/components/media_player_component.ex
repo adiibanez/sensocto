@@ -33,6 +33,10 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     # Get room_id - either explicit or :lobby
     room_id = assigns[:room_id] || socket.assigns[:room_id] || (if assigns[:is_lobby], do: :lobby, else: nil)
 
+    # Track old state/position before updating
+    old_state = socket.assigns[:player_state]
+    old_position = socket.assigns[:position_seconds]
+
     socket =
       socket
       |> assign(:room_id, room_id)
@@ -59,8 +63,20 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
         socket
       end
 
-    # Note: push_event calls are handled by the parent LiveView's handle_info
-    # because push_event in LiveComponent's update/2 doesn't reach the JS hook properly
+    # Push sync event to JS hook when state or position changes significantly
+    # This is critical for multi-tab synchronization
+    new_state = socket.assigns[:player_state]
+    new_position = socket.assigns[:position_seconds]
+
+    socket =
+      if !is_first_update and (new_state != old_state or abs((new_position || 0) - (old_position || 0)) > 0.5) do
+        push_event(socket, "media_sync", %{
+          state: new_state,
+          position_seconds: new_position
+        })
+      else
+        socket
+      end
 
     {:ok, socket}
   end
@@ -242,6 +258,25 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("request_media_sync", _params, socket) do
+    # JS hook requests current state - fetch from server and push to hook
+    case MediaPlayerServer.get_state(socket.assigns.room_id) do
+      {:ok, state} ->
+        require Logger
+        Logger.debug("MediaPlayerComponent pushing media_sync: #{state.state} pos=#{state.position_seconds}")
+
+        socket = push_event(socket, "media_sync", %{
+          state: state.state,
+          position_seconds: state.position_seconds
+        })
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
   defp get_user_id(socket) do
     case socket.assigns do
       %{current_user: %{id: id}} -> id
@@ -304,6 +339,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     <div
       id={"media-player-#{@room_id}"}
       phx-hook="MediaPlayerHook"
+      phx-target={@myself}
       data-room-id={@room_id}
       data-player-state={@player_state}
       data-position={@position_seconds}
@@ -354,12 +390,18 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
         <div class="relative aspect-video bg-black">
           <%= if @current_item do %>
             <div
-              id={"youtube-player-#{@room_id}"}
-              data-video-id={@current_item.youtube_video_id}
-              data-autoplay={if @player_state == :playing, do: "1", else: "0"}
-              data-start={round(@position_seconds)}
+              id={"youtube-player-wrapper-#{@room_id}"}
+              phx-update="ignore"
               class="w-full h-full"
             >
+              <div
+                id={"youtube-player-#{@room_id}"}
+                data-video-id={@current_item.youtube_video_id}
+                data-autoplay={if @player_state == :playing, do: "1", else: "0"}
+                data-start={round(@position_seconds)}
+                class="w-full h-full"
+              >
+              </div>
             </div>
           <% else %>
             <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">

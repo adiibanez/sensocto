@@ -130,59 +130,48 @@ function loadYouTubeAPI() {
 }
 
 Hooks.MediaPlayerHook = {
+    // KISS implementation - simple, reliable YouTube player synchronization
     mounted() {
         this.player = null;
         this.roomId = this.el.dataset.roomId;
         this.currentVideoId = null;
-        this.syncInterval = null;
         this.isReady = false;
-        this.pendingSeek = null;
-        this.pendingPlay = false;
-        this.lastKnownState = this.el.dataset.playerState || 'stopped';
 
-        console.log('[MediaPlayer] Mounted for room:', this.roomId, 'initial state:', this.lastKnownState);
+        console.log('[MediaPlayer] Mounted for room:', this.roomId);
 
         // Load YouTube API and initialize player
-        // Use requestAnimationFrame to ensure DOM is fully rendered before initializing
         loadYouTubeAPI().then(() => {
             requestAnimationFrame(() => {
                 this.initializePlayer();
             });
         });
 
-        // Handle sync events from server
+        // Handle sync events from server - this is the primary sync mechanism
         this.handleEvent("media_sync", (data) => {
             console.log('[MediaPlayer] Sync event:', data);
             this.handleSync(data);
         });
 
+        // Handle explicit video load commands
         this.handleEvent("media_load_video", (data) => {
             console.log('[MediaPlayer] Load video:', data);
             this.loadVideo(data.video_id, data.start_seconds || 0);
         });
 
-        // Set up MutationObserver to detect player container changes
+        // Watch for player container being removed (e.g., section collapsed)
         this.setupObserver();
-
-        // Set up MutationObserver to detect player state changes via data attributes
-        // This is needed because updated() may not be called reliably for LiveComponents
-        this.setupStateObserver();
     },
 
     updated() {
         // Check if video ID changed in the DOM
-        const playerEl = this.el.querySelector('[id^="youtube-player-"]');
+        const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
         if (playerEl) {
             const newVideoId = playerEl.dataset.videoId;
             if (newVideoId && newVideoId !== this.currentVideoId) {
                 console.log('[MediaPlayer] Video ID changed:', this.currentVideoId, '->', newVideoId);
-                const autoplay = playerEl.dataset.autoplay === '1';
-                const startSeconds = parseInt(playerEl.dataset.start) || 0;
-                this.loadVideo(newVideoId, startSeconds, autoplay);
+                this.loadVideo(newVideoId, parseInt(playerEl.dataset.start) || 0);
             }
         }
-        // Note: Player state changes are handled by setupStateObserver() MutationObserver
-        // because updated() is not reliably called for LiveComponent attribute changes
     },
 
     destroyed() {
@@ -193,111 +182,45 @@ Hooks.MediaPlayerHook = {
         if (this.observer) {
             this.observer.disconnect();
         }
-        if (this.stateObserver) {
-            this.stateObserver.disconnect();
-        }
         if (this.player) {
-            this.player.destroy();
-        }
-    },
-
-    setupStateObserver() {
-        // Watch for changes to data-player-state attribute on the hook element itself
-        this.stateObserver = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'data-player-state') {
-                    const newState = this.el.dataset.playerState;
-                    console.log('[MediaPlayer] State attribute changed:', this.lastKnownState, '->', newState);
-
-                    if (newState && newState !== this.lastKnownState) {
-                        this.lastKnownState = newState;
-                        this.applyPlayerState(newState);
-                    }
-                }
+            try {
+                this.player.destroy();
+            } catch (e) {
+                // Ignore destroy errors
             }
-        });
-
-        this.stateObserver.observe(this.el, {
-            attributes: true,
-            attributeFilter: ['data-player-state', 'data-position']
-        });
-    },
-
-    applyPlayerState(newState) {
-        if (!this.isReady || !this.player) {
-            console.log('[MediaPlayer] Player not ready, cannot apply state');
-            return;
-        }
-
-        const playerState = this.player.getPlayerState();
-        const isPlaying = playerState === YT.PlayerState.PLAYING;
-        const shouldPlay = newState === 'playing';
-
-        if (shouldPlay && !isPlaying) {
-            console.log('[MediaPlayer] Playing video via state observer');
-            this.player.playVideo();
-        } else if (!shouldPlay && isPlaying) {
-            console.log('[MediaPlayer] Pausing video via state observer');
-            this.player.pauseVideo();
         }
     },
 
     setupObserver() {
-        this.observer = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                if (mutation.type === 'childList' || mutation.type === 'attributes') {
-                    this.checkForPlayerChanges();
+        // Only watch for player element removal (collapsed section)
+        this.observer = new MutationObserver(() => {
+            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
+            if (!playerEl && this.player) {
+                console.log('[MediaPlayer] Player element removed, cleaning up');
+                try {
+                    this.player.destroy();
+                } catch (e) {
+                    // Ignore
                 }
+                this.player = null;
+                this.isReady = false;
+            } else if (playerEl && !this.player && !this.isReady) {
+                // Player element reappeared
+                console.log('[MediaPlayer] Player element reappeared, reinitializing');
+                this.initializePlayer();
             }
         });
 
         this.observer.observe(this.el, {
             childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['data-video-id']
+            subtree: true
         });
     },
 
-    checkForPlayerChanges() {
-        const playerEl = this.el.querySelector('[id^="youtube-player-"]');
-
-        if (!playerEl && this.player) {
-            console.log('[MediaPlayer] Player element removed (collapsed), cleaning up');
-            try {
-                this.player.destroy();
-            } catch (e) {
-                console.log('[MediaPlayer] Error destroying player:', e);
-            }
-            this.player = null;
-            this.isReady = false;
-        } else if (playerEl) {
-            this.checkForNewVideo();
-        }
-    },
-
-    checkForNewVideo() {
-        const playerEl = this.el.querySelector('[id^="youtube-player-"]');
-        if (playerEl) {
-            const newVideoId = playerEl.dataset.videoId;
-            const autoplay = playerEl.dataset.autoplay === '1';
-            const startSeconds = parseInt(playerEl.dataset.start) || 0;
-
-            if (newVideoId && newVideoId !== this.currentVideoId) {
-                this.loadVideo(newVideoId, startSeconds, autoplay);
-            } else if (newVideoId && !this.player) {
-                console.log('[MediaPlayer] Player element reappeared, reinitializing');
-                this.currentVideoId = null;
-                this.isReady = false;
-                this.initializePlayer();
-            }
-        }
-    },
-
     initializePlayer(retryCount = 0) {
-        const playerEl = this.el.querySelector('[id^="youtube-player-"]');
+        // Select the actual player div, not the wrapper
+        const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
         if (!playerEl) {
-            console.log('[MediaPlayer] No player element found, retry:', retryCount);
             if (retryCount < 5) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
             }
@@ -305,11 +228,7 @@ Hooks.MediaPlayerHook = {
         }
 
         const videoId = playerEl.dataset.videoId;
-        const autoplay = playerEl.dataset.autoplay === '1';
-        const startSeconds = parseInt(playerEl.dataset.start) || 0;
-
         if (!videoId) {
-            console.log('[MediaPlayer] No video ID, retry:', retryCount);
             if (retryCount < 5) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
             }
@@ -318,6 +237,9 @@ Hooks.MediaPlayerHook = {
 
         console.log('[MediaPlayer] Initializing player with video:', videoId);
         this.currentVideoId = videoId;
+
+        const autoplay = playerEl.dataset.autoplay === '1';
+        const startSeconds = parseInt(playerEl.dataset.start) || 0;
 
         this.player = new YT.Player(playerEl.id, {
             height: '100%',
@@ -344,30 +266,31 @@ Hooks.MediaPlayerHook = {
         console.log('[MediaPlayer] Player ready');
         this.isReady = true;
 
-        // Report duration
+        // Report duration to server
         const duration = this.player.getDuration();
         if (duration > 0) {
             this.pushEvent("report_duration", { duration: duration });
         }
 
-        // Apply any pending operations
-        if (this.pendingSeek !== null) {
-            this.player.seekTo(this.pendingSeek, true);
-            this.pendingSeek = null;
-        }
+        // Request current state from server to sync up
+        // Use pushEventTo to target the LiveComponent (this.el)
+        this.pushEventTo(this.el, "request_media_sync", {});
 
-        if (this.pendingPlay) {
-            this.player.playVideo();
-            this.pendingPlay = false;
-        }
-
-        // Request current state from server to ensure sync
-        // This is critical for new tabs that may have stale DOM state
-        console.log('[MediaPlayer] Requesting sync from server');
-        this.pushEvent("request_media_sync", {});
-
-        // Start sync interval
+        // Start sync interval - poll server every second for multi-tab sync
         this.startSyncInterval();
+    },
+
+    startSyncInterval() {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+        }
+        // Request sync from server every 1 second
+        // Use pushEventTo to target the LiveComponent (this.el) instead of parent LiveView
+        this.syncInterval = setInterval(() => {
+            if (this.isReady && this.player) {
+                this.pushEventTo(this.el, "request_media_sync", {});
+            }
+        }, 1000);
     },
 
     onPlayerStateChange(event) {
@@ -379,16 +302,15 @@ Hooks.MediaPlayerHook = {
             '3': 'buffering',
             '5': 'cued'
         };
+        console.log('[MediaPlayer] State changed:', states[event.data] || 'unknown');
 
-        const stateName = states[event.data] || 'unknown';
-        console.log('[MediaPlayer] State changed:', stateName);
-
-        // Report video ended
+        // Report video ended so server can advance playlist
         if (event.data === YT.PlayerState.ENDED) {
+            console.log('[MediaPlayer] Video ended, notifying server');
             this.pushEvent("video_ended", {});
         }
 
-        // Report duration when video starts
+        // Report duration when video starts playing (more accurate than onReady)
         if (event.data === YT.PlayerState.PLAYING) {
             const duration = this.player.getDuration();
             if (duration > 0) {
@@ -409,87 +331,68 @@ Hooks.MediaPlayerHook = {
         console.error('[MediaPlayer] Error description:', errorCodes[event.data] || 'Unknown error');
     },
 
-    loadVideo(videoId, startSeconds = 0, autoplay = true) {
-        console.log('[MediaPlayer] Loading video:', videoId, 'start:', startSeconds, 'autoplay:', autoplay);
+    loadVideo(videoId, startSeconds = 0) {
+        console.log('[MediaPlayer] Loading video:', videoId, 'start:', startSeconds);
         this.currentVideoId = videoId;
 
         if (!this.isReady || !this.player) {
-            console.log('[MediaPlayer] Player not ready, will initialize');
-            // Re-initialize player
-            const playerEl = this.el.querySelector('[id^="youtube-player-"]');
+            // Not ready yet - reinitialize
+            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
             if (playerEl && youtubeAPILoaded) {
-                // Destroy existing player if any
                 if (this.player) {
-                    this.player.destroy();
+                    try {
+                        this.player.destroy();
+                    } catch (e) {
+                        // Ignore
+                    }
                 }
+                this.player = null;
+                this.isReady = false;
                 this.initializePlayer();
             }
             return;
         }
 
-        if (autoplay) {
-            this.player.loadVideoById({
-                videoId: videoId,
-                startSeconds: startSeconds
-            });
-        } else {
-            this.player.cueVideoById({
-                videoId: videoId,
-                startSeconds: startSeconds
-            });
-        }
+        // Load and autoplay the video
+        this.player.loadVideoById({
+            videoId: videoId,
+            startSeconds: startSeconds
+        });
     },
 
     handleSync(data) {
         if (!this.isReady || !this.player) {
-            console.log('[MediaPlayer] Not ready for sync');
-            this.pendingSeek = data.position_seconds;
-            this.pendingPlay = data.state === 'playing';
+            console.log('[MediaPlayer] Not ready for sync, ignoring');
             return;
         }
 
         const serverPosition = data.position_seconds || 0;
+        const serverState = data.state;
         const currentPosition = this.player.getCurrentTime() || 0;
-        const drift = Math.abs(currentPosition - serverPosition);
-
-        console.log('[MediaPlayer] Sync - server:', serverPosition.toFixed(1), 'current:', currentPosition.toFixed(1), 'drift:', drift.toFixed(1));
-
-        // Sync play/pause state FIRST (before seeking)
         const playerState = this.player.getPlayerState();
+
         const isPlaying = playerState === YT.PlayerState.PLAYING;
         const isBuffering = playerState === YT.PlayerState.BUFFERING;
-        const shouldPlay = data.state === 'playing';
+        const shouldPlay = serverState === 'playing';
 
-        // Correct drift if > 1 second (lowered from 2s for tighter sync)
-        // Always seek if drift is significant, regardless of play state
-        if (drift > 1) {
+        console.log('[MediaPlayer] Sync - server state:', serverState, 'position:', serverPosition.toFixed(1),
+                    '| local position:', currentPosition.toFixed(1), 'playing:', isPlaying);
+
+        // 1. Handle play/pause state first
+        if (shouldPlay && !isPlaying && !isBuffering) {
+            console.log('[MediaPlayer] Playing video');
+            this.player.playVideo();
+        } else if (!shouldPlay && (isPlaying || isBuffering)) {
+            console.log('[MediaPlayer] Pausing video');
+            this.player.pauseVideo();
+        }
+
+        // 2. Correct position drift if > 1.5 seconds (only when playing)
+        const drift = Math.abs(currentPosition - serverPosition);
+        if (shouldPlay && drift > 1.5 && !isBuffering) {
             console.log('[MediaPlayer] Correcting drift of', drift.toFixed(1), 'seconds');
             this.player.seekTo(serverPosition, true);
         }
-
-        // Sync play/pause state (handle buffering state as "in progress")
-        if (shouldPlay && !isPlaying && !isBuffering) {
-            console.log('[MediaPlayer] Starting playback to sync');
-            this.player.playVideo();
-        } else if (!shouldPlay && (isPlaying || isBuffering)) {
-            console.log('[MediaPlayer] Pausing to sync');
-            this.player.pauseVideo();
-        }
-    },
-
-    startSyncInterval() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-        }
-
-        // Request sync from server every 5 seconds to stay synchronized
-        // This ensures all tabs stay in sync even if PubSub events are missed
-        this.syncInterval = setInterval(() => {
-            if (this.isReady && this.player) {
-                // Request current state from server
-                this.pushEvent("request_media_sync", {});
-            }
-        }, 5000);
     }
 };
 

@@ -9,8 +9,8 @@ defmodule Sensocto.Media.MediaPlayerServer do
 
   alias Sensocto.Media
 
-  @sync_broadcast_interval_ms 3000
-  @position_drift_threshold_seconds 2.0
+  # Heartbeat interval for periodic sync broadcasts when playing
+  @heartbeat_interval_ms 1_000
 
   defstruct [
     :room_id,
@@ -182,12 +182,19 @@ defmodule Sensocto.Media.MediaPlayerServer do
           position_updated_at: DateTime.utc_now()
         }
 
+        # Start periodic heartbeat for sync (only when playing)
+        schedule_heartbeat()
+
         {:ok, state}
 
       {:error, reason} ->
         Logger.error("Failed to create playlist: #{inspect(reason)}")
         {:stop, reason}
     end
+  end
+
+  defp schedule_heartbeat do
+    Process.send_after(self(), :heartbeat, @heartbeat_interval_ms)
   end
 
   @impl true
@@ -502,6 +509,20 @@ defmodule Sensocto.Media.MediaPlayerServer do
   @impl true
   def handle_cast({:item_added, _item}, state) do
     # Already have a current item, just ignore
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:heartbeat, state) do
+    # Reschedule next heartbeat
+    schedule_heartbeat()
+
+    # Only broadcast if playing - this keeps clients in sync
+    if state.state == :playing and state.current_item_id do
+      current_item = Media.get_item(state.current_item_id)
+      broadcast_state_change(state, current_item)
+    end
+
     {:noreply, state}
   end
 

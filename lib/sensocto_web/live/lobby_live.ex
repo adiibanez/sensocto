@@ -348,6 +348,8 @@ defmodule SensoctoWeb.LobbyLive do
   # Media player events - forward to component via send_update AND push events to JS hook
   @impl true
   def handle_info({:media_state_changed, state}, socket) do
+    Logger.debug("LobbyLive received media_state_changed: #{inspect(state.state)} pos=#{state.position_seconds}")
+
     send_update(MediaPlayerComponent,
       id: "lobby-media-player",
       player_state: state.state,

@@ -382,7 +382,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           high="66"
           optimum="80"
           value={@battery_info.level}
-          class="h-3 w-8"
+          class="h-4 w-12"
         >
         </meter>
         <Heroicons.icon

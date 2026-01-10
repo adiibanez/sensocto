@@ -106,6 +106,8 @@ export const RoomStorage = {
  *
  * Copies text to clipboard when element is clicked.
  * Expects data-copy-text attribute with the text to copy.
+ * For icon buttons, add class "group" to the button and use
+ * "group-[.copied]:hidden" and "hidden group-[.copied]:block" on icons.
  */
 export const CopyToClipboard = {
   mounted() {
@@ -120,13 +122,7 @@ export const CopyToClipboard = {
       try {
         await navigator.clipboard.writeText(text);
         console.log('[CopyToClipboard] Copied:', text);
-
-        // Visual feedback
-        const originalText = this.el.textContent;
-        this.el.textContent = 'Copied!';
-        setTimeout(() => {
-          this.el.textContent = originalText;
-        }, 2000);
+        this.showCopiedFeedback();
       } catch (error) {
         console.error('[CopyToClipboard] Failed to copy:', error);
 
@@ -139,8 +135,29 @@ export const CopyToClipboard = {
         textarea.select();
         document.execCommand('copy');
         document.body.removeChild(textarea);
+        this.showCopiedFeedback();
       }
     });
+  },
+
+  showCopiedFeedback() {
+    // Check if element has icons (look for SVG children)
+    const hasIcons = this.el.querySelector('svg');
+
+    if (hasIcons) {
+      // For icon buttons: add 'copied' class for CSS-based swap
+      this.el.classList.add('copied');
+      setTimeout(() => {
+        this.el.classList.remove('copied');
+      }, 2000);
+    } else {
+      // For text buttons: replace text content
+      const originalText = this.el.textContent;
+      this.el.textContent = 'Copied!';
+      setTimeout(() => {
+        this.el.textContent = originalText;
+      }, 2000);
+    }
   }
 };
 

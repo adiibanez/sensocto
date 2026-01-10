@@ -32,7 +32,7 @@ defmodule SensoctoWeb.Endpoint do
   plug Plug.Static,
     at: "/",
     from: :sensocto,
-    gzip: false,
+    gzip: Mix.env() == :prod,
     only: SensoctoWeb.static_paths()
 
   # Tidewave AI debugging (dev only)

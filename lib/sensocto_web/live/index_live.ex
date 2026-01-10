@@ -9,6 +9,7 @@ defmodule SensoctoWeb.IndexLive do
   require Logger
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLive
+  alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias Sensocto.Rooms
   alias Sensocto.AttentionTracker
 
@@ -25,6 +26,8 @@ defmodule SensoctoWeb.IndexLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
+    # Subscribe to lobby media player events
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "media_player:lobby")
 
     user = socket.assigns.current_user
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
@@ -162,6 +165,22 @@ defmodule SensoctoWeb.IndexLive do
       end
 
     {:noreply, assign(updated_socket, :attention_debounce_ref, nil)}
+  end
+
+  # Handle media player state updates from PubSub
+  @impl true
+  def handle_info({:media_player_state, state}, socket) do
+    send_update(MediaPlayerComponent,
+      id: "index-media-player",
+      player_state: state.state,
+      position_seconds: state.position_seconds,
+      current_item: state.current_item,
+      playlist_items: state.playlist_items,
+      controller_user_id: state.controller_user_id,
+      controller_user_name: state.controller_user_name
+    )
+
+    {:noreply, socket}
   end
 
   @impl true

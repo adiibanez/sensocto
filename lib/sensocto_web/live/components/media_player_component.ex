@@ -38,12 +38,16 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     old_state = socket.assigns[:player_state]
     old_position = socket.assigns[:position_seconds]
 
+    # Get initial_collapsed prop (used as fallback when no saved preference)
+    initial_collapsed = assigns[:initial_collapsed] || socket.assigns[:initial_collapsed] || false
+
     socket =
       socket
       |> assign(:room_id, room_id)
       |> assign(:is_lobby, assigns[:is_lobby] || socket.assigns[:is_lobby] || false)
       |> assign(:current_user, assigns[:current_user] || socket.assigns[:current_user])
       |> assign(:can_manage, assigns[:can_manage] || socket.assigns[:can_manage] || false)
+      |> assign(:initial_collapsed, initial_collapsed)
 
     # Handle incremental updates from send_update (PubSub events)
     # These override the current state with the new values
@@ -61,13 +65,15 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       if is_first_update and room_id do
         socket = ensure_player_started(socket, room_id)
 
-        # Load saved collapsed state from user preferences
+        # Load saved collapsed state from user preferences (fallback to initial_collapsed prop)
         if user = socket.assigns[:current_user] do
           room_key = if socket.assigns.is_lobby, do: "lobby", else: room_id
-          saved_collapsed = UserPreferences.get_ui_state(user.id, "media_player_collapsed_#{room_key}", false)
+          default_collapsed = socket.assigns[:initial_collapsed] || false
+          saved_collapsed = UserPreferences.get_ui_state(user.id, "media_player_collapsed_#{room_key}", default_collapsed)
           assign(socket, :collapsed, saved_collapsed)
         else
-          socket
+          # No user - use initial_collapsed prop
+          assign(socket, :collapsed, socket.assigns[:initial_collapsed] || false)
         end
       else
         socket
@@ -387,15 +393,34 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
             <% end %>
           <% end %>
         </div>
-        <button
-          phx-click="toggle_collapsed"
-          phx-target={@myself}
-          class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white flex-shrink-0"
-        >
-          <svg class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        <div class="flex items-center gap-1 flex-shrink-0">
+          <%!-- Copy link button (only show when there's a video) --%>
+          <%= if @current_item && @current_item.youtube_video_id do %>
+            <button
+              id={"copy-link-#{@room_id}"}
+              phx-hook="CopyToClipboard"
+              data-copy-text={"https://youtube.com/watch?v=#{@current_item.youtube_video_id}"}
+              class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white group"
+              title="Copy YouTube link"
+            >
+              <svg class="w-4 h-4 group-[.copied]:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              <svg class="w-4 h-4 hidden group-[.copied]:block text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+          <% end %>
+          <button
+            phx-click="toggle_collapsed"
+            phx-target={@myself}
+            class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+          >
+            <svg class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <%= unless @collapsed do %>

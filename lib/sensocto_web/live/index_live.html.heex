@@ -3,6 +3,18 @@
 </div>
 
 <div id="cnt" phx-hook="ConnectionHandler" class="pb-20 sm:pb-16 space-y-8">
+  <%!-- Lobby Media Player (minimized by default) --%>
+  <div class="mb-4">
+    <.live_component
+      module={SensoctoWeb.Live.Components.MediaPlayerComponent}
+      id="index-media-player"
+      is_lobby={true}
+      initial_collapsed={true}
+      current_user={@current_user}
+      can_manage={true}
+    />
+  </div>
+
   <section>
     <div class="flex items-center justify-between mb-4">
       <.link navigate={~p"/lobby"} class="group">

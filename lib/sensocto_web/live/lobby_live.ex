@@ -45,7 +45,7 @@ defmodule SensoctoWeb.LobbyLive do
     default_view_mode = determine_view_mode(sensors_count, max_attributes)
 
     # Extract composite visualization data
-    {heartrate_sensors, imu_sensors, location_sensors} = extract_composite_data(sensors)
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} = extract_composite_data(sensors)
 
     # Group sensors by connector (user)
     sensors_by_user = group_sensors_by_user(sensors)
@@ -70,6 +70,8 @@ defmodule SensoctoWeb.LobbyLive do
         heartrate_sensors: heartrate_sensors,
         imu_sensors: imu_sensors,
         location_sensors: location_sensors,
+        ecg_sensors: ecg_sensors,
+        battery_sensors: battery_sensors,
         sensors_by_user: sensors_by_user,
         public_rooms: public_rooms,
         show_join_modal: false,
@@ -164,7 +166,51 @@ defmodule SensoctoWeb.LobbyLive do
         %{sensor_id: sensor_id, lat: position.lat, lng: position.lng}
       end)
 
-    {heartrate_sensors, imu_sensors, location_sensors}
+    ecg_sensors =
+      sensors
+      |> Enum.filter(fn {_id, sensor} ->
+        attrs = sensor.attributes || %{}
+        Enum.any?(attrs, fn {_attr_id, attr} ->
+          attr.attribute_type == "ecg"
+        end)
+      end)
+      |> Enum.map(fn {sensor_id, sensor} ->
+        ecg_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type == "ecg"
+        end)
+        value = case ecg_attr do
+          {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
+          nil -> 0
+        end
+        %{sensor_id: sensor_id, value: value}
+      end)
+
+    battery_sensors =
+      sensors
+      |> Enum.filter(fn {_id, sensor} ->
+        attrs = sensor.attributes || %{}
+        Enum.any?(attrs, fn {_attr_id, attr} ->
+          attr.attribute_type == "battery"
+        end)
+      end)
+      |> Enum.map(fn {sensor_id, sensor} ->
+        battery_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type == "battery"
+        end)
+        level = case battery_attr do
+          {_attr_id, attr} ->
+            payload = attr.lastvalue && attr.lastvalue.payload
+            cond do
+              is_map(payload) -> payload["level"] || payload[:level] || 0
+              is_number(payload) -> payload
+              true -> 0
+            end
+          nil -> 0
+        end
+        %{sensor_id: sensor_id, level: level, sensor_name: sensor.sensor_name}
+      end)
+
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors}
   end
 
   defp group_sensors_by_user(sensors) do
@@ -241,7 +287,7 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
 
         # Update composite visualization data
-        {heartrate_sensors, imu_sensors, location_sensors} = extract_composite_data(sensors)
+        {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} = extract_composite_data(sensors)
 
         updated_socket =
           socket
@@ -251,6 +297,8 @@ defmodule SensoctoWeb.LobbyLive do
           |> assign(:heartrate_sensors, heartrate_sensors)
           |> assign(:imu_sensors, imu_sensors)
           |> assign(:location_sensors, location_sensors)
+          |> assign(:ecg_sensors, ecg_sensors)
+          |> assign(:battery_sensors, battery_sensors)
           |> assign(:sensors_by_user, group_sensors_by_user(sensors))
 
         # Only update sensors_offline if there are actual leaves
@@ -299,7 +347,7 @@ defmodule SensoctoWeb.LobbyLive do
       ) do
     # Only push events when on composite view tabs
     case socket.assigns.live_action do
-      action when action in [:heartrate, :imu, :location] ->
+      action when action in [:heartrate, :imu, :location, :ecg, :battery] ->
         {:noreply,
          push_event(socket, "composite_measurement", %{
            sensor_id: sensor_id,
@@ -318,7 +366,7 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
       when is_list(measurements_list) do
     case socket.assigns.live_action do
-      action when action in [:heartrate, :imu, :location] ->
+      action when action in [:heartrate, :imu, :location, :ecg, :battery] ->
         # Get latest measurement per attribute
         latest_by_attr =
           measurements_list

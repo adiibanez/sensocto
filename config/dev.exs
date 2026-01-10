@@ -1,24 +1,47 @@
 import Config
 
-# Configure your database
+# Configure your database - Neon.tech PostgreSQL
+# Primary database (read/write) - uses pooler endpoint for connection pooling
 config :sensocto, Sensocto.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  database: "sensocto_dev",
+  database: "neondb",
+  username: "neondb_owner",
+  password: "npg_JYAldE0u5Xmk",
+  hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
+  ssl: [cacerts: :public_key.cacerts_get()],
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 20,
+  pool_size: 10,
   queue_target: 5000,
   queue_interval: 1000
 
-# postgresql://neondb_owner:npg_JYAldE0u5Xmk@ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+# Read replica - in dev, points to same Neon database
+# In production, you can create a read replica in Neon and use its endpoint
+config :sensocto, Sensocto.Repo.Replica,
+  database: "neondb",
+  username: "neondb_owner",
+  password: "npg_JYAldE0u5Xmk",
+  hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
+  ssl: [cacerts: :public_key.cacerts_get()],
+  pool_size: 5
+
+# Local PostgreSQL (uncomment to use local dev database instead of Neon)
 # config :sensocto, Sensocto.Repo,
-#   database: "neondb",
-#   username: "neondb_owner",
-#   password: "npg_JYAldE0u5Xmk",
-#   hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
-#   ssl: [cacerts: :public_key.cacerts_get()]
+#   username: "postgres",
+#   password: "postgres",
+#   hostname: "localhost",
+#   database: "sensocto_dev",
+#   stacktrace: true,
+#   show_sensitive_data_on_connection_error: true,
+#   pool_size: 20,
+#   queue_target: 5000,
+#   queue_interval: 1000
+#
+# config :sensocto, Sensocto.Repo.Replica,
+#   username: "postgres",
+#   password: "postgres",
+#   hostname: "localhost",
+#   database: "sensocto_dev",
+#   pool_size: 10
 
 config :tailwind,
   version: "3.4.0",

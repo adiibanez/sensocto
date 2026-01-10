@@ -64,7 +64,7 @@ defmodule SensoctoWeb.Router do
     # live "/sign-in", AuthIndex, :sign_in
 
     ash_authentication_live_session :authentication_required,
-      on_mount: {LiveUserAuth, :live_user_required} do
+      on_mount: [{LiveUserAuth, :live_user_required}, {SensoctoWeb.Live.Hooks.TrackVisitedPath, :default}] do
       live "/playground", Live.PlaygroundLive, :index
       live "/lvn", Live.LvnEntryLive, :index
       live "/", IndexLive, :index
@@ -72,6 +72,8 @@ defmodule SensoctoWeb.Router do
       live "/lobby/heartrate", LobbyLive, :heartrate
       live "/lobby/imu", LobbyLive, :imu
       live "/lobby/location", LobbyLive, :location
+      live "/lobby/ecg", LobbyLive, :ecg
+      live "/lobby/battery", LobbyLive, :battery
       live "/lobby/users", LobbyLive, :users
       live "/sense", SenseLive, :index
       live "/sensors", SensorLive.Index, :index

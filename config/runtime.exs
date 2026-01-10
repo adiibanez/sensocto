@@ -55,21 +55,41 @@ if config_env() == :prod do
     System.get_env("DATABASE_URL") ||
       raise """
       environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
+      For example: postgresql://USER:PASS@HOST/DATABASE?sslmode=require
+      For Neon.tech: postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require
       """
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # Primary database (Neon.tech) - handles all writes and can handle reads
   config :sensocto, Sensocto.Repo,
-    # ssl: true,
     url: database_url,
-    # Conservative default - increase via POOL_SIZE env var when scaling
+    ssl: [cacerts: :public_key.cacerts_get()],
+    # Conservative default - Neon pooler has limits, don't exceed them
     # Each connection uses ~5-10MB RAM on Postgres side
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "15"),
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # Queue settings help during connection pressure
     queue_target: 5000,
     queue_interval: 1000,
     socket_options: maybe_ipv6
+
+  # Read replica configuration (optional)
+  # Set DATABASE_REPLICA_URL to enable read replica
+  # For Neon, you can create a read replica and use its pooler endpoint
+  if replica_url = System.get_env("DATABASE_REPLICA_URL") do
+    config :sensocto, Sensocto.Repo.Replica,
+      url: replica_url,
+      ssl: [cacerts: :public_key.cacerts_get()],
+      pool_size: String.to_integer(System.get_env("REPLICA_POOL_SIZE") || "5"),
+      socket_options: maybe_ipv6
+  else
+    # If no replica URL, configure replica to use primary (for simpler deployments)
+    config :sensocto, Sensocto.Repo.Replica,
+      url: database_url,
+      ssl: [cacerts: :public_key.cacerts_get()],
+      pool_size: String.to_integer(System.get_env("REPLICA_POOL_SIZE") || "5"),
+      socket_options: maybe_ipv6
+  end
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

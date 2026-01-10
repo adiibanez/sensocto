@@ -556,12 +556,6 @@ defmodule SensoctoWeb.RoomShowLive do
       current_item: item
     )
 
-    # Push video change event directly to JS hook from parent LiveView
-    socket = push_event(socket, "media_load_video", %{
-      video_id: item.youtube_video_id,
-      start_seconds: 0
-    })
-
     {:noreply, socket}
   end
 

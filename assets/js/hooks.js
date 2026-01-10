@@ -3,12 +3,8 @@ import Sortable from 'sortablejs';
 let Hooks = {};
 
 Hooks.SensorDataAccumulator = {
-    mounted() {
-        console.log("mounted");
-    },
-    updated() {
-        console.log("updated");
-    },
+    mounted() {},
+    updated() {},
 };
 
 Hooks.SystemMetricsRefresh = {
@@ -103,6 +99,12 @@ let youtubeAPILoading = false;
 const youtubeAPICallbacks = [];
 
 function loadYouTubeAPI() {
+    // Check if YT API is already fully loaded (e.g., from previous page or cached)
+    if (typeof YT !== 'undefined' && typeof YT.Player === 'function') {
+        youtubeAPILoaded = true;
+        return Promise.resolve();
+    }
+
     if (youtubeAPILoaded) return Promise.resolve();
     if (youtubeAPILoading) {
         return new Promise((resolve) => youtubeAPICallbacks.push(resolve));
@@ -136,8 +138,9 @@ Hooks.MediaPlayerHook = {
         this.roomId = this.el.dataset.roomId;
         this.currentVideoId = null;
         this.isReady = false;
-
-        console.log('[MediaPlayer] Mounted for room:', this.roomId);
+        this.lastKnownPosition = 0;
+        this.lastSeekTime = 0;
+        this.seekGracePeriod = 3000; // 3 seconds grace period after seeking
 
         // Load YouTube API and initialize player
         loadYouTubeAPI().then(() => {
@@ -148,13 +151,11 @@ Hooks.MediaPlayerHook = {
 
         // Handle sync events from server - this is the primary sync mechanism
         this.handleEvent("media_sync", (data) => {
-            console.log('[MediaPlayer] Sync event:', data);
             this.handleSync(data);
         });
 
         // Handle explicit video load commands
         this.handleEvent("media_load_video", (data) => {
-            console.log('[MediaPlayer] Load video:', data);
             this.loadVideo(data.video_id, data.start_seconds || 0);
         });
 
@@ -163,19 +164,27 @@ Hooks.MediaPlayerHook = {
     },
 
     updated() {
-        // Check if video ID changed in the DOM
-        const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
-        if (playerEl) {
-            const newVideoId = playerEl.dataset.videoId;
-            if (newVideoId && newVideoId !== this.currentVideoId) {
-                console.log('[MediaPlayer] Video ID changed:', this.currentVideoId, '->', newVideoId);
-                this.loadVideo(newVideoId, parseInt(playerEl.dataset.start) || 0);
-            }
+        // Check if video changed via data-current-video-id attribute on the hook element
+        // This is the primary mechanism for video switching since push_event may not reach hooks reliably
+        const newVideoId = this.el.dataset.currentVideoId;
+        if (newVideoId && newVideoId !== this.currentVideoId && this.isReady && this.player) {
+            this.loadVideo(newVideoId, 0);
+        }
+
+        // Also check player state and position for sync
+        const newState = this.el.dataset.playerState;
+        const newPosition = parseFloat(this.el.dataset.position) || 0;
+        if (this.isReady && this.player) {
+            this.handleSync({ state: newState, position_seconds: newPosition });
+        }
+
+        // If player not initialized, try to init (e.g., after collapse toggle)
+        if (!this.player && !this.isReady) {
+            this.initializePlayer();
         }
     },
 
     destroyed() {
-        console.log('[MediaPlayer] Destroyed');
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
         }
@@ -196,7 +205,6 @@ Hooks.MediaPlayerHook = {
         this.observer = new MutationObserver(() => {
             const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
             if (!playerEl && this.player) {
-                console.log('[MediaPlayer] Player element removed, cleaning up');
                 try {
                     this.player.destroy();
                 } catch (e) {
@@ -206,7 +214,6 @@ Hooks.MediaPlayerHook = {
                 this.isReady = false;
             } else if (playerEl && !this.player && !this.isReady) {
                 // Player element reappeared
-                console.log('[MediaPlayer] Player element reappeared, reinitializing');
                 this.initializePlayer();
             }
         });
@@ -218,16 +225,20 @@ Hooks.MediaPlayerHook = {
     },
 
     initializePlayer(retryCount = 0) {
-        // Select the actual player div, not the wrapper
-        const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
-        if (!playerEl) {
+        // Select the actual player div (where YT.Player will be initialized)
+        // Use more specific selector to avoid matching wrapper or container
+        const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"]):not([id*="container"])');
+        // Read video data from wrapper
+        const wrapperEl = this.el.querySelector('[id^="youtube-player-wrapper-"]');
+
+        if (!playerEl || !wrapperEl) {
             if (retryCount < 5) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
             }
             return;
         }
 
-        const videoId = playerEl.dataset.videoId;
+        const videoId = wrapperEl.dataset.videoId;
         if (!videoId) {
             if (retryCount < 5) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
@@ -235,11 +246,10 @@ Hooks.MediaPlayerHook = {
             return;
         }
 
-        console.log('[MediaPlayer] Initializing player with video:', videoId);
         this.currentVideoId = videoId;
 
-        const autoplay = playerEl.dataset.autoplay === '1';
-        const startSeconds = parseInt(playerEl.dataset.start) || 0;
+        const autoplay = wrapperEl.dataset.autoplay === '1';
+        const startSeconds = parseInt(wrapperEl.dataset.start) || 0;
 
         this.player = new YT.Player(playerEl.id, {
             height: '100%',
@@ -263,7 +273,6 @@ Hooks.MediaPlayerHook = {
     },
 
     onPlayerReady(event) {
-        console.log('[MediaPlayer] Player ready');
         this.isReady = true;
 
         // Report duration to server
@@ -273,7 +282,6 @@ Hooks.MediaPlayerHook = {
         }
 
         // Request current state from server to sync up
-        // Use pushEventTo to target the LiveComponent (this.el)
         this.pushEventTo(this.el, "request_media_sync", {});
 
         // Start sync interval - poll server every second for multi-tab sync
@@ -285,42 +293,45 @@ Hooks.MediaPlayerHook = {
             clearInterval(this.syncInterval);
         }
         // Request sync from server every 1 second
-        // Use pushEventTo to target the LiveComponent (this.el) instead of parent LiveView
+        // Also detect if user has seeked in YouTube and report to server
         this.syncInterval = setInterval(() => {
             if (this.isReady && this.player) {
+                const currentPosition = this.player.getCurrentTime() || 0;
+                const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
+
+                // Detect seek: position jumped by more than 2 seconds (not normal playback)
+                // But only if we're not in a grace period from a previous seek
+                const now = Date.now();
+                const inGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
+
+                if (!inGracePeriod && positionDelta > 2) {
+                    // User seeked in YouTube player - report to server
+                    this.lastSeekTime = now;
+                    this.pushEventTo(this.el, "client_seek", { position: currentPosition });
+                }
+
+                this.lastKnownPosition = currentPosition;
                 this.pushEventTo(this.el, "request_media_sync", {});
             }
         }, 1000);
     },
 
     onPlayerStateChange(event) {
-        const states = {
-            '-1': 'unstarted',
-            '0': 'ended',
-            '1': 'playing',
-            '2': 'paused',
-            '3': 'buffering',
-            '5': 'cued'
-        };
-        console.log('[MediaPlayer] State changed:', states[event.data] || 'unknown');
-
         // Report video ended so server can advance playlist
         if (event.data === YT.PlayerState.ENDED) {
-            console.log('[MediaPlayer] Video ended, notifying server');
-            this.pushEvent("video_ended", {});
+            this.pushEventTo(this.el, "video_ended", {});
         }
 
         // Report duration when video starts playing (more accurate than onReady)
         if (event.data === YT.PlayerState.PLAYING) {
             const duration = this.player.getDuration();
             if (duration > 0) {
-                this.pushEvent("report_duration", { duration: duration });
+                this.pushEventTo(this.el, "report_duration", { duration: duration });
             }
         }
     },
 
     onPlayerError(event) {
-        console.error('[MediaPlayer] Error:', event.data);
         const errorCodes = {
             2: 'Invalid video ID',
             5: 'HTML5 player error',
@@ -328,17 +339,16 @@ Hooks.MediaPlayerHook = {
             101: 'Embedding not allowed',
             150: 'Embedding not allowed'
         };
-        console.error('[MediaPlayer] Error description:', errorCodes[event.data] || 'Unknown error');
+        console.error('[MediaPlayer] Error:', errorCodes[event.data] || 'Unknown error');
     },
 
     loadVideo(videoId, startSeconds = 0) {
-        console.log('[MediaPlayer] Loading video:', videoId, 'start:', startSeconds);
         this.currentVideoId = videoId;
 
         if (!this.isReady || !this.player) {
             // Not ready yet - reinitialize
-            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
-            if (playerEl && youtubeAPILoaded) {
+            const wrapperEl = this.el.querySelector('[id^="youtube-player-wrapper-"]');
+            if (wrapperEl && youtubeAPILoaded) {
                 if (this.player) {
                     try {
                         this.player.destroy();
@@ -362,7 +372,6 @@ Hooks.MediaPlayerHook = {
 
     handleSync(data) {
         if (!this.isReady || !this.player) {
-            console.log('[MediaPlayer] Not ready for sync, ignoring');
             return;
         }
 
@@ -375,23 +384,25 @@ Hooks.MediaPlayerHook = {
         const isBuffering = playerState === YT.PlayerState.BUFFERING;
         const shouldPlay = serverState === 'playing';
 
-        console.log('[MediaPlayer] Sync - server state:', serverState, 'position:', serverPosition.toFixed(1),
-                    '| local position:', currentPosition.toFixed(1), 'playing:', isPlaying);
-
         // 1. Handle play/pause state first
         if (shouldPlay && !isPlaying && !isBuffering) {
-            console.log('[MediaPlayer] Playing video');
             this.player.playVideo();
         } else if (!shouldPlay && (isPlaying || isBuffering)) {
-            console.log('[MediaPlayer] Pausing video');
             this.player.pauseVideo();
         }
 
-        // 2. Correct position drift if > 1.5 seconds (only when playing)
+        // 2. Skip position correction if in grace period (user recently seeked)
+        const now = Date.now();
+        const inGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
+        if (inGracePeriod) {
+            return;
+        }
+
+        // 3. Correct position drift if > 1.5 seconds (only when playing)
         const drift = Math.abs(currentPosition - serverPosition);
         if (shouldPlay && drift > 1.5 && !isBuffering) {
-            console.log('[MediaPlayer] Correcting drift of', drift.toFixed(1), 'seconds');
             this.player.seekTo(serverPosition, true);
+            this.lastKnownPosition = serverPosition;
         }
     }
 };
@@ -528,28 +539,36 @@ Hooks.SearchPaletteInput = {
 
 Hooks.SortablePlaylist = {
     mounted() {
-        console.log('[SortablePlaylist] mounted, element:', this.el.id);
+        this.isDragging = false;
+        this.pendingReinit = false;
         this.initSortable();
     },
 
     updated() {
-        console.log('[SortablePlaylist] updated');
-        // Re-initialize if DOM changed significantly
-        if (this.sortable) {
-            this.sortable.destroy();
+        // Don't destroy/recreate Sortable during an active drag - it will cancel the drag
+        if (this.isDragging) {
+            this.pendingReinit = true;
+            return;
         }
-        this.initSortable();
+        // Only reinit if items actually changed (check item count)
+        const currentItems = this.el.querySelectorAll('[data-item-id]').length;
+        if (this.lastItemCount !== currentItems) {
+            this.lastItemCount = currentItems;
+            if (this.sortable) {
+                this.sortable.destroy();
+            }
+            this.initSortable();
+        }
     },
 
     destroyed() {
-        console.log('[SortablePlaylist] destroyed');
         if (this.sortable) {
             this.sortable.destroy();
         }
     },
 
     initSortable() {
-        console.log('[SortablePlaylist] initSortable called');
+        this.lastItemCount = this.el.querySelectorAll('[data-item-id]').length;
         try {
             this.sortable = new Sortable(this.el, {
                 animation: 150,
@@ -557,19 +576,31 @@ Hooks.SortablePlaylist = {
                 ghostClass: 'opacity-50',
                 chosenClass: 'bg-gray-600',
                 dragClass: 'shadow-lg',
-                onStart: (evt) => {
-                    console.log('[SortablePlaylist] drag started', evt.oldIndex);
+                forceFallback: true,
+                fallbackClass: 'sortable-fallback',
+                fallbackOnBody: true,
+                onStart: () => {
+                    this.isDragging = true;
                 },
-                onEnd: (evt) => {
-                    console.log('[SortablePlaylist] drag ended', evt.oldIndex, '->', evt.newIndex);
+                onEnd: () => {
+                    this.isDragging = false;
                     const itemIds = Array.from(this.el.querySelectorAll('[data-item-id]'))
                         .map(el => el.dataset.itemId);
-                    console.log('[SortablePlaylist] new order:', itemIds);
-                    this.pushEvent('reorder_playlist', { item_ids: itemIds });
+                    // Use pushEventTo to target the component, not the parent LiveView
+                    this.pushEventTo(this.el, 'reorder_playlist', { item_ids: itemIds });
+
+                    // Handle any pending reinit after drag completes
+                    if (this.pendingReinit) {
+                        this.pendingReinit = false;
+                        setTimeout(() => {
+                            if (this.sortable) {
+                                this.sortable.destroy();
+                            }
+                            this.initSortable();
+                        }, 100);
+                    }
                 }
             });
-            console.log('[SortablePlaylist] Sortable initialized successfully');
-            // Store reference on element for debugging
             this.el._sortableInstance = this.sortable;
         } catch (e) {
             console.error('[SortablePlaylist] Error initializing Sortable:', e);

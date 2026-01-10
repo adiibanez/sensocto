@@ -8,6 +8,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   alias Sensocto.Media
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Media.MediaPlayerSupervisor
+  alias Sensocto.Accounts.UserPreferences
 
   @impl true
   def mount(socket) do
@@ -55,10 +56,19 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       |> maybe_assign(assigns, :controller_user_id)
       |> maybe_assign(assigns, :controller_user_name)
 
-    # On first update, load initial state from server
+    # On first update, load initial state from server and user preferences
     socket =
       if is_first_update and room_id do
-        ensure_player_started(socket, room_id)
+        socket = ensure_player_started(socket, room_id)
+
+        # Load saved collapsed state from user preferences
+        if user = socket.assigns[:current_user] do
+          room_key = if socket.assigns.is_lobby, do: "lobby", else: room_id
+          saved_collapsed = UserPreferences.get_ui_state(user.id, "media_player_collapsed_#{room_key}", false)
+          assign(socket, :collapsed, saved_collapsed)
+        else
+          socket
+        end
       else
         socket
       end
@@ -119,7 +129,15 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
   @impl true
   def handle_event("toggle_collapsed", _, socket) do
-    {:noreply, assign(socket, :collapsed, !socket.assigns.collapsed)}
+    new_collapsed = !socket.assigns.collapsed
+
+    # Persist collapsed state to database if user is logged in
+    if user = socket.assigns[:current_user] do
+      room_key = if socket.assigns.is_lobby, do: "lobby", else: socket.assigns.room_id
+      UserPreferences.set_ui_state(user.id, "media_player_collapsed_#{room_key}", new_collapsed)
+    end
+
+    {:noreply, assign(socket, :collapsed, new_collapsed)}
   end
 
   @impl true
@@ -142,10 +160,14 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   @impl true
-  def handle_event("seek", %{"position" => position}, socket) do
+  def handle_event("client_seek", %{"position" => position}, socket) do
+    # User seeked in YouTube player - update server if they are the controller
     user_id = get_user_id(socket)
-    position = String.to_float(position)
-    MediaPlayerServer.seek(socket.assigns.room_id, position, user_id)
+
+    if can_control?(socket.assigns.controller_user_id, socket.assigns.current_user) do
+      MediaPlayerServer.seek(socket.assigns.room_id, position, user_id)
+    end
+
     {:noreply, socket}
   end
 
@@ -284,16 +306,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     end
   end
 
-  defp can_control?(assigns) do
-    # Anyone can control if there's no controller assigned
-    # Otherwise, only the current controller can control
-    case assigns do
-      %{controller_user_id: nil} -> true
-      %{controller_user_id: controller_id, current_user: %{id: user_id}} -> controller_id == user_id
-      _ -> false
-    end
-  end
-
   defp get_playlist_id(socket) do
     case socket.assigns do
       %{current_item: %{playlist_id: id}} when not is_nil(id) -> id
@@ -343,6 +355,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       data-room-id={@room_id}
       data-player-state={@player_state}
       data-position={@position_seconds}
+      data-current-video-id={@current_item && @current_item.youtube_video_id}
       class="bg-gray-800 rounded-lg overflow-hidden"
     >
       <%!-- Header --%>
@@ -388,23 +401,29 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       <%= unless @collapsed do %>
         <%!-- YouTube Player Container --%>
         <div class="relative aspect-video bg-black">
-          <%= if @current_item do %>
+          <%!-- phx-update="ignore" on outer container to prevent LiveView from touching the iframe --%>
+          <div
+            id={"youtube-player-container-#{@room_id}"}
+            phx-update="ignore"
+            class="w-full h-full"
+          >
             <div
               id={"youtube-player-wrapper-#{@room_id}"}
-              phx-update="ignore"
               class="w-full h-full"
+              data-video-id={@current_item && @current_item.youtube_video_id}
+              data-autoplay={if @player_state == :playing, do: "1", else: "0"}
+              data-start={round(@position_seconds || 0)}
             >
               <div
                 id={"youtube-player-#{@room_id}"}
-                data-video-id={@current_item.youtube_video_id}
-                data-autoplay={if @player_state == :playing, do: "1", else: "0"}
-                data-start={round(@position_seconds)}
                 class="w-full h-full"
               >
               </div>
             </div>
-          <% else %>
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+          </div>
+          <%!-- Overlay when no video --%>
+          <%= unless @current_item do %>
+            <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-black z-10">
               <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -422,98 +441,34 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               <p class="text-sm text-white font-medium truncate" title={@current_item.title}>
                 <%= @current_item.title || "Unknown Title" %>
               </p>
-              <p class="text-xs text-gray-400">
-                <%= if @current_item.duration_seconds do %>
-                  <%= format_duration(@current_item.duration_seconds) %>
-                <% end %>
-              </p>
             </div>
           <% end %>
 
-          <%!-- Playback Controls --%>
-          <% user_can_control = can_control?(assigns) %>
-          <div class="flex items-center justify-center gap-4 mb-3">
-            <button
-              phx-click="previous"
-              phx-target={@myself}
-              disabled={not user_can_control}
-              class={"p-2 rounded-full transition-colors #{if user_can_control, do: "hover:bg-gray-700 text-gray-400 hover:text-white cursor-pointer", else: "text-gray-600 cursor-not-allowed"}"}
-              title={if user_can_control, do: "Previous", else: "Only controller can use controls"}
-            >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-              </svg>
-            </button>
-
-            <%= if @player_state == :playing do %>
-              <button
-                phx-click="pause"
-                phx-target={@myself}
-                disabled={not user_can_control}
-                class={"p-3 rounded-full transition-colors #{if user_can_control, do: "bg-white hover:bg-gray-200 text-gray-900 cursor-pointer", else: "bg-gray-600 text-gray-400 cursor-not-allowed"}"}
-                title={if user_can_control, do: "Pause", else: "Only controller can use controls"}
-              >
-                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                </svg>
-              </button>
-            <% else %>
-              <button
-                phx-click="play"
-                phx-target={@myself}
-                disabled={not user_can_control}
-                class={"p-3 rounded-full transition-colors #{if user_can_control, do: "bg-white hover:bg-gray-200 text-gray-900 cursor-pointer", else: "bg-gray-600 text-gray-400 cursor-not-allowed"}"}
-                title={if user_can_control, do: "Play", else: "Only controller can use controls"}
-              >
-                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-              </button>
-            <% end %>
-
-            <button
-              phx-click="next"
-              phx-target={@myself}
-              disabled={not user_can_control}
-              class={"p-2 rounded-full transition-colors #{if user_can_control, do: "hover:bg-gray-700 text-gray-400 hover:text-white cursor-pointer", else: "text-gray-600 cursor-not-allowed"}"}
-              title={if user_can_control, do: "Next", else: "Only controller can use controls"}
-            >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-              </svg>
-            </button>
-          </div>
-
-          <%!-- Controller Info --%>
-          <div class="flex items-center justify-between text-xs text-gray-400 mb-3">
-            <%= if @controller_user_name do %>
-              <span>Controlled by: <%= @controller_user_name %></span>
-              <%= if @current_user && @controller_user_id == @current_user.id do %>
+          <%!-- Controller Info & Take Control --%>
+          <div class="mb-3 flex items-center justify-between">
+            <%= if @controller_user_id do %>
+              <div class="flex items-center gap-2 text-sm">
+                <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+                <span class="text-gray-300">
+                  Controlled by <span class="text-white font-medium"><%= @controller_user_name || "Someone" %></span>
+                </span>
+              </div>
+              <%= if @current_user && @current_user.id == @controller_user_id do %>
                 <button
                   phx-click="release_control"
                   phx-target={@myself}
-                  class="text-blue-400 hover:text-blue-300"
+                  class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
                 >
                   Release
                 </button>
-              <% else %>
-                <%= if @current_user do %>
-                  <button
-                    phx-click="take_control"
-                    phx-target={@myself}
-                    class="text-blue-400 hover:text-blue-300"
-                  >
-                    Take Control
-                  </button>
-                <% end %>
               <% end %>
             <% else %>
-              <span>No controller</span>
+              <div class="text-sm text-gray-400">No one has control</div>
               <%= if @current_user do %>
                 <button
                   phx-click="take_control"
                   phx-target={@myself}
-                  class="text-blue-400 hover:text-blue-300"
+                  class="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
                 >
                   Take Control
                 </button>
@@ -571,7 +526,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                 <%= for item <- @playlist_items do %>
                   <div
                     data-item-id={item.id}
-                    class={"flex items-center gap-2 p-2 rounded group #{if @current_item && @current_item.id == item.id, do: "bg-gray-700 border-l-2 border-red-500", else: ""} #{if user_can_control, do: "hover:bg-gray-700", else: "cursor-default"}"}
+                    class={"flex items-center gap-2 p-2 rounded group hover:bg-gray-700 #{if @current_item && @current_item.id == item.id, do: "bg-gray-700 border-l-2 border-red-500", else: ""}"}
                   >
                     <%!-- Drag Handle --%>
                     <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
@@ -582,14 +537,14 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                     <img
                       src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
                       alt=""
-                      class={"w-16 h-9 object-cover rounded flex-shrink-0 #{if user_can_control, do: "cursor-pointer"}"}
-                      phx-click={if user_can_control, do: "play_item"}
+                      class="w-16 h-9 object-cover rounded flex-shrink-0 cursor-pointer"
+                      phx-click="play_item"
                       phx-value-item-id={item.id}
                       phx-target={@myself}
                     />
                     <div
-                      class={"flex-1 min-w-0 #{if user_can_control, do: "cursor-pointer"}"}
-                      phx-click={if user_can_control, do: "play_item"}
+                      class="flex-1 min-w-0 cursor-pointer"
+                      phx-click="play_item"
                       phx-value-item-id={item.id}
                       phx-target={@myself}
                     >
@@ -629,4 +584,10 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   defp format_duration(_), do: ""
+
+  # Check if user can control playback
+  # Anyone can control if no controller is set, otherwise only the controller
+  defp can_control?(nil, _current_user), do: true
+  defp can_control?(_controller_id, nil), do: false
+  defp can_control?(controller_id, %{id: user_id}), do: controller_id == user_id
 end

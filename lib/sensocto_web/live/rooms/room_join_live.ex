@@ -24,8 +24,8 @@ defmodule SensoctoWeb.RoomJoinLive do
         {:ok, socket}
 
       {:ok, room} ->
-        is_member = user && Rooms.member?(room, user)
-        is_owner = user && Rooms.owner?(room, user)
+        is_member = user != nil and Rooms.member?(room, user)
+        is_owner = user != nil and Rooms.owner?(room, user)
 
         socket =
           socket

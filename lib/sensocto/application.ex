@@ -16,7 +16,9 @@ defmodule Sensocto.Application do
     children = [
       # {NodeJS.Supervisor, [path: LiveSvelte.SSR.NodeJS.server_path(), pool_size: 4]},
       SensoctoWeb.Telemetry,
+      # Database repos - Primary (Neon.tech) and Read Replica
       Sensocto.Repo,
+      Sensocto.Repo.Replica,
       # Neo4j connection via Boltx (configured in config/config.exs)
       {Boltx, Application.get_env(:boltx, Bolt)},
       Sensocto.Otp.BleConnectorGenServer,

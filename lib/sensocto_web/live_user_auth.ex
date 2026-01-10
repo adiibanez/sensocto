@@ -7,6 +7,8 @@ defmodule SensoctoWeb.LiveUserAuth do
   use SensoctoWeb, :verified_routes
   require Logger
 
+  alias Sensocto.Accounts.UserPreferences
+
   def on_mount(:live_user_optional, _params, _session, socket) do
     if socket.assigns[:current_user] do
       {:cont, socket}
@@ -38,6 +40,16 @@ defmodule SensoctoWeb.LiveUserAuth do
       {:cont, assign(socket, :current_user, nil)}
     end
   end
+
+  @doc """
+  Gets the last visited path for a user, if available.
+  Used to redirect users back to where they were after login.
+  """
+  def get_last_visited_path(user_id) when is_binary(user_id) do
+    UserPreferences.get_last_visited_path(user_id)
+  end
+
+  def get_last_visited_path(_), do: nil
 
   defp get_sign_from_params(params) do
     Logger.debug("get_sign_in_path_from_params params: #{inspect(params)}")

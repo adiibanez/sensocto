@@ -65,6 +65,18 @@
         Location
       </span>
     </:tab>
+    <:tab patch={~p"/lobby/ecg"} active={@live_action == :ecg}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="chart-bar" type="outline" class="h-4 w-4" />
+        ECG
+      </span>
+    </:tab>
+    <:tab patch={~p"/lobby/battery"} active={@live_action == :battery}>
+      <span class="flex items-center gap-1">
+        <Heroicons.icon name="battery-50" type="outline" class="h-4 w-4" />
+        Battery
+      </span>
+    </:tab>
   </.tabs>
 
   <%!-- Media Player Panel --%>
@@ -144,6 +156,34 @@
       <Heroicons.icon name="map-pin" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No location sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with geolocation capability</p>
+    </div>
+  </div>
+
+  <div :if={@live_action == :ecg} id="composite-ecg" phx-hook="CompositeMeasurementHandler">
+    <.svelte
+      name="CompositeECG"
+      props={%{sensors: @ecg_sensors}}
+      socket={@socket}
+      class="w-full"
+    />
+    <div :if={@ecg_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="chart-bar" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No ECG sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with ECG capability</p>
+    </div>
+  </div>
+
+  <div :if={@live_action == :battery} id="composite-battery" phx-hook="CompositeMeasurementHandler">
+    <.svelte
+      name="CompositeBattery"
+      props={%{sensors: @battery_sensors}}
+      socket={@socket}
+      class="w-full"
+    />
+    <div :if={@battery_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="battery-50" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No battery sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with battery monitoring</p>
     </div>
   </div>
 

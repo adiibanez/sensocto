@@ -14,6 +14,9 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
      |> assign(:video_enabled, true)
      |> assign(:participants, %{})
      |> assign(:connection_state, "disconnected")
+     |> assign(:call_state, "idle")
+     |> assign(:call_error, nil)
+     |> assign(:reconnect_info, nil)
      |> assign(:show_call_panel, false)}
   end
 
@@ -31,6 +34,9 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       |> assign_new(:audio_enabled, fn -> true end)
       |> assign_new(:video_enabled, fn -> true end)
       |> assign_new(:connection_state, fn -> "disconnected" end)
+      |> assign_new(:call_state, fn -> "idle" end)
+      |> assign_new(:call_error, fn -> nil end)
+      |> assign_new(:reconnect_info, fn -> nil end)
 
     {:ok, socket}
   end

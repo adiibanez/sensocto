@@ -1,16 +1,11 @@
 defmodule Sensocto.Rooms do
   @moduledoc """
   Context module for room operations.
-  Provides a unified interface for both persisted (database) and temporary (in-memory) rooms.
+  Uses in-memory RoomStore with iroh docs sync for persistence.
   """
   require Logger
-  require Ash.Query
 
-  alias Sensocto.Sensors.Room
-  alias Sensocto.Sensors.RoomMembership
-  alias Sensocto.Sensors.SensorConnection
-  alias Sensocto.RoomsDynamicSupervisor
-  alias Sensocto.RoomServer
+  alias Sensocto.RoomStore
 
   # ============================================================================
   # Room Creation
@@ -18,60 +13,16 @@ defmodule Sensocto.Rooms do
 
   @doc """
   Creates a new room.
-  If is_persisted is true, stores in database. Otherwise creates a temporary room.
+  All rooms are now stored in-memory with iroh docs persistence.
   """
   def create_room(attrs, user) do
-    is_persisted = Map.get(attrs, :is_persisted, true)
-
-    if is_persisted do
-      create_persisted_room(attrs, user)
-    else
-      create_temporary_room(attrs, user)
-    end
-  end
-
-  defp create_persisted_room(attrs, user) do
-    # Merge owner_id as an argument (required by the :create action)
-    attrs_with_owner = Map.put(attrs, :owner_id, user.id)
-
-    Room
-    |> Ash.Changeset.for_create(:create, attrs_with_owner, actor: user)
-    |> Ash.create()
-    |> case do
+    case RoomStore.create_room(attrs, user.id) do
       {:ok, room} ->
-        create_owner_membership(room, user)
         {:ok, room}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
-  end
-
-  defp create_temporary_room(attrs, user) do
-    opts = [
-      id: Ecto.UUID.generate(),
-      owner_id: user.id,
-      name: Map.get(attrs, :name, "Untitled Room"),
-      description: Map.get(attrs, :description),
-      is_public: Map.get(attrs, :is_public, true),
-      configuration: Map.get(attrs, :configuration, %{})
-    ]
-
-    case RoomsDynamicSupervisor.create_room(opts) do
-      {:ok, room_id, _pid} ->
-        {:ok, get_room!(room_id)}
 
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  defp create_owner_membership(room, user) do
-    RoomMembership
-    |> Ash.Changeset.for_create(:create, %{role: :owner}, actor: user)
-    |> Ash.Changeset.force_change_attribute(:room_id, room.id)
-    |> Ash.Changeset.force_change_attribute(:user_id, user.id)
-    |> Ash.create()
   end
 
   # ============================================================================
@@ -79,20 +30,11 @@ defmodule Sensocto.Rooms do
   # ============================================================================
 
   @doc """
-  Gets a room by ID. Works for both persisted and temporary rooms.
-  Returns room struct or view state map.
+  Gets a room by ID.
+  Returns {:ok, room} or {:error, :not_found}.
   """
   def get_room(room_id) do
-    case RoomsDynamicSupervisor.get_room_state(room_id) do
-      {:ok, state} ->
-        {:ok, state}
-
-      {:error, :not_found} ->
-        Room
-        |> Ash.Query.for_read(:by_id, %{id: room_id})
-        |> Ash.Query.load(:owner)
-        |> Ash.read_one(authorize?: false)
-    end
+    RoomStore.get_room(room_id)
   end
 
   @doc """
@@ -106,18 +48,10 @@ defmodule Sensocto.Rooms do
   end
 
   @doc """
-  Gets a room by join code. Works for both persisted and temporary rooms.
+  Gets a room by join code.
   """
   def get_room_by_code(code) do
-    case RoomsDynamicSupervisor.find_by_join_code(code) do
-      {:ok, room_id} ->
-        RoomsDynamicSupervisor.get_room_state(room_id)
-
-      {:error, :not_found} ->
-        Room
-        |> Ash.Query.for_read(:by_join_code, %{code: code})
-        |> Ash.read_one()
-    end
+    RoomStore.get_room_by_code(code)
   end
 
   @doc """
@@ -135,22 +69,10 @@ defmodule Sensocto.Rooms do
   end
 
   defp get_room_sensors_state(room) when is_map(room) do
-    room_id = Map.get(room, :id)
+    # Get sensor IDs from RoomStore (fast in-memory)
+    room_sensor_ids = get_sensor_ids(room)
 
-    # Get sensor IDs from multiple sources (priority order):
-    # 1. GenServer (fast in-memory)
-    # 2. Traditional room storage (sensor_connections, sensor_ids)
-    # 3. Neo4j graph (backend source of truth fallback)
-    genserver_sensor_ids = Sensocto.RoomPresenceServer.get_room_sensors(room_id)
-    traditional_sensor_ids = get_sensor_ids(room)
-    graph_sensor_ids = get_room_sensors_from_graph(room_id)
-
-    # Merge and deduplicate
-    all_sensor_ids =
-      (genserver_sensor_ids ++ traditional_sensor_ids ++ graph_sensor_ids)
-      |> Enum.uniq()
-
-    all_sensor_ids
+    room_sensor_ids
     |> Enum.map(fn sensor_id ->
       try do
         case Sensocto.SimpleSensor.get_view_state(sensor_id) do
@@ -165,15 +87,8 @@ defmodule Sensocto.Rooms do
   end
 
   defp get_sensor_ids(%{sensor_ids: sensor_ids}) when is_list(sensor_ids), do: sensor_ids
-  defp get_sensor_ids(%{sensor_ids: sensor_ids}), do: MapSet.to_list(sensor_ids)
-
-  defp get_sensor_ids(room) do
-    case Map.get(room, :sensor_connections) do
-      nil -> []
-      connections when is_list(connections) -> Enum.map(connections, & &1.sensor_id)
-      _ -> []
-    end
-  end
+  defp get_sensor_ids(%{sensor_ids: %MapSet{} = sensor_ids}), do: MapSet.to_list(sensor_ids)
+  defp get_sensor_ids(_), do: []
 
   defp get_sensor_activity_status(%{sensor_activity: activity}, sensor_id) when is_map(activity) do
     case Map.get(activity, sensor_id) do
@@ -199,62 +114,19 @@ defmodule Sensocto.Rooms do
 
   @doc """
   Lists rooms for a specific user (owned + member of).
-  Combines persisted and temporary rooms.
   """
   def list_user_rooms(user) do
-    persisted_owned =
-      Room
-      |> Ash.Query.for_read(:user_owned_rooms, %{user_id: user.id})
-      |> Ash.read!()
-      |> Enum.map(&normalize_room/1)
-
-    persisted_member =
-      Room
-      |> Ash.Query.for_read(:user_member_rooms, %{user_id: user.id})
-      |> Ash.read!()
-      |> Enum.map(&normalize_room/1)
-
-    temporary = RoomsDynamicSupervisor.list_user_rooms(user.id)
-
-    (persisted_owned ++ persisted_member ++ temporary)
-    |> Enum.uniq_by(& &1.id)
+    RoomStore.list_user_rooms(user.id)
     |> Enum.sort_by(& &1.name)
   end
 
   @doc """
   Lists all public rooms.
-  Combines persisted and temporary public rooms.
   """
   def list_public_rooms do
-    persisted =
-      Room
-      |> Ash.Query.for_read(:public_rooms)
-      |> Ash.read!()
-      |> Enum.map(&normalize_room/1)
-
-    temporary = RoomsDynamicSupervisor.list_public_rooms()
-
-    (persisted ++ temporary)
-    |> Enum.uniq_by(& &1.id)
+    RoomStore.list_public_rooms()
     |> Enum.sort_by(& &1.name)
   end
-
-  defp normalize_room(%Room{} = room) do
-    %{
-      id: room.id,
-      name: room.name,
-      description: room.description,
-      owner_id: room.owner_id,
-      join_code: room.join_code,
-      is_public: room.is_public,
-      is_persisted: true,
-      configuration: room.configuration,
-      inserted_at: room.inserted_at,
-      updated_at: room.updated_at
-    }
-  end
-
-  defp normalize_room(room) when is_map(room), do: room
 
   # ============================================================================
   # Room Membership
@@ -281,99 +153,39 @@ defmodule Sensocto.Rooms do
   """
   def join_room(room, user) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
 
-    if is_persisted do
-      join_persisted_room(room_id, user)
-    else
-      join_temporary_room(room_id, user)
-    end
-  end
+    case RoomStore.join_room(room_id, user.id, :member) do
+      {:ok, updated_room} ->
+        {:ok, updated_room}
 
-  defp join_persisted_room(room_id, user) do
-    RoomMembership
-    |> Ash.Changeset.for_create(:join, %{}, actor: user)
-    |> Ash.Changeset.force_change_attribute(:room_id, room_id)
-    |> Ash.Changeset.force_change_attribute(:user_id, user.id)
-    |> Ash.create()
-    |> case do
-      {:ok, _membership} ->
-        {:ok, get_room!(room_id)}
-
-      {:error, %{errors: errors} = changeset} ->
-        # Check if user is already a member (identity constraint violation)
-        if already_member_error?(errors) do
-          {:ok, get_room!(room_id)}
-        else
-          {:error, changeset}
-        end
+      {:error, :already_member} ->
+        # Already a member, just return the room
+        get_room(room_id)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp already_member_error?(errors) when is_list(errors) do
-    Enum.any?(errors, fn error ->
-      case error do
-        %Ash.Error.Changes.InvalidChanges{fields: fields} when is_list(fields) ->
-          :room_id in fields or :user_id in fields
-
-        %{class: :invalid} ->
-          true
-
-        _ ->
-          false
-      end
-    end)
-  end
-
-  defp already_member_error?(_), do: false
-
-  defp join_temporary_room(room_id, user) do
-    case RoomServer.add_member(room_id, user.id) do
-      :ok -> {:ok, get_room!(room_id)}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   @doc """
   Joins a user to a room with all their available sensors.
-  This syncs the membership to Neo4j for graph-based queries.
-
   Returns {:ok, room} on success.
   """
   def join_room_with_sensors(room, user) when is_map(room) do
-    # First join using the traditional method (PostgreSQL/in-memory)
+    # First join using the RoomStore
     with {:ok, updated_room} <- join_room(room, user) do
-      role = if owner?(room, user), do: :owner, else: :member
-
       # Get all currently connected sensors for this user
       sensor_ids =
         Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
         |> Map.keys()
 
-      # Register in GenServer for fast in-memory access
-      Sensocto.RoomPresenceServer.join_room(room.id, user.id, sensor_ids, role: role)
-
-      # Async sync to Neo4j graph (source of truth)
-      sync_to_graph(room, user, role)
+      # Add all sensors to the room
+      Enum.each(sensor_ids, fn sensor_id ->
+        RoomStore.add_sensor(room.id, sensor_id)
+      end)
 
       {:ok, updated_room}
     end
-  end
-
-  defp sync_to_graph(room, user, role) do
-    # Async sync to Neo4j - don't block on graph operations
-    Task.start(fn ->
-      case Sensocto.Graph.Context.join_room_with_sensors(room, user, role: role) do
-        {:ok, _presence} ->
-          Logger.debug("Synced user #{user.id} to room #{room.id} in Neo4j graph")
-
-        {:error, reason} ->
-          Logger.warning("Failed to sync to Neo4j graph: #{inspect(reason)}")
-      end
-    end)
   end
 
   @doc """
@@ -381,69 +193,31 @@ defmodule Sensocto.Rooms do
   """
   def leave_room(room, user) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    # Remove from GenServer (in-memory)
-    Sensocto.RoomPresenceServer.leave_room(room_id, user.id)
-
-    # Remove from Neo4j graph
-    remove_from_graph(room, user)
-
-    if is_persisted do
-      leave_persisted_room(room_id, user)
-    else
-      RoomServer.remove_member(room_id, user.id)
-    end
-  end
-
-  defp leave_persisted_room(room_id, user) do
-    RoomMembership
-    |> Ash.Query.filter(room_id: room_id, user_id: user.id)
-    |> Ash.read_one!()
-    |> case do
-      nil -> {:error, :not_member}
-      membership -> Ash.destroy(membership)
-    end
-  end
-
-  defp remove_from_graph(room, user) do
-    # Async removal from Neo4j - don't block
-    Task.start(fn ->
-      case Sensocto.Graph.Context.leave_room(room, user) do
-        {:ok, :left} ->
-          Logger.debug("Removed user #{user.id} from room #{room.id} in Neo4j graph")
-
-        {:error, :not_in_room} ->
-          # User wasn't in graph, that's fine
-          :ok
-
-        {:error, reason} ->
-          Logger.warning("Failed to remove from Neo4j graph: #{inspect(reason)}")
-      end
-    end)
-  end
-
-  @doc """
-  Gets all sensor IDs associated with a room via the Neo4j graph.
-  Returns sensors from all users present in the room.
-  """
-  def get_room_sensors_from_graph(room_id) do
-    Sensocto.Graph.Context.get_room_sensor_ids(room_id)
+    RoomStore.leave_room(room_id, user.id)
   end
 
   @doc """
   Lists all users present in a room with their associated sensors.
-  Uses the Neo4j graph for real-time presence data.
   """
   def list_room_presences(room_id) do
-    Sensocto.Graph.Context.list_room_presences(room_id)
+    case RoomStore.get_room(room_id) do
+      {:ok, room} ->
+        # Return members with their sensor info
+        room.members
+        |> Enum.map(fn {user_id, role} ->
+          %{user_id: user_id, role: role}
+        end)
+
+      {:error, _} ->
+        []
+    end
   end
 
   @doc """
-  Checks if a user is currently present in a room (via graph).
+  Checks if a user is currently present in a room.
   """
   def user_in_room?(user_id, room_id) do
-    Sensocto.Graph.Context.in_room?(user_id, room_id)
+    RoomStore.is_member?(room_id, user_id)
   end
 
   @doc """
@@ -451,15 +225,7 @@ defmodule Sensocto.Rooms do
   """
   def member?(room, user) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      RoomMembership
-      |> Ash.Query.filter(room_id: room_id, user_id: user.id)
-      |> Ash.exists?()
-    else
-      RoomServer.is_member?(room_id, user.id)
-    end
+    RoomStore.is_member?(room_id, user.id)
   end
 
   @doc """
@@ -467,19 +233,7 @@ defmodule Sensocto.Rooms do
   """
   def get_role(room, user) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      RoomMembership
-      |> Ash.Query.filter(room_id: room_id, user_id: user.id)
-      |> Ash.read_one!()
-      |> case do
-        nil -> nil
-        membership -> membership.role
-      end
-    else
-      RoomServer.get_member_role(room_id, user.id)
-    end
+    RoomStore.get_member_role(room_id, user.id)
   end
 
   @doc """
@@ -506,28 +260,7 @@ defmodule Sensocto.Rooms do
   """
   def add_sensor_to_room(room, sensor_id) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      add_sensor_to_persisted_room(room_id, sensor_id)
-    else
-      RoomServer.add_sensor(room_id, sensor_id)
-    end
-  end
-
-  defp add_sensor_to_persisted_room(room_id, sensor_id) do
-    SensorConnection
-    |> Ash.Changeset.for_create(:create, %{
-      id: Ecto.UUID.generate(),
-      sensor_id: sensor_id,
-      room_id: room_id,
-      connected_at: DateTime.utc_now()
-    })
-    |> Ash.create()
-    |> case do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    RoomStore.add_sensor(room_id, sensor_id)
   end
 
   @doc """
@@ -535,22 +268,16 @@ defmodule Sensocto.Rooms do
   """
   def remove_sensor_from_room(room, sensor_id) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      remove_sensor_from_persisted_room(room_id, sensor_id)
-    else
-      RoomServer.remove_sensor(room_id, sensor_id)
-    end
+    RoomStore.remove_sensor(room_id, sensor_id)
   end
 
-  defp remove_sensor_from_persisted_room(room_id, sensor_id) do
-    SensorConnection
-    |> Ash.Query.filter(room_id: room_id, sensor_id: sensor_id)
-    |> Ash.read_one!()
-    |> case do
-      nil -> {:error, :not_found}
-      connection -> Ash.destroy(connection)
+  @doc """
+  Gets all sensor IDs for a room.
+  """
+  def get_room_sensor_ids(room_id) do
+    case RoomStore.get_room(room_id) do
+      {:ok, room} -> MapSet.to_list(room.sensor_ids)
+      {:error, _} -> []
     end
   end
 
@@ -561,61 +288,36 @@ defmodule Sensocto.Rooms do
   @doc """
   Updates a room's settings.
   """
-  def update_room(room, attrs, user) when is_map(room) do
+  def update_room(room, attrs, _user) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      Room
-      |> Ash.Query.for_read(:by_id, %{id: room_id})
-      |> Ash.read_one!()
-      |> Ash.Changeset.for_update(:update, attrs, actor: user)
-      |> Ash.update()
-      |> case do
-        {:ok, updated_room} ->
-          # Reload with owner relationship
-          {:ok, Ash.load!(updated_room, :owner, authorize?: false)}
-
-        error ->
-          error
-      end
-    else
-      {:error, :temporary_rooms_immutable}
-    end
+    RoomStore.update_room(room_id, attrs)
   end
 
   @doc """
   Regenerates the join code for a room.
   """
-  def regenerate_join_code(room, user) when is_map(room) do
-    is_persisted = Map.get(room, :is_persisted, true)
+  def regenerate_join_code(room, _user) when is_map(room) do
+    room_id = Map.get(room, :id)
 
-    if is_persisted do
-      Room
-      |> Ash.Query.for_read(:by_id, %{id: room.id})
-      |> Ash.read_one!()
-      |> Ash.Changeset.for_update(:regenerate_join_code, %{}, actor: user)
-      |> Ash.update()
-    else
-      {:error, :temporary_rooms_code_fixed}
+    case RoomStore.regenerate_join_code(room_id) do
+      {:ok, new_code} ->
+        # Return updated room
+        case get_room(room_id) do
+          {:ok, updated_room} -> {:ok, updated_room}
+          _error -> {:ok, %{room | join_code: new_code}}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   @doc """
   Deletes a room.
   """
-  def delete_room(room, user) when is_map(room) do
+  def delete_room(room, _user) when is_map(room) do
     room_id = Map.get(room, :id)
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      Room
-      |> Ash.Query.for_read(:by_id, %{id: room_id})
-      |> Ash.read_one!()
-      |> Ash.destroy(actor: user)
-    else
-      RoomsDynamicSupervisor.stop_room(room_id)
-    end
+    RoomStore.delete_room(room_id)
   end
 
   # ============================================================================
@@ -631,37 +333,9 @@ defmodule Sensocto.Rooms do
   end
 
   @doc """
-  Upgrades a temporary room to a persisted room.
+  Checks if a room exists.
   """
-  def persist_room(room, user) when is_map(room) do
-    is_persisted = Map.get(room, :is_persisted, true)
-
-    if is_persisted do
-      {:error, :already_persisted}
-    else
-      attrs = %{
-        name: room.name,
-        description: room.description,
-        is_public: room.is_public,
-        is_persisted: true,
-        configuration: room.configuration
-      }
-
-      case create_persisted_room(attrs, user) do
-        {:ok, new_room} ->
-          sensor_ids = Map.get(room, :sensor_ids, [])
-
-          Enum.each(sensor_ids, fn sensor_id ->
-            add_sensor_to_room(new_room, sensor_id)
-          end)
-
-          RoomsDynamicSupervisor.stop_room(room.id)
-
-          {:ok, new_room}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
+  def exists?(room_id) do
+    RoomStore.exists?(room_id)
   end
 end

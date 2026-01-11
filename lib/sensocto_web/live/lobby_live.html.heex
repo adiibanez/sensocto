@@ -2,7 +2,7 @@
   Attempting to reconnect...
 </div>
 
-<div class="pb-20 sm:pb-16">
+<div class="pb-40 sm:pb-32">
   <.breadcrumbs>
     <:crumb>Lobby</:crumb>
   </.breadcrumbs>
@@ -79,14 +79,51 @@
     </:tab>
   </.tabs>
 
-  <%!-- Media Player Panel --%>
-  <div class="mb-6">
+  <%!-- Mode Switcher: Media Playback vs Video Call --%>
+  <div class="flex items-center justify-center gap-2 mb-4">
+    <button
+      phx-click="switch_lobby_mode"
+      phx-value-mode="media"
+      class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+        if(@lobby_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+    >
+      <Heroicons.icon name="play" type="solid" class="h-4 w-4" />
+      Media Playback
+    </button>
+    <button
+      phx-click="switch_lobby_mode"
+      phx-value-mode="call"
+      class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+        if(@lobby_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+    >
+      <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
+      Video Call
+      <%= if @in_call do %>
+        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+      <% end %>
+    </button>
+  </div>
+
+  <%!-- Media Player Panel - shown when in media mode --%>
+  <div :if={@lobby_mode == :media} class="mb-6">
     <.live_component
       module={SensoctoWeb.Live.Components.MediaPlayerComponent}
       id="lobby-media-player"
       is_lobby={true}
       current_user={@current_user}
       can_manage={true}
+    />
+  </div>
+
+  <%!-- Video Call Panel - shown when in call mode --%>
+  <div :if={@lobby_mode == :call} class="mb-6">
+    <.live_component
+      module={SensoctoWeb.Live.Calls.CallContainerComponent}
+      id="lobby-call-container"
+      room={%{id: :lobby, name: "Lobby", calls_enabled: true}}
+      user={@current_user}
+      in_call={@in_call}
+      participants={@call_participants}
     />
   </div>
 
@@ -297,7 +334,7 @@
 </div>
 
 <%= if @sensors_offline != %{} do %>
-  <div class="pb-20 sm:pb-16">
+  <div class="pb-40 sm:pb-32">
     <p class="text font-bold mt-8 mb-2">Recently disconnected sensors</p>
     <ul class="list-disc list-inside ml-4">
       <%= for sensor_id <- Map.keys(@sensors_offline) do %>

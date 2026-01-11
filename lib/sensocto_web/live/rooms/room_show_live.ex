@@ -362,8 +362,53 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_event("call_error", params, socket) do
     message = Map.get(params, "message", "Unknown error")
-    {:noreply, put_flash(socket, :error, "Call error: #{message}")}
+    can_retry = Map.get(params, "canRetry", false)
+
+    socket = assign(socket, :in_call, false)
+
+    if can_retry do
+      {:noreply, put_flash(socket, :error, "#{message} Click Video/Voice to try again.")}
+    else
+      {:noreply, put_flash(socket, :error, "Call error: #{message}")}
+    end
   end
+
+  @impl true
+  def handle_event("call_state_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("call_reconnecting", params, socket) do
+    attempt = Map.get(params, "attempt", 1)
+    max = Map.get(params, "max", 3)
+    {:noreply, put_flash(socket, :info, "Reconnecting to call (#{attempt}/#{max})...")}
+  end
+
+  @impl true
+  def handle_event("call_reconnected", _params, socket) do
+    socket = socket |> clear_flash() |> put_flash(:info, "Reconnected to call")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("call_joining_retry", params, socket) do
+    attempt = Map.get(params, "attempt", 1)
+    max = Map.get(params, "max", 3)
+    {:noreply, put_flash(socket, :info, "Retrying connection (#{attempt}/#{max})...")}
+  end
+
+  @impl true
+  def handle_event("channel_reconnecting", _params, socket) do
+    {:noreply, put_flash(socket, :warning, "Connection interrupted, attempting to reconnect...")}
+  end
+
+  @impl true
+  def handle_event("socket_error", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("connection_unhealthy", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("connection_state_changed", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("participant_joined", params, socket) do

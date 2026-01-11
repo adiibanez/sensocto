@@ -37,9 +37,10 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
   @impl true
   def handle_info(:setup_nodes, socket) do
     pid = self()
-    mothership_node_ref = Native.create_node(pid)
+    config = IrohEx.NodeConfig.build()
+    mothership_node_ref = Native.create_node(pid, config)
     ticket = Native.create_ticket(mothership_node_ref)
-    nodes = create_nodes(@node_cnt, pid)
+    nodes = create_nodes(@node_cnt, pid, config)
 
     # {:messages, messages} = :erlang.process_info(self(), :messages)
 
@@ -100,10 +101,10 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
     {:noreply, assign(socket, nodes_connected: socket.assigns.nodes_connected + 1)}
   end
 
-  defp create_nodes(count, pid) do
+  defp create_nodes(count, pid, config) do
     1..count
     # |> Enum.map(fn _ -> Task.async(fn -> Native.create_node_async(pid) end) end)
-    |> Enum.map(fn _ -> Task.async(fn -> Native.create_node(pid) end) end)
+    |> Enum.map(fn _ -> Task.async(fn -> Native.create_node(pid, config) end) end)
     |> Enum.map(&Task.await/1)
     |> Enum.filter(&is_reference/1)
   end

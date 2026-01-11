@@ -460,12 +460,17 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
         <%!-- Controls --%>
         <div class="p-3 border-t border-gray-700">
-          <%!-- Now Playing Info --%>
+          <%!-- Now Playing Info with Duration --%>
           <%= if @current_item do %>
             <div class="mb-3">
               <p class="text-sm text-white font-medium truncate" title={@current_item.title}>
                 <%= @current_item.title || "Unknown Title" %>
               </p>
+              <%= if @current_item.duration_seconds do %>
+                <p class="text-xs text-gray-400 mt-1">
+                  Duration: <%= format_duration(@current_item.duration_seconds) %>
+                </p>
+              <% end %>
             </div>
           <% end %>
 
@@ -549,33 +554,56 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                 <p class="text-gray-500 text-sm text-center py-4">No videos in playlist</p>
               <% else %>
                 <%= for item <- @playlist_items do %>
+                  <% is_current = @current_item && @current_item.id == item.id %>
                   <div
                     data-item-id={item.id}
-                    class={"flex items-center gap-2 p-2 rounded group hover:bg-gray-700 #{if @current_item && @current_item.id == item.id, do: "bg-gray-700 border-l-2 border-red-500", else: ""}"}
+                    class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-red-900/30 border-l-4 border-red-500", else: "hover:bg-gray-700"}"}
                   >
-                    <%!-- Drag Handle --%>
-                    <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
-                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
-                      </svg>
+                    <%!-- Now Playing Indicator or Drag Handle --%>
+                    <%= if is_current do %>
+                      <div class="p-1 text-red-400 flex-shrink-0">
+                        <svg class="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z"/>
+                        </svg>
+                      </div>
+                    <% else %>
+                      <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+                        </svg>
+                      </div>
+                    <% end %>
+                    <div class="relative flex-shrink-0">
+                      <img
+                        src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
+                        alt=""
+                        class={"w-16 h-9 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-red-500"}"}
+                        phx-click="play_item"
+                        phx-value-item-id={item.id}
+                        phx-target={@myself}
+                      />
+                      <%= if is_current do %>
+                        <div class="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
+                          <div class="flex gap-0.5">
+                            <div class="w-1 h-3 bg-red-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                            <div class="w-1 h-3 bg-red-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                            <div class="w-1 h-3 bg-red-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                          </div>
+                        </div>
+                      <% end %>
                     </div>
-                    <img
-                      src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
-                      alt=""
-                      class="w-16 h-9 object-cover rounded flex-shrink-0 cursor-pointer"
-                      phx-click="play_item"
-                      phx-value-item-id={item.id}
-                      phx-target={@myself}
-                    />
                     <div
                       class="flex-1 min-w-0 cursor-pointer"
                       phx-click="play_item"
                       phx-value-item-id={item.id}
                       phx-target={@myself}
                     >
-                      <p class="text-sm text-white truncate"><%= item.title || "Unknown" %></p>
-                      <p class="text-xs text-gray-400">
+                      <p class={"text-sm truncate #{if is_current, do: "text-red-300 font-medium", else: "text-white"}"}><%= item.title || "Unknown" %></p>
+                      <p class={"text-xs #{if is_current, do: "text-red-400/70", else: "text-gray-400"}"}>
                         <%= if item.duration_seconds, do: format_duration(item.duration_seconds), else: "" %>
+                        <%= if is_current do %>
+                          <span class="ml-1">- Now Playing</span>
+                        <% end %>
                       </p>
                     </div>
                     <button

@@ -134,8 +134,8 @@ defmodule Sensocto.MixProject do
       #  path:
       #    "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/elixir-desktop-bridge"}
 
-      {:iroh_ex, "~> 0.0.4"},
-      # {:iroh_ex,
+      {:iroh_ex, "~> 0.0.13"},
+      #{:iroh_ex,
       # path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/iroh_ex"},
       {:rustler_precompiled, "~> 0.8"},
       # {:rustler_btleplug, "~> 0.0.3-alpha"},

@@ -140,6 +140,7 @@ Hooks.MediaPlayerHook = {
         this.isReady = false;
         this.lastKnownPosition = 0;
         this.lastSeekTime = 0;
+        this.lastUserActionTime = 0;
         this.seekGracePeriod = 3000; // 3 seconds grace period after seeking
 
         // Load YouTube API and initialize player
@@ -159,6 +160,20 @@ Hooks.MediaPlayerHook = {
             this.loadVideo(data.video_id, data.start_seconds || 0);
         });
 
+        // Listen for user action events (play/pause clicks) to set grace period
+        // This prevents the sync from immediately overriding user actions
+        this.handleEvent("media_user_action", () => {
+            this.markUserAction();
+        });
+
+        // Also intercept clicks on play/pause buttons within this component
+        this.el.addEventListener('click', (e) => {
+            const target = e.target.closest('[phx-click="play"], [phx-click="pause"], [phx-click="next"], [phx-click="previous"]');
+            if (target) {
+                this.markUserAction();
+            }
+        });
+
         // Watch for player container being removed (e.g., section collapsed)
         this.setupObserver();
     },
@@ -171,12 +186,12 @@ Hooks.MediaPlayerHook = {
             this.loadVideo(newVideoId, 0);
         }
 
-        // Also check player state and position for sync
-        const newState = this.el.dataset.playerState;
-        const newPosition = parseFloat(this.el.dataset.position) || 0;
-        if (this.isReady && this.player) {
-            this.handleSync({ state: newState, position_seconds: newPosition });
-        }
+        // NOTE: Do NOT call handleSync from updated() with data attributes!
+        // The data-player-state and data-position attributes can be stale when
+        // the updated() hook fires. This causes a race condition where clicking
+        // pause triggers updated() with the OLD state before the server responds,
+        // immediately resuming playback.
+        // Sync should ONLY come from the "media_sync" event handler.
 
         // If player not initialized, try to init (e.g., after collapse toggle)
         if (!this.player && !this.isReady) {
@@ -381,20 +396,26 @@ Hooks.MediaPlayerHook = {
         const playerState = this.player.getPlayerState();
 
         const isPlaying = playerState === YT.PlayerState.PLAYING;
+        const isPaused = playerState === YT.PlayerState.PAUSED;
         const isBuffering = playerState === YT.PlayerState.BUFFERING;
         const shouldPlay = serverState === 'playing';
 
-        // 1. Handle play/pause state first
-        if (shouldPlay && !isPlaying && !isBuffering) {
+        // Check if we're in a user action grace period
+        const now = Date.now();
+        const inActionGracePeriod = (now - (this.lastUserActionTime || 0)) < 1500;
+
+        // 1. Handle play/pause state
+        // Only auto-resume if NOT in grace period (prevents race condition when user clicks pause)
+        if (shouldPlay && !isPlaying && !isBuffering && !inActionGracePeriod) {
             this.player.playVideo();
         } else if (!shouldPlay && (isPlaying || isBuffering)) {
+            // Always allow pausing - this is the authoritative server state
             this.player.pauseVideo();
         }
 
-        // 2. Skip position correction if in grace period (user recently seeked)
-        const now = Date.now();
-        const inGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
-        if (inGracePeriod) {
+        // 2. Skip position correction if in seek grace period
+        const inSeekGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
+        if (inSeekGracePeriod) {
             return;
         }
 
@@ -404,6 +425,11 @@ Hooks.MediaPlayerHook = {
             this.player.seekTo(serverPosition, true);
             this.lastKnownPosition = serverPosition;
         }
+    },
+
+    // Called when user initiates a play/pause action (to prevent sync race conditions)
+    markUserAction() {
+        this.lastUserActionTime = Date.now();
     }
 };
 

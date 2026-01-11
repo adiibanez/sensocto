@@ -1,11 +1,72 @@
 /**
  * LiveView Hooks for Video/Voice Calls
  * Coordinates between LiveView and WebRTC client
+ *
+ * Robust error handling and reconnection logic included.
  */
 
 import { Socket } from "phoenix";
 import { MembraneClient } from "./membrane_client.js";
 import { MediaManager } from "./media_manager.js";
+import { QualityManager } from "./quality_manager.js";
+
+// Call states for robust state machine
+const CallState = {
+  IDLE: "idle",
+  JOINING: "joining",
+  CONNECTED: "connected",
+  RECONNECTING: "reconnecting",
+  LEAVING: "leaving",
+  ERROR: "error",
+};
+
+// Media error types for user-friendly messages
+const MediaErrorType = {
+  NOT_ALLOWED: "not_allowed",
+  NOT_FOUND: "not_found",
+  NOT_READABLE: "not_readable",
+  OVERCONSTRAINED: "overconstrained",
+  UNKNOWN: "unknown",
+};
+
+function classifyMediaError(error) {
+  const name = error?.name || "";
+  const message = error?.message || "";
+
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return {
+      type: MediaErrorType.NOT_ALLOWED,
+      userMessage: "Camera/microphone access denied. Please allow access in your browser settings and try again.",
+      canRetry: true,
+    };
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return {
+      type: MediaErrorType.NOT_FOUND,
+      userMessage: "No camera or microphone found. Please connect a device and try again.",
+      canRetry: true,
+    };
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return {
+      type: MediaErrorType.NOT_READABLE,
+      userMessage: "Camera or microphone is already in use by another application. Please close other apps and try again.",
+      canRetry: true,
+    };
+  }
+  if (name === "OverconstrainedError") {
+    return {
+      type: MediaErrorType.OVERCONSTRAINED,
+      userMessage: "Camera doesn't support the requested settings. Trying with lower quality.",
+      canRetry: true,
+    };
+  }
+  return {
+    type: MediaErrorType.UNKNOWN,
+    userMessage: message || "Failed to access camera/microphone. Please check your device settings.",
+    canRetry: true,
+  };
+}
 
 /**
  * Main Call Hook - manages the entire call lifecycle
@@ -26,22 +87,72 @@ export const CallHook = {
     this.inCall = false;
     this.iceServers = [];
 
+    // Robust state management
+    this.callState = CallState.IDLE;
+    this._destroyed = false;
+    this._joinAttempts = 0;
+    this._maxJoinAttempts = 3;
+    this._channelReconnectTimer = null;
+
     this.participants = new Map();
     this.videoElements = new Map();
-    // Buffer for tracks that arrive before their participant container is rendered
     this.pendingTracks = new Map();
-    // MutationObserver to watch for new participant containers
     this.containerObserver = null;
+
+    // Adaptive quality manager
+    this.qualityManager = new QualityManager({
+      onQualityChange: (level, settings) => this.handleQualityChange(level, settings),
+      onStatsUpdate: (stats) => this.handleStatsUpdate(stats),
+    });
 
     // Expose hook globally for debugging
     window.__callHook = this;
-    console.log("CallHook mounted, exposed as window.__callHook");
+    console.log("[CallHook] mounted, exposed as window.__callHook");
 
     this.handleEvent("join_call", (data) => this.handleJoinCall(data));
     this.handleEvent("leave_call", () => this.handleLeaveCall());
     this.handleEvent("toggle_audio", (data) => this.handleToggleAudio(data));
     this.handleEvent("toggle_video", (data) => this.handleToggleVideo(data));
     this.handleEvent("set_quality", (data) => this.handleSetQuality(data));
+    this.handleEvent("set_attention_level", (data) => this.handleSetAttentionLevel(data));
+
+    // Handle visibility change to manage call state when tab is hidden/shown
+    this._visibilityHandler = () => this._handleVisibilityChange();
+    document.addEventListener("visibilitychange", this._visibilityHandler);
+
+    // Handle before unload to clean up properly
+    this._beforeUnloadHandler = () => this._handleBeforeUnload();
+    window.addEventListener("beforeunload", this._beforeUnloadHandler);
+  },
+
+  _setCallState(state) {
+    if (this.callState !== state) {
+      console.log(`[CallHook] State: ${this.callState} -> ${state}`);
+      this.callState = state;
+      this.pushEvent("call_state_changed", { state });
+    }
+  },
+
+  _handleVisibilityChange() {
+    if (document.hidden && this.inCall) {
+      console.log("[CallHook] Tab hidden, call still active");
+    } else if (!document.hidden && this.inCall) {
+      console.log("[CallHook] Tab visible, checking connection health");
+      this._checkConnectionHealth();
+    }
+  },
+
+  _handleBeforeUnload() {
+    if (this.inCall) {
+      this.handleLeaveCall();
+    }
+  },
+
+  _checkConnectionHealth() {
+    if (this.membraneClient && !this.membraneClient.connected) {
+      console.log("[CallHook] Connection unhealthy, triggering reconnect");
+      this.pushEvent("connection_unhealthy", {});
+    }
   },
 
   attachLocalStream() {
@@ -74,91 +185,288 @@ export const CallHook = {
   },
 
   async handleJoinCall(data) {
-    if (this.inCall) return;
+    if (this.inCall || this.callState === CallState.JOINING) {
+      console.log("[CallHook] Already in call or joining, ignoring join request");
+      return;
+    }
+
+    if (this._destroyed) {
+      console.log("[CallHook] Hook destroyed, cannot join call");
+      return;
+    }
 
     const mode = data?.mode || "video";
     const withVideo = mode === "video";
     this.videoEnabled = withVideo;
+    this._joinAttempts++;
+
+    this._setCallState(CallState.JOINING);
+    console.log(`[CallHook] Joining call (attempt ${this._joinAttempts}/${this._maxJoinAttempts}), mode: ${mode}`);
 
     try {
-      await this.connectToChannel();
-
-      const response = await this.pushChannelEvent("join_call", {});
-
-      if (response.endpoint_id) {
-        this.endpointId = response.endpoint_id;
-
-        this.membraneClient = new MembraneClient({
-          roomId: this.roomId,
-          userId: this.userId,
-          userInfo: { name: this.userName },
-          channel: this.channel,
-          onTrackReady: (ctx) => this.handleTrackReady(ctx),
-          onTrackRemoved: (ctx) => this.handleTrackRemoved(ctx),
-          onParticipantJoined: (peer) => this.handleParticipantJoined(peer),
-          onParticipantLeft: (peer) => this.handleParticipantLeft(peer),
-          onConnectionStateChange: (state) => this.handleConnectionStateChange(state),
-          onError: (error) => this.handleError(error),
-        });
-
-        await this.membraneClient.connect(this.iceServers);
-
-        // Set up MutationObserver to watch for new participant containers
-        this.setupContainerObserver();
-
+      // Step 1: Get local media FIRST - fail fast if no permissions
+      console.log("[CallHook] Step 1: Acquiring local media...");
+      try {
         if (withVideo) {
           this.localStream = await this.mediaManager.getMediaStream();
         } else {
           this.localStream = await this.mediaManager.getAudioOnlyStream();
         }
+        console.log("[CallHook] Local media acquired successfully");
+      } catch (mediaError) {
+        const classified = classifyMediaError(mediaError);
+        console.error("[CallHook] Media error:", classified);
 
-        for (const track of this.localStream.getTracks()) {
-          await this.membraneClient.addLocalTrack(track);
+        // Try fallback for overconstrained
+        if (classified.type === MediaErrorType.OVERCONSTRAINED && withVideo) {
+          console.log("[CallHook] Retrying with lower video quality...");
+          try {
+            this.localStream = await this.mediaManager.getMediaStream({
+              video: { width: 640, height: 480, frameRate: 15 }
+            });
+          } catch (retryError) {
+            throw new Error(classified.userMessage);
+          }
+        } else {
+          throw new Error(classified.userMessage);
         }
-
-        this.inCall = true;
-        this.pushEvent("call_joined", { endpoint_id: this.endpointId });
-
-        // Attach local stream to the local video element
-        // Use retry because LiveView needs time to render the video element after call_joined
-        this.attachLocalStreamWithRetry();
-
-        Object.values(response.participants || {}).forEach((p) => {
-          this.handleParticipantJoined(p);
-        });
       }
+
+      // Step 2: Connect to Phoenix channel
+      console.log("[CallHook] Step 2: Connecting to channel...");
+      await this.connectToChannel();
+
+      // Step 3: Join call on server
+      console.log("[CallHook] Step 3: Joining call on server...");
+      const response = await this.pushChannelEvent("join_call", {}, 15000);
+
+      if (!response.endpoint_id) {
+        throw new Error("Server did not return endpoint_id");
+      }
+
+      this.endpointId = response.endpoint_id;
+      console.log("[CallHook] Got endpoint_id:", this.endpointId);
+
+      // Step 4: Create and connect MembraneClient
+      console.log("[CallHook] Step 4: Creating MembraneClient...");
+      this.membraneClient = new MembraneClient({
+        roomId: this.roomId,
+        userId: this.userId,
+        userInfo: { name: this.userName },
+        channel: this.channel,
+        connectionTimeout: 30000,
+        maxReconnectAttempts: 3,
+        reconnectDelay: 2000,
+        onTrackReady: (ctx) => this.handleTrackReady(ctx),
+        onTrackRemoved: (ctx) => this.handleTrackRemoved(ctx),
+        onParticipantJoined: (peer) => this.handleParticipantJoined(peer),
+        onParticipantLeft: (peer) => this.handleParticipantLeft(peer),
+        onConnectionStateChange: (state) => this.handleConnectionStateChange(state),
+        onError: (error) => this.handleError(error),
+        onReconnecting: (attempt, max) => this._handleReconnecting(attempt, max),
+        onReconnected: () => this._handleReconnected(),
+      });
+
+      // Step 5: Connect to WebRTC endpoint
+      console.log("[CallHook] Step 5: Connecting to WebRTC endpoint...");
+      await this.membraneClient.connect(this.iceServers);
+
+      // Set up MutationObserver to watch for new participant containers
+      this.setupContainerObserver();
+
+      // Step 6: Add local tracks
+      console.log("[CallHook] Step 6: Adding local tracks...");
+      for (const track of this.localStream.getTracks()) {
+        console.log(`[CallHook] Adding local ${track.kind} track: ${track.id}`);
+        await this.membraneClient.addLocalTrack(track);
+      }
+
+      // Success!
+      this.inCall = true;
+      this._joinAttempts = 0;
+      this._setCallState(CallState.CONNECTED);
+      this.pushEvent("call_joined", { endpoint_id: this.endpointId });
+      console.log("[CallHook] Successfully joined call");
+
+      // Start quality monitoring
+      this._startQualityMonitoring();
+
+      // Attach local stream with retry
+      this.attachLocalStreamWithRetry();
+
+      // Handle existing participants
+      Object.values(response.participants || {}).forEach((p) => {
+        this.handleParticipantJoined(p);
+      });
+
     } catch (error) {
-      console.error("Failed to join call:", error);
-      this.pushEvent("call_error", { message: error.message });
+      console.error("[CallHook] Failed to join call:", error);
+      console.error("[CallHook] Error stack:", error?.stack);
+
+      // Cleanup partial state
+      this._cleanupPartialJoin();
+
+      const message = typeof error === 'string' ? error : (error?.message || error?.reason || "Failed to join call");
+
+      // Check if we should retry
+      if (this._joinAttempts < this._maxJoinAttempts && this._isRetryableError(error)) {
+        console.log(`[CallHook] Retrying join in 2 seconds...`);
+        this._setCallState(CallState.RECONNECTING);
+        this.pushEvent("call_joining_retry", { attempt: this._joinAttempts, max: this._maxJoinAttempts });
+
+        setTimeout(() => {
+          if (!this._destroyed && !this.inCall) {
+            this.handleJoinCall(data);
+          }
+        }, 2000);
+      } else {
+        this._setCallState(CallState.ERROR);
+        this._joinAttempts = 0;
+        this.pushEvent("call_error", { message, canRetry: true });
+      }
     }
   },
 
+  _isRetryableError(error) {
+    const message = error?.message || "";
+    // Don't retry permission errors
+    if (message.includes("denied") || message.includes("permission")) {
+      return false;
+    }
+    // Retry network/timeout errors
+    return message.includes("timeout") || message.includes("network") || message.includes("connection");
+  },
+
+  _cleanupPartialJoin() {
+    if (this.membraneClient) {
+      try {
+        this.membraneClient.destroy();
+      } catch (e) {
+        // Ignore
+      }
+      this.membraneClient = null;
+    }
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          // Ignore
+        }
+      });
+      this.localStream = null;
+    }
+
+    // Don't disconnect channel here - we might want to retry
+  },
+
+  _startQualityMonitoring() {
+    try {
+      if (this.membraneClient?.webrtc) {
+        const pc = this.membraneClient.webrtc.connection;
+        if (pc) {
+          this.qualityManager.setConnection(pc);
+          this.qualityManager.start(1000);
+        }
+      }
+    } catch (e) {
+      console.warn("[CallHook] Failed to start quality monitoring:", e);
+    }
+  },
+
+  _handleReconnecting(attempt, max) {
+    console.log(`[CallHook] WebRTC reconnecting (${attempt}/${max})`);
+    this._setCallState(CallState.RECONNECTING);
+    this.pushEvent("call_reconnecting", { attempt, max });
+  },
+
+  _handleReconnected() {
+    console.log("[CallHook] WebRTC reconnected");
+    this._setCallState(CallState.CONNECTED);
+    this.pushEvent("call_reconnected", {});
+    this.attachLocalStreamWithRetry();
+  },
+
   async handleLeaveCall() {
-    if (!this.inCall) return;
+    if (!this.inCall && this.callState === CallState.IDLE) {
+      console.log("[CallHook] Not in call, nothing to leave");
+      return;
+    }
+
+    console.log("[CallHook] Leaving call...");
+    this._setCallState(CallState.LEAVING);
 
     try {
+      // Stop quality monitoring
+      if (this.qualityManager) {
+        try {
+          this.qualityManager.stop();
+        } catch (e) {
+          console.warn("[CallHook] Error stopping quality manager:", e);
+        }
+      }
+
+      // Disconnect WebRTC
       if (this.membraneClient) {
-        this.membraneClient.disconnect();
+        try {
+          this.membraneClient.destroy();
+        } catch (e) {
+          console.warn("[CallHook] Error disconnecting membrane client:", e);
+        }
         this.membraneClient = null;
       }
 
+      // Stop local tracks
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (e) {
+            // Ignore
+          }
+        });
+        this.localStream = null;
+      }
+
+      // Notify server and leave channel
       if (this.channel) {
-        await this.pushChannelEvent("leave_call", {});
-        this.channel.leave();
+        try {
+          await this.pushChannelEvent("leave_call", {}, 5000);
+        } catch (e) {
+          console.warn("[CallHook] Error notifying server of leave:", e);
+        }
+        try {
+          this.channel.leave();
+        } catch (e) {
+          // Ignore
+        }
         this.channel = null;
       }
 
+      // Disconnect socket
       if (this.socket) {
-        this.socket.disconnect();
+        try {
+          this.socket.disconnect();
+        } catch (e) {
+          // Ignore
+        }
         this.socket = null;
       }
 
       this.clearRemoteVideos();
 
       this.inCall = false;
+      this._joinAttempts = 0;
+      this._setCallState(CallState.IDLE);
       this.pushEvent("call_left", {});
+      console.log("[CallHook] Successfully left call");
     } catch (error) {
-      console.error("Failed to leave call:", error);
+      console.error("[CallHook] Error during leave call:", error);
+      // Still reset state even if cleanup had errors
+      this.inCall = false;
+      this._setCallState(CallState.IDLE);
+      this.pushEvent("call_left", {});
     }
   },
 
@@ -190,13 +498,83 @@ export const CallHook = {
     if (this.mediaManager) {
       this.mediaManager.setQualityProfile(data.quality);
     }
+    if (this.qualityManager) {
+      this.qualityManager.setQuality(data.quality);
+    }
+  },
+
+  handleSetAttentionLevel(data) {
+    if (this.qualityManager) {
+      this.qualityManager.setAttentionLevel(data.level);
+    }
+  },
+
+  handleQualityChange(level, settings) {
+    console.log(`[CallHook] Quality changed to ${level}:`, settings);
+
+    // Apply to media manager
+    if (this.mediaManager) {
+      this.mediaManager.setQualityProfile(level);
+    }
+
+    // Apply to RTCRtpSender if available
+    if (this.membraneClient?.webrtc?.connection) {
+      const pc = this.membraneClient.webrtc.connection;
+      const senders = pc.getSenders();
+      for (const sender of senders) {
+        if (sender.track?.kind === "video") {
+          this.qualityManager.applyToSender(sender);
+        }
+      }
+    }
+
+    // Notify LiveView
+    this.pushEvent("quality_changed", {
+      quality: level,
+      settings: settings,
+      summary: this.qualityManager.getStatsSummary()
+    });
+  },
+
+  handleStatsUpdate(stats) {
+    // Periodically push stats to LiveView for UI display (every 5 seconds)
+    if (Date.now() - (this._lastStatsPush || 0) > 5000) {
+      this._lastStatsPush = Date.now();
+      const summary = this.qualityManager.getStatsSummary();
+      if (summary) {
+        this.pushEvent("webrtc_stats", summary);
+      }
+    }
   },
 
   async connectToChannel() {
     return new Promise((resolve, reject) => {
+      const socketTimeout = setTimeout(() => {
+        reject(new Error("Socket connection timeout"));
+      }, 15000);
+
       this.socket = new Socket("/socket", {
         params: {},
+        reconnectAfterMs: (tries) => {
+          // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
+          return Math.min(1000 * Math.pow(2, tries - 1), 10000);
+        },
       });
+
+      this.socket.onError(() => {
+        console.error("[CallHook] Socket error");
+        if (!this._destroyed) {
+          this.pushEvent("socket_error", {});
+        }
+      });
+
+      this.socket.onClose(() => {
+        console.log("[CallHook] Socket closed");
+        if (this.inCall && !this._destroyed) {
+          this._handleChannelDisconnect();
+        }
+      });
+
       this.socket.connect();
 
       this.channel = this.socket.channel(`call:${this.roomId}`, {
@@ -204,57 +582,121 @@ export const CallHook = {
         user_info: { name: this.userName },
       });
 
+      this.channel.onError(() => {
+        console.error("[CallHook] Channel error");
+        if (this.inCall && !this._destroyed) {
+          this._handleChannelDisconnect();
+        }
+      });
+
+      this.channel.onClose(() => {
+        console.log("[CallHook] Channel closed");
+      });
+
       this.channel.on("media_event", (payload) => {
-        if (this.membraneClient) {
+        if (this.membraneClient && !this._destroyed) {
           this.membraneClient.handleMediaEvent(payload.data);
         }
       });
 
       this.channel.on("participant_joined", (participant) => {
-        this.handleParticipantJoined(participant);
+        if (!this._destroyed) {
+          this.handleParticipantJoined(participant);
+        }
       });
 
       this.channel.on("participant_left", (data) => {
-        this.handleParticipantLeft(data);
+        if (!this._destroyed) {
+          this.handleParticipantLeft(data);
+        }
       });
 
       this.channel.on("participant_audio_changed", (data) => {
-        this.updateParticipantAudioState(data.user_id, data.audio_enabled);
+        if (!this._destroyed) {
+          this.updateParticipantAudioState(data.user_id, data.audio_enabled);
+        }
       });
 
       this.channel.on("participant_video_changed", (data) => {
-        this.updateParticipantVideoState(data.user_id, data.video_enabled);
+        if (!this._destroyed) {
+          this.updateParticipantVideoState(data.user_id, data.video_enabled);
+        }
       });
 
       this.channel.on("quality_changed", (data) => {
-        if (this.mediaManager) {
-          this.mediaManager.setQualityProfile(data.quality);
+        if (!this._destroyed) {
+          if (this.mediaManager) {
+            this.mediaManager.setQualityProfile(data.quality);
+          }
+          this.pushEvent("quality_changed", data);
         }
-        this.pushEvent("quality_changed", data);
       });
 
       this.channel.on("call_ended", () => {
-        this.handleLeaveCall();
+        if (!this._destroyed) {
+          console.log("[CallHook] Call ended by server");
+          this.handleLeaveCall();
+        }
       });
 
       this.channel
         .join()
         .receive("ok", (response) => {
+          clearTimeout(socketTimeout);
+          console.log("[CallHook] Channel joined successfully");
           this.iceServers = response.ice_servers || [];
           resolve(response);
         })
         .receive("error", (error) => {
+          clearTimeout(socketTimeout);
+          console.error("[CallHook] Channel join error:", error);
           reject(new Error(error.reason || "Failed to join channel"));
+        })
+        .receive("timeout", () => {
+          clearTimeout(socketTimeout);
+          console.error("[CallHook] Channel join timeout");
+          reject(new Error("Channel join timeout"));
         });
     });
   },
 
-  pushChannelEvent(event, payload) {
+  _handleChannelDisconnect() {
+    if (this._destroyed || !this.inCall) return;
+
+    console.log("[CallHook] Channel disconnected, will attempt reconnection via socket");
+    this._setCallState(CallState.RECONNECTING);
+    this.pushEvent("channel_reconnecting", {});
+
+    // Socket will auto-reconnect, but we need to handle if it doesn't
+    this._channelReconnectTimer = setTimeout(() => {
+      if (this.inCall && !this._destroyed) {
+        console.error("[CallHook] Channel reconnection timeout");
+        this._setCallState(CallState.ERROR);
+        this.pushEvent("call_error", {
+          message: "Lost connection to server. Please try rejoining.",
+          canRetry: true,
+        });
+      }
+    }, 30000);
+  },
+
+  pushChannelEvent(event, payload, timeout = 10000) {
     return new Promise((resolve, reject) => {
+      if (!this.channel) {
+        reject(new Error("Channel not connected"));
+        return;
+      }
+
       this.channel
-        .push(event, payload)
+        .push(event, payload, timeout)
         .receive("ok", resolve)
-        .receive("error", reject);
+        .receive("error", (error) => {
+          const message = typeof error === 'string' ? error : (error?.reason || "Channel error");
+          reject(new Error(message));
+        })
+        .receive("timeout", () => {
+          reject(new Error(`${event} timeout`));
+        });
     });
   },
 
@@ -484,7 +926,8 @@ export const CallHook = {
 
   handleError(error) {
     console.error("Call error:", error);
-    this.pushEvent("call_error", { message: error.message });
+    const message = typeof error === 'string' ? error : (error?.message || error?.reason || "Unknown error");
+    this.pushEvent("call_error", { message });
   },
 
   updateParticipantAudioState(userId, enabled) {
@@ -514,12 +957,65 @@ export const CallHook = {
   },
 
   destroyed() {
+    console.log("[CallHook] Hook being destroyed");
+    this._destroyed = true;
+
+    // Remove event listeners
+    if (this._visibilityHandler) {
+      document.removeEventListener("visibilitychange", this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
+    if (this._beforeUnloadHandler) {
+      window.removeEventListener("beforeunload", this._beforeUnloadHandler);
+      this._beforeUnloadHandler = null;
+    }
+
+    // Clear timers
+    if (this._channelReconnectTimer) {
+      clearTimeout(this._channelReconnectTimer);
+      this._channelReconnectTimer = null;
+    }
+
+    // Leave call if in one
     this.handleLeaveCall();
 
+    // Cleanup quality manager
+    if (this.qualityManager) {
+      try {
+        this.qualityManager.destroy();
+      } catch (e) {
+        // Ignore
+      }
+      this.qualityManager = null;
+    }
+
+    // Stop local stream
     if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {
+          // Ignore
+        }
+      });
       this.localStream = null;
     }
+
+    // Cleanup media manager
+    if (this.mediaManager) {
+      try {
+        this.mediaManager.stopAllTracks();
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    // Clear global reference
+    if (window.__callHook === this) {
+      window.__callHook = null;
+    }
+
+    console.log("[CallHook] Cleanup complete");
   },
 };
 

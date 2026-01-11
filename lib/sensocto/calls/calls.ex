@@ -101,6 +101,37 @@ defmodule Sensocto.Calls do
   end
 
   @doc """
+  Updates the attention level for a participant's webcam quality.
+  Called by AttentionTracker when system load changes.
+
+  Attention levels map to webcam quality:
+  - :none/:low - high quality allowed
+  - :normal - medium quality
+  - :high - low quality
+  - :critical - minimal quality (for extreme load)
+  """
+  def set_attention_level(room_id, user_id, attention_level) do
+    # Broadcast to the specific user's LiveView to push to their JS hook
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "call:#{room_id}:user:#{user_id}",
+      {:attention_level_changed, attention_level}
+    )
+  end
+
+  @doc """
+  Broadcasts attention level to all participants in a call.
+  Used for global load-based backpressure.
+  """
+  def broadcast_attention_level(room_id, attention_level) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "call:#{room_id}",
+      {:global_attention_level, attention_level}
+    )
+  end
+
+  @doc """
   Gets the recommended quality for a given participant count.
   """
   def recommended_quality(participant_count) do
@@ -148,6 +179,20 @@ defmodule Sensocto.Calls do
   Validates that a user can join a call in a room.
   Returns :ok if allowed, {:error, reason} otherwise.
   """
+  def can_join_call?(room_id, user_id)
+
+  # Special case: lobby is always accessible to authenticated users
+  def can_join_call?("lobby", user_id) when is_binary(user_id) do
+    case participant_count("lobby") do
+      {:ok, count} when count >= 20 -> {:error, :call_full}
+      _ -> :ok
+    end
+  end
+
+  def can_join_call?(:lobby, user_id) when is_binary(user_id) do
+    can_join_call?("lobby", user_id)
+  end
+
   def can_join_call?(room_id, user_id) do
     # Create a user-like map for the member?/owner? functions
     user = %{id: user_id}

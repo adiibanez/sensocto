@@ -9,6 +9,7 @@ defmodule SensoctoWeb.LobbyLive do
   alias SensoctoWeb.StatefulSensorLive
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias Sensocto.Media.MediaPlayerServer
+  alias Sensocto.Calls
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -27,6 +28,14 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "media:lobby")
+    # Subscribe to lobby call events
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
+
+    # Subscribe to user-specific attention level updates for webcam backpressure
+    user = socket.assigns[:current_user]
+    if user do
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
+    end
 
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
@@ -54,6 +63,9 @@ defmodule SensoctoWeb.LobbyLive do
     user = socket.assigns[:current_user]
     public_rooms = if user, do: Sensocto.Rooms.list_public_rooms(), else: []
 
+    # Check if there's an active call in the lobby
+    call_active = Calls.call_exists?(:lobby)
+
     new_socket =
       socket
       |> assign(
@@ -75,7 +87,12 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_by_user: sensors_by_user,
         public_rooms: public_rooms,
         show_join_modal: false,
-        join_code: ""
+        join_code: "",
+        # Call-related assigns
+        lobby_mode: :media,
+        call_active: call_active,
+        in_call: false,
+        call_participants: %{}
       )
 
     :telemetry.execute(
@@ -449,6 +466,53 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # Handle call events from CallServer via PubSub
+  @impl true
+  def handle_info({:call_event, event}, socket) do
+    socket =
+      case event do
+        {:participant_joined, participant} ->
+          new_participants = Map.put(socket.assigns.call_participants, participant.user_id, participant)
+          assign(socket, :call_participants, new_participants)
+
+        {:participant_left, user_id} ->
+          new_participants = Map.delete(socket.assigns.call_participants, user_id)
+          assign(socket, :call_participants, new_participants)
+
+        :call_ended ->
+          socket
+          |> assign(:call_active, false)
+          |> assign(:in_call, false)
+          |> assign(:call_participants, %{})
+
+        _ ->
+          socket
+      end
+
+    {:noreply, socket}
+  end
+
+  # Handle push_event requests from call components
+  @impl true
+  def handle_info({:push_event, event, payload}, socket) do
+    {:noreply, push_event(socket, event, payload)}
+  end
+
+  # Handle attention level changes for webcam backpressure
+  @impl true
+  def handle_info({:attention_level_changed, level}, socket) do
+    # Push to JS hook to adjust webcam quality
+    socket = push_event(socket, "set_attention_level", %{level: Atom.to_string(level)})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:global_attention_level, level}, socket) do
+    # Global system load affects all call participants
+    socket = push_event(socket, "set_attention_level", %{level: Atom.to_string(level)})
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(msg, socket) do
     IO.inspect(msg, label: "Lobby Unknown Message")
@@ -554,6 +618,147 @@ defmodule SensoctoWeb.LobbyLive do
         {:noreply, socket}
     end
   end
+
+  # Lobby mode switching
+  @impl true
+  def handle_event("switch_lobby_mode", %{"mode" => mode}, socket) do
+    new_mode = String.to_existing_atom(mode)
+    {:noreply, assign(socket, :lobby_mode, new_mode)}
+  end
+
+  # Call-related events from JS hooks
+  @impl true
+  def handle_event("call_joined", %{"endpoint_id" => _endpoint_id}, socket) do
+    {:noreply, assign(socket, :in_call, true)}
+  end
+
+  @impl true
+  def handle_event("call_left", _params, socket) do
+    {:noreply, assign(socket, :in_call, false)}
+  end
+
+  @impl true
+  def handle_event("call_error", params, socket) do
+    message = Map.get(params, "message", "Unknown error")
+    can_retry = Map.get(params, "canRetry", false)
+
+    socket =
+      socket
+      |> assign(:in_call, false)
+      |> assign(:call_state, "error")
+
+    if can_retry do
+      {:noreply, put_flash(socket, :error, "#{message} Click Video/Voice to try again.")}
+    else
+      {:noreply, put_flash(socket, :error, "Call error: #{message}")}
+    end
+  end
+
+  @impl true
+  def handle_event("call_state_changed", %{"state" => state}, socket) do
+    {:noreply, assign(socket, :call_state, state)}
+  end
+
+  @impl true
+  def handle_event("call_reconnecting", params, socket) do
+    attempt = Map.get(params, "attempt", 1)
+    max = Map.get(params, "max", 3)
+
+    socket =
+      socket
+      |> assign(:call_state, "reconnecting")
+      |> put_flash(:info, "Reconnecting to call (#{attempt}/#{max})...")
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("call_reconnected", _params, socket) do
+    socket =
+      socket
+      |> assign(:call_state, "connected")
+      |> clear_flash()
+      |> put_flash(:info, "Reconnected to call")
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("call_joining_retry", params, socket) do
+    attempt = Map.get(params, "attempt", 1)
+    max = Map.get(params, "max", 3)
+    {:noreply, put_flash(socket, :info, "Retrying connection (#{attempt}/#{max})...")}
+  end
+
+  @impl true
+  def handle_event("channel_reconnecting", _params, socket) do
+    {:noreply, put_flash(socket, :warning, "Connection interrupted, attempting to reconnect...")}
+  end
+
+  @impl true
+  def handle_event("socket_error", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("connection_unhealthy", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("connection_state_changed", %{"state" => state}, socket) do
+    {:noreply, assign(socket, :connection_state, state)}
+  end
+
+  @impl true
+  def handle_event("participant_joined", params, socket) do
+    user_id = params["user_id"] || params["peer_id"]
+
+    if user_id && user_id != to_string(socket.assigns.current_user.id) do
+      participant = %{
+        user_id: user_id,
+        endpoint_id: params["endpoint_id"],
+        user_info: params["user_info"] || params["metadata"] || %{},
+        audio_enabled: true,
+        video_enabled: true
+      }
+
+      new_participants = Map.put(socket.assigns.call_participants, user_id, participant)
+      {:noreply, assign(socket, :call_participants, new_participants)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("participant_left", params, socket) do
+    user_id = params["user_id"] || params["peer_id"]
+
+    if user_id do
+      new_participants = Map.delete(socket.assigns.call_participants, user_id)
+      {:noreply, assign(socket, :call_participants, new_participants)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("track_ready", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("track_removed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("connection_state_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("quality_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("participant_audio_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("participant_video_changed", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event(type, params, socket) do

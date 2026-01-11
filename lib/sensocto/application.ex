@@ -41,11 +41,13 @@ defmodule Sensocto.Application do
       {Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       {Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
 
-      # Rooms
+      # Rooms - Local registries (kept for backward compatibility)
       {Registry, keys: :unique, name: Sensocto.RoomRegistry},
       {Registry, keys: :unique, name: Sensocto.RoomJoinCodeRegistry},
-      # Room presence tracking (in-memory with Neo4j backend)
-      Sensocto.RoomPresenceServer,
+
+      # Rooms - Distributed registries (Horde for cluster-wide lookups)
+      {Horde.Registry, [name: Sensocto.DistributedRoomRegistry, keys: :unique, members: :auto]},
+      {Horde.Registry, [name: Sensocto.DistributedJoinCodeRegistry, keys: :unique, members: :auto]},
 
       # Calls (Video/Voice)
       {Registry, keys: :unique, name: Sensocto.CallRegistry},
@@ -68,6 +70,14 @@ defmodule Sensocto.Application do
 
       {Phoenix.PubSub, name: Sensocto.PubSub},
       SensoctoWeb.Sensocto.Presence,
+
+      # Room storage: iroh docs (low-level) -> RoomStore (in-memory) -> RoomSync (async persistence)
+      # Must be after PubSub for cluster sync
+      Sensocto.Iroh.RoomStore,
+      Sensocto.RoomStore,
+      Sensocto.Iroh.RoomSync,
+      # Room presence tracking (in-memory with Neo4j backend)
+      Sensocto.RoomPresenceServer,
 
       # Attention tracking for back-pressure (must be after PubSub)
       Sensocto.AttentionTracker,

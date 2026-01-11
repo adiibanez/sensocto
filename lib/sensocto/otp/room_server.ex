@@ -1,6 +1,8 @@
 defmodule Sensocto.RoomServer do
   @moduledoc """
-  GenServer that manages the state for a single temporary (in-memory) room.
+  GenServer that manages the state for a single room distributed across the cluster.
+
+  Uses Horde.Registry for cluster-wide unique process registration.
   Handles room configuration, members, sensor connections, and activity tracking.
   """
   use GenServer
@@ -33,8 +35,12 @@ defmodule Sensocto.RoomServer do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(room_id))
   end
 
+  @doc """
+  Returns a via tuple for locating a room process across the cluster.
+  Uses Horde.Registry for distributed process lookup.
+  """
   def via_tuple(room_id) do
-    {:via, Registry, {Sensocto.RoomRegistry, room_id}}
+    {:via, Horde.Registry, {Sensocto.DistributedRoomRegistry, room_id}}
   end
 
   def get_state(room_id) do
@@ -104,7 +110,8 @@ defmodule Sensocto.RoomServer do
     join_code = Keyword.get(opts, :join_code, generate_join_code())
     expiry_ms = Keyword.get(opts, :expiry_ms, @default_expiry_ms)
 
-    Registry.register(Sensocto.RoomJoinCodeRegistry, join_code, room_id)
+    # Register join code in distributed registry for cluster-wide lookup
+    Horde.Registry.register(Sensocto.DistributedJoinCodeRegistry, join_code, room_id)
 
     expiry_timer = Process.send_after(self(), :expire, expiry_ms)
 

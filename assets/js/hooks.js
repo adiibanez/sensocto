@@ -337,12 +337,22 @@ Hooks.MediaPlayerHook = {
             this.pushEventTo(this.el, "video_ended", {});
         }
 
-        // Report duration when video starts playing (more accurate than onReady)
+        // When user clicks play/pause on YouTube controls, sync to server
+        // This is the key fix - YouTube controls must update server state
         if (event.data === YT.PlayerState.PLAYING) {
+            // User clicked play on YouTube - tell server
+            this.markUserAction();
+            this.pushEventTo(this.el, "play", {});
+
+            // Report duration (more accurate than onReady)
             const duration = this.player.getDuration();
             if (duration > 0) {
                 this.pushEventTo(this.el, "report_duration", { duration: duration });
             }
+        } else if (event.data === YT.PlayerState.PAUSED) {
+            // User clicked pause on YouTube - tell server
+            this.markUserAction();
+            this.pushEventTo(this.el, "pause", {});
         }
     },
 

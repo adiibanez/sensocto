@@ -105,8 +105,32 @@ defmodule Sensocto.Sensors.Room do
       end
     end
 
+    # Used by RoomStore to sync in-memory state to PostgreSQL
+    create :sync_create do
+      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :join_code, :owner_id]
+
+      argument :id, :uuid, allow_nil?: false
+
+      change fn changeset, _context ->
+        # Set the ID from the argument
+        id = Ash.Changeset.get_argument(changeset, :id)
+        changeset = Ash.Changeset.force_change_attribute(changeset, :id, id)
+
+        # Use provided join_code or generate one
+        case Ash.Changeset.get_attribute(changeset, :join_code) do
+          nil -> Ash.Changeset.change_attribute(changeset, :join_code, generate_join_code())
+          _ -> changeset
+        end
+      end
+    end
+
     update :update do
       accept [:name, :description, :configuration, :is_public, :calls_enabled]
+    end
+
+    # Used by RoomStore to sync updates
+    update :sync_update do
+      accept [:name, :description, :configuration, :is_public, :calls_enabled, :join_code]
     end
 
     update :regenerate_join_code do
@@ -142,6 +166,10 @@ defmodule Sensocto.Sensors.Room do
     read :user_member_rooms do
       argument :user_id, :uuid, allow_nil?: false
       filter expr(exists(room_memberships, user_id == ^arg(:user_id)))
+    end
+
+    # List all rooms for hydration on startup
+    read :all do
     end
   end
 

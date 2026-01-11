@@ -55,6 +55,11 @@ defmodule Sensocto.Sensors.RoomMembership do
       change manage_relationship(:user_id, :user, type: :append)
     end
 
+    # Used by RoomStore to sync memberships without validating relationships
+    create :sync_create do
+      accept [:role, :room_id, :user_id]
+    end
+
     create :join do
       accept []
       argument :room_id, :uuid, allow_nil?: false

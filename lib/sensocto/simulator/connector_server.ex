@@ -11,6 +11,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
     defstruct [
       :connector_id,
       :connector_name,
+      :room_id,
       :sensors_config,
       :sensor_pids,
       :supervisor
@@ -21,10 +22,12 @@ defmodule Sensocto.Simulator.ConnectorServer do
     config = %{
       connector_id: config["connector_id"],
       connector_name: config["connector_name"] || "Sim_#{config["connector_id"]}",
+      room_id: config["room_id"],
       sensors: config["sensors"] || %{}
     }
 
-    Logger.info("ConnectorServer start_link: #{config.connector_id}")
+    Logger.info("ConnectorServer start_link: #{config.connector_id}" <>
+      if(config.room_id, do: " (room: #{config.room_id})", else: ""))
 
     GenServer.start_link(__MODULE__, config, name: via_tuple(config.connector_id))
   end
@@ -39,6 +42,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
     state = %State{
       connector_id: config.connector_id,
       connector_name: config.connector_name,
+      room_id: config.room_id,
       sensors_config: config.sensors,
       sensor_pids: %{},
       supervisor: supervisor
@@ -102,7 +106,8 @@ defmodule Sensocto.Simulator.ConnectorServer do
       sensor_name: prefixed_sensor_name,
       connector_id: state.connector_id,
       connector_name: state.connector_name,
-      connector_pid: self()
+      connector_pid: self(),
+      room_id: state.room_id
     })
 
     Logger.info("Starting simulator sensor: #{sensor_id} (#{prefixed_sensor_name})")

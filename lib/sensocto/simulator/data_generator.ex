@@ -2,9 +2,13 @@ defmodule Sensocto.Simulator.DataGenerator do
   @moduledoc """
   Generates simulated sensor data.
   Supports Python script integration for complex waveforms and fake data fallback.
+
+  For GPS/geolocation data, supports track-based simulation via TrackPlayer
+  for realistic movement patterns (walking, cycling, driving, bird migration, etc.)
   """
 
   alias NimbleCSV.RFC4180, as: CSV
+  alias Sensocto.Simulator.TrackPlayer
   require Logger
 
   @doc """
@@ -16,24 +20,30 @@ defmodule Sensocto.Simulator.DataGenerator do
       sensor_type = config[:sensor_type] || "generic"
 
       # Battery uses special handling for structured payload
-      if sensor_type == "battery" do
-        {:ok, fetch_battery_data(config)}
-      else
-        result =
-          case config[:dummy_data] do
-            true -> {:ok, fetch_fake_sensor_data(config)}
-            _ -> fetch_python_data(config)
+      # Geolocation uses track-based playback for realistic movement
+      cond do
+        sensor_type == "battery" ->
+          {:ok, fetch_battery_data(config)}
+
+        sensor_type == "geolocation" ->
+          {:ok, fetch_geolocation_data(config)}
+
+        true ->
+          result =
+            case config[:dummy_data] do
+              true -> {:ok, fetch_fake_sensor_data(config)}
+              _ -> fetch_python_data(config)
+            end
+
+          case result do
+            {:ok, csv_output} ->
+              data = parse_csv_output(csv_output)
+              {:ok, data}
+
+            {:error, reason} ->
+              Logger.warning("Python data fetch failed, using fake data: #{inspect(reason)}")
+              {:ok, parse_csv_output(fetch_fake_sensor_data(config))}
           end
-
-        case result do
-          {:ok, csv_output} ->
-            data = parse_csv_output(csv_output)
-            {:ok, data}
-
-          {:error, reason} ->
-            Logger.warning("Python data fetch failed, using fake data: #{inspect(reason)}")
-            {:ok, parse_csv_output(fetch_fake_sensor_data(config))}
-        end
       end
     rescue
       e ->
@@ -66,6 +76,101 @@ defmodule Sensocto.Simulator.DataGenerator do
         }
       }
     end)
+  end
+
+  # Special handler for geolocation data using track-based playback
+  defp fetch_geolocation_data(config) do
+    sensor_id = config[:sensor_id] || "unknown"
+    batch_size = config[:batch_size] || 1
+    sampling_rate = max(config[:sampling_rate] || 0.1, 0.01)
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+
+    # Ensure track playback is started for this sensor
+    ensure_track_started(sensor_id, config)
+
+    Enum.map(0..(batch_size - 1), fn i ->
+      timestamp = now + i * interval_ms
+      delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
+
+      # Get position from track player (advances playback time)
+      position = get_track_position(sensor_id)
+
+      %{
+        timestamp: timestamp,
+        delay: delay,
+        payload: position
+      }
+    end)
+  end
+
+  # Start track playback for a sensor if not already playing
+  defp ensure_track_started(sensor_id, config) do
+    case TrackPlayer.get_status(sensor_id) do
+      {:ok, _status} ->
+        # Already playing
+        :ok
+
+      {:error, :not_playing} ->
+        # Start playback with configured or random track
+        track_opts = build_track_opts(config)
+        TrackPlayer.start_playback(sensor_id, track_opts)
+    end
+  end
+
+  defp build_track_opts(config) do
+    opts = []
+
+    # Track selection priority: track_name > mode > random
+    opts =
+      cond do
+        track_name = config[:track_name] ->
+          [{:track_name, track_name} | opts]
+
+        mode = config[:track_mode] ->
+          mode_atom = if is_binary(mode), do: String.to_existing_atom(mode), else: mode
+          [{:mode, mode_atom} | opts]
+
+        config[:generate_track] ->
+          mode = config[:track_mode] || :walk
+          mode_atom = if is_binary(mode), do: String.to_existing_atom(mode), else: mode
+          [{:generate, true}, {:mode, mode_atom} | opts]
+
+        true ->
+          # Random track
+          opts
+      end
+
+    # Playback options
+    opts = if speed = config[:playback_speed], do: [{:playback_speed, speed} | opts], else: opts
+    opts = if config[:no_loop], do: [{:loop, false} | opts], else: [{:loop, true} | opts]
+    opts = if config[:random_start], do: [{:random_start, true} | opts], else: opts
+
+    # Generated track options
+    opts = if lat = config[:start_lat], do: [{:start_lat, lat} | opts], else: opts
+    opts = if lng = config[:start_lng], do: [{:start_lng, lng} | opts], else: opts
+    opts = if dur = config[:track_duration], do: [{:duration_minutes, dur} | opts], else: opts
+
+    opts
+  end
+
+  defp get_track_position(sensor_id) do
+    case TrackPlayer.tick(sensor_id) do
+      {:ok, position} ->
+        position
+
+      {:error, :not_playing} ->
+        # Fallback to static position if track player not available
+        %{
+          latitude: 52.52,
+          longitude: 13.405,
+          altitude: 35.0,
+          speed: 0.0,
+          heading: 0.0,
+          accuracy: 10.0
+        }
+    end
   end
 
   defp fetch_python_data(config) do

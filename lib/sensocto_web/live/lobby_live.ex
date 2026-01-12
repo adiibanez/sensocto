@@ -626,6 +626,24 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :lobby_mode, new_mode)}
   end
 
+  # Lens view selector (dropdown)
+  @impl true
+  def handle_event("select_view", %{"view" => view}, socket) do
+    path =
+      case view do
+        "sensors" -> ~p"/lobby"
+        "users" -> ~p"/lobby/users"
+        "heartrate" -> ~p"/lobby/heartrate"
+        "imu" -> ~p"/lobby/imu"
+        "location" -> ~p"/lobby/location"
+        "ecg" -> ~p"/lobby/ecg"
+        "battery" -> ~p"/lobby/battery"
+        _ -> ~p"/lobby"
+      end
+
+    {:noreply, push_patch(socket, to: path)}
+  end
+
   # Call-related events from JS hooks
   @impl true
   def handle_event("call_joined", %{"endpoint_id" => _endpoint_id}, socket) do

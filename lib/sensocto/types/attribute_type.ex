@@ -69,6 +69,7 @@ defmodule Sensocto.Types.AttributeType do
     "speaker",
     "microphone",
     "body_location",
+    "rich_presence",
 
     # Activity
     "steps",
@@ -153,7 +154,7 @@ defmodule Sensocto.Types.AttributeType do
       t when t in ~w(imu accelerometer gyroscope magnetometer quaternion euler heading gravity tap orientation) -> :motion
       t when t in ~w(geolocation altitude speed) -> :location
       t when t in ~w(temperature humidity pressure light proximity gas air_quality color) -> :environment
-      t when t in ~w(battery button led speaker microphone body_location) -> :device
+      t when t in ~w(battery button led speaker microphone body_location rich_presence) -> :device
       t when t in ~w(steps calories distance) -> :activity
       "buttplug" -> :specialty
       _ -> :unknown
@@ -230,6 +231,9 @@ defmodule Sensocto.Types.AttributeType do
       "body_location" ->
         %{chart_type: :info, component: "BodyLocation"}
 
+      "rich_presence" ->
+        %{chart_type: :card, component: "RichPresence"}
+
       _ ->
         %{chart_type: :sparkline, component: "SparklineWasm"}
     end
@@ -266,6 +270,7 @@ defmodule Sensocto.Types.AttributeType do
       "speaker" -> ["frequency"]
       "microphone" -> ["level"]
       "body_location" -> ["value"]
+      "rich_presence" -> ["title", "description", "url", "image"]
       "buttplug" -> ["command"]
       _ -> []
     end

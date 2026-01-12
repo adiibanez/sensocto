@@ -1,0 +1,180 @@
+# GPS Tracking Demo - Multiple sensors with realistic GPS tracks
+# Use case: Fleet tracking, fitness tracking, wildlife monitoring
+#
+# Features various transport modes with realistic GPS track playback:
+# - Walk: Person walking in Berlin
+# - Cycle: Cyclist in Berlin
+# - Car: Vehicle on highway
+# - Train: ICE train journey
+# - Bird: Stork migration
+# - Drone: Survey drone
+# - Boat: Ferry crossing
+#
+# GPS sampling at 1Hz (once per second)
+# Track playback speed can be adjusted (default 1x realtime)
+
+connectors:
+  gps_tracking_demo:
+    connector_id: "gps_tracking_demo"
+    connector_name: "GPS_Tracking_Demo"
+    sensors:
+      # Walking person with heartrate
+      walker_1:
+        sensor_id: "walker_1"
+        sensor_name: "Walker_Berlin"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            track_mode: "walk"
+            playback_speed: 10
+            random_start: true
+            dummy_data: true
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 95
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            dummy_data: true
+
+      # Cyclist
+      cyclist_1:
+        sensor_id: "cyclist_1"
+        sensor_name: "Cyclist_Berlin"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            track_mode: "cycle"
+            playback_speed: 10
+            random_start: true
+            dummy_data: true
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 130
+            dummy_data: true
+
+      # Vehicle on highway
+      vehicle_1:
+        sensor_id: "vehicle_1"
+        sensor_name: "Vehicle_Autobahn"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            track_mode: "car"
+            playback_speed: 20
+            random_start: true
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            dummy_data: true
+
+      # Train
+      train_1:
+        sensor_id: "train_1"
+        sensor_name: "ICE_Train"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            track_mode: "train"
+            playback_speed: 30
+            random_start: true
+            dummy_data: true
+
+      # Migrating bird (stork)
+      stork_1:
+        sensor_id: "stork_1"
+        sensor_name: "Stork_Migration"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            track_mode: "bird"
+            playback_speed: 50
+            random_start: true
+            dummy_data: true
+
+      # Survey drone
+      drone_1:
+        sensor_id: "drone_1"
+        sensor_name: "Survey_Drone"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 500
+            duration: 0
+            sampling_rate: 2
+            track_mode: "drone"
+            playback_speed: 5
+            random_start: false
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            dummy_data: true
+
+      # Ferry
+      ferry_1:
+        sensor_id: "ferry_1"
+        sensor_name: "Baltic_Ferry"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            track_mode: "boat"
+            playback_speed: 30
+            random_start: true
+            dummy_data: true

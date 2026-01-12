@@ -17,6 +17,7 @@ defmodule Sensocto.Simulator.SensorServer do
       :connector_id,
       :connector_name,
       :connector_pid,
+      :room_id,
       :attributes_config,
       :attribute_pids,
       :supervisor,
@@ -42,6 +43,7 @@ defmodule Sensocto.Simulator.SensorServer do
       connector_id: config.connector_id,
       connector_name: config.connector_name,
       connector_pid: config[:connector_pid],
+      room_id: config[:room_id],
       attributes_config: config[:attributes] || %{},
       attribute_pids: %{},
       supervisor: supervisor,
@@ -86,6 +88,17 @@ defmodule Sensocto.Simulator.SensorServer do
           online_at: System.system_time(:millisecond),
           source: :simulator
         })
+
+        # Add sensor to room if room_id is specified
+        if state.room_id do
+          case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
+            :ok ->
+              Logger.info("Added sensor #{state.sensor_id} to room #{state.room_id}")
+
+            {:error, reason} ->
+              Logger.warning("Failed to add sensor #{state.sensor_id} to room #{state.room_id}: #{inspect(reason)}")
+          end
+        end
 
         new_state = %{state | real_sensor_started: true}
         {:noreply, new_state, {:continue, :setup_attributes}}
@@ -138,6 +151,13 @@ defmodule Sensocto.Simulator.SensorServer do
     # Untrack presence so LiveViews see the sensor leave immediately
     if state.real_sensor_started do
       Presence.untrack(self(), "presence:all", state.sensor_id)
+    end
+
+    # Remove sensor from room if it was assigned
+    # Use Map.get for backwards compatibility with old processes that may not have room_id
+    room_id = Map.get(state, :room_id)
+    if room_id && state.real_sensor_started do
+      Sensocto.RoomStore.remove_sensor(room_id, state.sensor_id)
     end
 
     # Remove the real sensor when simulator sensor stops

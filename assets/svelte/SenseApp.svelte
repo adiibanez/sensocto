@@ -129,16 +129,25 @@
     .sense-app-container {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.75rem;
     }
 
+    /* Mobile: sensor buttons in a row, settings hidden initially */
     .sensor-clients {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
+        align-items: center;
         gap: 0.5rem;
+        flex-wrap: wrap;
     }
 
-    /* Desktop: horizontal layout */
+    /* Mobile: compact layout with settings in secondary position */
+    .connector-name-section,
+    .autostart-section {
+        display: none;
+    }
+
+    /* Desktop: horizontal layout with all elements visible */
     @media (min-width: 640px) {
         .sense-app-container {
             flex-direction: row;
@@ -151,6 +160,10 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+        }
+
+        .autostart-section {
+            display: flex;
         }
 
         .sensor-clients {

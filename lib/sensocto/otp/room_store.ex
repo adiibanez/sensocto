@@ -107,6 +107,13 @@ defmodule Sensocto.RoomStore do
   end
 
   @doc """
+  Lists all rooms (for admin/simulator purposes).
+  """
+  def list_all_rooms do
+    GenServer.call(__MODULE__, :list_all_rooms)
+  end
+
+  @doc """
   Adds a user to a room with a role.
   """
   def join_room(room_id, user_id, role \\ :member) do
@@ -490,6 +497,12 @@ defmodule Sensocto.RoomStore do
       |> Map.values()
       |> Enum.filter(& &1.is_public)
 
+    {:reply, rooms, state}
+  end
+
+  @impl true
+  def handle_call(:list_all_rooms, _from, state) do
+    rooms = Map.values(state.rooms)
     {:reply, rooms, state}
   end
 

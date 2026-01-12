@@ -2,21 +2,20 @@ defmodule Sensocto.Simulator.Manager do
   @moduledoc """
   Manages simulator connectors based on YAML configuration.
   Loads config on startup and supports hot-reloading.
-  Supports multiple scenario configurations with different complexity levels.
+  Supports multiple scenario configurations running simultaneously.
   """
 
   use GenServer
   require Logger
 
   @scenarios_dir "config/simulator_scenarios"
-  @default_scenario "medium"
 
-  defstruct [:connectors, :config_path, :current_scenario, :available_scenarios]
+  defstruct [:connectors, :config_path, :running_scenarios, :available_scenarios]
 
   @type t :: %__MODULE__{
           connectors: map(),
           config_path: String.t(),
-          current_scenario: String.t() | nil,
+          running_scenarios: map(),
           available_scenarios: list(map())
         }
 
@@ -97,18 +96,52 @@ defmodule Sensocto.Simulator.Manager do
   end
 
   @doc """
-  Get the current scenario name.
+  Get the currently running scenarios.
+  Returns a map of scenario_name => %{room_id: ..., connector_ids: [...]}
+  """
+  def get_running_scenarios do
+    GenServer.call(__MODULE__, :get_running_scenarios)
+  end
+
+  @doc """
+  Get a single running scenario name (for backwards compatibility).
+  Returns the first running scenario or nil.
   """
   def get_current_scenario do
-    GenServer.call(__MODULE__, :get_current_scenario)
+    case get_running_scenarios() do
+      scenarios when map_size(scenarios) > 0 ->
+        scenarios |> Map.keys() |> List.first()
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Start a scenario without stopping others.
+
+  Options:
+  - :room_id - assign all sensors to this room
+  """
+  def start_scenario(scenario_name, opts \\ []) do
+    GenServer.call(__MODULE__, {:start_scenario, scenario_name, opts})
+  end
+
+  @doc """
+  Stop a specific running scenario.
+  """
+  def stop_scenario(scenario_name) do
+    GenServer.call(__MODULE__, {:stop_scenario, scenario_name})
   end
 
   @doc """
   Switch to a different scenario by name.
   Stops all current connectors and starts the new scenario.
+
+  Options:
+  - :room_id - assign all sensors to this room
   """
-  def switch_scenario(scenario_name) do
-    GenServer.call(__MODULE__, {:switch_scenario, scenario_name})
+  def switch_scenario(scenario_name, opts \\ []) do
+    GenServer.call(__MODULE__, {:switch_scenario, scenario_name, opts})
   end
 
   # Server Callbacks
@@ -120,7 +153,7 @@ defmodule Sensocto.Simulator.Manager do
     state = %__MODULE__{
       connectors: %{},
       config_path: config_path,
-      current_scenario: nil,
+      running_scenarios: %{},
       available_scenarios: available_scenarios
     }
 
@@ -200,7 +233,10 @@ defmodule Sensocto.Simulator.Manager do
         {connector_id, %{
           name: config["connector_name"] || connector_id,
           status: status,
-          sensors: sensors
+          sensors: sensors,
+          scenario: config["scenario_name"],
+          room_id: config["room_id"],
+          room_name: get_room_name(config["room_id"])
         }}
       end)
 
@@ -218,12 +254,69 @@ defmodule Sensocto.Simulator.Manager do
   end
 
   @impl true
-  def handle_call(:get_current_scenario, _from, state) do
-    {:reply, state.current_scenario, state}
+  def handle_call(:get_running_scenarios, _from, state) do
+    {:reply, state.running_scenarios, state}
   end
 
   @impl true
-  def handle_call({:switch_scenario, scenario_name}, _from, state) do
+  def handle_call({:start_scenario, scenario_name, opts}, _from, state) do
+    # Check if scenario is already running
+    if Map.has_key?(state.running_scenarios, scenario_name) do
+      {:reply, {:error, :already_running}, state}
+    else
+      case Enum.find(state.available_scenarios, fn s -> s.name == scenario_name end) do
+        nil ->
+          {:reply, {:error, :scenario_not_found}, state}
+
+        scenario ->
+          case YamlElixir.read_from_file(scenario.path) do
+            {:ok, config} ->
+              room_id = Keyword.get(opts, :room_id)
+              room_info = if room_id, do: " (room: #{room_id})", else: ""
+              Logger.info("Starting scenario: #{scenario_name}#{room_info}")
+
+              # Inject room_id and scenario_name into all connectors
+              config =
+                update_in(config, ["connectors"], fn connectors ->
+                  Map.new(connectors || %{}, fn {id, connector} ->
+                    connector = Map.put(connector, "scenario_name", scenario_name)
+                    connector = if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+                    {id, connector}
+                  end)
+                end)
+
+              new_state = apply_scenario_config(state, scenario_name, room_id, config)
+              {:reply, :ok, new_state}
+
+            {:error, reason} ->
+              Logger.error("Failed to load scenario #{scenario_name}: #{inspect(reason)}")
+              {:reply, {:error, reason}, state}
+          end
+      end
+    end
+  end
+
+  @impl true
+  def handle_call({:stop_scenario, scenario_name}, _from, state) do
+    case Map.get(state.running_scenarios, scenario_name) do
+      nil ->
+        {:reply, {:error, :not_running}, state}
+
+      scenario_info ->
+        # Stop all connectors for this scenario
+        Enum.each(scenario_info.connector_ids, &do_stop_connector/1)
+
+        # Remove connectors from state
+        new_connectors = Map.drop(state.connectors, scenario_info.connector_ids)
+        new_running = Map.delete(state.running_scenarios, scenario_name)
+
+        Logger.info("Stopped scenario: #{scenario_name}")
+        {:reply, :ok, %{state | connectors: new_connectors, running_scenarios: new_running}}
+    end
+  end
+
+  @impl true
+  def handle_call({:switch_scenario, scenario_name, opts}, _from, state) do
     # Find the scenario
     case Enum.find(state.available_scenarios, fn s -> s.name == scenario_name end) do
       nil ->
@@ -238,8 +331,26 @@ defmodule Sensocto.Simulator.Manager do
         # Load the new scenario config
         case YamlElixir.read_from_file(scenario.path) do
           {:ok, config} ->
-            Logger.info("Switching to scenario: #{scenario_name}")
-            new_state = apply_config(%{state | connectors: %{}, current_scenario: scenario_name}, config)
+            room_id = Keyword.get(opts, :room_id)
+            room_info = if room_id, do: " (room: #{room_id})", else: ""
+            Logger.info("Switching to scenario: #{scenario_name}#{room_info}")
+
+            # Inject room_id and scenario_name into all connectors
+            config =
+              update_in(config, ["connectors"], fn connectors ->
+                Map.new(connectors || %{}, fn {id, connector} ->
+                  connector = Map.put(connector, "scenario_name", scenario_name)
+                  connector = if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+                  {id, connector}
+                end)
+              end)
+
+            new_state = apply_scenario_config(
+              %{state | connectors: %{}, running_scenarios: %{}},
+              scenario_name,
+              room_id,
+              config
+            )
             {:reply, :ok, new_state}
 
           {:error, reason} ->
@@ -360,6 +471,50 @@ defmodule Sensocto.Simulator.Manager do
         attributes: sensor_config["attributes"] || %{}
       }}
     end)
+  end
+
+  defp get_room_name(nil), do: nil
+  defp get_room_name(room_id) do
+    case Sensocto.RoomStore.get_room(room_id) do
+      {:ok, room} -> room.name
+      _ -> nil
+    end
+  end
+
+  defp apply_scenario_config(state, scenario_name, room_id, config) do
+    new_connectors_config = config["connectors"] || %{}
+
+    # Check if we should autostart connectors
+    simulator_config = Application.get_env(:sensocto, :simulator, [])
+    autostart = Keyword.get(simulator_config, :autostart, true)
+
+    connector_ids = Map.keys(new_connectors_config)
+
+    new_state =
+      if autostart do
+        # Start/Update connectors
+        Enum.reduce(new_connectors_config, state, fn {connector_id, connector_config}, acc ->
+          connector_config = Map.put(connector_config, "connector_id", connector_id)
+          start_or_update_connector(acc, connector_id, connector_config)
+        end)
+      else
+        # Just store config without starting
+        Logger.info("Autostart disabled - connectors loaded but not started")
+        new_connectors =
+          Map.new(new_connectors_config, fn {connector_id, connector_config} ->
+            {connector_id, Map.put(connector_config, "connector_id", connector_id)}
+          end)
+        %{state | connectors: Map.merge(state.connectors, new_connectors)}
+      end
+
+    # Track the running scenario
+    scenario_info = %{
+      room_id: room_id,
+      room_name: get_room_name(room_id),
+      connector_ids: connector_ids
+    }
+
+    %{new_state | running_scenarios: Map.put(new_state.running_scenarios, scenario_name, scenario_info)}
   end
 
   defp discover_scenarios do

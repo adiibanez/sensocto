@@ -25,6 +25,9 @@ defmodule Sensocto.Simulator.Supervisor do
       # Battery state manager (for realistic battery simulation)
       Sensocto.Simulator.BatteryState,
 
+      # Track player for GPS track replay
+      Sensocto.Simulator.TrackPlayer,
+
       # Data server pool (5 workers for parallel data generation)
       Supervisor.child_spec({Sensocto.Simulator.DataServer, 1}, id: :data_server_1),
       Supervisor.child_spec({Sensocto.Simulator.DataServer, 2}, id: :data_server_2),

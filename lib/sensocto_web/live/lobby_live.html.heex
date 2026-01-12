@@ -34,51 +34,6 @@
     </div>
   </div>
 
-  <.tabs>
-    <:tab patch={~p"/lobby"} active={@live_action == :sensors}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="squares-2x2" type="outline" class="h-4 w-4" />
-        Sensors
-      </span>
-    </:tab>
-    <:tab patch={~p"/lobby/users"} active={@live_action == :users}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="users" type="outline" class="h-4 w-4" />
-        By User
-      </span>
-    </:tab>
-    <:tab patch={~p"/lobby/heartrate"} active={@live_action == :heartrate}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="heart" type="outline" class="h-4 w-4" />
-        Heartrate
-      </span>
-    </:tab>
-    <:tab patch={~p"/lobby/imu"} active={@live_action == :imu}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="cube" type="outline" class="h-4 w-4" />
-        IMU
-      </span>
-    </:tab>
-    <:tab patch={~p"/lobby/location"} active={@live_action == :location}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="map-pin" type="outline" class="h-4 w-4" />
-        Location
-      </span>
-    </:tab>
-    <:tab patch={~p"/lobby/ecg"} active={@live_action == :ecg}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="chart-bar" type="outline" class="h-4 w-4" />
-        ECG
-      </span>
-    </:tab>
-    <:tab patch={~p"/lobby/battery"} active={@live_action == :battery}>
-      <span class="flex items-center gap-1">
-        <Heroicons.icon name="battery-50" type="outline" class="h-4 w-4" />
-        Battery
-      </span>
-    </:tab>
-  </.tabs>
-
   <%!-- Mode Switcher: Media Playback vs Video Call --%>
   <div class="flex items-center justify-center gap-2 mb-4">
     <button
@@ -125,6 +80,77 @@
       in_call={@in_call}
       participants={@call_participants}
     />
+  </div>
+
+  <%!-- Lens Selector - styled like rooms --%>
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-semibold text-white">Sensors</h2>
+
+    <div class="flex items-center gap-3">
+      <%!-- Quick lens chips --%>
+      <div class="flex items-center gap-2">
+        <.link
+          patch={~p"/lobby"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :sensors,
+              do: "bg-orange-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" />
+          All
+        </.link>
+        <.link
+          patch={~p"/lobby/heartrate"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :heartrate,
+              do: "bg-orange-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="heart" type="outline" class="h-3 w-3" />
+          Heartrate
+        </.link>
+        <.link
+          patch={~p"/lobby/ecg"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :ecg,
+              do: "bg-orange-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" />
+          ECG
+        </.link>
+        <.link
+          patch={~p"/lobby/battery"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :battery,
+              do: "bg-orange-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" />
+          Battery
+        </.link>
+      </div>
+
+      <%!-- Lens Dropdown for all types --%>
+      <form phx-change="select_view" class="hidden sm:block">
+        <select
+          name="view"
+          class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
+        >
+          <option value="sensors" selected={@live_action == :sensors}>All Sensors</option>
+          <optgroup label="Views">
+            <option value="users" selected={@live_action == :users}>By User</option>
+          </optgroup>
+          <optgroup label="Lenses">
+            <option value="heartrate" selected={@live_action == :heartrate}>Heartrate</option>
+            <option value="imu" selected={@live_action == :imu}>IMU</option>
+            <option value="location" selected={@live_action == :location}>Location</option>
+            <option value="ecg" selected={@live_action == :ecg}>ECG</option>
+            <option value="battery" selected={@live_action == :battery}>Battery</option>
+          </optgroup>
+        </select>
+      </form>
+    </div>
   </div>
 
   <div :if={@live_action == :sensors}>

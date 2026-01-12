@@ -4,11 +4,13 @@ defmodule SensoctoWeb.RoomShowLive do
   Shows sensor summaries with activity indicators and provides room management.
   """
   use SensoctoWeb, :live_view
+  use LiveSvelte.Components
   require Logger
 
   alias Sensocto.Rooms
   alias Sensocto.Calls
   alias Sensocto.Media.MediaPlayerServer
+  alias Sensocto.Types.AttributeType
   alias Phoenix.PubSub
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
 
@@ -44,11 +46,16 @@ defmodule SensoctoWeb.RoomShowLive do
         # Check if there's an active call in this room
         call_active = Calls.call_exists?(room_id)
 
+        # Get real-time sensor state for lens extraction
+        sensors_state = get_sensors_state(room.sensors || [])
+        available_lenses = extract_available_lenses(sensors_state)
+
         socket =
           socket
           |> assign(:page_title, room.name)
           |> assign(:room, room)
           |> assign(:sensors, room.sensors || [])
+          |> assign(:sensors_state, sensors_state)
           |> assign(:available_sensors, available_sensors)
           |> assign(:show_share_modal, false)
           |> assign(:show_add_sensor_modal, false)
@@ -59,6 +66,10 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:can_manage, Rooms.can_manage?(room, user))
           |> assign(:sensor_activity, build_activity_map(room.sensors || []))
           |> assign(:edit_form, build_edit_form(room))
+          # Lens-related assigns
+          |> assign(:available_lenses, available_lenses)
+          |> assign(:current_lens, nil)
+          |> assign(:lens_data, %{})
           # Call-related assigns
           |> assign(:call_active, call_active)
           |> assign(:in_call, false)
@@ -325,6 +336,30 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_event("copy_link", _params, socket) do
     {:noreply, put_flash(socket, :info, "Link copied to clipboard!")}
+  end
+
+  @impl true
+  def handle_event("select_lens", %{"lens" => lens_type}, socket) do
+    lens_type = if lens_type == "", do: nil, else: lens_type
+
+    lens_data = if lens_type do
+      extract_lens_data(socket.assigns.sensors_state, lens_type)
+    else
+      %{}
+    end
+
+    {:noreply,
+     socket
+     |> assign(:current_lens, lens_type)
+     |> assign(:lens_data, lens_data)}
+  end
+
+  @impl true
+  def handle_event("clear_lens", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_lens, nil)
+     |> assign(:lens_data, %{})}
   end
 
   @impl true
@@ -663,6 +698,233 @@ defmodule SensoctoWeb.RoomShowLive do
     })
   end
 
+  # Get real-time state for room sensors from the supervisor
+  defp get_sensors_state(room_sensors) do
+    all_sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+
+    room_sensor_ids = Enum.map(room_sensors, & &1.sensor_id) |> MapSet.new()
+
+    all_sensors
+    |> Enum.filter(fn {sensor_id, _} -> MapSet.member?(room_sensor_ids, sensor_id) end)
+    |> Enum.into(%{})
+  end
+
+  # Extract available lenses from room sensors
+  # Groups attribute types by category for organized display
+  defp extract_available_lenses(sensors_state) do
+    # Collect all attribute types from all sensors
+    all_attr_types =
+      sensors_state
+      |> Enum.flat_map(fn {_sensor_id, sensor} ->
+        (sensor.attributes || %{})
+        |> Enum.map(fn {_attr_id, attr} -> attr.attribute_type end)
+      end)
+      |> Enum.uniq()
+
+    # Group by category and build lens info
+    all_attr_types
+    |> Enum.map(fn attr_type ->
+      category = AttributeType.category(attr_type)
+      hints = AttributeType.render_hints(attr_type)
+      sensor_count = count_sensors_with_attribute(sensors_state, attr_type)
+
+      %{
+        type: attr_type,
+        category: category,
+        label: format_lens_label(attr_type),
+        icon: get_lens_icon(attr_type),
+        color: Map.get(hints, :color, "#6b7280"),
+        sensor_count: sensor_count,
+        has_composite: has_composite_view?(attr_type)
+      }
+    end)
+    |> Enum.sort_by(fn lens -> {category_order(lens.category), lens.label} end)
+  end
+
+  defp count_sensors_with_attribute(sensors_state, attr_type) do
+    sensors_state
+    |> Enum.count(fn {_sensor_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        normalize_attr_type(attr.attribute_type) == normalize_attr_type(attr_type)
+      end)
+    end)
+  end
+
+  defp normalize_attr_type(type) when type in ["hr", "heartrate"], do: "heartrate"
+  defp normalize_attr_type(type), do: type
+
+  defp format_lens_label(attr_type) do
+    attr_type
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp get_lens_icon(attr_type) do
+    case attr_type do
+      t when t in ["heartrate", "hr"] -> "heart"
+      "ecg" -> "chart-bar"
+      "imu" -> "cube"
+      "geolocation" -> "map-pin"
+      "battery" -> "battery-50"
+      "temperature" -> "sun"
+      "humidity" -> "cloud"
+      "pressure" -> "arrow-down-circle"
+      "accelerometer" -> "arrows-pointing-out"
+      "gyroscope" -> "arrow-path"
+      "spo2" -> "beaker"
+      "steps" -> "arrow-trending-up"
+      _ -> "signal"
+    end
+  end
+
+  defp has_composite_view?(attr_type) do
+    # These attribute types have dedicated composite Svelte components
+    attr_type in ["heartrate", "hr", "imu", "geolocation", "ecg", "battery"]
+  end
+
+  defp category_order(category) do
+    case category do
+      :health -> 1
+      :location -> 2
+      :motion -> 3
+      :environment -> 4
+      :device -> 5
+      :activity -> 6
+      _ -> 99
+    end
+  end
+
+  # Extract composite data for a specific lens type
+  defp extract_lens_data(sensors_state, lens_type) do
+    case normalize_attr_type(lens_type) do
+      "heartrate" -> extract_heartrate_data(sensors_state)
+      "geolocation" -> extract_location_data(sensors_state)
+      "imu" -> extract_imu_data(sensors_state)
+      "ecg" -> extract_ecg_data(sensors_state)
+      "battery" -> extract_battery_data(sensors_state)
+      _ -> extract_generic_data(sensors_state, lens_type)
+    end
+  end
+
+  defp extract_heartrate_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type in ["heartrate", "hr"]
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      hr_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+        attr.attribute_type in ["heartrate", "hr"]
+      end)
+      bpm = case hr_attr do
+        {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
+        nil -> 0
+      end
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, bpm: bpm}
+    end)
+  end
+
+  defp extract_location_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "geolocation"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      geo_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+        attr.attribute_type == "geolocation"
+      end)
+      position = case geo_attr do
+        {_attr_id, attr} ->
+          payload = attr.lastvalue && attr.lastvalue.payload
+          case payload do
+            %{"latitude" => lat, "longitude" => lng} -> %{latitude: lat, longitude: lng}
+            %{latitude: lat, longitude: lng} -> %{latitude: lat, longitude: lng}
+            _ -> nil
+          end
+        nil -> nil
+      end
+      if position do
+        %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, position: position}
+      else
+        nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp extract_imu_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "imu"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name}
+    end)
+  end
+
+  defp extract_ecg_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "ecg"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name}
+    end)
+  end
+
+  defp extract_battery_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "battery"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      batt_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+        attr.attribute_type == "battery"
+      end)
+      level = case batt_attr do
+        {_attr_id, attr} ->
+          payload = attr.lastvalue && attr.lastvalue.payload
+          case payload do
+            %{"level" => lvl} -> lvl
+            %{level: lvl} -> lvl
+            _ -> nil
+          end
+        nil -> nil
+      end
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, level: level || 0}
+    end)
+  end
+
+  defp extract_generic_data(sensors_state, attr_type) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == attr_type
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name}
+    end)
+  end
+
   defp normalize_room(%Sensocto.Sensors.Room{} = room) do
     %{
       id: room.id,
@@ -815,7 +1077,97 @@ defmodule SensoctoWeb.RoomShowLive do
 
         <%!-- Sensors Panel --%>
         <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
-          <h2 class="text-xl font-semibold mb-4">Sensors</h2>
+          <%!-- Header with Lens Selector --%>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold">Sensors</h2>
+
+            <%!-- Lens Selector - only show if there are sensors with attributes --%>
+            <%= if length(@available_lenses) > 0 do %>
+              <div class="flex items-center gap-3">
+                <%!-- Quick lens chips for common types --%>
+                <div class="hidden sm:flex items-center gap-2">
+                  <%= for lens <- Enum.take(@available_lenses, 4) do %>
+                    <button
+                      phx-click="select_lens"
+                      phx-value-lens={lens.type}
+                      class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                        if(@current_lens == lens.type,
+                          do: "bg-orange-500 text-white",
+                          else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                      title={"#{lens.sensor_count} sensor(s)"}
+                    >
+                      <Heroicons.icon name={lens.icon} type="outline" class="h-3 w-3" />
+                      {lens.label}
+                    </button>
+                  <% end %>
+                </div>
+
+                <%!-- Lens Dropdown for all types --%>
+                <form phx-change="select_lens" class="flex items-center gap-2">
+                  <select
+                    name="lens"
+                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
+                  >
+                    <option value="">All Sensors</option>
+                    <optgroup label="Health">
+                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :health) do %>
+                        <option value={lens.type} selected={@current_lens == lens.type}>
+                          {lens.label} ({lens.sensor_count})
+                        </option>
+                      <% end %>
+                    </optgroup>
+                    <optgroup label="Location">
+                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :location) do %>
+                        <option value={lens.type} selected={@current_lens == lens.type}>
+                          {lens.label} ({lens.sensor_count})
+                        </option>
+                      <% end %>
+                    </optgroup>
+                    <optgroup label="Motion">
+                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :motion) do %>
+                        <option value={lens.type} selected={@current_lens == lens.type}>
+                          {lens.label} ({lens.sensor_count})
+                        </option>
+                      <% end %>
+                    </optgroup>
+                    <optgroup label="Environment">
+                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :environment) do %>
+                        <option value={lens.type} selected={@current_lens == lens.type}>
+                          {lens.label} ({lens.sensor_count})
+                        </option>
+                      <% end %>
+                    </optgroup>
+                    <optgroup label="Device">
+                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :device) do %>
+                        <option value={lens.type} selected={@current_lens == lens.type}>
+                          {lens.label} ({lens.sensor_count})
+                        </option>
+                      <% end %>
+                    </optgroup>
+                    <optgroup label="Activity">
+                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :activity) do %>
+                        <option value={lens.type} selected={@current_lens == lens.type}>
+                          {lens.label} ({lens.sensor_count})
+                        </option>
+                      <% end %>
+                    </optgroup>
+                  </select>
+                </form>
+
+                <%!-- Clear lens button --%>
+                <%= if @current_lens do %>
+                  <button
+                    phx-click="clear_lens"
+                    class="text-gray-400 hover:text-white p-1"
+                    title="Show all sensors"
+                  >
+                    <Heroicons.icon name="x-mark" type="outline" class="h-4 w-4" />
+                  </button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+
           <%= if Enum.empty?(@sensors) do %>
             <div class="bg-gray-800 rounded-lg p-8 text-center">
               <svg class="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -832,6 +1184,18 @@ defmodule SensoctoWeb.RoomShowLive do
               <% end %>
             </div>
           <% else %>
+            <%!-- Composite Lens View --%>
+            <%= if @current_lens do %>
+              <div class="mb-6">
+                <.lens_composite_view
+                  lens_type={@current_lens}
+                  lens_data={@lens_data}
+                  socket={@socket}
+                />
+              </div>
+            <% end %>
+
+            <%!-- Sensor Grid --%>
             <div class={
               if @in_call,
                 do: "grid gap-3 grid-cols-1 xl:grid-cols-2",
@@ -864,6 +1228,64 @@ defmodule SensoctoWeb.RoomShowLive do
 
       <%= if @show_settings do %>
         <.settings_panel room={@room} is_owner={@is_owner} />
+      <% end %>
+    </div>
+    """
+  end
+
+  # Lens composite view component - renders the appropriate Svelte component for each lens type
+  defp lens_composite_view(assigns) do
+    ~H"""
+    <div class="bg-gray-800 rounded-lg p-4">
+      <%= case normalize_attr_type(@lens_type) do %>
+        <% "heartrate" -> %>
+          <.svelte
+            name="CompositeHeartrate"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
+        <% "geolocation" -> %>
+          <.svelte
+            name="CompositeMap"
+            props={%{positions: Enum.map(@lens_data, fn d -> Map.put(d.position, :sensor_id, d.sensor_id) end)}}
+            socket={@socket}
+            class="w-full h-80"
+          />
+        <% "imu" -> %>
+          <.svelte
+            name="CompositeIMU"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
+        <% "ecg" -> %>
+          <.svelte
+            name="CompositeECG"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
+        <% "battery" -> %>
+          <.svelte
+            name="CompositeBattery"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
+        <% _ -> %>
+          <%!-- Generic lens view - show list of matching sensors --%>
+          <div class="text-gray-400">
+            <p class="text-sm mb-2">Sensors with {format_lens_label(@lens_type)}:</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              <%= for sensor <- @lens_data do %>
+                <div class="bg-gray-700 rounded px-3 py-2 text-sm">
+                  <p class="text-white truncate">{sensor.sensor_name}</p>
+                  <p class="text-xs text-gray-500">{sensor.sensor_id}</p>
+                </div>
+              <% end %>
+            </div>
+          </div>
       <% end %>
     </div>
     """

@@ -64,6 +64,21 @@ defmodule SensoctoWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
+
+  # Security headers
+  plug :put_secure_browser_headers, %{
+    "x-frame-options" => "SAMEORIGIN",
+    "x-content-type-options" => "nosniff",
+    "x-xss-protection" => "1; mode=block",
+    "referrer-policy" => "strict-origin-when-cross-origin"
+  }
+
   plug Plug.Session, @session_options
   plug SensoctoWeb.Router
+
+  defp put_secure_browser_headers(conn, headers) do
+    Enum.reduce(headers, conn, fn {key, value}, conn ->
+      Plug.Conn.put_resp_header(conn, key, value)
+    end)
+  end
 end

@@ -18,8 +18,8 @@ defmodule Sensocto.Accounts.User do
       token_resource Sensocto.Accounts.Token
       signing_secret Sensocto.Secrets
       store_all_tokens? true
-      # 1 year token lifetime (24 hours * 365 days = 8760 hours)
-      token_lifetime {365, :days}
+      # 30 day token lifetime (reduced from 365 days for security)
+      token_lifetime {30, :days}
     end
 
     strategies do

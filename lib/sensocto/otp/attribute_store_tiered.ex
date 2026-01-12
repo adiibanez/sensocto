@@ -36,20 +36,20 @@ defmodule Sensocto.AttributeStoreTiered do
   @default_warm_limit 10_000
   @default_query_limit 500
 
-  # ETS table name prefix
-  @warm_table_prefix :attribute_store_warm_
+  # Single global ETS table for all warm storage (avoids atom table exhaustion)
+  # Uses composite keys {sensor_id, attribute_id} instead of per-sensor tables
+  @warm_table :attribute_store_warm
 
   defp hot_limit, do: Application.get_env(:sensocto, :attribute_store_hot_limit, @default_hot_limit)
   defp warm_limit, do: Application.get_env(:sensocto, :attribute_store_warm_limit, @default_warm_limit)
 
-  def start_link(%{sensor_id: sensor_id} = configuration) do
-    Logger.debug("AttributeStoreTiered start_link: #{inspect(configuration)}")
-
-    # Create ETS table for warm storage
-    warm_table = warm_table_name(sensor_id)
-
-    if :ets.whereis(warm_table) == :undefined do
-      :ets.new(warm_table, [
+  @doc """
+  Ensures the global warm storage ETS table exists.
+  Should be called once at application startup (e.g., in Application.start/2).
+  """
+  def ensure_warm_table do
+    if :ets.whereis(@warm_table) == :undefined do
+      :ets.new(@warm_table, [
         :named_table,
         :public,
         :set,
@@ -57,6 +57,15 @@ defmodule Sensocto.AttributeStoreTiered do
         write_concurrency: true
       ])
     end
+
+    :ok
+  end
+
+  def start_link(%{sensor_id: sensor_id} = configuration) do
+    Logger.debug("AttributeStoreTiered start_link: #{inspect(configuration)}")
+
+    # Ensure the global warm table exists (idempotent)
+    ensure_warm_table()
 
     Agent.start_link(fn -> %{sensor_id: sensor_id} end, name: via_tuple(sensor_id))
   end
@@ -138,11 +147,9 @@ defmodule Sensocto.AttributeStoreTiered do
   Remove an attribute and its data from all tiers.
   """
   def remove_attribute(sensor_id, attribute_id) do
-    # Remove from warm tier
-    warm_table = warm_table_name(sensor_id)
-
-    if :ets.whereis(warm_table) != :undefined do
-      :ets.delete(warm_table, attribute_id)
+    # Remove from warm tier using composite key
+    if :ets.whereis(@warm_table) != :undefined do
+      :ets.delete(@warm_table, {sensor_id, attribute_id})
     end
 
     # Remove from hot tier
@@ -162,11 +169,13 @@ defmodule Sensocto.AttributeStoreTiered do
         |> Enum.map(fn {_attr_id, %{payloads: payloads}} -> length(payloads) end)
         |> Enum.sum()
 
-      warm_table = warm_table_name(sensor_id)
-
+      # Count warm entries for this sensor using match spec
       warm_count =
-        if :ets.whereis(warm_table) != :undefined do
-          :ets.info(warm_table, :size)
+        if :ets.whereis(@warm_table) != :undefined do
+          # Count entries where the key starts with this sensor_id
+          :ets.select_count(@warm_table, [
+            {{{sensor_id, :_}, :_}, [], [true]}
+          ])
         else
           0
         end
@@ -182,12 +191,12 @@ defmodule Sensocto.AttributeStoreTiered do
 
   @doc """
   Cleanup resources when sensor is terminated.
+  Removes all warm tier data for this sensor.
   """
   def cleanup(sensor_id) do
-    warm_table = warm_table_name(sensor_id)
-
-    if :ets.whereis(warm_table) != :undefined do
-      :ets.delete(warm_table)
+    if :ets.whereis(@warm_table) != :undefined do
+      # Delete all entries for this sensor using match_delete
+      :ets.match_delete(@warm_table, {{sensor_id, :_}, :_})
     end
   end
 
@@ -217,19 +226,20 @@ defmodule Sensocto.AttributeStoreTiered do
   end
 
   defp push_to_warm_tier(sensor_id, attribute_id, entries) do
-    warm_table = warm_table_name(sensor_id)
+    if :ets.whereis(@warm_table) != :undefined do
+      # Composite key: {sensor_id, attribute_id}
+      key = {sensor_id, attribute_id}
 
-    if :ets.whereis(warm_table) != :undefined do
       # Get existing warm data
       existing =
-        case :ets.lookup(warm_table, attribute_id) do
-          [{^attribute_id, data}] -> data
+        case :ets.lookup(@warm_table, key) do
+          [{^key, data}] -> data
           [] -> []
         end
 
       # Prepend new entries and limit
       new_warm = Enum.take(entries ++ existing, warm_limit())
-      :ets.insert(warm_table, {attribute_id, new_warm})
+      :ets.insert(@warm_table, {key, new_warm})
     end
   end
 
@@ -241,11 +251,12 @@ defmodule Sensocto.AttributeStoreTiered do
   end
 
   defp get_warm_data(sensor_id, attribute_id) do
-    warm_table = warm_table_name(sensor_id)
+    if :ets.whereis(@warm_table) != :undefined do
+      # Composite key: {sensor_id, attribute_id}
+      key = {sensor_id, attribute_id}
 
-    if :ets.whereis(warm_table) != :undefined do
-      case :ets.lookup(warm_table, attribute_id) do
-        [{^attribute_id, data}] -> data
+      case :ets.lookup(@warm_table, key) do
+        [{^key, data}] -> data
         [] -> []
       end
     else
@@ -271,12 +282,6 @@ defmodule Sensocto.AttributeStoreTiered do
   defp maybe_take(payloads, :infinity), do: payloads
   defp maybe_take(payloads, limit) when is_integer(limit) and limit > 0, do: Enum.take(payloads, limit)
   defp maybe_take(payloads, _), do: payloads
-
-  defp warm_table_name(sensor_id) do
-    # Convert sensor_id to atom-safe format
-    safe_id = sensor_id |> to_string() |> String.replace("-", "_")
-    :"#{@warm_table_prefix}#{safe_id}"
-  end
 
   defp via_tuple(sensor_id) do
     {:via, Registry, {Sensocto.SimpleAttributeRegistry, sensor_id}}

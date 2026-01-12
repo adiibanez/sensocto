@@ -20,12 +20,9 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# only for dummy prod
+# Production endpoint configuration
+# IMPORTANT: Set PHX_HOST environment variable to your domain
 config :sensocto, SensoctoWeb.Endpoint,
-  # url: [host: "Adrians-MacBook-Pro.local", port: 4001, scheme: "https"],
-  # Binding to loopback ipv4 address prevents access from other machines.
-  # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  # http: [ip: {127, 0, 0, 1}, port: 4000],
   http: [ip: {0, 0, 0, 0}, port: 4000],
   https: [
     port: 4001,
@@ -33,7 +30,11 @@ config :sensocto, SensoctoWeb.Endpoint,
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"
   ],
-  check_origin: false
+  # Enable origin checking in production - set PHX_HOST to your domain
+  check_origin: [
+    "https://sensocto.ddns.net",
+    "https://" <> (System.get_env("PHX_HOST") || "localhost")
+  ]
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

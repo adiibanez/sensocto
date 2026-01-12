@@ -34,6 +34,9 @@ defmodule Sensocto.RoomStore do
   alias Sensocto.Sensors.Room, as: RoomResource
   alias Sensocto.Sensors.RoomMembership
 
+  # Default timeout for GenServer calls (5 seconds)
+  @call_timeout 5_000
+
   defstruct [
     # room_id => room_data
     rooms: %{},
@@ -58,7 +61,7 @@ defmodule Sensocto.RoomStore do
   Returns {:ok, room} or {:error, reason}.
   """
   def create_room(attrs, owner_id) do
-    GenServer.call(__MODULE__, {:create_room, attrs, owner_id})
+    GenServer.call(__MODULE__, {:create_room, attrs, owner_id}, @call_timeout)
   end
 
   @doc """
@@ -66,7 +69,7 @@ defmodule Sensocto.RoomStore do
   Returns {:ok, room} or {:error, :not_found}.
   """
   def get_room(room_id) do
-    GenServer.call(__MODULE__, {:get_room, room_id})
+    GenServer.call(__MODULE__, {:get_room, room_id}, @call_timeout)
   end
 
   @doc """
@@ -74,7 +77,7 @@ defmodule Sensocto.RoomStore do
   Returns {:ok, room} or {:error, :not_found}.
   """
   def get_room_by_code(join_code) do
-    GenServer.call(__MODULE__, {:get_room_by_code, join_code})
+    GenServer.call(__MODULE__, {:get_room_by_code, join_code}, @call_timeout)
   end
 
   @doc """
@@ -82,49 +85,49 @@ defmodule Sensocto.RoomStore do
   Only owner/admin can update.
   """
   def update_room(room_id, attrs) do
-    GenServer.call(__MODULE__, {:update_room, room_id, attrs})
+    GenServer.call(__MODULE__, {:update_room, room_id, attrs}, @call_timeout)
   end
 
   @doc """
   Deletes a room.
   """
   def delete_room(room_id) do
-    GenServer.call(__MODULE__, {:delete_room, room_id})
+    GenServer.call(__MODULE__, {:delete_room, room_id}, @call_timeout)
   end
 
   @doc """
   Lists all rooms for a user (owned + member of).
   """
   def list_user_rooms(user_id) do
-    GenServer.call(__MODULE__, {:list_user_rooms, user_id})
+    GenServer.call(__MODULE__, {:list_user_rooms, user_id}, @call_timeout)
   end
 
   @doc """
   Lists all public rooms.
   """
   def list_public_rooms do
-    GenServer.call(__MODULE__, :list_public_rooms)
+    GenServer.call(__MODULE__, :list_public_rooms, @call_timeout)
   end
 
   @doc """
   Lists all rooms (for admin/simulator purposes).
   """
   def list_all_rooms do
-    GenServer.call(__MODULE__, :list_all_rooms)
+    GenServer.call(__MODULE__, :list_all_rooms, @call_timeout)
   end
 
   @doc """
   Adds a user to a room with a role.
   """
   def join_room(room_id, user_id, role \\ :member) do
-    GenServer.call(__MODULE__, {:join_room, room_id, user_id, role})
+    GenServer.call(__MODULE__, {:join_room, room_id, user_id, role}, @call_timeout)
   end
 
   @doc """
   Removes a user from a room.
   """
   def leave_room(room_id, user_id) do
-    GenServer.call(__MODULE__, {:leave_room, room_id, user_id})
+    GenServer.call(__MODULE__, {:leave_room, room_id, user_id}, @call_timeout)
   end
 
   @doc """
@@ -132,49 +135,49 @@ defmodule Sensocto.RoomStore do
   Returns role atom or nil if not a member.
   """
   def get_member_role(room_id, user_id) do
-    GenServer.call(__MODULE__, {:get_member_role, room_id, user_id})
+    GenServer.call(__MODULE__, {:get_member_role, room_id, user_id}, @call_timeout)
   end
 
   @doc """
   Checks if a user is a member of a room.
   """
   def is_member?(room_id, user_id) do
-    GenServer.call(__MODULE__, {:is_member?, room_id, user_id})
+    GenServer.call(__MODULE__, {:is_member?, room_id, user_id}, @call_timeout)
   end
 
   @doc """
   Adds a sensor to a room.
   """
   def add_sensor(room_id, sensor_id) do
-    GenServer.call(__MODULE__, {:add_sensor, room_id, sensor_id})
+    GenServer.call(__MODULE__, {:add_sensor, room_id, sensor_id}, @call_timeout)
   end
 
   @doc """
   Removes a sensor from a room.
   """
   def remove_sensor(room_id, sensor_id) do
-    GenServer.call(__MODULE__, {:remove_sensor, room_id, sensor_id})
+    GenServer.call(__MODULE__, {:remove_sensor, room_id, sensor_id}, @call_timeout)
   end
 
   @doc """
   Regenerates the join code for a room.
   """
   def regenerate_join_code(room_id) do
-    GenServer.call(__MODULE__, {:regenerate_join_code, room_id})
+    GenServer.call(__MODULE__, {:regenerate_join_code, room_id}, @call_timeout)
   end
 
   @doc """
   Checks if a room exists.
   """
   def exists?(room_id) do
-    GenServer.call(__MODULE__, {:exists?, room_id})
+    GenServer.call(__MODULE__, {:exists?, room_id}, @call_timeout)
   end
 
   @doc """
   Gets room count.
   """
   def count do
-    GenServer.call(__MODULE__, :count)
+    GenServer.call(__MODULE__, :count, @call_timeout)
   end
 
   @doc """
@@ -182,7 +185,7 @@ defmodule Sensocto.RoomStore do
   Used by RoomSync to restore persisted state.
   """
   def hydrate_room(room_data) do
-    GenServer.call(__MODULE__, {:hydrate_room, room_data})
+    GenServer.call(__MODULE__, {:hydrate_room, room_data}, @call_timeout)
   end
 
   # ============================================================================
@@ -809,7 +812,7 @@ defmodule Sensocto.RoomStore do
     # Convert MapSet to list for JSON serialization
     room_for_storage = Map.update(room, :sensor_ids, [], &MapSet.to_list/1)
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case IrohStore.store_room(room_for_storage) do
         {:ok, _hash} ->
           Logger.debug("[RoomStore] Synced room #{room.id} to iroh")
@@ -823,7 +826,7 @@ defmodule Sensocto.RoomStore do
   defp async_sync_room(_room, false), do: :ok
 
   defp async_delete_room(room_id, true = _iroh_available) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case IrohStore.delete_room(room_id) do
         :ok -> Logger.debug("[RoomStore] Deleted room #{room_id} from iroh")
         {:error, reason} -> Logger.warning("[RoomStore] Failed to delete room from iroh: #{inspect(reason)}")
@@ -834,7 +837,7 @@ defmodule Sensocto.RoomStore do
   defp async_delete_room(_room_id, false), do: :ok
 
   defp async_sync_membership(room_id, user_id, role, true = _iroh_available) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case IrohStore.store_membership(room_id, user_id, role) do
         {:ok, _hash} ->
           Logger.debug("[RoomStore] Synced membership #{room_id}:#{user_id} to iroh")
@@ -848,7 +851,7 @@ defmodule Sensocto.RoomStore do
   defp async_sync_membership(_room_id, _user_id, _role, false), do: :ok
 
   defp async_delete_membership(room_id, user_id, true = _iroh_available) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case IrohStore.delete_membership(room_id, user_id) do
         :ok -> Logger.debug("[RoomStore] Deleted membership #{room_id}:#{user_id} from iroh")
         {:error, reason} -> Logger.warning("[RoomStore] Failed to delete membership from iroh: #{inspect(reason)}")
@@ -865,7 +868,7 @@ defmodule Sensocto.RoomStore do
   # Creates room and owner membership in sequence (room first, then membership)
   # to avoid FK constraint violation race condition
   defp sync_room_and_owner_to_postgres(room, owner_id) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       try do
         # Step 1: Create the room first
         create_room_in_postgres(room)
@@ -941,7 +944,7 @@ defmodule Sensocto.RoomStore do
   end
 
   defp sync_room_to_postgres(room) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       try do
         create_room_in_postgres(room)
       rescue
@@ -952,7 +955,7 @@ defmodule Sensocto.RoomStore do
   end
 
   defp sync_room_update_to_postgres(room) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       try do
         existing = RoomResource |> Ash.get(room.id, error?: false)
 
@@ -982,7 +985,7 @@ defmodule Sensocto.RoomStore do
   end
 
   defp delete_room_from_postgres(room_id) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       try do
         case RoomResource |> Ash.get(room_id, error?: false) do
           {:ok, room} when not is_nil(room) ->
@@ -1000,7 +1003,7 @@ defmodule Sensocto.RoomStore do
   end
 
   defp sync_membership_to_postgres(room_id, user_id, role) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       try do
         # Check if membership exists using Ash
         import Ecto.Query
@@ -1033,7 +1036,7 @@ defmodule Sensocto.RoomStore do
   end
 
   defp delete_membership_from_postgres(room_id, user_id) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       try do
         import Ecto.Query
 

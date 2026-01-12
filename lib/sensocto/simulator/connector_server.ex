@@ -130,12 +130,32 @@ defmodule Sensocto.Simulator.ConnectorServer do
     {:via, Registry, {Sensocto.Simulator.Registry, "connector_#{connector_id}"}}
   end
 
+  # Whitelist of allowed keys from simulator YAML configs
+  # This prevents atom table exhaustion from malicious/large configs
+  @allowed_config_keys ~w(
+    attribute_id sensor_type batch_size batch_window duration sampling_rate
+    heart_rate dummy_data min_value max_value sensor_id sensor_name
+    connector_id connector_name room_id sensors attributes
+    mode interval speed track_file latitude longitude altitude
+    start_battery drain_rate charge_rate eco2 tvoc
+  )a
+
   defp string_keys_to_atom_keys(map) when is_map(map) do
     Map.new(map, fn
-      {k, v} when is_binary(k) -> {String.to_atom(k), string_keys_to_atom_keys(v)}
+      {k, v} when is_binary(k) -> {safe_to_atom(k), string_keys_to_atom_keys(v)}
       {k, v} -> {k, string_keys_to_atom_keys(v)}
     end)
   end
 
   defp string_keys_to_atom_keys(value), do: value
+
+  # Safely convert string to atom using whitelist or existing atoms
+  defp safe_to_atom(key) when is_binary(key) do
+    try do
+      atom = String.to_existing_atom(key)
+      if atom in @allowed_config_keys, do: atom, else: key
+    rescue
+      ArgumentError -> key  # Keep as string if atom doesn't exist
+    end
+  end
 end

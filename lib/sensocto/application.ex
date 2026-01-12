@@ -16,6 +16,8 @@ defmodule Sensocto.Application do
     children = [
       # {NodeJS.Supervisor, [path: LiveSvelte.SSR.NodeJS.server_path(), pool_size: 4]},
       SensoctoWeb.Telemetry,
+      # Task.Supervisor for async operations (DB sync, etc.)
+      {Task.Supervisor, name: Sensocto.TaskSupervisor},
       # Database repos - Primary (Neon.tech) and Read Replica
       Sensocto.Repo,
       Sensocto.Repo.Replica,

@@ -1,27 +1,27 @@
 import Config
 
-# Configure your database - Neon.tech PostgreSQL
-# Primary database (read/write) - uses pooler endpoint for connection pooling
+# Configure your database
+# For Neon.tech: Set DEV_DATABASE_* environment variables
+# For local PostgreSQL: Use defaults (postgres/postgres/localhost)
 config :sensocto, Sensocto.Repo,
-  database: "neondb",
-  username: "neondb_owner",
-  password: "npg_JYAldE0u5Xmk",
-  hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
-  ssl: [cacerts: :public_key.cacerts_get()],
+  database: System.get_env("DEV_DATABASE_NAME", "sensocto_dev"),
+  username: System.get_env("DEV_DATABASE_USER", "postgres"),
+  password: System.get_env("DEV_DATABASE_PASSWORD", "postgres"),
+  hostname: System.get_env("DEV_DATABASE_HOST", "localhost"),
+  ssl: if(System.get_env("DEV_DATABASE_SSL") == "true", do: [cacerts: :public_key.cacerts_get()], else: false),
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10,
   queue_target: 5000,
   queue_interval: 1000
 
-# Read replica - in dev, points to same Neon database
-# In production, you can create a read replica in Neon and use its endpoint
+# Read replica - in dev, points to same database
 config :sensocto, Sensocto.Repo.Replica,
-  database: "neondb",
-  username: "neondb_owner",
-  password: "npg_JYAldE0u5Xmk",
-  hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
-  ssl: [cacerts: :public_key.cacerts_get()],
+  database: System.get_env("DEV_DATABASE_NAME", "sensocto_dev"),
+  username: System.get_env("DEV_DATABASE_USER", "postgres"),
+  password: System.get_env("DEV_DATABASE_PASSWORD", "postgres"),
+  hostname: System.get_env("DEV_DATABASE_HOST", "localhost"),
+  ssl: if(System.get_env("DEV_DATABASE_SSL") == "true", do: [cacerts: :public_key.cacerts_get()], else: false),
   pool_size: 5
 
 # Local PostgreSQL (uncomment to use local dev database instead of Neon)
@@ -72,10 +72,10 @@ config :sensocto, SensoctoWeb.Endpoint,
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"
   ],
-  check_origin: false,
+  check_origin: ["http://localhost:4000", "https://localhost:4001"],
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "0EViyDRvvk8yO72jkyPMGrvTm0iqLuDckbHUdqrBkZb2Td2NDLkS590D08E9qLL6",
+  secret_key_base: System.get_env("DEV_SECRET_KEY_BASE", "dev_only_secret_key_base_not_for_production_use_generate_new_one"),
   watchers: [
     node: ["build.js", "--watch", cd: Path.expand("../assets", __DIR__)],
     tailwind: {Tailwind, :install_and_run, [:sensocto, ~w(--watch)]},
@@ -173,7 +173,7 @@ config :logger, :logger_name,
 config :ash_authentication, debug_authentication_failures?: true
 
 # Enable dev routes for dashboard and mailbox
-config :sensocto, dev_routes: true, token_signing_secret: "9fhsVJSpOCeIGPWB7AL7/Q3Emgy34xJK"
+config :sensocto, dev_routes: true, token_signing_secret: System.get_env("DEV_TOKEN_SIGNING_SECRET", "dev_only_token_secret")
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

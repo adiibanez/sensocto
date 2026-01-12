@@ -782,7 +782,7 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp has_composite_view?(attr_type) do
     # These attribute types have dedicated composite Svelte components
-    attr_type in ["heartrate", "hr", "imu", "geolocation", "ecg", "battery"]
+    attr_type in ["heartrate", "hr", "imu", "geolocation", "ecg", "battery", "spo2"]
   end
 
   defp category_order(category) do
@@ -805,6 +805,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "imu" -> extract_imu_data(sensors_state)
       "ecg" -> extract_ecg_data(sensors_state)
       "battery" -> extract_battery_data(sensors_state)
+      "spo2" -> extract_spo2_data(sensors_state)
       _ -> extract_generic_data(sensors_state, lens_type)
     end
   end
@@ -909,6 +910,26 @@ defmodule SensoctoWeb.RoomShowLive do
         nil -> nil
       end
       %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, level: level || 0}
+    end)
+  end
+
+  defp extract_spo2_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "spo2"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      spo2_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+        attr.attribute_type == "spo2"
+      end)
+      spo2 = case spo2_attr do
+        {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
+        nil -> 0
+      end
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, spo2: spo2}
     end)
   end
 
@@ -1269,6 +1290,13 @@ defmodule SensoctoWeb.RoomShowLive do
         <% "battery" -> %>
           <.svelte
             name="CompositeBattery"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
+        <% "spo2" -> %>
+          <.svelte
+            name="CompositeSpo2"
             props={%{sensors: @lens_data}}
             socket={@socket}
             class="w-full"

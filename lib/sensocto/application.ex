@@ -87,6 +87,9 @@ defmodule Sensocto.Application do
       # System load monitoring for back-pressure (must be after PubSub)
       Sensocto.SystemLoadMonitor,
 
+      # Biomimetic layer (must be after AttentionTracker and SystemLoadMonitor)
+      Sensocto.Bio.Supervisor,
+
       # initialize after pubsub
       Sensocto.SensorsDynamicSupervisor,
       Sensocto.RoomsDynamicSupervisor,

@@ -1,0 +1,31 @@
+defmodule Sensocto.Bio.Supervisor do
+  @moduledoc """
+  Supervisor for all biomimetic components.
+
+  Manages the lifecycle of:
+  - NoveltyDetector (Locus Coeruleus)
+  - PredictiveLoadBalancer (Cerebellum)
+  - HomeostaticTuner (Synaptic Plasticity)
+  - ResourceArbiter (Lateral Inhibition)
+  - CircadianScheduler (SCN)
+  """
+
+  use Supervisor
+
+  def start_link(opts \\ []) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_opts) do
+    children = [
+      Sensocto.Bio.NoveltyDetector,
+      Sensocto.Bio.PredictiveLoadBalancer,
+      Sensocto.Bio.HomeostaticTuner,
+      Sensocto.Bio.ResourceArbiter,
+      Sensocto.Bio.CircadianScheduler
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end

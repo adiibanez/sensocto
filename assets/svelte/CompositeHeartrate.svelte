@@ -1,270 +1,226 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import Chart from "chart.js/auto";
-  import "chartjs-adapter-date-fns";
-
   let { sensors = [] }: {
-    sensors: Array<{ sensor_id: string; bpm: number }>;
+    sensors: Array<{ sensor_id: string; sensor_name?: string; bpm: number }>;
   } = $props();
 
-  let canvas: HTMLCanvasElement;
-  let chart: Chart | null = null;
+  // Compute stats from current sensor data
+  const validSensors = $derived(sensors.filter(s => s.bpm > 0));
+  const avgBpm = $derived(
+    validSensors.length > 0
+      ? Math.round(validSensors.reduce((sum, s) => sum + s.bpm, 0) / validSensors.length)
+      : 0
+  );
+  const minBpm = $derived(
+    validSensors.length > 0
+      ? Math.min(...validSensors.map(s => s.bpm))
+      : 0
+  );
+  const maxBpm = $derived(
+    validSensors.length > 0
+      ? Math.max(...validSensors.map(s => s.bpm))
+      : 0
+  );
 
-  const COLORS = [
-    '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
-    '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#f43f5e',
-    '#84cc16', '#06b6d4', '#8b5cf6', '#d946ef', '#fb7185'
-  ];
-
-  const MAX_DATA_POINTS = 60;
-
-  let sensorData: Map<string, Array<{ timestamp: number; value: number }>> = new Map();
-  let sensorColors: Map<string, string> = new Map();
-
-  function initializeSensorData() {
-    sensors.forEach((sensor, index) => {
-      if (!sensorData.has(sensor.sensor_id)) {
-        sensorData.set(sensor.sensor_id, []);
-        sensorColors.set(sensor.sensor_id, COLORS[index % COLORS.length]);
-      }
-      if (sensor.bpm > 0) {
-        addDataPoint(sensor.sensor_id, sensor.bpm);
-      }
-    });
+  // Heart rate zones for color coding
+  function getBpmColor(bpm: number): string {
+    if (bpm <= 0) return '#6b7280'; // gray for no data
+    if (bpm < 60) return '#3b82f6'; // blue - bradycardia
+    if (bpm < 100) return '#22c55e'; // green - normal
+    if (bpm < 120) return '#eab308'; // yellow - elevated
+    return '#ef4444'; // red - high
   }
 
-  function addDataPoint(sensorId: string, value: number) {
-    const data = sensorData.get(sensorId) || [];
-    data.push({ timestamp: Date.now(), value });
-    if (data.length > MAX_DATA_POINTS) {
-      data.shift();
-    }
-    sensorData.set(sensorId, data);
+  function getBpmZone(bpm: number): string {
+    if (bpm <= 0) return 'No data';
+    if (bpm < 60) return 'Low';
+    if (bpm < 100) return 'Normal';
+    if (bpm < 120) return 'Elevated';
+    return 'High';
   }
 
-  function createChart() {
-    if (!canvas) return;
-    if (chart) {
-      chart.destroy();
-    }
+  // Sort sensors by BPM descending (highest first) for attention
+  const sortedSensors = $derived(
+    [...sensors].sort((a, b) => b.bpm - a.bpm)
+  );
 
-    const datasets = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
-      label: sensorId,
-      data: data.map(d => ({ x: d.timestamp, y: d.value })),
-      borderColor: sensorColors.get(sensorId) || '#ffffff',
-      backgroundColor: 'transparent',
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.3,
-      fill: false
-    }));
-
-    chart = new Chart(canvas, {
-      type: 'line',
-      data: { datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 0 },
-        interaction: {
-          mode: 'nearest',
-          axis: 'x',
-          intersect: false
-        },
-        scales: {
-          x: {
-            type: 'time',
-            time: {
-              unit: 'second',
-              displayFormats: { second: 'HH:mm:ss' }
-            },
-            display: true,
-            title: { display: true, text: 'Time', color: '#9ca3af' },
-            ticks: { color: '#9ca3af' },
-            grid: { color: 'rgba(75, 85, 99, 0.3)' }
-          },
-          y: {
-            display: true,
-            title: { display: true, text: 'BPM', color: '#9ca3af' },
-            suggestedMin: 40,
-            suggestedMax: 120,
-            ticks: { color: '#9ca3af' },
-            grid: { color: 'rgba(75, 85, 99, 0.3)' }
-          }
-        },
-        plugins: {
-          legend: {
-            display: true,
-            position: 'bottom',
-            labels: {
-              color: '#9ca3af',
-              usePointStyle: true,
-              padding: 15
-            }
-          },
-          tooltip: {
-            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-            titleColor: '#ffffff',
-            bodyColor: '#9ca3af',
-            borderColor: 'rgba(75, 85, 99, 0.5)',
-            borderWidth: 1,
-            callbacks: {
-              label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)} BPM`
-            }
-          }
-        }
-      }
-    });
+  function getDisplayName(sensor: { sensor_id: string; sensor_name?: string }): string {
+    return sensor.sensor_name || sensor.sensor_id.substring(0, 12);
   }
-
-  function updateChart() {
-    if (!chart) return;
-
-    chart.data.datasets = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
-      label: sensorId,
-      data: data.map(d => ({ x: d.timestamp, y: d.value })),
-      borderColor: sensorColors.get(sensorId) || '#ffffff',
-      backgroundColor: 'transparent',
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.3,
-      fill: false
-    }));
-
-    chart.update('none');
-  }
-
-  onMount(() => {
-    initializeSensorData();
-
-    setTimeout(() => {
-      createChart();
-    }, 100);
-
-    // Handler for composite measurement events from server via hook
-    const handleCompositeMeasurement = (e: CustomEvent) => {
-      const { sensor_id, attribute_id, payload, timestamp } = e.detail;
-
-      if (attribute_id === "heartrate" || attribute_id === "hr") {
-        const value = typeof payload === "number" ? payload : null;
-
-        if (value !== null && value > 0) {
-          if (!sensorData.has(sensor_id)) {
-            const index = sensorData.size;
-            sensorColors.set(sensor_id, COLORS[index % COLORS.length]);
-            sensorData.set(sensor_id, []);
-          }
-          addDataPoint(sensor_id, value);
-          updateChart();
-        }
-      }
-    };
-
-    // Handler for accumulator events (legacy, from sensor tiles)
-    const handleAccumulatorEvent = (e: CustomEvent) => {
-      const eventSensorId = e?.detail?.sensor_id;
-      const attributeId = e?.detail?.attribute_id;
-
-      if (attributeId === "heartrate" || attributeId === "hr") {
-        const data = e?.detail?.data;
-        let value: number | null = null;
-
-        if (Array.isArray(data) && data.length > 0) {
-          const lastMeasurement = data[data.length - 1];
-          value = lastMeasurement?.payload;
-        } else if (data?.payload !== undefined) {
-          value = data.payload;
-        }
-
-        if (typeof value === "number" && value > 0) {
-          if (!sensorData.has(eventSensorId)) {
-            const index = sensorData.size;
-            sensorColors.set(eventSensorId, COLORS[index % COLORS.length]);
-            sensorData.set(eventSensorId, []);
-          }
-          addDataPoint(eventSensorId, value);
-          updateChart();
-        }
-      }
-    };
-
-    window.addEventListener(
-      "composite-measurement-event",
-      handleCompositeMeasurement as EventListener
-    );
-
-    window.addEventListener(
-      "accumulator-data-event",
-      handleAccumulatorEvent as EventListener
-    );
-
-    return () => {
-      window.removeEventListener(
-        "composite-measurement-event",
-        handleCompositeMeasurement as EventListener
-      );
-      window.removeEventListener(
-        "accumulator-data-event",
-        handleAccumulatorEvent as EventListener
-      );
-    };
-  });
-
-  onDestroy(() => {
-    if (chart) {
-      chart.destroy();
-    }
-  });
 </script>
 
-<div class="composite-chart-container">
-  <div class="chart-header">
-    <h2>Heartrate Overview</h2>
-    <span class="sensor-count">{sensors.length} sensors</span>
+<div class="composite-hr">
+  <!-- Summary Stats Bar -->
+  <div class="stats-bar">
+    <div class="stat">
+      <span class="stat-label">Avg</span>
+      <span class="stat-value" style="color: {getBpmColor(avgBpm)}">{avgBpm}</span>
+      <span class="stat-unit">bpm</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-label">Min</span>
+      <span class="stat-value" style="color: {getBpmColor(minBpm)}">{minBpm}</span>
+      <span class="stat-unit">bpm</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-label">Max</span>
+      <span class="stat-value" style="color: {getBpmColor(maxBpm)}">{maxBpm}</span>
+      <span class="stat-unit">bpm</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-label">Sensors</span>
+      <span class="stat-value text-white">{validSensors.length}</span>
+      <span class="stat-unit">/ {sensors.length}</span>
+    </div>
   </div>
-  <div class="chart-wrapper">
-    <canvas bind:this={canvas}></canvas>
+
+  <!-- Compact Sensor Grid -->
+  <div class="sensor-grid">
+    {#each sortedSensors as sensor (sensor.sensor_id)}
+      <div
+        class="sensor-pill"
+        style="border-color: {getBpmColor(sensor.bpm)}"
+        title="{getDisplayName(sensor)}: {sensor.bpm > 0 ? sensor.bpm + ' bpm (' + getBpmZone(sensor.bpm) + ')' : 'No data'}"
+      >
+        <span class="sensor-name">{getDisplayName(sensor)}</span>
+        <span class="sensor-bpm" style="color: {getBpmColor(sensor.bpm)}">
+          {sensor.bpm > 0 ? sensor.bpm : '—'}
+        </span>
+      </div>
+    {/each}
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item">
+      <span class="legend-dot" style="background: #3b82f6"></span>
+      <span>&lt;60 Low</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot" style="background: #22c55e"></span>
+      <span>60-99 Normal</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot" style="background: #eab308"></span>
+      <span>100-119 Elevated</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot" style="background: #ef4444"></span>
+      <span>120+ High</span>
+    </div>
   </div>
 </div>
 
 <style>
-  .composite-chart-container {
-    background: rgba(31, 41, 55, 0.8);
-    border-radius: 0.75rem;
-    border: 1px solid rgba(75, 85, 99, 0.5);
-    padding: 1rem;
-    height: 100%;
-    min-height: 400px;
+  .composite-hr {
+    background: rgba(31, 41, 55, 0.6);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
   }
 
-  .chart-header {
+  .stats-bar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid rgba(75, 85, 99, 0.5);
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(17, 24, 39, 0.5);
+    border-radius: 0.5rem;
+    margin-bottom: 0.75rem;
   }
 
-  .chart-header h2 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #ffffff;
-    margin: 0;
+  .stat {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
   }
 
-  .sensor-count {
+  .stat-label {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-unit {
+    font-size: 0.65rem;
+    color: #6b7280;
+  }
+
+  .stat-divider {
+    width: 1px;
+    height: 1.5rem;
+    background: rgba(75, 85, 99, 0.5);
+  }
+
+  .sensor-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .sensor-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid;
+    border-radius: 9999px;
     font-size: 0.75rem;
+    transition: transform 0.1s ease;
+  }
+
+  .sensor-pill:hover {
+    transform: scale(1.02);
+    background: rgba(17, 24, 39, 0.8);
+  }
+
+  .sensor-name {
+    color: #d1d5db;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sensor-bpm {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(75, 85, 99, 0.3);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.65rem;
     color: #9ca3af;
   }
 
-  .chart-wrapper {
-    height: calc(100% - 3rem);
-    min-height: 320px;
+  .legend-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
   }
 
-  .chart-wrapper canvas {
-    width: 100% !important;
-    height: 100% !important;
+  .text-white {
+    color: #ffffff;
   }
 </style>

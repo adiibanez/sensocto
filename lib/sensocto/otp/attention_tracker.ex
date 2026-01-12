@@ -220,11 +220,16 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @doc """
-  Calculate the adjusted batch window based on base window, attention, and system load.
+  Calculate the adjusted batch window based on base window, attention, system load,
+  and biomimetic factors.
 
-  The calculation applies both attention multiplier and system load multiplier:
+  The calculation applies multiple multipliers:
   - Attention multiplier: 0.2x (high) to 10x (none) based on user attention
   - System load multiplier: 1.0x (normal) to 5x (critical) based on CPU/memory pressure
+  - Novelty factor: 0.5x boost for anomalous data (from NoveltyDetector)
+  - Predictive factor: 0.75x-1.2x based on learned patterns (from PredictiveLoadBalancer)
+  - Competitive factor: 0.5x-5.0x based on sensor priority (from ResourceArbiter)
+  - Circadian factor: 0.85x-1.2x based on time-of-day patterns (from CircadianScheduler)
 
   These multipliers are combined to produce the final batch window, clamped
   to the attention level's min/max bounds.
@@ -235,9 +240,75 @@ defmodule Sensocto.AttentionTracker do
     # Get system load multiplier (1.0 to 5.0)
     load_multiplier = get_system_load_multiplier()
 
-    # Apply both attention and load multipliers
-    adjusted = trunc(base_window * config.window_multiplier * load_multiplier)
+    # Get biomimetic factors (with safe fallbacks)
+    bio_factors = get_bio_factors(sensor_id, attribute_id)
+
+    # Apply all multipliers
+    adjusted = trunc(
+      base_window *
+      config.window_multiplier *
+      load_multiplier *
+      bio_factors.novelty *
+      bio_factors.predictive *
+      bio_factors.competitive *
+      bio_factors.circadian
+    )
+
     max(config.min_window, min(adjusted, config.max_window))
+  end
+
+  @doc """
+  Get all biomimetic adjustment factors for a sensor.
+  Returns safe defaults (1.0) if Bio modules are not available.
+  """
+  def get_bio_factors(sensor_id, attribute_id) do
+    %{
+      novelty: get_novelty_factor(sensor_id, attribute_id),
+      predictive: get_predictive_factor(sensor_id),
+      competitive: get_competitive_factor(sensor_id),
+      circadian: get_circadian_factor()
+    }
+  end
+
+  defp get_novelty_factor(sensor_id, attribute_id) do
+    try do
+      score = Sensocto.Bio.NoveltyDetector.get_novelty_score(sensor_id, attribute_id)
+      if score > 0.5, do: 0.5, else: 1.0
+    rescue
+      _ -> 1.0
+    catch
+      :exit, _ -> 1.0
+    end
+  end
+
+  defp get_predictive_factor(sensor_id) do
+    try do
+      Sensocto.Bio.PredictiveLoadBalancer.get_predictive_factor(sensor_id)
+    rescue
+      _ -> 1.0
+    catch
+      :exit, _ -> 1.0
+    end
+  end
+
+  defp get_competitive_factor(sensor_id) do
+    try do
+      Sensocto.Bio.ResourceArbiter.get_multiplier(sensor_id)
+    rescue
+      _ -> 1.0
+    catch
+      :exit, _ -> 1.0
+    end
+  end
+
+  defp get_circadian_factor do
+    try do
+      Sensocto.Bio.CircadianScheduler.get_phase_adjustment()
+    rescue
+      _ -> 1.0
+    catch
+      :exit, _ -> 1.0
+    end
   end
 
   @doc """

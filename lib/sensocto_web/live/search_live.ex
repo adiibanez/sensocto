@@ -13,7 +13,7 @@ defmodule SensoctoWeb.SearchLive do
      socket
      |> assign(:open, false)
      |> assign(:query, "")
-     |> assign(:results, %{sensors: [], rooms: []})
+     |> assign(:results, %{sensors: [], rooms: [], users: []})
      |> assign(:selected_index, 0)
      |> assign(:loading, false), layout: false}
   end
@@ -24,7 +24,7 @@ defmodule SensoctoWeb.SearchLive do
      socket
      |> assign(:open, true)
      |> assign(:query, "")
-     |> assign(:results, %{sensors: [], rooms: []})
+     |> assign(:results, %{sensors: [], rooms: [], users: []})
      |> assign(:selected_index, 0)
      |> push_event("focus-search-input", %{})}
   end
@@ -48,7 +48,7 @@ defmodule SensoctoWeb.SearchLive do
       {:noreply,
        socket
        |> assign(:query, query)
-       |> assign(:results, %{sensors: [], rooms: []})
+       |> assign(:results, %{sensors: [], rooms: [], users: []})
        |> assign(:selected_index, 0)
        |> assign(:loading, false)}
     end
@@ -82,6 +82,10 @@ defmodule SensoctoWeb.SearchLive do
          |> assign(:open, false)
          |> push_navigate(to: ~p"/rooms/#{room.id}")}
 
+      {:user, _user} ->
+        # Users don't have a dedicated page yet, just close
+        {:noreply, assign(socket, :open, false)}
+
       nil ->
         {:noreply, socket}
     end
@@ -111,14 +115,15 @@ defmodule SensoctoWeb.SearchLive do
      |> push_navigate(to: ~p"/rooms/#{id}")}
   end
 
-  defp total_results(%{sensors: sensors, rooms: rooms}) do
-    length(sensors) + length(rooms)
+  defp total_results(%{sensors: sensors, rooms: rooms, users: users}) do
+    length(sensors) + length(rooms) + length(users)
   end
 
-  defp get_selected_item(%{sensors: sensors, rooms: rooms}, index) do
+  defp get_selected_item(%{sensors: sensors, rooms: rooms, users: users}, index) do
     all_items =
       Enum.map(sensors, &{:sensor, &1}) ++
-        Enum.map(rooms, &{:room, &1})
+        Enum.map(rooms, &{:room, &1}) ++
+        Enum.map(users, &{:user, &1})
 
     Enum.at(all_items, index)
   end
@@ -175,7 +180,7 @@ defmodule SensoctoWeb.SearchLive do
               <div :if={!@loading && @query == ""} class="px-4 py-6 text-center text-gray-500">
                 <Heroicons.icon name="magnifying-glass" type="outline" class="mx-auto h-8 w-8 mb-2" />
                 <p>Start typing to search</p>
-                <p class="text-xs mt-1">Search sensors and rooms by name</p>
+                <p class="text-xs mt-1">Search sensors, rooms, and users</p>
               </div>
 
               <%= if !@loading && total_results(@results) > 0 do %>
@@ -226,6 +231,26 @@ defmodule SensoctoWeb.SearchLive do
                       </span>
                       <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4 text-gray-500" />
                     </button>
+                  <% end %>
+                </div>
+
+                <div :if={@results.users != []} class="py-2 border-t border-gray-700/50">
+                  <div class="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Users
+                  </div>
+                  <%= for {user, idx} <- Enum.with_index(@results.users) do %>
+                    <% adjusted_idx = idx + length(@results.sensors) + length(@results.rooms) %>
+                    <div
+                      class={"w-full px-4 py-2 flex items-center gap-3 text-left #{if adjusted_idx == @selected_index, do: "bg-gray-700/50", else: ""}"}
+                    >
+                      <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                        <Heroicons.icon name="user" type="outline" class="h-4 w-4 text-purple-400" />
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="text-sm text-white truncate">{user.name}</div>
+                        <div class="text-xs text-gray-500 truncate">{user.email}</div>
+                      </div>
+                    </div>
                   <% end %>
                 </div>
               <% end %>

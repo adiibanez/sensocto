@@ -8,11 +8,12 @@ defmodule Sensocto.Search.SearchIndex do
 
   alias Sensocto.SensorsDynamicSupervisor
   alias Sensocto.SimpleSensor
-  alias Sensocto.RoomsDynamicSupervisor
+  alias Sensocto.RoomStore
+  alias Sensocto.Accounts.User
 
   @refresh_interval :timer.seconds(30)
 
-  defstruct sensors: %{}, rooms: %{}, prefixes: %{}
+  defstruct sensors: %{}, rooms: %{}, users: %{}, prefixes: %{}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -26,7 +27,7 @@ defmodule Sensocto.Search.SearchIndex do
     GenServer.call(__MODULE__, {:search, String.downcase(query)})
   end
 
-  def search(_), do: %{sensors: [], rooms: []}
+  def search(_), do: %{sensors: [], rooms: [], users: []}
 
   @doc """
   Index a sensor for search.
@@ -89,6 +90,7 @@ defmodule Sensocto.Search.SearchIndex do
     stats = %{
       sensors_count: map_size(state.sensors),
       rooms_count: map_size(state.rooms),
+      users_count: map_size(state.users),
       prefixes_count: map_size(state.prefixes)
     }
     {:reply, stats, state}
@@ -147,13 +149,15 @@ defmodule Sensocto.Search.SearchIndex do
   defp do_full_reindex(_state) do
     sensors = index_all_sensors()
     rooms = index_all_rooms()
-    prefixes = build_prefix_index(sensors, rooms)
+    users = index_all_users()
+    prefixes = build_prefix_index(sensors, rooms, users)
 
-    Logger.debug("[SearchIndex] Reindexed #{map_size(sensors)} sensors, #{map_size(rooms)} rooms")
+    Logger.debug("[SearchIndex] Reindexed #{map_size(sensors)} sensors, #{map_size(rooms)} rooms, #{map_size(users)} users")
 
     %__MODULE__{
       sensors: sensors,
       rooms: rooms,
+      users: users,
       prefixes: prefixes
     }
   end
@@ -184,7 +188,7 @@ defmodule Sensocto.Search.SearchIndex do
   end
 
   defp index_all_rooms do
-    RoomsDynamicSupervisor.list_rooms_with_state()
+    RoomStore.list_all_rooms()
     |> Enum.reduce(%{}, fn room, acc ->
       room_data = %{
         id: room.id,
@@ -197,6 +201,35 @@ defmodule Sensocto.Search.SearchIndex do
     end)
   end
 
+  defp index_all_users do
+    case Ash.read(User, authorize?: false) do
+      {:ok, users} ->
+        Enum.reduce(users, %{}, fn user, acc ->
+          email = to_string(user.email)
+          user_data = %{
+            id: user.id,
+            email: email,
+            name: email_to_name(email),
+            searchable: String.downcase(email)
+          }
+          Map.put(acc, user.id, user_data)
+        end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp email_to_name(email) do
+    email
+    |> String.split("@")
+    |> List.first()
+    |> String.replace(~r/[._-]/, " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
   defp build_searchable_text(name, type_or_desc, id) do
     [name, type_or_desc, id]
     |> Enum.filter(&is_binary/1)
@@ -204,10 +237,13 @@ defmodule Sensocto.Search.SearchIndex do
     |> String.downcase()
   end
 
-  defp build_prefix_index(sensors, rooms) do
+  defp build_prefix_index(sensors, rooms, users) do
     sensor_prefixes = build_prefixes_for_items(sensors, :sensor)
     room_prefixes = build_prefixes_for_items(rooms, :room)
-    merge_prefix_maps(sensor_prefixes, room_prefixes)
+    user_prefixes = build_prefixes_for_items(users, :user)
+    sensor_prefixes
+    |> merge_prefix_maps(room_prefixes)
+    |> merge_prefix_maps(user_prefixes)
   end
 
   defp build_prefixes_for_items(items, type) do
@@ -258,14 +294,14 @@ defmodule Sensocto.Search.SearchIndex do
     }
 
     new_sensors = Map.put(state.sensors, sensor_id, data)
-    new_prefixes = build_prefix_index(new_sensors, state.rooms)
+    new_prefixes = build_prefix_index(new_sensors, state.rooms, state.users)
 
     %{state | sensors: new_sensors, prefixes: new_prefixes}
   end
 
   defp do_remove_sensor(state, sensor_id) do
     new_sensors = Map.delete(state.sensors, sensor_id)
-    new_prefixes = build_prefix_index(new_sensors, state.rooms)
+    new_prefixes = build_prefix_index(new_sensors, state.rooms, state.users)
     %{state | sensors: new_sensors, prefixes: new_prefixes}
   end
 
@@ -283,14 +319,14 @@ defmodule Sensocto.Search.SearchIndex do
     }
 
     new_rooms = Map.put(state.rooms, room_id, data)
-    new_prefixes = build_prefix_index(state.sensors, new_rooms)
+    new_prefixes = build_prefix_index(state.sensors, new_rooms, state.users)
 
     %{state | rooms: new_rooms, prefixes: new_prefixes}
   end
 
   defp do_remove_room(state, room_id) do
     new_rooms = Map.delete(state.rooms, room_id)
-    new_prefixes = build_prefix_index(state.sensors, new_rooms)
+    new_prefixes = build_prefix_index(state.sensors, new_rooms, state.users)
     %{state | rooms: new_rooms, prefixes: new_prefixes}
   end
 
@@ -298,7 +334,7 @@ defmodule Sensocto.Search.SearchIndex do
     query_words = extract_words(query)
 
     if Enum.empty?(query_words) do
-      %{sensors: [], rooms: []}
+      %{sensors: [], rooms: [], users: []}
     else
       candidates = find_candidates(query_words, state.prefixes)
 
@@ -322,7 +358,17 @@ defmodule Sensocto.Search.SearchIndex do
         |> Enum.take(10)
         |> Enum.map(fn {room, _score} -> room end)
 
-      %{sensors: sensors, rooms: rooms}
+      users =
+        candidates
+        |> Enum.filter(fn {type, _id} -> type == :user end)
+        |> Enum.map(fn {:user, id} -> Map.get(state.users, id) end)
+        |> Enum.filter(&(&1 != nil))
+        |> Enum.map(fn user -> score_result(user, query) end)
+        |> Enum.sort_by(fn {_user, score} -> -score end)
+        |> Enum.take(10)
+        |> Enum.map(fn {user, _score} -> user end)
+
+      %{sensors: sensors, rooms: rooms, users: users}
     end
   end
 

@@ -23,8 +23,8 @@
     '#ffcc00'  // Gold
   ];
 
-  const MAX_DATA_POINTS = 10000;
-  const UPDATE_INTERVAL_MS = 50;
+  const MAX_DATA_POINTS = 5000;
+  const UPDATE_INTERVAL_MS = 100;
 
   // Time window options in milliseconds
   const TIME_WINDOWS = [
@@ -38,6 +38,8 @@
   let sensorColors: Map<string, string> = new Map();
   let pendingUpdates: Map<string, Array<{ x: number; y: number }>> = new Map();
   let updateTimer: ReturnType<typeof setInterval> | null = null;
+  let rafId: number | null = null;
+  let lastUpdateTime = 0;
 
   function initializeSensorData() {
     sensors.forEach((sensor, index) => {
@@ -58,19 +60,27 @@
     if (pendingUpdates.size === 0) return;
 
     pendingUpdates.forEach((points, sensorId) => {
-      const data = sensorData.get(sensorId) || [];
+      let data = sensorData.get(sensorId) || [];
+      // Append new points (already in order from server)
       data.push(...points);
-      // Sort by timestamp to ensure correct order
-      data.sort((a, b) => a.x - b.x);
-      // Keep only most recent points
-      while (data.length > MAX_DATA_POINTS) {
-        data.shift();
+      // Trim from start efficiently using slice instead of shift loop
+      if (data.length > MAX_DATA_POINTS) {
+        data = data.slice(data.length - MAX_DATA_POINTS);
       }
       sensorData.set(sensorId, data);
     });
 
     pendingUpdates.clear();
-    updateChart();
+  }
+
+  function rafLoop(timestamp: number) {
+    // Throttle updates to UPDATE_INTERVAL_MS
+    if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
+      processPendingUpdates();
+      updateChart();
+      lastUpdateTime = timestamp;
+    }
+    rafId = requestAnimationFrame(rafLoop);
   }
 
   function createChart() {
@@ -102,10 +112,10 @@
         style: {
           fontFamily: 'monospace'
         },
-        spacingTop: 10,
-        spacingRight: 10,
-        spacingBottom: 10,
-        spacingLeft: 10,
+        spacingTop: 5,
+        spacingRight: 5,
+        spacingBottom: 5,
+        spacingLeft: 5,
         zooming: {
           type: 'x'
         }
@@ -124,15 +134,13 @@
         labels: {
           style: {
             color: '#4ade80',
-            fontSize: '10px'
+            fontSize: '9px'
           },
           format: '{value:%H:%M:%S}'
         },
         gridLineWidth: 1,
         gridLineColor: 'rgba(74, 222, 128, 0.15)',
-        minorGridLineWidth: 1,
-        minorGridLineColor: 'rgba(74, 222, 128, 0.05)',
-        minorTickInterval: 200,
+        minorGridLineWidth: 0,
         lineColor: 'rgba(74, 222, 128, 0.3)',
         tickColor: 'rgba(74, 222, 128, 0.3)'
       },
@@ -141,41 +149,42 @@
           text: 'mV',
           style: {
             color: '#4ade80',
-            fontSize: '11px'
-          }
+            fontSize: '10px'
+          },
+          margin: 5
         },
         labels: {
           style: {
             color: '#4ade80',
-            fontSize: '10px'
+            fontSize: '9px'
           },
           format: '{value:.1f}'
         },
         gridLineWidth: 1,
         gridLineColor: 'rgba(74, 222, 128, 0.15)',
-        minorGridLineWidth: 1,
-        minorGridLineColor: 'rgba(74, 222, 128, 0.05)',
-        minorTickInterval: 0.5,
-        softMin: -2,
-        softMax: 3,
-        tickInterval: 1
+        minorGridLineWidth: 0,
+        minPadding: 0.05,
+        maxPadding: 0.05
       },
       legend: {
         enabled: true,
-        align: 'right',
-        verticalAlign: 'top',
-        layout: 'vertical',
-        floating: true,
-        backgroundColor: 'rgba(10, 15, 20, 0.8)',
-        borderColor: 'rgba(74, 222, 128, 0.3)',
-        borderWidth: 1,
+        align: 'center',
+        verticalAlign: 'bottom',
+        layout: 'horizontal',
+        floating: false,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
         itemStyle: {
           color: '#9ca3af',
-          fontSize: '10px'
+          fontSize: '9px'
         },
         itemHoverStyle: {
           color: '#ffffff'
-        }
+        },
+        itemMarginTop: 2,
+        itemMarginBottom: 0,
+        margin: 5,
+        padding: 0
       },
       tooltip: {
         backgroundColor: 'rgba(10, 15, 20, 0.95)',
@@ -193,46 +202,59 @@
       plotOptions: {
         line: {
           animation: false,
-          enableMouseTracking: true,
+          enableMouseTracking: false,
           lineWidth: 1
         },
         series: {
           animation: false,
-          turboThreshold: 5000
+          turboThreshold: 10000,
+          states: {
+            hover: {
+              enabled: false
+            }
+          }
         }
       },
       series: series
     });
   }
 
-  function getFilteredData(data: Array<{ x: number; y: number }>): Array<[number, number]> {
-    const now = Date.now();
-    const cutoff = now - selectedWindowMs;
-    return data
-      .filter(d => d.x >= cutoff)
-      .map(d => [d.x, d.y]);
+  function getFilteredData(data: Array<{ x: number; y: number }>, cutoff: number): Array<[number, number]> {
+    // Binary search for cutoff point since data is sorted by time
+    let start = 0;
+    let end = data.length;
+    while (start < end) {
+      const mid = (start + end) >> 1;
+      if (data[mid].x < cutoff) {
+        start = mid + 1;
+      } else {
+        end = mid;
+      }
+    }
+    // Single pass: slice and transform
+    const result: Array<[number, number]> = new Array(data.length - start);
+    for (let i = start; i < data.length; i++) {
+      result[i - start] = [data[i].x, data[i].y];
+    }
+    return result;
   }
 
   function updateChart() {
     if (!chart) return;
 
-    let needsRedraw = false;
     const now = Date.now();
+    const cutoff = now - selectedWindowMs;
+    let needsRedraw = false;
 
     Array.from(sensorData.entries()).forEach(([sensorId, data], index) => {
       const displayName = sensorId.length > 12 ? sensorId.slice(-8) : sensorId;
       const existingSeries = chart!.series.find(s => s.name === displayName);
-      const filteredData = getFilteredData(data);
+      const filteredData = getFilteredData(data, cutoff);
 
       if (existingSeries) {
-        existingSeries.setData(
-          filteredData,
-          false,
-          false,
-          false
-        );
+        existingSeries.setData(filteredData, false, false, false);
         needsRedraw = true;
-      } else {
+      } else if (filteredData.length > 0) {
         chart!.addSeries({
           type: 'line',
           name: displayName,
@@ -247,7 +269,6 @@
     });
 
     if (needsRedraw) {
-      // Update x-axis range to show the selected time window
       chart.xAxis[0].setExtremes(now - selectedWindowMs, now, false);
       chart.redraw(false);
     }
@@ -263,9 +284,9 @@
 
     setTimeout(() => {
       createChart();
+      // Start the animation loop after chart is created
+      rafId = requestAnimationFrame(rafLoop);
     }, 100);
-
-    updateTimer = setInterval(processPendingUpdates, UPDATE_INTERVAL_MS);
 
     const handleCompositeMeasurement = (e: CustomEvent) => {
       const { sensor_id, attribute_id, payload, timestamp } = e.detail;
@@ -341,8 +362,8 @@
   });
 
   onDestroy(() => {
-    if (updateTimer) {
-      clearInterval(updateTimer);
+    if (rafId) {
+      cancelAnimationFrame(rafId);
     }
     if (chart) {
       chart.destroy();
@@ -376,9 +397,9 @@
     background: #0a0f14;
     border-radius: 0.5rem;
     border: 1px solid rgba(74, 222, 128, 0.3);
-    padding: 0.75rem;
+    padding: 0.5rem;
     height: 100%;
-    min-height: 400px;
+    min-height: 260px;
     box-shadow:
       0 0 20px rgba(0, 255, 0, 0.05),
       inset 0 0 60px rgba(0, 0, 0, 0.5);
@@ -388,8 +409,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.5rem;
-    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.25rem;
+    padding: 0.25rem 0.5rem;
     background: rgba(74, 222, 128, 0.05);
     border-radius: 0.25rem;
     border: 1px solid rgba(74, 222, 128, 0.2);
@@ -402,7 +423,7 @@
   }
 
   .chart-header h2 {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     color: #4ade80;
     margin: 0;
@@ -412,7 +433,7 @@
   }
 
   .sensor-count {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     color: #4ade80;
     font-family: monospace;
     opacity: 0.7;
@@ -448,8 +469,8 @@
   }
 
   .chart-wrapper {
-    height: calc(100% - 3rem);
-    min-height: 320px;
+    height: calc(100% - 2.5rem);
+    min-height: 200px;
     background:
       repeating-linear-gradient(
         0deg,

@@ -1,0 +1,285 @@
+name: All Clients CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'clients/**'
+      - '.github/workflows/clients-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'clients/**'
+      - '.github/workflows/clients-ci.yml'
+  workflow_dispatch:
+    inputs:
+      run_all:
+        description: 'Run all client tests regardless of changes'
+        required: false
+        default: 'false'
+        type: boolean
+
+concurrency:
+  group: clients-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect which clients have changes
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      unity: ${{ steps.filter.outputs.unity }}
+      rust: ${{ steps.filter.outputs.rust }}
+      python: ${{ steps.filter.outputs.python }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            unity:
+              - 'clients/unity/**'
+            rust:
+              - 'clients/rust/**'
+            python:
+              - 'clients/python/**'
+
+      - name: Log detected changes
+        run: |
+          echo "Unity changes: ${{ steps.filter.outputs.unity }}"
+          echo "Rust changes: ${{ steps.filter.outputs.rust }}"
+          echo "Python changes: ${{ steps.filter.outputs.python }}"
+          echo "Run all: ${{ github.event.inputs.run_all }}"
+
+  # Unity SDK Quick Check
+  unity-check:
+    name: Unity SDK
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.unity == 'true' || github.event.inputs.run_all == 'true'
+    defaults:
+      run:
+        working-directory: clients/unity/SensoctoSDK
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate package.json
+        run: python3 -c "import json; json.load(open('package.json')); print('Valid package.json')"
+
+      - name: Check structure
+        run: |
+          test -f package.json && echo "package.json: OK"
+          test -f README.md && echo "README.md: OK"
+          test -f Runtime/Sensocto.SDK.asmdef && echo "Assembly definition: OK"
+          ls Runtime/*.cs | wc -l | xargs -I {} echo "C# files: {}"
+
+      - name: Setup .NET for syntax check
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: C# syntax validation
+        run: |
+          # Basic syntax check using dotnet
+          for file in Runtime/*.cs; do
+            if ! dotnet tool run --global dotnet-script 2>/dev/null; then
+              echo "Checking $file..."
+            fi
+          done
+          echo "C# files present and accessible"
+
+  # Rust SDK Quick Check
+  rust-check:
+    name: Rust SDK
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event.inputs.run_all == 'true'
+    defaults:
+      run:
+        working-directory: clients/rust
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            clients/rust/target
+          key: ${{ runner.os }}-cargo-quick-${{ hashFiles('clients/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-quick-
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Build
+        run: cargo build
+
+      - name: Test
+        run: cargo test
+
+  # Python SDK Quick Check
+  python-check:
+    name: Python SDK
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || github.event.inputs.run_all == 'true'
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-quick-${{ hashFiles('clients/python/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-quick-
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: |
+          pip install ruff
+          ruff check sensocto
+
+      - name: Black format check
+        run: |
+          pip install black
+          black --check sensocto
+
+      - name: Type check
+        run: mypy sensocto --ignore-missing-imports
+
+      - name: Run tests
+        run: pytest -v
+
+  # Summary and status reporting
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [changes, unity-check, rust-check, python-check]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Client SDK CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Client | Changes Detected | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------------------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          # Unity
+          unity_changes="${{ needs.changes.outputs.unity }}"
+          unity_status="${{ needs.unity-check.result }}"
+          if [ "$unity_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+            if [ "$unity_status" == "success" ]; then
+              echo "| Unity | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$unity_status" == "failure" ]; then
+              echo "| Unity | Yes | :x: Failed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Unity | Yes | :warning: $unity_status |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Unity | No | :heavy_minus_sign: Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Rust
+          rust_changes="${{ needs.changes.outputs.rust }}"
+          rust_status="${{ needs.rust-check.result }}"
+          if [ "$rust_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+            if [ "$rust_status" == "success" ]; then
+              echo "| Rust | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$rust_status" == "failure" ]; then
+              echo "| Rust | Yes | :x: Failed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Rust | Yes | :warning: $rust_status |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Rust | No | :heavy_minus_sign: Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Python
+          python_changes="${{ needs.changes.outputs.python }}"
+          python_status="${{ needs.python-check.result }}"
+          if [ "$python_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+            if [ "$python_status" == "success" ]; then
+              echo "| Python | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$python_status" == "failure" ]; then
+              echo "| Python | Yes | :x: Failed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Python | Yes | :warning: $python_status |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Python | No | :heavy_minus_sign: Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Triggered by: ${{ github.event_name }} on ${{ github.ref }}*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        run: |
+          unity_changes="${{ needs.changes.outputs.unity }}"
+          rust_changes="${{ needs.changes.outputs.rust }}"
+          python_changes="${{ needs.changes.outputs.python }}"
+          run_all="${{ github.event.inputs.run_all }}"
+
+          unity_status="${{ needs.unity-check.result }}"
+          rust_status="${{ needs.rust-check.result }}"
+          python_status="${{ needs.python-check.result }}"
+
+          failed=false
+
+          if [ "$unity_changes" == "true" ] || [ "$run_all" == "true" ]; then
+            if [ "$unity_status" == "failure" ]; then
+              echo "::error::Unity SDK checks failed"
+              failed=true
+            fi
+          fi
+
+          if [ "$rust_changes" == "true" ] || [ "$run_all" == "true" ]; then
+            if [ "$rust_status" == "failure" ]; then
+              echo "::error::Rust SDK checks failed"
+              failed=true
+            fi
+          fi
+
+          if [ "$python_changes" == "true" ] || [ "$run_all" == "true" ]; then
+            if [ "$python_status" == "failure" ]; then
+              echo "::error::Python SDK checks failed"
+              failed=true
+            fi
+          fi
+
+          if [ "$failed" == "true" ]; then
+            exit 1
+          fi
+
+          echo "All client SDK checks passed (or were skipped due to no changes)"

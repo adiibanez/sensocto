@@ -14,10 +14,12 @@
     "@jellyfish-dev/membrane-webrtc-js": "^0.6.0",
     "ahrs": "1.1.8",
     "chart.js": "^4.4.7",
-    "highcharts": "^11.4.0",
     "chartjs-adapter-date-fns": "^3.0.0",
     "date-fns": "^4.1.0",
     "esbuild-wasm": "^0.25.12",
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "highcharts": "^11.4.0",
     "live_svelte": "file:../deps/live_svelte",
     "maplibre-gl": "^5.1.1",
     "phoenix": "file:../deps/phoenix",
@@ -25,6 +27,7 @@
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "qrcode": "^1.5.4",
     "scichart": "^3.5.711",
+    "sigma": "^3.0.2",
     "sortablejs": "^1.15.6",
     "uuid": "^13.0.0"
   }

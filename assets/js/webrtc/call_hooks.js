@@ -9,6 +9,9 @@ import { Socket } from "phoenix";
 import { MembraneClient } from "./membrane_client.js";
 import { MediaManager } from "./media_manager.js";
 import { QualityManager } from "./quality_manager.js";
+import { SpeakingDetector } from "./speaking_detector.js";
+import { AdaptiveProducer } from "./adaptive_producer.js";
+import { AdaptiveConsumer } from "./adaptive_consumer.js";
 
 // Call states for robust state machine
 const CallState = {
@@ -105,6 +108,29 @@ export const CallHook = {
       onStatsUpdate: (stats) => this.handleStatsUpdate(stats),
     });
 
+    // Speaking detector for adaptive quality
+    this.speakingDetector = new SpeakingDetector({
+      onSpeakingChange: (speaking) => this._handleSpeakingChange(speaking),
+      onVolumeChange: (volume) => this._handleVolumeChange(volume),
+    });
+
+    // Adaptive producer for tier-based video quality
+    this.adaptiveProducer = new AdaptiveProducer({
+      onModeChange: (tier, mode) => this._handleProducerModeChange(tier, mode),
+      onSnapshot: (snapshot) => this._handleSnapshot(snapshot),
+      onError: (error) => console.error("[CallHook] AdaptiveProducer error:", error),
+    });
+
+    // Current tier for this participant
+    this.currentTier = "viewer";
+
+    // Adaptive consumer for handling remote participants' video
+    this.adaptiveConsumer = new AdaptiveConsumer({
+      onModeChange: (userId, mode, tier) => {
+        this.pushEvent("consumer_mode_changed", { user_id: userId, mode, tier });
+      },
+    });
+
     // Expose hook globally for debugging
     window.__callHook = this;
     console.log("[CallHook] mounted, exposed as window.__callHook");
@@ -119,6 +145,12 @@ export const CallHook = {
     // Handle visibility change to manage call state when tab is hidden/shown
     this._visibilityHandler = () => this._handleVisibilityChange();
     document.addEventListener("visibilitychange", this._visibilityHandler);
+
+    // Handle focus/blur for attention tracking
+    this._focusHandler = () => this._handleFocusChange(true);
+    this._blurHandler = () => this._handleFocusChange(false);
+    window.addEventListener("focus", this._focusHandler);
+    window.addEventListener("blur", this._blurHandler);
 
     // Handle before unload to clean up properly
     this._beforeUnloadHandler = () => this._handleBeforeUnload();
@@ -136,9 +168,13 @@ export const CallHook = {
   _handleVisibilityChange() {
     if (document.hidden && this.inCall) {
       console.log("[CallHook] Tab hidden, call still active");
+      // Send low attention state to server (idle tier)
+      this._sendAttentionState("low");
     } else if (!document.hidden && this.inCall) {
       console.log("[CallHook] Tab visible, checking connection health");
       this._checkConnectionHealth();
+      // Restore attention state based on focus
+      this._sendAttentionState(document.hasFocus() ? "high" : "medium");
     }
   },
 
@@ -291,6 +327,12 @@ export const CallHook = {
       // Start quality monitoring
       this._startQualityMonitoring();
 
+      // Start speaking detection for adaptive quality
+      this._startSpeakingDetection();
+
+      // Initialize adaptive producer with video track
+      this._initAdaptiveProducer();
+
       // Attach local stream with retry
       this.attachLocalStreamWithRetry();
 
@@ -375,6 +417,108 @@ export const CallHook = {
     }
   },
 
+  _startSpeakingDetection() {
+    if (this.localStream && this.speakingDetector) {
+      this.speakingDetector.start(this.localStream);
+      console.log("[CallHook] Speaking detection started");
+    }
+  },
+
+  _stopSpeakingDetection() {
+    if (this.speakingDetector) {
+      this.speakingDetector.stop();
+      console.log("[CallHook] Speaking detection stopped");
+    }
+  },
+
+  _handleSpeakingChange(speaking) {
+    console.log(`[CallHook] Speaking state changed: ${speaking}`);
+
+    // Send to server via channel
+    if (this.channel && this.inCall) {
+      this.channel.push("speaking_state", { speaking });
+    }
+
+    // Notify LiveView for local UI updates
+    this.pushEvent("speaking_changed", { speaking });
+  },
+
+  _handleVolumeChange(volume) {
+    // Only push volume updates periodically to avoid flooding
+    const now = Date.now();
+    if (!this._lastVolumePush || now - this._lastVolumePush > 100) {
+      this._lastVolumePush = now;
+      // Volume is used for local UI (e.g., volume meter)
+      // Not sent to server - only speaking state matters there
+    }
+  },
+
+  _handleFocusChange(focused) {
+    if (!this.inCall || document.hidden) {
+      return;
+    }
+
+    console.log(`[CallHook] Focus changed: ${focused}`);
+    // high = focused on this tab, medium = tab visible but not focused
+    this._sendAttentionState(focused ? "high" : "medium");
+  },
+
+  _sendAttentionState(level) {
+    if (this.channel && this.inCall) {
+      console.log(`[CallHook] Sending attention state: ${level}`);
+      this.channel.push("attention_state", { level });
+    }
+  },
+
+  _initAdaptiveProducer() {
+    if (!this.localStream || !this.adaptiveProducer) return;
+
+    const videoTrack = this.localStream.getVideoTracks()[0];
+    if (videoTrack) {
+      // Get the sender for this track if available
+      let sender = null;
+      if (this.membraneClient?.webrtc?.connection) {
+        const senders = this.membraneClient.webrtc.connection.getSenders();
+        sender = senders.find(s => s.track?.kind === "video");
+      }
+
+      this.adaptiveProducer.init(videoTrack, sender);
+      console.log("[CallHook] Adaptive producer initialized");
+    }
+  },
+
+  _handleProducerModeChange(tier, mode) {
+    console.log(`[CallHook] Producer mode changed: tier=${tier}, mode=${mode}`);
+    this.pushEvent("producer_mode_changed", { tier, mode });
+  },
+
+  _handleSnapshot(snapshot) {
+    // Send snapshot to server via channel for distribution to viewers
+    if (this.channel && this.inCall) {
+      this.channel.push("video_snapshot", {
+        data: snapshot.data,
+        width: snapshot.width,
+        height: snapshot.height,
+        timestamp: snapshot.timestamp,
+      });
+    }
+  },
+
+  _handleTierChange(tier) {
+    if (tier === this.currentTier) return;
+
+    console.log(`[CallHook] Tier changed: ${this.currentTier} -> ${tier}`);
+    this.currentTier = tier;
+
+    // Update adaptive producer with new tier
+    if (this.adaptiveProducer) {
+      this.adaptiveProducer.setTier(tier);
+    }
+
+    // Notify LiveView
+    this.pushEvent("my_tier_changed", { tier });
+  },
+
   _handleReconnecting(attempt, max) {
     console.log(`[CallHook] WebRTC reconnecting (${attempt}/${max})`);
     this._setCallState(CallState.RECONNECTING);
@@ -398,6 +542,9 @@ export const CallHook = {
     this._setCallState(CallState.LEAVING);
 
     try {
+      // Stop speaking detection
+      this._stopSpeakingDetection();
+
       // Stop quality monitoring
       if (this.qualityManager) {
         try {
@@ -629,6 +776,43 @@ export const CallHook = {
             this.mediaManager.setQualityProfile(data.quality);
           }
           this.pushEvent("quality_changed", data);
+        }
+      });
+
+      // Adaptive quality: speaking state from other participants
+      this.channel.on("participant_speaking", (data) => {
+        if (!this._destroyed) {
+          this.pushEvent("participant_speaking", {
+            user_id: data.user_id,
+            speaking: data.speaking
+          });
+        }
+      });
+
+      // Adaptive quality: tier changes from server
+      this.channel.on("tier_changed", (data) => {
+        if (!this._destroyed) {
+          // Check if this is our own tier change
+          if (data.user_id === this.userId) {
+            this._handleTierChange(data.tier);
+          } else {
+            // Update adaptive consumer for remote participant
+            if (this.adaptiveConsumer) {
+              this.adaptiveConsumer.setParticipantTier(data.user_id, data.tier);
+            }
+          }
+          // Also notify LiveView for UI updates
+          this.pushEvent("tier_changed", {
+            user_id: data.user_id,
+            tier: data.tier
+          });
+        }
+      });
+
+      // Adaptive quality: receive snapshots from other participants
+      this.channel.on("video_snapshot", (data) => {
+        if (!this._destroyed && this.adaptiveConsumer && data.user_id !== this.userId) {
+          this.adaptiveConsumer.receiveSnapshot(data.user_id, data);
         }
       });
 
@@ -965,6 +1149,14 @@ export const CallHook = {
       document.removeEventListener("visibilitychange", this._visibilityHandler);
       this._visibilityHandler = null;
     }
+    if (this._focusHandler) {
+      window.removeEventListener("focus", this._focusHandler);
+      this._focusHandler = null;
+    }
+    if (this._blurHandler) {
+      window.removeEventListener("blur", this._blurHandler);
+      this._blurHandler = null;
+    }
     if (this._beforeUnloadHandler) {
       window.removeEventListener("beforeunload", this._beforeUnloadHandler);
       this._beforeUnloadHandler = null;
@@ -987,6 +1179,36 @@ export const CallHook = {
         // Ignore
       }
       this.qualityManager = null;
+    }
+
+    // Cleanup speaking detector
+    if (this.speakingDetector) {
+      try {
+        this.speakingDetector.destroy();
+      } catch (e) {
+        // Ignore
+      }
+      this.speakingDetector = null;
+    }
+
+    // Cleanup adaptive producer
+    if (this.adaptiveProducer) {
+      try {
+        this.adaptiveProducer.destroy();
+      } catch (e) {
+        // Ignore
+      }
+      this.adaptiveProducer = null;
+    }
+
+    // Cleanup adaptive consumer
+    if (this.adaptiveConsumer) {
+      try {
+        this.adaptiveConsumer.destroy();
+      } catch (e) {
+        // Ignore
+      }
+      this.adaptiveConsumer = null;
     }
 
     // Stop local stream

@@ -219,6 +219,8 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       |> assign_new(:participant, fn -> nil end)
       |> assign_new(:audio_enabled, fn -> true end)
       |> assign_new(:video_enabled, fn -> true end)
+      |> assign_new(:tier, fn -> get_participant_tier(assigns[:participant]) end)
+      |> assign_new(:speaking, fn -> get_participant_speaking(assigns[:participant]) end)
 
     ~H"""
     <div
@@ -226,7 +228,8 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       phx-hook="VideoTileHook"
       data-peer-id={@peer_id}
       data-is-local={to_string(@is_local)}
-      class="relative bg-gray-900 rounded-lg overflow-hidden aspect-video"
+      class={"relative bg-gray-900 rounded-lg overflow-hidden aspect-video " <>
+        if(@speaking, do: "ring-2 ring-green-400", else: "")}
     >
       <video
         autoplay
@@ -235,6 +238,21 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
         class="w-full h-full object-cover"
       >
       </video>
+
+      <%!-- Tier indicator badge --%>
+      <div class="absolute top-2 right-2">
+        <.tier_badge tier={@tier} />
+      </div>
+
+      <%!-- Speaking indicator (pulsing border effect handled by class above) --%>
+      <%= if @speaking do %>
+        <div class="absolute top-2 left-2">
+          <span class="flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+          </span>
+        </div>
+      <% end %>
 
       <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
         <div class="flex items-center justify-between">
@@ -267,6 +285,31 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
         </div>
       <% end %>
     </div>
+    """
+  end
+
+  defp tier_badge(assigns) do
+    ~H"""
+    <%= case @tier do %>
+      <% :active -> %>
+        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-green-500/80 text-white" title="Active speaker - HD video">
+          HD
+        </span>
+      <% :recent -> %>
+        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-500/80 text-white" title="Recently active - SD video">
+          SD
+        </span>
+      <% :viewer -> %>
+        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-gray-500/80 text-white" title="Viewer mode - snapshots">
+          📷
+        </span>
+      <% :idle -> %>
+        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-gray-700/80 text-gray-300" title="Idle - no video">
+          💤
+        </span>
+      <% _ -> %>
+        <span></span>
+    <% end %>
     """
   end
 
@@ -340,6 +383,24 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       %{metadata: %{displayName: name}} when is_binary(name) -> name
       %{user_id: user_id} -> "User #{String.slice(user_id, 0..7)}"
       _ -> "Participant"
+    end
+  end
+
+  defp get_participant_tier(nil), do: :viewer
+
+  defp get_participant_tier(participant) do
+    case participant do
+      %{tier: tier} when tier in [:active, :recent, :viewer, :idle] -> tier
+      _ -> :viewer
+    end
+  end
+
+  defp get_participant_speaking(nil), do: false
+
+  defp get_participant_speaking(participant) do
+    case participant do
+      %{speaking: speaking} when is_boolean(speaking) -> speaking
+      _ -> false
     end
   end
 end

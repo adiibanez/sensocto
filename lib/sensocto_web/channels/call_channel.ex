@@ -11,7 +11,7 @@ defmodule SensoctoWeb.CallChannel do
   alias Phoenix.PubSub
 
   # Intercept broadcast events so handle_out/3 is called
-  intercept ["participant_audio_changed", "participant_video_changed"]
+  intercept ["participant_audio_changed", "participant_video_changed", "participant_speaking", "video_snapshot"]
 
   @impl true
   def join("call:" <> room_id, params, socket) do
@@ -185,6 +185,71 @@ defmodule SensoctoWeb.CallChannel do
     end
   end
 
+  # Adaptive quality: speaking state from client audio detection
+  @impl true
+  def handle_in("speaking_state", %{"speaking" => speaking}, socket) do
+    if socket.assigns.joined_call do
+      room_id = socket.assigns.room_id
+      user_id = socket.assigns.user_id
+
+      Calls.update_speaking_state(room_id, user_id, speaking)
+
+      # Broadcast to other participants so they can show speaking indicator
+      broadcast!(socket, "participant_speaking", %{
+        user_id: user_id,
+        speaking: speaking
+      })
+
+      {:noreply, socket}
+    else
+      {:reply, {:error, %{reason: "not_in_call"}}, socket}
+    end
+  end
+
+  # Adaptive quality: attention/visibility state from client
+  @impl true
+  def handle_in("attention_state", %{"level" => level}, socket) do
+    if socket.assigns.joined_call do
+      room_id = socket.assigns.room_id
+      user_id = socket.assigns.user_id
+
+      attention_level =
+        case level do
+          "high" -> :high
+          "medium" -> :medium
+          "low" -> :low
+          _ -> :medium
+        end
+
+      Calls.update_attention(room_id, user_id, attention_level)
+
+      {:noreply, socket}
+    else
+      {:reply, {:error, %{reason: "not_in_call"}}, socket}
+    end
+  end
+
+  # Adaptive quality: receive video snapshot from client (for viewer tier)
+  @impl true
+  def handle_in("video_snapshot", %{"data" => data, "width" => width, "height" => height, "timestamp" => timestamp}, socket) do
+    if socket.assigns.joined_call do
+      user_id = socket.assigns.user_id
+
+      # Broadcast snapshot to other participants
+      broadcast!(socket, "video_snapshot", %{
+        user_id: user_id,
+        data: data,
+        width: width,
+        height: height,
+        timestamp: timestamp
+      })
+
+      {:noreply, socket}
+    else
+      {:reply, {:error, %{reason: "not_in_call"}}, socket}
+    end
+  end
+
   # Handle PubSub messages from CallServer
 
   @impl true
@@ -207,6 +272,12 @@ defmodule SensoctoWeb.CallChannel do
 
       {:quality_changed, quality} ->
         push(socket, "quality_changed", %{quality: quality})
+
+      {:tier_changed, user_id, tier} ->
+        push(socket, "tier_changed", %{user_id: user_id, tier: tier})
+
+      {:adaptive_quality_changed, enabled} ->
+        push(socket, "adaptive_quality_changed", %{enabled: enabled})
 
       :call_ended ->
         push(socket, "call_ended", %{})
@@ -242,6 +313,22 @@ defmodule SensoctoWeb.CallChannel do
   @impl true
   def handle_out("participant_video_changed", payload, socket) do
     push(socket, "participant_video_changed", payload)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_out("participant_speaking", payload, socket) do
+    push(socket, "participant_speaking", payload)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_out("video_snapshot", payload, socket) do
+    # Don't send the snapshot back to the sender
+    if payload.user_id != socket.assigns.user_id do
+      push(socket, "video_snapshot", payload)
+    end
+
     {:noreply, socket}
   end
 

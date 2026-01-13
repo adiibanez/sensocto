@@ -101,6 +101,38 @@ defmodule Sensocto.Calls do
   end
 
   @doc """
+  Updates a participant's speaking state for adaptive quality.
+  Called by CallChannel when client detects audio activity.
+  """
+  def update_speaking_state(room_id, user_id, speaking?) do
+    CallServer.update_speaking_state(room_id, user_id, speaking?)
+  end
+
+  @doc """
+  Updates a participant's attention/visibility state for adaptive quality.
+  Levels: :high (focused), :medium (visible), :low (hidden tab/AFK)
+  """
+  def update_attention(room_id, user_id, level) do
+    CallServer.update_attention(room_id, user_id, level)
+  end
+
+  @doc """
+  Gets the current quality tier for a participant.
+  Returns {:ok, tier} where tier is :active, :recent, :viewer, or :idle
+  """
+  def get_participant_tier(room_id, user_id) do
+    CallServer.get_participant_tier(room_id, user_id)
+  end
+
+  @doc """
+  Enables or disables adaptive quality mode for a call.
+  When disabled, all participants use the same quality based on count.
+  """
+  def set_adaptive_quality(room_id, enabled?) do
+    CallServer.set_adaptive_quality(room_id, enabled?)
+  end
+
+  @doc """
   Updates the attention level for a participant's webcam quality.
   Called by AttentionTracker when system load changes.
 

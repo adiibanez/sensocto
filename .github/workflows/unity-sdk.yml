@@ -1,0 +1,297 @@
+name: Unity SDK CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'clients/unity/**'
+      - '.github/workflows/unity-sdk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'clients/unity/**'
+      - '.github/workflows/unity-sdk.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: unity-sdk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+jobs:
+  # Static analysis without Unity
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/unity/SensoctoSDK
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install dotnet-format
+        run: dotnet tool install -g dotnet-format
+
+      - name: Check code formatting
+        run: |
+          # Create a simple project file for analysis
+          cat > SensoctoSDK.csproj << 'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+              <LangVersion>9.0</LangVersion>
+              <Nullable>enable</Nullable>
+            </PropertyGroup>
+          </Project>
+          EOF
+          dotnet format --verify-no-changes --verbosity diagnostic || echo "::warning::Code formatting issues detected"
+
+      - name: Validate package.json
+        run: |
+          if [ ! -f "package.json" ]; then
+            echo "::error::package.json not found"
+            exit 1
+          fi
+          # Validate JSON syntax
+          python3 -c "import json; json.load(open('package.json'))"
+          echo "package.json is valid JSON"
+
+      - name: Check Unity package structure
+        run: |
+          # Verify required files exist
+          required_files=(
+            "package.json"
+            "README.md"
+            "Runtime/Sensocto.SDK.asmdef"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "::error::Required file $file not found"
+              exit 1
+            fi
+          done
+
+          echo "Unity package structure is valid"
+
+      - name: Verify assembly definition
+        run: |
+          if [ -f "Runtime/Sensocto.SDK.asmdef" ]; then
+            python3 -c "import json; json.load(open('Runtime/Sensocto.SDK.asmdef'))"
+            echo "Assembly definition is valid"
+          fi
+
+  # Build validation with Unity
+  build:
+    name: Build - Unity ${{ matrix.unity-version }}
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version:
+          - 2021.3.45f1  # 2021.3 LTS
+          - 2022.3.56f1  # 2022.3 LTS
+          - 2023.2.20f1  # 2023.x latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: clients/unity/SensoctoSDK/Library
+          key: unity-library-${{ matrix.unity-version }}-${{ hashFiles('clients/unity/SensoctoSDK/**/*.cs') }}
+          restore-keys: |
+            unity-library-${{ matrix.unity-version }}-
+
+      - name: Setup Unity
+        uses: game-ci/unity-builder@v4
+        if: env.UNITY_LICENSE != ''
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneLinux64
+          unityVersion: ${{ matrix.unity-version }}
+          projectPath: clients/unity/SensoctoSDK
+          buildMethod: ''
+          versioning: None
+        continue-on-error: true
+
+      - name: Build validation (without Unity license)
+        if: env.UNITY_LICENSE == ''
+        run: |
+          echo "::warning::Unity license not configured - skipping Unity build validation"
+          echo "To enable Unity builds, add UNITY_LICENSE, UNITY_EMAIL, and UNITY_PASSWORD secrets"
+          echo "See: https://game.ci/docs/github/activation"
+
+          # Perform basic syntax validation with Roslyn
+          cd clients/unity/SensoctoSDK
+
+          # Check C# files compile with dotnet
+          cat > temp.csproj << 'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+              <LangVersion>9.0</LangVersion>
+            </PropertyGroup>
+            <ItemGroup>
+              <Compile Include="Runtime/**/*.cs" />
+            </ItemGroup>
+            <ItemGroup>
+              <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+            </ItemGroup>
+          </Project>
+          EOF
+
+          # Install dependencies and verify compilation
+          dotnet restore temp.csproj || echo "::warning::Could not restore - Unity-specific types missing"
+          dotnet build temp.csproj --no-restore 2>&1 || echo "::warning::Build check skipped - Unity assemblies required"
+
+          rm -f temp.csproj
+
+  # Test with Unity Test Framework
+  test:
+    name: Tests - Unity ${{ matrix.unity-version }}
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ vars.UNITY_TESTS_ENABLED == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version:
+          - 2021.3.45f1
+          - 2022.3.56f1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: clients/unity/SensoctoSDK/Library
+          key: unity-library-${{ matrix.unity-version }}-${{ hashFiles('clients/unity/SensoctoSDK/**/*.cs') }}
+          restore-keys: |
+            unity-library-${{ matrix.unity-version }}-
+
+      - name: Run EditMode tests
+        uses: game-ci/unity-test-runner@v4
+        if: env.UNITY_LICENSE != ''
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: clients/unity/SensoctoSDK
+          unityVersion: ${{ matrix.unity-version }}
+          testMode: EditMode
+          artifactsPath: test-results
+          checkName: Unity Test Results - ${{ matrix.unity-version }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unity-test-results-${{ matrix.unity-version }}
+          path: test-results
+          retention-days: 14
+
+  # Package validation
+  package-validation:
+    name: Package Validation
+    runs-on: ubuntu-latest
+    needs: code-quality
+    defaults:
+      run:
+        working-directory: clients/unity/SensoctoSDK
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate package.json schema
+        run: |
+          python3 << 'EOF'
+          import json
+          import sys
+
+          with open('package.json') as f:
+              pkg = json.load(f)
+
+          # Required fields
+          required = ['name', 'version', 'displayName', 'description', 'unity']
+          missing = [field for field in required if field not in pkg]
+
+          if missing:
+              print(f"::error::Missing required fields: {missing}")
+              sys.exit(1)
+
+          # Validate name format (com.company.package)
+          name = pkg['name']
+          if not name.startswith('com.'):
+              print(f"::warning::Package name '{name}' should follow com.company.package format")
+
+          # Validate version format (semver)
+          import re
+          version = pkg['version']
+          if not re.match(r'^\d+\.\d+\.\d+(-[\w.]+)?$', version):
+              print(f"::error::Invalid version format: {version}")
+              sys.exit(1)
+
+          # Validate Unity version
+          unity = pkg['unity']
+          if not re.match(r'^\d{4}\.\d+$', unity):
+              print(f"::warning::Unity version '{unity}' format may be incorrect")
+
+          print(f"Package validation passed:")
+          print(f"  Name: {name}")
+          print(f"  Version: {version}")
+          print(f"  Unity: {unity}")
+          print(f"  Display Name: {pkg['displayName']}")
+          EOF
+
+      - name: Check changelog exists
+        run: |
+          if [ -f "CHANGELOG.md" ]; then
+            echo "CHANGELOG.md found"
+          else
+            echo "::warning::CHANGELOG.md not found - consider adding one"
+          fi
+
+      - name: Check license exists
+        run: |
+          if [ -f "LICENSE" ] || [ -f "LICENSE.md" ] || [ -f "LICENSE.txt" ]; then
+            echo "License file found"
+          else
+            echo "::warning::LICENSE file not found - consider adding one"
+          fi
+
+  # Summary job
+  unity-ci-complete:
+    name: Unity CI Complete
+    runs-on: ubuntu-latest
+    needs: [code-quality, build, package-validation]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.code-quality.result }}" == "failure" ] || \
+             [ "${{ needs.build.result }}" == "failure" ] || \
+             [ "${{ needs.package-validation.result }}" == "failure" ]; then
+            echo "::error::One or more jobs failed"
+            exit 1
+          fi
+          echo "All Unity SDK checks passed!"

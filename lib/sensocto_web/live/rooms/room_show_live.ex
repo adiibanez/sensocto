@@ -537,11 +537,76 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
+  def handle_info(
+        {:measurement,
+         %{
+           sensor_id: sensor_id,
+           attribute_id: attribute_id,
+           payload: payload,
+           timestamp: timestamp
+         }},
+        socket
+      ) do
+    activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
+    socket = assign(socket, :sensor_activity, activity)
+
+    # Push composite_measurement event when lens is active
+    socket =
+      if socket.assigns[:current_lens] do
+        push_event(socket, "composite_measurement", %{
+          sensor_id: sensor_id,
+          attribute_id: attribute_id,
+          payload: payload,
+          timestamp: timestamp
+        })
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  # Fallback for measurement without full details
+  @impl true
   def handle_info({:measurement, %{sensor_id: sensor_id}}, socket) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
     {:noreply, assign(socket, :sensor_activity, activity)}
   end
 
+  @impl true
+  def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
+      when is_list(measurements_list) do
+    activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
+    socket = assign(socket, :sensor_activity, activity)
+
+    # Push composite_measurement events when lens is active
+    socket =
+      if socket.assigns[:current_lens] do
+        # Get latest measurement per attribute
+        latest_by_attr =
+          measurements_list
+          |> Enum.group_by(& &1.attribute_id)
+          |> Enum.map(fn {attr_id, measurements} ->
+            latest = Enum.max_by(measurements, & &1.timestamp)
+            %{
+              sensor_id: sensor_id,
+              attribute_id: attr_id,
+              payload: latest.payload,
+              timestamp: latest.timestamp
+            }
+          end)
+
+        Enum.reduce(latest_by_attr, socket, fn measurement, acc ->
+          push_event(acc, "composite_measurement", measurement)
+        end)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  # Fallback for measurements_batch without full list
   @impl true
   def handle_info({:measurements_batch, {sensor_id, _}}, socket) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
@@ -1014,7 +1079,7 @@ defmodule SensoctoWeb.RoomShowLive do
           </svg>
           Share
         </button>
-        <%= if @can_manage do %>
+        <%= if @is_member do %>
           <button
             phx-click="open_add_sensor_modal"
             class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
@@ -1257,7 +1322,7 @@ defmodule SensoctoWeb.RoomShowLive do
   # Lens composite view component - renders the appropriate Svelte component for each lens type
   defp lens_composite_view(assigns) do
     ~H"""
-    <div class="bg-gray-800 rounded-lg p-4">
+    <div id="lens-composite-view" phx-hook="CompositeMeasurementHandler" class="bg-gray-800 rounded-lg p-4">
       <%= case normalize_attr_type(@lens_type) do %>
         <% "heartrate" -> %>
           <.svelte
@@ -1268,10 +1333,17 @@ defmodule SensoctoWeb.RoomShowLive do
           />
         <% "geolocation" -> %>
           <.svelte
-            name="CompositeMap"
-            props={%{positions: Enum.map(@lens_data, fn d -> Map.put(d.position, :sensor_id, d.sensor_id) end)}}
+            name="CompositeGeolocation"
+            props={%{positions: Enum.map(@lens_data, fn d ->
+              %{
+                lat: d.position[:latitude] || d.position["latitude"],
+                lng: d.position[:longitude] || d.position["longitude"],
+                sensor_id: d.sensor_id,
+                sensor_name: d.sensor_name
+              }
+            end)}}
             socket={@socket}
-            class="w-full h-80"
+            class="w-full"
           />
         <% "imu" -> %>
           <.svelte

@@ -15,6 +15,97 @@ defmodule SensoctoWeb.StatefulSensorLive do
   @push_throttle_interval 100
 
   @doc """
+  Renders a connection status badge showing sensor state.
+  States: :disconnected, :connecting, :connected, :streaming, :error
+  """
+  attr :status, :atom, required: true
+  attr :last_data_at, :any, default: nil
+  attr :batch_window, :integer, default: nil
+  attr :error_count, :integer, default: 0
+
+  def connection_status_badge(assigns) do
+    now = System.monotonic_time(:millisecond)
+
+    # Calculate time since last data
+    staleness_ms =
+      case assigns.last_data_at do
+        nil -> nil
+        ts -> now - ts
+      end
+
+    # Determine status appearance
+    {icon_name, color_class, label, pulse} =
+      case assigns.status do
+        :streaming ->
+          cond do
+            staleness_ms && staleness_ms > 5000 ->
+              {"exclamation-triangle", "text-yellow-400", "Stale", false}
+
+            staleness_ms && staleness_ms > 2000 ->
+              {"signal", "text-yellow-400", "Slow", false}
+
+            true ->
+              {"signal", "text-green-400", "Streaming", true}
+          end
+
+        :connected ->
+          {"check-circle", "text-green-400", "Connected", false}
+
+        :connecting ->
+          {"arrow-path", "text-yellow-400", "Connecting", true}
+
+        :disconnected ->
+          {"x-circle", "text-gray-500", "Disconnected", false}
+
+        :error ->
+          {"exclamation-circle", "text-red-400", "Error", false}
+
+        _ ->
+          {"question-mark-circle", "text-gray-500", "Unknown", false}
+      end
+
+    staleness_text =
+      case staleness_ms do
+        nil -> nil
+        ms when ms < 1000 -> "#{ms}ms ago"
+        ms when ms < 60_000 -> "#{div(ms, 1000)}s ago"
+        ms -> "#{div(ms, 60_000)}m ago"
+      end
+
+    assigns =
+      assigns
+      |> assign(:icon_name, icon_name)
+      |> assign(:color_class, color_class)
+      |> assign(:label, label)
+      |> assign(:pulse, pulse)
+      |> assign(:staleness_text, staleness_text)
+
+    ~H"""
+    <div
+      class={"flex items-center gap-1 text-xs #{@color_class}"}
+      title={"Status: #{@label}" <>
+        (if @staleness_text, do: " • Last data: #{@staleness_text}", else: "") <>
+        (if @batch_window, do: " • Batch: #{@batch_window}ms", else: "") <>
+        (if @error_count > 0, do: " • #{@error_count} errors", else: "")}
+    >
+      <span class={["flex items-center", if(@pulse, do: "animate-pulse", else: "")]}>
+        <Heroicons.icon name={@icon_name} type="solid" class="h-3 w-3" />
+      </span>
+      <span :if={@status == :streaming && @batch_window} class="text-gray-500 font-mono text-[10px]">
+        {@batch_window}ms
+      </span>
+      <span :if={@error_count > 0} class="text-red-400 font-mono text-[10px] flex items-center gap-0.5">
+        <Heroicons.icon name="exclamation-triangle" type="solid" class="h-2.5 w-2.5" />
+        {@error_count}
+      </span>
+      <span :if={@status == :connecting}>
+        <Heroicons.icon name="arrow-path" type="outline" class="h-3 w-3 animate-spin" />
+      </span>
+    </div>
+    """
+  end
+
+  @doc """
   Renders an attention level badge with appropriate color and icon.
   """
   attr :level, :atom, required: true
@@ -101,7 +192,12 @@ defmodule SensoctoWeb.StatefulSensorLive do
      # Throttle buffer: accumulate measurements, flush periodically
      |> assign(:pending_measurements, [])
      # Track pressed buttons for multi-press visualization
-     |> assign(:pressed_buttons, %{})}
+     |> assign(:pressed_buttons, %{})
+     # Connection status tracking
+     |> assign(:connection_status, :connected)
+     |> assign(:last_data_at, nil)
+     |> assign(:batch_window, Map.get(sensor_state, :batch_size, 100))
+     |> assign(:error_count, 0)}
   end
 
   # def _render(assigns) do
@@ -155,7 +251,13 @@ defmodule SensoctoWeb.StatefulSensorLive do
 
     # Buffer measurement for throttled push to client (for JS charts)
     pending = [measurement | socket.assigns.pending_measurements]
-    {:noreply, socket |> assign(:pending_measurements, pending) |> assign(:pressed_buttons, pressed_buttons)}
+    now = System.monotonic_time(:millisecond)
+    {:noreply,
+     socket
+     |> assign(:pending_measurements, pending)
+     |> assign(:pressed_buttons, pressed_buttons)
+     |> assign(:last_data_at, now)
+     |> assign(:connection_status, :streaming)}
   end
 
   @impl true
@@ -187,7 +289,12 @@ defmodule SensoctoWeb.StatefulSensorLive do
 
     # Buffer measurement for throttled push to client (for JS charts)
     pending = [measurement | socket.assigns.pending_measurements]
-    {:noreply, assign(socket, :pending_measurements, pending)}
+    now = System.monotonic_time(:millisecond)
+    {:noreply,
+     socket
+     |> assign(:pending_measurements, pending)
+     |> assign(:last_data_at, now)
+     |> assign(:connection_status, :streaming)}
   end
 
   @impl true
@@ -216,7 +323,12 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # Buffer all measurements for throttled push to client (for JS charts)
     # Prepend batch (newer batch at front), reverse at flush for chronological order
     pending = measurements_list ++ socket.assigns.pending_measurements
-    {:noreply, assign(socket, :pending_measurements, pending)}
+    now = System.monotonic_time(:millisecond)
+    {:noreply,
+     socket
+     |> assign(:pending_measurements, pending)
+     |> assign(:last_data_at, now)
+     |> assign(:connection_status, :streaming)}
   end
 
   @impl true

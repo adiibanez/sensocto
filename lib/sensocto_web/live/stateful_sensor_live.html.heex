@@ -24,13 +24,21 @@
 
     <div class="mb-1">
       <div class="flex items-center justify-between">
-        <.render_sensor_header
-          sensor_id={@sensor_id}
-          sensor_name={@sensor_name}
-          highlighted={@highlighted}
-          view_mode={@view_mode}
-        >
-        </.render_sensor_header>
+        <div class="flex items-center gap-1.5">
+          <.connection_status_badge
+            status={@connection_status}
+            last_data_at={@last_data_at}
+            batch_window={@batch_window}
+            error_count={@error_count}
+          />
+          <.render_sensor_header
+            sensor_id={@sensor_id}
+            sensor_name={@sensor_name}
+            highlighted={@highlighted}
+            view_mode={@view_mode}
+          >
+          </.render_sensor_header>
+        </div>
         <.attention_badge level={@attention_level} />
       </div>
 

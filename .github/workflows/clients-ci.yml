@@ -34,6 +34,7 @@ jobs:
       unity: ${{ steps.filter.outputs.unity }}
       rust: ${{ steps.filter.outputs.rust }}
       python: ${{ steps.filter.outputs.python }}
+      threejs: ${{ steps.filter.outputs.threejs }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,12 +50,15 @@ jobs:
               - 'clients/rust/**'
             python:
               - 'clients/python/**'
+            threejs:
+              - 'clients/threejs/**'
 
       - name: Log detected changes
         run: |
           echo "Unity changes: ${{ steps.filter.outputs.unity }}"
           echo "Rust changes: ${{ steps.filter.outputs.rust }}"
           echo "Python changes: ${{ steps.filter.outputs.python }}"
+          echo "Three.js changes: ${{ steps.filter.outputs.threejs }}"
           echo "Run all: ${{ github.event.inputs.run_all }}"
 
   # Unity SDK Quick Check
@@ -181,11 +185,49 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+  # Three.js SDK Quick Check
+  threejs-check:
+    name: Three.js SDK
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.threejs == 'true' || github.event.inputs.run_all == 'true'
+    defaults:
+      run:
+        working-directory: clients/threejs
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: clients/threejs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier format check
+        run: npm run format:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
   # Summary and status reporting
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [changes, unity-check, rust-check, python-check]
+    needs: [changes, unity-check, rust-check, python-check, threejs-check]
     if: always()
     steps:
       - name: Generate summary
@@ -240,6 +282,21 @@ jobs:
             echo "| Python | No | :heavy_minus_sign: Skipped |" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # Three.js
+          threejs_changes="${{ needs.changes.outputs.threejs }}"
+          threejs_status="${{ needs.threejs-check.result }}"
+          if [ "$threejs_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+            if [ "$threejs_status" == "success" ]; then
+              echo "| Three.js | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$threejs_status" == "failure" ]; then
+              echo "| Three.js | Yes | :x: Failed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Three.js | Yes | :warning: $threejs_status |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Three.js | No | :heavy_minus_sign: Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "*Triggered by: ${{ github.event_name }} on ${{ github.ref }}*" >> $GITHUB_STEP_SUMMARY
@@ -249,11 +306,13 @@ jobs:
           unity_changes="${{ needs.changes.outputs.unity }}"
           rust_changes="${{ needs.changes.outputs.rust }}"
           python_changes="${{ needs.changes.outputs.python }}"
+          threejs_changes="${{ needs.changes.outputs.threejs }}"
           run_all="${{ github.event.inputs.run_all }}"
 
           unity_status="${{ needs.unity-check.result }}"
           rust_status="${{ needs.rust-check.result }}"
           python_status="${{ needs.python-check.result }}"
+          threejs_status="${{ needs.threejs-check.result }}"
 
           failed=false
 
@@ -274,6 +333,13 @@ jobs:
           if [ "$python_changes" == "true" ] || [ "$run_all" == "true" ]; then
             if [ "$python_status" == "failure" ]; then
               echo "::error::Python SDK checks failed"
+              failed=true
+            fi
+          fi
+
+          if [ "$threejs_changes" == "true" ] || [ "$run_all" == "true" ]; then
+            if [ "$threejs_status" == "failure" ]; then
+              echo "::error::Three.js SDK checks failed"
               failed=true
             fi
           fi

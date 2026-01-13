@@ -1,6 +1,204 @@
 import Sortable from 'sortablejs';
+import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 
 let Hooks = {};
+
+// 3D Gaussian Splat Viewer Hook for coral reef visualization
+Hooks.GaussianSplatViewer = {
+    mounted() {
+        this.viewer = null;
+        this.isLoading = false;
+        this.loadError = null;
+
+        // Get configuration from data attributes
+        this.splatUrl = this.el.dataset.splatUrl;
+        this.initialPosition = this.parseVector(this.el.dataset.cameraPosition, [0, -5, 10]);
+        this.initialLookAt = this.parseVector(this.el.dataset.cameraLookAt, [0, 0, 0]);
+        this.cameraUp = this.parseVector(this.el.dataset.cameraUp, [0, 1, 0]);
+
+        // Initialize viewer when element is ready
+        this.initViewer();
+
+        // Handle window resize
+        this.handleResize = () => {
+            if (this.viewer && this.viewer.renderer) {
+                const rect = this.el.getBoundingClientRect();
+                this.viewer.renderer.setSize(rect.width, rect.height);
+            }
+        };
+        window.addEventListener('resize', this.handleResize);
+
+        // Handle LiveView events
+        this.handleEvent("load_splat", (data) => {
+            this.loadSplat(data.url, data.position, data.rotation, data.scale);
+        });
+
+        this.handleEvent("reset_camera", () => {
+            this.resetCamera();
+        });
+    },
+
+    parseVector(str, defaultVal) {
+        if (!str) return defaultVal;
+        try {
+            const parts = str.split(',').map(s => parseFloat(s.trim()));
+            if (parts.length >= 3 && parts.every(n => !isNaN(n))) {
+                return parts.slice(0, 3);
+            }
+        } catch (e) {
+            console.warn('[SplatViewer] Error parsing vector:', str);
+        }
+        return defaultVal;
+    },
+
+    async initViewer() {
+        if (this.viewer) return;
+
+        const container = this.el;
+        const rect = container.getBoundingClientRect();
+
+        if (rect.width === 0 || rect.height === 0) {
+            // Container not visible yet, retry
+            setTimeout(() => this.initViewer(), 100);
+            return;
+        }
+
+        try {
+            this.viewer = new GaussianSplats3D.Viewer({
+                cameraUp: this.cameraUp,
+                initialCameraPosition: this.initialPosition,
+                initialCameraLookAt: this.initialLookAt,
+                rootElement: container,
+                selfDrivenMode: true,
+                useBuiltInControls: true,
+                dynamicScene: true,
+                // Rendering options for better quality
+                antialiased: true,
+                focalAdjustment: 1.0,
+                // Disable SharedArrayBuffer which requires CORS headers
+                sharedMemoryForWorkers: false,
+            });
+
+            console.log('[SplatViewer] Viewer initialized');
+
+            // Fix canvas positioning - make it fill the container
+            // Use MutationObserver to catch canvas when it's added
+            const fixCanvasPosition = (canvas) => {
+                if (canvas) {
+                    canvas.style.position = 'absolute';
+                    canvas.style.top = '0';
+                    canvas.style.left = '0';
+                    canvas.style.width = '100%';
+                    canvas.style.height = '100%';
+                    canvas.style.zIndex = '10';
+                }
+            };
+
+            const existingCanvas = container.querySelector('canvas');
+            fixCanvasPosition(existingCanvas);
+
+            // Watch for canvas being added dynamically
+            const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.tagName === 'CANVAS') {
+                            fixCanvasPosition(node);
+                        }
+                    }
+                }
+            });
+            observer.observe(container, { childList: true });
+            this.canvasObserver = observer;
+
+            this.pushEvent("viewer_ready", {});
+
+            // Load initial splat if URL provided
+            if (this.splatUrl) {
+                this.loadSplat(this.splatUrl);
+            }
+        } catch (error) {
+            console.error('[SplatViewer] Error initializing viewer:', error);
+            this.pushEvent("viewer_error", { message: error.message });
+        }
+    },
+
+    async loadSplat(url, position = [0, 0, 0], rotation = [0, 0, 0, 1], scale = [1, 1, 1]) {
+        if (!this.viewer) {
+            console.warn('[SplatViewer] Viewer not initialized');
+            return;
+        }
+
+        if (this.isLoading) {
+            console.warn('[SplatViewer] Already loading a splat');
+            return;
+        }
+
+        this.isLoading = true;
+        this.pushEvent("loading_started", { url });
+
+        try {
+            // Remove existing splats
+            if (this.viewer.getSplatSceneCount && this.viewer.getSplatSceneCount() > 0) {
+                // Clear existing scenes
+                await this.viewer.removeSplatScenes();
+            }
+
+            console.log('[SplatViewer] Loading splat:', url);
+
+            await this.viewer.addSplatScene(url, {
+                splatAlphaRemovalThreshold: 5,
+                showLoadingUI: true,
+                position: position,
+                rotation: rotation,
+                scale: scale,
+                progressiveLoad: true
+            });
+
+            this.viewer.start();
+
+            // Hide the loading placeholder once loaded
+            const placeholder = this.el.querySelector('.absolute.inset-0');
+            if (placeholder) {
+                placeholder.style.display = 'none';
+            }
+
+            console.log('[SplatViewer] Splat loaded successfully');
+            this.pushEvent("loading_complete", { url });
+
+        } catch (error) {
+            console.error('[SplatViewer] Error loading splat:', error);
+            this.loadError = error.message;
+            this.pushEvent("loading_error", { message: error.message, url });
+        } finally {
+            this.isLoading = false;
+        }
+    },
+
+    resetCamera() {
+        if (this.viewer && this.viewer.camera) {
+            this.viewer.camera.position.set(...this.initialPosition);
+            this.viewer.camera.lookAt(...this.initialLookAt);
+        }
+    },
+
+    destroyed() {
+        window.removeEventListener('resize', this.handleResize);
+
+        if (this.canvasObserver) {
+            this.canvasObserver.disconnect();
+            this.canvasObserver = null;
+        }
+
+        if (this.viewer) {
+            try {
+                this.viewer.dispose();
+            } catch (e) {
+                console.warn('[SplatViewer] Error disposing viewer:', e);
+            }
+            this.viewer = null;
+        }
+    }
+};
 
 Hooks.SensorDataAccumulator = {
     mounted() {},

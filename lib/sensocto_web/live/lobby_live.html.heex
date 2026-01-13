@@ -34,7 +34,7 @@
     </div>
   </div>
 
-  <%!-- Mode Switcher: Media Playback vs Video Call --%>
+  <%!-- Mode Switcher: Media Playback, Video Call, 3D Coral --%>
   <div class="flex items-center justify-center gap-2 mb-4">
     <button
       phx-click="switch_lobby_mode"
@@ -56,6 +56,15 @@
       <%= if @in_call do %>
         <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
       <% end %>
+    </button>
+    <button
+      phx-click="switch_lobby_mode"
+      phx-value-mode="coral"
+      class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+        if(@lobby_mode == :coral, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+    >
+      <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" />
+      3D Coral
     </button>
   </div>
 
@@ -80,6 +89,69 @@
       in_call={@in_call}
       participants={@call_participants}
     />
+  </div>
+
+  <%!-- 3D Coral Viewer Panel - shown when in coral mode --%>
+  <div :if={@lobby_mode == :coral} class="mb-6">
+    <div class="bg-gray-800 rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between p-3 border-b border-gray-700">
+        <div class="flex items-center gap-2">
+          <Heroicons.icon name="cube-transparent" type="solid" class="h-5 w-5 text-cyan-400" />
+          <span class="text-white font-medium">Indonesia Tabuhan Coral Reef</span>
+          <span class="text-xs text-gray-400">(3D Gaussian Splat)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            phx-click="reset_coral_camera"
+            class="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors"
+          >
+            Reset View
+          </button>
+          <a
+            href="https://huggingface.co/datasets/wildflow/sweet-corals"
+            target="_blank"
+            class="text-gray-400 hover:text-cyan-400 transition-colors"
+            title="View dataset on HuggingFace"
+          >
+            <Heroicons.icon name="arrow-top-right-on-square" type="outline" class="h-4 w-4" />
+          </a>
+        </div>
+      </div>
+      <div class="relative">
+        <div
+          id="coral-splat-viewer"
+          phx-hook="GaussianSplatViewer"
+          phx-update="ignore"
+          data-splat-url={@coral_splat_url}
+          data-camera-position="0, -3, 5"
+          data-camera-look-at="0, 0, 0"
+          data-camera-up="0, 1, 0"
+          class="w-full h-[400px] md:h-[500px] bg-gray-900 relative overflow-hidden"
+        >
+          <div class="absolute inset-0 flex items-center justify-center text-gray-400 pointer-events-none z-0">
+            <div class="text-center">
+              <Heroicons.icon name="arrow-path" type="outline" class="h-8 w-8 mx-auto mb-2 animate-spin" />
+              <p>Loading 3D viewer...</p>
+              <p class="text-xs text-gray-500 mt-1">Use mouse to rotate, scroll to zoom, right-click to pan</p>
+            </div>
+          </div>
+        </div>
+        <div :if={@coral_loading} class="absolute inset-0 bg-gray-900/80 flex items-center justify-center">
+          <div class="text-center text-white">
+            <Heroicons.icon name="arrow-path" type="outline" class="h-10 w-10 mx-auto mb-3 animate-spin text-cyan-400" />
+            <p class="font-medium">Loading coral reef data...</p>
+            <p class="text-sm text-gray-400 mt-1">This may take a moment (large 3D file)</p>
+          </div>
+        </div>
+      </div>
+      <div class="p-3 border-t border-gray-700 bg-gray-800/50">
+        <p class="text-xs text-gray-400">
+          <span class="text-cyan-400 font-medium">Coral Restoration Project:</span>
+          This 3D scan captures the current state of coral reefs in Tabuhan, Indonesia.
+          Part of the <a href="https://wildflow.ai" target="_blank" class="text-cyan-400 hover:underline">Wildflow</a> conservation initiative.
+        </p>
+      </div>
+    </div>
   </div>
 
   <%!-- Lens Selector - styled like rooms --%>

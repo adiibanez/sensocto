@@ -12,6 +12,7 @@
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.8",
     "@jellyfish-dev/membrane-webrtc-js": "^0.6.0",
+    "@mkkellogg/gaussian-splats-3d": "^0.4.7",
     "ahrs": "1.1.8",
     "chart.js": "^4.4.7",
     "chartjs-adapter-date-fns": "^3.0.0",

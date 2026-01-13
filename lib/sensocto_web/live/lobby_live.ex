@@ -92,7 +92,10 @@ defmodule SensoctoWeb.LobbyLive do
         lobby_mode: :media,
         call_active: call_active,
         in_call: false,
-        call_participants: %{}
+        call_participants: %{},
+        # 3D Coral viewer assigns - using small test file (8.5MB) to verify viewer works
+        coral_splat_url: "https://media.reshot.ai/models/nike_next/model.splat",
+        coral_loading: false
       )
 
     :telemetry.execute(
@@ -624,6 +627,42 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_event("switch_lobby_mode", %{"mode" => mode}, socket) do
     new_mode = String.to_existing_atom(mode)
     {:noreply, assign(socket, :lobby_mode, new_mode)}
+  end
+
+  # 3D Coral viewer events
+  @impl true
+  def handle_event("reset_coral_camera", _params, socket) do
+    {:noreply, push_event(socket, "reset_camera", %{})}
+  end
+
+  @impl true
+  def handle_event("viewer_ready", _params, socket) do
+    Logger.debug("3D Coral viewer initialized")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("loading_started", %{"url" => url}, socket) do
+    Logger.debug("Loading coral splat: #{url}")
+    {:noreply, assign(socket, :coral_loading, true)}
+  end
+
+  @impl true
+  def handle_event("loading_complete", %{"url" => _url}, socket) do
+    Logger.debug("Coral splat loaded successfully")
+    {:noreply, assign(socket, :coral_loading, false)}
+  end
+
+  @impl true
+  def handle_event("loading_error", %{"message" => message}, socket) do
+    Logger.error("Error loading coral splat: #{message}")
+    {:noreply, assign(socket, :coral_loading, false)}
+  end
+
+  @impl true
+  def handle_event("viewer_error", %{"message" => message}, socket) do
+    Logger.error("3D viewer error: #{message}")
+    {:noreply, socket}
   end
 
   # Lens view selector (dropdown)

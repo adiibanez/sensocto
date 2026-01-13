@@ -202,11 +202,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: clients/threejs/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: ESLint
         run: npm run lint

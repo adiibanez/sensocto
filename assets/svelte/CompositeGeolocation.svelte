@@ -90,7 +90,7 @@
   }
 
   function updateTrail(sensorId: string, lng: number, lat: number) {
-    if (!showTrails || !map) return;
+    if (!showTrails || !map || !map.isStyleLoaded()) return;
     let trail = trails.get(sensorId) || [];
     trail.push([lng, lat]);
     if (trail.length > maxTrailLength) trail = trail.slice(-maxTrailLength);
@@ -104,16 +104,20 @@
         type: 'Feature', properties: {},
         geometry: { type: 'LineString', coordinates: trail }
       };
-      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
-      if (source) {
-        source.setData(geojson);
-      } else {
-        map.addSource(sourceId, { type: 'geojson', data: geojson });
-        map.addLayer({
-          id: layerId, type: 'line', source: sourceId,
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': getMarkerColor(sensorId), 'line-width': 3, 'line-opacity': 0.7 }
-        });
+      try {
+        const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
+        if (source) {
+          source.setData(geojson);
+        } else {
+          map.addSource(sourceId, { type: 'geojson', data: geojson });
+          map.addLayer({
+            id: layerId, type: 'line', source: sourceId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': getMarkerColor(sensorId), 'line-width': 3, 'line-opacity': 0.7 }
+          });
+        }
+      } catch (e) {
+        console.warn('Trail update error:', e);
       }
     }
   }
@@ -173,16 +177,35 @@
     const defaultCenter = positions.length > 0 && (positions[0].lat !== 0 || positions[0].lng !== 0)
       ? [positions[0].lng, positions[0].lat] : [13.405, 52.52];
 
+    // Use OpenFreeMap bright style (free, no API key required)
     map = new maplibregl.Map({
       container: mapContainer,
-      style: "https://demotiles.maplibre.org/style.json",
+      style: 'https://tiles.openfreemap.org/styles/liberty',
       center: defaultCenter as [number, number],
       zoom: 10, attributionControl: false, maxZoom: 18, minZoom: 2
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100 }), 'bottom-left');
-    map.on('load', () => { updateMapMarkers(); fitMapBounds(); });
+
+    // Debug: expose map to window
+    (window as any).__compositeMap = map;
+
+    map.on('error', (e) => {
+      console.error('MapLibre error:', e.error?.message || e);
+    });
+
+    map.on('load', () => {
+      console.log('MapLibre load event fired, sources:', Object.keys(map!.getStyle()?.sources || {}));
+      updateMapMarkers();
+      fitMapBounds();
+    });
+
+    map.on('sourcedata', (e) => {
+      if (e.isSourceLoaded) {
+        console.log('Source loaded:', e.sourceId);
+      }
+    });
   }
 
   function clearTrails() {
@@ -387,7 +410,7 @@
 
   $effect(() => {
     if (viewMode === "map" || viewMode === "split") {
-      setTimeout(() => { initMap(); updateMapMarkers(); }, 50);
+      setTimeout(() => { initMap(); }, 50);
     }
     if (viewMode === "graph" || viewMode === "split") {
       setTimeout(() => buildGraph(), 50);
@@ -395,7 +418,8 @@
   });
 
   $effect(() => {
-    if (positions && map) {
+    // Only update markers/trails after map style is fully loaded
+    if (positions && map && map.isStyleLoaded()) {
       updateMapMarkers();
     }
     if (positions && graphContainer) {

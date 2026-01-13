@@ -555,16 +555,23 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               <% else %>
                 <%= for item <- @playlist_items do %>
                   <% is_current = @current_item && @current_item.id == item.id %>
+                  <% is_playing = is_current && @player_state == :playing %>
                   <div
                     data-item-id={item.id}
-                    class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-red-900/30 border-l-4 border-red-500", else: "hover:bg-gray-700"}"}
+                    class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-gray-700/50 border-l-4 border-gray-400", else: "hover:bg-gray-700"}"}
                   >
                     <%!-- Now Playing Indicator or Drag Handle --%>
                     <%= if is_current do %>
-                      <div class="p-1 text-red-400 flex-shrink-0">
-                        <svg class="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z"/>
-                        </svg>
+                      <div class="p-1 text-gray-300 flex-shrink-0">
+                        <%= if is_playing do %>
+                          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                          </svg>
+                        <% else %>
+                          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                        <% end %>
                       </div>
                     <% else %>
                       <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
@@ -577,17 +584,17 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       <img
                         src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
                         alt=""
-                        class={"w-16 h-9 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-red-500"}"}
+                        class={"w-16 h-9 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-gray-400"}"}
                         phx-click="play_item"
                         phx-value-item-id={item.id}
                         phx-target={@myself}
                       />
-                      <%= if is_current do %>
+                      <%= if is_playing do %>
                         <div class="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
                           <div class="flex gap-0.5">
-                            <div class="w-1 h-3 bg-red-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                            <div class="w-1 h-3 bg-red-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                            <div class="w-1 h-3 bg-red-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                            <div class="w-1 h-3 bg-gray-300 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                            <div class="w-1 h-3 bg-gray-300 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                            <div class="w-1 h-3 bg-gray-300 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
                           </div>
                         </div>
                       <% end %>
@@ -598,11 +605,11 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       phx-value-item-id={item.id}
                       phx-target={@myself}
                     >
-                      <p class={"text-sm truncate #{if is_current, do: "text-red-300 font-medium", else: "text-white"}"}><%= item.title || "Unknown" %></p>
-                      <p class={"text-xs #{if is_current, do: "text-red-400/70", else: "text-gray-400"}"}>
+                      <p class={"text-sm truncate #{if is_current, do: "text-gray-100 font-medium", else: "text-white"}"}><%= item.title || "Unknown" %></p>
+                      <p class={"text-xs #{if is_current, do: "text-gray-400", else: "text-gray-400"}"}>
                         <%= if item.duration_seconds, do: format_duration(item.duration_seconds), else: "" %>
                         <%= if is_current do %>
-                          <span class="ml-1">- Now Playing</span>
+                          <span class="ml-1">- <%= if is_playing, do: "Playing", else: "Paused" %></span>
                         <% end %>
                       </p>
                     </div>

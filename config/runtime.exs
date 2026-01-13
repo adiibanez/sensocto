@@ -120,7 +120,13 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
       port: port
     ],
-    secret_key_base: secret_key_base
+    secret_key_base: secret_key_base,
+    # Set check_origin at runtime so PHX_HOST is available
+    check_origin: [
+      "https://sensocto.ddns.net",
+      "https://#{host}",
+      "https://sensocto.fly.dev"
+    ]
 
   config :sensocto,
     token_signing_secret:

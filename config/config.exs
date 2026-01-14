@@ -46,16 +46,7 @@ config :spark,
 config :sensocto,
   ecto_repos: [Sensocto.Repo, Sensocto.Repo.Replica],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Sensocto.Accounts, Sensocto.Sensors, Sensocto.Graph]
-
-# Neo4j/Boltx configuration (override in environment configs)
-config :boltx, Bolt,
-  uri: System.get_env("NEO4J_URI", "bolt://localhost:7687"),
-  auth: [
-    username: System.get_env("NEO4J_USERNAME", "neo4j"),
-    password: System.get_env("NEO4J_PASSWORD", "neo4j")
-  ],
-  pool_size: 10
+  ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
 
 # AttributeStore tiered storage limits (all in-memory)
 # Hot tier: fastest access, in Agent process memory

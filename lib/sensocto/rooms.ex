@@ -251,6 +251,116 @@ defmodule Sensocto.Rooms do
     Map.get(room, :owner_id) == user.id
   end
 
+  @doc """
+  Checks if user is an admin of the room (not owner).
+  """
+  def admin?(room, user) do
+    get_role(room, user) == :admin
+  end
+
+  @doc """
+  Promotes a member to admin.
+  Only owners can promote members.
+  """
+  def promote_to_admin(room, user_to_promote, acting_user) when is_map(room) do
+    if owner?(room, acting_user) do
+      room_id = Map.get(room, :id)
+      RoomStore.promote_to_admin(room_id, user_to_promote.id)
+    else
+      {:error, :not_owner}
+    end
+  end
+
+  @doc """
+  Demotes an admin to member.
+  Only owners can demote admins.
+  """
+  def demote_to_member(room, user_to_demote, acting_user) when is_map(room) do
+    if owner?(room, acting_user) do
+      room_id = Map.get(room, :id)
+      RoomStore.demote_to_member(room_id, user_to_demote.id)
+    else
+      {:error, :not_owner}
+    end
+  end
+
+  @doc """
+  Kicks a user from a room.
+  Owners can kick anyone except themselves.
+  Admins can kick members but not other admins or the owner.
+  """
+  def kick_member(room, user_to_kick, acting_user) when is_map(room) do
+    acting_role = get_role(room, acting_user)
+    target_role = get_role(room, user_to_kick)
+
+    cond do
+      acting_user.id == user_to_kick.id ->
+        {:error, :cannot_kick_self}
+
+      acting_role == :owner ->
+        # Owner can kick anyone except themselves
+        room_id = Map.get(room, :id)
+        RoomStore.kick_member(room_id, user_to_kick.id)
+
+      acting_role == :admin and target_role == :member ->
+        # Admin can only kick members
+        room_id = Map.get(room, :id)
+        RoomStore.kick_member(room_id, user_to_kick.id)
+
+      acting_role == :admin ->
+        {:error, :cannot_kick_admin_or_owner}
+
+      true ->
+        {:error, :not_authorized}
+    end
+  end
+
+  @doc """
+  Lists all members of a room with their roles.
+  Returns list of maps with user info and roles.
+  """
+  def list_members(room) when is_map(room) do
+    room_id = Map.get(room, :id)
+
+    case RoomStore.list_members(room_id) do
+      {:ok, members} ->
+        # Enrich with user data
+        enriched =
+          members
+          |> Enum.map(fn {user_id, role} ->
+            user = get_user_info(user_id)
+            %{user_id: user_id, role: role, user: user}
+          end)
+          |> Enum.sort_by(fn m ->
+            # Sort by role priority: owner first, then admin, then member
+            case m.role do
+              :owner -> 0
+              :admin -> 1
+              :member -> 2
+            end
+          end)
+
+        {:ok, enriched}
+
+      error ->
+        error
+    end
+  end
+
+  defp get_user_info(user_id) do
+    case Sensocto.Accounts.User |> Ash.get(user_id, error?: false) do
+      {:ok, user} when not is_nil(user) ->
+        %{
+          id: user.id,
+          email: user.email,
+          display_name: user.display_name
+        }
+
+      _ ->
+        %{id: user_id, email: "Unknown", display_name: nil}
+    end
+  end
+
   # ============================================================================
   # Sensor Management
   # ============================================================================

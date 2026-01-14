@@ -16,6 +16,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
      socket
      |> assign(:player_state, :stopped)
      |> assign(:position_seconds, 0.0)
+     |> assign(:current_position, 0.0)
      |> assign(:current_item, nil)
      |> assign(:playlist_items, [])
      |> assign(:controller_user_id, nil)
@@ -287,6 +288,28 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   @impl true
+  def handle_event("position_update", %{"position" => position}, socket) do
+    # Update current position for progress bar display
+    {:noreply, assign(socket, :current_position, position)}
+  end
+
+  @impl true
+  def handle_event("seek_to_position", %{"position" => position_str}, socket) do
+    # Controller clicked on progress bar to seek
+    user_id = get_user_id(socket)
+
+    if can_control?(socket.assigns.controller_user_id, socket.assigns.current_user) do
+      position = String.to_float(position_str)
+      MediaPlayerServer.seek(socket.assigns.room_id, position, user_id)
+      # Push event to JS hook to seek immediately
+      socket = push_event(socket, "seek_to", %{position: position})
+      {:noreply, assign(socket, :current_position, position)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("request_media_sync", _params, socket) do
     # JS hook requests current state - fetch from server and push to hook
     case MediaPlayerServer.get_state(socket.assigns.room_id) do
@@ -466,9 +489,50 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               <p class="text-sm text-white font-medium truncate" title={@current_item.title}>
                 <%= @current_item.title || "Unknown Title" %>
               </p>
-              <%= if @current_item.duration_seconds do %>
+
+              <%!-- Progress Bar with Seek Control --%>
+              <%= if @current_item.duration_seconds && @current_item.duration_seconds > 0 do %>
+                <% duration = @current_item.duration_seconds %>
+                <% current_pos = @current_position || @position_seconds || 0 %>
+                <% progress_pct = min(100, max(0, current_pos / duration * 100)) %>
+                <% is_controller = can_control?(@controller_user_id, @current_user) %>
+
+                <div class="mt-2">
+                  <div class="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                    <span><%= format_duration(round(current_pos)) %></span>
+                    <div class="flex-1"></div>
+                    <span><%= format_duration(duration) %></span>
+                  </div>
+
+                  <div
+                    id={"progress-bar-#{@room_id}"}
+                    class={"relative h-2 bg-gray-600 rounded-full overflow-hidden " <> if(is_controller, do: "cursor-pointer hover:h-3 transition-all", else: "")}
+                    phx-hook="SeekBar"
+                    phx-target={@myself}
+                    data-duration={duration}
+                    data-can-seek={if is_controller, do: "true", else: "false"}
+                  >
+                    <div
+                      class="absolute inset-y-0 left-0 bg-red-500 rounded-full transition-all duration-200"
+                      style={"width: #{progress_pct}%"}
+                    >
+                    </div>
+                    <%= if is_controller do %>
+                      <div
+                        class="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
+                        style={"left: calc(#{progress_pct}% - 6px)"}
+                      >
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <%= if is_controller do %>
+                    <p class="text-xs text-gray-500 mt-1">Click to seek</p>
+                  <% end %>
+                </div>
+              <% else %>
                 <p class="text-xs text-gray-400 mt-1">
-                  Duration: <%= format_duration(@current_item.duration_seconds) %>
+                  <%= format_duration(round(@current_position || @position_seconds || 0)) %>
                 </p>
               <% end %>
             </div>

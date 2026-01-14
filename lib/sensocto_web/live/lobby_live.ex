@@ -93,9 +93,12 @@ defmodule SensoctoWeb.LobbyLive do
         call_active: call_active,
         in_call: false,
         call_participants: %{},
-        # 3D Coral viewer assigns - using small test file (8.5MB) to verify viewer works
-        coral_splat_url: "https://media.reshot.ai/models/nike_next/model.splat",
-        coral_loading: false
+        # 3D Object viewer assigns - generic physical object collaboration viewing
+        object3d_name: "Indonesia Tabuhan Coral Reef",
+        object3d_splat_url: "https://huggingface.co/datasets/wildflow/sweet-corals/resolve/main/_indonesia_tabuhan_p1_20250210/splats/5x5%23-15_15_-10_20%23-3_3.ply",
+        object3d_source_url: "https://huggingface.co/datasets/wildflow/sweet-corals",
+        object3d_description: "3D scan of coral reefs in Tabuhan, Indonesia. Part of the Wildflow conservation initiative.",
+        object3d_loading: false
       )
 
     :telemetry.execute(
@@ -629,34 +632,39 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :lobby_mode, new_mode)}
   end
 
-  # 3D Coral viewer events
+  # 3D Object viewer events
   @impl true
-  def handle_event("reset_coral_camera", _params, socket) do
+  def handle_event("reset_object3d_camera", _params, socket) do
     {:noreply, push_event(socket, "reset_camera", %{})}
   end
 
   @impl true
+  def handle_event("center_object3d", _params, socket) do
+    {:noreply, push_event(socket, "center_object", %{})}
+  end
+
+  @impl true
   def handle_event("viewer_ready", _params, socket) do
-    Logger.debug("3D Coral viewer initialized")
+    Logger.debug("3D Object viewer initialized")
     {:noreply, socket}
   end
 
   @impl true
   def handle_event("loading_started", %{"url" => url}, socket) do
-    Logger.debug("Loading coral splat: #{url}")
-    {:noreply, assign(socket, :coral_loading, true)}
+    Logger.debug("Loading 3D object: #{url}")
+    {:noreply, assign(socket, :object3d_loading, true)}
   end
 
   @impl true
   def handle_event("loading_complete", %{"url" => _url}, socket) do
-    Logger.debug("Coral splat loaded successfully")
-    {:noreply, assign(socket, :coral_loading, false)}
+    Logger.debug("3D object loaded successfully")
+    {:noreply, assign(socket, :object3d_loading, false)}
   end
 
   @impl true
   def handle_event("loading_error", %{"message" => message}, socket) do
-    Logger.error("Error loading coral splat: #{message}")
-    {:noreply, assign(socket, :coral_loading, false)}
+    Logger.error("Error loading 3D object: #{message}")
+    {:noreply, assign(socket, :object3d_loading, false)}
   end
 
   @impl true

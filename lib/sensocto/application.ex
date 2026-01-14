@@ -21,8 +21,6 @@ defmodule Sensocto.Application do
       # Database repos - Primary (Neon.tech) and Read Replica
       Sensocto.Repo,
       Sensocto.Repo.Replica,
-      # Neo4j connection via Boltx (configured in config/config.exs)
-      {Boltx, Application.get_env(:boltx, Bolt)},
       Sensocto.Otp.BleConnectorGenServer,
       # realitykit
       {SensorsStateAgent, name: SensorsStateAgent},
@@ -78,7 +76,9 @@ defmodule Sensocto.Application do
       Sensocto.Iroh.RoomStore,
       Sensocto.RoomStore,
       Sensocto.Iroh.RoomSync,
-      # Room presence tracking (in-memory with Neo4j backend)
+      # Real-time collaborative state using Automerge CRDTs (media sync, 3D viewer, presence)
+      Sensocto.Iroh.RoomStateCRDT,
+      # Room presence tracking (in-memory)
       Sensocto.RoomPresenceServer,
 
       # Attention tracking for back-pressure (must be after PubSub)

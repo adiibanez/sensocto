@@ -167,6 +167,39 @@ defmodule Sensocto.RoomStore do
   end
 
   @doc """
+  Promotes a member to admin.
+  Only owners can promote members to admin.
+  """
+  def promote_to_admin(room_id, user_id) do
+    GenServer.call(__MODULE__, {:promote_to_admin, room_id, user_id}, @call_timeout)
+  end
+
+  @doc """
+  Demotes an admin to member.
+  Only owners can demote admins.
+  """
+  def demote_to_member(room_id, user_id) do
+    GenServer.call(__MODULE__, {:demote_to_member, room_id, user_id}, @call_timeout)
+  end
+
+  @doc """
+  Kicks a user from a room.
+  Only owners and admins can kick members.
+  Admins cannot kick other admins or the owner.
+  """
+  def kick_member(room_id, user_id) do
+    GenServer.call(__MODULE__, {:kick_member, room_id, user_id}, @call_timeout)
+  end
+
+  @doc """
+  Lists all members of a room with their roles.
+  Returns list of {user_id, role} tuples.
+  """
+  def list_members(room_id) do
+    GenServer.call(__MODULE__, {:list_members, room_id}, @call_timeout)
+  end
+
+  @doc """
   Checks if a room exists.
   """
   def exists?(room_id) do
@@ -362,6 +395,9 @@ defmodule Sensocto.RoomStore do
         owner_id: owner_id,
         join_code: join_code,
         is_public: Map.get(attrs, :is_public, true),
+        calls_enabled: Map.get(attrs, :calls_enabled, true),
+        media_playback_enabled: Map.get(attrs, :media_playback_enabled, true),
+        object_3d_enabled: Map.get(attrs, :object_3d_enabled, false),
         configuration: Map.get(attrs, :configuration, %{}),
         members: %{owner_id => :owner},
         sensor_ids: MapSet.new(),
@@ -430,6 +466,9 @@ defmodule Sensocto.RoomStore do
           |> maybe_update(:name, attrs)
           |> maybe_update(:description, attrs)
           |> maybe_update(:is_public, attrs)
+          |> maybe_update(:calls_enabled, attrs)
+          |> maybe_update(:media_playback_enabled, attrs)
+          |> maybe_update(:object_3d_enabled, attrs)
           |> maybe_update(:configuration, attrs)
           |> Map.put(:updated_at, DateTime.utc_now())
 
@@ -653,6 +692,131 @@ defmodule Sensocto.RoomStore do
     end
   end
 
+  # ---- Promote to Admin ----
+
+  @impl true
+  def handle_call({:promote_to_admin, room_id, user_id}, _from, state) do
+    case Map.get(state.rooms, room_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      room ->
+        case Map.get(room.members, user_id) do
+          nil ->
+            {:reply, {:error, :not_a_member}, state}
+
+          :owner ->
+            {:reply, {:error, :cannot_change_owner}, state}
+
+          :admin ->
+            {:reply, {:error, :already_admin}, state}
+
+          :member ->
+            updated_room =
+              room
+              |> put_in([Access.key(:members), user_id], :admin)
+              |> Map.put(:updated_at, DateTime.utc_now())
+
+            new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
+
+            # Sync to PostgreSQL
+            update_membership_role_in_postgres(room_id, user_id, :admin)
+
+            broadcast_room_update(room_id, {:member_promoted, user_id, :admin})
+
+            {:reply, {:ok, updated_room}, new_state}
+        end
+    end
+  end
+
+  # ---- Demote to Member ----
+
+  @impl true
+  def handle_call({:demote_to_member, room_id, user_id}, _from, state) do
+    case Map.get(state.rooms, room_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      room ->
+        case Map.get(room.members, user_id) do
+          nil ->
+            {:reply, {:error, :not_a_member}, state}
+
+          :owner ->
+            {:reply, {:error, :cannot_change_owner}, state}
+
+          :member ->
+            {:reply, {:error, :already_member}, state}
+
+          :admin ->
+            updated_room =
+              room
+              |> put_in([Access.key(:members), user_id], :member)
+              |> Map.put(:updated_at, DateTime.utc_now())
+
+            new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
+
+            # Sync to PostgreSQL
+            update_membership_role_in_postgres(room_id, user_id, :member)
+
+            broadcast_room_update(room_id, {:member_demoted, user_id, :member})
+
+            {:reply, {:ok, updated_room}, new_state}
+        end
+    end
+  end
+
+  # ---- Kick Member ----
+
+  @impl true
+  def handle_call({:kick_member, room_id, user_id}, _from, state) do
+    case Map.get(state.rooms, room_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      room ->
+        case Map.get(room.members, user_id) do
+          nil ->
+            {:reply, {:error, :not_a_member}, state}
+
+          :owner ->
+            {:reply, {:error, :cannot_kick_owner}, state}
+
+          _role ->
+            updated_room =
+              room
+              |> update_in([Access.key(:members)], &Map.delete(&1, user_id))
+              |> Map.put(:updated_at, DateTime.utc_now())
+
+            new_state =
+              state
+              |> put_in([Access.key(:rooms), room_id], updated_room)
+              |> update_user_rooms(user_id, room_id, :remove)
+
+            # Delete from PostgreSQL
+            delete_membership_from_postgres(room_id, user_id)
+
+            broadcast_room_update(room_id, {:member_kicked, user_id})
+
+            {:reply, {:ok, updated_room}, new_state}
+        end
+    end
+  end
+
+  # ---- List Members ----
+
+  @impl true
+  def handle_call({:list_members, room_id}, _from, state) do
+    case Map.get(state.rooms, room_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      room ->
+        members = Enum.map(room.members, fn {user_id, role} -> {user_id, role} end)
+        {:reply, {:ok, members}, state}
+    end
+  end
+
   # ---- Regenerate Join Code ----
 
   @impl true
@@ -725,6 +889,9 @@ defmodule Sensocto.RoomStore do
         owner_id: Map.get(room_data, :owner_id) || Map.get(room_data, "owner_id"),
         join_code: Map.get(room_data, :join_code) || Map.get(room_data, "join_code") || generate_join_code(),
         is_public: Map.get(room_data, :is_public, Map.get(room_data, "is_public", true)),
+        calls_enabled: Map.get(room_data, :calls_enabled, Map.get(room_data, "calls_enabled", true)),
+        media_playback_enabled: Map.get(room_data, :media_playback_enabled, Map.get(room_data, "media_playback_enabled", true)),
+        object_3d_enabled: Map.get(room_data, :object_3d_enabled, Map.get(room_data, "object_3d_enabled", false)),
         configuration: Map.get(room_data, :configuration) || Map.get(room_data, "configuration") || %{},
         members: normalize_members(Map.get(room_data, :members) || Map.get(room_data, "members") || %{}),
         sensor_ids: sensor_ids,
@@ -966,6 +1133,9 @@ defmodule Sensocto.RoomStore do
               name: room.name,
               description: room.description,
               is_public: room.is_public,
+              calls_enabled: Map.get(room, :calls_enabled, true),
+              media_playback_enabled: Map.get(room, :media_playback_enabled, true),
+              object_3d_enabled: Map.get(room, :object_3d_enabled, false),
               configuration: room.configuration,
               join_code: room.join_code
             })
@@ -1053,6 +1223,33 @@ defmodule Sensocto.RoomStore do
       rescue
         e ->
           Logger.error("[RoomStore] Failed to delete membership from PostgreSQL: #{inspect(e)}")
+      end
+    end)
+  end
+
+  defp update_membership_role_in_postgres(room_id, user_id, new_role) do
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
+      try do
+        import Ecto.Query
+
+        # Convert string UUIDs to binary for raw query
+        {:ok, room_uuid} = Ecto.UUID.dump(room_id)
+        {:ok, user_uuid} = Ecto.UUID.dump(user_id)
+
+        role_string = Atom.to_string(new_role)
+        now = DateTime.utc_now()
+
+        Sensocto.Repo.update_all(
+          from(m in "room_memberships",
+            where: m.room_id == ^room_uuid and m.user_id == ^user_uuid
+          ),
+          set: [role: role_string, updated_at: now]
+        )
+
+        Logger.debug("[RoomStore] Updated membership role #{room_id}:#{user_id} to #{new_role} in PostgreSQL")
+      rescue
+        e ->
+          Logger.error("[RoomStore] Failed to update membership role in PostgreSQL: #{inspect(e)}")
       end
     end)
   end

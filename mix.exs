@@ -94,8 +94,6 @@ defmodule Sensocto.MixProject do
       {:ash_authentication, "~> 4.5"},
       {:ash_authentication_phoenix, "~> 2.4"},
       {:ash_postgres, "~> 2.5"},
-      {:ash_neo4j, "~> 0.2.12"},
-      {:boltx, "~> 0.0.6"},
       # {:cozodb, git: "https://github.com/leapsight/cozodb.git", branch: "master"},
       # {:cozodb, git: "https://github.com/Leapsight/cozodb.git", tag: "0.2.9"},
       {:ash_ops, "~> 0.2.3"},
@@ -134,7 +132,7 @@ defmodule Sensocto.MixProject do
       #  path:
       #    "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/elixir-desktop-bridge"}
 
-      {:iroh_ex, "~> 0.0.13"},
+      {:iroh_ex, "~> 0.0.14"},
       #{:iroh_ex,
       # path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/iroh_ex"},
       {:rustler_precompiled, "~> 0.8"},

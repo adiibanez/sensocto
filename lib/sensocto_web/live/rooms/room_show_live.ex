@@ -50,6 +50,14 @@ defmodule SensoctoWeb.RoomShowLive do
         sensors_state = get_sensors_state(room.sensors || [])
         available_lenses = extract_available_lenses(sensors_state)
 
+        # Determine default room mode based on enabled features
+        default_mode = cond do
+          Map.get(room, :calls_enabled, true) -> :call
+          Map.get(room, :media_playback_enabled, true) -> :media
+          Map.get(room, :object_3d_enabled, false) -> :object3d
+          true -> :sensors
+        end
+
         socket =
           socket
           |> assign(:page_title, room.name)
@@ -74,6 +82,16 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:call_active, call_active)
           |> assign(:in_call, false)
           |> assign(:call_participants, %{})
+          # Room mode for tab switching
+          |> assign(:room_mode, default_mode)
+          # 3D Object viewer assigns
+          |> assign(:object3d_name, "Indonesia Tabuhan Coral Reef")
+          |> assign(:object3d_splat_url, "https://huggingface.co/datasets/wildflow/sweet-corals/resolve/main/_indonesia_tabuhan_p1_20250210/splats/5x5%23-15_15_-10_20%23-3_3.ply")
+          |> assign(:object3d_source_url, "https://huggingface.co/datasets/wildflow/sweet-corals")
+          |> assign(:object3d_description, "3D scan of coral reefs in Tabuhan, Indonesia. Part of the Wildflow conservation initiative.")
+          |> assign(:object3d_loading, false)
+          # Room members (loaded when settings panel is opened)
+          |> assign(:room_members, [])
 
         {:ok, socket}
 
@@ -99,8 +117,15 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp apply_action(socket, :settings, _params) do
     if socket.assigns.can_manage do
+      # Load room members for the settings panel
+      room_members = case Rooms.list_members(socket.assigns.room) do
+        {:ok, members} -> members
+        {:error, _} -> []
+      end
+
       socket
       |> assign(:show_settings, true)
+      |> assign(:room_members, room_members)
     else
       socket
       |> put_flash(:error, "You don't have permission to access settings")
@@ -140,12 +165,45 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
+  def handle_event("producer_mode_changed", %{"mode" => _mode, "tier" => _tier}, socket) do
+    # Handle producer mode changes from video call hook - just acknowledge the event
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("speaking_changed", %{"speaking" => _speaking}, socket) do
+    # Handle speaking state changes from video call hook - just acknowledge the event
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("participant_speaking", %{"speaking" => _speaking, "user_id" => _user_id}, socket) do
+    # Handle participant speaking state changes from video call hook - just acknowledge the event
+    {:noreply, socket}
+  end
+
+  # Catch-all for video call hook events that don't need special handling
+  @call_events ~w(
+    my_tier_changed tier_changed quality_changed webrtc_stats
+    call_state_changed call_joined call_left call_error call_reconnecting call_reconnected
+    call_joining_retry connection_state_changed connection_unhealthy
+    participant_joined participant_left participant_audio_changed participant_video_changed
+    consumer_mode_changed track_ready track_removed channel_reconnecting socket_error
+  )
+  @impl true
+  def handle_event(event, _params, socket) when event in @call_events do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("validate_edit", params, socket) do
     form = to_form(%{
       "name" => params["name"] || "",
       "description" => params["description"] || "",
       "is_public" => Map.has_key?(params, "is_public"),
-      "calls_enabled" => Map.has_key?(params, "calls_enabled")
+      "calls_enabled" => Map.has_key?(params, "calls_enabled"),
+      "media_playback_enabled" => Map.has_key?(params, "media_playback_enabled"),
+      "object_3d_enabled" => Map.has_key?(params, "object_3d_enabled")
     })
     {:noreply, assign(socket, :edit_form, form)}
   end
@@ -159,7 +217,9 @@ defmodule SensoctoWeb.RoomShowLive do
       name: params["name"],
       description: params["description"],
       is_public: Map.has_key?(params, "is_public"),
-      calls_enabled: Map.has_key?(params, "calls_enabled")
+      calls_enabled: Map.has_key?(params, "calls_enabled"),
+      media_playback_enabled: Map.has_key?(params, "media_playback_enabled"),
+      object_3d_enabled: Map.has_key?(params, "object_3d_enabled")
     }
 
     case Rooms.update_room(room, attrs, user) do
@@ -381,6 +441,193 @@ defmodule SensoctoWeb.RoomShowLive do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to update room settings")}
     end
+  end
+
+  @impl true
+  def handle_event("toggle_media_playback_enabled", _params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    new_value = not Map.get(room, :media_playback_enabled, true)
+
+    case Rooms.update_room(room, %{media_playback_enabled: new_value}, user) do
+      {:ok, updated_room} ->
+        socket =
+          socket
+          |> assign(:room, normalize_room(updated_room))
+          |> put_flash(:info, if(new_value, do: "Media playback enabled", else: "Media playback disabled"))
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update room settings")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_object_3d_enabled", _params, socket) do
+    room = socket.assigns.room
+    user = socket.assigns.current_user
+
+    new_value = not Map.get(room, :object_3d_enabled, false)
+
+    case Rooms.update_room(room, %{object_3d_enabled: new_value}, user) do
+      {:ok, updated_room} ->
+        socket =
+          socket
+          |> assign(:room, normalize_room(updated_room))
+          |> put_flash(:info, if(new_value, do: "3D objects enabled", else: "3D objects disabled"))
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update room settings")}
+    end
+  end
+
+  # Member management events
+  @impl true
+  def handle_event("promote_to_admin", %{"user-id" => user_id}, socket) do
+    room = socket.assigns.room
+    acting_user = socket.assigns.current_user
+
+    user_to_promote = %{id: user_id}
+
+    case Rooms.promote_to_admin(room, user_to_promote, acting_user) do
+      {:ok, _} ->
+        # Reload members list
+        room_members = case Rooms.list_members(room) do
+          {:ok, members} -> members
+          {:error, _} -> []
+        end
+
+        socket =
+          socket
+          |> assign(:room_members, room_members)
+          |> put_flash(:info, "User promoted to admin")
+
+        {:noreply, socket}
+
+      {:error, :not_owner} ->
+        {:noreply, put_flash(socket, :error, "Only the owner can promote members")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to promote user")}
+    end
+  end
+
+  @impl true
+  def handle_event("demote_to_member", %{"user-id" => user_id}, socket) do
+    room = socket.assigns.room
+    acting_user = socket.assigns.current_user
+
+    user_to_demote = %{id: user_id}
+
+    case Rooms.demote_to_member(room, user_to_demote, acting_user) do
+      {:ok, _} ->
+        # Reload members list
+        room_members = case Rooms.list_members(room) do
+          {:ok, members} -> members
+          {:error, _} -> []
+        end
+
+        socket =
+          socket
+          |> assign(:room_members, room_members)
+          |> put_flash(:info, "User demoted to member")
+
+        {:noreply, socket}
+
+      {:error, :not_owner} ->
+        {:noreply, put_flash(socket, :error, "Only the owner can demote admins")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to demote user")}
+    end
+  end
+
+  @impl true
+  def handle_event("kick_member", %{"user-id" => user_id}, socket) do
+    room = socket.assigns.room
+    acting_user = socket.assigns.current_user
+
+    user_to_kick = %{id: user_id}
+
+    case Rooms.kick_member(room, user_to_kick, acting_user) do
+      {:ok, _} ->
+        # Reload members list
+        room_members = case Rooms.list_members(room) do
+          {:ok, members} -> members
+          {:error, _} -> []
+        end
+
+        socket =
+          socket
+          |> assign(:room_members, room_members)
+          |> put_flash(:info, "User removed from room")
+
+        {:noreply, socket}
+
+      {:error, :cannot_kick_self} ->
+        {:noreply, put_flash(socket, :error, "You cannot kick yourself")}
+
+      {:error, :cannot_kick_admin_or_owner} ->
+        {:noreply, put_flash(socket, :error, "Admins cannot kick other admins or the owner")}
+
+      {:error, :not_authorized} ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to kick members")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to remove user")}
+    end
+  end
+
+  # Room mode switching (tabs)
+  @impl true
+  def handle_event("switch_room_mode", %{"mode" => mode}, socket) do
+    new_mode = String.to_existing_atom(mode)
+    {:noreply, assign(socket, :room_mode, new_mode)}
+  end
+
+  # 3D Object viewer events
+  @impl true
+  def handle_event("reset_object3d_camera", _params, socket) do
+    {:noreply, push_event(socket, "reset_camera", %{})}
+  end
+
+  @impl true
+  def handle_event("center_object3d", _params, socket) do
+    {:noreply, push_event(socket, "center_object", %{})}
+  end
+
+  @impl true
+  def handle_event("viewer_ready", _params, socket) do
+    Logger.debug("3D Object viewer initialized")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("loading_started", %{"url" => url}, socket) do
+    Logger.debug("Loading 3D object: #{url}")
+    {:noreply, assign(socket, :object3d_loading, true)}
+  end
+
+  @impl true
+  def handle_event("loading_complete", %{"url" => _url}, socket) do
+    Logger.debug("3D object loaded successfully")
+    {:noreply, assign(socket, :object3d_loading, false)}
+  end
+
+  @impl true
+  def handle_event("loading_error", %{"message" => message}, socket) do
+    Logger.error("Error loading 3D object: #{message}")
+    {:noreply, assign(socket, :object3d_loading, false)}
+  end
+
+  @impl true
+  def handle_event("viewer_error", %{"message" => message}, socket) do
+    Logger.error("3D viewer error: #{message}")
+    {:noreply, socket}
   end
 
   # Call-related events from JS hooks
@@ -759,7 +1006,9 @@ defmodule SensoctoWeb.RoomShowLive do
       "name" => room.name || "",
       "description" => room.description || "",
       "is_public" => Map.get(room, :is_public, true),
-      "calls_enabled" => Map.get(room, :calls_enabled, true)
+      "calls_enabled" => Map.get(room, :calls_enabled, true),
+      "media_playback_enabled" => Map.get(room, :media_playback_enabled, true),
+      "object_3d_enabled" => Map.get(room, :object_3d_enabled, false)
     })
   end
 
@@ -1069,100 +1318,217 @@ defmodule SensoctoWeb.RoomShowLive do
         <% end %>
       </div>
 
-      <div class="flex gap-4 mb-8">
+      <div class="flex flex-wrap gap-2 sm:gap-4 mb-6">
         <button
           phx-click="open_share_modal"
-          class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
           </svg>
-          Share
+          <span class="hidden sm:inline">Share</span>
         </button>
         <%= if @is_member do %>
           <button
             phx-click="open_add_sensor_modal"
-            class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
-            Add Sensor
+            <span class="hidden sm:inline">Add Sensor</span>
           </button>
         <% end %>
         <%= if @is_owner do %>
           <button
             phx-click="open_edit_modal"
-            class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            Edit
+            <span class="hidden sm:inline">Edit</span>
           </button>
           <button
             phx-click="delete_room"
             data-confirm="Are you sure you want to delete this room? This action cannot be undone."
-            class="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            class="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            Delete
+            <span class="hidden sm:inline">Delete</span>
           </button>
         <% else %>
           <%= if @is_member do %>
             <button
               phx-click="leave_room"
               data-confirm="Are you sure you want to leave this room? Your sensors will be disconnected from the room."
-              class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+              class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
-              Leave Room
+              <span class="hidden sm:inline">Leave Room</span>
             </button>
           <% else %>
             <button
               phx-click="join_room"
-              class="bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+              class="bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
-              Join Room
+              <span class="hidden sm:inline">Join Room</span>
             </button>
           <% end %>
         <% end %>
       </div>
 
-      <%!-- Main content area: Video + Sensors side by side when in call --%>
-      <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "grid grid-cols-1 lg:grid-cols-2 gap-6", else: ""}>
-        <%!-- Video Conference Panel - only shows when calls are enabled --%>
-        <%= if Map.get(@room, :calls_enabled, true) do %>
-          <.live_component
-            module={SensoctoWeb.Live.Calls.CallContainerComponent}
-            id="call-container"
-            room={@room}
-            user={@current_user}
-            in_call={@in_call}
-            participants={@call_participants}
-          />
-        <% end %>
-
-        <%!-- Media Player Panel --%>
-        <div class="mb-6">
-          <.live_component
-            module={MediaPlayerComponent}
-            id={"room-media-player-#{@room.id}"}
-            room_id={@room.id}
-            current_user={@current_user}
-            can_manage={@can_manage}
-          />
+      <%!-- Mode Switcher Tabs - only show if any collaboration feature is enabled --%>
+      <%= if Map.get(@room, :calls_enabled, true) or Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) do %>
+        <div class="flex items-center justify-start gap-2 mb-6 flex-wrap">
+          <%= if Map.get(@room, :calls_enabled, true) do %>
+            <button
+              phx-click="switch_room_mode"
+              phx-value-mode="call"
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+                if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
+              Video Call
+              <%= if @in_call do %>
+                <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              <% end %>
+            </button>
+          <% end %>
+          <%= if Map.get(@room, :media_playback_enabled, true) do %>
+            <button
+              phx-click="switch_room_mode"
+              phx-value-mode="media"
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="play" type="solid" class="h-4 w-4" />
+              Media Playback
+            </button>
+          <% end %>
+          <%= if Map.get(@room, :object_3d_enabled, false) do %>
+            <button
+              phx-click="switch_room_mode"
+              phx-value-mode="object3d"
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+                if(@room_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" />
+              3D Object
+            </button>
+          <% end %>
+          <button
+            phx-click="switch_room_mode"
+            phx-value-mode="sensors"
+            class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+              if(@room_mode == :sensors, do: "bg-orange-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+          >
+            <Heroicons.icon name="cpu-chip" type="solid" class="h-4 w-4" />
+            Sensors
+          </button>
         </div>
+      <% end %>
 
-        <%!-- Sensors Panel --%>
-        <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
+      <%!-- Video Call Panel - shown when in call mode --%>
+      <div :if={@room_mode == :call and Map.get(@room, :calls_enabled, true)} class="mb-6">
+        <.live_component
+          module={SensoctoWeb.Live.Calls.CallContainerComponent}
+          id="call-container"
+          room={@room}
+          user={@current_user}
+          in_call={@in_call}
+          participants={@call_participants}
+        />
+      </div>
+
+      <%!-- Media Player Panel - shown when in media mode --%>
+      <div :if={@room_mode == :media and Map.get(@room, :media_playback_enabled, true)} class="mb-6">
+        <.live_component
+          module={MediaPlayerComponent}
+          id={"room-media-player-#{@room.id}"}
+          room_id={@room.id}
+          current_user={@current_user}
+          can_manage={@can_manage}
+        />
+      </div>
+
+      <%!-- 3D Object Viewer Panel - shown when in object3d mode --%>
+      <div :if={@room_mode == :object3d and Map.get(@room, :object_3d_enabled, false)} class="mb-6">
+        <div class="bg-gray-800 rounded-lg overflow-hidden">
+          <div class="flex items-center justify-between p-3 border-b border-gray-700">
+            <div class="flex items-center gap-2">
+              <Heroicons.icon name="cube-transparent" type="solid" class="h-5 w-5 text-cyan-400" />
+              <span class="text-white font-medium">{@object3d_name}</span>
+              <span class="text-xs text-gray-400">(3D Gaussian Splat)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                phx-click="reset_object3d_camera"
+                class="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors"
+              >
+                Reset View
+              </button>
+              <button
+                phx-click="center_object3d"
+                class="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors"
+              >
+                Center
+              </button>
+              <a
+                :if={@object3d_source_url}
+                href={@object3d_source_url}
+                target="_blank"
+                class="text-gray-400 hover:text-cyan-400 transition-colors"
+                title="View source"
+              >
+                <Heroicons.icon name="arrow-top-right-on-square" type="outline" class="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+          <div class="relative">
+            <div
+              id="object3d-splat-viewer"
+              phx-hook="GaussianSplatViewer"
+              phx-update="ignore"
+              data-splat-url={@object3d_splat_url}
+              data-camera-position="0, 0, 5"
+              data-camera-look-at="0, 0, 0"
+              data-camera-up="0, 1, 0"
+              class="w-full h-[400px] md:h-[500px] bg-gray-900 relative overflow-hidden"
+            >
+              <div class="absolute inset-0 flex items-center justify-center text-gray-400 pointer-events-none z-0">
+                <div class="text-center">
+                  <Heroicons.icon name="arrow-path" type="outline" class="h-8 w-8 mx-auto mb-2 animate-spin" />
+                  <p>Loading 3D viewer...</p>
+                  <p class="text-xs text-gray-500 mt-1">Use mouse to rotate, scroll to zoom, right-click to pan</p>
+                </div>
+              </div>
+            </div>
+            <div :if={@object3d_loading} class="absolute inset-0 bg-gray-900/80 flex items-center justify-center">
+              <div class="text-center text-white">
+                <Heroicons.icon name="arrow-path" type="outline" class="h-10 w-10 mx-auto mb-3 animate-spin text-cyan-400" />
+                <p class="font-medium">Loading 3D object...</p>
+                <p class="text-sm text-gray-400 mt-1">This may take a moment for large files</p>
+              </div>
+            </div>
+          </div>
+          <div :if={@object3d_description} class="p-3 border-t border-gray-700 bg-gray-800/50">
+            <p class="text-xs text-gray-400">
+              {@object3d_description}
+            </p>
+          </div>
+        </div>
+      </div>
+
+        <%!-- Sensors Panel - only shown when in sensors mode --%>
+        <div :if={@room_mode == :sensors} class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
           <%!-- Header with Lens Selector --%>
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-semibold">Sensors</h2>
@@ -1298,7 +1664,6 @@ defmodule SensoctoWeb.RoomShowLive do
             </div>
           <% end %>
         </div>
-      </div>
 
       <%= if @show_share_modal do %>
         <.share_modal room={@room} />
@@ -1313,7 +1678,7 @@ defmodule SensoctoWeb.RoomShowLive do
       <% end %>
 
       <%= if @show_settings do %>
-        <.settings_panel room={@room} is_owner={@is_owner} />
+        <.settings_panel room={@room} is_owner={@is_owner} room_members={@room_members} current_user={@current_user} />
       <% end %>
     </div>
     """
@@ -1408,34 +1773,44 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp share_modal(assigns) do
     share_url = Sensocto.Rooms.share_url(assigns.room)
+    share_text = "Join my room \"#{assigns.room.name}\" on Sensocto! Code: #{assigns.room.join_code}"
+    encoded_url = URI.encode_www_form(share_url)
+    encoded_text = URI.encode_www_form(share_text)
 
-    assigns = assign(assigns, :share_url, share_url)
+    assigns =
+      assigns
+      |> assign(:share_url, share_url)
+      |> assign(:share_text, share_text)
+      |> assign(:encoded_url, encoded_url)
+      |> assign(:encoded_text, encoded_text)
 
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6" phx-click="close_share_modal">
-      <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" phx-click-away="close_share_modal">
-        <div class="flex justify-between items-center mb-4 sm:mb-6">
-          <h2 class="text-lg sm:text-xl font-semibold">Share Room</h2>
-          <button phx-click="close_share_modal" class="text-gray-400 hover:text-white p-1">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 md:p-6" phx-click="close_share_modal">
+      <div class="bg-gray-800 rounded-lg p-3 sm:p-4 md:p-6 w-full max-w-sm sm:max-w-md max-h-[95vh] overflow-y-auto" phx-click-away="close_share_modal">
+        <div class="flex justify-between items-center mb-3 sm:mb-4">
+          <h2 class="text-base sm:text-lg md:text-xl font-semibold">Share Room</h2>
+          <button phx-click="close_share_modal" class="text-gray-400 hover:text-white p-1 -mr-1">
             <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div class="text-center mb-4 sm:mb-6">
-          <p class="text-gray-400 text-sm mb-2">Join Code</p>
-          <p class="text-2xl sm:text-4xl font-mono font-bold tracking-wider"><%= @room.join_code %></p>
+        <%!-- Join Code --%>
+        <div class="text-center mb-3 sm:mb-4 p-3 bg-gray-700/50 rounded-lg">
+          <p class="text-gray-400 text-xs sm:text-sm mb-1">Join Code</p>
+          <p class="text-xl sm:text-2xl md:text-3xl font-mono font-bold tracking-wider text-white"><%= @room.join_code %></p>
         </div>
 
-        <div class="mb-4 sm:mb-6">
-          <p class="text-gray-400 text-sm mb-2">Share Link</p>
-          <div class="flex flex-col sm:flex-row gap-2">
+        <%!-- Share Link --%>
+        <div class="mb-3 sm:mb-4">
+          <p class="text-gray-400 text-xs sm:text-sm mb-2">Share Link</p>
+          <div class="flex gap-2">
             <input
               type="text"
               readonly
               value={@share_url}
-              class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2 text-white text-xs sm:text-sm truncate"
+              class="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-2 sm:px-3 py-2 text-white text-xs sm:text-sm truncate"
               id="share-url-input"
             />
             <button
@@ -1443,16 +1818,138 @@ defmodule SensoctoWeb.RoomShowLive do
               phx-hook="CopyToClipboard"
               id="copy-link-btn"
               data-copy-text={@share_url}
-              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm sm:text-base whitespace-nowrap"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3 py-2 rounded-lg transition-colors text-xs sm:text-sm whitespace-nowrap flex items-center gap-1"
             >
-              Copy Link
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              <span class="hidden sm:inline">Copy</span>
             </button>
           </div>
         </div>
 
-        <div class="flex justify-center p-3 sm:p-4 bg-white rounded-lg">
-          <div id="qr-code" phx-hook="QRCode" data-value={@share_url} class="w-36 h-36 sm:w-48 sm:h-48"></div>
+        <%!-- Share via Apps --%>
+        <div class="mb-3 sm:mb-4">
+          <p class="text-gray-400 text-xs sm:text-sm mb-2">Share via</p>
+          <div class="grid grid-cols-4 sm:grid-cols-5 gap-2">
+            <%!-- WhatsApp --%>
+            <a
+              href={"https://wa.me/?text=#{@encoded_text}%20#{@encoded_url}"}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-green-600/20 rounded-lg transition-colors group"
+              title="Share via WhatsApp"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-400" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">WhatsApp</span>
+            </a>
+
+            <%!-- Telegram --%>
+            <a
+              href={"https://t.me/share/url?url=#{@encoded_url}&text=#{@encoded_text}"}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-600/20 rounded-lg transition-colors group"
+              title="Share via Telegram"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 group-hover:text-blue-300" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Telegram</span>
+            </a>
+
+            <%!-- Signal (uses SMS/Messages link) --%>
+            <a
+              href={"sms:?body=#{@encoded_text}%20#{@encoded_url}"}
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-600/20 rounded-lg transition-colors group"
+              title="Share via SMS/Messages"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">SMS</span>
+            </a>
+
+            <%!-- Email --%>
+            <a
+              href={"mailto:?subject=#{URI.encode_www_form("Join my Sensocto room")}&body=#{@encoded_text}%0A%0A#{@encoded_url}"}
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-purple-600/20 rounded-lg transition-colors group"
+              title="Share via Email"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-purple-400 group-hover:text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Email</span>
+            </a>
+
+            <%!-- Twitter/X --%>
+            <a
+              href={"https://twitter.com/intent/tweet?text=#{@encoded_text}&url=#{@encoded_url}"}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-gray-500/20 rounded-lg transition-colors group"
+              title="Share on X (Twitter)"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-gray-300 group-hover:text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">X</span>
+            </a>
+
+            <%!-- Facebook Messenger --%>
+            <a
+              href={"https://www.facebook.com/dialog/send?link=#{@encoded_url}&app_id=966242223397117&redirect_uri=#{@encoded_url}"}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-600/20 rounded-lg transition-colors group"
+              title="Share via Messenger"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 group-hover:text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.975 12-11.111C24 4.975 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259 6.559-6.963 3.13 3.259 5.889-3.259-6.559 6.963z"/>
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Messenger</span>
+            </a>
+
+            <%!-- LinkedIn --%>
+            <a
+              href={"https://www.linkedin.com/sharing/share-offsite/?url=#{@encoded_url}"}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-700/20 rounded-lg transition-colors group"
+              title="Share on LinkedIn"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 group-hover:text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">LinkedIn</span>
+            </a>
+
+            <%!-- Discord (copy with invite style) --%>
+            <a
+              href={"https://discord.com/channels/@me"}
+              target="_blank"
+              rel="noopener noreferrer"
+              phx-hook="CopyToClipboard"
+              id="discord-share-btn"
+              data-copy-text={"#{@share_text} #{@share_url}"}
+              class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-indigo-600/20 rounded-lg transition-colors group cursor-pointer"
+              title="Copy for Discord"
+            >
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover:text-indigo-300" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/>
+              </svg>
+              <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Discord</span>
+            </a>
+          </div>
         </div>
+
+        <%!-- QR Code --%>
+        <div class="flex justify-center p-2 sm:p-3 bg-white rounded-lg">
+          <div id="qr-code" phx-hook="QRCode" data-value={@share_url} class="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44"></div>
+        </div>
+        <p class="text-center text-gray-500 text-[10px] sm:text-xs mt-2">Scan QR code to join</p>
       </div>
     </div>
     """
@@ -1560,6 +2057,26 @@ defmodule SensoctoWeb.RoomShowLive do
               />
               <span class="text-sm text-gray-300">Enable video/audio calls</span>
             </label>
+
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                name="media_playback_enabled"
+                checked={@form[:media_playback_enabled].value}
+                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+              />
+              <span class="text-sm text-gray-300">Enable media playback</span>
+            </label>
+
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                name="object_3d_enabled"
+                checked={@form[:object_3d_enabled].value}
+                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+              />
+              <span class="text-sm text-gray-300">Enable 3D objects</span>
+            </label>
           </div>
 
           <div class="flex gap-3 pt-4">
@@ -1586,7 +2103,7 @@ defmodule SensoctoWeb.RoomShowLive do
   defp settings_panel(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+      <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-semibold">Room Settings</h2>
           <.link patch={~p"/rooms/#{@room.id}"} class="text-gray-400 hover:text-white">
@@ -1624,19 +2141,125 @@ defmodule SensoctoWeb.RoomShowLive do
             </dl>
           </div>
 
+          <%!-- Members Management Section --%>
+          <div class="p-4 bg-gray-700 rounded-lg">
+            <h3 class="font-medium mb-3">Members (<%= length(@room_members) %>)</h3>
+            <div class="space-y-2 max-h-48 overflow-y-auto">
+              <%= for member <- @room_members do %>
+                <div class="flex items-center justify-between p-2 bg-gray-600 rounded">
+                  <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-sm">
+                      <%= String.first(member.user.display_name || member.user.email || "?") |> String.upcase() %>
+                    </div>
+                    <div>
+                      <p class="text-sm font-medium">
+                        <%= member.user.display_name || member.user.email %>
+                        <%= if member.user_id == @current_user.id do %>
+                          <span class="text-gray-400">(you)</span>
+                        <% end %>
+                      </p>
+                      <p class="text-xs text-gray-400">
+                        <%= case member.role do %>
+                          <% :owner -> %>
+                            <span class="text-yellow-400">Owner</span>
+                          <% :admin -> %>
+                            <span class="text-blue-400">Admin</span>
+                          <% :member -> %>
+                            <span class="text-gray-400">Member</span>
+                        <% end %>
+                      </p>
+                    </div>
+                  </div>
+
+                  <%!-- Action buttons (only for owner, and not for self) --%>
+                  <%= if @is_owner and member.user_id != @current_user.id do %>
+                    <div class="flex gap-1">
+                      <%= if member.role == :member do %>
+                        <button
+                          phx-click="promote_to_admin"
+                          phx-value-user-id={member.user_id}
+                          class="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded"
+                          title="Promote to Admin"
+                        >
+                          Promote
+                        </button>
+                      <% end %>
+                      <%= if member.role == :admin do %>
+                        <button
+                          phx-click="demote_to_member"
+                          phx-value-user-id={member.user_id}
+                          class="px-2 py-1 text-xs bg-gray-500 hover:bg-gray-400 rounded"
+                          title="Demote to Member"
+                        >
+                          Demote
+                        </button>
+                      <% end %>
+                      <%= if member.role != :owner do %>
+                        <button
+                          phx-click="kick_member"
+                          phx-value-user-id={member.user_id}
+                          class="px-2 py-1 text-xs bg-red-600 hover:bg-red-500 rounded"
+                          title="Remove from room"
+                        >
+                          Kick
+                        </button>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          </div>
+
           <%= if @is_owner do %>
             <div class="p-4 bg-gray-700 rounded-lg">
-              <h3 class="font-medium mb-3">Features</h3>
-              <label class="flex items-center justify-between cursor-pointer">
-                <span class="text-sm text-gray-300">Video/Audio Calls</span>
-                <button
-                  type="button"
-                  phx-click="toggle_calls_enabled"
-                  class={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors #{if Map.get(@room, :calls_enabled, true), do: "bg-blue-600", else: "bg-gray-600"}"}
-                >
-                  <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform #{if Map.get(@room, :calls_enabled, true), do: "translate-x-6", else: "translate-x-1"}"} />
-                </button>
-              </label>
+              <h3 class="font-medium mb-3">Collaboration Features</h3>
+              <div class="space-y-3">
+                <%!-- Video/Audio Calls --%>
+                <label class="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span class="text-sm text-gray-300">Video/Audio Calls</span>
+                    <p class="text-xs text-gray-500">Real-time voice and video communication</p>
+                  </div>
+                  <button
+                    type="button"
+                    phx-click="toggle_calls_enabled"
+                    class={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors #{if Map.get(@room, :calls_enabled, true), do: "bg-blue-600", else: "bg-gray-600"}"}
+                  >
+                    <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform #{if Map.get(@room, :calls_enabled, true), do: "translate-x-6", else: "translate-x-1"}"} />
+                  </button>
+                </label>
+
+                <%!-- Media Playback --%>
+                <label class="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span class="text-sm text-gray-300">Media Playback</span>
+                    <p class="text-xs text-gray-500">Synchronized YouTube and playlist sharing</p>
+                  </div>
+                  <button
+                    type="button"
+                    phx-click="toggle_media_playback_enabled"
+                    class={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors #{if Map.get(@room, :media_playback_enabled, true), do: "bg-blue-600", else: "bg-gray-600"}"}
+                  >
+                    <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform #{if Map.get(@room, :media_playback_enabled, true), do: "translate-x-6", else: "translate-x-1"}"} />
+                  </button>
+                </label>
+
+                <%!-- 3D Object Interaction --%>
+                <label class="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span class="text-sm text-gray-300">3D Objects</span>
+                    <p class="text-xs text-gray-500">Gaussian splats and 3D model interaction</p>
+                  </div>
+                  <button
+                    type="button"
+                    phx-click="toggle_object_3d_enabled"
+                    class={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors #{if Map.get(@room, :object_3d_enabled, false), do: "bg-blue-600", else: "bg-gray-600"}"}
+                  >
+                    <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform #{if Map.get(@room, :object_3d_enabled, false), do: "translate-x-6", else: "translate-x-1"}"} />
+                  </button>
+                </label>
+              </div>
             </div>
           <% end %>
         </div>

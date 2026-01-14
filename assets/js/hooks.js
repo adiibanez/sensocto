@@ -36,6 +36,10 @@ Hooks.GaussianSplatViewer = {
         this.handleEvent("reset_camera", () => {
             this.resetCamera();
         });
+
+        this.handleEvent("center_object", () => {
+            this.centerObject();
+        });
     },
 
     parseVector(str, defaultVal) {
@@ -178,6 +182,22 @@ Hooks.GaussianSplatViewer = {
         if (this.viewer && this.viewer.camera) {
             this.viewer.camera.position.set(...this.initialPosition);
             this.viewer.camera.lookAt(...this.initialLookAt);
+        }
+    },
+
+    centerObject() {
+        if (this.viewer) {
+            // Try to center camera on the scene
+            // The orbit controls should auto-center when we reset to look at origin
+            if (this.viewer.camera) {
+                this.viewer.camera.position.set(0, 0, 5);
+                this.viewer.camera.lookAt(0, 0, 0);
+            }
+            // If the viewer has orbit controls, reset them
+            if (this.viewer.controls) {
+                this.viewer.controls.target.set(0, 0, 0);
+                this.viewer.controls.update();
+            }
         }
     },
 
@@ -339,7 +359,10 @@ Hooks.MediaPlayerHook = {
         this.lastKnownPosition = 0;
         this.lastSeekTime = 0;
         this.lastUserActionTime = 0;
-        this.seekGracePeriod = 3000; // 3 seconds grace period after seeking
+        this.seekGracePeriod = 2000; // 2 seconds grace period after seeking
+        this.userActionGracePeriod = 1500; // 1.5 seconds grace period after user action
+        this.lastReportedPosition = 0;
+        this.isUserSeeking = false; // Track if user is actively seeking
 
         // Load YouTube API and initialize player
         loadYouTubeAPI().then(() => {
@@ -362,6 +385,18 @@ Hooks.MediaPlayerHook = {
         // This prevents the sync from immediately overriding user actions
         this.handleEvent("media_user_action", () => {
             this.markUserAction();
+        });
+
+        // Handle seek commands from progress bar
+        this.handleEvent("seek_to", (data) => {
+            if (this.isReady && this.player) {
+                this.isUserSeeking = true;
+                this.lastSeekTime = Date.now();
+                this.player.seekTo(data.position, true);
+                this.lastKnownPosition = data.position;
+                this.lastReportedPosition = data.position;
+                setTimeout(() => { this.isUserSeeking = false; }, 500);
+            }
         });
 
         // Also intercept clicks on play/pause buttons within this component
@@ -511,19 +546,28 @@ Hooks.MediaPlayerHook = {
             if (this.isReady && this.player) {
                 const currentPosition = this.player.getCurrentTime() || 0;
                 const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
+                const now = Date.now();
 
                 // Detect seek: position jumped by more than 2 seconds (not normal playback)
-                // But only if we're not in a grace period from a previous seek
-                const now = Date.now();
+                // But only if we're not actively seeking via our UI
                 const inGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
 
-                if (!inGracePeriod && positionDelta > 2) {
-                    // User seeked in YouTube player - report to server
+                if (!inGracePeriod && !this.isUserSeeking && positionDelta > 2) {
+                    // User seeked via YouTube controls - report to server immediately
                     this.lastSeekTime = now;
+                    this.lastReportedPosition = currentPosition;
                     this.pushEventTo(this.el, "client_seek", { position: currentPosition });
                 }
 
                 this.lastKnownPosition = currentPosition;
+
+                // Report current position periodically (for progress bar updates)
+                // Only report if position changed significantly
+                if (Math.abs(currentPosition - this.lastReportedPosition) > 0.5) {
+                    this.lastReportedPosition = currentPosition;
+                    this.pushEventTo(this.el, "position_update", { position: currentPosition });
+                }
+
                 this.pushEventTo(this.el, "request_media_sync", {});
             }
         }, 1000);
@@ -610,7 +654,7 @@ Hooks.MediaPlayerHook = {
 
         // Check if we're in a user action grace period
         const now = Date.now();
-        const inActionGracePeriod = (now - (this.lastUserActionTime || 0)) < 1500;
+        const inActionGracePeriod = (now - (this.lastUserActionTime || 0)) < this.userActionGracePeriod;
 
         // 1. Handle play/pause state
         // Only auto-resume if NOT in grace period (prevents race condition when user clicks pause)
@@ -621,9 +665,9 @@ Hooks.MediaPlayerHook = {
             this.player.pauseVideo();
         }
 
-        // 2. Skip position correction if in seek grace period
+        // 2. Skip position correction if user is actively seeking or in grace period
         const inSeekGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
-        if (inSeekGracePeriod) {
+        if (inSeekGracePeriod || this.isUserSeeking) {
             return;
         }
 
@@ -632,12 +676,41 @@ Hooks.MediaPlayerHook = {
         if (shouldPlay && drift > 1.5 && !isBuffering) {
             this.player.seekTo(serverPosition, true);
             this.lastKnownPosition = serverPosition;
+            this.lastReportedPosition = serverPosition;
         }
     },
 
     // Called when user initiates a play/pause action (to prevent sync race conditions)
     markUserAction() {
         this.lastUserActionTime = Date.now();
+    }
+};
+
+// SeekBar hook for progress bar seeking
+Hooks.SeekBar = {
+    mounted() {
+        this.duration = parseFloat(this.el.dataset.duration) || 0;
+        this.canSeek = this.el.dataset.canSeek === 'true';
+
+        if (this.canSeek && this.duration > 0) {
+            this.el.addEventListener('click', (e) => this.handleClick(e));
+        }
+    },
+
+    updated() {
+        this.duration = parseFloat(this.el.dataset.duration) || 0;
+        this.canSeek = this.el.dataset.canSeek === 'true';
+    },
+
+    handleClick(e) {
+        if (!this.canSeek || this.duration <= 0) return;
+
+        const rect = this.el.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+        const seekPosition = percentage * this.duration;
+
+        this.pushEventTo(this.el, "seek_to_position", { position: seekPosition.toFixed(2) });
     }
 };
 

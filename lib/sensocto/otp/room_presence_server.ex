@@ -4,9 +4,7 @@ defmodule Sensocto.RoomPresenceServer do
 
   Architecture:
   - GenServer provides fast, real-time state for active sessions
-  - Neo4j serves as the backend source of truth for persistence
-  - State can be hydrated from Neo4j on startup
-  - Future: P2P mobile devices can seed state directly
+  - State can be seeded from external sources (P2P, mobile, etc.)
 
   State structure:
   %{
@@ -128,9 +126,6 @@ defmodule Sensocto.RoomPresenceServer do
         Map.put(room_presences, user_id, presence)
       end)
 
-    # Async sync to Neo4j
-    sync_to_neo4j_async(:join, room_id, user_id, sensor_ids, role)
-
     # Broadcast room update
     broadcast_room_update(room_id, {:user_joined, %{user_id: user_id, sensor_ids: sensor_ids, role: role}})
 
@@ -158,9 +153,6 @@ defmodule Sensocto.RoomPresenceServer do
           end)
           |> Map.reject(fn {_k, v} -> is_nil(v) end)
 
-        # Async sync to Neo4j
-        sync_to_neo4j_async(:leave, room_id, user_id, nil, nil)
-
         # Broadcast room update
         broadcast_room_update(room_id, {:user_left, %{user_id: user_id, sensor_ids: sensor_ids}})
 
@@ -179,9 +171,6 @@ defmodule Sensocto.RoomPresenceServer do
         updated_presence = %{presence | sensor_ids: sensor_set}
 
         new_state = put_in(state, [room_id, user_id], updated_presence)
-
-        # Async sync to Neo4j
-        sync_to_neo4j_async(:update_sensors, room_id, user_id, sensor_ids, nil)
 
         # Broadcast room update
         broadcast_room_update(room_id, {:sensors_updated, %{user_id: user_id, sensor_ids: sensor_ids}})
@@ -268,14 +257,14 @@ defmodule Sensocto.RoomPresenceServer do
 
   @impl true
   def handle_cast(:hydrate_from_backend, state) do
-    new_state = do_hydrate_from_neo4j(state)
-    {:noreply, new_state}
+    # No-op: backend hydration removed (was Neo4j)
+    {:noreply, state}
   end
 
   @impl true
   def handle_info(:hydrate_on_startup, state) do
-    new_state = do_hydrate_from_neo4j(state)
-    {:noreply, new_state}
+    # No-op: backend hydration removed (was Neo4j)
+    {:noreply, state}
   end
 
   @impl true
@@ -287,66 +276,6 @@ defmodule Sensocto.RoomPresenceServer do
   # ============================================================================
   # Private Helpers
   # ============================================================================
-
-  defp do_hydrate_from_neo4j(state) do
-    try do
-      # Get all room presences from Neo4j
-      case Sensocto.Graph.Context.list_all_presences() do
-        presences when is_list(presences) ->
-          Enum.reduce(presences, state, fn presence, acc ->
-            room_id = presence.room_id
-            user_id = presence.user_id
-
-            user_presence = %{
-              sensor_ids: MapSet.new(presence.sensor_ids || []),
-              role: presence.role || :member,
-              joined_at: presence.joined_at || DateTime.utc_now()
-            }
-
-            Map.update(acc, room_id, %{user_id => user_presence}, fn room_presences ->
-              Map.put(room_presences, user_id, user_presence)
-            end)
-          end)
-
-        _ ->
-          Logger.debug("No presences to hydrate from Neo4j")
-          state
-      end
-    rescue
-      e ->
-        Logger.debug("Failed to hydrate from Neo4j: #{inspect(e)}")
-        state
-    catch
-      :exit, reason ->
-        Logger.debug("Failed to hydrate from Neo4j (exit): #{inspect(reason)}")
-        state
-    end
-  end
-
-  defp sync_to_neo4j_async(action, room_id, user_id, sensor_ids, _role) do
-    Task.start(fn ->
-      try do
-        case action do
-          :join ->
-            # Sync join to Neo4j - need room and user structs
-            # This is a placeholder - actual implementation depends on how you get room/user
-            Logger.debug("Syncing join to Neo4j: room=#{room_id}, user=#{user_id}, sensors=#{inspect(sensor_ids)}")
-
-          :leave ->
-            Logger.debug("Syncing leave to Neo4j: room=#{room_id}, user=#{user_id}")
-
-          :update_sensors ->
-            Logger.debug("Syncing sensor update to Neo4j: room=#{room_id}, user=#{user_id}, sensors=#{inspect(sensor_ids)}")
-        end
-      rescue
-        e ->
-          Logger.warning("Failed to sync to Neo4j: #{inspect(e)}")
-      catch
-        :exit, reason ->
-          Logger.warning("Failed to sync to Neo4j (exit): #{inspect(reason)}")
-      end
-    end)
-  end
 
   defp broadcast_room_update(room_id, message) do
     Phoenix.PubSub.broadcast(

@@ -55,6 +55,9 @@ defmodule Sensocto.Application do
       # Media (YouTube/Spotify playback)
       {Registry, keys: :unique, name: Sensocto.MediaRegistry},
 
+      # Object3D (3D Gaussian splat viewer)
+      {Registry, keys: :unique, name: Sensocto.Object3DRegistry},
+
       # {Horde.Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
       # {Horde.Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       # {Horde.Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
@@ -95,6 +98,7 @@ defmodule Sensocto.Application do
       Sensocto.RoomsDynamicSupervisor,
       Sensocto.Calls.CallSupervisor,
       Sensocto.Media.MediaPlayerSupervisor,
+      Sensocto.Object3D.Object3DPlayerSupervisor,
       # Pooled RepoReplicator for scalability (replaces single RepoReplicator)
       {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
 

@@ -8,6 +8,7 @@ defmodule SensoctoWeb.LobbyLive do
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLive
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
+  alias SensoctoWeb.Live.Components.Object3DPlayerComponent
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Calls
 
@@ -30,6 +31,8 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "media:lobby")
     # Subscribe to lobby call events
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
+    # Subscribe to 3D object player events
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:lobby")
 
     # Subscribe to user-specific attention level updates for webcam backpressure
     user = socket.assigns[:current_user]
@@ -92,13 +95,7 @@ defmodule SensoctoWeb.LobbyLive do
         lobby_mode: :media,
         call_active: call_active,
         in_call: false,
-        call_participants: %{},
-        # 3D Object viewer assigns - generic physical object collaboration viewing
-        object3d_name: "Indonesia Tabuhan Coral Reef",
-        object3d_splat_url: "https://huggingface.co/datasets/wildflow/sweet-corals/resolve/main/_indonesia_tabuhan_p1_20250210/splats/5x5%23-15_15_-10_20%23-3_3.ply",
-        object3d_source_url: "https://huggingface.co/datasets/wildflow/sweet-corals",
-        object3d_description: "3D scan of coral reefs in Tabuhan, Indonesia. Part of the Wildflow conservation initiative.",
-        object3d_loading: false
+        call_participants: %{}
       )
 
     :telemetry.execute(
@@ -502,6 +499,47 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # 3D Object player events - forward to component
+  @impl true
+  def handle_info({:object3d_item_changed, %{item: item, camera_position: pos, camera_target: target}}, socket) do
+    send_update(Object3DPlayerComponent,
+      id: "lobby-object3d-player",
+      current_item: item,
+      camera_position: pos,
+      camera_target: target
+    )
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:object3d_camera_synced, %{camera_position: position, camera_target: target}}, socket) do
+    send_update(Object3DPlayerComponent,
+      id: "lobby-object3d-player",
+      synced_camera_position: position,
+      synced_camera_target: target
+    )
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:object3d_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+    send_update(Object3DPlayerComponent,
+      id: "lobby-object3d-player",
+      controller_user_id: user_id,
+      controller_user_name: user_name
+    )
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:object3d_playlist_updated, %{items: items}}, socket) do
+    send_update(Object3DPlayerComponent,
+      id: "lobby-object3d-player",
+      playlist_items: items
+    )
+    {:noreply, socket}
+  end
+
   # Handle call events from CallServer via PubSub
   @impl true
   def handle_info({:call_event, event}, socket) do
@@ -659,48 +697,20 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("switch_lobby_mode", %{"mode" => mode}, socket) do
     new_mode = String.to_existing_atom(mode)
+
+    socket =
+      socket
+      |> assign(:lobby_mode, new_mode)
+      |> push_event("save_lobby_mode", %{mode: mode})
+
+    {:noreply, socket}
+  end
+
+  # Restore lobby mode from localStorage (via JS hook)
+  @impl true
+  def handle_event("restore_lobby_mode", %{"mode" => mode}, socket) do
+    new_mode = String.to_existing_atom(mode)
     {:noreply, assign(socket, :lobby_mode, new_mode)}
-  end
-
-  # 3D Object viewer events
-  @impl true
-  def handle_event("reset_object3d_camera", _params, socket) do
-    {:noreply, push_event(socket, "reset_camera", %{})}
-  end
-
-  @impl true
-  def handle_event("center_object3d", _params, socket) do
-    {:noreply, push_event(socket, "center_object", %{})}
-  end
-
-  @impl true
-  def handle_event("viewer_ready", _params, socket) do
-    Logger.debug("3D Object viewer initialized")
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("loading_started", %{"url" => url}, socket) do
-    Logger.debug("Loading 3D object: #{url}")
-    {:noreply, assign(socket, :object3d_loading, true)}
-  end
-
-  @impl true
-  def handle_event("loading_complete", %{"url" => _url}, socket) do
-    Logger.debug("3D object loaded successfully")
-    {:noreply, assign(socket, :object3d_loading, false)}
-  end
-
-  @impl true
-  def handle_event("loading_error", %{"message" => message}, socket) do
-    Logger.error("Error loading 3D object: #{message}")
-    {:noreply, assign(socket, :object3d_loading, false)}
-  end
-
-  @impl true
-  def handle_event("viewer_error", %{"message" => message}, socket) do
-    Logger.error("3D viewer error: #{message}")
-    {:noreply, socket}
   end
 
   # Lens view selector (dropdown)

@@ -3,6 +3,22 @@ import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 
 let Hooks = {};
 
+// Lobby Preferences Hook - persists lobby mode to localStorage
+Hooks.LobbyPreferences = {
+    mounted() {
+        // Restore saved lobby mode on mount
+        const savedMode = localStorage.getItem('lobby_mode');
+        if (savedMode && ['media', 'call', 'object3d'].includes(savedMode)) {
+            this.pushEvent('restore_lobby_mode', { mode: savedMode });
+        }
+
+        // Listen for mode changes to save them
+        this.handleEvent('save_lobby_mode', ({ mode }) => {
+            localStorage.setItem('lobby_mode', mode);
+        });
+    }
+};
+
 // 3D Gaussian Splat Viewer Hook for coral reef visualization
 Hooks.GaussianSplatViewer = {
     mounted() {
@@ -911,6 +927,518 @@ Hooks.SortablePlaylist = {
             this.el._sortableInstance = this.sortable;
         } catch (e) {
             console.error('[SortablePlaylist] Error initializing Sortable:', e);
+        }
+    }
+};
+
+// Object3D Player Hook - Synchronized 3D Gaussian Splat viewer with playlist support
+Hooks.Object3DPlayerHook = {
+    mounted() {
+        this.viewer = null;
+        this.isLoading = false;
+        this.loadError = null;
+        this.roomId = this.el.dataset.roomId;
+        this.isController = false;
+        this.controllerId = null;
+        this.currentUserId = this.el.dataset.currentUserId;
+        this.lastCameraSyncTime = 0;
+        this.cameraSyncThrottle = 200; // Sync camera every 200ms max
+        this.gracePeriod = 500; // Ignore incoming syncs for 500ms after user action
+        this.lastUserActionTime = 0;
+        this.currentItemId = null;
+
+        // Camera state
+        this.cameraPosition = { x: 0, y: 0, z: 5 };
+        this.cameraTarget = { x: 0, y: 0, z: 0 };
+
+        // Initialize viewer
+        this.initViewer();
+
+        // Handle window resize
+        this.handleResize = () => {
+            if (this.viewer && this.viewer.renderer) {
+                const rect = this.el.getBoundingClientRect();
+                this.viewer.renderer.setSize(rect.width, rect.height);
+            }
+        };
+        window.addEventListener('resize', this.handleResize);
+
+        // Handle sync events from server
+        this.handleEvent("object3d_sync", (data) => {
+            this.handleSync(data);
+        });
+
+        this.handleEvent("object3d_load", (data) => {
+            this.loadSplat(data.url, data.camera_position, data.camera_target);
+        });
+
+        this.handleEvent("object3d_camera_sync", (data) => {
+            this.handleCameraSync(data);
+        });
+
+        this.handleEvent("object3d_reset_camera", () => {
+            this.resetCamera();
+        });
+
+        this.handleEvent("object3d_center_object", () => {
+            this.centerObject();
+        });
+
+        // Start camera sync interval for controller
+        this.startCameraSyncInterval();
+    },
+
+    parseVector(str, defaultVal) {
+        if (!str) return defaultVal;
+        try {
+            const parts = str.split(',').map(s => parseFloat(s.trim()));
+            if (parts.length >= 3 && parts.every(n => !isNaN(n))) {
+                return { x: parts[0], y: parts[1], z: parts[2] };
+            }
+        } catch (e) {
+            console.warn('[Object3DPlayer] Error parsing vector:', str);
+        }
+        return defaultVal;
+    },
+
+    async initViewer() {
+        if (this.viewer) return;
+
+        const container = this.el.querySelector('[data-object3d-viewer]') || this.el;
+        const rect = container.getBoundingClientRect();
+
+        if (rect.width === 0 || rect.height === 0) {
+            setTimeout(() => this.initViewer(), 100);
+            return;
+        }
+
+        try {
+            const initialPosition = [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z];
+            const initialLookAt = [this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z];
+
+            // Store container reference for later
+            this.viewerContainer = container;
+
+            this.viewer = new GaussianSplats3D.Viewer({
+                cameraUp: [0, -1, 0],
+                initialCameraPosition: initialPosition,
+                initialCameraLookAt: initialLookAt,
+                rootElement: container,
+                selfDrivenMode: true,
+                useBuiltInControls: true,
+                dynamicScene: true,
+                antialiased: true,
+                focalAdjustment: 1.0,
+                sharedMemoryForWorkers: false,
+            });
+
+            console.log('[Object3DPlayer] Viewer initialized');
+
+            // Configure controls (may not be available until viewer starts)
+            this.configureControls();
+
+            // Setup canvas events when canvas is added
+            const existingCanvas = container.querySelector('canvas');
+            if (existingCanvas) {
+                this.setupCanvasEvents(existingCanvas);
+            }
+
+            const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.tagName === 'CANVAS') {
+                            this.setupCanvasEvents(node);
+                            // Also try to configure controls when canvas appears
+                            setTimeout(() => this.configureControls(), 100);
+                        }
+                    }
+                }
+            });
+            observer.observe(container, { childList: true });
+            this.canvasObserver = observer;
+
+            this.pushEvent("viewer_ready", {});
+
+            // Load initial splat if URL provided
+            const splatUrl = this.el.dataset.splatUrl;
+            if (splatUrl) {
+                this.loadSplat(splatUrl);
+            }
+        } catch (error) {
+            console.error('[Object3DPlayer] Error initializing viewer:', error);
+            this.pushEvent("viewer_error", { message: error.message });
+        }
+    },
+
+    async loadSplat(url, cameraPosition, cameraTarget) {
+        if (this.isLoading) {
+            console.warn('[Object3DPlayer] Already loading a splat');
+            return;
+        }
+
+        this.isLoading = true;
+        this.pushEvent("loading_started", { url });
+
+        try {
+            // Dispose old viewer completely and create a fresh one
+            if (this.viewer) {
+                console.log('[Object3DPlayer] Disposing old viewer');
+                try {
+                    this.viewer.dispose();
+                } catch (e) {
+                    console.warn('[Object3DPlayer] Error disposing viewer:', e);
+                }
+                this.viewer = null;
+            }
+
+            // Clear the container
+            const container = this.viewerContainer || this.el.querySelector('[data-object3d-viewer]') || this.el;
+            while (container.firstChild) {
+                container.removeChild(container.firstChild);
+            }
+
+            // Update camera position/target if provided
+            if (cameraPosition) {
+                this.cameraPosition = cameraPosition;
+            }
+            if (cameraTarget) {
+                this.cameraTarget = cameraTarget;
+            }
+
+            const initialPosition = [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z];
+            const initialLookAt = [this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z];
+
+            // Create new viewer
+            this.viewer = new GaussianSplats3D.Viewer({
+                cameraUp: [0, -1, 0],
+                initialCameraPosition: initialPosition,
+                initialCameraLookAt: initialLookAt,
+                rootElement: container,
+                selfDrivenMode: true,
+                useBuiltInControls: true,
+                dynamicScene: true,
+                antialiased: true,
+                focalAdjustment: 1.0,
+                sharedMemoryForWorkers: false,
+            });
+
+            console.log('[Object3DPlayer] Loading splat:', url);
+
+            await this.viewer.addSplatScene(url, {
+                splatAlphaRemovalThreshold: 5,
+                showLoadingUI: true,
+                position: [0, 0, 0],
+                rotation: [0, 0, 0, 1],
+                scale: [1, 1, 1],
+                progressiveLoad: true
+            });
+
+            this.viewer.start();
+
+            // Configure controls AFTER viewer has started (controls are created during start)
+            // Use a short delay to ensure controls are fully initialized
+            await new Promise(resolve => setTimeout(resolve, 100));
+            this.configureControls();
+
+            // Also configure canvas for proper event handling after load
+            const loadedCanvas = container.querySelector('canvas');
+            if (loadedCanvas) {
+                this.setupCanvasEvents(loadedCanvas);
+            }
+
+            console.log('[Object3DPlayer] Splat loaded successfully');
+            this.pushEvent("loading_complete", { url });
+
+        } catch (error) {
+            console.error('[Object3DPlayer] Error loading splat:', error);
+            this.loadError = error.message;
+            this.pushEvent("loading_error", { message: error.message, url });
+        } finally {
+            this.isLoading = false;
+        }
+    },
+
+    handleSync(data) {
+        // Update controller status
+        this.controllerId = data.controller_user_id;
+        this.isController = this.controllerId === this.currentUserId;
+
+        // Update current item
+        if (data.current_item && data.current_item.id !== this.currentItemId) {
+            this.currentItemId = data.current_item.id;
+            if (data.current_item.splat_url) {
+                this.loadSplat(
+                    data.current_item.splat_url,
+                    data.camera_position,
+                    data.camera_target
+                );
+            }
+        }
+    },
+
+    handleCameraSync(data) {
+        // Ignore if we're the controller (we're sending, not receiving)
+        if (this.isController) return;
+
+        // If no controller is set, don't apply any sync - allow free movement
+        if (!this.controllerId) return;
+
+        // Ignore if in grace period (user just interacted)
+        const now = Date.now();
+        if (now - this.lastUserActionTime < this.gracePeriod) return;
+
+        // Apply camera position from controller
+        if (this.viewer && this.viewer.camera && data.camera_position && data.camera_target) {
+            this.cameraPosition = data.camera_position;
+            this.cameraTarget = data.camera_target;
+
+            this.viewer.camera.position.set(
+                data.camera_position.x,
+                data.camera_position.y,
+                data.camera_position.z
+            );
+            this.viewer.camera.lookAt(
+                data.camera_target.x,
+                data.camera_target.y,
+                data.camera_target.z
+            );
+
+            // Also update orbit controls if present
+            const controls = this.viewer.perspectiveControls || this.viewer.orthographicControls;
+            if (controls) {
+                controls.target.set(
+                    data.camera_target.x,
+                    data.camera_target.y,
+                    data.camera_target.z
+                );
+                controls.update();
+            }
+        }
+    },
+
+    startCameraSyncInterval() {
+        this.cameraSyncInterval = setInterval(() => {
+            // Only sync if we're the controller
+            if (!this.isController || !this.viewer || !this.viewer.camera) return;
+
+            const now = Date.now();
+            if (now - this.lastCameraSyncTime < this.cameraSyncThrottle) return;
+
+            const pos = this.viewer.camera.position;
+            const target = this.viewer.controls ? this.viewer.controls.target : { x: 0, y: 0, z: 0 };
+
+            // Check if camera actually moved
+            const posDelta = Math.abs(pos.x - this.cameraPosition.x) +
+                            Math.abs(pos.y - this.cameraPosition.y) +
+                            Math.abs(pos.z - this.cameraPosition.z);
+
+            if (posDelta > 0.01) {
+                this.cameraPosition = { x: pos.x, y: pos.y, z: pos.z };
+                this.cameraTarget = { x: target.x, y: target.y, z: target.z };
+
+                this.pushEvent("camera_moved", {
+                    position: this.cameraPosition,
+                    target: this.cameraTarget
+                });
+
+                this.lastCameraSyncTime = now;
+            }
+        }, 100);
+    },
+
+    configureControls() {
+        if (!this.viewer) return;
+
+        // Try multiple control property names that GaussianSplats3D might use
+        const controls = this.viewer.perspectiveControls ||
+                         this.viewer.orthographicControls ||
+                         this.viewer.controls ||
+                         this.viewer.orbitControls;
+
+        if (controls) {
+            controls.minPolarAngle = 0;
+            controls.maxPolarAngle = Math.PI;
+            controls.enableRotate = true;
+            controls.enableZoom = true;
+            controls.enablePan = true;
+            controls.enabled = true;
+
+            // Safari fix: Ensure the controls are listening to the correct DOM element
+            // Sometimes OrbitControls don't properly attach in Safari
+            if (controls.domElement) {
+                // Ensure the dom element is the canvas
+                const canvas = this.viewerContainer ? this.viewerContainer.querySelector('canvas') : null;
+                if (canvas && controls.domElement !== canvas) {
+                    console.log('[Object3DPlayer] Reconnecting controls to canvas');
+                    // Re-enable event listeners by calling dispose and then enabling
+                    if (typeof controls.connect === 'function') {
+                        controls.connect();
+                    }
+                }
+            }
+
+            // Force update
+            if (typeof controls.update === 'function') {
+                controls.update();
+            }
+
+            console.log('[Object3DPlayer] Controls configured successfully:', {
+                enabled: controls.enabled,
+                enableRotate: controls.enableRotate,
+                enableZoom: controls.enableZoom,
+                enablePan: controls.enablePan,
+                domElement: controls.domElement ? controls.domElement.tagName : 'none'
+            });
+        } else {
+            console.warn('[Object3DPlayer] No controls found on viewer. Available properties:',
+                Object.keys(this.viewer).filter(k => k.toLowerCase().includes('control')));
+
+            // Retry after a short delay - controls might be created asynchronously
+            if (!this._controlRetryCount) this._controlRetryCount = 0;
+            if (this._controlRetryCount < 5) {
+                this._controlRetryCount++;
+                setTimeout(() => this.configureControls(), 200);
+            }
+        }
+    },
+
+    setupCanvasEvents(canvas) {
+        if (!canvas) return;
+
+        // Critical styles for event handling across all browsers including Safari
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '50';
+        canvas.style.pointerEvents = 'auto';
+        canvas.style.touchAction = 'none';
+        canvas.style.userSelect = 'none';
+        canvas.style.webkitUserSelect = 'none';
+        canvas.tabIndex = 0;
+
+        // Prevent default touch behavior on the canvas for Safari
+        canvas.addEventListener('touchstart', (e) => {
+            this.markUserAction();
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        canvas.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        canvas.addEventListener('gesturechange', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        // Mouse events
+        canvas.addEventListener('mousedown', () => this.markUserAction());
+        canvas.addEventListener('wheel', () => this.markUserAction(), { passive: true });
+
+        // Pointer events (modern browsers)
+        canvas.addEventListener('pointerdown', () => this.markUserAction());
+
+        console.log('[Object3DPlayer] Canvas events configured');
+    },
+
+    markUserAction() {
+        this.lastUserActionTime = Date.now();
+    },
+
+    resetCamera() {
+        this.markUserAction();
+        if (this.viewer && this.viewer.camera) {
+            this.viewer.camera.position.set(0, 0, 5);
+            this.viewer.camera.lookAt(0, 0, 0);
+            if (this.viewer.controls) {
+                this.viewer.controls.target.set(0, 0, 0);
+                this.viewer.controls.update();
+            }
+            this.cameraPosition = { x: 0, y: 0, z: 5 };
+            this.cameraTarget = { x: 0, y: 0, z: 0 };
+        }
+    },
+
+    centerObject() {
+        this.markUserAction();
+        if (!this.viewer || !this.viewer.camera) return;
+
+        try {
+            // Try to get the splat mesh bounding box for proper centering
+            let center = { x: 0, y: 0, z: 0 };
+            let distance = 5;
+
+            // Check if the viewer has scene data we can use
+            if (this.viewer.splatMesh && this.viewer.splatMesh.geometry) {
+                const geometry = this.viewer.splatMesh.geometry;
+                geometry.computeBoundingBox();
+                const box = geometry.boundingBox;
+
+                if (box) {
+                    center = {
+                        x: (box.min.x + box.max.x) / 2,
+                        y: (box.min.y + box.max.y) / 2,
+                        z: (box.min.z + box.max.z) / 2
+                    };
+
+                    // Calculate appropriate viewing distance based on object size
+                    const size = Math.max(
+                        box.max.x - box.min.x,
+                        box.max.y - box.min.y,
+                        box.max.z - box.min.z
+                    );
+                    distance = size * 1.5;
+                }
+            }
+
+            // Position camera to look at center from a good viewing angle
+            const cameraPos = {
+                x: center.x,
+                y: center.y + distance * 0.3,
+                z: center.z + distance
+            };
+
+            this.viewer.camera.position.set(cameraPos.x, cameraPos.y, cameraPos.z);
+            this.viewer.camera.lookAt(center.x, center.y, center.z);
+
+            if (this.viewer.controls) {
+                this.viewer.controls.target.set(center.x, center.y, center.z);
+                this.viewer.controls.update();
+            }
+
+            this.cameraPosition = cameraPos;
+            this.cameraTarget = center;
+
+            console.log('[Object3DPlayer] Centered on object at:', center, 'distance:', distance);
+        } catch (error) {
+            console.warn('[Object3DPlayer] Error centering object, using default position:', error);
+            this.resetCamera();
+        }
+    },
+
+    destroyed() {
+        window.removeEventListener('resize', this.handleResize);
+
+        if (this.cameraSyncInterval) {
+            clearInterval(this.cameraSyncInterval);
+        }
+
+        if (this.canvasObserver) {
+            this.canvasObserver.disconnect();
+            this.canvasObserver = null;
+        }
+
+        if (this.viewer) {
+            try {
+                this.viewer.dispose();
+            } catch (e) {
+                console.warn('[Object3DPlayer] Error disposing viewer:', e);
+            }
+            this.viewer = null;
         }
     }
 };

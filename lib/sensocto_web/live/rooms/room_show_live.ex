@@ -13,6 +13,7 @@ defmodule SensoctoWeb.RoomShowLive do
   alias Sensocto.Types.AttributeType
   alias Phoenix.PubSub
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
+  alias SensoctoWeb.Live.Components.Object3DPlayerComponent
 
   @activity_check_interval 5000
 
@@ -34,6 +35,9 @@ defmodule SensoctoWeb.RoomShowLive do
 
           # Subscribe to media events for this room
           PubSub.subscribe(Sensocto.PubSub, "media:#{room_id}")
+
+          # Subscribe to object3d events for this room
+          PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
 
           # Auto-join user's sensors to this room when visiting
           auto_join_user_sensors(room)
@@ -84,12 +88,6 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:call_participants, %{})
           # Room mode for tab switching
           |> assign(:room_mode, default_mode)
-          # 3D Object viewer assigns
-          |> assign(:object3d_name, "Indonesia Tabuhan Coral Reef")
-          |> assign(:object3d_splat_url, "https://huggingface.co/datasets/wildflow/sweet-corals/resolve/main/_indonesia_tabuhan_p1_20250210/splats/5x5%23-15_15_-10_20%23-3_3.ply")
-          |> assign(:object3d_source_url, "https://huggingface.co/datasets/wildflow/sweet-corals")
-          |> assign(:object3d_description, "3D scan of coral reefs in Tabuhan, Indonesia. Part of the Wildflow conservation initiative.")
-          |> assign(:object3d_loading, false)
           # Room members (loaded when settings panel is opened)
           |> assign(:room_members, [])
 
@@ -589,46 +587,21 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, assign(socket, :room_mode, new_mode)}
   end
 
-  # 3D Object viewer events
+  # Object3D player hook events
   @impl true
-  def handle_event("reset_object3d_camera", _params, socket) do
-    {:noreply, push_event(socket, "reset_camera", %{})}
-  end
+  def handle_event("viewer_ready", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("center_object3d", _params, socket) do
-    {:noreply, push_event(socket, "center_object", %{})}
-  end
+  def handle_event("loading_started", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("viewer_ready", _params, socket) do
-    Logger.debug("3D Object viewer initialized")
-    {:noreply, socket}
-  end
+  def handle_event("loading_complete", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("loading_started", %{"url" => url}, socket) do
-    Logger.debug("Loading 3D object: #{url}")
-    {:noreply, assign(socket, :object3d_loading, true)}
-  end
+  def handle_event("loading_error", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("loading_complete", %{"url" => _url}, socket) do
-    Logger.debug("3D object loaded successfully")
-    {:noreply, assign(socket, :object3d_loading, false)}
-  end
-
-  @impl true
-  def handle_event("loading_error", %{"message" => message}, socket) do
-    Logger.error("Error loading 3D object: #{message}")
-    {:noreply, assign(socket, :object3d_loading, false)}
-  end
-
-  @impl true
-  def handle_event("viewer_error", %{"message" => message}, socket) do
-    Logger.error("3D viewer error: #{message}")
-    {:noreply, socket}
-  end
+  def handle_event("camera_moved", _params, socket), do: {:noreply, socket}
 
   # Call-related events from JS hooks
   @impl true
@@ -1021,6 +994,59 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, socket}
   end
 
+  # Object3D PubSub handlers
+  @impl true
+  def handle_info({:object3d_item_changed, %{item: item, camera_position: camera_position, camera_target: camera_target}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(Object3DPlayerComponent,
+      id: "object3d-player-#{room_id}",
+      current_item: item,
+      camera_position: camera_position,
+      camera_target: camera_target
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:object3d_camera_synced, %{camera_position: camera_position, camera_target: camera_target}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(Object3DPlayerComponent,
+      id: "object3d-player-#{room_id}",
+      camera_position: camera_position,
+      camera_target: camera_target
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:object3d_playlist_updated, %{items: items}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(Object3DPlayerComponent,
+      id: "object3d-player-#{room_id}",
+      playlist_items: items
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:object3d_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(Object3DPlayerComponent,
+      id: "object3d-player-#{room_id}",
+      controller_user_id: user_id,
+      controller_user_name: user_name
+    )
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(msg, socket) do
     Logger.debug("RoomShowLive received unknown message: #{inspect(msg)}")
@@ -1050,7 +1076,7 @@ defmodule SensoctoWeb.RoomShowLive do
     |> Map.keys()
     |> Enum.reject(fn sensor_id -> MapSet.member?(room_sensor_ids, sensor_id) end)
     |> Enum.each(fn sensor_id ->
-      Sensocto.Otp.RoomStore.add_sensor(room.id, sensor_id)
+      Sensocto.RoomStore.add_sensor(room.id, sensor_id)
       # Subscribe to the newly added sensor's data
       PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
     end)
@@ -1469,6 +1495,17 @@ defmodule SensoctoWeb.RoomShowLive do
       <%!-- Mode Switcher Tabs - only show if any collaboration feature is enabled --%>
       <%= if Map.get(@room, :calls_enabled, true) or Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) do %>
         <div class="flex items-center justify-start gap-2 mb-6 flex-wrap">
+          <%= if Map.get(@room, :media_playback_enabled, true) do %>
+            <button
+              phx-click="switch_room_mode"
+              phx-value-mode="media"
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="play" type="solid" class="h-4 w-4" />
+              Media Playback
+            </button>
+          <% end %>
           <%= if Map.get(@room, :calls_enabled, true) do %>
             <button
               phx-click="switch_room_mode"
@@ -1481,17 +1518,6 @@ defmodule SensoctoWeb.RoomShowLive do
               <%= if @in_call do %>
                 <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
               <% end %>
-            </button>
-          <% end %>
-          <%= if Map.get(@room, :media_playback_enabled, true) do %>
-            <button
-              phx-click="switch_room_mode"
-              phx-value-mode="media"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
-                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="play" type="solid" class="h-4 w-4" />
-              Media Playback
             </button>
           <% end %>
           <%= if Map.get(@room, :object_3d_enabled, false) do %>
@@ -1542,70 +1568,13 @@ defmodule SensoctoWeb.RoomShowLive do
 
       <%!-- 3D Object Viewer Panel - shown when in object3d mode --%>
       <div :if={@room_mode == :object3d and Map.get(@room, :object_3d_enabled, false)} class="mb-6">
-        <div class="bg-gray-800 rounded-lg overflow-hidden">
-          <div class="flex items-center justify-between p-3 border-b border-gray-700">
-            <div class="flex items-center gap-2">
-              <Heroicons.icon name="cube-transparent" type="solid" class="h-5 w-5 text-cyan-400" />
-              <span class="text-white font-medium">{@object3d_name}</span>
-              <span class="text-xs text-gray-400">(3D Gaussian Splat)</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <button
-                phx-click="reset_object3d_camera"
-                class="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors"
-              >
-                Reset View
-              </button>
-              <button
-                phx-click="center_object3d"
-                class="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors"
-              >
-                Center
-              </button>
-              <a
-                :if={@object3d_source_url}
-                href={@object3d_source_url}
-                target="_blank"
-                class="text-gray-400 hover:text-cyan-400 transition-colors"
-                title="View source"
-              >
-                <Heroicons.icon name="arrow-top-right-on-square" type="outline" class="h-4 w-4" />
-              </a>
-            </div>
-          </div>
-          <div class="relative">
-            <div
-              id="object3d-splat-viewer"
-              phx-hook="GaussianSplatViewer"
-              phx-update="ignore"
-              data-splat-url={@object3d_splat_url}
-              data-camera-position="0, 0, 5"
-              data-camera-look-at="0, 0, 0"
-              data-camera-up="0, 1, 0"
-              class="w-full h-[400px] md:h-[500px] bg-gray-900 relative overflow-hidden"
-            >
-              <div class="absolute inset-0 flex items-center justify-center text-gray-400 pointer-events-none z-0">
-                <div class="text-center">
-                  <Heroicons.icon name="arrow-path" type="outline" class="h-8 w-8 mx-auto mb-2 animate-spin" />
-                  <p>Loading 3D viewer...</p>
-                  <p class="text-xs text-gray-500 mt-1">Use mouse to rotate, scroll to zoom, right-click to pan</p>
-                </div>
-              </div>
-            </div>
-            <div :if={@object3d_loading} class="absolute inset-0 bg-gray-900/80 flex items-center justify-center">
-              <div class="text-center text-white">
-                <Heroicons.icon name="arrow-path" type="outline" class="h-10 w-10 mx-auto mb-3 animate-spin text-cyan-400" />
-                <p class="font-medium">Loading 3D object...</p>
-                <p class="text-sm text-gray-400 mt-1">This may take a moment for large files</p>
-              </div>
-            </div>
-          </div>
-          <div :if={@object3d_description} class="p-3 border-t border-gray-700 bg-gray-800/50">
-            <p class="text-xs text-gray-400">
-              {@object3d_description}
-            </p>
-          </div>
-        </div>
+        <.live_component
+          module={Object3DPlayerComponent}
+          id={"object3d-player-#{@room.id}"}
+          room_id={@room.id}
+          current_user={@current_user}
+          can_manage={@can_manage}
+        />
       </div>
 
         <%!-- Sensors Panel - always visible --%>

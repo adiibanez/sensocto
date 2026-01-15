@@ -14,6 +14,16 @@
   let sigma: Sigma | null = null;
   let graph: Graph | null = null;
 
+  // Track node positions to preserve layout stability
+  let nodePositions: Map<string, { x: number; y: number }> = new Map();
+  let isInitialBuild = true;
+
+  // Debounce/throttle updates to prevent nervous graph
+  let updateTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastUpdateTime = 0;
+  const UPDATE_THROTTLE_MS = 500; // Minimum time between updates
+  const UPDATE_DEBOUNCE_MS = 200; // Wait before processing rapid updates
+
   const NODE_COLORS = [
     '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
     '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#f43f5e',
@@ -64,87 +74,36 @@
     return 1 - normalizedDist / maxDist;
   }
 
-  function buildGraph() {
+  function getEdgeColor(distance: number): string {
+    if (distance < 100) return '#22c55e'; // green - very close
+    if (distance < 1000) return '#eab308'; // yellow - nearby
+    if (distance < 10000) return '#f97316'; // orange - moderate
+    return '#ef4444'; // red - far
+  }
+
+  function getEdgeKey(id1: string, id2: string): string {
+    return [id1, id2].sort().join('--');
+  }
+
+  // Save current positions from sigma before rebuilding
+  function saveNodePositions() {
+    if (!graph || !sigma) return;
+    graph.forEachNode((nodeId, attrs) => {
+      nodePositions.set(nodeId, { x: attrs.x, y: attrs.y });
+    });
+  }
+
+  // Initialize the graph and sigma instance (called once)
+  function initGraph() {
     if (!graphContainer) return;
 
-    // Clean up existing sigma instance
     if (sigma) {
       sigma.kill();
       sigma = null;
     }
 
-    const validPositions = positions.filter(p => p.lat !== 0 || p.lng !== 0);
-    if (validPositions.length === 0) return;
-
     graph = new Graph();
 
-    // Add nodes - use normalized geo coordinates for initial positions
-    const lats = validPositions.map(p => p.lat);
-    const lngs = validPositions.map(p => p.lng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const latRange = maxLat - minLat || 1;
-    const lngRange = maxLng - minLng || 1;
-
-    validPositions.forEach((pos, index) => {
-      // Normalize coordinates to 0-1 range and scale
-      const x = ((pos.lng - minLng) / lngRange) * 10;
-      const y = ((pos.lat - minLat) / latRange) * 10;
-
-      graph!.addNode(pos.sensor_id, {
-        label: pos.sensor_name || pos.sensor_id.slice(0, 10),
-        x: x,
-        y: y,
-        size: 15,
-        color: getNodeColor(pos.sensor_id),
-      });
-    });
-
-    // Add edges between all pairs with distance labels
-    for (let i = 0; i < validPositions.length; i++) {
-      for (let j = i + 1; j < validPositions.length; j++) {
-        const p1 = validPositions[i];
-        const p2 = validPositions[j];
-        const distance = haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-        const weight = calculateEdgeWeight(distance);
-
-        // Color edges based on distance
-        let edgeColor = '#4b5563'; // gray
-        if (distance < 100) {
-          edgeColor = '#22c55e'; // green - very close
-        } else if (distance < 1000) {
-          edgeColor = '#eab308'; // yellow - nearby
-        } else if (distance < 10000) {
-          edgeColor = '#f97316'; // orange - moderate
-        } else {
-          edgeColor = '#ef4444'; // red - far
-        }
-
-        graph!.addEdge(p1.sensor_id, p2.sensor_id, {
-          label: formatDistance(distance),
-          size: Math.max(1, weight * 4),
-          color: edgeColor,
-          distance: distance,
-        });
-      }
-    }
-
-    // Apply force-directed layout if we have enough nodes
-    if (validPositions.length > 2) {
-      forceAtlas2.assign(graph, {
-        iterations: 50,
-        settings: {
-          gravity: 1,
-          scalingRatio: 10,
-          strongGravityMode: true,
-          barnesHutOptimize: true,
-        },
-      });
-    }
-
-    // Create sigma instance
     sigma = new Sigma(graph, graphContainer, {
       renderLabels: true,
       renderEdgeLabels: true,
@@ -160,6 +119,169 @@
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
     });
+
+    isInitialBuild = true;
+  }
+
+  // Update graph data without destroying sigma (preserves layout)
+  function updateGraph() {
+    if (!graphContainer || !graph || !sigma) {
+      initGraph();
+      if (!graph || !sigma) return;
+    }
+
+    const validPositions = positions.filter(p => p.lat !== 0 || p.lng !== 0);
+
+    // Get current node IDs and new node IDs
+    const currentNodeIds = new Set(graph.nodes());
+    const newNodeIds = new Set(validPositions.map(p => p.sensor_id));
+
+    // Calculate bounds for initial positioning of new nodes
+    const lats = validPositions.map(p => p.lat);
+    const lngs = validPositions.map(p => p.lng);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    const latRange = maxLat - minLat || 1;
+    const lngRange = maxLng - minLng || 1;
+
+    // Remove nodes that no longer exist
+    for (const nodeId of currentNodeIds) {
+      if (!newNodeIds.has(nodeId)) {
+        graph.dropNode(nodeId);
+        nodePositions.delete(nodeId);
+      }
+    }
+
+    // Add or update nodes
+    validPositions.forEach((pos) => {
+      const existingPos = nodePositions.get(pos.sensor_id);
+
+      if (graph!.hasNode(pos.sensor_id)) {
+        // Update existing node label (position preserved by sigma)
+        graph!.setNodeAttribute(pos.sensor_id, 'label', pos.sensor_name || pos.sensor_id.slice(0, 10));
+      } else {
+        // Add new node - use saved position or calculate initial position
+        let x: number, y: number;
+        if (existingPos) {
+          x = existingPos.x;
+          y = existingPos.y;
+        } else {
+          // Position new nodes based on geo coords
+          x = ((pos.lng - minLng) / lngRange) * 10;
+          y = ((pos.lat - minLat) / latRange) * 10;
+        }
+
+        graph!.addNode(pos.sensor_id, {
+          label: pos.sensor_name || pos.sensor_id.slice(0, 10),
+          x: x,
+          y: y,
+          size: 15,
+          color: getNodeColor(pos.sensor_id),
+        });
+      }
+    });
+
+    // Update edges - track which edges should exist
+    const expectedEdges = new Set<string>();
+
+    for (let i = 0; i < validPositions.length; i++) {
+      for (let j = i + 1; j < validPositions.length; j++) {
+        const p1 = validPositions[i];
+        const p2 = validPositions[j];
+        const edgeKey = getEdgeKey(p1.sensor_id, p2.sensor_id);
+        expectedEdges.add(edgeKey);
+
+        const distance = haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+        const weight = calculateEdgeWeight(distance);
+        const edgeColor = getEdgeColor(distance);
+        const edgeLabel = formatDistance(distance);
+
+        // Check if edge exists
+        const existingEdge = graph!.edge(p1.sensor_id, p2.sensor_id);
+
+        if (existingEdge) {
+          // Update existing edge attributes
+          graph!.setEdgeAttribute(existingEdge, 'label', edgeLabel);
+          graph!.setEdgeAttribute(existingEdge, 'color', edgeColor);
+          graph!.setEdgeAttribute(existingEdge, 'size', Math.max(1, weight * 4));
+          graph!.setEdgeAttribute(existingEdge, 'distance', distance);
+        } else {
+          // Add new edge
+          graph!.addEdge(p1.sensor_id, p2.sensor_id, {
+            label: edgeLabel,
+            size: Math.max(1, weight * 4),
+            color: edgeColor,
+            distance: distance,
+          });
+        }
+      }
+    }
+
+    // Remove edges that no longer should exist
+    graph!.forEachEdge((edge, attrs, source, target) => {
+      const edgeKey = getEdgeKey(source, target);
+      if (!expectedEdges.has(edgeKey)) {
+        graph!.dropEdge(edge);
+      }
+    });
+
+    // Only apply force layout on initial build or when new nodes are added
+    const hasNewNodes = validPositions.some(p => !currentNodeIds.has(p.sensor_id));
+
+    if ((isInitialBuild || hasNewNodes) && validPositions.length > 2) {
+      // Apply gentle force layout - fewer iterations to avoid major disruption
+      forceAtlas2.assign(graph, {
+        iterations: isInitialBuild ? 50 : 10,
+        settings: {
+          gravity: 1,
+          scalingRatio: 10,
+          strongGravityMode: true,
+          barnesHutOptimize: true,
+          slowDown: isInitialBuild ? 1 : 10, // Slow down updates for stability
+        },
+      });
+      isInitialBuild = false;
+    }
+
+    // Refresh sigma to show changes
+    sigma!.refresh();
+  }
+
+  // Throttled and debounced graph update to prevent nervous behavior
+  function scheduleUpdate() {
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTime;
+
+    // Clear any pending update
+    if (updateTimeout) {
+      clearTimeout(updateTimeout);
+      updateTimeout = null;
+    }
+
+    // If enough time has passed, update immediately
+    if (timeSinceLastUpdate >= UPDATE_THROTTLE_MS) {
+      lastUpdateTime = now;
+      updateGraph();
+    } else {
+      // Otherwise, debounce the update
+      updateTimeout = setTimeout(() => {
+        lastUpdateTime = Date.now();
+        updateGraph();
+        updateTimeout = null;
+      }, UPDATE_DEBOUNCE_MS);
+    }
+  }
+
+  // Legacy function name for compatibility
+  function buildGraph() {
+    // On initial build, update immediately; otherwise throttle
+    if (isInitialBuild) {
+      updateGraph();
+    } else {
+      scheduleUpdate();
+    }
   }
 
   function handleResize() {
@@ -210,6 +332,9 @@
 
   onDestroy(() => {
     window.removeEventListener("resize", handleResize);
+    if (updateTimeout) {
+      clearTimeout(updateTimeout);
+    }
     if (sigma) {
       sigma.kill();
     }

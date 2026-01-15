@@ -98,8 +98,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
                 attribute_id: @attribute.attribute_id,
                 samplingrate: @attribute.sampling_rate,
                 timewindow: 10000,
-                minvalue: 0,
-                maxvalue: 0,
+                minvalue: -1.0,
+                maxvalue: 2.0,
                 height: 70,
                 color: "#ffc107",
                 class: "w-full m-0 p-0 resizeable"

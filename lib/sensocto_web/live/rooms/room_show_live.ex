@@ -35,8 +35,8 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to media events for this room
           PubSub.subscribe(Sensocto.PubSub, "media:#{room_id}")
 
-          # NOTE: Sensors must be manually added to rooms via the "Add Sensor" button.
-          # Auto-registration has been removed - simulator sensors stay in the lobby only.
+          # Auto-join user's sensors to this room when visiting
+          auto_join_user_sensors(room)
 
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
@@ -795,7 +795,11 @@ defmodule SensoctoWeb.RoomShowLive do
         socket
       ) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
-    socket = assign(socket, :sensor_activity, activity)
+
+    socket =
+      socket
+      |> assign(:sensor_activity, activity)
+      |> maybe_refresh_lenses()
 
     # Push composite_measurement event when lens is active
     socket =
@@ -817,14 +821,24 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_info({:measurement, %{sensor_id: sensor_id}}, socket) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
-    {:noreply, assign(socket, :sensor_activity, activity)}
+
+    socket =
+      socket
+      |> assign(:sensor_activity, activity)
+      |> maybe_refresh_lenses()
+
+    {:noreply, socket}
   end
 
   @impl true
   def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
       when is_list(measurements_list) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
-    socket = assign(socket, :sensor_activity, activity)
+
+    socket =
+      socket
+      |> assign(:sensor_activity, activity)
+      |> maybe_refresh_lenses()
 
     # Push composite_measurement events when lens is active
     socket =
@@ -857,17 +871,29 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_info({:measurements_batch, {sensor_id, _}}, socket) do
     activity = Map.put(socket.assigns.sensor_activity, sensor_id, DateTime.utc_now())
-    {:noreply, assign(socket, :sensor_activity, activity)}
+
+    socket =
+      socket
+      |> assign(:sensor_activity, activity)
+      |> maybe_refresh_lenses()
+
+    {:noreply, socket}
   end
 
   @impl true
   def handle_info({:room_update, _message}, socket) do
     case Rooms.get_room_with_sensors(socket.assigns.room.id) do
       {:ok, updated_room} ->
+        sensors = updated_room.sensors || []
+        sensors_state = get_sensors_state(sensors)
+        available_lenses = extract_available_lenses(sensors_state)
+
         socket =
           socket
           |> assign(:room, updated_room)
-          |> assign(:sensors, updated_room.sensors || [])
+          |> assign(:sensors, sensors)
+          |> assign(:sensors_state, sensors_state)
+          |> assign(:available_lenses, available_lenses)
 
         {:noreply, socket}
 
@@ -879,6 +905,25 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_info(:update_activity, socket) do
     Process.send_after(self(), :update_activity, @activity_check_interval)
+
+    # Refresh sensors state and available lenses to detect new attributes
+    sensors = socket.assigns.sensors
+    sensors_state = get_sensors_state(sensors)
+    new_lenses = extract_available_lenses(sensors_state)
+
+    # Only update if lenses changed (avoid unnecessary re-renders)
+    current_lens_types = Enum.map(socket.assigns.available_lenses, & &1.type) |> MapSet.new()
+    new_lens_types = Enum.map(new_lenses, & &1.type) |> MapSet.new()
+
+    socket =
+      if MapSet.equal?(current_lens_types, new_lens_types) do
+        socket
+      else
+        socket
+        |> assign(:sensors_state, sensors_state)
+        |> assign(:available_lenses, new_lenses)
+      end
+
     {:noreply, assign(socket, :sensor_activity, socket.assigns.sensor_activity)}
   end
 
@@ -991,6 +1036,42 @@ defmodule SensoctoWeb.RoomShowLive do
     Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     |> Map.values()
     |> Enum.reject(fn sensor -> MapSet.member?(room_sensor_ids, sensor.sensor_id) end)
+  end
+
+  # Auto-join all available sensors to this room when user visits
+  defp auto_join_user_sensors(room) do
+    room_sensor_ids =
+      (room.sensors || [])
+      |> Enum.map(& &1.sensor_id)
+      |> MapSet.new()
+
+    # Get all currently available sensors and add ones not already in room
+    Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+    |> Map.keys()
+    |> Enum.reject(fn sensor_id -> MapSet.member?(room_sensor_ids, sensor_id) end)
+    |> Enum.each(fn sensor_id ->
+      Sensocto.Otp.RoomStore.add_sensor(room.id, sensor_id)
+      # Subscribe to the newly added sensor's data
+      PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
+    end)
+  end
+
+  # Refresh lenses from current sensor state - returns socket with updated lenses if changed
+  defp maybe_refresh_lenses(socket) do
+    sensors = socket.assigns.sensors
+    sensors_state = get_sensors_state(sensors)
+    new_lenses = extract_available_lenses(sensors_state)
+
+    current_lens_types = Enum.map(socket.assigns.available_lenses, & &1.type) |> MapSet.new()
+    new_lens_types = Enum.map(new_lenses, & &1.type) |> MapSet.new()
+
+    if MapSet.equal?(current_lens_types, new_lens_types) do
+      socket
+    else
+      socket
+      |> assign(:sensors_state, sensors_state)
+      |> assign(:available_lenses, new_lenses)
+    end
   end
 
   defp build_activity_map(sensors) do
@@ -1527,8 +1608,8 @@ defmodule SensoctoWeb.RoomShowLive do
         </div>
       </div>
 
-        <%!-- Sensors Panel - only shown when in sensors mode --%>
-        <div :if={@room_mode == :sensors} class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
+        <%!-- Sensors Panel - always visible --%>
+        <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
           <%!-- Header with Lens Selector --%>
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-semibold">Sensors</h2>

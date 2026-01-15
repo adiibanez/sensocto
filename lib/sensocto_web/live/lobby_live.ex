@@ -389,8 +389,38 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
       when is_list(measurements_list) do
     case socket.assigns.live_action do
-      action when action in [:heartrate, :imu, :location, :ecg, :battery] ->
-        # Get latest measurement per attribute
+      # ECG needs ALL measurements for proper waveform visualization (high-frequency data)
+      :ecg ->
+        # Group by attribute and send all ECG measurements
+        measurements_list
+        |> Enum.group_by(& &1.attribute_id)
+        |> Enum.reduce(socket, fn {attr_id, measurements}, acc ->
+          if attr_id == "ecg" do
+            # Send all measurements sorted by timestamp for proper waveform
+            sorted = Enum.sort_by(measurements, & &1.timestamp)
+            Enum.reduce(sorted, acc, fn m, sock ->
+              push_event(sock, "composite_measurement", %{
+                sensor_id: sensor_id,
+                attribute_id: attr_id,
+                payload: m.payload,
+                timestamp: m.timestamp
+              })
+            end)
+          else
+            # Non-ECG attributes: just send latest
+            latest = Enum.max_by(measurements, & &1.timestamp)
+            push_event(acc, "composite_measurement", %{
+              sensor_id: sensor_id,
+              attribute_id: attr_id,
+              payload: latest.payload,
+              timestamp: latest.timestamp
+            })
+          end
+        end)
+        |> then(&{:noreply, &1})
+
+      action when action in [:heartrate, :imu, :location, :battery] ->
+        # For other composite views, get latest measurement per attribute
         latest_by_attr =
           measurements_list
           |> Enum.group_by(& &1.attribute_id)

@@ -9,6 +9,7 @@ defmodule SensoctoWeb.RoomShowLive do
 
   alias Sensocto.Rooms
   alias Sensocto.Calls
+  alias Sensocto.Accounts.UserPreferences
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Types.AttributeType
   alias Phoenix.PubSub
@@ -54,15 +55,6 @@ defmodule SensoctoWeb.RoomShowLive do
         sensors_state = get_sensors_state(room.sensors || [])
         available_lenses = extract_available_lenses(sensors_state)
 
-        # Determine default room mode based on enabled features
-        default_mode =
-          cond do
-            Map.get(room, :calls_enabled, true) -> :call
-            Map.get(room, :media_playback_enabled, true) -> :media
-            Map.get(room, :object_3d_enabled, false) -> :object3d
-            true -> :sensors
-          end
-
         socket =
           socket
           |> assign(:page_title, room.name)
@@ -87,8 +79,8 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:call_active, call_active)
           |> assign(:in_call, false)
           |> assign(:call_participants, %{})
-          # Room mode for tab switching
-          |> assign(:room_mode, default_mode)
+          # Room mode for tab switching (will be set properly by handle_params)
+          |> assign(:room_mode, get_default_mode(room))
           # Room members (loaded when settings panel is opened)
           |> assign(:room_members, [])
 
@@ -109,9 +101,46 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
-  defp apply_action(socket, :show, _params) do
+  defp apply_action(socket, :show, params) do
+    # Get mode from query param, user preference, or default
+    user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
+    room = socket.assigns.room
+
+    mode =
+      case params["mode"] do
+        "media" ->
+          :media
+
+        "call" ->
+          :call
+
+        "object3d" ->
+          :object3d
+
+        "sensors" ->
+          :sensors
+
+        nil ->
+          # Try user preference, then room default
+          if user_id do
+            saved_mode = UserPreferences.get_ui_state(user_id, "room_mode_#{room.id}")
+
+            if saved_mode do
+              String.to_existing_atom(saved_mode)
+            else
+              get_default_mode(room)
+            end
+          else
+            get_default_mode(room)
+          end
+
+        _ ->
+          get_default_mode(room)
+      end
+
     socket
     |> assign(:show_settings, false)
+    |> assign(:room_mode, mode)
   end
 
   defp apply_action(socket, :settings, _params) do
@@ -608,8 +637,15 @@ defmodule SensoctoWeb.RoomShowLive do
   # Room mode switching (tabs)
   @impl true
   def handle_event("switch_room_mode", %{"mode" => mode}, socket) do
-    new_mode = String.to_existing_atom(mode)
-    {:noreply, assign(socket, :room_mode, new_mode)}
+    room_id = socket.assigns.room.id
+
+    # Save preference if user is logged in
+    if user = socket.assigns[:current_user] do
+      UserPreferences.set_ui_state(user.id, "room_mode_#{room_id}", mode)
+    end
+
+    # Push patch to update URL (triggers handle_params)
+    {:noreply, push_patch(socket, to: ~p"/rooms/#{room_id}?mode=#{mode}")}
   end
 
   # Object3D player hook events
@@ -1151,6 +1187,15 @@ defmodule SensoctoWeb.RoomShowLive do
       {sensor.sensor_id, DateTime.utc_now()}
     end)
     |> Enum.into(%{})
+  end
+
+  defp get_default_mode(room) do
+    cond do
+      Map.get(room, :calls_enabled, true) -> :call
+      Map.get(room, :media_playback_enabled, true) -> :media
+      Map.get(room, :object_3d_enabled, false) -> :object3d
+      true -> :sensors
+    end
   end
 
   defp build_edit_form(room) do

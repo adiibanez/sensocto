@@ -118,9 +118,6 @@ defmodule SensoctoWeb.SensorDataChannel do
 
       # Now 'sensor' contains the newly created sensor resource
 
-      {:error, changeset} ->
-        Logger.error("ASH changeset error: #{inspect(changeset)}")
-
       {:error, :bad_request, changeset} ->
         Logger.error("ASH bad request: #{inspect(changeset)}")
 
@@ -133,8 +130,8 @@ defmodule SensoctoWeb.SensorDataChannel do
       {:error, {:duplicate_record, details}} ->
         Logger.error("ASH duplicate record: #{inspect(details)}")
 
-      {:error, error} ->
-        Logger.error("ASH unexpected error: #{inspect(error)}")
+      {:error, changeset} ->
+        Logger.error("ASH changeset error: #{inspect(changeset)}")
 
       response ->
         Logger.debug("ASH unknown response: #{inspect(response)}")

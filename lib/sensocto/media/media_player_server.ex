@@ -257,67 +257,6 @@ defmodule Sensocto.Media.MediaPlayerServer do
     end
   end
 
-  # Internal play implementation
-  defp do_play(%{current_item_id: nil} = state) do
-    case Media.get_first_item(state.playlist_id) do
-      nil ->
-        {:reply, {:error, :empty_playlist}, state}
-
-      item ->
-        new_state = %{
-          state
-          | current_item_id: item.id,
-            state: :playing,
-            position_seconds: 0.0,
-            position_updated_at: DateTime.utc_now()
-        }
-
-        broadcast_state_change(new_state, item)
-        {:reply, :ok, new_state}
-    end
-  end
-
-  defp do_play(state) do
-    new_state = %{
-      state
-      | state: :playing,
-        position_updated_at: DateTime.utc_now()
-    }
-
-    current_item = Media.get_item(state.current_item_id)
-    broadcast_state_change(new_state, current_item)
-    {:reply, :ok, new_state}
-  end
-
-  # Internal pause implementation
-  defp do_pause(state) do
-    current_position = calculate_current_position(state)
-
-    new_state = %{
-      state
-      | state: :paused,
-        position_seconds: current_position,
-        position_updated_at: DateTime.utc_now()
-    }
-
-    current_item = Media.get_item(state.current_item_id)
-    broadcast_state_change(new_state, current_item)
-    {:reply, :ok, new_state}
-  end
-
-  # Internal seek implementation
-  defp do_seek(state, position_seconds) do
-    new_state = %{
-      state
-      | position_seconds: position_seconds,
-        position_updated_at: DateTime.utc_now()
-    }
-
-    current_item = Media.get_item(state.current_item_id)
-    broadcast_state_change(new_state, current_item)
-    {:reply, :ok, new_state}
-  end
-
   @impl true
   def handle_call({:play_item, item_id, user_id}, _from, state) do
     if can_control?(state, user_id) do
@@ -342,80 +281,6 @@ defmodule Sensocto.Media.MediaPlayerServer do
       do_previous(state)
     else
       {:reply, {:error, :not_controller}, state}
-    end
-  end
-
-  # Internal play_item implementation
-  defp do_play_item(state, item_id) do
-    case Media.get_item(item_id) do
-      nil ->
-        {:reply, {:error, :item_not_found}, state}
-
-      item ->
-        Media.mark_item_played(item_id)
-
-        new_state = %{
-          state
-          | current_item_id: item_id,
-            state: :playing,
-            position_seconds: 0.0,
-            position_updated_at: DateTime.utc_now()
-        }
-
-        broadcast_video_change(new_state, item)
-        {:reply, :ok, new_state}
-    end
-  end
-
-  # Internal next implementation
-  defp do_next(state) do
-    case Media.get_next_item(state.playlist_id, state.current_item_id) do
-      nil ->
-        new_state = %{state | state: :stopped, position_seconds: 0.0}
-        broadcast_state_change(new_state, nil)
-        {:reply, {:ok, :end_of_playlist}, new_state}
-
-      item ->
-        Media.mark_item_played(item.id)
-
-        new_state = %{
-          state
-          | current_item_id: item.id,
-            state: :playing,
-            position_seconds: 0.0,
-            position_updated_at: DateTime.utc_now()
-        }
-
-        broadcast_video_change(new_state, item)
-        {:reply, :ok, new_state}
-    end
-  end
-
-  # Internal previous implementation
-  defp do_previous(state) do
-    case Media.get_previous_item(state.playlist_id, state.current_item_id) do
-      nil ->
-        new_state = %{
-          state
-          | position_seconds: 0.0,
-            position_updated_at: DateTime.utc_now()
-        }
-
-        current_item = Media.get_item(state.current_item_id)
-        broadcast_state_change(new_state, current_item)
-        {:reply, {:ok, :start_of_playlist}, new_state}
-
-      item ->
-        new_state = %{
-          state
-          | current_item_id: item.id,
-            state: :playing,
-            position_seconds: 0.0,
-            position_updated_at: DateTime.utc_now()
-        }
-
-        broadcast_video_change(new_state, item)
-        {:reply, :ok, new_state}
     end
   end
 
@@ -589,4 +454,139 @@ defmodule Sensocto.Media.MediaPlayerServer do
   # Otherwise, only the current controller can control
   defp can_control?(%{controller_user_id: nil}, _user_id), do: true
   defp can_control?(%{controller_user_id: controller_id}, user_id), do: controller_id == user_id
+
+  # Internal play implementation
+  defp do_play(%{current_item_id: nil} = state) do
+    case Media.get_first_item(state.playlist_id) do
+      nil ->
+        {:reply, {:error, :empty_playlist}, state}
+
+      item ->
+        new_state = %{
+          state
+          | current_item_id: item.id,
+            state: :playing,
+            position_seconds: 0.0,
+            position_updated_at: DateTime.utc_now()
+        }
+
+        broadcast_state_change(new_state, item)
+        {:reply, :ok, new_state}
+    end
+  end
+
+  defp do_play(state) do
+    new_state = %{
+      state
+      | state: :playing,
+        position_updated_at: DateTime.utc_now()
+    }
+
+    current_item = Media.get_item(state.current_item_id)
+    broadcast_state_change(new_state, current_item)
+    {:reply, :ok, new_state}
+  end
+
+  # Internal pause implementation
+  defp do_pause(state) do
+    current_position = calculate_current_position(state)
+
+    new_state = %{
+      state
+      | state: :paused,
+        position_seconds: current_position,
+        position_updated_at: DateTime.utc_now()
+    }
+
+    current_item = Media.get_item(state.current_item_id)
+    broadcast_state_change(new_state, current_item)
+    {:reply, :ok, new_state}
+  end
+
+  # Internal seek implementation
+  defp do_seek(state, position_seconds) do
+    new_state = %{
+      state
+      | position_seconds: position_seconds,
+        position_updated_at: DateTime.utc_now()
+    }
+
+    current_item = Media.get_item(state.current_item_id)
+    broadcast_state_change(new_state, current_item)
+    {:reply, :ok, new_state}
+  end
+
+  # Internal play_item implementation
+  defp do_play_item(state, item_id) do
+    case Media.get_item(item_id) do
+      nil ->
+        {:reply, {:error, :item_not_found}, state}
+
+      item ->
+        Media.mark_item_played(item_id)
+
+        new_state = %{
+          state
+          | current_item_id: item_id,
+            state: :playing,
+            position_seconds: 0.0,
+            position_updated_at: DateTime.utc_now()
+        }
+
+        broadcast_video_change(new_state, item)
+        {:reply, :ok, new_state}
+    end
+  end
+
+  # Internal next implementation
+  defp do_next(state) do
+    case Media.get_next_item(state.playlist_id, state.current_item_id) do
+      nil ->
+        new_state = %{state | state: :stopped, position_seconds: 0.0}
+        broadcast_state_change(new_state, nil)
+        {:reply, {:ok, :end_of_playlist}, new_state}
+
+      item ->
+        Media.mark_item_played(item.id)
+
+        new_state = %{
+          state
+          | current_item_id: item.id,
+            state: :playing,
+            position_seconds: 0.0,
+            position_updated_at: DateTime.utc_now()
+        }
+
+        broadcast_video_change(new_state, item)
+        {:reply, :ok, new_state}
+    end
+  end
+
+  # Internal previous implementation
+  defp do_previous(state) do
+    case Media.get_previous_item(state.playlist_id, state.current_item_id) do
+      nil ->
+        new_state = %{
+          state
+          | position_seconds: 0.0,
+            position_updated_at: DateTime.utc_now()
+        }
+
+        current_item = Media.get_item(state.current_item_id)
+        broadcast_state_change(new_state, current_item)
+        {:reply, {:ok, :start_of_playlist}, new_state}
+
+      item ->
+        new_state = %{
+          state
+          | current_item_id: item.id,
+            state: :playing,
+            position_seconds: 0.0,
+            position_updated_at: DateTime.utc_now()
+        }
+
+        broadcast_video_change(new_state, item)
+        {:reply, :ok, new_state}
+    end
+  end
 end

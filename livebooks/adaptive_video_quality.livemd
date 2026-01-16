@@ -1,0 +1,358 @@
+# Adaptive Video Quality for Massive Scale Calls
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.14"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## Overview
+
+This notebook documents and explores Sensocto's **Adaptive Video Quality** feature, which enables rooms to support 100+ participants by dynamically switching between video streams and JPEG snapshots based on participant attention and speaking activity.
+
+### The Core Insight
+
+In large group calls, only 1-3 people are actively speaking at any time. Most participants are passive viewers. By serving different quality levels based on attention state, we achieve an **~8x bandwidth reduction**.
+
+## Attention-Based Quality Tiers
+
+The system uses four quality tiers based on participant behavior:
+
+```elixir
+tiers_table = [
+  %{
+    tier: ":active",
+    description: "Currently speaking/presenting",
+    mode: "Full Video",
+    resolution: "720p @ 30fps",
+    bandwidth: "~2.5 Mbps",
+    color: "#22c55e"
+  },
+  %{
+    tier: ":recent",
+    description: "Spoke in the last 30 seconds",
+    mode: "Reduced Video",
+    resolution: "480p @ 15fps",
+    bandwidth: "~500 Kbps",
+    color: "#3b82f6"
+  },
+  %{
+    tier: ":viewer",
+    description: "Watching, not active",
+    mode: "Snapshot",
+    resolution: "240p @ 1fps JPEG",
+    bandwidth: "~50-100 Kbps",
+    color: "#f59e0b"
+  },
+  %{
+    tier: ":idle",
+    description: "Tab hidden, AFK",
+    mode: "Static Avatar",
+    resolution: "N/A",
+    bandwidth: "~0",
+    color: "#6b7280"
+  }
+]
+
+Kino.DataTable.new(tiers_table)
+```
+
+## Tier Calculation Logic
+
+The tier is calculated based on three factors:
+1. **Attention Level** - Is the user's tab visible/focused?
+2. **Is Speaking** - Is audio activity detected?
+3. **Recently Spoke** - Did they speak in the last 30 seconds?
+
+```elixir
+defmodule TierCalculator do
+  @doc """
+  Calculates the appropriate quality tier for a participant.
+  """
+  def calculate_tier(attention_level, is_speaking, recently_spoke) do
+    cond do
+      attention_level == :low -> :idle
+      is_speaking -> :active
+      recently_spoke -> :recent
+      true -> :viewer
+    end
+  end
+end
+
+# Interactive tier calculation
+attention_input = Kino.Input.select("Attention Level",
+  [high: "High (focused)", medium: "Medium (visible)", low: "Low (hidden tab)"])
+speaking_input = Kino.Input.checkbox("Currently Speaking")
+recent_input = Kino.Input.checkbox("Spoke in Last 30 Seconds")
+
+Kino.Layout.grid([attention_input, speaking_input, recent_input], columns: 3)
+```
+
+```elixir
+# Calculate the tier based on inputs
+attention = Kino.Input.read(attention_input)
+is_speaking = Kino.Input.read(speaking_input)
+recently_spoke = Kino.Input.read(recent_input)
+
+tier = TierCalculator.calculate_tier(attention, is_speaking, recently_spoke)
+
+tier_descriptions = %{
+  active: "Full video at 720p@30fps (~2.5 Mbps)",
+  recent: "Reduced video at 480p@15fps (~500 Kbps)",
+  viewer: "Snapshot mode at 1fps JPEG (~50-100 Kbps)",
+  idle: "Static avatar, no video (~0 bandwidth)"
+}
+
+"""
+## Calculated Tier: `#{tier}`
+
+**Description:** #{tier_descriptions[tier]}
+
+### Input Summary:
+- Attention Level: `#{attention}`
+- Is Speaking: `#{is_speaking}`
+- Recently Spoke: `#{recently_spoke}`
+"""
+|> Kino.Markdown.new()
+```
+
+## Bandwidth Calculator
+
+Let's calculate the total bandwidth for different participant distributions.
+
+```elixir
+defmodule BandwidthCalculator do
+  @tier_bandwidths %{
+    active: 2_500_000,   # 2.5 Mbps
+    recent: 500_000,     # 500 Kbps
+    viewer: 75_000,      # ~75 Kbps average for snapshots
+    idle: 0              # No bandwidth
+  }
+
+  def estimate_bandwidth(tier_counts) do
+    Enum.reduce(tier_counts, 0, fn {tier, count}, acc ->
+      tier_bw = Map.get(@tier_bandwidths, tier, 0)
+      acc + (tier_bw * count)
+    end)
+  end
+
+  def format_bandwidth(bps) when bps >= 1_000_000 do
+    "#{Float.round(bps / 1_000_000, 2)} Mbps"
+  end
+
+  def format_bandwidth(bps) when bps >= 1_000 do
+    "#{Float.round(bps / 1_000, 1)} Kbps"
+  end
+
+  def format_bandwidth(bps), do: "#{bps} bps"
+
+  def traditional_bandwidth(participant_count) do
+    # All participants at full quality
+    participant_count * 2_500_000
+  end
+end
+```
+
+```elixir
+# Interactive bandwidth calculator
+active_count = Kino.Input.number("Active Speakers", default: 1)
+recent_count = Kino.Input.number("Recently Active", default: 3)
+viewer_count = Kino.Input.number("Viewers", default: 10)
+idle_count = Kino.Input.number("Idle/AFK", default: 6)
+
+Kino.Layout.grid([active_count, recent_count, viewer_count, idle_count], columns: 4)
+```
+
+```elixir
+active = Kino.Input.read(active_count)
+recent = Kino.Input.read(recent_count)
+viewers = Kino.Input.read(viewer_count)
+idle = Kino.Input.read(idle_count)
+
+tier_counts = %{
+  active: active,
+  recent: recent,
+  viewer: viewers,
+  idle: idle
+}
+
+total_participants = active + recent + viewers + idle
+adaptive_bw = BandwidthCalculator.estimate_bandwidth(tier_counts)
+traditional_bw = BandwidthCalculator.traditional_bandwidth(total_participants)
+
+savings_percent = if traditional_bw > 0 do
+  Float.round((1 - adaptive_bw / traditional_bw) * 100, 1)
+else
+  0.0
+end
+
+reduction_factor = if adaptive_bw > 0 do
+  Float.round(traditional_bw / adaptive_bw, 1)
+else
+  0.0
+end
+
+"""
+## Bandwidth Comparison
+
+| Metric | Value |
+|--------|-------|
+| **Total Participants** | #{total_participants} |
+| **Traditional (all 720p)** | #{BandwidthCalculator.format_bandwidth(traditional_bw)} |
+| **Adaptive Quality** | #{BandwidthCalculator.format_bandwidth(adaptive_bw)} |
+| **Bandwidth Saved** | #{savings_percent}% |
+| **Reduction Factor** | #{reduction_factor}x |
+
+### Tier Distribution:
+- Active Speakers: #{active} (#{BandwidthCalculator.format_bandwidth(active * 2_500_000)})
+- Recently Active: #{recent} (#{BandwidthCalculator.format_bandwidth(recent * 500_000)})
+- Viewers: #{viewers} (#{BandwidthCalculator.format_bandwidth(viewers * 75_000)})
+- Idle: #{idle} (0 bandwidth)
+"""
+|> Kino.Markdown.new()
+```
+
+### Bandwidth Visualization
+
+```elixir
+# Create visualization data
+bandwidth_data = [
+  %{category: "Active", bandwidth: active * 2.5, tier: "active"},
+  %{category: "Recent", bandwidth: recent * 0.5, tier: "recent"},
+  %{category: "Viewer", bandwidth: viewers * 0.075, tier: "viewer"},
+  %{category: "Idle", bandwidth: 0, tier: "idle"}
+]
+
+VegaLite.new(width: 500, height: 300, title: "Bandwidth Usage by Tier (Mbps)")
+|> VegaLite.data_from_values(bandwidth_data)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "category", type: :nominal, title: "Participant Tier")
+|> VegaLite.encode_field(:y, "bandwidth", type: :quantitative, title: "Bandwidth (Mbps)")
+|> VegaLite.encode_field(:color, "tier",
+  type: :nominal,
+  scale: %{
+    domain: ["active", "recent", "viewer", "idle"],
+    range: ["#22c55e", "#3b82f6", "#f59e0b", "#6b7280"]
+  })
+```
+
+## Architecture Components
+
+### Tier Profiles (from QualityManager)
+
+```elixir
+tier_profiles = %{
+  active: %{
+    mode: :video,
+    max_bitrate: 2_500_000,
+    max_framerate: 30,
+    width: 1280,
+    height: 720,
+    description: "Active Speaker (720p @ 30fps)",
+    priority: 1
+  },
+  recent: %{
+    mode: :video,
+    max_bitrate: 500_000,
+    max_framerate: 15,
+    width: 640,
+    height: 480,
+    description: "Recently Active (480p @ 15fps)",
+    priority: 2
+  },
+  viewer: %{
+    mode: :snapshot,
+    interval_ms: 1000,
+    width: 320,
+    height: 240,
+    jpeg_quality: 70,
+    description: "Viewer (Snapshot @ 1fps)",
+    priority: 3
+  },
+  idle: %{
+    mode: :static,
+    show_avatar: true,
+    description: "Idle (Static Avatar)",
+    priority: 4
+  }
+}
+
+Kino.Tree.new(tier_profiles)
+```
+
+### CallServer State Structure
+
+```elixir
+call_server_state = %{
+  participants: %{
+    "user_123" => %{
+      speaking: false,
+      last_spoke_at: nil,
+      attention_level: :high,
+      tier: :viewer
+    }
+  },
+  active_speakers: [],
+  adaptive_quality_enabled: true,
+  tier_update_timer: "runs every 5 seconds"
+}
+
+Kino.Tree.new(call_server_state)
+```
+
+## Configuration Reference
+
+```elixir
+config = %{
+  recent_speaker_timeout_ms: 30_000,
+  max_active_speakers: 3,
+  tier_update_interval_ms: 5_000,
+  snapshot_interval_viewer_ms: 1_000,
+  snapshot_jpeg_quality: 70,
+  snapshot_width: 320,
+  snapshot_height: 240,
+  snapshot_ttl_ms: 60_000,
+  speaking_threshold: 0.01,
+  silence_threshold: 0.005,
+  speaking_debounce_ms: 100,
+  silence_debounce_ms: 500
+}
+
+Kino.Tree.new(config)
+```
+
+## Live Testing (Connected to App)
+
+When running attached to the Sensocto application node:
+
+```elixir
+# Uncomment to test against live system:
+
+# alias Sensocto.Calls.{CallServer, QualityManager, SnapshotManager}
+
+# # Get tier profile
+# profile = QualityManager.get_tier_profile(:viewer)
+# IO.inspect(profile, label: "Viewer Profile")
+
+# # Calculate tier
+# tier = QualityManager.calculate_tier(:high, true, false)
+# IO.inspect(tier, label: "Calculated Tier")
+
+# # Estimate bandwidth
+# tier_counts = %{active: 1, recent: 5, viewer: 14, idle: 0}
+# bandwidth = QualityManager.estimate_bandwidth(tier_counts)
+# IO.puts("Total: #{bandwidth / 1_000_000} Mbps")
+```
+
+## File Reference
+
+| Component | Location |
+|-----------|----------|
+| QualityManager | `lib/sensocto/calls/quality_manager.ex` |
+| CallServer | `lib/sensocto/calls/call_server.ex` |
+| SnapshotManager | `lib/sensocto/calls/snapshot_manager.ex` |
+| SpeakingDetector | `assets/js/webrtc/speaking_detector.js` |
+| AdaptiveProducer | `assets/js/webrtc/adaptive_producer.js` |
+| AdaptiveConsumer | `assets/js/webrtc/adaptive_consumer.js` |
+| AttentionTracker | `assets/js/hooks/attention_tracker.js` |

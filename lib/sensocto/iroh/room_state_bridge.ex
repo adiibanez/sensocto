@@ -23,6 +23,9 @@ defmodule Sensocto.Iroh.RoomStateBridge do
       │ MediaPlayerServer│ ──────────────► │ RoomStateBridge  │
       └─────────────────┘                 └────────┬─────────┘
                                                    │
+      ┌───────────────────┐    PubSub              │
+      │Object3DPlayerServer│ ─────────────────────►│
+      └───────────────────┘                        │
                                                    ▼
                                           ┌──────────────────┐
                                           │  RoomStateCRDT   │
@@ -167,6 +170,40 @@ defmodule Sensocto.Iroh.RoomStateBridge do
     {:noreply, state}
   end
 
+  # Handle Object3D item changes
+  @impl true
+  def handle_info({:object3d_item_changed, event_data}, state) do
+    if state.initialized do
+      apply_local_object3d_change(state, {:item_changed, event_data})
+    end
+
+    {:noreply, state}
+  end
+
+  # Handle Object3D camera sync
+  @impl true
+  def handle_info({:object3d_camera_synced, event_data}, state) do
+    if state.initialized do
+      apply_local_object3d_change(state, {:camera_synced, event_data})
+    end
+
+    {:noreply, state}
+  end
+
+  # Handle Object3D controller changes
+  @impl true
+  def handle_info({:object3d_controller_changed, _event_data}, state) do
+    # Controller changes are local-only, no need to sync to CRDT
+    {:noreply, state}
+  end
+
+  # Handle Object3D playlist updates
+  @impl true
+  def handle_info({:object3d_playlist_updated, _event_data}, state) do
+    # Playlist is stored in PostgreSQL, not CRDT
+    {:noreply, state}
+  end
+
   @impl true
   def handle_info(msg, state) do
     Logger.debug("[RoomStateBridge] Unhandled message: #{inspect(msg)}")
@@ -222,6 +259,9 @@ defmodule Sensocto.Iroh.RoomStateBridge do
           # Subscribe to local media events
           PubSub.subscribe(Sensocto.PubSub, "media:#{state.room_id}")
 
+          # Subscribe to Object3D events
+          PubSub.subscribe(Sensocto.PubSub, "object3d:#{state.room_id}")
+
           # Add ourselves as a participant
           RoomStateCRDT.update_participant_presence(state.room_id, state.user_id, %{
             "joined_at" => DateTime.utc_now() |> DateTime.to_iso8601()
@@ -256,6 +296,33 @@ defmodule Sensocto.Iroh.RoomStateBridge do
       %{position_seconds: pos} when is_number(pos) ->
         # Periodic sync heartbeat
         RoomStateCRDT.set_media_position(state.room_id, round(pos * 1000), state.user_id)
+
+      _ ->
+        :ok
+    end
+
+    # Trigger gossip sync after local change
+    RoomStateCRDT.sync_room(state.room_id)
+  end
+
+  defp apply_local_object3d_change(state, change) do
+    case change do
+      {:item_changed, %{item: item, camera_position: pos, camera_target: target}} ->
+        # Sync splat URL
+        if item && item.splat_url do
+          RoomStateCRDT.set_object3d_url(state.room_id, item.splat_url, state.user_id)
+        end
+
+        # Sync camera position
+        if pos && target do
+          RoomStateCRDT.set_object3d_camera(state.room_id, pos, target, state.user_id)
+        end
+
+      {:camera_synced, %{camera_position: pos, camera_target: target}} ->
+        # Sync camera position to CRDT
+        if pos && target do
+          RoomStateCRDT.set_object3d_camera(state.room_id, pos, target, state.user_id)
+        end
 
       _ ->
         :ok

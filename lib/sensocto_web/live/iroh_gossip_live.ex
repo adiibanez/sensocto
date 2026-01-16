@@ -17,6 +17,7 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
   @msg_timeout 30_000
   _ = {@max_send_concurrency, @msg_timeout}
 
+  @impl true
   def mount(_params, _session, socket) do
     Process.send_after(self(), :setup_nodes, 0)
 
@@ -101,9 +102,47 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
     {:noreply, assign(socket, nodes_connected: socket.assigns.nodes_connected + 1)}
   end
 
+  @impl true
+  def handle_info(msg, state) do
+    # IO.puts("Catchall: #{inspect(msg)}")
+    messages = state.assigns.messages ++ [msg]
+
+    {:noreply,
+     state
+     |> assign(:messages, messages)
+     |> assign(:message_cnt, Enum.count(messages))}
+  end
+
+  @impl true
+  def handle_event("reset", _params, state) do
+    {:noreply,
+     state
+     |> assign(:nodes, [])
+     |> assign(:messages, [])}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div>
+      <h1>Gossip Network</h1>
+      <h2>Nodes: {@nodes_connected}</h2>
+
+      <div>PID: {inspect(self())}</div>
+
+      <div>Msg cnt: {@message_cnt}</div>
+      <!--<h3>Messages Received: {length(@messages)} {inspect(@messages)}</h3>-->
+      <pre>{@graph}</pre>
+
+      <.button phx-click="connect" class="btn">Connect</.button>
+      <.button phx-click="send_msgs" class="btn">Send!</.button>
+      <.button phx-click="reset" class="btn">Reset</.button>
+    </div>
+    """
+  end
+
   defp create_nodes(count, pid, config) do
     1..count
-    # |> Enum.map(fn _ -> Task.async(fn -> Native.create_node_async(pid) end) end)
     |> Enum.map(fn _ -> Task.async(fn -> Native.create_node(pid, config) end) end)
     |> Enum.map(&Task.await/1)
     |> Enum.filter(&is_reference/1)
@@ -124,44 +163,6 @@ defmodule SensoctoWeb.Live.IrohGossipLive do
     end)
     |> Task.async_stream(fn action -> action.() end, max_concurrency: Enum.count(nodes))
     |> Enum.to_list()
-  end
-
-  @impl true
-  def handle_info(msg, state) do
-    # IO.puts("Catchall: #{inspect(msg)}")
-    messages = state.assigns.messages ++ [msg]
-
-    {:noreply,
-     state
-     |> assign(:messages, messages)
-     |> assign(:message_cnt, Enum.count(messages))}
-  end
-
-  @impl true
-  def handle_event("reset", _params, state) do
-    {:noreply,
-     state
-     |> assign(:nodes, [])
-     |> assign(:messages, [])}
-  end
-
-  def render(assigns) do
-    ~H"""
-    <div>
-      <h1>Gossip Network</h1>
-      <h2>Nodes: {@nodes_connected}</h2>
-
-      <div>PID: {inspect(self())}</div>
-
-      <div>Msg cnt: {@message_cnt}</div>
-      <!--<h3>Messages Received: {length(@messages)} {inspect(@messages)}</h3>-->
-      <pre>{@graph}</pre>
-
-      <.button phx-click="connect" class="btn">Connect</.button>
-      <.button phx-click="send_msgs" class="btn">Send!</.button>
-      <.button phx-click="reset" class="btn">Reset</.button>
-    </div>
-    """
   end
 end
 

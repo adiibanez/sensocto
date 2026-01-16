@@ -19,9 +19,9 @@ defmodule Sensocto.Simulator.BatteryState do
 
   # Realistic rates (% per minute) - slightly accelerated for demo visibility
   @drain_rate_active 0.5
-  @drain_rate_standby 0.025
+  # @drain_rate_standby 0.025  # Reserved for future standby mode
   @charge_rate_normal 0.8
-  @charge_rate_fast 1.5
+  # @charge_rate_fast 1.5  # Reserved for future fast charging mode
 
   # Charging flip parameters (in minutes) - short for demo visibility
   # Each sensor gets its own random flip time within this range

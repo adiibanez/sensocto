@@ -88,12 +88,6 @@ defmodule SensoctoWeb.SystemMetricsComponent do
   end
   defp format_percent(_), do: "-%"
 
-  defp load_level_color(:normal), do: "bg-green-500"
-  defp load_level_color(:elevated), do: "bg-yellow-500"
-  defp load_level_color(:high), do: "bg-orange-500"
-  defp load_level_color(:critical), do: "bg-red-500"
-  defp load_level_color(_), do: "bg-gray-500"
-
   defp cpu_color(value) when value >= 0.85, do: "text-red-400"
   defp cpu_color(value) when value >= 0.7, do: "text-orange-400"
   defp cpu_color(value) when value >= 0.5, do: "text-yellow-400"

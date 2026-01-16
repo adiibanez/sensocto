@@ -911,53 +911,6 @@ defmodule Sensocto.AttentionTracker do
     end)
   end
 
-  # Apply battery modifier to cap attention level
-  # :critical caps at :low, :low caps at :medium, :normal has no effect
-  defp apply_battery_modifier(level, battery_state) do
-    case battery_state do
-      :critical -> lowest_level(level, :low)
-      :low -> lowest_level(level, :medium)
-      :normal -> level
-    end
-  end
-
-  defp lowest_level(a, b) do
-    priority = %{high: 3, medium: 2, low: 1, none: 0}
-    if priority[a] <= priority[b], do: a, else: b
-  end
-
-  # Get the worst (most restrictive) battery state among all users viewing a sensor
-  defp get_worst_battery_state(state, sensor_id) do
-    case Map.get(state.attention_state, sensor_id) do
-      nil ->
-        :normal
-
-      attributes ->
-        # Collect all users viewing this sensor
-        users =
-          Enum.flat_map(attributes, fn {_attr_id, attr_state} ->
-            MapSet.to_list(attr_state.viewers) ++ MapSet.to_list(attr_state.focused)
-          end)
-          |> Enum.uniq()
-
-        # Find the worst battery state among these users
-        Enum.reduce(users, :normal, fn user_id, acc ->
-          user_battery = extract_battery_state(Map.get(state.battery_states, user_id))
-          worse_battery_state(acc, user_battery)
-        end)
-    end
-  end
-
-  # Extract just the state atom from the {state, metadata} tuple
-  defp extract_battery_state(nil), do: :normal
-  defp extract_battery_state({state, _metadata}), do: state
-  defp extract_battery_state(state) when is_atom(state), do: state
-
-  defp worse_battery_state(a, b) do
-    priority = %{critical: 2, low: 1, normal: 0}
-    if priority[a] >= priority[b], do: a, else: b
-  end
-
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup, @cleanup_interval)
   end

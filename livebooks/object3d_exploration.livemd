@@ -1,0 +1,666 @@
+# Object3D Gaussian Splat Viewer
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.14"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## Overview
+
+This notebook documents and explores Sensocto's **Object3D Viewer** feature, which enables synchronized 3D Gaussian splat viewing across multiple participants in rooms and the lobby.
+
+### Key Capabilities
+
+- **Synchronized Viewing**: All participants see the same 3D object and camera position
+- **Controller System**: One user controls the view, others follow
+- **Playlist Support**: Queue multiple 3D objects for sequential viewing
+- **Camera Presets**: Objects can have default camera positions
+- **P2P Sync**: State synchronizes via Automerge CRDT over Iroh gossip
+
+## Architecture Overview
+
+```elixir
+architecture = """
+┌─────────────────────────────────────────────────────────────────┐
+│                        Browser (Client)                          │
+├─────────────────────────────────────────────────────────────────┤
+│  Object3DPlayerHook (JS)                                        │
+│  ├── GaussianSplats3D Viewer (WebGL)                           │
+│  ├── Camera Controls (OrbitControls)                           │
+│  └── Event Handlers (camera_moved, loading_*, viewer_ready)    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Phoenix LiveView
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Object3DPlayerComponent                       │
+│  ├── Playlist UI (drag-to-reorder)                              │
+│  ├── Controller Assignment UI                                   │
+│  └── Camera Control Buttons                                     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ GenServer Calls
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Object3DPlayerServer                          │
+│  ├── State: current_item, controller, camera_position          │
+│  ├── Playlist Navigation (next/previous/view_item)             │
+│  └── PubSub Broadcasts                                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              │                               │
+              ▼                               ▼
+┌─────────────────────────┐     ┌─────────────────────────┐
+│      Phoenix PubSub      │     │    RoomStateBridge      │
+│  (Same-server sync)      │     │  (P2P CRDT sync)        │
+└─────────────────────────┘     └─────────────────────────┘
+                                              │
+                                              ▼
+                                ┌─────────────────────────┐
+                                │    RoomStateCRDT        │
+                                │  (Automerge + Iroh)     │
+                                └─────────────────────────┘
+"""
+
+Kino.Markdown.new("```\n#{architecture}\n```")
+```
+
+## Controller System
+
+The viewer uses a controller/follower model for synchronized viewing:
+
+```elixir
+controller_states = [
+  %{
+    state: "No Controller",
+    description: "Anyone can navigate freely",
+    camera_sync: "Disabled",
+    who_can_control: "Everyone"
+  },
+  %{
+    state: "Controller Assigned",
+    description: "One user controls the view",
+    camera_sync: "Controller → Followers",
+    who_can_control: "Only Controller"
+  },
+  %{
+    state: "Controller Released",
+    description: "Returns to free navigation",
+    camera_sync: "Disabled",
+    who_can_control: "Everyone"
+  }
+]
+
+Kino.DataTable.new(controller_states)
+```
+
+### Control Flow Logic
+
+```elixir
+defmodule ControllerLogic do
+  @doc """
+  Determines if a user can control the 3D viewer.
+  """
+  def can_control?(controller_user_id, current_user_id) do
+    cond do
+      # No controller assigned - anyone can control
+      is_nil(controller_user_id) -> true
+      # User is the controller
+      controller_user_id == current_user_id -> true
+      # Someone else is the controller
+      true -> false
+    end
+  end
+
+  @doc """
+  Simulates the control state machine.
+  """
+  def transition(current_controller, action, user_id) do
+    case {current_controller, action} do
+      {nil, :take_control} ->
+        {:ok, user_id, "#{user_id} is now the controller"}
+
+      {^user_id, :release_control} ->
+        {:ok, nil, "Control released, free navigation enabled"}
+
+      {other, :take_control} when not is_nil(other) ->
+        {:error, "Cannot take control - #{other} is currently controlling"}
+
+      {other, :release_control} when other != user_id ->
+        {:error, "Cannot release - you are not the controller"}
+
+      _ ->
+        {:error, "Invalid action"}
+    end
+  end
+end
+
+# Interactive controller simulation
+user_input = Kino.Input.text("Your User ID", default: "user_123")
+action_input = Kino.Input.select("Action", [
+  take_control: "Take Control",
+  release_control: "Release Control"
+])
+current_controller_input = Kino.Input.text("Current Controller (leave empty for none)", default: "")
+
+Kino.Layout.grid([user_input, current_controller_input, action_input], columns: 3)
+```
+
+```elixir
+user_id = Kino.Input.read(user_input)
+action = Kino.Input.read(action_input)
+current = Kino.Input.read(current_controller_input)
+current_controller = if current == "", do: nil, else: current
+
+result = ControllerLogic.transition(current_controller, action, user_id)
+
+case result do
+  {:ok, new_controller, message} ->
+    """
+    ## Result: Success
+
+    **Message:** #{message}
+
+    **New Controller:** #{new_controller || "None (free navigation)"}
+    """
+  {:error, message} ->
+    """
+    ## Result: Error
+
+    **Message:** #{message}
+    """
+end
+|> Kino.Markdown.new()
+```
+
+## Camera Position & Target
+
+The 3D viewer uses two vectors to define the camera view:
+
+```elixir
+camera_info = [
+  %{
+    property: "Camera Position",
+    description: "Where the camera is located in 3D space",
+    format: "{x, y, z}",
+    default: "{0, 0, 5}",
+    example: "5 units back on Z axis"
+  },
+  %{
+    property: "Camera Target",
+    description: "Where the camera is looking at",
+    format: "{x, y, z}",
+    default: "{0, 0, 0}",
+    example: "Origin point"
+  },
+  %{
+    property: "Camera Up",
+    description: "Which direction is 'up' for the camera",
+    format: "{x, y, z}",
+    default: "{0, -1, 0}",
+    example: "Negative Y is up (Gaussian splat convention)"
+  }
+]
+
+Kino.DataTable.new(camera_info)
+```
+
+### Camera Preset Parser
+
+Items can have camera presets stored as comma-separated strings:
+
+```elixir
+defmodule CameraPresetParser do
+  @doc """
+  Parses a camera preset string like "1.5, 2.0, 3.5" into a map.
+  """
+  def parse_xyz(nil, default), do: default
+  def parse_xyz("", default), do: default
+
+  def parse_xyz(str, default) when is_binary(str) do
+    case String.split(str, ",") do
+      [x, y, z] ->
+        %{
+          x: parse_float(x, default.x),
+          y: parse_float(y, default.y),
+          z: parse_float(z, default.z)
+        }
+      _ ->
+        default
+    end
+  end
+
+  defp parse_float(str, default) do
+    case Float.parse(String.trim(str)) do
+      {val, _} -> val
+      :error -> default
+    end
+  end
+
+  @doc """
+  Formats a position map back to a preset string.
+  """
+  def format_xyz(%{x: x, y: y, z: z}) do
+    "#{x}, #{y}, #{z}"
+  end
+end
+
+# Interactive preset parser
+preset_input = Kino.Input.text("Camera Preset String", default: "2.5, 1.0, 8.0")
+Kino.render(preset_input)
+```
+
+```elixir
+preset_str = Kino.Input.read(preset_input)
+default = %{x: 0, y: 0, z: 5}
+parsed = CameraPresetParser.parse_xyz(preset_str, default)
+
+"""
+## Parsed Camera Position
+
+| Axis | Value |
+|------|-------|
+| X | #{parsed.x} |
+| Y | #{parsed.y} |
+| Z | #{parsed.z} |
+
+**Re-formatted:** `#{CameraPresetParser.format_xyz(parsed)}`
+"""
+|> Kino.Markdown.new()
+```
+
+### Camera Position Visualization
+
+```elixir
+# Generate sample camera positions for visualization
+camera_positions = [
+  %{name: "Default", x: 0, y: 0, z: 5, type: "position"},
+  %{name: "Top View", x: 0, y: 10, z: 0, type: "position"},
+  %{name: "Side View", x: 10, y: 0, z: 0, type: "position"},
+  %{name: "Angled", x: 5, y: 5, z: 5, type: "position"},
+  %{name: "Origin", x: 0, y: 0, z: 0, type: "target"}
+]
+
+VegaLite.new(width: 400, height: 400, title: "Camera Positions (Top-Down View)")
+|> VegaLite.data_from_values(camera_positions)
+|> VegaLite.mark(:point, size: 200)
+|> VegaLite.encode_field(:x, "x", type: :quantitative, title: "X Position")
+|> VegaLite.encode_field(:y, "z", type: :quantitative, title: "Z Position")
+|> VegaLite.encode_field(:color, "type",
+  type: :nominal,
+  scale: %{domain: ["position", "target"], range: ["#3b82f6", "#ef4444"]}
+)
+|> VegaLite.encode_field(:shape, "type", type: :nominal)
+|> VegaLite.encode_field(:tooltip, "name", type: :nominal)
+```
+
+## PubSub Topics
+
+The Object3D system uses Phoenix PubSub for real-time synchronization:
+
+```elixir
+pubsub_topics = [
+  %{
+    topic: "object3d:lobby",
+    scope: "Global",
+    events: "Item changes, camera sync, controller changes",
+    subscribers: "LobbyLive"
+  },
+  %{
+    topic: "object3d:{room_id}",
+    scope: "Per-Room",
+    events: "Item changes, camera sync, controller changes",
+    subscribers: "RoomShowLive"
+  }
+]
+
+Kino.DataTable.new(pubsub_topics)
+```
+
+### PubSub Events
+
+```elixir
+events = [
+  %{
+    event: ":object3d_item_changed",
+    payload: "%{item, camera_position, camera_target, timestamp}",
+    trigger: "User selects different item or navigates playlist",
+    action: "Update viewer with new splat URL and camera"
+  },
+  %{
+    event: ":object3d_camera_synced",
+    payload: "%{camera_position, camera_target, user_id, timestamp}",
+    trigger: "Controller moves camera (throttled to 200ms)",
+    action: "Followers update their camera position"
+  },
+  %{
+    event: ":object3d_controller_changed",
+    payload: "%{controller_user_id, controller_user_name}",
+    trigger: "User takes or releases control",
+    action: "Update UI to show current controller"
+  },
+  %{
+    event: ":object3d_playlist_updated",
+    payload: "%{items}",
+    trigger: "Item added, removed, or reordered",
+    action: "Refresh playlist display"
+  }
+]
+
+Kino.DataTable.new(events)
+```
+
+## Playlist Management
+
+Playlists store ordered collections of 3D objects:
+
+```elixir
+playlist_schema = """
+## Playlist Schema
+
+### Object3DPlaylist
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| room_id | UUID (nullable) | Associated room (nil for lobby) |
+| is_lobby | boolean | True if this is the lobby playlist |
+| inserted_at | datetime | Creation timestamp |
+| updated_at | datetime | Last update timestamp |
+
+### Object3DPlaylistItem
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| playlist_id | UUID | Parent playlist |
+| splat_url | string | URL to .ply or .splat file |
+| name | string | Display name |
+| description | string | Optional description |
+| thumbnail_url | string | Preview image URL |
+| source_url | string | Original source link |
+| camera_preset_position | string | Default camera position "x,y,z" |
+| camera_preset_target | string | Default camera target "x,y,z" |
+| position | integer | Order in playlist |
+| view_count | integer | Times viewed |
+| last_viewed_at | datetime | Last view timestamp |
+"""
+
+Kino.Markdown.new(playlist_schema)
+```
+
+### Playlist Operations
+
+```elixir
+operations = [
+  %{
+    operation: "add_to_playlist",
+    function: "Object3D.add_to_playlist/3",
+    params: "playlist_id, attrs, user_id",
+    description: "Adds new item at end of playlist"
+  },
+  %{
+    operation: "remove_from_playlist",
+    function: "Object3D.remove_from_playlist/1",
+    params: "item_id",
+    description: "Removes item and reorders remaining"
+  },
+  %{
+    operation: "reorder_playlist",
+    function: "Object3D.reorder_playlist/2",
+    params: "playlist_id, item_ids",
+    description: "Updates positions based on new order"
+  },
+  %{
+    operation: "get_next_item",
+    function: "Object3D.get_next_item/2",
+    params: "playlist_id, current_item_id",
+    description: "Returns next item or nil at end"
+  },
+  %{
+    operation: "get_previous_item",
+    function: "Object3D.get_previous_item/2",
+    params: "playlist_id, current_item_id",
+    description: "Returns previous item or nil at start"
+  },
+  %{
+    operation: "mark_item_viewed",
+    function: "Object3D.mark_item_viewed/1",
+    params: "item_id",
+    description: "Increments view_count, updates last_viewed_at"
+  }
+]
+
+Kino.DataTable.new(operations)
+```
+
+## JavaScript Hook Events
+
+The Object3DPlayerHook handles bidirectional communication:
+
+```elixir
+js_events = [
+  %{
+    direction: "Server → Client",
+    event: "object3d_sync",
+    payload: "{current_item, camera_position, camera_target, controller_user_id}",
+    action: "Full state sync, loads new splat if item changed"
+  },
+  %{
+    direction: "Server → Client",
+    event: "object3d_camera_sync",
+    payload: "{camera_position, camera_target}",
+    action: "Updates camera for followers (with grace period)"
+  },
+  %{
+    direction: "Server → Client",
+    event: "object3d_reset_camera",
+    payload: "{}",
+    action: "Resets camera to default position"
+  },
+  %{
+    direction: "Server → Client",
+    event: "object3d_center_object",
+    payload: "{}",
+    action: "Centers camera on object bounding box"
+  },
+  %{
+    direction: "Client → Server",
+    event: "camera_moved",
+    payload: "{position, target}",
+    action: "Controller reports camera movement (throttled)"
+  },
+  %{
+    direction: "Client → Server",
+    event: "viewer_ready",
+    payload: "{}",
+    action: "Viewer initialized, ready to receive splats"
+  },
+  %{
+    direction: "Client → Server",
+    event: "loading_started",
+    payload: "{url}",
+    action: "Shows loading indicator"
+  },
+  %{
+    direction: "Client → Server",
+    event: "loading_complete",
+    payload: "{url}",
+    action: "Hides loading indicator"
+  },
+  %{
+    direction: "Client → Server",
+    event: "loading_error",
+    payload: "{message, url}",
+    action: "Shows error, hides loading"
+  }
+]
+
+Kino.DataTable.new(js_events)
+```
+
+## Camera Sync Throttling
+
+The controller's camera movements are throttled to prevent network spam:
+
+```elixir
+throttling_config = %{
+  camera_sync_throttle_ms: 200,
+  grace_period_ms: 500,
+  position_delta_threshold: 0.01
+}
+
+"""
+## Camera Sync Configuration
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| Throttle Interval | #{throttling_config.camera_sync_throttle_ms}ms | Max sync frequency |
+| Grace Period | #{throttling_config.grace_period_ms}ms | Ignore incoming syncs after user action |
+| Delta Threshold | #{throttling_config.position_delta_threshold} | Min movement to trigger sync |
+
+### How It Works
+
+1. Controller moves camera
+2. JS hook checks if #{throttling_config.camera_sync_throttle_ms}ms passed since last sync
+3. Calculates position delta (sum of |x|, |y|, |z| differences)
+4. If delta > #{throttling_config.position_delta_threshold}, sends `camera_moved` event
+5. Server broadcasts to followers
+6. Followers apply position (unless in grace period from own interaction)
+"""
+|> Kino.Markdown.new()
+```
+
+## CRDT Synchronization
+
+Object3D state syncs across peers via Automerge CRDT:
+
+```elixir
+crdt_structure = """
+## CRDT Document Structure
+
+```json
+{
+  "room_id": "uuid",
+  "object_3d": {
+    "splat_url": "https://example.com/object.splat",
+    "camera_position": {"x": 0, "y": 0, "z": 5},
+    "camera_target": {"x": 0, "y": 0, "z": 0},
+    "updated_by": "user-id",
+    "updated_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Sync Flow
+
+1. **Local Change** → Object3DPlayerServer broadcasts via PubSub
+2. **RoomStateBridge** receives PubSub message
+3. **apply_local_object3d_change/2** updates CRDT
+4. **RoomStateCRDT.sync_room/1** triggers Iroh gossip
+5. **Remote Peers** receive and merge changes
+6. **Conflict Resolution** → Last-write-wins for camera position
+"""
+
+Kino.Markdown.new(crdt_structure)
+```
+
+## File Reference
+
+```elixir
+files = [
+  %{
+    component: "Object3D Context",
+    path: "lib/sensocto/object3d/object3d.ex",
+    lines: 399,
+    purpose: "CRUD operations for playlists and items"
+  },
+  %{
+    component: "PlayerServer",
+    path: "lib/sensocto/object3d/object3d_player_server.ex",
+    lines: 479,
+    purpose: "GenServer managing synchronized state"
+  },
+  %{
+    component: "PlayerSupervisor",
+    path: "lib/sensocto/object3d/object3d_player_supervisor.ex",
+    lines: 137,
+    purpose: "DynamicSupervisor for player servers"
+  },
+  %{
+    component: "Playlist Schema",
+    path: "lib/sensocto/object3d/object3d_playlist.ex",
+    lines: 56,
+    purpose: "Ecto schema for playlists"
+  },
+  %{
+    component: "PlaylistItem Schema",
+    path: "lib/sensocto/object3d/object3d_playlist_item.ex",
+    lines: 97,
+    purpose: "Ecto schema for playlist items"
+  },
+  %{
+    component: "LiveComponent",
+    path: "lib/sensocto_web/live/components/object3d_player_component.ex",
+    lines: 628,
+    purpose: "UI component with playlist and controls"
+  },
+  %{
+    component: "JS Hook",
+    path: "assets/js/hooks.js",
+    lines: "~500 (Object3DPlayerHook)",
+    purpose: "WebGL viewer and event handling"
+  },
+  %{
+    component: "RoomStateBridge",
+    path: "lib/sensocto/iroh/room_state_bridge.ex",
+    lines: 340,
+    purpose: "CRDT sync bridge"
+  },
+  %{
+    component: "RoomStateCRDT",
+    path: "lib/sensocto/iroh/room_state_crdt.ex",
+    lines: 637,
+    purpose: "Automerge CRDT operations"
+  },
+  %{
+    component: "Migration",
+    path: "priv/repo/migrations/20260115200000_create_object3d_playlists.exs",
+    lines: 82,
+    purpose: "Database schema"
+  }
+]
+
+Kino.DataTable.new(files)
+```
+
+## Live Testing (Connected to App)
+
+When running attached to the Sensocto application node:
+
+```elixir
+# Uncomment to test against live system:
+
+# alias Sensocto.Object3D
+# alias Sensocto.Object3D.Object3DPlayerServer
+
+# # Get or create lobby playlist
+# {:ok, playlist} = Object3D.get_or_create_lobby_playlist()
+# IO.inspect(playlist, label: "Lobby Playlist")
+
+# # List all items
+# items = Object3D.get_playlist_items(playlist.id)
+# IO.inspect(items, label: "Playlist Items")
+
+# # Get player state
+# {:ok, state} = Object3DPlayerServer.get_state(:lobby)
+# IO.inspect(state, label: "Player State")
+
+# # Add a test item
+# {:ok, item} = Object3D.add_to_playlist(playlist.id, %{
+#   splat_url: "https://example.com/test.splat",
+#   name: "Test Object"
+# }, "test-user")
+# IO.inspect(item, label: "New Item")
+```

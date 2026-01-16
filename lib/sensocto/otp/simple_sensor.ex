@@ -4,7 +4,6 @@ defmodule Sensocto.SimpleSensor do
   alias Sensocto.AttributeStoreTiered, as: AttributeStore
   alias Sensocto.SimpleSensorRegistry
   alias Sensocto.Sensors.Sensor
-  alias Sensocto.Sensors.SensorAttributeData
   alias Sensocto.Otp.RepoReplicatorPool
 
   # Add interval for mps calculation
@@ -20,7 +19,7 @@ defmodule Sensocto.SimpleSensor do
 
   @impl true
   @spec init(map()) :: {:ok, %{:message_timestamps => [], optional(any()) => any()}}
-  def init(%{:sensor_id => sensor_id, :sensor_name => sensor_name} = state) do
+  def init(%{:sensor_id => sensor_id, :sensor_name => _sensor_name} = state) do
     Logger.debug("SimpleSensor state: #{inspect(state)}")
 
     schedule_mps_calculation()
@@ -38,6 +37,7 @@ defmodule Sensocto.SimpleSensor do
      |> Map.put(:mps_interval, 5000)}
   end
 
+  @impl true
   def terminate(_reason, %{:sensor_id => sensor_id} = _state) do
     # Notify repo replicator pool (using correct pool API)
     RepoReplicatorPool.sensor_down(sensor_id)
@@ -151,13 +151,6 @@ defmodule Sensocto.SimpleSensor do
     GenServer.cast(
       via_tuple(sensor_id),
       {:clear_attribute, attribute_id}
-    )
-  end
-
-  def get_attribute(sensor_id, attribute_id, limit) do
-    GenServer.cast(
-      via_tuple(sensor_id),
-      {:get_attribute, attribute_id, limit}
     )
   end
 

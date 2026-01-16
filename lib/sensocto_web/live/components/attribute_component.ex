@@ -24,6 +24,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   attr :attribute_type, :string
 
+  # Button colors for 8 buttons (hex values for inline styles)
+  @button_colors %{
+    1 => "#ef4444",
+    2 => "#f97316",
+    3 => "#eab308",
+    4 => "#22c55e",
+    5 => "#14b8a6",
+    6 => "#3b82f6",
+    7 => "#6366f1",
+    8 => "#a855f7"
+  }
+
   # Summary mode for ECG - show mini inline sparkline
   @impl true
   def render(%{:attribute_type => "ecg", :view_mode => :summary} = assigns) do
@@ -389,7 +401,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           :if={@battery_info.charging != nil}
           name={if @battery_info.charging == "yes", do: "bolt", else: "bolt-slash"}
           type={if @battery_info.charging == "yes", do: "solid", else: "outline"}
-          class={["h-3 w-3", if(@battery_info.charging == "yes", do: "text-white", else: "text-gray-400")]}
+          class={"h-3 w-3 #{if @battery_info.charging == "yes", do: "text-white", else: "text-gray-400"}"}
         />
       </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
@@ -454,13 +466,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  # Extract battery level and charging status from various payload formats
-  defp extract_battery_info(nil), do: %{level: 0.0, charging: nil}
-  defp extract_battery_info(%{payload: %{level: level, charging: charging}}), do: %{level: level * 1.0, charging: charging}
-  defp extract_battery_info(%{payload: %{level: level}}), do: %{level: level * 1.0, charging: nil}
-  defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
-  defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
   # Summary mode for rich_presence - shows current media with artwork
   @impl true
@@ -571,57 +576,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       </.container>
     </div>
     """
-  end
-
-  # Extract rich presence data from payload
-  defp extract_rich_presence(nil), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
-  defp extract_rich_presence(%{payload: %{title: title, artist: artist, album: album, artwork_url: artwork, state: state}}) do
-    %{
-      title: if(title == "", do: nil, else: title),
-      artist: if(artist == "", do: nil, else: artist),
-      album: if(album == "", do: nil, else: album),
-      artwork_url: artwork,
-      state: state || "none"
-    }
-  end
-  defp extract_rich_presence(%{payload: payload}) when is_map(payload) do
-    %{
-      title: Map.get(payload, :title) || Map.get(payload, "title"),
-      artist: Map.get(payload, :artist) || Map.get(payload, "artist"),
-      album: Map.get(payload, :album) || Map.get(payload, "album"),
-      artwork_url: Map.get(payload, :artwork_url) || Map.get(payload, "artwork_url"),
-      state: Map.get(payload, :state) || Map.get(payload, "state") || "none"
-    }
-  end
-  defp extract_rich_presence(_), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
-
-  # Button colors for 8 buttons (hex values for inline styles)
-  @button_colors %{
-    1 => "#ef4444",  # red
-    2 => "#f97316",  # orange
-    3 => "#eab308",  # yellow
-    4 => "#22c55e",  # green
-    5 => "#14b8a6",  # teal
-    6 => "#3b82f6",  # blue
-    7 => "#6366f1",  # indigo
-    8 => "#a855f7"   # purple
-  }
-
-  defp button_style(payload, button_id) do
-    if payload == button_id do
-      "background-color: #{@button_colors[button_id]}; color: white;"
-    else
-      "background-color: #4b5563; color: #9ca3af;"
-    end
-  end
-
-  # Button style for multi-press support using MapSet
-  defp button_style_multi(pressed_buttons, button_id) do
-    if MapSet.member?(pressed_buttons, button_id) do
-      "background-color: #{@button_colors[button_id]}; color: white;"
-    else
-      "background-color: #4b5563; color: #9ca3af;"
-    end
   end
 
   # Summary mode for button - 8 colored buttons with vibrate feedback and multi-press support
@@ -850,21 +804,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp body_location_name(value) when is_integer(value) do
-    Map.get(@body_sensor_locations, value, "Unknown (#{value})")
-  end
-  defp body_location_name(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {num, _} -> body_location_name(num)
-      :error -> "Unknown"
-    end
-  end
-  defp body_location_name(_), do: "Unknown"
-
-  # ============================================================================
-  # TEMPERATURE - Thermometer gauge with color gradient
-  # ============================================================================
-
   @impl true
   def render(%{:attribute_type => "temperature", :view_mode => :summary} = assigns) do
     ~H"""
@@ -921,38 +860,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  defp format_temperature(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
-  defp format_temperature(value) when is_number(value), do: Float.round(value * 1.0, 1)
-  defp format_temperature(_), do: "--"
-
-  defp temperature_gradient_class(%{value: value}) when is_number(value), do: temperature_gradient_class(value)
-  defp temperature_gradient_class(value) when is_number(value) do
-    cond do
-      value < 10 -> "bg-gradient-to-t from-blue-600 to-blue-400"
-      value < 18 -> "bg-gradient-to-t from-cyan-500 to-cyan-300"
-      value < 24 -> "bg-gradient-to-t from-green-500 to-green-300"
-      value < 30 -> "bg-gradient-to-t from-yellow-500 to-orange-400"
-      true -> "bg-gradient-to-t from-red-600 to-red-400"
-    end
-  end
-  defp temperature_gradient_class(_), do: "bg-gray-600"
-
-  defp temperature_comfort_label(%{value: value}) when is_number(value), do: temperature_comfort_label(value)
-  defp temperature_comfort_label(value) when is_number(value) do
-    cond do
-      value < 10 -> "Cold"
-      value < 18 -> "Cool"
-      value < 24 -> "Comfortable"
-      value < 30 -> "Warm"
-      true -> "Hot"
-    end
-  end
-  defp temperature_comfort_label(_), do: ""
-
-  # ============================================================================
-  # HUMIDITY - Water drop gauge
-  # ============================================================================
 
   @impl true
   def render(%{:attribute_type => "humidity", :view_mode => :summary} = assigns) do
@@ -1013,29 +920,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  defp format_humidity(%{value: value}) when is_number(value), do: round(value)
-  defp format_humidity(value) when is_number(value), do: round(value)
-  defp format_humidity(_), do: "--"
-
-  defp humidity_opacity(%{value: value}) when is_number(value), do: humidity_opacity(value)
-  defp humidity_opacity(value) when is_number(value), do: max(0.3, min(1.0, value / 100))
-  defp humidity_opacity(_), do: 0.5
-
-  defp humidity_comfort_label(%{value: value}) when is_number(value), do: humidity_comfort_label(value)
-  defp humidity_comfort_label(value) when is_number(value) do
-    cond do
-      value < 30 -> "Dry"
-      value < 50 -> "Comfortable"
-      value < 70 -> "Humid"
-      true -> "Very Humid"
-    end
-  end
-  defp humidity_comfort_label(_), do: ""
-
-  # ============================================================================
-  # PRESSURE - Barometric pressure gauge
-  # ============================================================================
 
   @impl true
   def render(%{:attribute_type => "pressure", :view_mode => :summary} = assigns) do
@@ -1134,33 +1018,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp format_pressure(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
-  defp format_pressure(value) when is_number(value), do: Float.round(value * 1.0, 1)
-  defp format_pressure(_), do: "--"
-
-  defp pressure_weather_indicator(%{value: value}) when is_number(value), do: pressure_weather_indicator(value)
-  defp pressure_weather_indicator(value) when is_number(value) do
-    cond do
-      value < 1000 -> "Low pressure - stormy"
-      value < 1013 -> "Below average"
-      value < 1020 -> "Normal"
-      true -> "High pressure - fair"
-    end
-  end
-  defp pressure_weather_indicator(_), do: ""
-
-  defp pressure_to_altitude(%{value: value}) when is_number(value), do: pressure_to_altitude(value)
-  defp pressure_to_altitude(value) when is_number(value) do
-    # Simplified barometric formula: h ≈ 44330 * (1 - (P/P0)^0.1903)
-    # P0 = 1013.25 hPa (sea level)
-    round(44330 * (1 - :math.pow(value / 1013.25, 0.1903)))
-  end
-  defp pressure_to_altitude(_), do: 0
-
-  # ============================================================================
-  # GAS / AIR QUALITY - eCO2 and TVOC display
-  # ============================================================================
-
   @impl true
   def render(%{:attribute_type => attr, :view_mode => :summary} = assigns) when attr in ["gas", "air_quality"] do
     ~H"""
@@ -1228,32 +1085,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  defp air_quality_label(%{eco2: eco2}) when is_number(eco2) do
-    cond do
-      eco2 < 600 -> "Excellent"
-      eco2 < 800 -> "Good"
-      eco2 < 1000 -> "Moderate"
-      eco2 < 1500 -> "Poor"
-      true -> "Bad"
-    end
-  end
-  defp air_quality_label(_), do: "--"
-
-  defp air_quality_color(%{payload: %{eco2: eco2}}) when is_number(eco2) do
-    cond do
-      eco2 < 600 -> "text-green-400"
-      eco2 < 800 -> "text-green-300"
-      eco2 < 1000 -> "text-yellow-400"
-      eco2 < 1500 -> "text-orange-400"
-      true -> "text-red-400"
-    end
-  end
-  defp air_quality_color(_), do: "text-gray-400"
-
-  # ============================================================================
-  # COLOR - RGB color swatch with color temperature
-  # ============================================================================
 
   @impl true
   def render(%{:attribute_type => "color", :view_mode => :summary} = assigns) do
@@ -1341,38 +1172,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   # Extract color data from various payload formats
-  defp extract_color_data(nil), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
-  defp extract_color_data(%{payload: %{hex: hex} = payload}) when is_binary(hex) do
-    %{
-      r: Map.get(payload, :r, 0),
-      g: Map.get(payload, :g, 0),
-      b: Map.get(payload, :b, 0),
-      clear: Map.get(payload, :clear),
-      hex: hex,
-      color_temperature: Map.get(payload, :color_temperature)
-    }
-  end
-  defp extract_color_data(%{payload: %{r: r, g: g, b: b} = payload}) when is_integer(r) and is_integer(g) and is_integer(b) do
-    hex = "#" <> Base.encode16(<<min(255, r), min(255, g), min(255, b)>>, case: :lower)
-    %{
-      r: r,
-      g: g,
-      b: b,
-      clear: Map.get(payload, :clear),
-      hex: hex,
-      color_temperature: Map.get(payload, :color_temperature)
-    }
-  end
-  defp extract_color_data(%{payload: value}) when is_integer(value) do
-    # Raw integer - could be a palette index or single value
-    %{r: value, g: value, b: value, clear: nil, hex: "#808080", color_temperature: nil}
-  end
-  defp extract_color_data(_), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
-
-  # ============================================================================
-  # QUATERNION / EULER - 3D orientation visualization
-  # ============================================================================
-
   @impl true
   def render(%{:attribute_type => "quaternion", :view_mode => :summary} = assigns) do
     ~H"""
@@ -1438,14 +1237,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp format_quat_component(payload, key) do
-    case Map.get(payload, key) do
-      nil -> "--"
-      val when is_number(val) -> Float.round(val * 1.0, 3)
-      _ -> "--"
-    end
-  end
-
   @impl true
   def render(%{:attribute_type => "euler", :view_mode => :summary} = assigns) do
     ~H"""
@@ -1506,18 +1297,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  defp format_euler(payload, key) do
-    case Map.get(payload, key) do
-      nil -> "--"
-      val when is_number(val) -> round(val)
-      _ -> "--"
-    end
-  end
-
-  # ============================================================================
-  # HEADING - Compass display
-  # ============================================================================
 
   @impl true
   def render(%{:attribute_type => "heading", :view_mode => :summary} = assigns) do
@@ -1584,37 +1363,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp format_heading(%{value: value}) when is_number(value), do: round(value)
-  defp format_heading(value) when is_number(value), do: round(value)
-  defp format_heading(_), do: 0
-
-  defp heading_rotation(%{payload: %{value: value}}) when is_number(value), do: value
-  defp heading_rotation(%{payload: value}) when is_number(value), do: value
-  defp heading_rotation(_), do: 0
-
-  defp heading_direction(%{value: _value, direction: dir}) when is_binary(dir), do: dir
-  defp heading_direction(%{value: value}) when is_number(value), do: heading_to_dir(value)
-  defp heading_direction(value) when is_number(value), do: heading_to_dir(value)
-  defp heading_direction(_), do: "N"
-
-  defp heading_to_dir(heading) do
-    cond do
-      heading >= 337.5 or heading < 22.5 -> "N"
-      heading >= 22.5 and heading < 67.5 -> "NE"
-      heading >= 67.5 and heading < 112.5 -> "E"
-      heading >= 112.5 and heading < 157.5 -> "SE"
-      heading >= 157.5 and heading < 202.5 -> "S"
-      heading >= 202.5 and heading < 247.5 -> "SW"
-      heading >= 247.5 and heading < 292.5 -> "W"
-      heading >= 292.5 and heading < 337.5 -> "NW"
-      true -> "?"
-    end
-  end
-
-  # ============================================================================
-  # STEPS - Step counter display
-  # ============================================================================
-
   @impl true
   def render(%{:attribute_type => "steps", :view_mode => :summary} = assigns) do
     ~H"""
@@ -1666,14 +1414,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  defp format_steps(%{count: count}) when is_integer(count), do: Integer.to_string(count)
-  defp format_steps(count) when is_integer(count), do: Integer.to_string(count)
-  defp format_steps(_), do: "0"
-
-  # ============================================================================
-  # TAP - Tap detection indicator
-  # ============================================================================
 
   @impl true
   def render(%{:attribute_type => "tap", :view_mode => :summary} = assigns) do
@@ -1731,13 +1471,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp tap_direction(%{direction: dir}) when is_binary(dir), do: dir
-  defp tap_direction(_), do: "--"
-
-  # ============================================================================
-  # ORIENTATION - Device orientation (portrait/landscape/face up/down)
-  # ============================================================================
-
   @impl true
   def render(%{:attribute_type => "orientation", :view_mode => :summary} = assigns) do
     ~H"""
@@ -1788,29 +1521,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
-
-  defp orientation_label(%{orientation: orient}) when is_binary(orient) do
-    orient
-    |> String.replace("_", " ")
-    |> String.split(" ")
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join(" ")
-  end
-  defp orientation_label(_), do: "Unknown"
-
-  defp orientation_rotation(%{payload: %{orientation: orient}}) do
-    case orient do
-      "landscape" -> "rotate-90"
-      "reverse_landscape" -> "-rotate-90"
-      "reverse_portrait" -> "rotate-180"
-      _ -> ""
-    end
-  end
-  defp orientation_rotation(_), do: ""
-
-  # ============================================================================
-  # LED - RGB LED control (bidirectional)
-  # ============================================================================
 
   @impl true
   def render(%{:attribute_type => "led", :view_mode => :summary} = assigns) do
@@ -1949,14 +1659,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp format_speaker_status(%{frequency: freq}) when is_number(freq), do: "#{freq} Hz"
-  defp format_speaker_status(%{sample: sample}) when is_integer(sample), do: "Sample ##{sample}"
-  defp format_speaker_status(_), do: "Idle"
-
-  # ============================================================================
-  # MICROPHONE - Audio level meter
-  # ============================================================================
-
   @impl true
   def render(%{:attribute_type => "microphone", :view_mode => :summary} = assigns) do
     ~H"""
@@ -2027,17 +1729,6 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
-  defp format_mic_level(%{level: level}) when is_number(level), do: round(level)
-  defp format_mic_level(_), do: 0
-
-  defp mic_level_normalized(%{level: level}) when is_number(level) do
-    # Normalize dB to 0-100 range (assuming -60dB to 0dB range)
-    normalized = (level + 60) / 60 * 100
-    max(0, min(100, normalized))
-  end
-  defp mic_level_normalized(_), do: 0
-
-  # Summary mode for default/generic attributes (sparkline types)
   @impl true
   def render(%{:view_mode => :summary} = assigns) do
     ~H"""
@@ -2104,6 +1795,271 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  # Helper functions moved to end for proper grouping
+
+  defp body_location_name(value) when is_integer(value) do
+    Map.get(@body_sensor_locations, value, "Unknown (#{value})")
+  end
+  defp body_location_name(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {num, _} -> body_location_name(num)
+      :error -> "Unknown"
+    end
+  end
+  defp body_location_name(_), do: "Unknown"
+
+  # ============================================================================
+  # TEMPERATURE - Thermometer gauge with color gradient
+  # ============================================================================
+
+  defp format_temperature(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_temperature(value) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_temperature(_), do: "--"
+
+  defp temperature_gradient_class(%{value: value}) when is_number(value), do: temperature_gradient_class(value)
+  defp temperature_gradient_class(value) when is_number(value) do
+    cond do
+      value < 10 -> "bg-gradient-to-t from-blue-600 to-blue-400"
+      value < 18 -> "bg-gradient-to-t from-cyan-500 to-cyan-300"
+      value < 24 -> "bg-gradient-to-t from-green-500 to-green-300"
+      value < 30 -> "bg-gradient-to-t from-yellow-500 to-orange-400"
+      true -> "bg-gradient-to-t from-red-600 to-red-400"
+    end
+  end
+  defp temperature_gradient_class(_), do: "bg-gray-600"
+
+  defp temperature_comfort_label(%{value: value}) when is_number(value), do: temperature_comfort_label(value)
+  defp temperature_comfort_label(value) when is_number(value) do
+    cond do
+      value < 10 -> "Cold"
+      value < 18 -> "Cool"
+      value < 24 -> "Comfortable"
+      value < 30 -> "Warm"
+      true -> "Hot"
+    end
+  end
+  defp temperature_comfort_label(_), do: ""
+
+  # ============================================================================
+  # HUMIDITY - Water drop gauge
+  # ============================================================================
+
+  defp format_humidity(%{value: value}) when is_number(value), do: round(value)
+  defp format_humidity(value) when is_number(value), do: round(value)
+  defp format_humidity(_), do: "--"
+
+  defp humidity_opacity(%{value: value}) when is_number(value), do: humidity_opacity(value)
+  defp humidity_opacity(value) when is_number(value), do: max(0.3, min(1.0, value / 100))
+  defp humidity_opacity(_), do: 0.5
+
+  defp humidity_comfort_label(%{value: value}) when is_number(value), do: humidity_comfort_label(value)
+  defp humidity_comfort_label(value) when is_number(value) do
+    cond do
+      value < 30 -> "Dry"
+      value < 50 -> "Comfortable"
+      value < 70 -> "Humid"
+      true -> "Very Humid"
+    end
+  end
+  defp humidity_comfort_label(_), do: ""
+
+  # ============================================================================
+  # PRESSURE - Barometric pressure gauge
+  # ============================================================================
+
+  defp format_pressure(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_pressure(value) when is_number(value), do: Float.round(value * 1.0, 1)
+  defp format_pressure(_), do: "--"
+
+  defp pressure_weather_indicator(%{value: value}) when is_number(value), do: pressure_weather_indicator(value)
+  defp pressure_weather_indicator(value) when is_number(value) do
+    cond do
+      value < 1000 -> "Low pressure - stormy"
+      value < 1013 -> "Below average"
+      value < 1020 -> "Normal"
+      true -> "High pressure - fair"
+    end
+  end
+  defp pressure_weather_indicator(_), do: ""
+
+  defp pressure_to_altitude(%{value: value}) when is_number(value), do: pressure_to_altitude(value)
+  defp pressure_to_altitude(value) when is_number(value) do
+    # Simplified barometric formula: h ≈ 44330 * (1 - (P/P0)^0.1903)
+    # P0 = 1013.25 hPa (sea level)
+    round(44330 * (1 - :math.pow(value / 1013.25, 0.1903)))
+  end
+  defp pressure_to_altitude(_), do: 0
+
+  # ============================================================================
+  # GAS / AIR QUALITY - eCO2 and TVOC display
+  # ============================================================================
+
+  defp air_quality_label(%{eco2: eco2}) when is_number(eco2) do
+    cond do
+      eco2 < 600 -> "Excellent"
+      eco2 < 800 -> "Good"
+      eco2 < 1000 -> "Moderate"
+      eco2 < 1500 -> "Poor"
+      true -> "Bad"
+    end
+  end
+  defp air_quality_label(_), do: "--"
+
+  defp air_quality_color(%{payload: %{eco2: eco2}}) when is_number(eco2) do
+    cond do
+      eco2 < 600 -> "text-green-400"
+      eco2 < 800 -> "text-green-300"
+      eco2 < 1000 -> "text-yellow-400"
+      eco2 < 1500 -> "text-orange-400"
+      true -> "text-red-400"
+    end
+  end
+  defp air_quality_color(_), do: "text-gray-400"
+
+  # ============================================================================
+  # COLOR - RGB color swatch with color temperature
+  # ============================================================================
+
+  defp extract_color_data(nil), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+  defp extract_color_data(%{payload: %{hex: hex} = payload}) when is_binary(hex) do
+    %{
+      r: Map.get(payload, :r, 0),
+      g: Map.get(payload, :g, 0),
+      b: Map.get(payload, :b, 0),
+      clear: Map.get(payload, :clear),
+      hex: hex,
+      color_temperature: Map.get(payload, :color_temperature)
+    }
+  end
+  defp extract_color_data(%{payload: %{r: r, g: g, b: b} = payload}) when is_integer(r) and is_integer(g) and is_integer(b) do
+    hex = "#" <> Base.encode16(<<min(255, r), min(255, g), min(255, b)>>, case: :lower)
+    %{
+      r: r,
+      g: g,
+      b: b,
+      clear: Map.get(payload, :clear),
+      hex: hex,
+      color_temperature: Map.get(payload, :color_temperature)
+    }
+  end
+  defp extract_color_data(%{payload: value}) when is_integer(value) do
+    # Raw integer - could be a palette index or single value
+    %{r: value, g: value, b: value, clear: nil, hex: "#808080", color_temperature: nil}
+  end
+  defp extract_color_data(_), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+
+  # ============================================================================
+  # QUATERNION / EULER - 3D orientation visualization
+  # ============================================================================
+
+  defp format_quat_component(payload, key) do
+    case Map.get(payload, key) do
+      nil -> "--"
+      val when is_number(val) -> Float.round(val * 1.0, 3)
+      _ -> "--"
+    end
+  end
+
+  defp format_euler(payload, key) do
+    case Map.get(payload, key) do
+      nil -> "--"
+      val when is_number(val) -> round(val)
+      _ -> "--"
+    end
+  end
+
+  # ============================================================================
+  # HEADING - Compass display
+  # ============================================================================
+
+  defp format_heading(%{value: value}) when is_number(value), do: round(value)
+  defp format_heading(value) when is_number(value), do: round(value)
+  defp format_heading(_), do: 0
+
+  defp heading_rotation(%{payload: %{value: value}}) when is_number(value), do: value
+  defp heading_rotation(%{payload: value}) when is_number(value), do: value
+  defp heading_rotation(_), do: 0
+
+  defp heading_direction(%{value: _value, direction: dir}) when is_binary(dir), do: dir
+  defp heading_direction(%{value: value}) when is_number(value), do: heading_to_dir(value)
+  defp heading_direction(value) when is_number(value), do: heading_to_dir(value)
+  defp heading_direction(_), do: "N"
+
+  defp heading_to_dir(heading) do
+    cond do
+      heading >= 337.5 or heading < 22.5 -> "N"
+      heading >= 22.5 and heading < 67.5 -> "NE"
+      heading >= 67.5 and heading < 112.5 -> "E"
+      heading >= 112.5 and heading < 157.5 -> "SE"
+      heading >= 157.5 and heading < 202.5 -> "S"
+      heading >= 202.5 and heading < 247.5 -> "SW"
+      heading >= 247.5 and heading < 292.5 -> "W"
+      heading >= 292.5 and heading < 337.5 -> "NW"
+      true -> "?"
+    end
+  end
+
+  # ============================================================================
+  # STEPS - Step counter display
+  # ============================================================================
+
+  defp format_steps(%{count: count}) when is_integer(count), do: Integer.to_string(count)
+  defp format_steps(count) when is_integer(count), do: Integer.to_string(count)
+  defp format_steps(_), do: "0"
+
+  # ============================================================================
+  # TAP - Tap detection indicator
+  # ============================================================================
+
+  defp tap_direction(%{direction: dir}) when is_binary(dir), do: dir
+  defp tap_direction(_), do: "--"
+
+  # ============================================================================
+  # ORIENTATION - Device orientation (portrait/landscape/face up/down)
+  # ============================================================================
+
+  defp orientation_label(%{orientation: orient}) when is_binary(orient) do
+    orient
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+  defp orientation_label(_), do: "Unknown"
+
+  defp orientation_rotation(%{payload: %{orientation: orient}}) do
+    case orient do
+      "landscape" -> "rotate-90"
+      "reverse_landscape" -> "-rotate-90"
+      "reverse_portrait" -> "rotate-180"
+      _ -> ""
+    end
+  end
+  defp orientation_rotation(_), do: ""
+
+  # ============================================================================
+  # LED - RGB LED control (bidirectional)
+  # ============================================================================
+
+  defp format_speaker_status(%{frequency: freq}) when is_number(freq), do: "#{freq} Hz"
+  defp format_speaker_status(%{sample: sample}) when is_integer(sample), do: "Sample ##{sample}"
+  defp format_speaker_status(_), do: "Idle"
+
+  # ============================================================================
+  # MICROPHONE - Audio level meter
+  # ============================================================================
+
+  defp format_mic_level(%{level: level}) when is_number(level), do: round(level)
+  defp format_mic_level(_), do: 0
+
+  defp mic_level_normalized(%{level: level}) when is_number(level) do
+    # Normalize dB to 0-100 range (assuming -60dB to 0dB range)
+    normalized = (level + 60) / 60 * 100
+    max(0, min(100, normalized))
+  end
+  defp mic_level_normalized(_), do: 0
+
+  # Summary mode for default/generic attributes (sparkline types)
   @impl true
   def update(assigns, socket) do
     # Handle partial updates (only lastvalue) vs full mount updates
@@ -2316,6 +2272,44 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       <div>{render_slot(@inner_block)}</div>
     </div>
     """
+  end
+
+  # Extract battery level and charging status from various payload formats
+  defp extract_battery_info(nil), do: %{level: 0.0, charging: nil}
+  defp extract_battery_info(%{payload: %{level: level, charging: charging}}), do: %{level: level * 1.0, charging: charging}
+  defp extract_battery_info(%{payload: %{level: level}}), do: %{level: level * 1.0, charging: nil}
+  defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
+  defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
+
+  # Extract rich presence data from payload
+  defp extract_rich_presence(nil), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
+  defp extract_rich_presence(%{payload: %{title: title, artist: artist, album: album, artwork_url: artwork, state: state}}) do
+    %{
+      title: if(title == "", do: nil, else: title),
+      artist: if(artist == "", do: nil, else: artist),
+      album: if(album == "", do: nil, else: album),
+      artwork_url: artwork,
+      state: state || "none"
+    }
+  end
+  defp extract_rich_presence(%{payload: payload}) when is_map(payload) do
+    %{
+      title: Map.get(payload, :title) || Map.get(payload, "title"),
+      artist: Map.get(payload, :artist) || Map.get(payload, "artist"),
+      album: Map.get(payload, :album) || Map.get(payload, "album"),
+      artwork_url: Map.get(payload, :artwork_url) || Map.get(payload, "artwork_url"),
+      state: Map.get(payload, :state) || Map.get(payload, "state") || "none"
+    }
+  end
+  defp extract_rich_presence(_), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
+
+  # Button style for multi-press support using MapSet
+  defp button_style_multi(pressed_buttons, button_id) do
+    if MapSet.member?(pressed_buttons, button_id) do
+      "background-color: #{@button_colors[button_id]}; color: white;"
+    else
+      "background-color: #4b5563; color: #9ca3af;"
+    end
   end
 
   # def update_many(assigns_sockets) do

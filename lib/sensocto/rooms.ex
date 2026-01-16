@@ -75,10 +75,8 @@ defmodule Sensocto.Rooms do
     room_sensor_ids
     |> Enum.map(fn sensor_id ->
       try do
-        case Sensocto.SimpleSensor.get_view_state(sensor_id) do
-          nil -> nil
-          state -> Map.put(state, :activity_status, get_sensor_activity_status(room, sensor_id))
-        end
+        state = Sensocto.SimpleSensor.get_view_state(sensor_id)
+        Map.put(state, :activity_status, get_sensor_activity_status(room, sensor_id))
       catch
         :exit, _ -> nil
       end

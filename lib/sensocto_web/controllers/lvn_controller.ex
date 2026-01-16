@@ -63,4 +63,11 @@ defmodule SensoctoWeb.LvnController do
         |> Conn.send_resp(302, "Redirect")
     end
   end
+
+  def sign_out(conn, _params) do
+    conn
+    |> Conn.clear_session()
+    |> Conn.put_resp_header("location", ~p"/lvn-signin")
+    |> Conn.send_resp(302, "Redirect")
+  end
 end

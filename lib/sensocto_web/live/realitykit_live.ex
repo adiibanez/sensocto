@@ -5,7 +5,8 @@ defmodule SensoctoWeb.RealitykitLive do
   require Logger
   import SensoctoWeb.Live.Components.ControllerComponents
 
-  @colors ["red", "green", "blue", "black", "yellow", "orange"]
+  # Reserved for future use
+  # @colors ["red", "green", "blue", "black", "yellow", "orange"]
 
   def handle_params(_params, _uri, socket) do
     {:noreply, socket}
@@ -83,11 +84,6 @@ defmodule SensoctoWeb.RealitykitLive do
      )}
   end
 
-  defp get_rounded_float(str_value) do
-    {float_value, _} = Float.parse(str_value)
-    round(float_value * 1000.0) / 1000.0
-  end
-
   def handle_event(
         "config_sensors",
         %{
@@ -151,14 +147,14 @@ defmodule SensoctoWeb.RealitykitLive do
     {:noreply, socket}
   end
 
-  def handle_event("reset_sensors", %{"number_of_sensors" => number_of_sensors} = params, socket) do
+  def handle_event("reset_sensors", %{"number_of_sensors" => number_of_sensors} = _params, socket) do
     {number_of_sensors_int, _} = Integer.parse(number_of_sensors)
     SensorsStateAgent.reset(%{:number_of_sensors => number_of_sensors_int})
     {:noreply, socket}
   end
 
   def handle_info(
-        {:update_sensor, %{:sensor_id => sensor_id}} =
+        {:update_sensor, %{:sensor_id => _sensor_id}} =
           params,
         socket
       ) do
@@ -193,7 +189,7 @@ defmodule SensoctoWeb.RealitykitLive do
     <h2>Realitykit html view</h2>
     Logger.debug("Rotation #{assigns.config.rotation}") {inspect(assigns.config.rotation)}
 
-    <.controller_config_form config={@config} defaults={@defaults}></.controller_config_form>
+    <.controller_config_form config={@config} defaults={@defaults} />
 
     <form
       :for={{sensor_id, sensor} <- @sensors}
@@ -271,6 +267,11 @@ defmodule SensoctoWeb.RealitykitLive do
       </ul>
     </form>
     """
+  end
+
+  defp get_rounded_float(str_value) do
+    {float_value, _} = Float.parse(str_value)
+    round(float_value * 1000.0) / 1000.0
   end
 end
 

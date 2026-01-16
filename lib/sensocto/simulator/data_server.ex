@@ -28,16 +28,9 @@ defmodule Sensocto.Simulator.DataServer do
 
   @impl true
   def handle_cast({:get_data, caller_pid, config}, state) do
-    case DataGenerator.fetch_sensor_data(config) do
-      {:ok, data} ->
-        Logger.debug("DataServer #{state.worker_id}: Generated #{length(data)} data points")
-        send(caller_pid, {:get_data_result, data})
-
-      {:error, reason} ->
-        Logger.error("DataServer #{state.worker_id}: Error generating data: #{inspect(reason)}")
-        # Send empty list on error so the attribute doesn't get stuck
-        send(caller_pid, {:get_data_result, []})
-    end
+    {:ok, data} = DataGenerator.fetch_sensor_data(config)
+    Logger.debug("DataServer #{state.worker_id}: Generated #{length(data)} data points")
+    send(caller_pid, {:get_data_result, data})
 
     {:noreply, state}
   end

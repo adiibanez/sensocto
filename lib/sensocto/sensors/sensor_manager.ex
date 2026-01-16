@@ -59,6 +59,7 @@ defmodule Sensocto.Sensors.SensorManager do
 
     # Step 3: Stop a sensor
     update :stop_sensor do
+      require_atomic? false
       argument :sensor_id, :string, allow_nil?: false
 
       change fn changeset, _ ->

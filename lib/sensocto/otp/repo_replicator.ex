@@ -52,7 +52,7 @@ defmodule Sensocto.Otp.RepoReplicator do
 
     {:ok, datetime} = DateTime.from_unix(timestamp, :millisecond)
 
-    changeset =
+    _changeset =
       SensorAttributeData
       |> Changeset.for_create(:create, %{
         sensor_id: sensor_id,
@@ -77,7 +77,7 @@ defmodule Sensocto.Otp.RepoReplicator do
   def handle_info({:measurements_batch, {sensor_id, attributes}}, state) do
     Logger.debug("Received batch of #{length(attributes)} measurements for sensor #{sensor_id}")
 
-    records =
+    _records =
       Enum.flat_map(attributes, fn attr ->
         with {:ok, attribute_id} <- attr["attribute_id"],
              {:ok, datetime} <- DateTime.from_unix(attr["timestamp"], :millisecond),
@@ -111,7 +111,7 @@ defmodule Sensocto.Otp.RepoReplicator do
 
   ## Catch-all for unexpected messages
   def handle_info(msg, state) do
-    Logger.warn("⚠️ Unexpected message received: #{inspect(msg)}")
+    Logger.warning("⚠️ Unexpected message received: #{inspect(msg)}")
     {:noreply, state}
   end
 
@@ -132,18 +132,6 @@ defmodule Sensocto.Otp.RepoReplicator do
 
   # defp parse_datetime(value) when is_struct(value, DateTime), do: {:ok, value}
   # defp parse_datetime(_), do: {:error, "Unrecognized datetime format"}
-
-  defp to_uuid(nil), do: {:error, "Missing UUID"}
-
-  defp to_uuid(value) when is_binary(value) do
-    case Ecto.UUID.cast(value) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, "Invalid UUID format"}
-    end
-  end
-
-  defp to_uuid(value) when is_struct(value, Ecto.UUID), do: {:ok, value}
-  defp to_uuid(_), do: {:error, "Unrecognized UUID format"}
 
   defp ensure_map(nil), do: %{}
   defp ensure_map(value) when is_map(value), do: value

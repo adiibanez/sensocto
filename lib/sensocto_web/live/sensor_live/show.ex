@@ -4,7 +4,6 @@ defmodule SensoctoWeb.SensorLive.Show do
   alias Sensocto.SimpleSensor
   alias Sensocto.AttentionTracker
   alias SensoctoWeb.Live.Components.AttributeComponent
-  import SensoctoWeb.Live.BaseComponents
 
   require Logger
 

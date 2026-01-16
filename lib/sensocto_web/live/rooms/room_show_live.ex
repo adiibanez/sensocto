@@ -709,11 +709,6 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_event("connection_state_changed", _params, socket) do
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_event("quality_changed", _params, socket) do
     {:noreply, socket}
   end

@@ -64,7 +64,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
   end
 
   @impl true
-  def handle_cast({:update_config, new_config}, state) do
+  def handle_cast({:update_config, _new_config}, state) do
     Logger.info("Updating connector config: #{state.connector_id}")
     # TODO: Implement config update logic (stop/start changed sensors)
     {:noreply, state}

@@ -185,30 +185,6 @@ defmodule Sensocto.Simulator.AttributeServer do
     end
   end
 
-  # Apply backpressure by multiplying the delay based on attention level
-  # This effectively slows down data generation when users aren't watching
-  defp apply_backpressure_delay(base_delay_ms, attention_level) do
-    # Also incorporate system load multiplier
-    load_multiplier = AttentionTracker.get_system_load_multiplier()
-
-    attention_multiplier = case attention_level do
-      :high -> 1.0      # Full speed when user is focused
-      :medium -> 1.0    # Normal speed when in viewport
-      :low -> 4.0       # 4x slower when not viewing
-      :none -> 10.0     # 10x slower when no one watching
-      _ -> 1.0
-    end
-
-    # Combine both multipliers
-    total_multiplier = attention_multiplier * load_multiplier
-
-    # Ensure minimum delay when base is 0 (first message in batch has delay: 0.0)
-    # Without this, backpressure has no effect when multiplying 0
-    effective_base = if base_delay_ms == 0, do: 50, else: base_delay_ms
-
-    round(effective_base * total_multiplier)
-  end
-
   # Push batch to sensor
   # Note: Uses attribute_id_str (string) for consistency with SimpleSensor/AttributeStore
   @impl true
@@ -350,6 +326,31 @@ defmodule Sensocto.Simulator.AttributeServer do
     end
 
     {:noreply, %{state | system_load_level: new_level, current_batch_window: new_batch_window}}
+  end
+
+  # Apply backpressure by multiplying the delay based on attention level
+  # This effectively slows down data generation when users aren't watching
+  defp apply_backpressure_delay(base_delay_ms, attention_level) do
+    # Also incorporate system load multiplier
+    load_multiplier = AttentionTracker.get_system_load_multiplier()
+
+    attention_multiplier =
+      case attention_level do
+        :high -> 1.0
+        :medium -> 1.0
+        :low -> 4.0
+        :none -> 10.0
+        _ -> 1.0
+      end
+
+    # Combine both multipliers
+    total_multiplier = attention_multiplier * load_multiplier
+
+    # Ensure minimum delay when base is 0 (first message in batch has delay: 0.0)
+    # Without this, backpressure has no effect when multiplying 0
+    effective_base = if base_delay_ms == 0, do: 50, else: base_delay_ms
+
+    round(effective_base * total_multiplier)
   end
 
   defp via_tuple(identifier) do

@@ -1225,7 +1225,11 @@ Hooks.Object3DPlayerHook = {
             if (now - this.lastCameraSyncTime < this.cameraSyncThrottle) return;
 
             const pos = this.viewer.camera.position;
-            const target = this.viewer.controls ? this.viewer.controls.target : { x: 0, y: 0, z: 0 };
+            const controls = this.viewer.perspectiveControls ||
+                            this.viewer.orthographicControls ||
+                            this.viewer.controls ||
+                            this.viewer.orbitControls;
+            const target = controls ? controls.target : { x: 0, y: 0, z: 0 };
 
             // Check if camera actually moved
             const posDelta = Math.abs(pos.x - this.cameraPosition.x) +

@@ -127,13 +127,14 @@ defmodule Sensocto.MixProject do
       # {:stream_data, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:machete, "~> 0.3.10", only: [:dev, :test], runtime: false},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:exacto_knife, "~> 0.1.5", only: [:dev, :test], runtime: false},
       # {:bridge,
       #  path:
       #    "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/elixir-desktop-bridge"}
 
       {:iroh_ex, "~> 0.0.14"},
-      #{:iroh_ex,
+      # {:iroh_ex,
       # path: "/Users/adrianibanez/Documents/projects/2024_sensor-platform/checkouts/iroh_ex"},
       {:rustler_precompiled, "~> 0.8"},
       # {:rustler_btleplug, "~> 0.0.3-alpha"},

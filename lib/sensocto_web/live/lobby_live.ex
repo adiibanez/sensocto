@@ -36,6 +36,7 @@ defmodule SensoctoWeb.LobbyLive do
 
     # Subscribe to user-specific attention level updates for webcam backpressure
     user = socket.assigns[:current_user]
+
     if user do
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
     end
@@ -57,7 +58,8 @@ defmodule SensoctoWeb.LobbyLive do
     default_view_mode = determine_view_mode(sensors_count, max_attributes)
 
     # Extract composite visualization data
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} = extract_composite_data(sensors)
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} =
+      extract_composite_data(sensors)
 
     # Group sensors by connector (user)
     sensors_by_user = group_sensors_by_user(sensors)
@@ -128,18 +130,23 @@ defmodule SensoctoWeb.LobbyLive do
       sensors
       |> Enum.filter(fn {_id, sensor} ->
         attrs = sensor.attributes || %{}
+
         Enum.any?(attrs, fn {_attr_id, attr} ->
           attr.attribute_type in ["heartrate", "hr"]
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
-        hr_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-          attr.attribute_type in ["heartrate", "hr"]
-        end)
-        bpm = case hr_attr do
-          {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
-          nil -> 0
-        end
+        hr_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type in ["heartrate", "hr"]
+          end)
+
+        bpm =
+          case hr_attr do
+            {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+            nil -> 0
+          end
+
         %{sensor_id: sensor_id, bpm: bpm}
       end)
 
@@ -147,18 +154,23 @@ defmodule SensoctoWeb.LobbyLive do
       sensors
       |> Enum.filter(fn {_id, sensor} ->
         attrs = sensor.attributes || %{}
+
         Enum.any?(attrs, fn {_attr_id, attr} ->
           attr.attribute_type == "imu"
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
-        imu_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-          attr.attribute_type == "imu"
-        end)
-        orientation = case imu_attr do
-          {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || %{}
-          nil -> %{}
-        end
+        imu_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type == "imu"
+          end)
+
+        orientation =
+          case imu_attr do
+            {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || %{}
+            nil -> %{}
+          end
+
         %{sensor_id: sensor_id, orientation: orientation}
       end)
 
@@ -166,23 +178,31 @@ defmodule SensoctoWeb.LobbyLive do
       sensors
       |> Enum.filter(fn {_id, sensor} ->
         attrs = sensor.attributes || %{}
+
         Enum.any?(attrs, fn {_attr_id, attr} ->
           attr.attribute_type == "geolocation"
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
-        geo_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-          attr.attribute_type == "geolocation"
-        end)
-        position = case geo_attr do
-          {_attr_id, attr} ->
-            payload = attr.lastvalue && attr.lastvalue.payload || %{}
-            %{
-              lat: payload["latitude"] || payload[:latitude] || 0,
-              lng: payload["longitude"] || payload[:longitude] || 0
-            }
-          nil -> %{lat: 0, lng: 0}
-        end
+        geo_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type == "geolocation"
+          end)
+
+        position =
+          case geo_attr do
+            {_attr_id, attr} ->
+              payload = (attr.lastvalue && attr.lastvalue.payload) || %{}
+
+              %{
+                lat: payload["latitude"] || payload[:latitude] || 0,
+                lng: payload["longitude"] || payload[:longitude] || 0
+              }
+
+            nil ->
+              %{lat: 0, lng: 0}
+          end
+
         %{sensor_id: sensor_id, lat: position.lat, lng: position.lng}
       end)
 
@@ -190,18 +210,23 @@ defmodule SensoctoWeb.LobbyLive do
       sensors
       |> Enum.filter(fn {_id, sensor} ->
         attrs = sensor.attributes || %{}
+
         Enum.any?(attrs, fn {_attr_id, attr} ->
           attr.attribute_type == "ecg"
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
-        ecg_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-          attr.attribute_type == "ecg"
-        end)
-        value = case ecg_attr do
-          {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
-          nil -> 0
-        end
+        ecg_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type == "ecg"
+          end)
+
+        value =
+          case ecg_attr do
+            {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+            nil -> 0
+          end
+
         %{sensor_id: sensor_id, value: value}
       end)
 
@@ -209,24 +234,32 @@ defmodule SensoctoWeb.LobbyLive do
       sensors
       |> Enum.filter(fn {_id, sensor} ->
         attrs = sensor.attributes || %{}
+
         Enum.any?(attrs, fn {_attr_id, attr} ->
           attr.attribute_type == "battery"
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
-        battery_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-          attr.attribute_type == "battery"
-        end)
-        level = case battery_attr do
-          {_attr_id, attr} ->
-            payload = attr.lastvalue && attr.lastvalue.payload
-            cond do
-              is_map(payload) -> payload["level"] || payload[:level] || 0
-              is_number(payload) -> payload
-              true -> 0
-            end
-          nil -> 0
-        end
+        battery_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type == "battery"
+          end)
+
+        level =
+          case battery_attr do
+            {_attr_id, attr} ->
+              payload = attr.lastvalue && attr.lastvalue.payload
+
+              cond do
+                is_map(payload) -> payload["level"] || payload[:level] || 0
+                is_number(payload) -> payload
+                true -> 0
+              end
+
+            nil ->
+              0
+          end
+
         %{sensor_id: sensor_id, level: level, sensor_name: sensor.sensor_name}
       end)
 
@@ -268,9 +301,10 @@ defmodule SensoctoWeb.LobbyLive do
         connector_id: connector_id,
         connector_name: connector_name || "Unknown",
         sensor_count: length(sensor_list),
-        sensors: Enum.map(sensor_list, fn {id, s} ->
-          %{sensor_id: id, sensor_name: s.sensor_name}
-        end),
+        sensors:
+          Enum.map(sensor_list, fn {id, s} ->
+            %{sensor_id: id, sensor_name: s.sensor_name}
+          end),
         attributes_summary: attributes_summary,
         total_attributes: length(all_attributes)
       }
@@ -307,7 +341,8 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
 
         # Update composite visualization data
-        {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} = extract_composite_data(sensors)
+        {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} =
+          extract_composite_data(sensors)
 
         updated_socket =
           socket
@@ -395,6 +430,7 @@ defmodule SensoctoWeb.LobbyLive do
           if attr_id == "ecg" do
             # Send all measurements sorted by timestamp for proper waveform
             sorted = Enum.sort_by(measurements, & &1.timestamp)
+
             Enum.reduce(sorted, acc, fn m, sock ->
               push_event(sock, "composite_measurement", %{
                 sensor_id: sensor_id,
@@ -406,6 +442,7 @@ defmodule SensoctoWeb.LobbyLive do
           else
             # Non-ECG attributes: just send latest
             latest = Enum.max_by(measurements, & &1.timestamp)
+
             push_event(acc, "composite_measurement", %{
               sensor_id: sensor_id,
               attribute_id: attr_id,
@@ -423,6 +460,7 @@ defmodule SensoctoWeb.LobbyLive do
           |> Enum.group_by(& &1.attribute_id)
           |> Enum.map(fn {attr_id, measurements} ->
             latest = Enum.max_by(measurements, & &1.timestamp)
+
             %{
               sensor_id: sensor_id,
               attribute_id: attr_id,
@@ -446,7 +484,9 @@ defmodule SensoctoWeb.LobbyLive do
   # Media player events - forward to component via send_update AND push events to JS hook
   @impl true
   def handle_info({:media_state_changed, state}, socket) do
-    Logger.debug("LobbyLive received media_state_changed: #{inspect(state.state)} pos=#{state.position_seconds}")
+    Logger.debug(
+      "LobbyLive received media_state_changed: #{inspect(state.state)} pos=#{state.position_seconds}"
+    )
 
     send_update(MediaPlayerComponent,
       id: "lobby-media-player",
@@ -456,10 +496,11 @@ defmodule SensoctoWeb.LobbyLive do
     )
 
     # Push sync event directly to JS hook from parent LiveView
-    socket = push_event(socket, "media_sync", %{
-      state: state.state,
-      position_seconds: state.position_seconds
-    })
+    socket =
+      push_event(socket, "media_sync", %{
+        state: state.state,
+        position_seconds: state.position_seconds
+      })
 
     {:noreply, socket}
   end
@@ -472,10 +513,11 @@ defmodule SensoctoWeb.LobbyLive do
     )
 
     # Push video change event directly to JS hook from parent LiveView
-    socket = push_event(socket, "media_load_video", %{
-      video_id: item.youtube_video_id,
-      start_seconds: 0
-    })
+    socket =
+      push_event(socket, "media_load_video", %{
+        video_id: item.youtube_video_id,
+        start_seconds: 0
+      })
 
     {:noreply, socket}
   end
@@ -486,48 +528,73 @@ defmodule SensoctoWeb.LobbyLive do
       id: "lobby-media-player",
       playlist_items: items
     )
+
     {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:media_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+  def handle_info(
+        {:media_controller_changed,
+         %{controller_user_id: user_id, controller_user_name: user_name}},
+        socket
+      ) do
     send_update(MediaPlayerComponent,
       id: "lobby-media-player",
       controller_user_id: user_id,
       controller_user_name: user_name
     )
+
     {:noreply, socket}
   end
 
   # 3D Object player events - forward to component
   @impl true
-  def handle_info({:object3d_item_changed, %{item: item, camera_position: pos, camera_target: target}}, socket) do
+  def handle_info(
+        {:object3d_item_changed, %{item: item, camera_position: pos, camera_target: target}},
+        socket
+      ) do
     send_update(Object3DPlayerComponent,
       id: "lobby-object3d-player",
       current_item: item,
       camera_position: pos,
       camera_target: target
     )
+
     {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:object3d_camera_synced, %{camera_position: position, camera_target: target}}, socket) do
-    send_update(Object3DPlayerComponent,
-      id: "lobby-object3d-player",
-      synced_camera_position: position,
-      synced_camera_target: target
-    )
+  def handle_info(
+        {:object3d_camera_synced,
+         %{camera_position: position, camera_target: target, user_id: user_id}},
+        socket
+      ) do
+    current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
+
+    # Don't forward camera sync to the controller themselves - they're the source
+    if user_id != current_user_id do
+      send_update(Object3DPlayerComponent,
+        id: "lobby-object3d-player",
+        synced_camera_position: position,
+        synced_camera_target: target
+      )
+    end
+
     {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:object3d_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+  def handle_info(
+        {:object3d_controller_changed,
+         %{controller_user_id: user_id, controller_user_name: user_name}},
+        socket
+      ) do
     send_update(Object3DPlayerComponent,
       id: "lobby-object3d-player",
       controller_user_id: user_id,
       controller_user_name: user_name
     )
+
     {:noreply, socket}
   end
 
@@ -537,6 +604,7 @@ defmodule SensoctoWeb.LobbyLive do
       id: "lobby-object3d-player",
       playlist_items: items
     )
+
     {:noreply, socket}
   end
 
@@ -546,7 +614,9 @@ defmodule SensoctoWeb.LobbyLive do
     socket =
       case event do
         {:participant_joined, participant} ->
-          new_participants = Map.put(socket.assigns.call_participants, participant.user_id, participant)
+          new_participants =
+            Map.put(socket.assigns.call_participants, participant.user_id, participant)
+
           assign(socket, :call_participants, new_participants)
 
         {:participant_left, user_id} ->
@@ -598,7 +668,11 @@ defmodule SensoctoWeb.LobbyLive do
     new_mode = if socket.assigns.global_view_mode == :summary, do: :normal, else: :summary
 
     # Broadcast to all sensor LiveViews to update their view mode
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, "ui:view_mode", {:global_view_mode_changed, new_mode})
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "ui:view_mode",
+      {:global_view_mode_changed, new_mode}
+    )
 
     {:noreply, assign(socket, :global_view_mode, new_mode)}
   end
@@ -681,10 +755,11 @@ defmodule SensoctoWeb.LobbyLive do
     # as that would reload the video and reset playback position
     case MediaPlayerServer.get_state(:lobby) do
       {:ok, state} ->
-        socket = push_event(socket, "media_sync", %{
-          state: state.state,
-          position_seconds: state.position_seconds
-        })
+        socket =
+          push_event(socket, "media_sync", %{
+            state: state.state,
+            position_seconds: state.position_seconds
+          })
 
         {:noreply, socket}
 

@@ -9,35 +9,21 @@ defmodule Sensocto.Iroh.RoomStateCRDTTest do
   @moduletag timeout: 120_000
 
   setup_all do
-    # Stop any existing RoomStateCRDT process
-    case GenServer.whereis(RoomStateCRDT) do
-      nil -> :ok
-      pid ->
-        try do
-          GenServer.stop(pid, :normal, 5000)
-        catch
-          :exit, _ -> :ok
-        end
-    end
+    # Use the existing RoomStateCRDT process started by the application supervisor
+    # Don't try to stop/restart it - just wait for it to be ready
+    pid =
+      case GenServer.whereis(RoomStateCRDT) do
+        nil ->
+          # If not started by app, start it for tests
+          {:ok, new_pid} = RoomStateCRDT.start_link([])
+          new_pid
 
-    # Small delay to ensure process is fully stopped
-    Process.sleep(100)
-
-    # Start fresh RoomStateCRDT GenServer for all tests
-    {:ok, pid} = RoomStateCRDT.start_link([])
+        existing_pid ->
+          existing_pid
+      end
 
     # Wait for initialization - the iroh node needs time to initialize
     wait_for_ready(pid, 30)
-
-    on_exit(fn ->
-      if Process.alive?(pid) do
-        try do
-          GenServer.stop(pid, :normal, 5000)
-        catch
-          :exit, _ -> :ok
-        end
-      end
-    end)
 
     {:ok, pid: pid}
   end
@@ -45,6 +31,7 @@ defmodule Sensocto.Iroh.RoomStateCRDTTest do
   defp wait_for_ready(pid, attempts) when attempts > 0 do
     if Process.alive?(pid) do
       Process.sleep(500)
+
       try do
         if RoomStateCRDT.ready?() do
           :ok

@@ -326,6 +326,37 @@ defmodule Sensocto.Accounts.User do
 
       filter expr(id == ^arg(:id))
     end
+
+    # Test-only action for creating users without password strategy validation
+    # This bypasses AshAuthentication validation that requires password strategy to be enabled
+    create :create_test_user do
+      description "Create a test user directly (for testing only)"
+
+      argument :email, :ci_string do
+        allow_nil? false
+      end
+
+      argument :password, :string do
+        allow_nil? true
+        sensitive? true
+      end
+
+      change set_attribute(:email, arg(:email))
+
+      change fn changeset, _context ->
+        case Ash.Changeset.get_argument(changeset, :password) do
+          nil ->
+            changeset
+
+          password ->
+            hashed = Bcrypt.hash_pwd_salt(password)
+            Ash.Changeset.change_attribute(changeset, :hashed_password, hashed)
+        end
+      end
+
+      # Auto-confirm test users
+      change set_attribute(:confirmed_at, &DateTime.utc_now/0)
+    end
   end
 
   policies do

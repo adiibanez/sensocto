@@ -55,12 +55,13 @@ defmodule SensoctoWeb.RoomShowLive do
         available_lenses = extract_available_lenses(sensors_state)
 
         # Determine default room mode based on enabled features
-        default_mode = cond do
-          Map.get(room, :calls_enabled, true) -> :call
-          Map.get(room, :media_playback_enabled, true) -> :media
-          Map.get(room, :object_3d_enabled, false) -> :object3d
-          true -> :sensors
-        end
+        default_mode =
+          cond do
+            Map.get(room, :calls_enabled, true) -> :call
+            Map.get(room, :media_playback_enabled, true) -> :media
+            Map.get(room, :object_3d_enabled, false) -> :object3d
+            true -> :sensors
+          end
 
         socket =
           socket
@@ -116,10 +117,11 @@ defmodule SensoctoWeb.RoomShowLive do
   defp apply_action(socket, :settings, _params) do
     if socket.assigns.can_manage do
       # Load room members for the settings panel
-      room_members = case Rooms.list_members(socket.assigns.room) do
-        {:ok, members} -> members
-        {:error, _} -> []
-      end
+      room_members =
+        case Rooms.list_members(socket.assigns.room) do
+          {:ok, members} -> members
+          {:error, _} -> []
+        end
 
       socket
       |> assign(:show_settings, true)
@@ -154,7 +156,9 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_event("open_edit_modal", _params, socket) do
     room = socket.assigns.room
-    {:noreply, socket |> assign(:show_edit_modal, true) |> assign(:edit_form, build_edit_form(room))}
+
+    {:noreply,
+     socket |> assign(:show_edit_modal, true) |> assign(:edit_form, build_edit_form(room))}
   end
 
   @impl true
@@ -175,7 +179,11 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_event("participant_speaking", %{"speaking" => _speaking, "user_id" => _user_id}, socket) do
+  def handle_event(
+        "participant_speaking",
+        %{"speaking" => _speaking, "user_id" => _user_id},
+        socket
+      ) do
     # Handle participant speaking state changes from video call hook - just acknowledge the event
     {:noreply, socket}
   end
@@ -195,14 +203,16 @@ defmodule SensoctoWeb.RoomShowLive do
 
   @impl true
   def handle_event("validate_edit", params, socket) do
-    form = to_form(%{
-      "name" => params["name"] || "",
-      "description" => params["description"] || "",
-      "is_public" => Map.has_key?(params, "is_public"),
-      "calls_enabled" => Map.has_key?(params, "calls_enabled"),
-      "media_playback_enabled" => Map.has_key?(params, "media_playback_enabled"),
-      "object_3d_enabled" => Map.has_key?(params, "object_3d_enabled")
-    })
+    form =
+      to_form(%{
+        "name" => params["name"] || "",
+        "description" => params["description"] || "",
+        "is_public" => Map.has_key?(params, "is_public"),
+        "calls_enabled" => Map.has_key?(params, "calls_enabled"),
+        "media_playback_enabled" => Map.has_key?(params, "media_playback_enabled"),
+        "object_3d_enabled" => Map.has_key?(params, "object_3d_enabled")
+      })
+
     {:noreply, assign(socket, :edit_form, form)}
   end
 
@@ -262,7 +272,12 @@ defmodule SensoctoWeb.RoomShowLive do
 
     # Don't allow owner to leave their own room
     if Rooms.owner?(room, user) do
-      {:noreply, put_flash(socket, :error, "Room owners cannot leave. Transfer ownership or delete the room.")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Room owners cannot leave. Transfer ownership or delete the room."
+       )}
     else
       case Rooms.leave_room(room, user) do
         :ok ->
@@ -400,11 +415,12 @@ defmodule SensoctoWeb.RoomShowLive do
   def handle_event("select_lens", %{"lens" => lens_type}, socket) do
     lens_type = if lens_type == "", do: nil, else: lens_type
 
-    lens_data = if lens_type do
-      extract_lens_data(socket.assigns.sensors_state, lens_type)
-    else
-      %{}
-    end
+    lens_data =
+      if lens_type do
+        extract_lens_data(socket.assigns.sensors_state, lens_type)
+      else
+        %{}
+      end
 
     {:noreply,
      socket
@@ -453,7 +469,10 @@ defmodule SensoctoWeb.RoomShowLive do
         socket =
           socket
           |> assign(:room, normalize_room(updated_room))
-          |> put_flash(:info, if(new_value, do: "Media playback enabled", else: "Media playback disabled"))
+          |> put_flash(
+            :info,
+            if(new_value, do: "Media playback enabled", else: "Media playback disabled")
+          )
 
         {:noreply, socket}
 
@@ -474,7 +493,10 @@ defmodule SensoctoWeb.RoomShowLive do
         socket =
           socket
           |> assign(:room, normalize_room(updated_room))
-          |> put_flash(:info, if(new_value, do: "3D objects enabled", else: "3D objects disabled"))
+          |> put_flash(
+            :info,
+            if(new_value, do: "3D objects enabled", else: "3D objects disabled")
+          )
 
         {:noreply, socket}
 
@@ -494,10 +516,11 @@ defmodule SensoctoWeb.RoomShowLive do
     case Rooms.promote_to_admin(room, user_to_promote, acting_user) do
       {:ok, _} ->
         # Reload members list
-        room_members = case Rooms.list_members(room) do
-          {:ok, members} -> members
-          {:error, _} -> []
-        end
+        room_members =
+          case Rooms.list_members(room) do
+            {:ok, members} -> members
+            {:error, _} -> []
+          end
 
         socket =
           socket
@@ -524,10 +547,11 @@ defmodule SensoctoWeb.RoomShowLive do
     case Rooms.demote_to_member(room, user_to_demote, acting_user) do
       {:ok, _} ->
         # Reload members list
-        room_members = case Rooms.list_members(room) do
-          {:ok, members} -> members
-          {:error, _} -> []
-        end
+        room_members =
+          case Rooms.list_members(room) do
+            {:ok, members} -> members
+            {:error, _} -> []
+          end
 
         socket =
           socket
@@ -554,10 +578,11 @@ defmodule SensoctoWeb.RoomShowLive do
     case Rooms.kick_member(room, user_to_kick, acting_user) do
       {:ok, _} ->
         # Reload members list
-        room_members = case Rooms.list_members(room) do
-          {:ok, members} -> members
-          {:error, _} -> []
-        end
+        room_members =
+          case Rooms.list_members(room) do
+            {:ok, members} -> members
+            {:error, _} -> []
+          end
 
         socket =
           socket
@@ -739,10 +764,11 @@ defmodule SensoctoWeb.RoomShowLive do
 
     case MediaPlayerServer.get_state(room_id) do
       {:ok, state} ->
-        socket = push_event(socket, "media_sync", %{
-          state: state.state,
-          position_seconds: state.position_seconds
-        })
+        socket =
+          push_event(socket, "media_sync", %{
+            state: state.state,
+            position_seconds: state.position_seconds
+          })
 
         {:noreply, socket}
 
@@ -817,6 +843,7 @@ defmodule SensoctoWeb.RoomShowLive do
           |> Enum.group_by(& &1.attribute_id)
           |> Enum.map(fn {attr_id, measurements} ->
             latest = Enum.max_by(measurements, & &1.timestamp)
+
             %{
               sensor_id: sensor_id,
               attribute_id: attr_id,
@@ -901,7 +928,9 @@ defmodule SensoctoWeb.RoomShowLive do
     socket =
       case event do
         {:participant_joined, participant} ->
-          new_participants = Map.put(socket.assigns.call_participants, participant.user_id, participant)
+          new_participants =
+            Map.put(socket.assigns.call_participants, participant.user_id, participant)
+
           assign(socket, :call_participants, new_participants)
 
         {:participant_left, user_id} ->
@@ -944,10 +973,11 @@ defmodule SensoctoWeb.RoomShowLive do
     )
 
     # Push sync event directly to JS hook from parent LiveView
-    socket = push_event(socket, "media_sync", %{
-      state: state.state,
-      position_seconds: state.position_seconds
-    })
+    socket =
+      push_event(socket, "media_sync", %{
+        state: state.state,
+        position_seconds: state.position_seconds
+      })
 
     {:noreply, socket}
   end
@@ -977,7 +1007,11 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_info({:media_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+  def handle_info(
+        {:media_controller_changed,
+         %{controller_user_id: user_id, controller_user_name: user_name}},
+        socket
+      ) do
     room_id = socket.assigns.room.id
 
     send_update(MediaPlayerComponent,
@@ -991,7 +1025,11 @@ defmodule SensoctoWeb.RoomShowLive do
 
   # Object3D PubSub handlers
   @impl true
-  def handle_info({:object3d_item_changed, %{item: item, camera_position: camera_position, camera_target: camera_target}}, socket) do
+  def handle_info(
+        {:object3d_item_changed,
+         %{item: item, camera_position: camera_position, camera_target: camera_target}},
+        socket
+      ) do
     room_id = socket.assigns.room.id
 
     send_update(Object3DPlayerComponent,
@@ -1005,14 +1043,22 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_info({:object3d_camera_synced, %{camera_position: camera_position, camera_target: camera_target}}, socket) do
+  def handle_info(
+        {:object3d_camera_synced,
+         %{camera_position: camera_position, camera_target: camera_target, user_id: user_id}},
+        socket
+      ) do
     room_id = socket.assigns.room.id
+    current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
 
-    send_update(Object3DPlayerComponent,
-      id: "object3d-player-#{room_id}",
-      camera_position: camera_position,
-      camera_target: camera_target
-    )
+    # Don't forward camera sync to the controller themselves - they're the source
+    if user_id != current_user_id do
+      send_update(Object3DPlayerComponent,
+        id: "object3d-player-#{room_id}",
+        synced_camera_position: camera_position,
+        synced_camera_target: camera_target
+      )
+    end
 
     {:noreply, socket}
   end
@@ -1030,7 +1076,11 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_info({:object3d_controller_changed, %{controller_user_id: user_id, controller_user_name: user_name}}, socket) do
+  def handle_info(
+        {:object3d_controller_changed,
+         %{controller_user_id: user_id, controller_user_name: user_name}},
+        socket
+      ) do
     room_id = socket.assigns.room.id
 
     send_update(Object3DPlayerComponent,
@@ -1235,13 +1285,17 @@ defmodule SensoctoWeb.RoomShowLive do
       end)
     end)
     |> Enum.map(fn {sensor_id, sensor} ->
-      hr_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-        attr.attribute_type in ["heartrate", "hr"]
-      end)
-      bpm = case hr_attr do
-        {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
-        nil -> 0
-      end
+      hr_attr =
+        Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type in ["heartrate", "hr"]
+        end)
+
+      bpm =
+        case hr_attr do
+          {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+          nil -> 0
+        end
+
       %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, bpm: bpm}
     end)
   end
@@ -1255,19 +1309,26 @@ defmodule SensoctoWeb.RoomShowLive do
       end)
     end)
     |> Enum.map(fn {sensor_id, sensor} ->
-      geo_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-        attr.attribute_type == "geolocation"
-      end)
-      position = case geo_attr do
-        {_attr_id, attr} ->
-          payload = attr.lastvalue && attr.lastvalue.payload
-          case payload do
-            %{"latitude" => lat, "longitude" => lng} -> %{latitude: lat, longitude: lng}
-            %{latitude: lat, longitude: lng} -> %{latitude: lat, longitude: lng}
-            _ -> nil
-          end
-        nil -> nil
-      end
+      geo_attr =
+        Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type == "geolocation"
+        end)
+
+      position =
+        case geo_attr do
+          {_attr_id, attr} ->
+            payload = attr.lastvalue && attr.lastvalue.payload
+
+            case payload do
+              %{"latitude" => lat, "longitude" => lng} -> %{latitude: lat, longitude: lng}
+              %{latitude: lat, longitude: lng} -> %{latitude: lat, longitude: lng}
+              _ -> nil
+            end
+
+          nil ->
+            nil
+        end
+
       if position do
         %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, position: position}
       else
@@ -1312,19 +1373,26 @@ defmodule SensoctoWeb.RoomShowLive do
       end)
     end)
     |> Enum.map(fn {sensor_id, sensor} ->
-      batt_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-        attr.attribute_type == "battery"
-      end)
-      level = case batt_attr do
-        {_attr_id, attr} ->
-          payload = attr.lastvalue && attr.lastvalue.payload
-          case payload do
-            %{"level" => lvl} -> lvl
-            %{level: lvl} -> lvl
-            _ -> nil
-          end
-        nil -> nil
-      end
+      batt_attr =
+        Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type == "battery"
+        end)
+
+      level =
+        case batt_attr do
+          {_attr_id, attr} ->
+            payload = attr.lastvalue && attr.lastvalue.payload
+
+            case payload do
+              %{"level" => lvl} -> lvl
+              %{level: lvl} -> lvl
+              _ -> nil
+            end
+
+          nil ->
+            nil
+        end
+
       %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, level: level || 0}
     end)
   end
@@ -1338,13 +1406,17 @@ defmodule SensoctoWeb.RoomShowLive do
       end)
     end)
     |> Enum.map(fn {sensor_id, sensor} ->
-      spo2_attr = Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-        attr.attribute_type == "spo2"
-      end)
-      spo2 = case spo2_attr do
-        {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload || 0
-        nil -> 0
-      end
+      spo2_attr =
+        Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type == "spo2"
+        end)
+
+      spo2 =
+        case spo2_attr do
+          {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+          nil -> 0
+        end
+
       %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, spo2: spo2}
     end)
   end
@@ -1395,12 +1467,12 @@ defmodule SensoctoWeb.RoomShowLive do
     <div>
       <.breadcrumbs>
         <:crumb navigate={~p"/rooms"}>Rooms</:crumb>
-        <:crumb><%= @room.name %></:crumb>
+        <:crumb>{@room.name}</:crumb>
       </.breadcrumbs>
 
       <div class="mb-6">
         <div class="flex items-center gap-4 mb-2">
-          <h1 class="text-2xl font-bold"><%= @room.name %></h1>
+          <h1 class="text-2xl font-bold">{@room.name}</h1>
           <div class="flex gap-2">
             <%= if @room.is_public do %>
               <span class="px-2 py-1 text-xs bg-green-600/20 text-green-400 rounded">Public</span>
@@ -1408,15 +1480,17 @@ defmodule SensoctoWeb.RoomShowLive do
               <span class="px-2 py-1 text-xs bg-yellow-600/20 text-yellow-400 rounded">Private</span>
             <% end %>
             <%= if not Map.get(@room, :is_persisted, true) do %>
-              <span class="px-2 py-1 text-xs bg-purple-600/20 text-purple-400 rounded">Temporary</span>
+              <span class="px-2 py-1 text-xs bg-purple-600/20 text-purple-400 rounded">
+                Temporary
+              </span>
             <% end %>
           </div>
         </div>
         <p class="text-sm text-gray-500">
-          by <%= get_owner_name(@room) %>
+          by {get_owner_name(@room)}
         </p>
         <%= if @room.description do %>
-          <p class="text-gray-400 mt-1"><%= @room.description %></p>
+          <p class="text-gray-400 mt-1">{@room.description}</p>
         <% end %>
       </div>
 
@@ -1426,7 +1500,12 @@ defmodule SensoctoWeb.RoomShowLive do
           class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
         >
           <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+            />
           </svg>
           <span class="hidden sm:inline">Share</span>
         </button>
@@ -1436,7 +1515,12 @@ defmodule SensoctoWeb.RoomShowLive do
             class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
           >
             <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
             </svg>
             <span class="hidden sm:inline">Add Sensor</span>
           </button>
@@ -1447,7 +1531,12 @@ defmodule SensoctoWeb.RoomShowLive do
             class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
           >
             <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
             </svg>
             <span class="hidden sm:inline">Edit</span>
           </button>
@@ -1457,7 +1546,12 @@ defmodule SensoctoWeb.RoomShowLive do
             class="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
           >
             <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
             </svg>
             <span class="hidden sm:inline">Delete</span>
           </button>
@@ -1469,7 +1563,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
             >
               <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
               </svg>
               <span class="hidden sm:inline">Leave Room</span>
             </button>
@@ -1479,7 +1578,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
             >
               <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                />
               </svg>
               <span class="hidden sm:inline">Join Room</span>
             </button>
@@ -1497,8 +1601,7 @@ defmodule SensoctoWeb.RoomShowLive do
               class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
                 if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
             >
-              <Heroicons.icon name="play" type="solid" class="h-4 w-4" />
-              Media Playback
+              <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
             </button>
           <% end %>
           <%= if Map.get(@room, :calls_enabled, true) do %>
@@ -1508,8 +1611,7 @@ defmodule SensoctoWeb.RoomShowLive do
               class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
                 if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
             >
-              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
-              Video Call
+              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Video Call
               <%= if @in_call do %>
                 <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
               <% end %>
@@ -1522,8 +1624,7 @@ defmodule SensoctoWeb.RoomShowLive do
               class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
                 if(@room_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
             >
-              <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" />
-              3D Object
+              <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
             </button>
           <% end %>
           <button
@@ -1532,8 +1633,7 @@ defmodule SensoctoWeb.RoomShowLive do
             class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
               if(@room_mode == :sensors, do: "bg-orange-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
           >
-            <Heroicons.icon name="cpu-chip" type="solid" class="h-4 w-4" />
-            Sensors
+            <Heroicons.icon name="cpu-chip" type="solid" class="h-4 w-4" /> Sensors
           </button>
         </div>
       <% end %>
@@ -1572,143 +1672,153 @@ defmodule SensoctoWeb.RoomShowLive do
         />
       </div>
 
-        <%!-- Sensors Panel - always visible --%>
-        <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
-          <%!-- Header with Lens Selector --%>
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold">Sensors</h2>
+      <%!-- Sensors Panel - always visible --%>
+      <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
+        <%!-- Header with Lens Selector --%>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold">Sensors</h2>
 
-            <%!-- Lens Selector - only show if there are sensors with attributes --%>
-            <%= if length(@available_lenses) > 0 do %>
-              <div class="flex items-center gap-3">
-                <%!-- Quick lens chips for common types --%>
-                <div class="hidden sm:flex items-center gap-2">
-                  <%= for lens <- Enum.take(@available_lenses, 4) do %>
-                    <button
-                      phx-click="select_lens"
-                      phx-value-lens={lens.type}
-                      class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+          <%!-- Lens Selector - only show if there are sensors with attributes --%>
+          <%= if length(@available_lenses) > 0 do %>
+            <div class="flex items-center gap-3">
+              <%!-- Quick lens chips for common types --%>
+              <div class="hidden sm:flex items-center gap-2">
+                <%= for lens <- Enum.take(@available_lenses, 4) do %>
+                  <button
+                    phx-click="select_lens"
+                    phx-value-lens={lens.type}
+                    class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
                         if(@current_lens == lens.type,
                           do: "bg-orange-500 text-white",
                           else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                      title={"#{lens.sensor_count} sensor(s)"}
-                    >
-                      <Heroicons.icon name={lens.icon} type="outline" class="h-3 w-3" />
-                      {lens.label}
-                    </button>
-                  <% end %>
-                </div>
-
-                <%!-- Lens Dropdown for all types --%>
-                <form phx-change="select_lens" class="flex items-center gap-2">
-                  <select
-                    name="lens"
-                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
+                    title={"#{lens.sensor_count} sensor(s)"}
                   >
-                    <option value="">All Sensors</option>
-                    <optgroup label="Health">
-                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :health) do %>
-                        <option value={lens.type} selected={@current_lens == lens.type}>
-                          {lens.label} ({lens.sensor_count})
-                        </option>
-                      <% end %>
-                    </optgroup>
-                    <optgroup label="Location">
-                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :location) do %>
-                        <option value={lens.type} selected={@current_lens == lens.type}>
-                          {lens.label} ({lens.sensor_count})
-                        </option>
-                      <% end %>
-                    </optgroup>
-                    <optgroup label="Motion">
-                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :motion) do %>
-                        <option value={lens.type} selected={@current_lens == lens.type}>
-                          {lens.label} ({lens.sensor_count})
-                        </option>
-                      <% end %>
-                    </optgroup>
-                    <optgroup label="Environment">
-                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :environment) do %>
-                        <option value={lens.type} selected={@current_lens == lens.type}>
-                          {lens.label} ({lens.sensor_count})
-                        </option>
-                      <% end %>
-                    </optgroup>
-                    <optgroup label="Device">
-                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :device) do %>
-                        <option value={lens.type} selected={@current_lens == lens.type}>
-                          {lens.label} ({lens.sensor_count})
-                        </option>
-                      <% end %>
-                    </optgroup>
-                    <optgroup label="Activity">
-                      <%= for lens <- Enum.filter(@available_lenses, & &1.category == :activity) do %>
-                        <option value={lens.type} selected={@current_lens == lens.type}>
-                          {lens.label} ({lens.sensor_count})
-                        </option>
-                      <% end %>
-                    </optgroup>
-                  </select>
-                </form>
-
-                <%!-- Clear lens button --%>
-                <%= if @current_lens do %>
-                  <button
-                    phx-click="clear_lens"
-                    class="text-gray-400 hover:text-white p-1"
-                    title="Show all sensors"
-                  >
-                    <Heroicons.icon name="x-mark" type="outline" class="h-4 w-4" />
+                    <Heroicons.icon name={lens.icon} type="outline" class="h-3 w-3" />
+                    {lens.label}
                   </button>
                 <% end %>
               </div>
-            <% end %>
-          </div>
 
-          <%= if Enum.empty?(@sensors) do %>
-            <div class="bg-gray-800 rounded-lg p-8 text-center">
-              <svg class="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-              </svg>
-              <p class="text-gray-400 mb-4">No sensors in this room yet.</p>
-              <%= if @can_manage do %>
-                <button
-                  phx-click="open_add_sensor_modal"
-                  class="text-blue-400 hover:text-blue-300"
+              <%!-- Lens Dropdown for all types --%>
+              <form phx-change="select_lens" class="flex items-center gap-2">
+                <select
+                  name="lens"
+                  class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
                 >
-                  Add your first sensor
-                </button>
-              <% end %>
-            </div>
-          <% else %>
-            <%!-- Composite Lens View --%>
-            <%= if @current_lens do %>
-              <div class="mb-6">
-                <.lens_composite_view
-                  lens_type={@current_lens}
-                  lens_data={@lens_data}
-                  socket={@socket}
-                />
-              </div>
-            <% end %>
+                  <option value="">All Sensors</option>
+                  <optgroup label="Health">
+                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :health) do %>
+                      <option value={lens.type} selected={@current_lens == lens.type}>
+                        {lens.label} ({lens.sensor_count})
+                      </option>
+                    <% end %>
+                  </optgroup>
+                  <optgroup label="Location">
+                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :location) do %>
+                      <option value={lens.type} selected={@current_lens == lens.type}>
+                        {lens.label} ({lens.sensor_count})
+                      </option>
+                    <% end %>
+                  </optgroup>
+                  <optgroup label="Motion">
+                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :motion) do %>
+                      <option value={lens.type} selected={@current_lens == lens.type}>
+                        {lens.label} ({lens.sensor_count})
+                      </option>
+                    <% end %>
+                  </optgroup>
+                  <optgroup label="Environment">
+                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :environment) do %>
+                      <option value={lens.type} selected={@current_lens == lens.type}>
+                        {lens.label} ({lens.sensor_count})
+                      </option>
+                    <% end %>
+                  </optgroup>
+                  <optgroup label="Device">
+                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :device) do %>
+                      <option value={lens.type} selected={@current_lens == lens.type}>
+                        {lens.label} ({lens.sensor_count})
+                      </option>
+                    <% end %>
+                  </optgroup>
+                  <optgroup label="Activity">
+                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :activity) do %>
+                      <option value={lens.type} selected={@current_lens == lens.type}>
+                        {lens.label} ({lens.sensor_count})
+                      </option>
+                    <% end %>
+                  </optgroup>
+                </select>
+              </form>
 
-            <%!-- Sensor Grid --%>
-            <div class={
-              if @in_call,
-                do: "grid gap-3 grid-cols-1 xl:grid-cols-2",
-                else: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-            }>
-              <%= for sensor <- @sensors do %>
-                <div id={"room_sensor_container_#{sensor.sensor_id}"}>
-                  {live_render(@socket, SensoctoWeb.StatefulSensorLive,
-                    id: "room_sensor_#{sensor.sensor_id}",
-                    session: %{"parent_pid" => self(), "sensor_id" => sensor.sensor_id}
-                  )}
-                </div>
+              <%!-- Clear lens button --%>
+              <%= if @current_lens do %>
+                <button
+                  phx-click="clear_lens"
+                  class="text-gray-400 hover:text-white p-1"
+                  title="Show all sensors"
+                >
+                  <Heroicons.icon name="x-mark" type="outline" class="h-4 w-4" />
+                </button>
               <% end %>
             </div>
           <% end %>
         </div>
+
+        <%= if Enum.empty?(@sensors) do %>
+          <div class="bg-gray-800 rounded-lg p-8 text-center">
+            <svg
+              class="w-16 h-16 mx-auto text-gray-600 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+              />
+            </svg>
+            <p class="text-gray-400 mb-4">No sensors in this room yet.</p>
+            <%= if @can_manage do %>
+              <button
+                phx-click="open_add_sensor_modal"
+                class="text-blue-400 hover:text-blue-300"
+              >
+                Add your first sensor
+              </button>
+            <% end %>
+          </div>
+        <% else %>
+          <%!-- Composite Lens View --%>
+          <%= if @current_lens do %>
+            <div class="mb-6">
+              <.lens_composite_view
+                lens_type={@current_lens}
+                lens_data={@lens_data}
+                socket={@socket}
+              />
+            </div>
+          <% end %>
+
+          <%!-- Sensor Grid --%>
+          <div class={
+            if @in_call,
+              do: "grid gap-3 grid-cols-1 xl:grid-cols-2",
+              else: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+          }>
+            <%= for sensor <- @sensors do %>
+              <div id={"room_sensor_container_#{sensor.sensor_id}"}>
+                {live_render(@socket, SensoctoWeb.StatefulSensorLive,
+                  id: "room_sensor_#{sensor.sensor_id}",
+                  session: %{"parent_pid" => self(), "sensor_id" => sensor.sensor_id}
+                )}
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
 
       <%= if @show_share_modal do %>
         <.share_modal room={@room} />
@@ -1723,7 +1833,12 @@ defmodule SensoctoWeb.RoomShowLive do
       <% end %>
 
       <%= if @show_settings do %>
-        <.settings_panel room={@room} is_owner={@is_owner} room_members={@room_members} current_user={@current_user} />
+        <.settings_panel
+          room={@room}
+          is_owner={@is_owner}
+          room_members={@room_members}
+          current_user={@current_user}
+        />
       <% end %>
     </div>
     """
@@ -1732,7 +1847,11 @@ defmodule SensoctoWeb.RoomShowLive do
   # Lens composite view component - renders the appropriate Svelte component for each lens type
   defp lens_composite_view(assigns) do
     ~H"""
-    <div id="lens-composite-view" phx-hook="CompositeMeasurementHandler" class="bg-gray-800 rounded-lg p-4">
+    <div
+      id="lens-composite-view"
+      phx-hook="CompositeMeasurementHandler"
+      class="bg-gray-800 rounded-lg p-4"
+    >
       <%= case normalize_attr_type(@lens_type) do %>
         <% "heartrate" -> %>
           <.svelte
@@ -1744,14 +1863,19 @@ defmodule SensoctoWeb.RoomShowLive do
         <% "geolocation" -> %>
           <.svelte
             name="CompositeGeolocation"
-            props={%{positions: Enum.map(@lens_data, fn d ->
+            props={
               %{
-                lat: d.position[:latitude] || d.position["latitude"],
-                lng: d.position[:longitude] || d.position["longitude"],
-                sensor_id: d.sensor_id,
-                sensor_name: d.sensor_name
+                positions:
+                  Enum.map(@lens_data, fn d ->
+                    %{
+                      lat: d.position[:latitude] || d.position["latitude"],
+                      lng: d.position[:longitude] || d.position["longitude"],
+                      sensor_id: d.sensor_id,
+                      sensor_name: d.sensor_name
+                    }
+                  end)
               }
-            end)}}
+            }
             socket={@socket}
             class="w-full"
           />
@@ -1806,11 +1930,26 @@ defmodule SensoctoWeb.RoomShowLive do
     <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <%= case @type do %>
         <% :ecg -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+          />
         <% :imu -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"
+          />
         <% _ -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+          />
       <% end %>
     </svg>
     """
@@ -1818,7 +1957,10 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp share_modal(assigns) do
     share_url = Sensocto.Rooms.share_url(assigns.room)
-    share_text = "Join my room \"#{assigns.room.name}\" on Sensocto! Code: #{assigns.room.join_code}"
+
+    share_text =
+      "Join my room \"#{assigns.room.name}\" on Sensocto! Code: #{assigns.room.join_code}"
+
     encoded_url = URI.encode_www_form(share_url)
     encoded_text = URI.encode_www_form(share_text)
 
@@ -1830,13 +1972,24 @@ defmodule SensoctoWeb.RoomShowLive do
       |> assign(:encoded_text, encoded_text)
 
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 md:p-6" phx-click="close_share_modal">
-      <div class="bg-gray-800 rounded-lg p-3 sm:p-4 md:p-6 w-full max-w-sm sm:max-w-md max-h-[95vh] overflow-y-auto" phx-click-away="close_share_modal">
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 md:p-6"
+      phx-click="close_share_modal"
+    >
+      <div
+        class="bg-gray-800 rounded-lg p-3 sm:p-4 md:p-6 w-full max-w-sm sm:max-w-md max-h-[95vh] overflow-y-auto"
+        phx-click-away="close_share_modal"
+      >
         <div class="flex justify-between items-center mb-3 sm:mb-4">
           <h2 class="text-base sm:text-lg md:text-xl font-semibold">Share Room</h2>
           <button phx-click="close_share_modal" class="text-gray-400 hover:text-white p-1 -mr-1">
             <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -1844,7 +1997,9 @@ defmodule SensoctoWeb.RoomShowLive do
         <%!-- Join Code --%>
         <div class="text-center mb-3 sm:mb-4 p-3 bg-gray-700/50 rounded-lg">
           <p class="text-gray-400 text-xs sm:text-sm mb-1">Join Code</p>
-          <p class="text-xl sm:text-2xl md:text-3xl font-mono font-bold tracking-wider text-white"><%= @room.join_code %></p>
+          <p class="text-xl sm:text-2xl md:text-3xl font-mono font-bold tracking-wider text-white">
+            {@room.join_code}
+          </p>
         </div>
 
         <%!-- Share Link --%>
@@ -1866,7 +2021,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3 py-2 rounded-lg transition-colors text-xs sm:text-sm whitespace-nowrap flex items-center gap-1"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                />
               </svg>
               <span class="hidden sm:inline">Copy</span>
             </button>
@@ -1885,8 +2045,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-green-600/20 rounded-lg transition-colors group"
               title="Share via WhatsApp"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-green-500 group-hover:text-green-400"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">WhatsApp</span>
             </a>
@@ -1899,8 +2063,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-600/20 rounded-lg transition-colors group"
               title="Share via Telegram"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 group-hover:text-blue-300" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 group-hover:text-blue-300"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Telegram</span>
             </a>
@@ -1911,8 +2079,18 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-600/20 rounded-lg transition-colors group"
               title="Share via SMS/Messages"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 group-hover:text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">SMS</span>
             </a>
@@ -1923,8 +2101,18 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-purple-600/20 rounded-lg transition-colors group"
               title="Share via Email"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-purple-400 group-hover:text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-purple-400 group-hover:text-purple-300"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Email</span>
             </a>
@@ -1937,8 +2125,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-gray-500/20 rounded-lg transition-colors group"
               title="Share on X (Twitter)"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-gray-300 group-hover:text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-gray-300 group-hover:text-white"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">X</span>
             </a>
@@ -1951,8 +2143,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-600/20 rounded-lg transition-colors group"
               title="Share via Messenger"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 group-hover:text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.975 12-11.111C24 4.975 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259 6.559-6.963 3.13 3.259 5.889-3.259-6.559 6.963z"/>
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 group-hover:text-blue-400"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.975 12-11.111C24 4.975 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259 6.559-6.963 3.13 3.259 5.889-3.259-6.559 6.963z" />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Messenger</span>
             </a>
@@ -1965,15 +2161,19 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-blue-700/20 rounded-lg transition-colors group"
               title="Share on LinkedIn"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 group-hover:text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 group-hover:text-blue-500"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">LinkedIn</span>
             </a>
 
             <%!-- Discord (copy with invite style) --%>
             <a
-              href={"https://discord.com/channels/@me"}
+              href="https://discord.com/channels/@me"
               target="_blank"
               rel="noopener noreferrer"
               phx-hook="CopyToClipboard"
@@ -1982,8 +2182,12 @@ defmodule SensoctoWeb.RoomShowLive do
               class="flex flex-col items-center p-2 sm:p-3 bg-gray-700 hover:bg-indigo-600/20 rounded-lg transition-colors group cursor-pointer"
               title="Copy for Discord"
             >
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover:text-indigo-300" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/>
+              <svg
+                class="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover:text-indigo-300"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z" />
               </svg>
               <span class="text-[10px] sm:text-xs text-gray-400 mt-1">Discord</span>
             </a>
@@ -1992,7 +2196,13 @@ defmodule SensoctoWeb.RoomShowLive do
 
         <%!-- QR Code --%>
         <div class="flex justify-center p-2 sm:p-3 bg-white rounded-lg">
-          <div id="qr-code" phx-hook="QRCode" data-value={@share_url} class="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44"></div>
+          <div
+            id="qr-code"
+            phx-hook="QRCode"
+            data-value={@share_url}
+            class="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44"
+          >
+          </div>
         </div>
         <p class="text-center text-gray-500 text-[10px] sm:text-xs mt-2">Scan QR code to join</p>
       </div>
@@ -2002,13 +2212,24 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp add_sensor_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_add_sensor_modal">
-      <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto" phx-click-away="close_add_sensor_modal">
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      phx-click="close_add_sensor_modal"
+    >
+      <div
+        class="bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto"
+        phx-click-away="close_add_sensor_modal"
+      >
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-semibold">Add Sensor</h2>
           <button phx-click="close_add_sensor_modal" class="text-gray-400 hover:text-white">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -2024,8 +2245,8 @@ defmodule SensoctoWeb.RoomShowLive do
                     <.sensor_icon type={sensor.sensor_type} />
                   </div>
                   <div>
-                    <p class="font-medium"><%= sensor.sensor_name %></p>
-                    <p class="text-xs text-gray-400"><%= sensor.sensor_type %></p>
+                    <p class="font-medium">{sensor.sensor_name}</p>
+                    <p class="text-xs text-gray-400">{sensor.sensor_type}</p>
                   </div>
                 </div>
                 <button
@@ -2046,13 +2267,21 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp edit_room_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_edit_modal">
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      phx-click="close_edit_modal"
+    >
       <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" phx-click={%JS{}}>
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-semibold">Edit Room</h2>
           <button phx-click="close_edit_modal" class="text-gray-400 hover:text-white">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -2072,7 +2301,9 @@ defmodule SensoctoWeb.RoomShowLive do
           </div>
 
           <div>
-            <label for="description" class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+            <label for="description" class="block text-sm font-medium text-gray-300 mb-1">
+              Description
+            </label>
             <textarea
               name="description"
               id="description"
@@ -2153,7 +2384,12 @@ defmodule SensoctoWeb.RoomShowLive do
           <h2 class="text-xl font-semibold">Room Settings</h2>
           <.link patch={~p"/rooms/#{@room.id}"} class="text-gray-400 hover:text-white">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </.link>
         </div>
@@ -2161,7 +2397,7 @@ defmodule SensoctoWeb.RoomShowLive do
         <div class="space-y-4">
           <div class="p-4 bg-gray-700 rounded-lg">
             <h3 class="font-medium mb-2">Join Code</h3>
-            <p class="text-2xl font-mono mb-3"><%= @room.join_code %></p>
+            <p class="text-2xl font-mono mb-3">{@room.join_code}</p>
             <%= if @is_owner and Map.get(@room, :is_persisted, true) do %>
               <button
                 phx-click="regenerate_code"
@@ -2177,28 +2413,29 @@ defmodule SensoctoWeb.RoomShowLive do
             <dl class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <dt class="text-gray-400">Type</dt>
-                <dd><%= if Map.get(@room, :is_persisted, true), do: "Persisted", else: "Temporary" %></dd>
+                <dd>{if Map.get(@room, :is_persisted, true), do: "Persisted", else: "Temporary"}</dd>
               </div>
               <div class="flex justify-between">
                 <dt class="text-gray-400">Visibility</dt>
-                <dd><%= if @room.is_public, do: "Public", else: "Private" %></dd>
+                <dd>{if @room.is_public, do: "Public", else: "Private"}</dd>
               </div>
             </dl>
           </div>
 
           <%!-- Members Management Section --%>
           <div class="p-4 bg-gray-700 rounded-lg">
-            <h3 class="font-medium mb-3">Members (<%= length(@room_members) %>)</h3>
+            <h3 class="font-medium mb-3">Members ({length(@room_members)})</h3>
             <div class="space-y-2 max-h-48 overflow-y-auto">
               <%= for member <- @room_members do %>
                 <div class="flex items-center justify-between p-2 bg-gray-600 rounded">
                   <div class="flex items-center gap-2">
                     <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-sm">
-                      <%= String.first(member.user.display_name || member.user.email || "?") |> String.upcase() %>
+                      {String.first(member.user.display_name || member.user.email || "?")
+                      |> String.upcase()}
                     </div>
                     <div>
                       <p class="text-sm font-medium">
-                        <%= member.user.display_name || member.user.email %>
+                        {member.user.display_name || member.user.email}
                         <%= if member.user_id == @current_user.id do %>
                           <span class="text-gray-400">(you)</span>
                         <% end %>

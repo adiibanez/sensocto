@@ -984,6 +984,17 @@ Hooks.Object3DPlayerHook = {
             this.centerObject();
         });
 
+        this.handleEvent("object3d_controller_changed", (data) => {
+            this.controllerId = data.controller_user_id;
+            this.isController = this.controllerId === this.currentUserId;
+            console.log('[Object3DPlayer] Controller changed:', this.controllerId, 'isController:', this.isController);
+        });
+
+        // Request initial state from server now that we're mounted and ready
+        // Use pushEventTo to target the LiveComponent, not the parent LiveView
+        console.log('[Object3DPlayer] Requesting initial sync from server');
+        this.pushEventTo(this.el, "request_object3d_sync", {});
+
         // Start camera sync interval for controller
         this.startCameraSyncInterval();
     },
@@ -1057,7 +1068,7 @@ Hooks.Object3DPlayerHook = {
             observer.observe(container, { childList: true });
             this.canvasObserver = observer;
 
-            this.pushEvent("viewer_ready", {});
+            this.pushEventTo(this.el, "viewer_ready", {});
 
             // Load initial splat if URL provided
             const splatUrl = this.el.dataset.splatUrl;
@@ -1066,7 +1077,7 @@ Hooks.Object3DPlayerHook = {
             }
         } catch (error) {
             console.error('[Object3DPlayer] Error initializing viewer:', error);
-            this.pushEvent("viewer_error", { message: error.message });
+            this.pushEventTo(this.el, "viewer_error", { message: error.message });
         }
     },
 
@@ -1077,7 +1088,7 @@ Hooks.Object3DPlayerHook = {
         }
 
         this.isLoading = true;
-        this.pushEvent("loading_started", { url });
+        this.pushEventTo(this.el, "loading_started", { url });
 
         try {
             // Dispose old viewer completely and create a fresh one
@@ -1147,12 +1158,12 @@ Hooks.Object3DPlayerHook = {
             }
 
             console.log('[Object3DPlayer] Splat loaded successfully');
-            this.pushEvent("loading_complete", { url });
+            this.pushEventTo(this.el, "loading_complete", { url });
 
         } catch (error) {
             console.error('[Object3DPlayer] Error loading splat:', error);
             this.loadError = error.message;
-            this.pushEvent("loading_error", { message: error.message, url });
+            this.pushEventTo(this.el, "loading_error", { message: error.message, url });
         } finally {
             this.isLoading = false;
         }
@@ -1162,6 +1173,7 @@ Hooks.Object3DPlayerHook = {
         // Update controller status
         this.controllerId = data.controller_user_id;
         this.isController = this.controllerId === this.currentUserId;
+        console.log('[Object3DPlayer] Sync received - controllerId:', this.controllerId, 'currentUserId:', this.currentUserId, 'isController:', this.isController);
 
         // Update current item
         if (data.current_item && data.current_item.id !== this.currentItemId) {
@@ -1240,7 +1252,7 @@ Hooks.Object3DPlayerHook = {
                 this.cameraPosition = { x: pos.x, y: pos.y, z: pos.z };
                 this.cameraTarget = { x: target.x, y: target.y, z: target.z };
 
-                this.pushEvent("camera_moved", {
+                this.pushEventTo(this.el, "camera_moved", {
                     position: this.cameraPosition,
                     target: this.cameraTarget
                 });

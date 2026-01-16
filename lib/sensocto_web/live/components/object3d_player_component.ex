@@ -31,7 +31,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
     is_first_update = is_nil(socket.assigns[:room_id])
 
     room_id =
-      assigns[:room_id] || socket.assigns[:room_id] || if(assigns[:is_lobby], do: :lobby, else: nil)
+      assigns[:room_id] || socket.assigns[:room_id] ||
+        if(assigns[:is_lobby], do: :lobby, else: nil)
 
     socket =
       socket
@@ -73,13 +74,24 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
 
     # Push camera sync event when receiving synced camera from controller
     socket =
-      if Map.has_key?(assigns, :synced_camera_position) and Map.has_key?(assigns, :synced_camera_target) do
+      if Map.has_key?(assigns, :synced_camera_position) and
+           Map.has_key?(assigns, :synced_camera_target) do
         socket
         |> assign(:camera_position, assigns[:synced_camera_position])
         |> assign(:camera_target, assigns[:synced_camera_target])
         |> push_event("object3d_camera_sync", %{
           camera_position: assigns[:synced_camera_position],
           camera_target: assigns[:synced_camera_target]
+        })
+      else
+        socket
+      end
+
+    # Push controller change to JS hook so it knows who can sync camera
+    socket =
+      if Map.has_key?(assigns, :controller_user_id) and not is_first_update do
+        push_event(socket, "object3d_controller_changed", %{
+          controller_user_id: assigns[:controller_user_id]
         })
       else
         socket
@@ -97,12 +109,17 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   end
 
   defp ensure_player_started(socket, room_id) do
+    require Logger
     opts = if room_id == :lobby, do: [is_lobby: true], else: []
 
     case Object3DPlayerSupervisor.get_or_start_player(room_id, opts) do
       {:ok, _pid} ->
         case Object3DPlayerServer.get_state(room_id) do
           {:ok, state} ->
+            Logger.debug(
+              "[Object3DPlayerComponent] Pushing initial sync - controller: #{inspect(state.controller_user_id)}, item: #{inspect(state.current_item && state.current_item.id)}"
+            )
+
             socket
             |> assign(:current_item, state.current_item)
             |> assign(:playlist_items, state.playlist_items)
@@ -110,6 +127,12 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             |> assign(:controller_user_name, state.controller_user_name)
             |> assign(:camera_position, state.camera_position)
             |> assign(:camera_target, state.camera_target)
+            |> push_event("object3d_sync", %{
+              current_item: state.current_item,
+              camera_position: state.camera_position,
+              camera_target: state.camera_target,
+              controller_user_id: state.controller_user_id
+            })
 
           {:error, _} ->
             socket
@@ -346,10 +369,14 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
       <%!-- Header --%>
       <div class="flex items-center justify-between px-3 py-2 bg-gray-900/50 border-b border-gray-700">
         <div class="flex items-center gap-2 min-w-0 flex-1">
-          <Heroicons.icon name="cube-transparent" type="solid" class="w-4 h-4 text-cyan-500 flex-shrink-0" />
+          <Heroicons.icon
+            name="cube-transparent"
+            type="solid"
+            class="w-4 h-4 text-cyan-500 flex-shrink-0"
+          />
           <%= if @collapsed && @current_item do %>
             <span class="text-sm text-white truncate" title={@current_item.name}>
-              <%= @current_item.name || "3D Object" %>
+              {@current_item.name || "3D Object"}
             </span>
             <%= if @loading do %>
               <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse flex-shrink-0"></span>
@@ -368,7 +395,12 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
           phx-target={@myself}
           class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
         >
-          <svg class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
@@ -396,7 +428,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
           <%= if @loading do %>
             <div class="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none">
               <div class="flex flex-col items-center">
-                <div class="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+                <div class="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin">
+                </div>
                 <span class="text-sm text-white mt-2">Loading...</span>
               </div>
             </div>
@@ -414,8 +447,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
                 title="Center camera on object"
               >
-                <Heroicons.icon name="viewfinder-circle" type="outline" class="w-3.5 h-3.5" />
-                Center
+                <Heroicons.icon name="viewfinder-circle" type="outline" class="w-3.5 h-3.5" /> Center
               </button>
               <button
                 phx-click="reset_camera"
@@ -423,8 +455,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
                 title="Reset camera to default position"
               >
-                <Heroicons.icon name="arrow-path" type="outline" class="w-3.5 h-3.5" />
-                Reset View
+                <Heroicons.icon name="arrow-path" type="outline" class="w-3.5 h-3.5" /> Reset View
               </button>
             </div>
           <% end %>
@@ -433,13 +464,17 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
           <%= if @current_item do %>
             <div class="mb-3">
               <p class="text-sm text-white font-medium truncate" title={@current_item.name}>
-                <%= @current_item.name || "3D Object" %>
+                {@current_item.name || "3D Object"}
               </p>
               <%= if @current_item.description do %>
-                <p class="text-xs text-gray-400 mt-1 line-clamp-2"><%= @current_item.description %></p>
+                <p class="text-xs text-gray-400 mt-1 line-clamp-2">{@current_item.description}</p>
               <% end %>
               <%= if @current_item.source_url do %>
-                <a href={@current_item.source_url} target="_blank" class="text-xs text-cyan-400 hover:text-cyan-300 mt-1 inline-block">
+                <a
+                  href={@current_item.source_url}
+                  target="_blank"
+                  class="text-xs text-cyan-400 hover:text-cyan-300 mt-1 inline-block"
+                >
                   View source
                 </a>
               <% end %>
@@ -454,7 +489,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 title="Previous"
               >
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
                 </svg>
               </button>
               <button
@@ -464,7 +499,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 title="Next"
               >
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
                 </svg>
               </button>
             </div>
@@ -476,7 +511,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
               <div class="flex items-center gap-2 text-sm">
                 <span class="w-2 h-2 bg-green-400 rounded-full"></span>
                 <span class="text-gray-300">
-                  Controlled by <span class="text-white font-medium"><%= @controller_user_name || "Someone" %></span>
+                  Controlled by
+                  <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
                 </span>
               </div>
               <%= if @current_user && @current_user.id == @controller_user_id do %>
@@ -522,7 +558,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
               </button>
             </div>
             <%= if @add_object_error do %>
-              <p class="text-red-400 text-xs mt-1"><%= @add_object_error %></p>
+              <p class="text-red-400 text-xs mt-1">{@add_object_error}</p>
             <% end %>
           </form>
 
@@ -532,9 +568,19 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             phx-target={@myself}
             class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white py-2"
           >
-            <span>Objects (<%= length(@playlist_items) %>)</span>
-            <svg class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <span>Objects ({length(@playlist_items)})</span>
+            <svg
+              class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
 
@@ -559,7 +605,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                     <%= unless is_current do %>
                       <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
                         </svg>
                       </div>
                     <% else %>
@@ -585,7 +631,11 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                           phx-value-item-id={item.id}
                           phx-target={@myself}
                         >
-                          <Heroicons.icon name="cube-transparent" type="outline" class="w-6 h-6 text-gray-500" />
+                          <Heroicons.icon
+                            name="cube-transparent"
+                            type="outline"
+                            class="w-6 h-6 text-gray-500"
+                          />
                         </div>
                       <% end %>
                     </div>
@@ -595,9 +645,11 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                       phx-value-item-id={item.id}
                       phx-target={@myself}
                     >
-                      <p class={"text-sm truncate #{if is_current, do: "text-cyan-100 font-medium", else: "text-white"}"}><%= item.name || "3D Object" %></p>
+                      <p class={"text-sm truncate #{if is_current, do: "text-cyan-100 font-medium", else: "text-white"}"}>
+                        {item.name || "3D Object"}
+                      </p>
                       <%= if item.description do %>
-                        <p class="text-xs text-gray-400 truncate"><%= item.description %></p>
+                        <p class="text-xs text-gray-400 truncate">{item.description}</p>
                       <% end %>
                     </div>
                     <button
@@ -608,7 +660,12 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                       title="Remove"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   </div>

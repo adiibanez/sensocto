@@ -348,7 +348,8 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
           camera_updated_at: DateTime.utc_now()
       }
 
-      broadcast_camera_sync(new_state, user_id)
+      # Active camera movement from user interaction
+      broadcast_camera_sync(new_state, user_id, true)
       {:noreply, new_state}
     else
       {:noreply, state}
@@ -386,8 +387,9 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
     schedule_heartbeat()
 
     # Broadcast camera state if there's a controller (for followers to sync)
+    # This is a passive sync, not active movement
     if state.controller_user_id && state.current_item_id do
-      broadcast_camera_sync(state, state.controller_user_id)
+      broadcast_camera_sync(state, state.controller_user_id, false)
     end
 
     {:noreply, state}
@@ -414,7 +416,7 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
     )
   end
 
-  defp broadcast_camera_sync(state, user_id) do
+  defp broadcast_camera_sync(state, user_id, is_active) do
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       pubsub_topic(state),
@@ -423,6 +425,7 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
          camera_position: state.camera_position,
          camera_target: state.camera_target,
          user_id: user_id,
+         is_active: is_active,
          timestamp: DateTime.utc_now()
        }}
     )

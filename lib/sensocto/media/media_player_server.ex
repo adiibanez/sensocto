@@ -157,7 +157,9 @@ defmodule Sensocto.Media.MediaPlayerServer do
     room_id = Keyword.fetch!(opts, :room_id)
     is_lobby = Keyword.get(opts, :is_lobby, false)
 
-    Logger.info("Starting MediaPlayerServer for #{if is_lobby, do: "lobby", else: "room #{room_id}"}")
+    Logger.info(
+      "Starting MediaPlayerServer for #{if is_lobby, do: "lobby", else: "room #{room_id}"}"
+    )
 
     # Get or create the playlist
     playlist_result =
@@ -383,9 +385,10 @@ defmodule Sensocto.Media.MediaPlayerServer do
     schedule_heartbeat()
 
     # Only broadcast if playing - this keeps clients in sync
+    # This is a passive sync, not active user interaction
     if state.state == :playing and state.current_item_id do
       current_item = Media.get_item(state.current_item_id)
-      broadcast_state_change(state, current_item)
+      broadcast_state_change(state, current_item, false)
     end
 
     {:noreply, state}
@@ -409,7 +412,7 @@ defmodule Sensocto.Media.MediaPlayerServer do
   defp pubsub_topic(%{is_lobby: true}), do: "media:lobby"
   defp pubsub_topic(%{room_id: room_id}), do: "media:#{room_id}"
 
-  defp broadcast_state_change(state, current_item) do
+  defp broadcast_state_change(state, current_item, is_active \\ true) do
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       pubsub_topic(state),
@@ -418,6 +421,7 @@ defmodule Sensocto.Media.MediaPlayerServer do
          state: state.state,
          position_seconds: calculate_current_position(state),
          current_item: current_item,
+         is_active: is_active,
          timestamp: DateTime.utc_now()
        }}
     )

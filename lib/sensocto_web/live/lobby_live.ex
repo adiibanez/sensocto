@@ -97,7 +97,10 @@ defmodule SensoctoWeb.LobbyLive do
         lobby_mode: :media,
         call_active: call_active,
         in_call: false,
-        call_participants: %{}
+        call_participants: %{},
+        # Bump animation assigns for mode buttons
+        media_bump: false,
+        object3d_bump: false
       )
 
     :telemetry.execute(
@@ -502,6 +505,17 @@ defmodule SensoctoWeb.LobbyLive do
         position_seconds: state.position_seconds
       })
 
+    # Trigger bump animation only on active user interaction (not heartbeat syncs)
+    is_active = Map.get(state, :is_active, false)
+
+    socket =
+      if is_active and not socket.assigns.media_bump do
+        Process.send_after(self(), :clear_media_bump, 300)
+        assign(socket, :media_bump, true)
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
@@ -566,7 +580,7 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_info(
         {:object3d_camera_synced,
-         %{camera_position: position, camera_target: target, user_id: user_id}},
+         %{camera_position: position, camera_target: target, user_id: user_id} = event},
         socket
       ) do
     current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
@@ -579,6 +593,17 @@ defmodule SensoctoWeb.LobbyLive do
         synced_camera_target: target
       )
     end
+
+    # Trigger bump animation only on active camera movement (not heartbeat syncs)
+    is_active = Map.get(event, :is_active, false)
+
+    socket =
+      if is_active and not socket.assigns.object3d_bump do
+        Process.send_after(self(), :clear_object3d_bump, 300)
+        assign(socket, :object3d_bump, true)
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
@@ -595,7 +620,8 @@ defmodule SensoctoWeb.LobbyLive do
       controller_user_name: user_name
     )
 
-    {:noreply, socket}
+    # Store controller_user_id so we can check if current user is the controller
+    {:noreply, assign(socket, :object3d_controller_user_id, user_id)}
   end
 
   @impl true
@@ -606,6 +632,27 @@ defmodule SensoctoWeb.LobbyLive do
     )
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:control_requested, %{requester_id: _requester_id, requester_name: requester_name}},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+    controller_user_id = socket.assigns[:object3d_controller_user_id]
+
+    # Only show flash to the controller
+    if current_user && controller_user_id && current_user.id == controller_user_id do
+      {:noreply,
+       socket
+       |> put_flash(
+         :info,
+         "🙋 #{requester_name} would like control of the 3D viewer. Click 'Release' to hand over control."
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   # Handle call events from CallServer via PubSub
@@ -655,6 +702,17 @@ defmodule SensoctoWeb.LobbyLive do
     # Global system load affects all call participants
     socket = push_event(socket, "set_attention_level", %{level: Atom.to_string(level)})
     {:noreply, socket}
+  end
+
+  # Clear bump animations after timeout
+  @impl true
+  def handle_info(:clear_media_bump, socket) do
+    {:noreply, assign(socket, :media_bump, false)}
+  end
+
+  @impl true
+  def handle_info(:clear_object3d_bump, socket) do
+    {:noreply, assign(socket, :object3d_bump, false)}
   end
 
   @impl true

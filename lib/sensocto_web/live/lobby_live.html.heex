@@ -21,11 +21,17 @@
         :if={@sensor_ids != [] && @live_action == :sensors}
         phx-click="toggle_all_view_mode"
         class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
-        title={if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"}
+        title={
+          if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"
+        }
       >
         <span>All:</span>
         <Heroicons.icon
-          name={if @global_view_mode == :summary, do: "magnifying-glass-plus", else: "magnifying-glass-minus"}
+          name={
+            if @global_view_mode == :summary,
+              do: "magnifying-glass-plus",
+              else: "magnifying-glass-minus"
+          }
           type="outline"
           class="h-4 w-4"
         />
@@ -39,20 +45,19 @@
     <button
       phx-click="switch_lobby_mode"
       phx-value-mode="media"
-      class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
-        if(@lobby_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+      class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+        if(@lobby_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+        if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
     >
-      <Heroicons.icon name="play" type="solid" class="h-4 w-4" />
-      Media Playback
+      <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
     </button>
     <button
       phx-click="switch_lobby_mode"
       phx-value-mode="call"
-      class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+      class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
         if(@lobby_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
     >
-      <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
-      Video Call
+      <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Video Call
       <%= if @in_call do %>
         <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
       <% end %>
@@ -60,11 +65,11 @@
     <button
       phx-click="switch_lobby_mode"
       phx-value-mode="object3d"
-      class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
-        if(@lobby_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+      class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+        if(@lobby_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+        if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
     >
-      <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" />
-      3D Object
+      <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
     </button>
   </div>
 
@@ -116,8 +121,7 @@
               do: "bg-orange-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
         >
-          <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" />
-          All
+          <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
         </.link>
         <.link
           patch={~p"/lobby/heartrate"}
@@ -126,8 +130,7 @@
               do: "bg-orange-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
         >
-          <Heroicons.icon name="heart" type="outline" class="h-3 w-3" />
-          Heartrate
+          <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
         </.link>
         <.link
           patch={~p"/lobby/ecg"}
@@ -136,8 +139,7 @@
               do: "bg-orange-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
         >
-          <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" />
-          ECG
+          <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
         </.link>
         <.link
           patch={~p"/lobby/battery"}
@@ -146,8 +148,7 @@
               do: "bg-orange-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
         >
-          <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" />
-          Battery
+          <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
         </.link>
       </div>
 
@@ -180,8 +181,10 @@
       class={[
         "grid grid-cols-1",
         if(@global_view_mode == :summary,
-          do: "gap-2 sm:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
-          else: "gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+          do:
+            "gap-2 sm:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+          else:
+            "gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
         )
       ]}
     >
@@ -200,7 +203,11 @@
     </div>
   </div>
 
-  <div :if={@live_action == :heartrate} id="composite-heartrate" phx-hook="CompositeMeasurementHandler">
+  <div
+    :if={@live_action == :heartrate}
+    id="composite-heartrate"
+    phx-hook="CompositeMeasurementHandler"
+  >
     <.svelte
       name="CompositeHeartrate"
       props={%{sensors: @heartrate_sensors}}
@@ -228,7 +235,11 @@
     </div>
   </div>
 
-  <div :if={@live_action == :location} id="composite-location" phx-hook="CompositeMeasurementHandler">
+  <div
+    :if={@live_action == :location}
+    id="composite-location"
+    phx-hook="CompositeMeasurementHandler"
+  >
     <.svelte
       name="CompositeMap"
       props={%{positions: @location_sensors}}
@@ -256,7 +267,11 @@
     </div>
   </div>
 
-  <div :if={@live_action == :battery} id="composite-battery" phx-hook="CompositeMeasurementHandler">
+  <div
+    :if={@live_action == :battery}
+    id="composite-battery"
+    phx-hook="CompositeMeasurementHandler"
+  >
     <.svelte
       name="CompositeBattery"
       props={%{sensors: @battery_sensors}}
@@ -284,12 +299,12 @@
           <%!-- User Header --%>
           <div class="flex items-center gap-3 mb-3 pb-3 border-b border-gray-700">
             <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-              <%= String.first(user.connector_name) |> String.upcase() %>
+              {String.first(user.connector_name) |> String.upcase()}
             </div>
             <div class="flex-1 min-w-0">
-              <h3 class="text-white font-semibold truncate text-base"><%= user.connector_name %></h3>
+              <h3 class="text-white font-semibold truncate text-base">{user.connector_name}</h3>
               <p class="text-gray-400 text-xs">
-                <%= user.sensor_count %> sensor<%= if user.sensor_count != 1, do: "s" %> · <%= user.total_attributes %> attributes
+                {user.sensor_count} sensor{if user.sensor_count != 1, do: "s"} · {user.total_attributes} attributes
               </p>
             </div>
             <div class="flex-shrink-0">
@@ -306,7 +321,7 @@
             <div class="flex flex-wrap gap-1.5">
               <%= for sensor <- user.sensors do %>
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300">
-                  <%= sensor.sensor_name %>
+                  {sensor.sensor_name}
                 </span>
               <% end %>
             </div>
@@ -321,50 +336,100 @@
                   <div class="flex items-center gap-1.5 mb-1">
                     <%= case attr.type do %>
                       <% "heartrate" -> %>
-                        <Heroicons.icon name="heart" type="solid" class="h-3.5 w-3.5 text-red-400" />
+                        <Heroicons.icon
+                          name="heart"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-red-400"
+                        />
                       <% "hr" -> %>
-                        <Heroicons.icon name="heart" type="solid" class="h-3.5 w-3.5 text-red-400" />
+                        <Heroicons.icon
+                          name="heart"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-red-400"
+                        />
                       <% "battery" -> %>
-                        <Heroicons.icon name="battery-50" type="solid" class="h-3.5 w-3.5 text-yellow-400" />
+                        <Heroicons.icon
+                          name="battery-50"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-yellow-400"
+                        />
                       <% "temperature" -> %>
-                        <Heroicons.icon name="fire" type="solid" class="h-3.5 w-3.5 text-orange-400" />
+                        <Heroicons.icon
+                          name="fire"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-orange-400"
+                        />
                       <% "spo2" -> %>
-                        <Heroicons.icon name="beaker" type="solid" class="h-3.5 w-3.5 text-blue-400" />
+                        <Heroicons.icon
+                          name="beaker"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-blue-400"
+                        />
                       <% "ecg" -> %>
-                        <Heroicons.icon name="chart-bar" type="solid" class="h-3.5 w-3.5 text-green-400" />
+                        <Heroicons.icon
+                          name="chart-bar"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-green-400"
+                        />
                       <% "blood_pressure" -> %>
-                        <Heroicons.icon name="arrow-trending-up" type="solid" class="h-3.5 w-3.5 text-purple-400" />
+                        <Heroicons.icon
+                          name="arrow-trending-up"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-purple-400"
+                        />
                       <% "respiratory" -> %>
-                        <Heroicons.icon name="cloud" type="solid" class="h-3.5 w-3.5 text-cyan-400" />
+                        <Heroicons.icon
+                          name="cloud"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-cyan-400"
+                        />
                       <% "imu" -> %>
-                        <Heroicons.icon name="cube" type="solid" class="h-3.5 w-3.5 text-indigo-400" />
+                        <Heroicons.icon
+                          name="cube"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-indigo-400"
+                        />
                       <% "geolocation" -> %>
-                        <Heroicons.icon name="map-pin" type="solid" class="h-3.5 w-3.5 text-emerald-400" />
+                        <Heroicons.icon
+                          name="map-pin"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-emerald-400"
+                        />
                       <% "button" -> %>
-                        <Heroicons.icon name="cursor-arrow-rays" type="solid" class="h-3.5 w-3.5 text-pink-400" />
+                        <Heroicons.icon
+                          name="cursor-arrow-rays"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-pink-400"
+                        />
                       <% _ -> %>
-                        <Heroicons.icon name="signal" type="solid" class="h-3.5 w-3.5 text-gray-400" />
+                        <Heroicons.icon
+                          name="signal"
+                          type="solid"
+                          class="h-3.5 w-3.5 text-gray-400"
+                        />
                     <% end %>
-                    <span class="text-xs text-gray-300 capitalize"><%= String.replace(attr.type, "_", " ") %></span>
+                    <span class="text-xs text-gray-300 capitalize">
+                      {String.replace(attr.type, "_", " ")}
+                    </span>
                   </div>
                   <div class="text-sm font-mono text-white">
                     <%= cond do %>
                       <% attr.latest_value == nil -> %>
                         <span class="text-gray-500">--</span>
                       <% attr.type in ["heartrate", "hr"] and is_number(attr.latest_value) -> %>
-                        <%= "#{round(attr.latest_value)} bpm" %>
+                        {"#{round(attr.latest_value)} bpm"}
                       <% attr.type == "battery" and is_map(attr.latest_value) -> %>
-                        <%= "#{round(attr.latest_value[:level] || attr.latest_value["level"] || 0)}%" %>
+                        {"#{round(attr.latest_value[:level] || attr.latest_value["level"] || 0)}%"}
                       <% attr.type == "battery" and is_number(attr.latest_value) -> %>
-                        <%= "#{round(attr.latest_value)}%" %>
+                        {"#{round(attr.latest_value)}%"}
                       <% attr.type == "temperature" and is_number(attr.latest_value) -> %>
-                        <%= "#{Float.round(attr.latest_value * 1.0, 1)}°" %>
+                        {"#{Float.round(attr.latest_value * 1.0, 1)}°"}
                       <% attr.type == "spo2" and is_number(attr.latest_value) -> %>
-                        <%= "#{round(attr.latest_value)}%" %>
+                        {"#{round(attr.latest_value)}%"}
                       <% is_map(attr.latest_value) -> %>
                         <span class="text-gray-400 text-xs">data</span>
                       <% is_number(attr.latest_value) -> %>
-                        <%= "#{Float.round(attr.latest_value * 1.0, 1)}" %>
+                        {"#{Float.round(attr.latest_value * 1.0, 1)}"}
                       <% true -> %>
                         <span class="text-gray-400 text-xs">--</span>
                     <% end %>
@@ -392,8 +457,14 @@
 
 <%!-- Join Room Modal --%>
 <%= if @show_join_modal do %>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_join_modal">
-    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto" phx-click={%JS{}}>
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    phx-click="close_join_modal"
+  >
+    <div
+      class="bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto"
+      phx-click={%JS{}}
+    >
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-xl font-semibold">Join a Room</h2>
         <button phx-click="close_join_modal" class="text-gray-400 hover:text-white">
@@ -422,7 +493,9 @@
             Join
           </button>
         </form>
-        <p class="text-xs text-gray-500 mt-1">Enter the room's join code to connect with your sensors</p>
+        <p class="text-xs text-gray-500 mt-1">
+          Enter the room's join code to connect with your sensors
+        </p>
       </div>
 
       <%!-- Public Rooms List --%>
@@ -434,7 +507,9 @@
               <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
                 <div class="flex-1 min-w-0">
                   <p class="font-medium text-white truncate">{room.name}</p>
-                  <p :if={room.description} class="text-xs text-gray-400 truncate">{room.description}</p>
+                  <p :if={room.description} class="text-xs text-gray-400 truncate">
+                    {room.description}
+                  </p>
                 </div>
                 <button
                   phx-click="join_room"

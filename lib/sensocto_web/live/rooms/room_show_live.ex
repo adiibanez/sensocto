@@ -10,7 +10,9 @@ defmodule SensoctoWeb.RoomShowLive do
   alias Sensocto.Rooms
   alias Sensocto.Calls
   alias Sensocto.Accounts.UserPreferences
+  alias Sensocto.AttentionTracker
   alias Sensocto.Media.MediaPlayerServer
+  alias Sensocto.Object3D.Object3DPlayerServer
   alias Sensocto.Types.AttributeType
   alias Phoenix.PubSub
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
@@ -83,6 +85,13 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:room_mode, get_default_mode(room))
           # Room members (loaded when settings panel is opened)
           |> assign(:room_members, [])
+          # Bump animation assigns for mode buttons
+          |> assign(:media_bump, false)
+          |> assign(:object3d_bump, false)
+          # Control request modal state
+          |> assign(:control_request_modal, nil)
+          # Initialize object3d controller from server state
+          |> assign(:object3d_controller_user_id, get_object3d_controller(room_id))
 
         {:ok, socket}
 
@@ -443,13 +452,42 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_event("select_lens", %{"lens" => lens_type}, socket) do
     lens_type = if lens_type == "", do: nil, else: lens_type
+    user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
+    old_lens = socket.assigns[:current_lens]
+    old_lens_data = socket.assigns[:lens_data] || []
+
+    # Unregister attention for previous lens sensors
+    if user_id && old_lens && is_list(old_lens_data) do
+      normalized_old_attr = normalize_attr_type(old_lens)
+
+      Enum.each(old_lens_data, fn sensor ->
+        sensor_id = sensor[:sensor_id] || sensor["sensor_id"]
+
+        if sensor_id do
+          AttentionTracker.unregister_view(sensor_id, normalized_old_attr, user_id)
+        end
+      end)
+    end
 
     lens_data =
       if lens_type do
         extract_lens_data(socket.assigns.sensors_state, lens_type)
       else
-        %{}
+        []
       end
+
+    # Register attention for new lens sensors
+    if user_id && lens_type && is_list(lens_data) do
+      normalized_attr = normalize_attr_type(lens_type)
+
+      Enum.each(lens_data, fn sensor ->
+        sensor_id = sensor[:sensor_id] || sensor["sensor_id"]
+
+        if sensor_id do
+          AttentionTracker.register_view(sensor_id, normalized_attr, user_id)
+        end
+      end)
+    end
 
     {:noreply,
      socket
@@ -459,10 +497,27 @@ defmodule SensoctoWeb.RoomShowLive do
 
   @impl true
   def handle_event("clear_lens", _params, socket) do
+    user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
+    old_lens = socket.assigns[:current_lens]
+    old_lens_data = socket.assigns[:lens_data] || []
+
+    # Unregister attention for lens sensors
+    if user_id && old_lens && is_list(old_lens_data) do
+      normalized_attr = normalize_attr_type(old_lens)
+
+      Enum.each(old_lens_data, fn sensor ->
+        sensor_id = sensor[:sensor_id] || sensor["sensor_id"]
+
+        if sensor_id do
+          AttentionTracker.unregister_view(sensor_id, normalized_attr, user_id)
+        end
+      end)
+    end
+
     {:noreply,
      socket
      |> assign(:current_lens, nil)
-     |> assign(:lens_data, %{})}
+     |> assign(:lens_data, [])}
   end
 
   @impl true
@@ -814,6 +869,36 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
+  def handle_event("dismiss_control_request", _, socket) do
+    {:noreply, assign(socket, :control_request_modal, nil)}
+  end
+
+  @impl true
+  def handle_event("release_control_from_modal", _, socket) do
+    room_id = socket.assigns.room.id
+    current_user = socket.assigns.current_user
+    modal_data = socket.assigns.control_request_modal
+
+    if current_user && modal_data do
+      # First release control from current user
+      Object3DPlayerServer.release_control(room_id, current_user.id)
+
+      # Then give control to the requester
+      Object3DPlayerServer.take_control(
+        room_id,
+        modal_data.requester_id,
+        modal_data.requester_name
+      )
+
+      Logger.info(
+        "[RoomShowLive] Control transferred from #{current_user.id} to #{modal_data.requester_id}"
+      )
+    end
+
+    {:noreply, assign(socket, :control_request_modal, nil)}
+  end
+
+  @impl true
   def handle_info(
         {:measurement,
          %{
@@ -1015,6 +1100,17 @@ defmodule SensoctoWeb.RoomShowLive do
         position_seconds: state.position_seconds
       })
 
+    # Trigger bump animation only on active user interaction (not heartbeat syncs)
+    is_active = Map.get(state, :is_active, false)
+
+    socket =
+      if is_active and not socket.assigns.media_bump do
+        Process.send_after(self(), :clear_media_bump, 300)
+        assign(socket, :media_bump, true)
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
@@ -1081,7 +1177,8 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_info(
         {:object3d_camera_synced,
-         %{camera_position: camera_position, camera_target: camera_target, user_id: user_id}},
+         %{camera_position: camera_position, camera_target: camera_target, user_id: user_id} =
+           event},
         socket
       ) do
     room_id = socket.assigns.room.id
@@ -1095,6 +1192,17 @@ defmodule SensoctoWeb.RoomShowLive do
         synced_camera_target: camera_target
       )
     end
+
+    # Trigger bump animation only on active camera movement (not heartbeat syncs)
+    is_active = Map.get(event, :is_active, false)
+
+    socket =
+      if is_active and not socket.assigns.object3d_bump do
+        Process.send_after(self(), :clear_object3d_bump, 300)
+        assign(socket, :object3d_bump, true)
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
@@ -1125,7 +1233,50 @@ defmodule SensoctoWeb.RoomShowLive do
       controller_user_name: user_name
     )
 
-    {:noreply, socket}
+    # Store controller info in socket for control request handling
+    {:noreply,
+     socket
+     |> assign(:object3d_controller_user_id, user_id)}
+  end
+
+  @impl true
+  def handle_info(
+        {:control_requested, %{requester_id: requester_id, requester_name: requester_name}},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+    controller_user_id = socket.assigns[:object3d_controller_user_id]
+
+    Logger.debug(
+      "[RoomShowLive] Control requested by #{requester_name} (#{requester_id}). " <>
+        "Current user: #{inspect(current_user && current_user.id)}, Controller: #{inspect(controller_user_id)}"
+    )
+
+    # Only show the modal to the current controller
+    if current_user && controller_user_id && current_user.id == controller_user_id do
+      Logger.info("[RoomShowLive] Showing control request modal to controller")
+
+      {:noreply,
+       socket
+       |> assign(:control_request_modal, %{
+         requester_id: requester_id,
+         requester_name: requester_name
+       })}
+    else
+      Logger.debug("[RoomShowLive] Not showing modal - user is not the controller")
+      {:noreply, socket}
+    end
+  end
+
+  # Clear bump animations after timeout
+  @impl true
+  def handle_info(:clear_media_bump, socket) do
+    {:noreply, assign(socket, :media_bump, false)}
+  end
+
+  @impl true
+  def handle_info(:clear_object3d_bump, socket) do
+    {:noreply, assign(socket, :object3d_bump, false)}
   end
 
   @impl true
@@ -1195,6 +1346,13 @@ defmodule SensoctoWeb.RoomShowLive do
       Map.get(room, :media_playback_enabled, true) -> :media
       Map.get(room, :object_3d_enabled, false) -> :object3d
       true -> :sensors
+    end
+  end
+
+  defp get_object3d_controller(room_id) do
+    case Object3DPlayerServer.get_state(room_id) do
+      {:ok, state} -> state.controller_user_id
+      _ -> nil
     end
   end
 
@@ -1643,8 +1801,9 @@ defmodule SensoctoWeb.RoomShowLive do
             <button
               phx-click="switch_room_mode"
               phx-value-mode="media"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
-                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+                if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
             >
               <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
             </button>
@@ -1653,7 +1812,7 @@ defmodule SensoctoWeb.RoomShowLive do
             <button
               phx-click="switch_room_mode"
               phx-value-mode="call"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
                 if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
             >
               <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Video Call
@@ -1666,8 +1825,9 @@ defmodule SensoctoWeb.RoomShowLive do
             <button
               phx-click="switch_room_mode"
               phx-value-mode="object3d"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
-                if(@room_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+                if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
             >
               <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
             </button>
@@ -1884,6 +2044,98 @@ defmodule SensoctoWeb.RoomShowLive do
           room_members={@room_members}
           current_user={@current_user}
         />
+      <% end %>
+
+      <%!-- Control Request Modal --%>
+      <%= if @control_request_modal do %>
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <%!-- Header --%>
+            <div class="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-4">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-white/20 rounded-full">
+                  <svg
+                    class="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                </div>
+                <h2 class="text-xl font-bold text-white">Control Request</h2>
+              </div>
+            </div>
+
+            <%!-- Content --%>
+            <div class="p-6">
+              <div class="flex items-center gap-4 mb-6">
+                <div class="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center">
+                  <svg
+                    class="w-8 h-8 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-lg font-semibold text-white">
+                    {@control_request_modal.requester_name}
+                  </p>
+                  <p class="text-sm text-gray-400">
+                    wants to control the 3D viewer
+                  </p>
+                </div>
+              </div>
+
+              <p class="text-gray-300 text-sm mb-6">
+                Transferring control will allow them to navigate the 3D scene while you follow their view.
+              </p>
+
+              <%!-- Actions --%>
+              <div class="flex gap-3">
+                <button
+                  phx-click="dismiss_control_request"
+                  class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+                >
+                  Keep Control
+                </button>
+                <button
+                  phx-click="release_control_from_modal"
+                  class="flex-1 px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                    />
+                  </svg>
+                  Transfer Control
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       <% end %>
     </div>
     """

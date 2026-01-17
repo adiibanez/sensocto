@@ -492,17 +492,17 @@ Hooks.MediaPlayerHook = {
         // Select the actual player div (where YT.Player will be initialized)
         // Use more specific selector to avoid matching wrapper or container
         const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"]):not([id*="container"])');
-        // Read video data from wrapper
-        const wrapperEl = this.el.querySelector('[id^="youtube-player-wrapper-"]');
 
-        if (!playerEl || !wrapperEl) {
+        if (!playerEl) {
             if (retryCount < 5) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
             }
             return;
         }
 
-        const videoId = wrapperEl.dataset.videoId;
+        // Read video ID from the hook element (this.el) which is updated by LiveView
+        // The wrapper element is inside phx-update="ignore" so its data attributes are stale
+        const videoId = this.el.dataset.currentVideoId;
         if (!videoId) {
             if (retryCount < 5) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
@@ -512,8 +512,12 @@ Hooks.MediaPlayerHook = {
 
         this.currentVideoId = videoId;
 
-        const autoplay = wrapperEl.dataset.autoplay === '1';
-        const startSeconds = parseInt(wrapperEl.dataset.start) || 0;
+        // Read state/position from hook element as well
+        const autoplay = this.el.dataset.playerState === 'playing';
+        const startSeconds = parseInt(this.el.dataset.position) || 0;
+
+        // Track if we need to autoplay - will start muted to comply with Chrome's autoplay policy
+        this.pendingAutoplay = autoplay;
 
         this.player = new YT.Player(playerEl.id, {
             height: '100%',
@@ -538,6 +542,20 @@ Hooks.MediaPlayerHook = {
 
     onPlayerReady(event) {
         this.isReady = true;
+
+        // If we need to autoplay but Chrome blocked it, try muted playback
+        if (this.pendingAutoplay) {
+            const state = this.player.getPlayerState();
+            // -1 = unstarted, meaning autoplay was blocked
+            if (state === YT.PlayerState.UNSTARTED || state === YT.PlayerState.CUED) {
+                console.log('[MediaPlayer] Autoplay was blocked, trying muted playback');
+                this.player.mute();
+                this.player.playVideo();
+                // Show a notice that video is muted
+                this.showMutedNotice();
+            }
+            this.pendingAutoplay = false;
+        }
 
         // Report duration to server
         const duration = this.player.getDuration();
@@ -630,8 +648,8 @@ Hooks.MediaPlayerHook = {
 
         if (!this.isReady || !this.player) {
             // Not ready yet - reinitialize
-            const wrapperEl = this.el.querySelector('[id^="youtube-player-wrapper-"]');
-            if (wrapperEl && youtubeAPILoaded) {
+            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"]):not([id*="container"])');
+            if (playerEl && youtubeAPILoaded) {
                 if (this.player) {
                     try {
                         this.player.destroy();
@@ -666,6 +684,7 @@ Hooks.MediaPlayerHook = {
         const isPlaying = playerState === YT.PlayerState.PLAYING;
         const isPaused = playerState === YT.PlayerState.PAUSED;
         const isBuffering = playerState === YT.PlayerState.BUFFERING;
+        const isUnstarted = playerState === YT.PlayerState.UNSTARTED;
         const shouldPlay = serverState === 'playing';
 
         // Check if we're in a user action grace period
@@ -676,6 +695,21 @@ Hooks.MediaPlayerHook = {
         // Only auto-resume if NOT in grace period (prevents race condition when user clicks pause)
         if (shouldPlay && !isPlaying && !isBuffering && !inActionGracePeriod) {
             this.player.playVideo();
+
+            // If player is stuck in UNSTARTED state, Chrome likely blocked autoplay
+            // Try muted playback after a short delay
+            if (isUnstarted && !this._mutedPlaybackAttempted) {
+                this._mutedPlaybackAttempted = true;
+                setTimeout(() => {
+                    const newState = this.player.getPlayerState();
+                    if (newState === YT.PlayerState.UNSTARTED || newState === YT.PlayerState.CUED) {
+                        console.log('[MediaPlayer] Autoplay blocked, trying muted playback');
+                        this.player.mute();
+                        this.player.playVideo();
+                        this.showMutedNotice();
+                    }
+                }, 500);
+            }
         } else if (!shouldPlay && (isPlaying || isBuffering)) {
             // Always allow pausing - this is the authoritative server state
             this.player.pauseVideo();
@@ -694,6 +728,46 @@ Hooks.MediaPlayerHook = {
             this.lastKnownPosition = serverPosition;
             this.lastReportedPosition = serverPosition;
         }
+    },
+
+    // Show a notice that video is muted due to autoplay policy
+    showMutedNotice() {
+        // Create muted notice overlay
+        const notice = document.createElement('div');
+        notice.id = 'muted-notice-' + this.roomId;
+        notice.className = 'absolute top-2 left-2 right-2 bg-amber-600/90 text-white px-3 py-2 rounded-lg text-sm flex items-center justify-between z-20 cursor-pointer';
+        notice.innerHTML = `
+            <span class="flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                </svg>
+                Click to unmute
+            </span>
+        `;
+        notice.onclick = () => {
+            if (this.player && this.player.isMuted()) {
+                this.player.unMute();
+                notice.remove();
+            }
+        };
+
+        // Find the player container and add the notice
+        const container = this.el.querySelector('.relative.aspect-video');
+        if (container) {
+            // Remove any existing notice
+            const existing = container.querySelector('#muted-notice-' + this.roomId);
+            if (existing) existing.remove();
+            container.appendChild(notice);
+        }
+
+        // Auto-remove notice when user unmutes via YouTube controls
+        this._mutedCheckInterval = setInterval(() => {
+            if (this.player && !this.player.isMuted()) {
+                notice.remove();
+                clearInterval(this._mutedCheckInterval);
+            }
+        }, 500);
     },
 
     // Called when user initiates a play/pause action (to prevent sync race conditions)
@@ -933,26 +1007,25 @@ Hooks.SortablePlaylist = {
 
 // Object3D Player Hook - Synchronized 3D Gaussian Splat viewer with playlist support
 Hooks.Object3DPlayerHook = {
-    mounted() {
+    async mounted() {
         this.viewer = null;
         this.isLoading = false;
         this.loadError = null;
         this.roomId = this.el.dataset.roomId;
         this.isController = false;
         this.controllerId = null;
+        this.canControl = true; // Initially true since no controller is set
         this.currentUserId = this.el.dataset.currentUserId;
         this.lastCameraSyncTime = 0;
         this.cameraSyncThrottle = 200; // Sync camera every 200ms max
         this.gracePeriod = 500; // Ignore incoming syncs for 500ms after user action
         this.lastUserActionTime = 0;
         this.currentItemId = null;
+        this.viewerReady = false;
 
         // Camera state
         this.cameraPosition = { x: 0, y: 0, z: 5 };
         this.cameraTarget = { x: 0, y: 0, z: 0 };
-
-        // Initialize viewer
-        this.initViewer();
 
         // Handle window resize
         this.handleResize = () => {
@@ -987,11 +1060,15 @@ Hooks.Object3DPlayerHook = {
         this.handleEvent("object3d_controller_changed", (data) => {
             this.controllerId = data.controller_user_id;
             this.isController = this.controllerId === this.currentUserId;
-            console.log('[Object3DPlayer] Controller changed:', this.controllerId, 'isController:', this.isController);
+            this.canControl = this.isController || !this.controllerId;
+            console.log('[Object3DPlayer] Controller changed:', this.controllerId, 'isController:', this.isController, 'canControl:', this.canControl);
         });
 
-        // Request initial state from server now that we're mounted and ready
-        // Use pushEventTo to target the LiveComponent, not the parent LiveView
+        // Initialize viewer first, then request sync
+        // This ensures the viewer is ready before we try to load content
+        await this.initViewer();
+
+        // Request initial state from server now that viewer is ready
         console.log('[Object3DPlayer] Requesting initial sync from server');
         this.pushEventTo(this.el, "request_object3d_sync", {});
 
@@ -1019,8 +1096,9 @@ Hooks.Object3DPlayerHook = {
         const rect = container.getBoundingClientRect();
 
         if (rect.width === 0 || rect.height === 0) {
-            setTimeout(() => this.initViewer(), 100);
-            return;
+            // Wait for container to have dimensions
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return this.initViewer();
         }
 
         try {
@@ -1068,13 +1146,11 @@ Hooks.Object3DPlayerHook = {
             observer.observe(container, { childList: true });
             this.canvasObserver = observer;
 
+            this.viewerReady = true;
             this.pushEventTo(this.el, "viewer_ready", {});
 
-            // Load initial splat if URL provided
-            const splatUrl = this.el.dataset.splatUrl;
-            if (splatUrl) {
-                this.loadSplat(splatUrl);
-            }
+            // NOTE: Do NOT load from data-splat-url here
+            // Let handleSync handle all loading to avoid race conditions
         } catch (error) {
             console.error('[Object3DPlayer] Error initializing viewer:', error);
             this.pushEventTo(this.el, "viewer_error", { message: error.message });
@@ -1082,60 +1158,57 @@ Hooks.Object3DPlayerHook = {
     },
 
     async loadSplat(url, cameraPosition, cameraTarget) {
+        console.log('[Object3DPlayer] loadSplat called with:', { url, cameraPosition, cameraTarget });
+
         if (this.isLoading) {
-            console.warn('[Object3DPlayer] Already loading a splat');
+            console.warn('[Object3DPlayer] Already loading a splat, queueing...');
+            this.pendingLoad = { url, cameraPosition, cameraTarget };
             return;
         }
 
+        // Wait for viewer to be ready
+        if (!this.viewerReady || !this.viewer) {
+            console.log('[Object3DPlayer] Viewer not ready, waiting...');
+            await new Promise(resolve => setTimeout(resolve, 200));
+            if (!this.viewerReady || !this.viewer) {
+                console.warn('[Object3DPlayer] Viewer still not ready, reinitializing...');
+                await this.initViewer();
+            }
+        }
+
         this.isLoading = true;
+        this._fadeInFixed = false; // Reset for new load
         this.pushEventTo(this.el, "loading_started", { url });
 
+        const container = this.viewerContainer || this.el.querySelector('[data-object3d-viewer]') || this.el;
+
+        // Update camera position/target if provided
+        if (cameraPosition) {
+            this.cameraPosition = cameraPosition;
+        }
+        if (cameraTarget) {
+            this.cameraTarget = cameraTarget;
+        }
+
         try {
-            // Dispose old viewer completely and create a fresh one
-            if (this.viewer) {
-                console.log('[Object3DPlayer] Disposing old viewer');
+            // Remove existing splat scenes from the viewer (don't dispose the whole viewer)
+            if (this.viewer.splatMesh && this.viewer.getSplatSceneCount && this.viewer.getSplatSceneCount() > 0) {
+                console.log('[Object3DPlayer] Removing existing splat scenes');
                 try {
-                    this.viewer.dispose();
+                    await this.viewer.removeSplatScenes();
                 } catch (e) {
-                    console.warn('[Object3DPlayer] Error disposing viewer:', e);
+                    console.warn('[Object3DPlayer] Error removing scenes, recreating viewer:', e);
+                    this.viewer.dispose();
+                    this.viewer = null;
+                    this.viewerReady = false;
+                    await this.initViewer();
                 }
-                this.viewer = null;
             }
 
-            // Clear the container
-            const container = this.viewerContainer || this.el.querySelector('[data-object3d-viewer]') || this.el;
-            while (container.firstChild) {
-                container.removeChild(container.firstChild);
-            }
+            console.log('[Object3DPlayer] Calling addSplatScene with URL:', url);
 
-            // Update camera position/target if provided
-            if (cameraPosition) {
-                this.cameraPosition = cameraPosition;
-            }
-            if (cameraTarget) {
-                this.cameraTarget = cameraTarget;
-            }
-
-            const initialPosition = [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z];
-            const initialLookAt = [this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z];
-
-            // Create new viewer
-            this.viewer = new GaussianSplats3D.Viewer({
-                cameraUp: [0, -1, 0],
-                initialCameraPosition: initialPosition,
-                initialCameraLookAt: initialLookAt,
-                rootElement: container,
-                selfDrivenMode: true,
-                useBuiltInControls: true,
-                dynamicScene: true,
-                antialiased: true,
-                focalAdjustment: 1.0,
-                sharedMemoryForWorkers: false,
-            });
-
-            console.log('[Object3DPlayer] Loading splat:', url);
-
-            await this.viewer.addSplatScene(url, {
+            // Use a timeout to catch hanging promises
+            const loadPromise = this.viewer.addSplatScene(url, {
                 splatAlphaRemovalThreshold: 5,
                 showLoadingUI: true,
                 position: [0, 0, 0],
@@ -1144,14 +1217,74 @@ Hooks.Object3DPlayerHook = {
                 progressiveLoad: true
             });
 
-            this.viewer.start();
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('addSplatScene timed out after 30s')), 30000);
+            });
 
-            // Configure controls AFTER viewer has started (controls are created during start)
-            // Use a short delay to ensure controls are fully initialized
+            await Promise.race([loadPromise, timeoutPromise]);
+            console.log('[Object3DPlayer] addSplatScene completed');
+
+        } catch (error) {
+            console.error('[Object3DPlayer] Error in addSplatScene:', error);
+            this.loadError = error.message;
+            this.pushEventTo(this.el, "loading_error", { message: error.message, url });
+            this.isLoading = false;
+            return;
+        }
+
+        // Post-loading setup (separated from try/catch to ensure it runs)
+        try {
+            console.log('[Object3DPlayer] Starting post-load setup');
+
+            // Start the viewer
+            this.viewer.start();
+            console.log('[Object3DPlayer] viewer.start() called');
+
+            // Wait a bit for the viewer to fully initialize
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // WORKAROUND: GaussianSplats3D sometimes doesn't properly add splatMesh to scene
+            if (this.viewer.splatMesh && this.viewer.threeScene) {
+                if (!this.viewer.splatMesh.parent) {
+                    console.log('[Object3DPlayer] Adding splatMesh to scene (workaround)');
+                    this.viewer.threeScene.add(this.viewer.splatMesh);
+                }
+                this.viewer.splatMesh.visible = true;
+
+                // Force material update and fix fadeInComplete uniform
+                if (this.viewer.splatMesh.material) {
+                    this.viewer.splatMesh.material.needsUpdate = true;
+
+                    // WORKAROUND: fadeInComplete uniform stays at 0, making splats invisible
+                    if (this.viewer.splatMesh.material.uniforms?.fadeInComplete) {
+                        console.log('[Object3DPlayer] Setting fadeInComplete to 1 (workaround)');
+                        this.viewer.splatMesh.material.uniforms.fadeInComplete.value = 1;
+                    }
+                }
+            }
+
+            // WORKAROUND: Ensure render loop is actually running
+            this.startRenderLoop();
+
+            // Update camera position after loading
+            if (this.viewer.camera) {
+                this.viewer.camera.position.set(
+                    this.cameraPosition.x,
+                    this.cameraPosition.y,
+                    this.cameraPosition.z
+                );
+                this.viewer.camera.lookAt(
+                    this.cameraTarget.x,
+                    this.cameraTarget.y,
+                    this.cameraTarget.z
+                );
+            }
+
+            // Configure controls AFTER splat has loaded
             await new Promise(resolve => setTimeout(resolve, 100));
             this.configureControls();
 
-            // Also configure canvas for proper event handling after load
+            // Setup canvas events
             const loadedCanvas = container.querySelector('canvas');
             if (loadedCanvas) {
                 this.setupCanvasEvents(loadedCanvas);
@@ -1161,22 +1294,94 @@ Hooks.Object3DPlayerHook = {
             this.pushEventTo(this.el, "loading_complete", { url });
 
         } catch (error) {
-            console.error('[Object3DPlayer] Error loading splat:', error);
-            this.loadError = error.message;
-            this.pushEventTo(this.el, "loading_error", { message: error.message, url });
-        } finally {
-            this.isLoading = false;
+            console.error('[Object3DPlayer] Error in post-load setup:', error);
         }
+
+        // Always reset loading state
+        this.isLoading = false;
+
+        // Process any pending load
+        if (this.pendingLoad) {
+            const pending = this.pendingLoad;
+            this.pendingLoad = null;
+            console.log('[Object3DPlayer] Processing pending load');
+            setTimeout(() => {
+                this.loadSplat(pending.url, pending.cameraPosition, pending.cameraTarget);
+            }, 100);
+        }
+    },
+
+    startRenderLoop() {
+        if (this._renderLoopRunning) {
+            console.log('[Object3DPlayer] Render loop already running');
+            return;
+        }
+
+        this._renderLoopRunning = true;
+        this._renderFrameCount = 0;
+        this._fadeInFixed = false;
+
+        const renderLoop = () => {
+            if (!this._renderLoopRunning || !this.viewer) {
+                console.log('[Object3DPlayer] Render loop stopped');
+                return;
+            }
+
+            try {
+                // WORKAROUND: Keep checking fadeInComplete until it's fixed
+                // The splatMesh material might not be ready immediately after addSplatScene
+                if (!this._fadeInFixed && this.viewer.splatMesh?.material?.uniforms?.fadeInComplete) {
+                    const fadeUniform = this.viewer.splatMesh.material.uniforms.fadeInComplete;
+                    if (fadeUniform.value < 1) {
+                        fadeUniform.value = 1;
+                        this.viewer.splatMesh.material.needsUpdate = true;
+                        console.log('[Object3DPlayer] Fixed fadeInComplete in render loop');
+                    }
+                    this._fadeInFixed = true;
+                }
+
+                if (this.viewer.update) {
+                    this.viewer.update();
+                }
+                if (this.viewer.render) {
+                    this.viewer.render();
+                }
+
+                this._renderFrameCount++;
+                if (this._renderFrameCount === 1 || this._renderFrameCount === 10) {
+                    console.log('[Object3DPlayer] Render frame:', this._renderFrameCount);
+                }
+            } catch (e) {
+                console.error('[Object3DPlayer] Error in render loop:', e);
+            }
+
+            this._renderFrameId = requestAnimationFrame(renderLoop);
+        };
+
+        renderLoop();
+        console.log('[Object3DPlayer] Started manual render loop');
     },
 
     handleSync(data) {
         // Update controller status
         this.controllerId = data.controller_user_id;
+        // User can control if they're the controller OR if no controller is set (anyone can control)
         this.isController = this.controllerId === this.currentUserId;
-        console.log('[Object3DPlayer] Sync received - controllerId:', this.controllerId, 'currentUserId:', this.currentUserId, 'isController:', this.isController);
+        this.canControl = this.isController || !this.controllerId;
+        console.log('[Object3DPlayer] Sync received:', {
+            controllerId: this.controllerId,
+            currentUserId: this.currentUserId,
+            isController: this.isController,
+            canControl: this.canControl,
+            hasCurrentItem: !!data.current_item,
+            currentItemId: data.current_item?.id,
+            thisCurrentItemId: this.currentItemId,
+            splatUrl: data.current_item?.splat_url
+        });
 
         // Update current item
         if (data.current_item && data.current_item.id !== this.currentItemId) {
+            console.log('[Object3DPlayer] New item detected, loading splat');
             this.currentItemId = data.current_item.id;
             if (data.current_item.splat_url) {
                 this.loadSplat(
@@ -1184,7 +1389,13 @@ Hooks.Object3DPlayerHook = {
                     data.camera_position,
                     data.camera_target
                 );
+            } else {
+                console.warn('[Object3DPlayer] No splat_url in current_item');
             }
+        } else if (!data.current_item) {
+            console.log('[Object3DPlayer] No current_item in sync data');
+        } else {
+            console.log('[Object3DPlayer] Same item, skipping load');
         }
     },
 
@@ -1230,8 +1441,8 @@ Hooks.Object3DPlayerHook = {
 
     startCameraSyncInterval() {
         this.cameraSyncInterval = setInterval(() => {
-            // Only sync if we're the controller
-            if (!this.isController || !this.viewer || !this.viewer.camera) return;
+            // Only sync if we can control (controller or no controller set)
+            if (!this.canControl || !this.viewer || !this.viewer.camera) return;
 
             const now = Date.now();
             if (now - this.lastCameraSyncTime < this.cameraSyncThrottle) return;
@@ -1439,6 +1650,13 @@ Hooks.Object3DPlayerHook = {
     destroyed() {
         window.removeEventListener('resize', this.handleResize);
 
+        // Stop manual render loop
+        this._renderLoopRunning = false;
+        if (this._renderFrameId) {
+            cancelAnimationFrame(this._renderFrameId);
+            this._renderFrameId = null;
+        }
+
         if (this.cameraSyncInterval) {
             clearInterval(this.cameraSyncInterval);
         }
@@ -1456,6 +1674,8 @@ Hooks.Object3DPlayerHook = {
             }
             this.viewer = null;
         }
+
+        this.viewerReady = false;
     }
 };
 

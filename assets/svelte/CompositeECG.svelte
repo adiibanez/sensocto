@@ -61,8 +61,10 @@
 
     pendingUpdates.forEach((points, sensorId) => {
       let data = sensorData.get(sensorId) || [];
-      // Append new points (already in order from server)
+      // Append new points
       data.push(...points);
+      // Sort by timestamp to prevent random connecting lines
+      data.sort((a, b) => a.x - b.x);
       // Trim from start efficiently using slice instead of shift loop
       if (data.length > MAX_DATA_POINTS) {
         data = data.slice(data.length - MAX_DATA_POINTS);

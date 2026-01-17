@@ -33,7 +33,9 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     is_first_update = is_nil(socket.assigns[:room_id])
 
     # Get room_id - either explicit or :lobby
-    room_id = assigns[:room_id] || socket.assigns[:room_id] || (if assigns[:is_lobby], do: :lobby, else: nil)
+    room_id =
+      assigns[:room_id] || socket.assigns[:room_id] ||
+        if assigns[:is_lobby], do: :lobby, else: nil
 
     # Track old state/position before updating
     old_state = socket.assigns[:player_state]
@@ -70,7 +72,14 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
         if user = socket.assigns[:current_user] do
           room_key = if socket.assigns.is_lobby, do: "lobby", else: room_id
           default_collapsed = socket.assigns[:initial_collapsed] || false
-          saved_collapsed = UserPreferences.get_ui_state(user.id, "media_player_collapsed_#{room_key}", default_collapsed)
+
+          saved_collapsed =
+            UserPreferences.get_ui_state(
+              user.id,
+              "media_player_collapsed_#{room_key}",
+              default_collapsed
+            )
+
           assign(socket, :collapsed, saved_collapsed)
         else
           # No user - use initial_collapsed prop
@@ -86,7 +95,8 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     new_position = socket.assigns[:position_seconds]
 
     socket =
-      if !is_first_update and (new_state != old_state or abs((new_position || 0) - (old_position || 0)) > 0.5) do
+      if !is_first_update and
+           (new_state != old_state or abs((new_position || 0) - (old_position || 0)) > 0.5) do
         push_event(socket, "media_sync", %{
           state: new_state,
           position_seconds: new_position
@@ -315,12 +325,17 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     case MediaPlayerServer.get_state(socket.assigns.room_id) do
       {:ok, state} ->
         require Logger
-        Logger.debug("MediaPlayerComponent pushing media_sync: #{state.state} pos=#{state.position_seconds}")
 
-        socket = push_event(socket, "media_sync", %{
-          state: state.state,
-          position_seconds: state.position_seconds
-        })
+        Logger.debug(
+          "MediaPlayerComponent pushing media_sync: #{state.state} pos=#{state.position_seconds}"
+        )
+
+        socket =
+          push_event(socket, "media_sync", %{
+            state: state.state,
+            position_seconds: state.position_seconds
+          })
+
         {:noreply, socket}
 
       {:error, _} ->
@@ -355,6 +370,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
           end
         else
           room_id = socket.assigns.room_id
+
           if room_id && room_id != :lobby do
             case Media.get_or_create_room_playlist(room_id) do
               {:ok, playlist} -> playlist
@@ -391,7 +407,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       <div class="flex items-center justify-between px-3 py-2 bg-gray-900/50 border-b border-gray-700">
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+            <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
           </svg>
           <%= if @collapsed && @current_item do %>
             <%!-- Collapsed: show thumbnail and title --%>
@@ -401,7 +417,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               class="w-10 h-6 object-cover rounded flex-shrink-0"
             />
             <span class="text-sm text-white truncate" title={@current_item.title}>
-              <%= @current_item.title || "Unknown" %>
+              {@current_item.title || "Unknown"}
             </span>
             <%= if @player_state == :playing do %>
               <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></span>
@@ -426,11 +442,31 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white group"
               title="Copy YouTube link"
             >
-              <svg class="w-4 h-4 group-[.copied]:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              <svg
+                class="w-4 h-4 group-[.copied]:hidden"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                />
               </svg>
-              <svg class="w-4 h-4 hidden group-[.copied]:block text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              <svg
+                class="w-4 h-4 hidden group-[.copied]:block text-green-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </button>
           <% end %>
@@ -439,8 +475,18 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
             phx-target={@myself}
             class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
           >
-            <svg class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <svg
+              class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
         </div>
@@ -473,8 +519,18 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
           <%= unless @current_item do %>
             <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-black z-10">
               <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               <p class="text-sm">Add a video to get started</p>
             </div>
@@ -487,54 +543,17 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
           <%= if @current_item do %>
             <div class="mb-3">
               <p class="text-sm text-white font-medium truncate" title={@current_item.title}>
-                <%= @current_item.title || "Unknown Title" %>
+                {@current_item.title || "Unknown Title"}
               </p>
 
-              <%!-- Progress Bar with Seek Control --%>
-              <%= if @current_item.duration_seconds && @current_item.duration_seconds > 0 do %>
-                <% duration = @current_item.duration_seconds %>
-                <% current_pos = @current_position || @position_seconds || 0 %>
-                <% progress_pct = min(100, max(0, current_pos / duration * 100)) %>
-                <% is_controller = can_control?(@controller_user_id, @current_user) %>
-
-                <div class="mt-2">
-                  <div class="flex items-center gap-2 text-xs text-gray-400 mb-1">
-                    <span><%= format_duration(round(current_pos)) %></span>
-                    <div class="flex-1"></div>
-                    <span><%= format_duration(duration) %></span>
-                  </div>
-
-                  <div
-                    id={"progress-bar-#{@room_id}"}
-                    class={"relative h-2 bg-gray-600 rounded-full overflow-hidden " <> if(is_controller, do: "cursor-pointer hover:h-3 transition-all", else: "")}
-                    phx-hook="SeekBar"
-                    phx-target={@myself}
-                    data-duration={duration}
-                    data-can-seek={if is_controller, do: "true", else: "false"}
-                  >
-                    <div
-                      class="absolute inset-y-0 left-0 bg-red-500 rounded-full transition-all duration-200"
-                      style={"width: #{progress_pct}%"}
-                    >
-                    </div>
-                    <%= if is_controller do %>
-                      <div
-                        class="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
-                        style={"left: calc(#{progress_pct}% - 6px)"}
-                      >
-                      </div>
-                    <% end %>
-                  </div>
-
-                  <%= if is_controller do %>
-                    <p class="text-xs text-gray-500 mt-1">Click to seek</p>
-                  <% end %>
-                </div>
-              <% else %>
-                <p class="text-xs text-gray-400 mt-1">
-                  <%= format_duration(round(@current_position || @position_seconds || 0)) %>
-                </p>
-              <% end %>
+              <%!-- Time Display (no seek bar) --%>
+              <% current_pos = @current_position || @position_seconds || 0 %>
+              <% duration = @current_item.duration_seconds %>
+              <p class="text-xs text-gray-400 mt-1">
+                {format_duration(round(current_pos))}{if duration && duration > 0,
+                  do: " / #{format_duration(duration)}",
+                  else: ""}
+              </p>
             </div>
           <% end %>
 
@@ -544,7 +563,8 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               <div class="flex items-center gap-2 text-sm">
                 <span class="w-2 h-2 bg-green-400 rounded-full"></span>
                 <span class="text-gray-300">
-                  Controlled by <span class="text-white font-medium"><%= @controller_user_name || "Someone" %></span>
+                  Controlled by
+                  <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
                 </span>
               </div>
               <%= if @current_user && @current_user.id == @controller_user_id do %>
@@ -590,7 +610,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               </button>
             </div>
             <%= if @add_video_error do %>
-              <p class="text-red-400 text-xs mt-1"><%= @add_video_error %></p>
+              <p class="text-red-400 text-xs mt-1">{@add_video_error}</p>
             <% end %>
           </form>
 
@@ -600,9 +620,19 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
             phx-target={@myself}
             class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white py-2"
           >
-            <span>Playlist (<%= length(@playlist_items) %>)</span>
-            <svg class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <span>Playlist ({length(@playlist_items)})</span>
+            <svg
+              class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
 
@@ -629,18 +659,18 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       <div class="p-1 text-gray-300 flex-shrink-0">
                         <%= if is_playing do %>
                           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                           </svg>
                         <% else %>
                           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z"/>
+                            <path d="M8 5v14l11-7z" />
                           </svg>
                         <% end %>
                       </div>
                     <% else %>
                       <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
                         </svg>
                       </div>
                     <% end %>
@@ -656,9 +686,21 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       <%= if is_playing do %>
                         <div class="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
                           <div class="flex gap-0.5">
-                            <div class="w-1 h-3 bg-gray-300 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                            <div class="w-1 h-3 bg-gray-300 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                            <div class="w-1 h-3 bg-gray-300 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                            <div
+                              class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
+                              style="animation-delay: 0ms"
+                            >
+                            </div>
+                            <div
+                              class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
+                              style="animation-delay: 150ms"
+                            >
+                            </div>
+                            <div
+                              class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
+                              style="animation-delay: 300ms"
+                            >
+                            </div>
                           </div>
                         </div>
                       <% end %>
@@ -669,11 +711,15 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       phx-value-item-id={item.id}
                       phx-target={@myself}
                     >
-                      <p class={"text-sm truncate #{if is_current, do: "text-gray-100 font-medium", else: "text-white"}"}><%= item.title || "Unknown" %></p>
+                      <p class={"text-sm truncate #{if is_current, do: "text-gray-100 font-medium", else: "text-white"}"}>
+                        {item.title || "Unknown"}
+                      </p>
                       <p class={"text-xs #{if is_current, do: "text-gray-400", else: "text-gray-400"}"}>
-                        <%= if item.duration_seconds, do: format_duration(item.duration_seconds), else: "" %>
+                        {if item.duration_seconds,
+                          do: format_duration(item.duration_seconds),
+                          else: ""}
                         <%= if is_current do %>
-                          <span class="ml-1">- <%= if is_playing, do: "Playing", else: "Paused" %></span>
+                          <span class="ml-1">- {if is_playing, do: "Playing", else: "Paused"}</span>
                         <% end %>
                       </p>
                     </div>
@@ -685,7 +731,12 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       title="Remove"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   </div>

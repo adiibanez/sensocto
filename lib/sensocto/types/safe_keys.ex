@@ -25,7 +25,20 @@ defmodule Sensocto.Types.SafeKeys do
     batch_size bearer_token action metadata features
     attributes values level charging latitude longitude
     accuracy x y z bpm rmssd sdnn value attribute_type
-    event
+    event id name description room_id user_id role
+    joined_at deleted deleted_at owner_id join_code
+    created_at updated_at sensors members settings
+    is_public max_members status type
+  )
+
+  # Allowed atoms for Bridge protocol decoding (wx modules, common atoms)
+  # These are atoms that may be received from the native side of the bridge
+  @allowed_bridge_atoms ~w(
+    ok error nil true false undefined null
+    _type tuple pid fun value
+    payload pid event
+    wx wxWebView wxFrame wxPanel wxButton wxWindow
+    new destroy connect getId loadURL batch set_env get_env getObjectType
   )
 
   @type validation_result :: {:ok, String.t()} | {:error, :invalid_attribute_id}
@@ -178,4 +191,33 @@ defmodule Sensocto.Types.SafeKeys do
   end
 
   def validate_action(_), do: {:error, :invalid_action}
+
+  @doc """
+  Safely converts a string to an atom for Bridge protocol decoding.
+  Only allows whitelisted atoms to prevent atom exhaustion from untrusted native input.
+
+  Returns `{:ok, atom}` for whitelisted atoms, or `{:error, :unknown_atom}` for unknown strings.
+
+  ## Examples
+
+      iex> Sensocto.Types.SafeKeys.safe_bridge_atom("ok")
+      {:ok, :ok}
+
+      iex> Sensocto.Types.SafeKeys.safe_bridge_atom("malicious")
+      {:error, :unknown_atom}
+  """
+  @spec safe_bridge_atom(String.t()) :: {:ok, atom()} | {:error, :unknown_atom}
+  def safe_bridge_atom(name) when is_binary(name) do
+    if name in @allowed_bridge_atoms do
+      {:ok, String.to_existing_atom(name)}
+    else
+      {:error, :unknown_atom}
+    end
+  end
+
+  @doc """
+  Returns the list of allowed bridge atoms.
+  """
+  @spec allowed_bridge_atoms() :: [String.t()]
+  def allowed_bridge_atoms, do: @allowed_bridge_atoms
 end

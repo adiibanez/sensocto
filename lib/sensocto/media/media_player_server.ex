@@ -10,7 +10,8 @@ defmodule Sensocto.Media.MediaPlayerServer do
   alias Sensocto.Media
 
   # Heartbeat interval for periodic sync broadcasts when playing
-  @heartbeat_interval_ms 1_000
+  # Lower interval (100ms) for tighter cross-tab synchronization
+  @heartbeat_interval_ms 100
 
   defstruct [
     :room_id,

@@ -8,6 +8,7 @@ defmodule Sensocto.Simulator.SensorServer do
   require Logger
   alias Sensocto.SensorsDynamicSupervisor
   alias Sensocto.SimpleSensor
+  alias Sensocto.Types.SafeKeys
   alias SensoctoWeb.Sensocto.Presence
 
   defmodule State do
@@ -59,6 +60,7 @@ defmodule Sensocto.Simulator.SensorServer do
     attributes =
       Enum.reduce(state.attributes_config, %{}, fn {attr_id, attr_config}, acc ->
         attr_config = string_keys_to_atom_keys(attr_config)
+
         Map.put(acc, attr_id, %{
           attribute_id: attr_id,
           sampling_rate: attr_config[:sampling_rate] || 1,
@@ -96,7 +98,9 @@ defmodule Sensocto.Simulator.SensorServer do
               Logger.info("Added sensor #{state.sensor_id} to room #{state.room_id}")
 
             {:error, reason} ->
-              Logger.warning("Failed to add sensor #{state.sensor_id} to room #{state.room_id}: #{inspect(reason)}")
+              Logger.warning(
+                "Failed to add sensor #{state.sensor_id} to room #{state.room_id}: #{inspect(reason)}"
+              )
           end
         end
 
@@ -111,7 +115,9 @@ defmodule Sensocto.Simulator.SensorServer do
 
   @impl true
   def handle_continue(:setup_attributes, state) do
-    Logger.info("Setting up #{map_size(state.attributes_config)} attributes for sensor #{state.sensor_id}")
+    Logger.info(
+      "Setting up #{map_size(state.attributes_config)} attributes for sensor #{state.sensor_id}"
+    )
 
     new_state =
       Enum.reduce(state.attributes_config, state, fn {attr_id, attr_config}, acc ->
@@ -123,7 +129,9 @@ defmodule Sensocto.Simulator.SensorServer do
 
   @impl true
   def handle_info({:push_batch, attribute_id, messages}, state) do
-    Logger.debug("Pushing batch of #{length(messages)} messages for #{state.sensor_id}/#{attribute_id}")
+    Logger.debug(
+      "Pushing batch of #{length(messages)} messages for #{state.sensor_id}/#{attribute_id}"
+    )
 
     # Convert messages to format expected by SimpleSensor
     formatted_messages =
@@ -156,6 +164,7 @@ defmodule Sensocto.Simulator.SensorServer do
     # Remove sensor from room if it was assigned
     # Use Map.get for backwards compatibility with old processes that may not have room_id
     room_id = Map.get(state, :room_id)
+
     if room_id && state.real_sensor_started do
       Sensocto.RoomStore.remove_sensor(room_id, state.sensor_id)
     end
@@ -176,12 +185,13 @@ defmodule Sensocto.Simulator.SensorServer do
   defp start_attribute(state, attribute_id, config) do
     config = string_keys_to_atom_keys(config)
 
-    attr_config = Map.merge(config, %{
-      attribute_id: attribute_id,
-      sensor_id: state.sensor_id,
-      connector_id: state.connector_id,
-      sensor_pid: self()
-    })
+    attr_config =
+      Map.merge(config, %{
+        attribute_id: attribute_id,
+        sensor_id: state.sensor_id,
+        connector_id: state.connector_id,
+        sensor_pid: self()
+      })
 
     case DynamicSupervisor.start_child(
            state.supervisor,
@@ -201,10 +211,13 @@ defmodule Sensocto.Simulator.SensorServer do
     {:via, Registry, {Sensocto.Simulator.Registry, "sensor_#{identifier}"}}
   end
 
+  # Safe conversion using SafeKeys whitelist to prevent atom exhaustion
   defp string_keys_to_atom_keys(map) when is_map(map) do
-    Map.new(map, fn
-      {k, v} when is_binary(k) -> {String.to_atom(k), string_keys_to_atom_keys(v)}
-      {k, v} -> {k, string_keys_to_atom_keys(v)}
+    {:ok, converted} = SafeKeys.safe_keys_to_atoms(map)
+    # Recursively process nested maps that may have been kept as strings
+    Map.new(converted, fn
+      {k, v} when is_map(v) -> {k, string_keys_to_atom_keys(v)}
+      {k, v} -> {k, v}
     end)
   end
 

@@ -273,8 +273,13 @@ defmodule Sensocto.Iroh.RoomStore do
         raise "Failed to create namespaces"
       end
 
-      Logger.info("[Iroh.RoomStore] Created rooms namespace: #{String.slice(rooms_namespace, 0, 16)}...")
-      Logger.info("[Iroh.RoomStore] Created memberships namespace: #{String.slice(memberships_namespace, 0, 16)}...")
+      Logger.info(
+        "[Iroh.RoomStore] Created rooms namespace: #{String.slice(rooms_namespace, 0, 16)}..."
+      )
+
+      Logger.info(
+        "[Iroh.RoomStore] Created memberships namespace: #{String.slice(memberships_namespace, 0, 16)}..."
+      )
 
       state = %__MODULE__{
         node_ref: node_ref,
@@ -474,31 +479,17 @@ defmodule Sensocto.Iroh.RoomStore do
   # Private Functions - Utilities
   # ============================================================================
 
+  # Safe atomize_keys using SafeKeys whitelist to prevent atom exhaustion.
+  # Unknown keys are kept as strings rather than creating new atoms.
   defp atomize_keys(map) when is_map(map) do
-    Map.new(map, fn
-      {key, value} when is_binary(key) ->
-        {String.to_existing_atom(key), atomize_keys(value)}
+    {:ok, converted} = Sensocto.Types.SafeKeys.safe_keys_to_atoms(map)
 
-      {key, value} ->
-        {key, atomize_keys(value)}
+    # Recursively process nested maps and lists
+    Map.new(converted, fn
+      {key, value} when is_map(value) -> {key, atomize_keys(value)}
+      {key, value} when is_list(value) -> {key, atomize_keys(value)}
+      {key, value} -> {key, value}
     end)
-  rescue
-    ArgumentError ->
-      # If atom doesn't exist, keep as string
-      Map.new(map, fn {key, value} ->
-        atom_key =
-          if is_binary(key) do
-            try do
-              String.to_existing_atom(key)
-            rescue
-              ArgumentError -> String.to_atom(key)
-            end
-          else
-            key
-          end
-
-        {atom_key, atomize_keys(value)}
-      end)
   end
 
   defp atomize_keys(list) when is_list(list) do

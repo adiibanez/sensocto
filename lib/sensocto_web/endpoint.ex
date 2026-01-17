@@ -4,13 +4,17 @@ defmodule SensoctoWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  #
+  # L-006 Security Fix: Reduced max_age from 365_378_432_000 (~11,580 years) to 30 days.
+  # Long-lived session cookies increase the window for session hijacking attacks.
+  # 30 days (2,592,000 seconds) balances security with user convenience.
   @session_options [
     store: :cookie,
     path: "/",
     key: "_sensocto_key",
     signing_salt: "4mNzZysc",
     same_site: "Lax",
-    max_age: 365_378_432_000
+    max_age: 2_592_000
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

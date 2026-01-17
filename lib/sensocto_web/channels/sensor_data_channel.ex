@@ -222,6 +222,7 @@ defmodule SensoctoWeb.SensorDataChannel do
         Logger.info(
           "SimpleSensor update_attribute_registry error for sensor: #{socket.assigns.sensor_id}, attribute_id: #{attribute_id}, reason: #{inspect(reason)}"
         )
+
         {:noreply, socket}
     end
   end
@@ -260,6 +261,7 @@ defmodule SensoctoWeb.SensorDataChannel do
         Logger.info(
           "SimpleSensor data error for sensor: #{socket.assigns.sensor_id}, attribute_id: #{attribute_id}, reason: #{inspect(reason)}"
         )
+
         {:noreply, socket}
     end
   end
@@ -344,7 +346,10 @@ defmodule SensoctoWeb.SensorDataChannel do
     # Note: We no longer remove the sensor here - termination is handled in terminate/2
     # This prevents the dual-termination race condition where both :disconnect and
     # terminate/2 would try to remove the sensor
-    Logger.debug("DISCONNECT event received for #{inspect(socket.assigns.sensor_id)} - deferring cleanup to terminate/2")
+    Logger.debug(
+      "DISCONNECT event received for #{inspect(socket.assigns.sensor_id)} - deferring cleanup to terminate/2"
+    )
+
     {:noreply, socket}
   end
 
@@ -393,13 +398,41 @@ defmodule SensoctoWeb.SensorDataChannel do
     {:noreply, socket}
   end
 
-  # Add authorization logic here as required.
+  # Security: Validate bearer tokens against stored credentials
+  # H-003 Fix: Previously only checked if bearer_token key existed, not its validity.
+  # Now properly validates JWT tokens using AshAuthentication.
   defp authorized?(%{"sensor_id" => sensor_id} = params) do
-    if Map.has_key?(params, "bearer_token") do
-      true
-    else
-      Logger.debug("Unauthorized request #{sensor_id}")
-      false
+    case Map.get(params, "bearer_token") do
+      nil ->
+        Logger.warning("Authorization failed: missing bearer_token for sensor #{sensor_id}")
+        false
+
+      "" ->
+        Logger.warning("Authorization failed: empty bearer_token for sensor #{sensor_id}")
+        false
+
+      token when is_binary(token) ->
+        verify_bearer_token(token, sensor_id)
+
+      _invalid ->
+        Logger.warning("Authorization failed: invalid bearer_token type for sensor #{sensor_id}")
+        false
+    end
+  end
+
+  # Verify the bearer token is a valid JWT issued by this application
+  defp verify_bearer_token(token, sensor_id) do
+    case AshAuthentication.Jwt.verify(token, :sensocto) do
+      {:ok, _claims, _resource} ->
+        Logger.debug("Authorization successful for sensor #{sensor_id}")
+        true
+
+      {:error, reason} ->
+        Logger.warning(
+          "Authorization failed: invalid bearer_token for sensor #{sensor_id}, reason: #{inspect(reason)}"
+        )
+
+        false
     end
   end
 
@@ -423,7 +456,9 @@ defmodule SensoctoWeb.SensorDataChannel do
 
         case other_connections do
           %{metas: [_ | _] = metas} ->
-            Logger.debug("Sensor #{sensor_id} still has #{length(metas)} other connections - keeping sensor alive")
+            Logger.debug(
+              "Sensor #{sensor_id} still has #{length(metas)} other connections - keeping sensor alive"
+            )
 
           _ ->
             Logger.debug("Sensor #{sensor_id} has no other connections - removing sensor")
@@ -462,10 +497,14 @@ defmodule SensoctoWeb.SensorDataChannel do
     # Batch window and size recommendations based on attention level
     {recommended_batch_window, recommended_batch_size} =
       case level do
-        :high -> {100, 1}      # Fast updates, small batches
-        :medium -> {500, 5}    # Normal updates
-        :low -> {2000, 10}     # Slower updates, larger batches
-        :none -> {5000, 20}    # Minimal updates, large batches
+        # Fast updates, small batches
+        :high -> {100, 1}
+        # Normal updates
+        :medium -> {500, 5}
+        # Slower updates, larger batches
+        :low -> {2000, 10}
+        # Minimal updates, large batches
+        :none -> {5000, 20}
       end
 
     %{

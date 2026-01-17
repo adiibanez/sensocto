@@ -574,19 +574,19 @@ Hooks.MediaPlayerHook = {
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
         }
-        // Request sync from server every 1 second
-        // Also detect if user has seeked in YouTube and report to server
+        // Fast sync interval (100ms) for precise cross-tab synchronization
+        // This is the key to keeping multiple tabs in sync
         this.syncInterval = setInterval(() => {
             if (this.isReady && this.player) {
                 const currentPosition = this.player.getCurrentTime() || 0;
                 const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
                 const now = Date.now();
 
-                // Detect seek: position jumped by more than 2 seconds (not normal playback)
+                // Detect seek: position jumped by more than 1.5 seconds (not normal playback)
                 // But only if we're not actively seeking via our UI
                 const inGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
 
-                if (!inGracePeriod && !this.isUserSeeking && positionDelta > 2) {
+                if (!inGracePeriod && !this.isUserSeeking && positionDelta > 1.5) {
                     // User seeked via YouTube controls - report to server immediately
                     this.lastSeekTime = now;
                     this.lastReportedPosition = currentPosition;
@@ -595,16 +595,16 @@ Hooks.MediaPlayerHook = {
 
                 this.lastKnownPosition = currentPosition;
 
-                // Report current position periodically (for progress bar updates)
-                // Only report if position changed significantly
-                if (Math.abs(currentPosition - this.lastReportedPosition) > 0.5) {
+                // Report current position more frequently for tighter sync
+                // Only report if position changed by 0.25 seconds
+                if (Math.abs(currentPosition - this.lastReportedPosition) > 0.25) {
                     this.lastReportedPosition = currentPosition;
                     this.pushEventTo(this.el, "position_update", { position: currentPosition });
                 }
 
                 this.pushEventTo(this.el, "request_media_sync", {});
             }
-        }, 1000);
+        }, 100);
     },
 
     onPlayerStateChange(event) {
@@ -721,9 +721,10 @@ Hooks.MediaPlayerHook = {
             return;
         }
 
-        // 3. Correct position drift if > 1.5 seconds (only when playing)
+        // 3. Correct position drift if > 0.5 seconds (only when playing)
+        // Tighter threshold for better cross-tab synchronization
         const drift = Math.abs(currentPosition - serverPosition);
-        if (shouldPlay && drift > 1.5 && !isBuffering) {
+        if (shouldPlay && drift > 0.5 && !isBuffering) {
             this.player.seekTo(serverPosition, true);
             this.lastKnownPosition = serverPosition;
             this.lastReportedPosition = serverPosition;

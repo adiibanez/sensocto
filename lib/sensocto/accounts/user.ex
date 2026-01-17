@@ -19,8 +19,11 @@ defmodule Sensocto.Accounts.User do
       signing_secret Sensocto.Secrets
       store_all_tokens? true
       require_token_presence_for_authentication? true
-      # Long-lived tokens for development convenience
-      token_lifetime {365, :days}
+      # M-001 Security Fix: Reduced token lifetime from 365 days to 14 days.
+      # Long-lived tokens increase the risk window if tokens are compromised.
+      # 14 days balances security with user convenience for typical usage patterns.
+      # Consider implementing refresh tokens for longer sessions if needed.
+      token_lifetime {14, :days}
     end
 
     strategies do

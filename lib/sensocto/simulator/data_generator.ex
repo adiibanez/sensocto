@@ -186,15 +186,24 @@ defmodule Sensocto.Simulator.DataGenerator do
     if script_path do
       args = [
         script_path,
-        "--mode", "csv",
-        "--sensor_id", "#{config[:sensor_id] || "sim"}",
-        "--sensor_type", "#{config[:sensor_type] || "heartrate"}",
-        "--duration", "#{config[:duration] || 30}",
-        "--sampling_rate", "#{config[:sampling_rate] || 1}",
-        "--heart_rate", "#{config[:heart_rate] || 75}",
-        "--respiratory_rate", "#{config[:respiratory_rate] || 15}",
-        "--scr_number", "#{config[:scr_number] || 5}",
-        "--burst_number", "#{config[:burst_number] || 5}"
+        "--mode",
+        "csv",
+        "--sensor_id",
+        "#{config[:sensor_id] || "sim"}",
+        "--sensor_type",
+        "#{config[:sensor_type] || "heartrate"}",
+        "--duration",
+        "#{config[:duration] || 30}",
+        "--sampling_rate",
+        "#{config[:sampling_rate] || 1}",
+        "--heart_rate",
+        "#{config[:heart_rate] || 75}",
+        "--respiratory_rate",
+        "#{config[:respiratory_rate] || 15}",
+        "--scr_number",
+        "#{config[:scr_number] || 5}",
+        "--burst_number",
+        "#{config[:burst_number] || 5}"
       ]
 
       case System.cmd("python3", args, stderr_to_stdout: true) do
@@ -346,15 +355,280 @@ defmodule Sensocto.Simulator.DataGenerator do
     max(20, base + variation + noise + spike)
   end
 
-  # Battery level (percentage) - uses stateful BatteryState for realistic simulation
-  defp generate_value("battery", config, _i, _sampling_rate) do
-    sensor_id = config[:sensor_id] || "unknown"
+  # ===========================================
+  # CORAL RESTORATION / MARINE SENSORS
+  # ===========================================
 
-    # Get battery data from stateful manager (includes charging state)
-    battery_data = Sensocto.Simulator.BatteryState.get_battery_data(sensor_id, config)
+  # Water temperature - critical for coral health
+  # Coral bleaching threshold 29-30°C, stress begins around 29°C
+  defp generate_value("water_temperature", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 26.5, 29.5)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Diurnal variation (warmer during day)
+    diurnal = :math.sin(i * 0.001) * range * 0.6
+    # Tidal influence
+    tidal = :math.sin(i * 0.003) * range * 0.2
+    noise = (:rand.uniform() - 0.5) * 0.1
+    Float.round(base + diurnal + tidal + noise, 2)
+  end
 
-    # Return just the level - charging status is handled separately
-    battery_data.level * 1.0
+  # Sea surface temperature
+  defp generate_value("sea_surface_temperature", config, i, sampling_rate) do
+    generate_value("water_temperature", config, i, sampling_rate)
+  end
+
+  # Salinity (parts per thousand) - coral thrives 32-42 ppt
+  defp generate_value("salinity", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 33.0, 36.0)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Slow tidal/evaporation variation
+    tidal = :math.sin(i * 0.002) * range * 0.5
+    # Rainfall events (occasional drops)
+    rainfall = if :rand.uniform() < 0.02, do: -:rand.uniform() * 0.5, else: 0
+    noise = (:rand.uniform() - 0.5) * 0.1
+    Float.round(base + tidal + rainfall + noise, 2)
+  end
+
+  # pH - ocean acidification indicator (healthy 7.8-8.5)
+  defp generate_value("ph", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 8.0, 8.3)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Diurnal variation (photosynthesis increases pH during day)
+    diurnal = :math.sin(i * 0.001) * range * 0.7
+    noise = (:rand.uniform() - 0.5) * 0.02
+    Float.round(base + diurnal + noise, 3)
+  end
+
+  # PAR - Photosynthetically Active Radiation (umol/m2/s)
+  defp generate_value("light_par", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 100, 400)
+    midpoint = (min_val + max_val) / 2
+    amplitude = (max_val - min_val) / 2
+    # Strong diurnal cycle (day/night)
+    diurnal = :math.sin(i * 0.001) * amplitude
+    # Cloud cover variation
+    clouds = :math.sin(i * 0.01) * amplitude * 0.3
+    noise = (:rand.uniform() - 0.5) * 20
+    max(0, Float.round(midpoint + diurnal + clouds + noise, 1))
+  end
+
+  # Dissolved oxygen (mg/L) - healthy >6 mg/L
+  defp generate_value("dissolved_oxygen", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 6.0, 8.5)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Higher during day (photosynthesis), lower at night (respiration)
+    diurnal = :math.sin(i * 0.001) * range * 0.6
+    noise = (:rand.uniform() - 0.5) * 0.2
+    Float.round(base + diurnal + noise, 2)
+  end
+
+  # Turbidity (NTU) - low is better for coral (<10 NTU ideal)
+  defp generate_value("turbidity", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.5, 5.0)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Current/wave influence
+    wave_effect = abs(:math.sin(i * 0.005)) * range * 0.5
+    # Occasional sediment disturbance spikes
+    spike = if :rand.uniform() < 0.03, do: :rand.uniform() * 3, else: 0
+    noise = (:rand.uniform() - 0.5) * 0.3
+    max(0, Float.round(base + wave_effect + spike + noise, 2))
+  end
+
+  # Depth (meters) - station depth monitoring
+  defp generate_value("depth", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 8.0, 12.0)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Tidal variation
+    tidal = :math.sin(i * 0.0005) * range * 0.8
+    # Wave influence
+    wave = :math.sin(i * 0.05) * 0.1
+    Float.round(base + tidal + wave, 2)
+  end
+
+  # Nitrate (umol/L) - excess promotes algae, ideal <1 umol/L
+  defp generate_value("nitrate", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.1, 0.8)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Slow drift with occasional inputs
+    drift = :math.sin(i * 0.0002) * range * 0.5
+    input_event = if :rand.uniform() < 0.01, do: :rand.uniform() * 0.2, else: 0
+    noise = (:rand.uniform() - 0.5) * 0.05
+    max(0, Float.round(base + drift + input_event + noise, 3))
+  end
+
+  # Phosphate (umol/L) - ideal <0.1 umol/L
+  defp generate_value("phosphate", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.02, 0.08)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    drift = :math.sin(i * 0.0002) * range * 0.4
+    noise = (:rand.uniform() - 0.5) * 0.01
+    max(0, Float.round(base + drift + noise, 4))
+  end
+
+  # Ammonia (umol/L) - toxic at high levels
+  defp generate_value("ammonia", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.01, 0.05)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    drift = :math.sin(i * 0.0003) * range * 0.3
+    noise = (:rand.uniform() - 0.5) * 0.005
+    max(0, Float.round(base + drift + noise, 4))
+  end
+
+  # Alkalinity (umol/kg) - carbonate chemistry for calcification
+  defp generate_value("alkalinity", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 2200, 2400)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Slow biological/chemical variation
+    variation = :math.sin(i * 0.0001) * range * 0.3
+    noise = (:rand.uniform() - 0.5) * 20
+    Float.round(base + variation + noise, 0)
+  end
+
+  # Current speed (m/s)
+  defp generate_value("current_speed", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.05, 0.35)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Tidal influence
+    tidal = abs(:math.sin(i * 0.001)) * range * 0.7
+    # Turbulent fluctuations
+    turbulence = :math.sin(i * 0.1) * range * 0.2
+    noise = (:rand.uniform() - 0.5) * 0.02
+    max(0, Float.round(base + tidal + turbulence + noise, 3))
+  end
+
+  # Current direction (degrees 0-360)
+  defp generate_value("current_direction", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0, 360)
+    base = (min_val + max_val) / 2
+    # Slow tidal rotation
+    rotation = :math.sin(i * 0.0005) * 45
+    # Eddies
+    eddy = :math.sin(i * 0.01) * 15
+    noise = (:rand.uniform() - 0.5) * 10
+    result = base + rotation + eddy + noise
+    Float.round(rem(trunc(result) + 360, 360) * 1.0, 1)
+  end
+
+  # Wave height (meters)
+  defp generate_value("wave_height", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.2, 1.5)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Swell patterns
+    swell = abs(:math.sin(i * 0.002)) * range * 0.6
+    # Wind chop
+    chop = abs(:math.sin(i * 0.02)) * range * 0.2
+    noise = (:rand.uniform() - 0.5) * 0.1
+    max(0, Float.round(base + swell + chop + noise, 2))
+  end
+
+  # Wind speed (m/s)
+  defp generate_value("wind_speed", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 2.0, 15.0)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Diurnal variation (often calmer at night/morning)
+    diurnal = :math.sin(i * 0.001) * range * 0.4
+    # Gusts
+    gust = if :rand.uniform() < 0.05, do: :rand.uniform() * 5, else: 0
+    noise = (:rand.uniform() - 0.5) * 1.0
+    max(0, Float.round(base + diurnal + gust + noise, 1))
+  end
+
+  # Solar irradiance (W/m2)
+  defp generate_value("solar_irradiance", config, i, _sampling_rate) do
+    {_min_val, max_val} = get_min_max(config, 0, 1000)
+    midpoint = max_val / 2
+    amplitude = max_val / 2
+    # Strong diurnal cycle
+    diurnal = :math.sin(i * 0.001) * amplitude
+    # Cloud cover
+    clouds = :math.sin(i * 0.005) * amplitude * 0.3
+    noise = (:rand.uniform() - 0.5) * 30
+    max(0, Float.round(midpoint + diurnal - clouds + noise, 0))
+  end
+
+  # ===========================================
+  # AI/INFERENCE SENSORS (YOLOfish style)
+  # ===========================================
+
+  # Fish count from detection
+  defp generate_value("fish_count", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0, 20)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Schools passing through
+    school_event = :math.sin(i * 0.01) * range * 0.5
+    # Random appearances
+    random_fish = :rand.uniform() * range * 0.3
+    noise = (:rand.uniform() - 0.5) * 2
+    max(0, trunc(base + school_event + random_fish + noise))
+  end
+
+  # Species diversity index (Shannon index style)
+  defp generate_value("species_diversity", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 1.5, 3.5)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Slow variation based on time of day
+    diurnal = :math.sin(i * 0.001) * range * 0.3
+    noise = (:rand.uniform() - 0.5) * 0.2
+    Float.round(base + diurnal + noise, 2)
+  end
+
+  # Coral coverage percentage
+  defp generate_value("coral_coverage", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 25, 65)
+    base = (min_val + max_val) / 2
+    # Very slow change (restoration progress)
+    trend = i * 0.0001
+    # Detection noise
+    noise = (:rand.uniform() - 0.5) * 3
+    Float.round(min(max_val, max(min_val, base + trend + noise)), 1)
+  end
+
+  # Bleaching index percentage
+  defp generate_value("bleaching_index", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0, 15)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Seasonal/temperature correlation
+    temp_effect = :math.sin(i * 0.0005) * range * 0.4
+    noise = (:rand.uniform() - 0.5) * 1.5
+    max(0, Float.round(base + temp_effect + noise, 1))
+  end
+
+  # Algae coverage percentage
+  defp generate_value("algae_coverage", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 5, 20)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Nutrient-driven growth cycles
+    growth = :math.sin(i * 0.0003) * range * 0.4
+    noise = (:rand.uniform() - 0.5) * 2
+    max(0, Float.round(base + growth + noise, 1))
+  end
+
+  # Inference confidence
+  defp generate_value("inference_confidence", config, i, _sampling_rate) do
+    {min_val, max_val} = get_min_max(config, 0.75, 0.98)
+    base = (min_val + max_val) / 2
+    range = (max_val - min_val) / 2
+    # Visibility affects confidence
+    visibility_effect = :math.sin(i * 0.002) * range * 0.3
+    noise = (:rand.uniform() - 0.5) * 0.05
+    min(1.0, max(0.5, Float.round(base + visibility_effect + noise, 3)))
   end
 
   # Generic sensor with min/max range
@@ -365,6 +639,7 @@ defmodule Sensocto.Simulator.DataGenerator do
           mid = (min + max) / 2
           range = (max - min) / 2
           {mid, range}
+
         _ ->
           {config[:heart_rate] || 75, 5}
       end
@@ -440,5 +715,12 @@ defmodule Sensocto.Simulator.DataGenerator do
       {float, _} -> float
       :error -> 0.0
     end
+  end
+
+  # Helper to extract min/max from config
+  defp get_min_max(config, default_min, default_max) do
+    min_val = config[:min_value] || default_min
+    max_val = config[:max_value] || default_max
+    {min_val, max_val}
   end
 end

@@ -17,6 +17,10 @@ defmodule Sensocto.Simulator.TrackPlayer do
   require Logger
 
   alias Sensocto.Simulator.GpsTracks
+  alias Sensocto.Sensors.SimulatorTrackPosition
+
+  @hydration_delay_ms 200
+  @sync_interval_ms 30_000
 
   @type player_state :: %{
           track: GpsTracks.track(),
@@ -108,6 +112,11 @@ defmodule Sensocto.Simulator.TrackPlayer do
 
   @impl true
   def init(_opts) do
+    # Schedule hydration from PostgreSQL
+    Process.send_after(self(), :hydrate_from_postgres, @hydration_delay_ms)
+    # Schedule periodic sync
+    Process.send_after(self(), :sync_positions, @sync_interval_ms)
+
     {:ok, %{players: %{}}}
   end
 
@@ -140,7 +149,10 @@ defmodule Sensocto.Simulator.TrackPlayer do
 
         new_state = put_in(state, [:players, sensor_id], player)
 
-        Logger.debug("[TrackPlayer] Started playback for #{sensor_id}: #{track.name} (#{track.mode})")
+        Logger.debug(
+          "[TrackPlayer] Started playback for #{sensor_id}: #{track.name} (#{track.mode})"
+        )
+
         {:reply, :ok, new_state}
 
       {:error, reason} ->
@@ -180,24 +192,24 @@ defmodule Sensocto.Simulator.TrackPlayer do
         elapsed_s = elapsed_ms / 1000.0
 
         # Advance playback time
-        new_time = player.current_time_s + (elapsed_s * player.playback_speed)
+        new_time = player.current_time_s + elapsed_s * player.playback_speed
 
         # Handle looping or clamping
         track_duration = List.last(player.track.waypoints).timestamp_offset_s
+
         new_time =
           cond do
             new_time >= track_duration and player.loop ->
               rem_float(new_time, track_duration)
+
             new_time >= track_duration ->
               track_duration
+
             true ->
               new_time
           end
 
-        updated_player = %{player |
-          current_time_s: new_time,
-          last_tick_at: now
-        }
+        updated_player = %{player | current_time_s: new_time, last_tick_at: now}
 
         position = interpolate_position(updated_player)
         updated_player = %{updated_player | last_position: position}
@@ -250,6 +262,39 @@ defmodule Sensocto.Simulator.TrackPlayer do
     end
   end
 
+  @impl true
+  def handle_info(:hydrate_from_postgres, state) do
+    Logger.debug("[TrackPlayer] Hydrating track positions from PostgreSQL...")
+
+    case load_positions_from_db() do
+      {:ok, positions} when positions != [] ->
+        Logger.info("[TrackPlayer] Found #{length(positions)} track positions to restore")
+        new_state = restore_positions(state, positions)
+        {:noreply, new_state}
+
+      {:ok, []} ->
+        Logger.debug("[TrackPlayer] No track positions to restore")
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("[TrackPlayer] Failed to hydrate: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(:sync_positions, state) do
+    # Schedule next sync
+    Process.send_after(self(), :sync_positions, @sync_interval_ms)
+
+    # Sync all positions asynchronously
+    if map_size(state.players) > 0 do
+      Task.start(fn -> sync_positions_to_postgres(state.players) end)
+    end
+
+    {:noreply, state}
+  end
+
   # Private Functions
 
   defp resolve_track(opts) do
@@ -260,6 +305,15 @@ defmodule Sensocto.Simulator.TrackPlayer do
 
       track_name = Keyword.get(opts, :track_name) ->
         GpsTracks.get_track(track_name)
+
+      # Stationary mode always generates a track at the specified location
+      Keyword.get(opts, :mode) == :stationary ->
+        {:ok, GpsTracks.generate_track(:stationary, opts)}
+
+      # If start coordinates are provided, generate a track at that location
+      Keyword.has_key?(opts, :start_lat) and Keyword.has_key?(opts, :start_lng) ->
+        mode = Keyword.get(opts, :mode, :walk)
+        {:ok, GpsTracks.generate_track(mode, opts)}
 
       mode = Keyword.get(opts, :mode) ->
         GpsTracks.get_random_track(mode)
@@ -295,7 +349,8 @@ defmodule Sensocto.Simulator.TrackPlayer do
       altitude: Float.round(alt, 1),
       speed: Float.round(speed_ms, 2),
       heading: Float.round(heading, 1),
-      accuracy: 5.0,  # Simulated accuracy
+      # Simulated accuracy
+      accuracy: 5.0,
       mode: track.mode,
       track_name: track.name
     }
@@ -332,7 +387,8 @@ defmodule Sensocto.Simulator.TrackPlayer do
   defp rem_float(a, b), do: a - Float.floor(a / b) * b
 
   defp haversine_distance(lat1, lng1, lat2, lng2) do
-    r = 6_371_000  # Earth radius in meters
+    # Earth radius in meters
+    r = 6_371_000
 
     dlat = (lat2 - lat1) * :math.pi() / 180
     dlng = (lng2 - lng1) * :math.pi() / 180
@@ -340,9 +396,10 @@ defmodule Sensocto.Simulator.TrackPlayer do
     lat1_rad = lat1 * :math.pi() / 180
     lat2_rad = lat2 * :math.pi() / 180
 
-    a = :math.sin(dlat / 2) * :math.sin(dlat / 2) +
+    a =
+      :math.sin(dlat / 2) * :math.sin(dlat / 2) +
         :math.cos(lat1_rad) * :math.cos(lat2_rad) *
-        :math.sin(dlng / 2) * :math.sin(dlng / 2)
+          :math.sin(dlng / 2) * :math.sin(dlng / 2)
 
     c = 2 * :math.atan2(:math.sqrt(a), :math.sqrt(1 - a))
 
@@ -355,7 +412,9 @@ defmodule Sensocto.Simulator.TrackPlayer do
     dlng = (lng2 - lng1) * :math.pi() / 180
 
     x = :math.sin(dlng) * :math.cos(lat2_rad)
-    y = :math.cos(lat1_rad) * :math.sin(lat2_rad) -
+
+    y =
+      :math.cos(lat1_rad) * :math.sin(lat2_rad) -
         :math.sin(lat1_rad) * :math.cos(lat2_rad) * :math.cos(dlng)
 
     heading_rad = :math.atan2(x, y)
@@ -363,5 +422,86 @@ defmodule Sensocto.Simulator.TrackPlayer do
 
     # Normalize to 0-360
     if heading_deg < 0, do: heading_deg + 360, else: heading_deg
+  end
+
+  # PostgreSQL Persistence Functions
+
+  defp load_positions_from_db do
+    try do
+      positions =
+        SimulatorTrackPosition
+        |> Ash.Query.for_read(:all)
+        |> Ash.read!()
+
+      {:ok, positions}
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  defp restore_positions(state, positions) do
+    Enum.reduce(positions, state, fn pos, acc ->
+      # Only restore if the sensor is already playing (started by Manager hydration)
+      case Map.get(acc.players, pos.sensor_id) do
+        nil ->
+          # Sensor not playing, skip
+          acc
+
+        player ->
+          # Restore the current time position
+          updated_player = %{player | current_time_s: pos.current_time_s || 0.0}
+
+          Logger.debug(
+            "[TrackPlayer] Restored position for #{pos.sensor_id}: #{pos.current_time_s}s"
+          )
+
+          put_in(acc, [:players, pos.sensor_id], updated_player)
+      end
+    end)
+  end
+
+  defp sync_positions_to_postgres(players) do
+    try do
+      Enum.each(players, fn {sensor_id, player} ->
+        last_position =
+          if player.last_position do
+            %{
+              "latitude" => player.last_position[:latitude],
+              "longitude" => player.last_position[:longitude],
+              "altitude" => player.last_position[:altitude],
+              "speed" => player.last_position[:speed],
+              "heading" => player.last_position[:heading]
+            }
+          else
+            %{}
+          end
+
+        # Upsert the position
+        case SimulatorTrackPosition
+             |> Ash.Query.for_read(:by_sensor, %{sensor_id: sensor_id})
+             |> Ash.read_one() do
+          {:ok, nil} ->
+            # Position record doesn't exist yet - it should be created when connector syncs
+            :ok
+
+          {:ok, existing} ->
+            # Update position
+            existing
+            |> Ash.Changeset.for_update(:sync_position, %{
+              current_time_s: player.current_time_s,
+              playback_speed: player.playback_speed,
+              loop: player.loop,
+              last_position: last_position
+            })
+            |> Ash.update()
+
+          {:error, _} ->
+            :ok
+        end
+      end)
+    rescue
+      e ->
+        Logger.warning("[TrackPlayer] Exception syncing positions: #{inspect(e)}")
+    end
   end
 end

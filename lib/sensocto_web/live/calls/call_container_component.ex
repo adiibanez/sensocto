@@ -114,45 +114,6 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
             target={@myself}
           />
         </div>
-      <% else %>
-        <%!-- Join call panel - always visible when not in call --%>
-        <div class="bg-gray-800 rounded-lg p-4">
-          <p class="text-sm text-gray-400 mb-3">Join the room call to collaborate with others</p>
-          <div class="flex gap-2">
-            <button
-              phx-click="join_call"
-              phx-value-mode="video"
-              phx-target={@myself}
-              class="flex-1 py-2 px-4 rounded-lg bg-green-600 hover:bg-green-500 transition-colors text-white text-sm font-medium flex items-center justify-center gap-2"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                />
-              </svg>
-              Join with Video
-            </button>
-            <button
-              phx-click="join_call"
-              phx-value-mode="audio"
-              phx-target={@myself}
-              class="py-2 px-4 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors text-white text-sm font-medium flex items-center justify-center gap-2"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                />
-              </svg>
-              Voice Only
-            </button>
-          </div>
-        </div>
       <% end %>
     </div>
     """

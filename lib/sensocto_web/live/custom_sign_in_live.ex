@@ -7,7 +7,8 @@ defmodule SensoctoWeb.CustomSignInLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, detail_level: :spark, show_about: true)}
+    {:ok, assign(socket, detail_level: :spark, show_about: true),
+     layout: {SensoctoWeb.Layouts, :auth}}
   end
 
   @impl true
@@ -320,11 +321,24 @@ defmodule SensoctoWeb.CustomSignInLive do
             </div>
           </div>
 
-          <%!-- Link to full about page --%>
-          <div class="mt-6 text-center">
-            <.link navigate={~p"/about"} class="text-cyan-400 hover:text-cyan-300 text-sm underline">
-              Read the full story →
-            </.link>
+          <%!-- Show more details or link to full page --%>
+          <div class="mt-6 text-center space-y-2">
+            <%= if @detail_level != :deep do %>
+              <button
+                phx-click="set_level"
+                phx-value-level="deep"
+                class="text-cyan-400 hover:text-cyan-300 text-sm underline"
+              >
+                Read more →
+              </button>
+            <% else %>
+              <.link
+                href={~p"/about"}
+                class="text-cyan-400 hover:text-cyan-300 text-sm underline"
+              >
+                View full about page (new tab) ↗
+              </.link>
+            <% end %>
           </div>
         </div>
       </div>

@@ -26,7 +26,37 @@
     <.link navigate={~p"/rooms"} class="text-gray-300 hover:text-white mr-4">Rooms</.link>
     <.link navigate={~p"/simulator"} class="text-gray-300 hover:text-white mr-4">Sim</.link>
     <.link navigate={~p"/about"} class="text-gray-300 hover:text-white mr-4">About</.link>
-    <a href="/sign-out" class="text-gray-300 hover:text-white">Logout</a>
+    <%!-- User menu dropdown --%>
+    <div class="relative" id="user-menu" phx-hook="UserMenu" phx-update="ignore">
+      <button
+        type="button"
+        id="user-menu-button"
+        class="flex items-center gap-2 px-3 py-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
+        aria-label="User menu"
+      >
+        <Heroicons.icon name="user-circle" type="solid" class="h-6 w-6" />
+        <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4" />
+      </button>
+      <div
+        id="user-menu-dropdown"
+        class="hidden absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-lg shadow-lg py-2 z-50"
+      >
+        <.link
+          navigate={~p"/settings"}
+          class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+        >
+          <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" /> Settings
+        </.link>
+        <hr class="my-2 border-gray-600" />
+        <a
+          href="/sign-out"
+          class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+        >
+          <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" />
+          Sign Out
+        </a>
+      </div>
+    </div>
   </div>
 
   <%!-- Mobile hamburger menu --%>
@@ -74,8 +104,17 @@
         About
       </.link>
       <hr class="my-2 border-gray-600" />
-      <a href="/sign-out" class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white">
-        Logout
+      <.link
+        navigate={~p"/settings"}
+        class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
+        <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" /> Settings
+      </.link>
+      <a
+        href="/sign-out"
+        class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
+        <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" /> Sign Out
       </a>
     </div>
   </div>

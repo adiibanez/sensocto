@@ -52,7 +52,7 @@ defmodule Sensocto.Simulator.GpsTracks do
   """
   @spec list_modes() :: [atom()]
   def list_modes do
-    [:walk, :cycle, :car, :train, :bird, :drone, :boat]
+    [:walk, :cycle, :car, :train, :bird, :drone, :boat, :stationary]
   end
 
   @doc """
@@ -99,29 +99,70 @@ defmodule Sensocto.Simulator.GpsTracks do
     start_lng = Keyword.get(opts, :start_lng, 13.405)
     duration_minutes = Keyword.get(opts, :duration_minutes, 30)
 
-    {avg_speed_kmh, step_variation, turn_frequency} = mode_params(mode)
+    # Special handling for stationary mode - just stay at fixed position
+    if mode == :stationary do
+      generate_stationary_track(start_lat, start_lng, duration_minutes)
+    else
+      {avg_speed_kmh, step_variation, turn_frequency} = mode_params(mode)
 
-    # Generate waypoints every ~5 seconds for smooth animation
-    num_waypoints = trunc(duration_minutes * 60 / 5)
-    speed_ms = avg_speed_kmh / 3.6  # Convert to m/s
+      # Generate waypoints every ~5 seconds for smooth animation
+      num_waypoints = trunc(duration_minutes * 60 / 5)
+      # Convert to m/s
+      speed_ms = avg_speed_kmh / 3.6
 
-    # Random initial heading
-    heading = :rand.uniform() * 2 * :math.pi()
+      # Random initial heading
+      heading = :rand.uniform() * 2 * :math.pi()
 
-    waypoints = generate_waypoints(
-      start_lat, start_lng, heading,
-      speed_ms, step_variation, turn_frequency,
-      num_waypoints, mode
-    )
+      waypoints =
+        generate_waypoints(
+          start_lat,
+          start_lng,
+          heading,
+          speed_ms,
+          step_variation,
+          turn_frequency,
+          num_waypoints,
+          mode
+        )
 
-    total_distance = calculate_total_distance(waypoints)
+      total_distance = calculate_total_distance(waypoints)
+
+      %{
+        name: "generated_#{mode}_#{:rand.uniform(9999)}",
+        mode: mode,
+        waypoints: waypoints,
+        avg_speed_kmh: avg_speed_kmh,
+        total_distance_km: total_distance / 1000,
+        duration_minutes: duration_minutes
+      }
+    end
+  end
+
+  # Generate a stationary track - stays at fixed position with minor GPS drift
+  defp generate_stationary_track(lat, lng, duration_minutes) do
+    # Generate waypoints every 60 seconds for stationary sensors (less frequent)
+    num_waypoints = max(2, trunc(duration_minutes))
+
+    waypoints =
+      Enum.map(0..(num_waypoints - 1), fn i ->
+        # Small GPS drift to simulate real sensor behavior (±5m)
+        drift_lat = (:rand.uniform() - 0.5) * 0.0001
+        drift_lng = (:rand.uniform() - 0.5) * 0.0001
+
+        %{
+          lat: lat + drift_lat,
+          lng: lng + drift_lng,
+          alt: 0.0,
+          timestamp_offset_s: i * 60.0
+        }
+      end)
 
     %{
-      name: "generated_#{mode}_#{:rand.uniform(9999)}",
-      mode: mode,
+      name: "stationary_#{:rand.uniform(9999)}",
+      mode: :stationary,
       waypoints: waypoints,
-      avg_speed_kmh: avg_speed_kmh,
-      total_distance_km: total_distance / 1000,
+      avg_speed_kmh: 0.0,
+      total_distance_km: 0.0,
       duration_minutes: duration_minutes
     }
   end
@@ -134,25 +175,36 @@ defmodule Sensocto.Simulator.GpsTracks do
   defp mode_params(:bird), do: {40.0, 0.3, 0.4}
   defp mode_params(:drone), do: {30.0, 0.25, 0.35}
   defp mode_params(:boat), do: {25.0, 0.1, 0.15}
+  # Stationary mode - no movement, stays at fixed position
+  defp mode_params(:stationary), do: {0.0, 0.0, 0.0}
 
   defp generate_waypoints(lat, lng, heading, speed_ms, variation, turn_freq, count, mode) do
     {waypoints, _} =
-      Enum.reduce(0..(count - 1), {[], {lat, lng, heading, 0.0}}, fn i, {acc, {curr_lat, curr_lng, curr_heading, curr_alt}} ->
-        timestamp_offset = i * 5.0  # 5 seconds between waypoints
+      Enum.reduce(0..(count - 1), {[], {lat, lng, heading, 0.0}}, fn i,
+                                                                     {acc,
+                                                                      {curr_lat, curr_lng,
+                                                                       curr_heading, curr_alt}} ->
+        # 5 seconds between waypoints
+        timestamp_offset = i * 5.0
 
         # Speed variation
         actual_speed = speed_ms * (1 + (:rand.uniform() - 0.5) * variation * 2)
 
         # Gradual heading changes
-        heading_change = if :rand.uniform() < turn_freq do
-          (:rand.uniform() - 0.5) * :math.pi() / 4  # Up to 45 degree turn
-        else
-          (:rand.uniform() - 0.5) * 0.1  # Small drift
-        end
+        heading_change =
+          if :rand.uniform() < turn_freq do
+            # Up to 45 degree turn
+            (:rand.uniform() - 0.5) * :math.pi() / 4
+          else
+            # Small drift
+            (:rand.uniform() - 0.5) * 0.1
+          end
+
         new_heading = curr_heading + heading_change
 
         # Move in heading direction
-        distance_m = actual_speed * 5  # Distance covered in 5 seconds
+        # Distance covered in 5 seconds
+        distance_m = actual_speed * 5
         {new_lat, new_lng} = move_point(curr_lat, curr_lng, new_heading, distance_m)
 
         # Altitude changes based on mode
@@ -215,15 +267,18 @@ defmodule Sensocto.Simulator.GpsTracks do
     # Calculate new position
     angular_distance = distance_m / r
 
-    new_lat_rad = :math.asin(
-      :math.sin(lat_rad) * :math.cos(angular_distance) +
-      :math.cos(lat_rad) * :math.sin(angular_distance) * :math.cos(heading)
-    )
+    new_lat_rad =
+      :math.asin(
+        :math.sin(lat_rad) * :math.cos(angular_distance) +
+          :math.cos(lat_rad) * :math.sin(angular_distance) * :math.cos(heading)
+      )
 
-    new_lng_rad = lng_rad + :math.atan2(
-      :math.sin(heading) * :math.sin(angular_distance) * :math.cos(lat_rad),
-      :math.cos(angular_distance) - :math.sin(lat_rad) * :math.sin(new_lat_rad)
-    )
+    new_lng_rad =
+      lng_rad +
+        :math.atan2(
+          :math.sin(heading) * :math.sin(angular_distance) * :math.cos(lat_rad),
+          :math.cos(angular_distance) - :math.sin(lat_rad) * :math.sin(new_lat_rad)
+        )
 
     new_lat = new_lat_rad * 180 / :math.pi()
     new_lng = new_lng_rad * 180 / :math.pi()
@@ -240,7 +295,8 @@ defmodule Sensocto.Simulator.GpsTracks do
   end
 
   defp haversine_distance(lat1, lng1, lat2, lng2) do
-    r = 6_371_000  # Earth radius in meters
+    # Earth radius in meters
+    r = 6_371_000
 
     dlat = (lat2 - lat1) * :math.pi() / 180
     dlng = (lng2 - lng1) * :math.pi() / 180
@@ -248,9 +304,10 @@ defmodule Sensocto.Simulator.GpsTracks do
     lat1_rad = lat1 * :math.pi() / 180
     lat2_rad = lat2 * :math.pi() / 180
 
-    a = :math.sin(dlat / 2) * :math.sin(dlat / 2) +
+    a =
+      :math.sin(dlat / 2) * :math.sin(dlat / 2) +
         :math.cos(lat1_rad) * :math.cos(lat2_rad) *
-        :math.sin(dlng / 2) * :math.sin(dlng / 2)
+          :math.sin(dlng / 2) * :math.sin(dlng / 2)
 
     c = 2 * :math.atan2(:math.sqrt(a), :math.sqrt(1 - a))
 
@@ -351,7 +408,8 @@ defmodule Sensocto.Simulator.GpsTracks do
         total_distance_km: 280.0,
         duration_minutes: 90,
         waypoints: [
-          %{lat: 52.5251, lng: 13.3694, alt: 35.0, timestamp_offset_s: 0.0},      # Berlin Hbf
+          # Berlin Hbf
+          %{lat: 52.5251, lng: 13.3694, alt: 35.0, timestamp_offset_s: 0.0},
           %{lat: 52.5420, lng: 13.2890, alt: 38.0, timestamp_offset_s: 60.0},
           %{lat: 52.5680, lng: 13.1850, alt: 42.0, timestamp_offset_s: 120.0},
           %{lat: 52.6100, lng: 13.0600, alt: 45.0, timestamp_offset_s: 180.0},
@@ -363,7 +421,8 @@ defmodule Sensocto.Simulator.GpsTracks do
           %{lat: 53.1650, lng: 11.7100, alt: 42.0, timestamp_offset_s: 540.0},
           %{lat: 53.3100, lng: 11.3800, alt: 38.0, timestamp_offset_s: 600.0},
           %{lat: 53.4700, lng: 11.0200, alt: 35.0, timestamp_offset_s: 660.0},
-          %{lat: 53.5511, lng: 10.0065, alt: 15.0, timestamp_offset_s: 720.0}     # Hamburg Hbf
+          # Hamburg Hbf
+          %{lat: 53.5511, lng: 10.0065, alt: 15.0, timestamp_offset_s: 720.0}
         ]
       },
 
@@ -399,7 +458,8 @@ defmodule Sensocto.Simulator.GpsTracks do
         total_distance_km: 15.0,
         duration_minutes: 26,
         waypoints: [
-          %{lat: 54.1789, lng: 12.0867, alt: 25.0, timestamp_offset_s: 0.0},      # Warnemünde
+          # Warnemünde
+          %{lat: 54.1789, lng: 12.0867, alt: 25.0, timestamp_offset_s: 0.0},
           %{lat: 54.1820, lng: 12.0950, alt: 35.0, timestamp_offset_s: 30.0},
           %{lat: 54.1855, lng: 12.1080, alt: 50.0, timestamp_offset_s: 60.0},
           %{lat: 54.1890, lng: 12.1220, alt: 65.0, timestamp_offset_s: 90.0},
@@ -445,7 +505,8 @@ defmodule Sensocto.Simulator.GpsTracks do
         total_distance_km: 20.0,
         duration_minutes: 40,
         waypoints: [
-          %{lat: 54.5069, lng: 11.0579, alt: 5.0, timestamp_offset_s: 0.0},       # Puttgarden
+          # Puttgarden
+          %{lat: 54.5069, lng: 11.0579, alt: 5.0, timestamp_offset_s: 0.0},
           %{lat: 54.5200, lng: 11.0800, alt: 5.0, timestamp_offset_s: 60.0},
           %{lat: 54.5400, lng: 11.1100, alt: 5.0, timestamp_offset_s: 120.0},
           %{lat: 54.5650, lng: 11.1450, alt: 5.0, timestamp_offset_s: 180.0},
@@ -454,7 +515,8 @@ defmodule Sensocto.Simulator.GpsTracks do
           %{lat: 54.6700, lng: 11.2800, alt: 5.0, timestamp_offset_s: 360.0},
           %{lat: 54.7150, lng: 11.3350, alt: 5.0, timestamp_offset_s: 420.0},
           %{lat: 54.7600, lng: 11.3900, alt: 5.0, timestamp_offset_s: 480.0},
-          %{lat: 54.7754, lng: 11.4166, alt: 5.0, timestamp_offset_s: 540.0}      # Rødby
+          # Rødby
+          %{lat: 54.7754, lng: 11.4166, alt: 5.0, timestamp_offset_s: 540.0}
         ]
       }
     }

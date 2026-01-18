@@ -26,8 +26,10 @@ defmodule Sensocto.Simulator.ConnectorServer do
       sensors: config["sensors"] || %{}
     }
 
-    Logger.info("ConnectorServer start_link: #{config.connector_id}" <>
-      if(config.room_id, do: " (room: #{config.room_id})", else: ""))
+    Logger.info(
+      "ConnectorServer start_link: #{config.connector_id}" <>
+        if(config.room_id, do: " (room: #{config.room_id})", else: "")
+    )
 
     GenServer.start_link(__MODULE__, config, name: via_tuple(config.connector_id))
   end
@@ -101,14 +103,15 @@ defmodule Sensocto.Simulator.ConnectorServer do
     sensor_name = sensor_config[:sensor_name] || sensor_id
     prefixed_sensor_name = "Sim_#{sensor_name}"
 
-    config = Map.merge(sensor_config, %{
-      sensor_id: sensor_id,
-      sensor_name: prefixed_sensor_name,
-      connector_id: state.connector_id,
-      connector_name: state.connector_name,
-      connector_pid: self(),
-      room_id: state.room_id
-    })
+    config =
+      Map.merge(sensor_config, %{
+        sensor_id: sensor_id,
+        sensor_name: prefixed_sensor_name,
+        connector_id: state.connector_id,
+        connector_name: state.connector_name,
+        connector_pid: self(),
+        room_id: state.room_id
+      })
 
     Logger.info("Starting simulator sensor: #{sensor_id} (#{prefixed_sensor_name})")
 
@@ -138,6 +141,8 @@ defmodule Sensocto.Simulator.ConnectorServer do
     connector_id connector_name room_id sensors attributes
     mode interval speed track_file latitude longitude altitude
     start_battery drain_rate charge_rate eco2 tvoc
+    track_mode start_lat start_lng playback_speed random_start no_loop
+    track_duration track_name generate_track base_lat base_lng base_alt unit
   )a
 
   defp string_keys_to_atom_keys(map) when is_map(map) do
@@ -155,7 +160,8 @@ defmodule Sensocto.Simulator.ConnectorServer do
       atom = String.to_existing_atom(key)
       if atom in @allowed_config_keys, do: atom, else: key
     rescue
-      ArgumentError -> key  # Keep as string if atom doesn't exist
+      # Keep as string if atom doesn't exist
+      ArgumentError -> key
     end
   end
 end

@@ -21,5 +21,11 @@ defmodule Sensocto.Sensors do
     resource Sensocto.Sensors.SensorManager do
       # define :validate_sensor, args: [:sensor_id, :connector_id, :connector_name, :sensor_name, :sensor_name], action: :validate_sensor
     end
+
+    # Simulator persistence resources
+    resource Sensocto.Sensors.SimulatorScenario
+    resource Sensocto.Sensors.SimulatorConnector
+    resource Sensocto.Sensors.SimulatorTrackPosition
+    resource Sensocto.Sensors.SimulatorBatteryState
   end
 end

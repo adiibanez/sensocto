@@ -1,0 +1,905 @@
+# Coral Restoration Monitoring Scenario - Maldives
+# Use case: Underwater coral reef monitoring and restoration tracking
+#
+# LOCATIONS:
+# - Fulhadhoo, Baa Atoll, Maldives (4.8845°N, 72.9333°E)
+# - Villingili, Gaafu Alif Atoll, Maldives (0.7542°N, 73.4350°E)
+#
+# Based on scientific literature, the most vital parameters for coral health are:
+# 1. Temperature (most critical - coral bleaching threshold 30-35°C)
+# 2. Light/PAR (Photosynthetically Active Radiation) - essential for zooxanthellae
+# 3. Salinity - corals thrive in 32-42 ppt
+# 4. pH - ocean acidification indicator (7.8-8.5 range)
+# 5. Dissolved Oxygen - indicator of reef metabolism
+# 6. Turbidity/Visibility - affects light penetration
+# 7. Nutrients (nitrate, phosphate) - excess causes algae overgrowth
+# 8. Current/Flow - affects nutrient delivery and waste removal
+#
+# Video streams use adaptive backpressure (handled separately via WebRTC)
+# AI inference results from YOLOfish-style detection (species ID, coral health)
+#
+# References:
+# - NOAA Coral Reef Monitoring Guide
+# - Frontiers in Marine Science: Environmental considerations for restoration
+# - PMC: Toward a New Era of Coral Reef Monitoring
+
+connectors:
+  # ================================================================
+  # SITE 1: FULHADHOO, BAA ATOLL
+  # Location: 4.8845°N, 72.9333°E
+  # Famous for manta ray cleaning stations and pristine reefs
+  # ================================================================
+  coral_site_fulhadhoo:
+    connector_id: "coral_site_fulhadhoo"
+    connector_name: "Fulhadhoo_Coral_Site"
+    sensors:
+      # ============================================
+      # ENVIRONMENTAL MONITORING STATION - FULHADHOO NORTH
+      # Primary underwater sensor buoy - shallow reef
+      # ============================================
+      fulhadhoo_env_north:
+        sensor_id: "fulhadhoo_env_north"
+        sensor_name: "Fulhadhoo_EnvStation_North"
+        attributes:
+          # Station location (fixed position)
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            # Fulhadhoo reef - north side
+            start_lat: 4.8870
+            start_lng: 72.9310
+            track_mode: "stationary"
+            dummy_data: true
+
+          # Water Temperature - CRITICAL for bleaching detection
+          water_temperature:
+            attribute_id: "water_temperature"
+            sensor_type: "water_temperature"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 27.5
+            max_value: 30.0
+            unit: "celsius"
+            dummy_data: true
+
+          salinity:
+            attribute_id: "salinity"
+            sensor_type: "salinity"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 34.0
+            max_value: 36.0
+            unit: "ppt"
+            dummy_data: true
+
+          ph:
+            attribute_id: "ph"
+            sensor_type: "ph"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 8.0
+            max_value: 8.3
+            unit: "pH"
+            dummy_data: true
+
+          light_par:
+            attribute_id: "light_par"
+            sensor_type: "light_par"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 200
+            max_value: 500
+            unit: "umol/m2/s"
+            dummy_data: true
+
+          dissolved_oxygen:
+            attribute_id: "dissolved_oxygen"
+            sensor_type: "dissolved_oxygen"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 6.5
+            max_value: 8.5
+            unit: "mg/L"
+            dummy_data: true
+
+          turbidity:
+            attribute_id: "turbidity"
+            sensor_type: "turbidity"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 0.3
+            max_value: 3.0
+            unit: "NTU"
+            dummy_data: true
+
+          depth:
+            attribute_id: "depth"
+            sensor_type: "depth"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 6.0
+            max_value: 10.0
+            unit: "meters"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      # ============================================
+      # ENVIRONMENTAL MONITORING STATION - FULHADHOO SOUTH
+      # Deeper reef monitoring
+      # ============================================
+      fulhadhoo_env_south:
+        sensor_id: "fulhadhoo_env_south"
+        sensor_name: "Fulhadhoo_EnvStation_South"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            # Fulhadhoo reef - south side (deeper)
+            start_lat: 4.8820
+            start_lng: 72.9355
+            track_mode: "stationary"
+            dummy_data: true
+
+          water_temperature:
+            attribute_id: "water_temperature"
+            sensor_type: "water_temperature"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 26.0
+            max_value: 28.5
+            unit: "celsius"
+            dummy_data: true
+
+          salinity:
+            attribute_id: "salinity"
+            sensor_type: "salinity"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 34.5
+            max_value: 36.5
+            unit: "ppt"
+            dummy_data: true
+
+          ph:
+            attribute_id: "ph"
+            sensor_type: "ph"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 8.05
+            max_value: 8.35
+            unit: "pH"
+            dummy_data: true
+
+          light_par:
+            attribute_id: "light_par"
+            sensor_type: "light_par"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 250
+            unit: "umol/m2/s"
+            dummy_data: true
+
+          dissolved_oxygen:
+            attribute_id: "dissolved_oxygen"
+            sensor_type: "dissolved_oxygen"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 6.0
+            max_value: 8.0
+            unit: "mg/L"
+            dummy_data: true
+
+          depth:
+            attribute_id: "depth"
+            sensor_type: "depth"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 15.0
+            max_value: 22.0
+            unit: "meters"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 65
+            max_value: 90
+            dummy_data: true
+
+      # ============================================
+      # NUTRIENT ANALYZER - FULHADHOO
+      # ============================================
+      fulhadhoo_nutrient:
+        sensor_id: "fulhadhoo_nutrient"
+        sensor_name: "Fulhadhoo_Nutrient_Analyzer"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            start_lat: 4.8845
+            start_lng: 72.9333
+            track_mode: "stationary"
+            dummy_data: true
+
+          nitrate:
+            attribute_id: "nitrate"
+            sensor_type: "nitrate"
+            batch_size: 1
+            batch_window: 300000
+            duration: 0
+            sampling_rate: 0.0033
+            min_value: 0.1
+            max_value: 0.6
+            unit: "umol/L"
+            dummy_data: true
+
+          phosphate:
+            attribute_id: "phosphate"
+            sensor_type: "phosphate"
+            batch_size: 1
+            batch_window: 300000
+            duration: 0
+            sampling_rate: 0.0033
+            min_value: 0.02
+            max_value: 0.07
+            unit: "umol/L"
+            dummy_data: true
+
+          ammonia:
+            attribute_id: "ammonia"
+            sensor_type: "ammonia"
+            batch_size: 1
+            batch_window: 300000
+            duration: 0
+            sampling_rate: 0.0033
+            min_value: 0.01
+            max_value: 0.04
+            unit: "umol/L"
+            dummy_data: true
+
+          alkalinity:
+            attribute_id: "alkalinity"
+            sensor_type: "alkalinity"
+            batch_size: 1
+            batch_window: 300000
+            duration: 0
+            sampling_rate: 0.0033
+            min_value: 2250
+            max_value: 2400
+            unit: "umol/kg"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 60
+            max_value: 85
+            dummy_data: true
+
+      # ============================================
+      # AI CAMERA - FULHADHOO MANTA STATION
+      # Real-time species detection near manta cleaning station
+      # ============================================
+      fulhadhoo_ai_camera:
+        sensor_id: "fulhadhoo_ai_camera"
+        sensor_name: "Fulhadhoo_AI_Camera_Manta"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            # Near manta ray cleaning station
+            start_lat: 4.8860
+            start_lng: 72.9320
+            track_mode: "stationary"
+            dummy_data: true
+
+          fish_count:
+            attribute_id: "fish_count"
+            sensor_type: "fish_count"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            min_value: 5
+            max_value: 35
+            unit: "count"
+            dummy_data: true
+
+          species_diversity:
+            attribute_id: "species_diversity"
+            sensor_type: "species_diversity"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 2.0
+            max_value: 3.8
+            unit: "index"
+            dummy_data: true
+
+          coral_coverage:
+            attribute_id: "coral_coverage"
+            sensor_type: "coral_coverage"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 35
+            max_value: 70
+            unit: "percent"
+            dummy_data: true
+
+          bleaching_index:
+            attribute_id: "bleaching_index"
+            sensor_type: "bleaching_index"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 0
+            max_value: 12
+            unit: "percent"
+            dummy_data: true
+
+          algae_coverage:
+            attribute_id: "algae_coverage"
+            sensor_type: "algae_coverage"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 3
+            max_value: 15
+            unit: "percent"
+            dummy_data: true
+
+          inference_confidence:
+            attribute_id: "inference_confidence"
+            sensor_type: "inference_confidence"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            min_value: 0.80
+            max_value: 0.98
+            unit: "ratio"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 50
+            max_value: 80
+            dummy_data: true
+
+      # ============================================
+      # WEATHER BUOY - FULHADHOO
+      # Surface conditions
+      # ============================================
+      fulhadhoo_weather:
+        sensor_id: "fulhadhoo_weather"
+        sensor_name: "Fulhadhoo_Weather_Buoy"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            start_lat: 4.8850
+            start_lng: 72.9340
+            track_mode: "stationary"
+            dummy_data: true
+
+          sst:
+            attribute_id: "sst"
+            sensor_type: "sea_surface_temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 28.0
+            max_value: 31.0
+            unit: "celsius"
+            dummy_data: true
+
+          wave_height:
+            attribute_id: "wave_height"
+            sensor_type: "wave_height"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 0.2
+            max_value: 1.2
+            unit: "meters"
+            dummy_data: true
+
+          wind_speed:
+            attribute_id: "wind_speed"
+            sensor_type: "wind_speed"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 2.0
+            max_value: 12.0
+            unit: "m/s"
+            dummy_data: true
+
+          solar_irradiance:
+            attribute_id: "solar_irradiance"
+            sensor_type: "solar_irradiance"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 500
+            max_value: 1100
+            unit: "W/m2"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 75
+            max_value: 100
+            dummy_data: true
+
+  # ================================================================
+  # SITE 2: VILLINGILI, GAAFU ALIF ATOLL
+  # Location: 0.7542°N, 73.4350°E
+  # Southern Maldives - different climate conditions
+  # ================================================================
+  coral_site_villingili:
+    connector_id: "coral_site_villingili"
+    connector_name: "Villingili_Coral_Site"
+    sensors:
+      # ============================================
+      # ENVIRONMENTAL MONITORING STATION - VILLINGILI
+      # ============================================
+      villingili_env_main:
+        sensor_id: "villingili_env_main"
+        sensor_name: "Villingili_EnvStation_Main"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            # Villingili reef
+            start_lat: 0.7560
+            start_lng: 73.4330
+            track_mode: "stationary"
+            dummy_data: true
+
+          water_temperature:
+            attribute_id: "water_temperature"
+            sensor_type: "water_temperature"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 27.0
+            max_value: 29.5
+            unit: "celsius"
+            dummy_data: true
+
+          salinity:
+            attribute_id: "salinity"
+            sensor_type: "salinity"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 33.5
+            max_value: 35.5
+            unit: "ppt"
+            dummy_data: true
+
+          ph:
+            attribute_id: "ph"
+            sensor_type: "ph"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 8.0
+            max_value: 8.25
+            unit: "pH"
+            dummy_data: true
+
+          light_par:
+            attribute_id: "light_par"
+            sensor_type: "light_par"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 180
+            max_value: 480
+            unit: "umol/m2/s"
+            dummy_data: true
+
+          dissolved_oxygen:
+            attribute_id: "dissolved_oxygen"
+            sensor_type: "dissolved_oxygen"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 6.5
+            max_value: 8.2
+            unit: "mg/L"
+            dummy_data: true
+
+          turbidity:
+            attribute_id: "turbidity"
+            sensor_type: "turbidity"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 0.4
+            max_value: 4.0
+            unit: "NTU"
+            dummy_data: true
+
+          depth:
+            attribute_id: "depth"
+            sensor_type: "depth"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 8.0
+            max_value: 14.0
+            unit: "meters"
+            dummy_data: true
+
+          current_speed:
+            attribute_id: "current_speed"
+            sensor_type: "current_speed"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 0.05
+            max_value: 0.40
+            unit: "m/s"
+            dummy_data: true
+
+          current_direction:
+            attribute_id: "current_direction"
+            sensor_type: "current_direction"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 0
+            max_value: 360
+            unit: "degrees"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 70
+            max_value: 95
+            dummy_data: true
+
+      # ============================================
+      # AI CAMERA - VILLINGILI RESTORATION ZONE
+      # ============================================
+      villingili_ai_camera:
+        sensor_id: "villingili_ai_camera"
+        sensor_name: "Villingili_AI_Camera_Restoration"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            # Restoration zone
+            start_lat: 0.7535
+            start_lng: 73.4365
+            track_mode: "stationary"
+            dummy_data: true
+
+          fish_count:
+            attribute_id: "fish_count"
+            sensor_type: "fish_count"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            min_value: 0
+            max_value: 25
+            unit: "count"
+            dummy_data: true
+
+          species_diversity:
+            attribute_id: "species_diversity"
+            sensor_type: "species_diversity"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 1.5
+            max_value: 3.2
+            unit: "index"
+            dummy_data: true
+
+          coral_coverage:
+            attribute_id: "coral_coverage"
+            sensor_type: "coral_coverage"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 20
+            max_value: 55
+            unit: "percent"
+            dummy_data: true
+
+          bleaching_index:
+            attribute_id: "bleaching_index"
+            sensor_type: "bleaching_index"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 0
+            max_value: 10
+            unit: "percent"
+            dummy_data: true
+
+          algae_coverage:
+            attribute_id: "algae_coverage"
+            sensor_type: "algae_coverage"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 5
+            max_value: 18
+            unit: "percent"
+            dummy_data: true
+
+          inference_confidence:
+            attribute_id: "inference_confidence"
+            sensor_type: "inference_confidence"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            min_value: 0.75
+            max_value: 0.96
+            unit: "ratio"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 55
+            max_value: 85
+            dummy_data: true
+
+      # ============================================
+      # ROV INSPECTOR - VILLINGILI
+      # Mobile inspection platform
+      # ============================================
+      villingili_rov:
+        sensor_id: "villingili_rov"
+        sensor_name: "Villingili_ROV_Inspector"
+        attributes:
+          # ROV patrols around Villingili reef
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            # Custom track around Villingili
+            start_lat: 0.7542
+            start_lng: 73.4350
+            track_mode: "drone"
+            playback_speed: 0.3
+            random_start: false
+            dummy_data: true
+
+          depth:
+            attribute_id: "depth"
+            sensor_type: "depth"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            min_value: 3.0
+            max_value: 20.0
+            unit: "meters"
+            dummy_data: true
+
+          water_temperature:
+            attribute_id: "water_temperature"
+            sensor_type: "water_temperature"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            min_value: 26.5
+            max_value: 29.0
+            unit: "celsius"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            min_value: 30
+            max_value: 100
+            dummy_data: true
+
+      # ============================================
+      # WEATHER BUOY - VILLINGILI
+      # ============================================
+      villingili_weather:
+        sensor_id: "villingili_weather"
+        sensor_name: "Villingili_Weather_Buoy"
+        attributes:
+          geolocation:
+            attribute_id: "geolocation"
+            sensor_type: "geolocation"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            start_lat: 0.7550
+            start_lng: 73.4355
+            track_mode: "stationary"
+            dummy_data: true
+
+          sst:
+            attribute_id: "sst"
+            sensor_type: "sea_surface_temperature"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 27.5
+            max_value: 30.5
+            unit: "celsius"
+            dummy_data: true
+
+          wave_height:
+            attribute_id: "wave_height"
+            sensor_type: "wave_height"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 0.3
+            max_value: 1.8
+            unit: "meters"
+            dummy_data: true
+
+          wind_speed:
+            attribute_id: "wind_speed"
+            sensor_type: "wind_speed"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 3.0
+            max_value: 18.0
+            unit: "m/s"
+            dummy_data: true
+
+          solar_irradiance:
+            attribute_id: "solar_irradiance"
+            sensor_type: "solar_irradiance"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 450
+            max_value: 1050
+            unit: "W/m2"
+            dummy_data: true
+
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 60000
+            duration: 0
+            sampling_rate: 0.017
+            min_value: 70
+            max_value: 100
+            dummy_data: true

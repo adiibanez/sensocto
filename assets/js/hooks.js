@@ -913,6 +913,44 @@ Hooks.MobileMenu = {
     }
 };
 
+Hooks.UserMenu = {
+    mounted() {
+        const button = this.el.querySelector('#user-menu-button');
+        const dropdown = this.el.querySelector('#user-menu-dropdown');
+
+        if (button && dropdown) {
+            this.isOpen = false;
+
+            this.handleButtonClick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                this.isOpen = !this.isOpen;
+                if (this.isOpen) {
+                    dropdown.classList.remove('hidden');
+                } else {
+                    dropdown.classList.add('hidden');
+                }
+            };
+
+            this.handleDocumentClick = (e) => {
+                if (this.isOpen && !this.el.contains(e.target)) {
+                    this.isOpen = false;
+                    dropdown.classList.add('hidden');
+                }
+            };
+
+            button.addEventListener('click', this.handleButtonClick);
+            document.addEventListener('click', this.handleDocumentClick);
+        }
+    },
+
+    destroyed() {
+        if (this.handleDocumentClick) {
+            document.removeEventListener('click', this.handleDocumentClick);
+        }
+    }
+};
+
 Hooks.ResizeDetection = {
     mounted() {
         this.handleResize = () => {

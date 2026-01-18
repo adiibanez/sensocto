@@ -13,7 +13,11 @@ defmodule Sensocto.Simulator.BatteryState do
   use GenServer
   require Logger
 
+  alias Sensocto.Sensors.SimulatorBatteryState
+
   @table_name :battery_state
+  @hydration_delay_ms 200
+  @sync_interval_ms 60_000
   # Check every 10 seconds for state flip (faster for demo)
   @state_check_interval :timer.seconds(10)
 
@@ -76,6 +80,12 @@ defmodule Sensocto.Simulator.BatteryState do
     # Start periodic state flip checker
     Process.send_after(self(), :check_state_flips, @state_check_interval)
 
+    # Schedule hydration from PostgreSQL
+    Process.send_after(self(), :hydrate_from_postgres, @hydration_delay_ms)
+
+    # Schedule periodic sync
+    Process.send_after(self(), :sync_battery_states, @sync_interval_ms)
+
     {:ok, %{}}
   end
 
@@ -98,6 +108,41 @@ defmodule Sensocto.Simulator.BatteryState do
     )
 
     Process.send_after(self(), :check_state_flips, @state_check_interval)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:hydrate_from_postgres, state) do
+    Logger.debug("[BatteryState] Hydrating battery states from PostgreSQL...")
+
+    case load_battery_states_from_db() do
+      {:ok, battery_states} when battery_states != [] ->
+        Logger.info("[BatteryState] Found #{length(battery_states)} battery states to restore")
+        restore_battery_states(battery_states)
+        {:noreply, state}
+
+      {:ok, []} ->
+        Logger.debug("[BatteryState] No battery states to restore")
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("[BatteryState] Failed to hydrate: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(:sync_battery_states, state) do
+    # Schedule next sync
+    Process.send_after(self(), :sync_battery_states, @sync_interval_ms)
+
+    # Sync all battery states asynchronously
+    ets_size = :ets.info(@table_name, :size)
+
+    if ets_size > 0 do
+      Task.start(fn -> sync_battery_states_to_postgres() end)
+    end
+
     {:noreply, state}
   end
 
@@ -124,7 +169,9 @@ defmodule Sensocto.Simulator.BatteryState do
     # Calculate when to flip state (random duration)
     flip_at = calculate_next_flip(now, charging)
 
-    Logger.debug("Battery state initialized for #{sensor_id}: level=#{Float.round(initial_level, 1)}%, charging=#{charging}")
+    Logger.debug(
+      "Battery state initialized for #{sensor_id}: level=#{Float.round(initial_level, 1)}%, charging=#{charging}"
+    )
 
     %{
       level: initial_level,
@@ -175,7 +222,9 @@ defmodule Sensocto.Simulator.BatteryState do
   defp flip_charging_state(state, now) do
     new_charging = not state.charging
 
-    Logger.debug("Battery state flipped: charging=#{state.charging} -> #{new_charging}, level=#{Float.round(state.level, 1)}%")
+    Logger.debug(
+      "Battery state flipped: charging=#{state.charging} -> #{new_charging}, level=#{Float.round(state.level, 1)}%"
+    )
 
     %{
       state
@@ -190,5 +239,75 @@ defmodule Sensocto.Simulator.BatteryState do
     duration_minutes = @min_flip_duration + :rand.uniform(@max_flip_duration - @min_flip_duration)
 
     now + :timer.minutes(duration_minutes)
+  end
+
+  # PostgreSQL Persistence Functions
+
+  defp load_battery_states_from_db do
+    try do
+      battery_states =
+        SimulatorBatteryState
+        |> Ash.Query.for_read(:all)
+        |> Ash.read!()
+
+      {:ok, battery_states}
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+  defp restore_battery_states(battery_states) do
+    now = System.monotonic_time(:millisecond)
+
+    Enum.each(battery_states, fn bs ->
+      state = %{
+        level: bs.level || 50.0,
+        charging: bs.charging || false,
+        last_update: now,
+        flip_at: calculate_next_flip(now, bs.charging || false),
+        drain_multiplier: bs.drain_multiplier || 1.0,
+        charge_multiplier: bs.charge_multiplier || 1.0
+      }
+
+      :ets.insert(@table_name, {bs.sensor_id, state})
+      Logger.debug("[BatteryState] Restored state for #{bs.sensor_id}: level=#{bs.level}%")
+    end)
+  end
+
+  defp sync_battery_states_to_postgres do
+    try do
+      :ets.foldl(
+        fn {sensor_id, battery_state}, _acc ->
+          case SimulatorBatteryState
+               |> Ash.Query.for_read(:by_sensor, %{sensor_id: sensor_id})
+               |> Ash.read_one() do
+            {:ok, nil} ->
+              # Record doesn't exist yet - it should be created when connector syncs
+              :ok
+
+            {:ok, existing} ->
+              # Update battery state
+              existing
+              |> Ash.Changeset.for_update(:sync_state, %{
+                level: battery_state.level,
+                charging: battery_state.charging,
+                drain_multiplier: battery_state.drain_multiplier,
+                charge_multiplier: battery_state.charge_multiplier
+              })
+              |> Ash.update()
+
+            {:error, _} ->
+              :ok
+          end
+
+          :ok
+        end,
+        :ok,
+        @table_name
+      )
+    rescue
+      e ->
+        Logger.warning("[BatteryState] Exception syncing states: #{inspect(e)}")
+    end
   end
 end

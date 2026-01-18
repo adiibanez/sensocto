@@ -8,7 +8,11 @@ defmodule Sensocto.Simulator.Manager do
   use GenServer
   require Logger
 
+  alias Sensocto.Sensors.{SimulatorScenario, SimulatorConnector}
+
   @scenarios_dir "config/simulator_scenarios"
+  @hydration_delay_ms 100
+  @sync_debounce_ms 500
 
   defstruct [:connectors, :config_path, :running_scenarios, :available_scenarios]
 
@@ -111,6 +115,7 @@ defmodule Sensocto.Simulator.Manager do
     case get_running_scenarios() do
       scenarios when map_size(scenarios) > 0 ->
         scenarios |> Map.keys() |> List.first()
+
       _ ->
         nil
     end
@@ -156,6 +161,9 @@ defmodule Sensocto.Simulator.Manager do
       running_scenarios: %{},
       available_scenarios: available_scenarios
     }
+
+    # Schedule hydration from PostgreSQL after init
+    Process.send_after(self(), :hydrate_from_postgres, @hydration_delay_ms)
 
     {:ok, state, {:continue, :load_config}}
   end
@@ -230,14 +238,16 @@ defmodule Sensocto.Simulator.Manager do
       Map.new(state.connectors, fn {connector_id, config} ->
         status = get_connector_status(connector_id)
         sensors = get_connector_sensors(config)
-        {connector_id, %{
-          name: config["connector_name"] || connector_id,
-          status: status,
-          sensors: sensors,
-          scenario: config["scenario_name"],
-          room_id: config["room_id"],
-          room_name: get_room_name(config["room_id"])
-        }}
+
+        {connector_id,
+         %{
+           name: config["connector_name"] || connector_id,
+           status: status,
+           sensors: sensors,
+           scenario: config["scenario_name"],
+           room_id: config["room_id"],
+           room_name: get_room_name(config["room_id"])
+         }}
       end)
 
     {:reply, connectors_with_status, state}
@@ -280,12 +290,23 @@ defmodule Sensocto.Simulator.Manager do
                 update_in(config, ["connectors"], fn connectors ->
                   Map.new(connectors || %{}, fn {id, connector} ->
                     connector = Map.put(connector, "scenario_name", scenario_name)
-                    connector = if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+
+                    connector =
+                      if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+
                     {id, connector}
                   end)
                 end)
 
               new_state = apply_scenario_config(state, scenario_name, room_id, config)
+
+              # Async sync to PostgreSQL
+              send(
+                self(),
+                {:sync_scenario_started, scenario_name, room_id, scenario.path,
+                 config["connectors"] || %{}}
+              )
+
               {:reply, :ok, new_state}
 
             {:error, reason} ->
@@ -310,6 +331,9 @@ defmodule Sensocto.Simulator.Manager do
         new_connectors = Map.drop(state.connectors, scenario_info.connector_ids)
         new_running = Map.delete(state.running_scenarios, scenario_name)
 
+        # Async sync to PostgreSQL
+        send(self(), {:sync_scenario_stopped, scenario_name})
+
         Logger.info("Stopped scenario: #{scenario_name}")
         {:reply, :ok, %{state | connectors: new_connectors, running_scenarios: new_running}}
     end
@@ -323,7 +347,11 @@ defmodule Sensocto.Simulator.Manager do
         {:reply, {:error, :scenario_not_found}, state}
 
       scenario ->
-        # Stop all existing connectors
+        # Stop all existing connectors and sync to PostgreSQL
+        Enum.each(state.running_scenarios, fn {old_scenario_name, _info} ->
+          send(self(), {:sync_scenario_stopped, old_scenario_name})
+        end)
+
         Enum.each(state.connectors, fn {connector_id, _} ->
           do_stop_connector(connector_id)
         end)
@@ -340,17 +368,29 @@ defmodule Sensocto.Simulator.Manager do
               update_in(config, ["connectors"], fn connectors ->
                 Map.new(connectors || %{}, fn {id, connector} ->
                   connector = Map.put(connector, "scenario_name", scenario_name)
-                  connector = if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+
+                  connector =
+                    if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+
                   {id, connector}
                 end)
               end)
 
-            new_state = apply_scenario_config(
-              %{state | connectors: %{}, running_scenarios: %{}},
-              scenario_name,
-              room_id,
-              config
+            new_state =
+              apply_scenario_config(
+                %{state | connectors: %{}, running_scenarios: %{}},
+                scenario_name,
+                room_id,
+                config
+              )
+
+            # Async sync to PostgreSQL
+            send(
+              self(),
+              {:sync_scenario_started, scenario_name, room_id, scenario.path,
+               config["connectors"] || %{}}
             )
+
             {:reply, :ok, new_state}
 
           {:error, reason} ->
@@ -360,18 +400,64 @@ defmodule Sensocto.Simulator.Manager do
     end
   end
 
+  @impl true
+  def handle_info(:hydrate_from_postgres, state) do
+    Logger.info("Hydrating simulator state from PostgreSQL...")
+
+    case load_running_scenarios_from_db() do
+      {:ok, scenarios} when scenarios != [] ->
+        Logger.info("Found #{length(scenarios)} running scenarios to restore")
+        new_state = restore_scenarios(state, scenarios)
+        {:noreply, new_state}
+
+      {:ok, []} ->
+        Logger.debug("No running scenarios to restore from PostgreSQL")
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("Failed to hydrate from PostgreSQL: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(
+        {:sync_scenario_started, scenario_name, room_id, config_path, connector_configs},
+        state
+      ) do
+    Task.start(fn ->
+      sync_scenario_to_postgres(scenario_name, room_id, config_path, connector_configs)
+    end)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:sync_scenario_stopped, scenario_name}, state) do
+    Task.start(fn ->
+      stop_scenario_in_postgres(scenario_name)
+    end)
+
+    {:noreply, state}
+  end
+
   # Private Functions
 
   defp load_config(%__MODULE__{config_path: path} = state) do
     # Try absolute path first, then relative to priv
     full_path =
       cond do
-        File.exists?(path) -> path
+        File.exists?(path) ->
+          path
+
         File.exists?(Path.join(:code.priv_dir(:sensocto), path)) ->
           Path.join(:code.priv_dir(:sensocto), path)
+
         File.exists?(Path.join(File.cwd!(), path)) ->
           Path.join(File.cwd!(), path)
-        true -> path
+
+        true ->
+          path
       end
 
     Logger.info("Loading simulator config from #{full_path}")
@@ -399,17 +485,21 @@ defmodule Sensocto.Simulator.Manager do
 
     if autostart do
       # Start/Update connectors
-      Enum.reduce(new_connectors_config, %{state | connectors: %{}}, fn {connector_id, connector_config}, acc ->
+      Enum.reduce(new_connectors_config, %{state | connectors: %{}}, fn {connector_id,
+                                                                         connector_config},
+                                                                        acc ->
         connector_config = Map.put(connector_config, "connector_id", connector_id)
         start_or_update_connector(acc, connector_id, connector_config)
       end)
     else
       # Just store config without starting - connectors can be started manually
       Logger.info("Autostart disabled - connectors loaded but not started")
+
       new_connectors =
         Map.new(new_connectors_config, fn {connector_id, connector_config} ->
           {connector_id, Map.put(connector_config, "connector_id", connector_id)}
         end)
+
       %{state | connectors: new_connectors}
     end
   end
@@ -466,14 +556,16 @@ defmodule Sensocto.Simulator.Manager do
     sensors_config = config["sensors"] || %{}
 
     Map.new(sensors_config, fn {sensor_id, sensor_config} ->
-      {sensor_id, %{
-        name: sensor_config["sensor_name"] || sensor_id,
-        attributes: sensor_config["attributes"] || %{}
-      }}
+      {sensor_id,
+       %{
+         name: sensor_config["sensor_name"] || sensor_id,
+         attributes: sensor_config["attributes"] || %{}
+       }}
     end)
   end
 
   defp get_room_name(nil), do: nil
+
   defp get_room_name(room_id) do
     case Sensocto.RoomStore.get_room(room_id) do
       {:ok, room} -> room.name
@@ -500,10 +592,12 @@ defmodule Sensocto.Simulator.Manager do
       else
         # Just store config without starting
         Logger.info("Autostart disabled - connectors loaded but not started")
+
         new_connectors =
           Map.new(new_connectors_config, fn {connector_id, connector_config} ->
             {connector_id, Map.put(connector_config, "connector_id", connector_id)}
           end)
+
         %{state | connectors: Map.merge(state.connectors, new_connectors)}
       end
 
@@ -514,7 +608,10 @@ defmodule Sensocto.Simulator.Manager do
       connector_ids: connector_ids
     }
 
-    %{new_state | running_scenarios: Map.put(new_state.running_scenarios, scenario_name, scenario_info)}
+    %{
+      new_state
+      | running_scenarios: Map.put(new_state.running_scenarios, scenario_name, scenario_info)
+    }
   end
 
   defp discover_scenarios do
@@ -608,6 +705,174 @@ defmodule Sensocto.Simulator.Manager do
 
       {:error, _} ->
         %{description: "", sensor_count: 0, attribute_count: 0}
+    end
+  end
+
+  # PostgreSQL Persistence Functions
+
+  defp load_running_scenarios_from_db do
+    try do
+      scenarios =
+        SimulatorScenario
+        |> Ash.Query.for_read(:running)
+        |> Ash.read!()
+        |> Ash.load!(:connectors)
+
+      {:ok, scenarios}
+    rescue
+      e ->
+        {:error, e}
+    end
+  end
+
+  defp restore_scenarios(state, scenarios) do
+    Enum.reduce(scenarios, state, fn scenario, acc ->
+      Logger.info("Restoring scenario: #{scenario.name}")
+
+      # Find matching available scenario to get the path
+      available = Enum.find(acc.available_scenarios, fn s -> s.name == scenario.name end)
+
+      if available do
+        case YamlElixir.read_from_file(available.path) do
+          {:ok, config} ->
+            room_id = scenario.room_id
+
+            # Inject room_id and scenario_name into all connectors
+            config =
+              update_in(config, ["connectors"], fn connectors ->
+                Map.new(connectors || %{}, fn {id, connector} ->
+                  connector = Map.put(connector, "scenario_name", scenario.name)
+
+                  connector =
+                    if room_id, do: Map.put(connector, "room_id", room_id), else: connector
+
+                  {id, connector}
+                end)
+              end)
+
+            apply_scenario_config(acc, scenario.name, room_id, config)
+
+          {:error, reason} ->
+            Logger.error("Failed to restore scenario #{scenario.name}: #{inspect(reason)}")
+            acc
+        end
+      else
+        Logger.warning(
+          "Scenario #{scenario.name} not found in available scenarios, marking as stopped"
+        )
+
+        stop_scenario_in_postgres(scenario.name)
+        acc
+      end
+    end)
+  end
+
+  defp sync_scenario_to_postgres(scenario_name, room_id, config_path, connector_configs) do
+    room_name = get_room_name(room_id)
+
+    # Debounce to avoid rapid writes
+    Process.sleep(@sync_debounce_ms)
+
+    try do
+      # Check if scenario already exists
+      case SimulatorScenario
+           |> Ash.Query.for_read(:by_name, %{name: scenario_name})
+           |> Ash.read_one() do
+        {:ok, nil} ->
+          # Create new scenario
+          {:ok, scenario} =
+            SimulatorScenario
+            |> Ash.Changeset.for_create(:start, %{
+              name: scenario_name,
+              room_id: room_id,
+              room_name: room_name,
+              config_path: config_path
+            })
+            |> Ash.create()
+
+          # Create connector records
+          sync_connectors_to_postgres(scenario.id, connector_configs)
+          Logger.debug("Synced new scenario #{scenario_name} to PostgreSQL")
+
+        {:ok, existing} ->
+          # Update existing scenario to running
+          {:ok, _} =
+            existing
+            |> Ash.Changeset.for_update(:start, %{
+              room_id: room_id,
+              room_name: room_name
+            })
+            |> Ash.update()
+
+          # Sync connectors
+          sync_connectors_to_postgres(existing.id, connector_configs)
+          Logger.debug("Updated scenario #{scenario_name} in PostgreSQL")
+
+        {:error, reason} ->
+          Logger.warning("Failed to sync scenario #{scenario_name}: #{inspect(reason)}")
+      end
+    rescue
+      e ->
+        Logger.warning("Exception syncing scenario to PostgreSQL: #{inspect(e)}")
+    end
+  end
+
+  defp sync_connectors_to_postgres(scenario_id, connector_configs) do
+    Enum.each(connector_configs, fn {connector_id, config} ->
+      connector_name = config["connector_name"] || connector_id
+      room_id = config["room_id"]
+      sensors_config = config["sensors"] || %{}
+
+      # Check if connector already exists
+      case SimulatorConnector
+           |> Ash.Query.for_read(:by_connector_id, %{connector_id: connector_id})
+           |> Ash.read_one() do
+        {:ok, nil} ->
+          # Create new connector
+          SimulatorConnector
+          |> Ash.Changeset.for_create(:create, %{
+            connector_id: connector_id,
+            connector_name: connector_name,
+            room_id: room_id,
+            sensors_config: sensors_config,
+            scenario_id: scenario_id
+          })
+          |> Ash.create()
+
+        {:ok, _existing} ->
+          # Connector exists, skip update for now
+          :ok
+
+        {:error, _} ->
+          :ok
+      end
+    end)
+  end
+
+  defp stop_scenario_in_postgres(scenario_name) do
+    try do
+      case SimulatorScenario
+           |> Ash.Query.for_read(:by_name, %{name: scenario_name})
+           |> Ash.read_one() do
+        {:ok, nil} ->
+          Logger.debug("Scenario #{scenario_name} not found in PostgreSQL")
+
+        {:ok, scenario} ->
+          {:ok, _} =
+            scenario
+            |> Ash.Changeset.for_update(:stop, %{})
+            |> Ash.update()
+
+          Logger.debug("Marked scenario #{scenario_name} as stopped in PostgreSQL")
+
+        {:error, reason} ->
+          Logger.warning(
+            "Failed to stop scenario #{scenario_name} in PostgreSQL: #{inspect(reason)}"
+          )
+      end
+    rescue
+      e ->
+        Logger.warning("Exception stopping scenario in PostgreSQL: #{inspect(e)}")
     end
   end
 end

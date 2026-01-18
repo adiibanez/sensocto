@@ -94,6 +94,12 @@ defmodule SensoctoWeb.Router do
 
       # Simulator
       live "/simulator", SimulatorLive, :index
+
+      # Mobile device linking
+      live "/mobile/link", MobileLinkLive, :index
+
+      # User settings
+      live "/settings", UserSettingsLive, :index
     end
 
     # Room join can be accessed without authentication (shows preview)
@@ -140,10 +146,14 @@ defmodule SensoctoWeb.Router do
     ash_admin "/ash-admin"
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", SensoctoWeb do
-  #   pipe_through :api
-  # end
+  # Mobile API endpoints
+  scope "/api", SensoctoWeb.Api do
+    pipe_through :api
+
+    # Verify token and get user info
+    get "/auth/verify", MobileAuthController, :verify
+    get "/me", MobileAuthController, :me
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   # if Application.compile_env(:sensocto, :dev_routes) do

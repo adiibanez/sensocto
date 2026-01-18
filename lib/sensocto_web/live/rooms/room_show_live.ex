@@ -17,6 +17,7 @@ defmodule SensoctoWeb.RoomShowLive do
   alias Phoenix.PubSub
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
+  alias SensoctoWeb.Live.Calls.MiniCallIndicatorComponent
 
   @activity_check_interval 5000
 
@@ -81,6 +82,7 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:call_active, call_active)
           |> assign(:in_call, false)
           |> assign(:call_participants, %{})
+          |> assign(:call_speaking, false)
           # Room mode for tab switching (will be set properly by handle_params)
           |> assign(:room_mode, get_default_mode(room))
           # Room members (loaded when settings panel is opened)
@@ -211,9 +213,9 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
-  def handle_event("speaking_changed", %{"speaking" => _speaking}, socket) do
-    # Handle speaking state changes from video call hook - just acknowledge the event
-    {:noreply, socket}
+  def handle_event("speaking_changed", %{"speaking" => speaking}, socket) do
+    # Handle speaking state changes from video call hook
+    {:noreply, assign(socket, :call_speaking, speaking)}
   end
 
   @impl true
@@ -1843,6 +1845,29 @@ defmodule SensoctoWeb.RoomShowLive do
         </div>
       <% end %>
 
+      <%!-- Persistent Call Hook Container - always mounted when in call --%>
+      <div
+        :if={@in_call}
+        id="call-hook-persistent"
+        phx-hook="CallHook"
+        data-room-id={@room.id}
+        data-user-id={@current_user.id}
+        data-user-name={@current_user.email |> to_string()}
+        class="hidden"
+      >
+      </div>
+
+      <%!-- Mini Call Indicator - shows when in call but NOT in call mode --%>
+      <.live_component
+        :if={@in_call && @room_mode != :call}
+        module={MiniCallIndicatorComponent}
+        id="mini-call-indicator"
+        in_call={@in_call}
+        participants={@call_participants}
+        user={@current_user}
+        speaking={@call_speaking}
+      />
+
       <%!-- Video Call Panel - shown when in call mode --%>
       <div :if={@room_mode == :call and Map.get(@room, :calls_enabled, true)} class="mb-6">
         <.live_component
@@ -1852,6 +1877,7 @@ defmodule SensoctoWeb.RoomShowLive do
           user={@current_user}
           in_call={@in_call}
           participants={@call_participants}
+          external_hook={@in_call}
         />
       </div>
 

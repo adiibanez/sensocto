@@ -164,6 +164,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
   @impl true
   def handle_event("play", _, socket) do
+    socket = maybe_auto_claim_control(socket)
     user_id = get_user_id(socket)
     MediaPlayerServer.play(socket.assigns.room_id, user_id)
     {:noreply, socket}
@@ -171,6 +172,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
   @impl true
   def handle_event("pause", _, socket) do
+    socket = maybe_auto_claim_control(socket)
     user_id = get_user_id(socket)
     MediaPlayerServer.pause(socket.assigns.room_id, user_id)
     {:noreply, socket}
@@ -178,7 +180,8 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
   @impl true
   def handle_event("client_seek", %{"position" => position}, socket) do
-    # User seeked in YouTube player - update server if they are the controller
+    # User seeked in YouTube player - auto-claim control if no one has it
+    socket = maybe_auto_claim_control(socket)
     user_id = get_user_id(socket)
 
     if can_control?(socket.assigns.controller_user_id, socket.assigns.current_user) do
@@ -190,6 +193,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
   @impl true
   def handle_event("next", _, socket) do
+    socket = maybe_auto_claim_control(socket)
     user_id = get_user_id(socket)
     MediaPlayerServer.next(socket.assigns.room_id, user_id)
     {:noreply, socket}
@@ -197,6 +201,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
   @impl true
   def handle_event("previous", _, socket) do
+    socket = maybe_auto_claim_control(socket)
     user_id = get_user_id(socket)
     MediaPlayerServer.previous(socket.assigns.room_id, user_id)
     {:noreply, socket}
@@ -347,6 +352,20 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     case socket.assigns do
       %{current_user: %{id: id}} -> id
       _ -> nil
+    end
+  end
+
+  # Auto-claim control if no one has it and user interacts with player
+  defp maybe_auto_claim_control(socket) do
+    controller_id = socket.assigns[:controller_user_id]
+    current_user = socket.assigns[:current_user]
+
+    if is_nil(controller_id) && current_user do
+      user_name = current_user.email || current_user.name || "Unknown"
+      MediaPlayerServer.take_control(socket.assigns.room_id, current_user.id, user_name)
+      assign(socket, :controller_user_id, current_user.id)
+    else
+      socket
     end
   end
 

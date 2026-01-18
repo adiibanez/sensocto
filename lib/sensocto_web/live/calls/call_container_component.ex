@@ -28,6 +28,9 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       # in_call and participants come from parent - always update them
       |> assign(:in_call, assigns[:in_call] || false)
       |> assign(:participants, assigns[:participants] || %{})
+      # external_hook: true means the CallHook is mounted separately (persistent)
+      # This allows the component to render just the UI without managing the hook
+      |> assign(:external_hook, assigns[:external_hook] || false)
       # These are component-internal state - use assign_new to preserve
       |> assign_new(:audio_enabled, fn -> true end)
       |> assign_new(:video_enabled, fn -> true end)
@@ -77,7 +80,7 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
     ~H"""
     <div
       id="call-container"
-      phx-hook="CallHook"
+      phx-hook={if @external_hook, do: nil, else: "CallHook"}
       data-room-id={@room.id}
       data-user-id={@user.id}
       data-user-name={@user.email |> to_string()}
@@ -123,7 +126,12 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
               class="flex-1 py-2 px-4 rounded-lg bg-green-600 hover:bg-green-500 transition-colors text-white text-sm font-medium flex items-center justify-center gap-2"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
               </svg>
               Join with Video
             </button>
@@ -134,7 +142,12 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
               class="py-2 px-4 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors text-white text-sm font-medium flex items-center justify-center gap-2"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                />
               </svg>
               Voice Only
             </button>
@@ -204,7 +217,8 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       <%= if @speaking do %>
         <div class="absolute top-2 left-2">
           <span class="flex h-3 w-3">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75">
+            </span>
             <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
           </span>
         </div>
@@ -216,7 +230,7 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
             <%= if @is_local do %>
               You
             <% else %>
-              <%= get_participant_name(@participant) %>
+              {get_participant_name(@participant)}
             <% end %>
           </span>
 
@@ -224,8 +238,18 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
             <%= if !@audio_enabled do %>
               <span class="p-1 bg-red-500 rounded-full">
                 <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                  />
                 </svg>
               </span>
             <% end %>
@@ -236,7 +260,9 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       <%= if @is_local && !@video_enabled do %>
         <div class="absolute inset-0 flex items-center justify-center bg-gray-800">
           <div class="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center">
-            <span class="text-2xl text-gray-400"><%= @user.email |> to_string() |> String.first() |> String.upcase() %></span>
+            <span class="text-2xl text-gray-400">
+              {@user.email |> to_string() |> String.first() |> String.upcase()}
+            </span>
           </div>
         </div>
       <% end %>
@@ -248,19 +274,31 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
     ~H"""
     <%= case @tier do %>
       <% :active -> %>
-        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-green-500/80 text-white" title="Active speaker - HD video">
+        <span
+          class="px-1.5 py-0.5 text-xs font-medium rounded bg-green-500/80 text-white"
+          title="Active speaker - HD video"
+        >
           HD
         </span>
       <% :recent -> %>
-        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-500/80 text-white" title="Recently active - SD video">
+        <span
+          class="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-500/80 text-white"
+          title="Recently active - SD video"
+        >
           SD
         </span>
       <% :viewer -> %>
-        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-gray-500/80 text-white" title="Viewer mode - snapshots">
+        <span
+          class="px-1.5 py-0.5 text-xs font-medium rounded bg-gray-500/80 text-white"
+          title="Viewer mode - snapshots"
+        >
           📷
         </span>
       <% :idle -> %>
-        <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-gray-700/80 text-gray-300" title="Idle - no video">
+        <span
+          class="px-1.5 py-0.5 text-xs font-medium rounded bg-gray-700/80 text-gray-300"
+          title="Idle - no video"
+        >
           💤
         </span>
       <% _ -> %>
@@ -282,12 +320,27 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
         >
           <%= if @audio_enabled do %>
             <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+              />
             </svg>
           <% else %>
             <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+              />
             </svg>
           <% end %>
         </button>
@@ -301,11 +354,21 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
         >
           <%= if @video_enabled do %>
             <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
             </svg>
           <% else %>
             <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18" />
             </svg>
           <% end %>

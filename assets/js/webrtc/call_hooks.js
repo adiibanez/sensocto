@@ -80,6 +80,9 @@ export const CallHook = {
     this.userId = this.el.dataset.userId;
     this.userName = this.el.dataset.userName || "User";
 
+    // Check if this is a persistent hook (mounted separately from UI container)
+    this.isPersistent = this.el.id === "call-hook-persistent";
+
     this.membraneClient = null;
     this.mediaManager = new MediaManager();
     this.channel = null;
@@ -141,6 +144,7 @@ export const CallHook = {
     this.handleEvent("toggle_video", (data) => this.handleToggleVideo(data));
     this.handleEvent("set_quality", (data) => this.handleSetQuality(data));
     this.handleEvent("set_attention_level", (data) => this.handleSetAttentionLevel(data));
+    this.handleEvent("set_participant_attention", (data) => this.handleSetParticipantAttention(data));
 
     // Handle visibility change to manage call state when tab is hidden/shown
     this._visibilityHandler = () => this._handleVisibilityChange();
@@ -192,14 +196,20 @@ export const CallHook = {
   },
 
   attachLocalStream() {
+    // When persistent, look for video element in the separate call-container
     const localVideoEl = document.querySelector("#local-video video");
     if (localVideoEl && this.localStream) {
       localVideoEl.srcObject = this.localStream;
       localVideoEl.muted = true;
-      console.log("Attached local stream to video element");
+      console.log("[CallHook] Attached local stream to video element");
       return true;
     }
-    console.log("Local video element not found, will retry...");
+    // Not found - might be unmounted during mode switch (expected when persistent)
+    if (this.isPersistent) {
+      console.log("[CallHook] Local video element not found (persistent mode, UI may be hidden)");
+    } else {
+      console.log("[CallHook] Local video element not found, will retry...");
+    }
     return false;
   },
 
@@ -656,6 +666,45 @@ export const CallHook = {
     }
   },
 
+  handleSetParticipantAttention(data) {
+    const { connector_id, level } = data;
+    console.log(`[CallHook] Set participant attention: ${connector_id} -> ${level}`);
+
+    const tier = this._attentionToTier(level);
+
+    for (const [userId, participant] of this.participants) {
+      if (this._matchesConnector(userId, participant, connector_id)) {
+        console.log(`[CallHook] Found participant ${userId} for connector ${connector_id}, setting tier to ${tier}`);
+
+        if (this.adaptiveConsumer) {
+          this.adaptiveConsumer.setParticipantTier(userId, tier);
+        }
+
+        if (this.channel) {
+          this.channel.push("request_quality_tier", { target_user_id: userId, tier });
+        }
+        break;
+      }
+    }
+  },
+
+  _matchesConnector(userId, participant, connectorId) {
+    if (userId === connectorId) return true;
+    if (participant?.user_info?.connector_id === connectorId) return true;
+    if (participant?.metadata?.connector_id === connectorId) return true;
+    if (participant?.connector_id === connectorId) return true;
+    return false;
+  },
+
+  _attentionToTier(level) {
+    switch (level) {
+      case "high": return "active";
+      case "medium": return "recent";
+      case "low": return "viewer";
+      default: return "viewer";
+    }
+  },
+
   handleQualityChange(level, settings) {
     console.log(`[CallHook] Quality changed to ${level}:`, settings);
 
@@ -820,6 +869,15 @@ export const CallHook = {
         if (!this._destroyed) {
           console.log("[CallHook] Call ended by server");
           this.handleLeaveCall();
+        }
+      });
+
+      this.channel.on("quality_tier_request", (data) => {
+        if (!this._destroyed && data.target_user_id === this.userId) {
+          console.log(`[CallHook] Quality tier request from ${data.from_user_id}: ${data.tier}`);
+          if (this.adaptiveProducer) {
+            this.adaptiveProducer.setTier(data.tier);
+          }
         }
       });
 
@@ -1009,28 +1067,59 @@ export const CallHook = {
             // Check if the added node is a participant container
             if (node.id && node.id.startsWith("participant-")) {
               const userId = node.id.replace("participant-", "");
-              console.log(`Detected new participant container: ${node.id}`);
+              console.log(`[CallHook] Detected new participant container: ${node.id}`);
               this.attachBufferedTracks(userId);
+            }
+            // Check if this is the local video container (for mode switches)
+            if (node.id === "local-video") {
+              console.log("[CallHook] Detected local-video container, attaching stream");
+              this.attachLocalStream();
             }
             // Also check children of added nodes
             const participantContainers = node.querySelectorAll?.('[id^="participant-"]') || [];
             for (const container of participantContainers) {
               const userId = container.id.replace("participant-", "");
-              console.log(`Detected new participant container (nested): ${container.id}`);
+              console.log(`[CallHook] Detected new participant container (nested): ${container.id}`);
               this.attachBufferedTracks(userId);
+            }
+            // Check for local-video in children
+            const localVideoEl = node.querySelector?.("#local-video");
+            if (localVideoEl) {
+              console.log("[CallHook] Detected local-video in added node, attaching stream");
+              this.attachLocalStream();
+            }
+            // Check if the call-container itself was added (mode switch back to call mode)
+            if (node.id === "call-container" || node.querySelector?.("#call-container")) {
+              console.log("[CallHook] Call container mounted, reattaching all streams");
+              this.attachLocalStream();
+              // Reattach all pending tracks
+              for (const [userId, tracks] of this.pendingTracks) {
+                for (const ctx of tracks) {
+                  this.attachTrackToContainer(userId, ctx);
+                }
+              }
             }
           }
         }
       }
     });
 
-    // Start observing the call container and its subtree
-    const callContainer = document.getElementById("call-container");
-    if (callContainer) {
-      this.containerObserver.observe(callContainer, {
+    // When persistent, observe the entire document body to catch mode switches
+    // Otherwise, just observe the call container
+    if (this.isPersistent) {
+      console.log("[CallHook] Setting up document-wide observer (persistent mode)");
+      this.containerObserver.observe(document.body, {
         childList: true,
         subtree: true
       });
+    } else {
+      const callContainer = document.getElementById("call-container");
+      if (callContainer) {
+        this.containerObserver.observe(callContainer, {
+          childList: true,
+          subtree: true
+        });
+      }
     }
   },
 

@@ -25,6 +25,7 @@
     <.link navigate={~p"/lobby"} class="text-gray-300 hover:text-white mr-4">Lobby</.link>
     <.link navigate={~p"/rooms"} class="text-gray-300 hover:text-white mr-4">Rooms</.link>
     <.link navigate={~p"/simulator"} class="text-gray-300 hover:text-white mr-4">Sim</.link>
+    <.link navigate={~p"/about"} class="text-gray-300 hover:text-white mr-4">About</.link>
     <a href="/sign-out" class="text-gray-300 hover:text-white">Logout</a>
   </div>
 
@@ -42,17 +43,35 @@
       id="mobile-menu-dropdown"
       class="hidden absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-lg shadow-lg py-2 z-50"
     >
-      <.link navigate={~p"/"} class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white">
+      <.link
+        navigate={~p"/"}
+        class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
         Home
       </.link>
-      <.link navigate={~p"/lobby"} class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white">
+      <.link
+        navigate={~p"/lobby"}
+        class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
         Lobby
       </.link>
-      <.link navigate={~p"/rooms"} class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white">
+      <.link
+        navigate={~p"/rooms"}
+        class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
         Rooms
       </.link>
-      <.link navigate={~p"/simulator"} class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white">
+      <.link
+        navigate={~p"/simulator"}
+        class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
         Sim
+      </.link>
+      <.link
+        navigate={~p"/about"}
+        class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
+      >
+        About
       </.link>
       <hr class="my-2 border-gray-600" />
       <a href="/sign-out" class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white">
@@ -78,23 +97,43 @@
   phx-hook="BottomNav"
 >
   <div class="grid grid-cols-5 h-14">
-    <a href="/" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400" data-path="/">
+    <a
+      href="/"
+      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
+      data-path="/"
+    >
       <Heroicons.icon name="home" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Home</span>
     </a>
-    <a href="/lobby" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400" data-path="/lobby">
+    <a
+      href="/lobby"
+      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
+      data-path="/lobby"
+    >
       <Heroicons.icon name="squares-2x2" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Lobby</span>
     </a>
-    <a href="/rooms" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400" data-path="/rooms">
+    <a
+      href="/rooms"
+      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
+      data-path="/rooms"
+    >
       <Heroicons.icon name="building-office" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Rooms</span>
     </a>
-    <a href="/sensors" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400" data-path="/sensors">
+    <a
+      href="/sensors"
+      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
+      data-path="/sensors"
+    >
       <Heroicons.icon name="signal" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Sensors</span>
     </a>
-    <a href="/simulator" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400" data-path="/simulator">
+    <a
+      href="/simulator"
+      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
+      data-path="/simulator"
+    >
       <Heroicons.icon name="cpu-chip" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Sim</span>
     </a>
@@ -113,9 +152,13 @@
   wrapper_position="top"
   clickable
 >
-  <:item icon="hero-plus" navigate={~p"/rooms/new"} color="success" variant="default">
-  </:item>
-  <:item icon="hero-globe-alt" navigate={~p"/rooms?tab=public"} color="secondary" variant="default">
+  <:item icon="hero-plus" navigate={~p"/rooms/new"} color="success" variant="default"></:item>
+  <:item
+    icon="hero-globe-alt"
+    navigate={~p"/rooms?tab=public"}
+    color="secondary"
+    variant="default"
+  >
   </:item>
 </SensoctoWeb.Components.SpeedDial.speed_dial>
 

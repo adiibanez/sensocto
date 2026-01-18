@@ -106,8 +106,12 @@ iex -S mix phx.server
 |-----|-------------|
 | `docs/architecture.md` | System overview and OTP processes |
 | `docs/attention-system.md` | Back-pressure and attention tracking |
+| `docs/scalability.md` | Scaling characteristics and performance |
 | `docs/deployment.md` | Fly.io deployment and hot code upgrades |
 | `docs/simulator-integration.md` | Sensor simulation system |
+| `docs/beam-vm-tuning.md` | BEAM VM optimization guide |
+| `docs/CLUSTERING_PLAN.md` | Distributed clustering roadmap |
+| `docs/attributes.md` | Supported sensor attribute types |
 
 ### Common Tasks
 
@@ -187,19 +191,25 @@ Enabled in dev mode - see floating debug panel in browser.
 ```
 sensocto/
 ├── lib/
-│   ├── sensocto/           # Business logic
-│   │   ├── application.ex  # Supervision tree
-│   │   ├── otp/            # GenServers, supervisors
-│   │   ├── sensors/        # Ash resources for sensors
-│   │   ├── rooms/          # Collaboration features
-│   │   └── simulator/      # Sensor simulation
-│   └── sensocto_web/       # Web layer
-│       ├── live/           # LiveView modules
-│       ├── components/     # UI components
-│       └── channels/       # WebSocket channels
-├── assets/                 # Frontend (Svelte + Tailwind)
-├── config/                 # Environment configs
-├── priv/repo/migrations/   # Database migrations
-├── test/                   # Test suite
-└── docs/                   # Documentation
+│   ├── sensocto/                  # Business logic
+│   │   ├── application.ex         # Root supervision tree
+│   │   ├── infrastructure/        # Core infrastructure supervisor
+│   │   ├── registry/              # Process registries supervisor
+│   │   ├── storage/               # Storage & Iroh supervisor
+│   │   ├── bio/                   # Biomimetic layer supervisor
+│   │   ├── domain/                # Domain logic supervisor
+│   │   ├── otp/                   # GenServers, supervisors
+│   │   ├── sensors/               # Ash resources for sensors
+│   │   ├── rooms/                 # Collaboration features
+│   │   ├── calls/                 # WebRTC video/voice calling
+│   │   └── simulator/             # Sensor simulation
+│   └── sensocto_web/              # Web layer
+│       ├── live/                  # LiveView modules
+│       ├── components/            # UI components
+│       └── channels/              # WebSocket channels
+├── assets/                        # Frontend (Svelte + Tailwind)
+├── config/                        # Environment configs
+├── priv/repo/migrations/          # Database migrations
+├── test/                          # Test suite
+└── docs/                          # Documentation
 ```

@@ -49,6 +49,12 @@ import { AttentionTracker, SensorPinControl } from './hooks/attention_tracker.js
 // Video/Voice call hooks
 import { CallHook, VideoTileHook, CallControlsHook } from './webrtc/call_hooks.js';
 
+// Mini call indicator for persistent call UI
+import { MiniCallIndicatorHook } from './hooks/mini_call_indicator.js';
+
+// User video tile for attention-based video in Users tab
+import { UserVideoTileHook } from './hooks/user_video_tile.js';
+
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
   window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
@@ -77,6 +83,8 @@ Hooks.SensorPinControl = SensorPinControl;
 Hooks.CallHook = CallHook;
 Hooks.VideoTileHook = VideoTileHook;
 Hooks.CallControlsHook = CallControlsHook;
+Hooks.MiniCallIndicator = MiniCallIndicatorHook;
+Hooks.UserVideoTile = UserVideoTileHook;
 
 // Vibrate hook - vibrates device and plays sound on every button press
 // Supports repetitive clicks on same button (uses timestamp to detect)

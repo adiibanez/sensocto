@@ -98,6 +98,7 @@ defmodule SensoctoWeb.LobbyLive do
         call_active: call_active,
         in_call: false,
         call_participants: %{},
+        call_speaking: false,
         # Bump animation assigns for mode buttons
         media_bump: false,
         object3d_bump: false
@@ -313,6 +314,31 @@ defmodule SensoctoWeb.LobbyLive do
       }
     end)
     |> Enum.sort_by(& &1.connector_name)
+  end
+
+  # Helper functions for user video card integration
+  defp user_in_call?(call_participants, connector_id) do
+    Enum.any?(call_participants, fn {_user_id, participant} ->
+      participant[:connector_id] == connector_id ||
+        participant[:metadata][:connector_id] == connector_id
+    end)
+  end
+
+  defp get_user_video_tier(call_participants, connector_id) do
+    Enum.find_value(call_participants, :viewer, fn {_user_id, participant} ->
+      if participant[:connector_id] == connector_id ||
+           participant[:metadata][:connector_id] == connector_id do
+        participant[:tier] || :viewer
+      end
+    end)
+  end
+
+  defp user_speaking?(call_participants, connector_id) do
+    Enum.any?(call_participants, fn {_user_id, participant} ->
+      (participant[:connector_id] == connector_id ||
+         participant[:metadata][:connector_id] == connector_id) &&
+        participant[:speaking] == true
+    end)
   end
 
   @impl true
@@ -715,6 +741,35 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :object3d_bump, false)}
   end
 
+  # Handle attention changes from UserVideoCardComponent
+  @impl true
+  def handle_info({:user_attention_change, connector_id, level}, socket) do
+    # Forward attention change to CallHook for quality tier adjustment
+    Logger.debug("User attention change: #{connector_id} -> #{level}")
+
+    socket =
+      push_event(socket, "set_participant_attention", %{
+        connector_id: connector_id,
+        level: Atom.to_string(level)
+      })
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:user_focus, connector_id}, socket) do
+    # User clicked on a card to focus - boost quality to highest tier
+    Logger.debug("User focus requested: #{connector_id}")
+
+    socket =
+      push_event(socket, "set_participant_attention", %{
+        connector_id: connector_id,
+        level: "high"
+      })
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(msg, socket) do
     IO.inspect(msg, label: "Lobby Unknown Message")
@@ -837,6 +892,30 @@ defmodule SensoctoWeb.LobbyLive do
       |> push_event("save_lobby_mode", %{mode: mode})
 
     {:noreply, socket}
+  end
+
+  # Quick join call from persistent call controls bar (one-click join)
+  @impl true
+  def handle_event("quick_join_call", %{"mode" => mode}, socket) do
+    # Join the call but DON'T switch tabs - user stays on current view (3D object, media, etc.)
+    # The call controls bar provides full access to call features regardless of active tab
+    socket = push_event(socket, "join_call", %{mode: mode})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_call_audio", _, socket) do
+    {:noreply, push_event(socket, "toggle_audio", %{})}
+  end
+
+  @impl true
+  def handle_event("toggle_call_video", _, socket) do
+    {:noreply, push_event(socket, "toggle_video", %{})}
+  end
+
+  @impl true
+  def handle_event("leave_call", _, socket) do
+    {:noreply, push_event(socket, "leave_call", %{})}
   end
 
   # Restore lobby mode from localStorage (via JS hook)
@@ -997,6 +1076,29 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_event("participant_video_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("speaking_changed", %{"speaking" => speaking}, socket) do
+    {:noreply, assign(socket, :call_speaking, speaking)}
+  end
+
+  @impl true
+  def handle_event("participant_speaking", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("my_tier_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("producer_mode_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("consumer_mode_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("tier_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("webrtc_stats", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event(type, params, socket) do

@@ -51,44 +51,56 @@ Sensocto is a real-time sensor data platform built with Phoenix/Elixir, using th
 
 ## OTP Supervision Tree
 
-The application starts the following processes (see `lib/sensocto/application.ex`):
+The application uses a hierarchical supervision tree with intermediate supervisors to create failure isolation domains. This prevents a flapping process in one domain from exhausting the restart budget and bringing down unrelated functionality.
+
+See `lib/sensocto/application.ex` for the complete implementation:
 
 ```
-Sensocto.Supervisor (one_for_one)
+Sensocto.Supervisor (root, :rest_for_one)
 │
-├── SensoctoWeb.Telemetry          # Metrics collection
-├── Sensocto.Repo                  # Database connection pool
-├── Sensocto.Otp.BleConnectorGenServer  # BLE device connector
-├── SensorsStateAgent              # RealityKit state
+├── Layer 1: Infrastructure.Supervisor (:one_for_one)
+│   ├── SensoctoWeb.Telemetry          # Metrics collection
+│   ├── Sensocto.Repo                  # Database connection pool
+│   ├── Phoenix.PubSub                 # Inter-process messaging
+│   ├── SensoctoWeb.Sensocto.Presence  # User presence tracking
+│   ├── DNSCluster                     # Service discovery (Fly.io)
+│   └── Finch                          # HTTP client pool
 │
-├── Registries (process discovery)
-│   ├── Sensocto.TestRegistry
-│   ├── Sensocto.Sensors.Registry
-│   ├── Sensocto.Sensors.SensorRegistry
-│   ├── Sensocto.SimpleAttributeRegistry
+├── Layer 2: Registry.Supervisor (:one_for_one)
 │   ├── Sensocto.SimpleSensorRegistry
-│   ├── Sensocto.SensorPairRegistry
+│   ├── Sensocto.SimpleAttributeRegistry
 │   ├── Sensocto.RoomRegistry
-│   └── Sensocto.RoomJoinCodeRegistry
+│   ├── Sensocto.RoomJoinCodeRegistry
+│   ├── Sensocto.CallRegistry
+│   ├── Sensocto.MediaRegistry
+│   └── Sensocto.Object3DRegistry
 │
-├── Sensocto.Otp.Connector         # Connection manager
-├── DNSCluster                     # Service discovery (Fly.io)
-├── Phoenix.PubSub                 # Inter-process messaging
-├── SensoctoWeb.Sensocto.Presence  # User presence tracking
-├── Sensocto.AttentionTracker      # Back-pressure control
+├── Layer 3: Storage.Supervisor (:rest_for_one)
+│   ├── Iroh.RoomStore                 # P2P room document storage
+│   ├── RoomStore                      # Room state persistence
+│   ├── Iroh.RoomSync                  # Room sync coordination
+│   └── RoomStateCRDT                  # CRDT-based state merging
 │
-├── Sensocto.SensorsDynamicSupervisor  # Dynamic sensor processes
-│   └── SensorSupervisor (per sensor)
-│       ├── SimpleSensor (GenServer)
-│       └── AttributeStore (Agent per attribute)
+├── Layer 4: Bio.Supervisor (:one_for_one)
+│   ├── NoveltyDetector                # Adaptive novelty detection
+│   ├── PredictiveLoadBalancer         # Predictive resource management
+│   ├── HomeostaticTuner               # System homeostasis
+│   └── [Biomimetic layer processes]
 │
-├── Sensocto.RoomsDynamicSupervisor    # Dynamic room processes
-│   └── RoomServer (per room)
+├── Layer 5: Domain.Supervisor (:one_for_one)
+│   ├── Sensocto.AttentionTracker      # Back-pressure control (ETS-backed)
+│   ├── Sensocto.SensorsDynamicSupervisor
+│   │   └── SensorSupervisor (per sensor)
+│   │       ├── SimpleSensor (GenServer)
+│   │       └── AttributeStore (Agent per attribute)
+│   ├── Sensocto.RoomsDynamicSupervisor
+│   │   └── RoomServer (per room)
+│   ├── Sensocto.CallSupervisor        # WebRTC call management
+│   ├── Sensocto.MediaPlayerSupervisor # Media playback
+│   └── Sensocto.Object3DPlayerSupervisor  # 3D object streaming
 │
-├── Sensocto.Otp.RepoReplicator    # DB sync helper
-├── Finch                          # HTTP client pool
-├── SensoctoWeb.Endpoint           # Phoenix endpoint
-├── AshAuthentication.Supervisor   # Auth management
+├── Layer 6: SensoctoWeb.Endpoint      # Phoenix endpoint
+├── Layer 7: AshAuthentication.Supervisor  # Auth management
 │
 └── [Optional] Sensocto.Simulator.Supervisor
     ├── Sensocto.Simulator.Manager
@@ -96,6 +108,23 @@ Sensocto.Supervisor (one_for_one)
         └── SensorServer (per simulated sensor)
             └── AttributeServer (per attribute)
 ```
+
+### Supervision Strategy Rationale
+
+**Root supervisor uses `:rest_for_one`** because later children depend on earlier ones. If Infrastructure crashes, Registries lose their PubSub. If Registries crash, Domain supervisors lose their lookup mechanism. The cascading restart ensures consistency.
+
+**Intermediate supervisors use `:one_for_one`** (mostly) because their children are independent within each domain. A crashed sensor registry doesn't affect the room registry.
+
+**Storage uses `:rest_for_one`** because RoomStore depends on Iroh.RoomStore, and RoomSync depends on both. Dependencies flow downward.
+
+### Blast Radius Examples
+
+- Media player crash: Only that room's player restarts. No other impact.
+- Sensor registry crash: Sensor lookups fail briefly. Rooms unaffected.
+- Iroh.RoomStore crash: All storage processes restart. Domains stay up.
+- Infrastructure crash: Everything restarts in order. Full recovery.
+
+See `docs/supervision-tree.md` for interactive Mermaid diagrams of the supervision tree.
 
 ## Key Components
 
@@ -169,18 +198,29 @@ The project uses [Ash](https://ash-hq.org) for domain modeling:
 **Route Structure:**
 | Path | Module | Description |
 |------|--------|-------------|
-| `/` | `IndexLive` | Landing page |
+| `/` | `IndexLive` | Landing page (authenticated) |
 | `/sense` | `SenseLive` | Main sensor dashboard |
 | `/sensors` | `SensorLive.Index` | Sensor list |
-| `/rooms/*` | `RoomListLive`, `RoomShowLive` | Room management |
+| `/sensors/:id` | `SensorLive.Show` | Sensor detail view |
+| `/lobby` | `LobbyLive` | Sensor lobby (with sub-routes for heartrate, imu, etc.) |
+| `/rooms` | `RoomListLive` | Room listing |
+| `/rooms/new` | `RoomListLive` | Create new room |
+| `/rooms/:id` | `RoomShowLive` | Room detail view |
+| `/rooms/:id/settings` | `RoomShowLive` | Room settings |
+| `/rooms/join/:code` | `RoomJoinLive` | Join room via code (auth optional) |
 | `/simulator` | `SimulatorLive` | Simulator controls |
+| `/playground` | `PlaygroundLive` | Development playground |
+| `/realitykit` | `RealitykitLive` | RealityKit integration |
+| `/iroh-gossip` | `IrohGossipLive` | P2P gossip viewer |
 | `/admin/dashboard` | Phoenix LiveDashboard | System monitoring |
 | `/admin/ash-admin` | AshAdmin | Database admin |
+| `/dev/mailbox` | Swoosh MailboxPreview | Dev email preview |
 
 **Authentication:**
 - Ash Authentication with Google OAuth support
 - Bearer token for API access
-- Magic link sign-in
+- Magic link sign-in (with confirmation page)
+- Session-based authentication for LiveViews
 
 ## Data Flow Examples
 
@@ -237,13 +277,28 @@ Key environment variables (see `.env.sample`):
 | Domain Framework | Ash 3.0 |
 | Database | PostgreSQL with Ecto |
 | Authentication | Ash Authentication (OAuth, magic links) |
-| Process Management | OTP GenServers, DynamicSupervisors |
-| Deployment | Fly.io with hot code upgrades |
+| Process Management | OTP GenServers, DynamicSupervisors, Horde |
+| P2P Storage | Iroh (distributed document sync) |
+| WebRTC | Membrane RTC Engine with ex_webrtc |
+| Deployment | Fly.io with hot code upgrades (FlyDeploy) |
+| HTTP Client | Finch, Req |
 
 ## Further Reading
 
+**Core Documentation:**
 - `docs/attention-system.md` - Back-pressure system details
 - `docs/deployment.md` - Production deployment
 - `docs/simulator-integration.md` - Sensor simulation
+- `docs/scalability.md` - Scaling characteristics and tuning
+- `docs/beam-vm-tuning.md` - BEAM VM optimization
+
+**Architecture & Planning:**
+- `docs/CLUSTERING_PLAN.md` - Distributed clustering roadmap
+- `docs/room-markdown-format.md` - Room document format specification
+- `docs/attributes.md` - Supported sensor attribute types
+
+**External Documentation:**
 - [Ash Framework Docs](https://hexdocs.pm/ash)
 - [Phoenix LiveView Docs](https://hexdocs.pm/phoenix_live_view)
+- [Membrane RTC Engine](https://hexdocs.pm/membrane_rtc_engine)
+- [Iroh Docs](https://iroh.computer/docs)

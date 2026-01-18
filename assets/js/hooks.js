@@ -366,19 +366,22 @@ function loadYouTubeAPI() {
 }
 
 Hooks.MediaPlayerHook = {
-    // KISS implementation - simple, reliable YouTube player synchronization
+    // Robust media player synchronization
+    // Design principle: User actions are KING during grace period, then server is authoritative
     mounted() {
         this.player = null;
         this.roomId = this.el.dataset.roomId;
         this.currentVideoId = null;
         this.isReady = false;
         this.lastKnownPosition = 0;
-        this.lastSeekTime = 0;
-        this.lastUserActionTime = 0;
-        this.seekGracePeriod = 2000; // 2 seconds grace period after seeking
-        this.userActionGracePeriod = 1500; // 1.5 seconds grace period after user action
         this.lastReportedPosition = 0;
-        this.isUserSeeking = false; // Track if user is actively seeking
+
+        // Grace period tracking - when set, sync is IGNORED
+        this.userActionUntil = 0; // Timestamp until which user has control
+        this.USER_ACTION_GRACE_MS = 3000; // 3 seconds of user control after any action
+
+        // Track programmatic vs user-initiated state changes
+        this.expectingStateChange = false;
 
         // Load YouTube API and initialize player
         loadYouTubeAPI().then(() => {
@@ -398,30 +401,27 @@ Hooks.MediaPlayerHook = {
         });
 
         // Listen for user action events (play/pause clicks) to set grace period
-        // This prevents the sync from immediately overriding user actions
         this.handleEvent("media_user_action", () => {
-            this.markUserAction();
+            this.grantUserControl();
         });
 
         // Handle seek commands from progress bar
         this.handleEvent("seek_to", (data) => {
             if (this.isReady && this.player) {
-                this.isUserSeeking = true;
-                this.lastSeekTime = Date.now();
+                this.grantUserControl();
                 this.player.seekTo(data.position, true);
                 this.lastKnownPosition = data.position;
                 this.lastReportedPosition = data.position;
-                setTimeout(() => { this.isUserSeeking = false; }, 500);
             }
         });
 
-        // Also intercept clicks on play/pause buttons within this component
+        // Intercept clicks on play/pause buttons - grant user control BEFORE the event fires
         this.el.addEventListener('click', (e) => {
             const target = e.target.closest('[phx-click="play"], [phx-click="pause"], [phx-click="next"], [phx-click="previous"]');
             if (target) {
-                this.markUserAction();
+                this.grantUserControl();
             }
-        });
+        }, true); // Use capture phase to run before phx-click
 
         // Watch for player container being removed (e.g., section collapsed)
         this.setupObserver();
@@ -574,60 +574,67 @@ Hooks.MediaPlayerHook = {
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
         }
-        // Fast sync interval (100ms) for precise cross-tab synchronization
-        // This is the key to keeping multiple tabs in sync
+        // Sync interval (500ms) - slower is more reliable, server pushes are the primary sync
         this.syncInterval = setInterval(() => {
-            if (this.isReady && this.player) {
-                const currentPosition = this.player.getCurrentTime() || 0;
-                const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
-                const now = Date.now();
+            if (!this.isReady || !this.player) return;
 
-                // Detect seek: position jumped by more than 1.5 seconds (not normal playback)
-                // But only if we're not actively seeking via our UI
-                const inGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
-
-                if (!inGracePeriod && !this.isUserSeeking && positionDelta > 1.5) {
-                    // User seeked via YouTube controls - report to server immediately
-                    this.lastSeekTime = now;
-                    this.lastReportedPosition = currentPosition;
-                    this.pushEventTo(this.el, "client_seek", { position: currentPosition });
-                }
-
-                this.lastKnownPosition = currentPosition;
-
-                // Report current position more frequently for tighter sync
-                // Only report if position changed by 0.25 seconds
-                if (Math.abs(currentPosition - this.lastReportedPosition) > 0.25) {
-                    this.lastReportedPosition = currentPosition;
-                    this.pushEventTo(this.el, "position_update", { position: currentPosition });
-                }
-
-                this.pushEventTo(this.el, "request_media_sync", {});
+            // NEVER sync during user control period
+            if (this.isUserInControl()) {
+                this.lastKnownPosition = this.player.getCurrentTime() || 0;
+                return;
             }
-        }, 100);
+
+            const currentPosition = this.player.getCurrentTime() || 0;
+            const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
+
+            // Detect if user seeked via YouTube controls (position jumped > 3 seconds)
+            if (positionDelta > 3) {
+                this.grantUserControl();
+                this.lastReportedPosition = currentPosition;
+                this.pushEventTo(this.el, "client_seek", { position: currentPosition });
+            }
+
+            this.lastKnownPosition = currentPosition;
+
+            // Report position for UI updates (every 1 second of change)
+            if (Math.abs(currentPosition - this.lastReportedPosition) > 1) {
+                this.lastReportedPosition = currentPosition;
+                this.pushEventTo(this.el, "position_update", { position: currentPosition });
+            }
+
+            // Request sync from server
+            this.pushEventTo(this.el, "request_media_sync", {});
+        }, 500);
     },
 
     onPlayerStateChange(event) {
         // Report video ended so server can advance playlist
         if (event.data === YT.PlayerState.ENDED) {
             this.pushEventTo(this.el, "video_ended", {});
+            return;
         }
 
-        // When user clicks play/pause on YouTube controls, sync to server
-        // This is the key fix - YouTube controls must update server state
+        // Report duration when playing starts
         if (event.data === YT.PlayerState.PLAYING) {
-            // User clicked play on YouTube - tell server
-            this.markUserAction();
-            this.pushEventTo(this.el, "play", {});
-
-            // Report duration (more accurate than onReady)
             const duration = this.player.getDuration();
             if (duration > 0) {
                 this.pushEventTo(this.el, "report_duration", { duration: duration });
             }
+        }
+
+        // If we're expecting this state change (programmatic), just clear the flag
+        if (this.expectingStateChange) {
+            this.expectingStateChange = false;
+            return;
+        }
+
+        // This was a USER action (YouTube controls or our buttons already granted control)
+        // Forward to server
+        if (event.data === YT.PlayerState.PLAYING) {
+            this.grantUserControl();
+            this.pushEventTo(this.el, "play", {});
         } else if (event.data === YT.PlayerState.PAUSED) {
-            // User clicked pause on YouTube - tell server
-            this.markUserAction();
+            this.grantUserControl();
             this.pushEventTo(this.el, "pause", {});
         }
     },
@@ -676,55 +683,52 @@ Hooks.MediaPlayerHook = {
             return;
         }
 
+        // CRITICAL: If user is in control, COMPLETELY IGNORE sync
+        // This is the key to reliable playback - user actions are never overridden
+        if (this.isUserInControl()) {
+            return;
+        }
+
         const serverPosition = data.position_seconds || 0;
         const serverState = data.state;
         const currentPosition = this.player.getCurrentTime() || 0;
         const playerState = this.player.getPlayerState();
 
         const isPlaying = playerState === YT.PlayerState.PLAYING;
-        const isPaused = playerState === YT.PlayerState.PAUSED;
         const isBuffering = playerState === YT.PlayerState.BUFFERING;
         const isUnstarted = playerState === YT.PlayerState.UNSTARTED;
+        const isCued = playerState === YT.PlayerState.CUED;
         const shouldPlay = serverState === 'playing';
 
-        // Check if we're in a user action grace period
-        const now = Date.now();
-        const inActionGracePeriod = (now - (this.lastUserActionTime || 0)) < this.userActionGracePeriod;
-
-        // 1. Handle play/pause state
-        // Only auto-resume if NOT in grace period (prevents race condition when user clicks pause)
-        if (shouldPlay && !isPlaying && !isBuffering && !inActionGracePeriod) {
+        // 1. Handle play/pause state synchronization
+        if (shouldPlay && !isPlaying && !isBuffering) {
+            this.expectingStateChange = true;
             this.player.playVideo();
 
-            // If player is stuck in UNSTARTED state, Chrome likely blocked autoplay
-            // Try muted playback after a short delay
-            if (isUnstarted && !this._mutedPlaybackAttempted) {
+            // Handle Chrome autoplay blocking
+            if ((isUnstarted || isCued) && !this._mutedPlaybackAttempted) {
                 this._mutedPlaybackAttempted = true;
                 setTimeout(() => {
+                    if (!this.player) return;
                     const newState = this.player.getPlayerState();
                     if (newState === YT.PlayerState.UNSTARTED || newState === YT.PlayerState.CUED) {
                         console.log('[MediaPlayer] Autoplay blocked, trying muted playback');
+                        this.expectingStateChange = true;
                         this.player.mute();
                         this.player.playVideo();
                         this.showMutedNotice();
                     }
                 }, 500);
             }
-        } else if (!shouldPlay && (isPlaying || isBuffering)) {
-            // Always allow pausing - this is the authoritative server state
+        } else if (!shouldPlay && isPlaying) {
+            this.expectingStateChange = true;
             this.player.pauseVideo();
         }
 
-        // 2. Skip position correction if user is actively seeking or in grace period
-        const inSeekGracePeriod = (now - this.lastSeekTime) < this.seekGracePeriod;
-        if (inSeekGracePeriod || this.isUserSeeking) {
-            return;
-        }
-
-        // 3. Correct position drift if > 0.5 seconds (only when playing)
-        // Tighter threshold for better cross-tab synchronization
+        // 2. Correct position drift (only when playing and drift > 2 seconds)
+        // Larger threshold = less jarring, more tolerant
         const drift = Math.abs(currentPosition - serverPosition);
-        if (shouldPlay && drift > 0.5 && !isBuffering) {
+        if (shouldPlay && drift > 2 && !isBuffering) {
             this.player.seekTo(serverPosition, true);
             this.lastKnownPosition = serverPosition;
             this.lastReportedPosition = serverPosition;
@@ -771,9 +775,14 @@ Hooks.MediaPlayerHook = {
         }, 500);
     },
 
-    // Called when user initiates a play/pause action (to prevent sync race conditions)
-    markUserAction() {
-        this.lastUserActionTime = Date.now();
+    // Grant user control for the grace period - sync will be IGNORED during this time
+    grantUserControl() {
+        this.userActionUntil = Date.now() + this.USER_ACTION_GRACE_MS;
+    },
+
+    // Check if user is currently in control (grace period active)
+    isUserInControl() {
+        return Date.now() < this.userActionUntil;
     }
 };
 
@@ -1192,19 +1201,20 @@ Hooks.Object3DPlayerHook = {
         }
 
         try {
-            // Remove existing splat scenes from the viewer (don't dispose the whole viewer)
-            if (this.viewer.splatMesh && this.viewer.getSplatSceneCount && this.viewer.getSplatSceneCount() > 0) {
-                console.log('[Object3DPlayer] Removing existing splat scenes');
+            // ALWAYS dispose and recreate the viewer when loading a new model
+            // This is the most reliable way to clear previous scenes - removeSplatScenes()
+            // has proven unreliable and can leave ghost models
+            if (this.viewer) {
+                console.log('[Object3DPlayer] Disposing viewer before loading new model');
                 try {
-                    await this.viewer.removeSplatScenes();
-                } catch (e) {
-                    console.warn('[Object3DPlayer] Error removing scenes, recreating viewer:', e);
                     this.viewer.dispose();
-                    this.viewer = null;
-                    this.viewerReady = false;
-                    await this.initViewer();
+                } catch (e) {
+                    console.warn('[Object3DPlayer] Error disposing viewer:', e);
                 }
+                this.viewer = null;
+                this.viewerReady = false;
             }
+            await this.initViewer();
 
             console.log('[Object3DPlayer] Calling addSplatScene with URL:', url);
 

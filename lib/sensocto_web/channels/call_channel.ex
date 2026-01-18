@@ -11,7 +11,12 @@ defmodule SensoctoWeb.CallChannel do
   alias Phoenix.PubSub
 
   # Intercept broadcast events so handle_out/3 is called
-  intercept ["participant_audio_changed", "participant_video_changed", "participant_speaking", "video_snapshot"]
+  intercept [
+    "participant_audio_changed",
+    "participant_video_changed",
+    "participant_speaking",
+    "video_snapshot"
+  ]
 
   @impl true
   def join("call:" <> room_id, params, socket) do
@@ -107,7 +112,10 @@ defmodule SensoctoWeb.CallChannel do
       room_id = socket.assigns.room_id
       user_id = socket.assigns.user_id
 
-      Logger.info("CallChannel: Received media event from #{user_id}: #{inspect(data, limit: 200)}")
+      Logger.info(
+        "CallChannel: Received media event from #{user_id}: #{inspect(data, limit: 200)}"
+      )
+
       Calls.handle_media_event(room_id, user_id, data)
 
       {:noreply, socket}
@@ -173,6 +181,23 @@ defmodule SensoctoWeb.CallChannel do
   end
 
   @impl true
+  def handle_in("request_quality_tier", %{"target_user_id" => target_id, "tier" => tier}, socket) do
+    if socket.assigns.joined_call do
+      # Broadcast tier request to the target participant
+      # The target's client will adjust their outgoing video quality
+      broadcast_from!(socket, "quality_tier_request", %{
+        from_user_id: socket.assigns.user_id,
+        target_user_id: target_id,
+        tier: tier
+      })
+
+      {:reply, :ok, socket}
+    else
+      {:reply, {:error, %{reason: "not_in_call"}}, socket}
+    end
+  end
+
+  @impl true
   def handle_in("get_participants", _params, socket) do
     room_id = socket.assigns.room_id
 
@@ -231,7 +256,11 @@ defmodule SensoctoWeb.CallChannel do
 
   # Adaptive quality: receive video snapshot from client (for viewer tier)
   @impl true
-  def handle_in("video_snapshot", %{"data" => data, "width" => width, "height" => height, "timestamp" => timestamp}, socket) do
+  def handle_in(
+        "video_snapshot",
+        %{"data" => data, "width" => width, "height" => height, "timestamp" => timestamp},
+        socket
+      ) do
     if socket.assigns.joined_call do
       user_id = socket.assigns.user_id
 

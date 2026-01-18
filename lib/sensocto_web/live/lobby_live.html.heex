@@ -40,7 +40,90 @@
     </div>
   </div>
 
-  <%!-- Mode Switcher: Media Playback, Video Call, 3D Coral --%>
+  <%!-- ================================================================== --%>
+  <%!-- CALL CONTROLS - Always visible, independent of content tabs --%>
+  <%!-- ================================================================== --%>
+  <div class="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <Heroicons.icon name="phone" type="solid" class="h-5 w-5 text-gray-400" />
+        <span class="text-sm text-gray-300 font-medium">Voice/Video Call</span>
+      </div>
+
+      <%= if @in_call do %>
+        <%!-- In call: show status and controls --%>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-sm text-green-400">
+            <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            <span>Connected</span>
+            <span class="text-gray-500">
+              ({map_size(@call_participants) + 1} in call)
+            </span>
+          </div>
+
+          <%!-- Quick audio/video toggles --%>
+          <div class="flex items-center gap-1">
+            <button
+              phx-click="toggle_call_audio"
+              class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+              title="Toggle microphone"
+            >
+              <Heroicons.icon name="microphone" type="solid" class="h-4 w-4" />
+            </button>
+            <button
+              phx-click="toggle_call_video"
+              class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+              title="Toggle camera"
+            >
+              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
+            </button>
+          </div>
+
+          <%!-- Expand call view / Leave call --%>
+          <button
+            phx-click="switch_lobby_mode"
+            phx-value-mode="call"
+            class={"px-3 py-1.5 rounded-lg text-sm font-medium transition-all " <>
+              if(@lobby_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+          >
+            {if @lobby_mode == :call, do: "Viewing Call", else: "Show Call"}
+          </button>
+
+          <button
+            phx-click="leave_call"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-500 text-white transition-colors"
+          >
+            Leave
+          </button>
+        </div>
+      <% else %>
+        <%!-- Not in call: show join buttons --%>
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-500">Not connected</span>
+          <button
+            phx-click="quick_join_call"
+            phx-value-mode="video"
+            class="px-3 py-1.5 rounded-l-lg text-sm font-medium transition-all flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white"
+            title="Join with video"
+          >
+            <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Join
+          </button>
+          <button
+            phx-click="quick_join_call"
+            phx-value-mode="audio"
+            class="px-2 py-1.5 rounded-r-lg text-sm font-medium transition-all flex items-center bg-green-700 hover:bg-green-600 text-white border-l border-green-800"
+            title="Join with voice only"
+          >
+            <Heroicons.icon name="microphone" type="solid" class="h-4 w-4" />
+          </button>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <%!-- ================================================================== --%>
+  <%!-- CONTENT TABS - Media, 3D Object (Call is shown inline when active) --%>
+  <%!-- ================================================================== --%>
   <div class="flex items-center justify-center gap-2 mb-4">
     <button
       phx-click="switch_lobby_mode"
@@ -49,19 +132,20 @@
         if(@lobby_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
     >
-      <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
+      <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media
     </button>
-    <button
-      phx-click="switch_lobby_mode"
-      phx-value-mode="call"
-      class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
-        if(@lobby_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-    >
-      <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Video Call
-      <%= if @in_call do %>
-        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-      <% end %>
-    </button>
+
+    <%= if @in_call do %>
+      <button
+        phx-click="switch_lobby_mode"
+        phx-value-mode="call"
+        class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+          if(@lobby_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+      >
+        <Heroicons.icon name="users" type="solid" class="h-4 w-4" /> Participants
+      </button>
+    <% end %>
+
     <button
       phx-click="switch_lobby_mode"
       phx-value-mode="object3d"
@@ -73,7 +157,19 @@
     </button>
   </div>
 
-  <%!-- Media Player Panel - shown when in media mode --%>
+  <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
+  <div
+    id="call-hook-persistent"
+    phx-hook="CallHook"
+    data-room-id="lobby"
+    data-user-id={@current_user.id}
+    data-user-name={@current_user.email |> to_string()}
+    data-in-call={to_string(@in_call)}
+    class="hidden"
+  >
+  </div>
+
+  <%!-- Media Player Panel --%>
   <div :if={@lobby_mode == :media} class="mb-6">
     <.live_component
       module={SensoctoWeb.Live.Components.MediaPlayerComponent}
@@ -84,8 +180,8 @@
     />
   </div>
 
-  <%!-- Video Call Panel - shown when in call mode --%>
-  <div :if={@lobby_mode == :call} class="mb-6">
+  <%!-- Call Participants Panel - shows video grid when in call mode --%>
+  <div :if={@lobby_mode == :call && @in_call} class="mb-6">
     <.live_component
       module={SensoctoWeb.Live.Calls.CallContainerComponent}
       id="lobby-call-container"
@@ -93,10 +189,11 @@
       user={@current_user}
       in_call={@in_call}
       participants={@call_participants}
+      external_hook={true}
     />
   </div>
 
-  <%!-- 3D Object Viewer Panel - shown when in object3d mode --%>
+  <%!-- 3D Object Viewer Panel --%>
   <div :if={@lobby_mode == :object3d} class="mb-6">
     <.live_component
       module={SensoctoWeb.Live.Components.Object3DPlayerComponent}
@@ -285,7 +382,7 @@
     </div>
   </div>
 
-  <%!-- Users/Connectors Summary View --%>
+  <%!-- Users/Connectors Summary View with Video Presence --%>
   <div :if={@live_action == :users}>
     <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-400">
       <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
@@ -295,150 +392,14 @@
 
     <div :if={@sensors_by_user != []} class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
       <%= for user <- @sensors_by_user do %>
-        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors">
-          <%!-- User Header --%>
-          <div class="flex items-center gap-3 mb-3 pb-3 border-b border-gray-700">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-              {String.first(user.connector_name) |> String.upcase()}
-            </div>
-            <div class="flex-1 min-w-0">
-              <h3 class="text-white font-semibold truncate text-base">{user.connector_name}</h3>
-              <p class="text-gray-400 text-xs">
-                {user.sensor_count} sensor{if user.sensor_count != 1, do: "s"} · {user.total_attributes} attributes
-              </p>
-            </div>
-            <div class="flex-shrink-0">
-              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
-                <span class="w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 animate-pulse"></span>
-                Online
-              </span>
-            </div>
-          </div>
-
-          <%!-- Sensors List --%>
-          <div class="mb-3">
-            <p class="text-gray-500 text-xs uppercase tracking-wide mb-2">Sensors</p>
-            <div class="flex flex-wrap gap-1.5">
-              <%= for sensor <- user.sensors do %>
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300">
-                  {sensor.sensor_name}
-                </span>
-              <% end %>
-            </div>
-          </div>
-
-          <%!-- Attributes Summary --%>
-          <div>
-            <p class="text-gray-500 text-xs uppercase tracking-wide mb-2">Data Types</p>
-            <div class="grid grid-cols-2 gap-2">
-              <%= for attr <- user.attributes_summary do %>
-                <div class="bg-gray-700/50 rounded p-2">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <%= case attr.type do %>
-                      <% "heartrate" -> %>
-                        <Heroicons.icon
-                          name="heart"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-red-400"
-                        />
-                      <% "hr" -> %>
-                        <Heroicons.icon
-                          name="heart"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-red-400"
-                        />
-                      <% "battery" -> %>
-                        <Heroicons.icon
-                          name="battery-50"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-yellow-400"
-                        />
-                      <% "temperature" -> %>
-                        <Heroicons.icon
-                          name="fire"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-orange-400"
-                        />
-                      <% "spo2" -> %>
-                        <Heroicons.icon
-                          name="beaker"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-blue-400"
-                        />
-                      <% "ecg" -> %>
-                        <Heroicons.icon
-                          name="chart-bar"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-green-400"
-                        />
-                      <% "blood_pressure" -> %>
-                        <Heroicons.icon
-                          name="arrow-trending-up"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-purple-400"
-                        />
-                      <% "respiratory" -> %>
-                        <Heroicons.icon
-                          name="cloud"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-cyan-400"
-                        />
-                      <% "imu" -> %>
-                        <Heroicons.icon
-                          name="cube"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-indigo-400"
-                        />
-                      <% "geolocation" -> %>
-                        <Heroicons.icon
-                          name="map-pin"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-emerald-400"
-                        />
-                      <% "button" -> %>
-                        <Heroicons.icon
-                          name="cursor-arrow-rays"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-pink-400"
-                        />
-                      <% _ -> %>
-                        <Heroicons.icon
-                          name="signal"
-                          type="solid"
-                          class="h-3.5 w-3.5 text-gray-400"
-                        />
-                    <% end %>
-                    <span class="text-xs text-gray-300 capitalize">
-                      {String.replace(attr.type, "_", " ")}
-                    </span>
-                  </div>
-                  <div class="text-sm font-mono text-white">
-                    <%= cond do %>
-                      <% attr.latest_value == nil -> %>
-                        <span class="text-gray-500">--</span>
-                      <% attr.type in ["heartrate", "hr"] and is_number(attr.latest_value) -> %>
-                        {"#{round(attr.latest_value)} bpm"}
-                      <% attr.type == "battery" and is_map(attr.latest_value) -> %>
-                        {"#{round(attr.latest_value[:level] || attr.latest_value["level"] || 0)}%"}
-                      <% attr.type == "battery" and is_number(attr.latest_value) -> %>
-                        {"#{round(attr.latest_value)}%"}
-                      <% attr.type == "temperature" and is_number(attr.latest_value) -> %>
-                        {"#{Float.round(attr.latest_value * 1.0, 1)}°"}
-                      <% attr.type == "spo2" and is_number(attr.latest_value) -> %>
-                        {"#{round(attr.latest_value)}%"}
-                      <% is_map(attr.latest_value) -> %>
-                        <span class="text-gray-400 text-xs">data</span>
-                      <% is_number(attr.latest_value) -> %>
-                        {"#{Float.round(attr.latest_value * 1.0, 1)}"}
-                      <% true -> %>
-                        <span class="text-gray-400 text-xs">--</span>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        </div>
+        <.live_component
+          module={SensoctoWeb.Live.Components.UserVideoCardComponent}
+          id={"user-video-card-#{user.connector_id}"}
+          user={user}
+          in_call={user_in_call?(@call_participants, user.connector_id)}
+          video_tier={get_user_video_tier(@call_participants, user.connector_id)}
+          speaking={user_speaking?(@call_participants, user.connector_id)}
+        />
       <% end %>
     </div>
   </div>

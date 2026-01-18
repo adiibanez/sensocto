@@ -41,6 +41,9 @@ defmodule SensoctoWeb.Router do
 
     live "/realitykit", RealitykitLive
 
+    # Public about page (also integrated into sign-in page)
+    live "/about", AboutLive, :index
+
     post "/lvn-auth", LvnController, :authenticate
     get "/lvn-auth", LvnController, :authenticate
     live "/lvn-signin", Live.LvnSigninLive, :index
@@ -83,8 +86,6 @@ defmodule SensoctoWeb.Router do
       live "/sensors/:id", SensorLive.Show, :show
       live "/sensors/:id/edit", SensorLive.Show, :edit
 
-      live "/about", AboutLive, :index
-
       # Rooms
       live "/rooms", RoomListLive, :index
       live "/rooms/new", RoomListLive, :new
@@ -103,6 +104,7 @@ defmodule SensoctoWeb.Router do
     end
 
     sign_in_route(
+      live_view: SensoctoWeb.CustomSignInLive,
       overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default],
       register_path: "/register",
       reset_path: "/reset",

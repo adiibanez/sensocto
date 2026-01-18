@@ -762,6 +762,36 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, socket}
   end
 
+  # Quick join call from persistent call controls bar (one-click join)
+  @impl true
+  def handle_event("quick_join_call", %{"mode" => mode}, socket) do
+    # Join the call but DON'T switch tabs - user stays on current view (media, 3D object, etc.)
+    # The call controls bar provides full access to call features regardless of active tab
+    socket = push_event(socket, "join_call", %{mode: mode})
+    {:noreply, socket}
+  end
+
+  # Leave call from persistent call controls bar
+  @impl true
+  def handle_event("leave_call", _params, socket) do
+    socket = push_event(socket, "leave_call", %{})
+    {:noreply, assign(socket, :in_call, false)}
+  end
+
+  # Toggle audio from persistent call controls bar
+  @impl true
+  def handle_event("toggle_call_audio", _params, socket) do
+    socket = push_event(socket, "toggle_audio", %{})
+    {:noreply, socket}
+  end
+
+  # Toggle video from persistent call controls bar
+  @impl true
+  def handle_event("toggle_call_video", _params, socket) do
+    socket = push_event(socket, "toggle_video", %{})
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("call_joining_retry", params, socket) do
     attempt = Map.get(params, "attempt", 1)
@@ -1796,8 +1826,91 @@ defmodule SensoctoWeb.RoomShowLive do
         <% end %>
       </div>
 
+      <%!-- ================================================================== --%>
+      <%!-- CALL CONTROLS - Always visible when calls enabled, independent of tabs --%>
+      <%!-- ================================================================== --%>
+      <%= if Map.get(@room, :calls_enabled, true) do %>
+        <div class="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <Heroicons.icon name="phone" type="solid" class="h-5 w-5 text-gray-400" />
+              <span class="text-sm text-gray-300 font-medium">Voice/Video Call</span>
+            </div>
+
+            <%= if @in_call do %>
+              <%!-- In call: show status and controls --%>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 text-sm text-green-400">
+                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span>Connected</span>
+                  <span class="text-gray-500">
+                    ({map_size(@call_participants) + 1} in call)
+                  </span>
+                </div>
+
+                <%!-- Quick audio/video toggles --%>
+                <div class="flex items-center gap-1">
+                  <button
+                    phx-click="toggle_call_audio"
+                    class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+                    title="Toggle microphone"
+                  >
+                    <Heroicons.icon name="microphone" type="solid" class="h-4 w-4" />
+                  </button>
+                  <button
+                    phx-click="toggle_call_video"
+                    class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+                    title="Toggle camera"
+                  >
+                    <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
+                  </button>
+                </div>
+
+                <%!-- Expand call view / Leave call --%>
+                <button
+                  phx-click="switch_room_mode"
+                  phx-value-mode="call"
+                  class={"px-3 py-1.5 rounded-lg text-sm font-medium transition-all " <>
+                    if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  {if @room_mode == :call, do: "Viewing Call", else: "Show Call"}
+                </button>
+
+                <button
+                  phx-click="leave_call"
+                  class="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-500 text-white transition-colors"
+                >
+                  Leave
+                </button>
+              </div>
+            <% else %>
+              <%!-- Not in call: show join buttons --%>
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-500">Not connected</span>
+                <button
+                  phx-click="quick_join_call"
+                  phx-value-mode="video"
+                  class="px-3 py-1.5 rounded-l-lg text-sm font-medium transition-all flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white"
+                  title="Join with video"
+                >
+                  <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Join
+                </button>
+                <button
+                  phx-click="quick_join_call"
+                  phx-value-mode="audio"
+                  class="px-2 py-1.5 rounded-r-lg text-sm font-medium transition-all flex items-center bg-green-700 hover:bg-green-600 text-white border-l border-green-800"
+                  title="Join with voice only"
+                >
+                  <Heroicons.icon name="microphone" type="solid" class="h-4 w-4" />
+                </button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
       <%!-- Mode Switcher Tabs - only show if any collaboration feature is enabled --%>
-      <%= if Map.get(@room, :calls_enabled, true) or Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) do %>
+      <%= if Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) do %>
         <div class="flex items-center justify-start gap-2 mb-6 flex-wrap">
           <%= if Map.get(@room, :media_playback_enabled, true) do %>
             <button
@@ -1808,19 +1921,6 @@ defmodule SensoctoWeb.RoomShowLive do
                 if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
             >
               <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
-            </button>
-          <% end %>
-          <%= if Map.get(@room, :calls_enabled, true) do %>
-            <button
-              phx-click="switch_room_mode"
-              phx-value-mode="call"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
-                if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Video Call
-              <%= if @in_call do %>
-                <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-              <% end %>
             </button>
           <% end %>
           <%= if Map.get(@room, :object_3d_enabled, false) do %>
@@ -1834,6 +1934,16 @@ defmodule SensoctoWeb.RoomShowLive do
               <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
             </button>
           <% end %>
+          <%= if @in_call do %>
+            <button
+              phx-click="switch_room_mode"
+              phx-value-mode="call"
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Call View
+            </button>
+          <% end %>
           <button
             phx-click="switch_room_mode"
             phx-value-mode="sensors"
@@ -1845,13 +1955,14 @@ defmodule SensoctoWeb.RoomShowLive do
         </div>
       <% end %>
 
-      <%!-- Persistent Call Hook Container - always mounted when in call --%>
+      <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
       <div
-        :if={@in_call}
+        :if={Map.get(@room, :calls_enabled, true)}
         id="call-hook-persistent"
         phx-hook="CallHook"
         data-room-id={@room.id}
         data-user-id={@current_user.id}
+        data-in-call={to_string(@in_call)}
         data-user-name={@current_user.email |> to_string()}
         class="hidden"
       >

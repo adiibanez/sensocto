@@ -502,10 +502,10 @@ defmodule SensoctoWeb.AboutLive do
     <!-- Footer CTA -->
         <div class="mt-12 text-center">
           <.link
-            navigate={~p"/lobby"}
+            navigate={~p"/sign-in"}
             class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
           >
-            <.icon name="hero-play" class="h-5 w-5" /> Start Connecting
+            <.icon name="hero-play" class="h-5 w-5" /> Get Started
           </.link>
         </div>
       </div>

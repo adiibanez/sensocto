@@ -590,9 +590,11 @@ Hooks.MediaPlayerHook = {
 
             const currentPosition = this.player.getCurrentTime() || 0;
             const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
+            const timeSinceLastSyncSeek = Date.now() - this.lastSyncSeekAt;
 
             // Detect if user seeked via YouTube controls (position jumped > 3 seconds)
-            if (positionDelta > 3) {
+            // BUT ignore if we recently did a sync seek (that's expected position change)
+            if (positionDelta > 3 && timeSinceLastSyncSeek > this.SYNC_SEEK_COOLDOWN_MS) {
                 this.grantUserControl();
                 this.lastReportedPosition = currentPosition;
                 this.pushEventTo(this.el, "client_seek", { position: currentPosition });
@@ -738,11 +740,16 @@ Hooks.MediaPlayerHook = {
         // - Playing and drift > 2 seconds
         // - Not currently buffering (would just cause another buffer)
         // - Haven't done a sync seek recently (prevents seek loops)
-        if (shouldPlay && drift > 2 && !isBuffering && timeSinceLastSyncSeek > this.SYNC_SEEK_COOLDOWN_MS) {
-            this.lastSyncSeekAt = Date.now();
-            this.player.seekTo(serverPosition, true);
-            this.lastKnownPosition = serverPosition;
-            this.lastReportedPosition = serverPosition;
+        if (shouldPlay && drift > 2 && !isBuffering) {
+            if (timeSinceLastSyncSeek > this.SYNC_SEEK_COOLDOWN_MS) {
+                console.log(`[MediaPlayer] Sync seek: drift=${drift.toFixed(1)}s, server=${serverPosition.toFixed(1)}, client=${currentPosition.toFixed(1)}`);
+                this.lastSyncSeekAt = Date.now();
+                this.player.seekTo(serverPosition, true);
+                this.lastKnownPosition = serverPosition;
+                this.lastReportedPosition = serverPosition;
+            } else {
+                console.log(`[MediaPlayer] Skipping sync seek (cooldown): drift=${drift.toFixed(1)}s, cooldown remaining=${((this.SYNC_SEEK_COOLDOWN_MS - timeSinceLastSyncSeek) / 1000).toFixed(1)}s`);
+            }
         }
     },
 

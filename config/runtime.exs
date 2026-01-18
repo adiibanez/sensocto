@@ -33,6 +33,25 @@ if bucket = System.get_env("FLY_DEPLOY_BUCKET") do
   config :fly_deploy, bucket: bucket
 end
 
+# Tigris S3-compatible storage for room markdown backup
+# On Fly.io, Tigris credentials are auto-injected when you run `fly storage create`
+if System.get_env("TIGRIS_BUCKET") || System.get_env("BUCKET_NAME") do
+  config :sensocto, :tigris,
+    bucket: System.get_env("TIGRIS_BUCKET") || System.get_env("BUCKET_NAME"),
+    region: System.get_env("TIGRIS_REGION") || System.get_env("AWS_REGION") || "auto",
+    access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+    secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
+    endpoint:
+      System.get_env("TIGRIS_ENDPOINT") || System.get_env("AWS_ENDPOINT_URL_S3") ||
+        "https://fly.storage.tigris.dev"
+
+  # Enable backup worker when Tigris is configured
+  config :sensocto, :backup_worker,
+    enabled: true,
+    interval_ms: String.to_integer(System.get_env("BACKUP_INTERVAL_MS") || "300000"),
+    batch_size: String.to_integer(System.get_env("BACKUP_BATCH_SIZE") || "10")
+end
+
 # TURN server configuration for video/voice calls (Membrane RTC Engine ExWebRTC)
 if turn_url = System.get_env("TURN_SERVER_URL") do
   turn_username = System.get_env("TURN_USERNAME")

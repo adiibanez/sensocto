@@ -433,6 +433,13 @@ defmodule SensoctoWeb.SensorDataChannel do
         )
 
         false
+
+      :error ->
+        Logger.warning(
+          "Authorization failed: invalid bearer_token for sensor #{sensor_id}, reason: :error"
+        )
+
+        false
     end
   end
 

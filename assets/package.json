@@ -10,7 +10,6 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@googlemaps/js-api-loader": "^1.16.8",
     "@jellyfish-dev/membrane-webrtc-js": "^0.6.0",
     "@mkkellogg/gaussian-splats-3d": "^0.4.7",
     "ahrs": "1.1.8",
@@ -27,7 +26,6 @@
     "phoenix_html": "file:../deps/phoenix_html",
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "qrcode": "^1.5.4",
-    "scichart": "^3.5.711",
     "sigma": "^3.0.2",
     "sortablejs": "^1.15.6",
     "uuid": "^13.0.0"

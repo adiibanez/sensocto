@@ -24,6 +24,7 @@
     import Map from "./Map.svelte";
 
     export let live = null;
+    export let bearerToken = null;
     let deviceName = null;
     let inputDeviceName = "";
     let sensorService = null;
@@ -70,7 +71,7 @@
     });
 </script>
 
-<SensorService bind:live bind:this={sensorService}>
+<SensorService bind:live bind:this={sensorService} {bearerToken}>
     <!--<NetworkQualityMonitor />-->
     <div class="sense-app-container">
         <!-- Connector name input - compact on desktop -->

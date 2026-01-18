@@ -107,7 +107,7 @@ defmodule Sensocto.Types.SafeKeys do
       iex> Sensocto.Types.SafeKeys.safe_string_to_existing_atom("unknown_key")
       {:ok, "unknown_key"}
   """
-  @spec safe_string_to_existing_atom(String.t()) :: {:ok, atom() | String.t()}
+  @spec safe_string_to_existing_atom(String.t() | atom()) :: {:ok, atom() | String.t()}
   def safe_string_to_existing_atom(key) when is_binary(key) do
     if key in @allowed_message_keys do
       {:ok, String.to_existing_atom(key)}
@@ -116,6 +116,9 @@ defmodule Sensocto.Types.SafeKeys do
       {:ok, key}
     end
   end
+
+  # Pass through atoms as-is (already safe since they exist)
+  def safe_string_to_existing_atom(key) when is_atom(key), do: {:ok, key}
 
   @doc """
   Safely converts string keys to atoms for whitelisted keys only.

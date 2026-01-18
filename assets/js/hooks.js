@@ -380,6 +380,10 @@ Hooks.MediaPlayerHook = {
         this.userActionUntil = 0; // Timestamp until which user has control
         this.USER_ACTION_GRACE_MS = 3000; // 3 seconds of user control after any action
 
+        // Sync-triggered seek cooldown - prevents seek loops when buffering
+        this.lastSyncSeekAt = 0;
+        this.SYNC_SEEK_COOLDOWN_MS = 5000; // 5 seconds after a sync seek before allowing another
+
         // Track programmatic vs user-initiated state changes
         this.expectingStateChange = false;
 
@@ -728,7 +732,14 @@ Hooks.MediaPlayerHook = {
         // 2. Correct position drift (only when playing and drift > 2 seconds)
         // Larger threshold = less jarring, more tolerant
         const drift = Math.abs(currentPosition - serverPosition);
-        if (shouldPlay && drift > 2 && !isBuffering) {
+        const timeSinceLastSyncSeek = Date.now() - this.lastSyncSeekAt;
+
+        // Only seek if:
+        // - Playing and drift > 2 seconds
+        // - Not currently buffering (would just cause another buffer)
+        // - Haven't done a sync seek recently (prevents seek loops)
+        if (shouldPlay && drift > 2 && !isBuffering && timeSinceLastSyncSeek > this.SYNC_SEEK_COOLDOWN_MS) {
+            this.lastSyncSeekAt = Date.now();
             this.player.seekTo(serverPosition, true);
             this.lastKnownPosition = serverPosition;
             this.lastReportedPosition = serverPosition;

@@ -1,18 +1,22 @@
 defmodule SensoctoWeb.SenseLive do
   use SensoctoWeb, :live_view
+  require Logger
 
   @impl true
-  def mount(_params, %{"parent_id" => parent_id}, socket) do
-    # send_test_event()
-    # Phoenix.PubSub.subscribe(Sensocto.PubSub, "measurement")
+  def mount(_params, session, socket) do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
 
-    # https://www.richardtaylor.dev/articles/beautiful-animated-charts-for-liveview-with-echarts
-    # https://echarts.apache.org/examples/en/index.html#chart-type-flowGL
+    # Get JWT token from session (passed from parent LiveView)
+    # This is more reliable than socket.assigns[:current_user] for nested LiveViews
+    bearer_token = Map.get(session, "user_token")
+    Logger.debug("SenseLive mount - bearer_token present: #{bearer_token != nil}")
+
+    parent_id = Map.get(session, "parent_id")
 
     {:ok,
      assign(socket,
        parent_id: parent_id,
+       bearer_token: bearer_token,
        number: -1,
        bluetooth_enabled: false,
        sensor_names: ["PressureSensor", "Movesense", "BlueNRG", "FlexSenseSensor", "vívosmart"],
@@ -34,7 +38,7 @@ defmodule SensoctoWeb.SenseLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.svelte name="SenseApp" props={%{}} socket={@socket} />
+    <.svelte name="SenseApp" props={%{bearerToken: @bearer_token}} socket={@socket} />
     <!--<%= if assigns.bluetooth_enabled == true do %>
       <button class="btn btn-blue" phx-click="toggle_bluetooth">No sense</button>
       <.svelte name="SenseApp" props={%{}} socket={@socket} />

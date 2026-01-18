@@ -25,6 +25,7 @@
 
     export let defaultBatchSize = 10;
     export let defaultBatchTimeout = 1000 / 24;
+    export let bearerToken = null;
 
     setContext("sensorService", {
         setupChannel,
@@ -218,7 +219,7 @@
             ...metadata,
             attributes: metadata.attributes || {},
             batch_size: 1,
-            bearer_token: "fake",
+            bearer_token: bearerToken || "missing",
         });
 
         // Track channel state

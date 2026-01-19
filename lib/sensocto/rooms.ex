@@ -88,7 +88,8 @@ defmodule Sensocto.Rooms do
   defp get_sensor_ids(%{sensor_ids: %MapSet{} = sensor_ids}), do: MapSet.to_list(sensor_ids)
   defp get_sensor_ids(_), do: []
 
-  defp get_sensor_activity_status(%{sensor_activity: activity}, sensor_id) when is_map(activity) do
+  defp get_sensor_activity_status(%{sensor_activity: activity}, sensor_id)
+       when is_map(activity) do
     case Map.get(activity, sensor_id) do
       nil ->
         :inactive
@@ -166,24 +167,15 @@ defmodule Sensocto.Rooms do
   end
 
   @doc """
-  Joins a user to a room with all their available sensors.
+  Joins a user to a room.
   Returns {:ok, room} on success.
+
+  Note: Sensors are NOT automatically added to rooms. Sensors are added when:
+  - Simulator sensors: via SensorServer when started with a room_id
+  - Real sensors: manually by users via the "Add Sensor" modal in the room UI
   """
   def join_room_with_sensors(room, user) when is_map(room) do
-    # First join using the RoomStore
-    with {:ok, updated_room} <- join_room(room, user) do
-      # Get all currently connected sensors for this user
-      sensor_ids =
-        Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-        |> Map.keys()
-
-      # Add all sensors to the room
-      Enum.each(sensor_ids, fn sensor_id ->
-        RoomStore.add_sensor(room.id, sensor_id)
-      end)
-
-      {:ok, updated_room}
-    end
+    join_room(room, user)
   end
 
   @doc """
@@ -438,6 +430,48 @@ defmodule Sensocto.Rooms do
   def share_url(room) when is_map(room) do
     join_code = Map.get(room, :join_code)
     SensoctoWeb.Endpoint.url() <> "/rooms/join/#{join_code}"
+  end
+
+  @doc """
+  Generates a P2P room ticket for mobile apps.
+
+  Options:
+    - :expires_in - seconds until ticket expires (default: 24 hours)
+    - :include_secret - whether to include write secret (default: false, owner/admin only)
+
+  Returns {:ok, ticket} or {:error, reason}
+  """
+  def generate_ticket(room, opts \\ []) when is_map(room) do
+    alias Sensocto.P2P.RoomTicket
+    RoomTicket.generate(room, opts)
+  end
+
+  @doc """
+  Gets a P2P deep link URL for a room.
+
+  This URL can be used in QR codes for mobile app scanning.
+  """
+  def p2p_deep_link(room, opts \\ []) when is_map(room) do
+    alias Sensocto.P2P.RoomTicket
+
+    case RoomTicket.generate(room, opts) do
+      {:ok, ticket} -> {:ok, RoomTicket.to_deep_link(ticket)}
+      error -> error
+    end
+  end
+
+  @doc """
+  Gets an encoded P2P ticket for a room.
+
+  The encoded ticket can be embedded in QR codes.
+  """
+  def encoded_ticket(room, opts \\ []) when is_map(room) do
+    alias Sensocto.P2P.RoomTicket
+
+    case RoomTicket.generate(room, opts) do
+      {:ok, ticket} -> {:ok, RoomTicket.to_base64(ticket)}
+      error -> error
+    end
   end
 
   @doc """

@@ -15,6 +15,9 @@ defmodule SensoctoWeb.MobileLinkLive do
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
 
+    Logger.info("MobileLinkLive mount - current_user.id: #{inspect(user.id)}")
+    Logger.info("MobileLinkLive mount - current_user.email: #{inspect(user.email)}")
+
     # Generate the auth token and deep link
     {token, expires_at} = generate_mobile_token(user)
     deep_link = build_deep_link(token)
@@ -95,18 +98,24 @@ defmodule SensoctoWeb.MobileLinkLive do
 
     # Use AshAuthentication's token generation
     case AshAuthentication.Jwt.token_for_user(user) do
-      {:ok, token, _claims} ->
+      {:ok, token, claims} ->
+        Logger.info("Generated JWT token for user #{user.id}, claims: #{inspect(Map.keys(claims))}")
+        # Note: The JWT has its own expiry from AshAuthentication config
+        # Our expires_at is just for the UI countdown
         {token, expires_at}
 
       {:error, reason} ->
-        Logger.error("Failed to generate mobile token: #{inspect(reason)}")
+        Logger.error("Failed to generate mobile token via AshAuthentication: #{inspect(reason)}")
+        Logger.error("User: #{inspect(user.id)}, attempting fallback...")
         # Fallback: generate a simple signed token
         generate_fallback_token(user, expires_at)
     end
   end
 
   defp generate_fallback_token(user, expires_at) do
-    # Simple signed token as fallback
+    # Simple signed token as fallback - NOTE: This won't work with load_from_bearer!
+    # This is only here to prevent crashes, but the token won't authenticate.
+    Logger.warning("Using fallback token - this will NOT work with API authentication!")
     data = %{
       user_id: user.id,
       email: user.email,

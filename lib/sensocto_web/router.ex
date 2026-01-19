@@ -146,13 +146,25 @@ defmodule SensoctoWeb.Router do
     ash_admin "/ash-admin"
   end
 
-  # Mobile API endpoints
+  # Mobile API endpoints (bypasses load_from_bearer to handle token manually)
   scope "/api", SensoctoWeb.Api do
-    pipe_through :api
-
-    # Verify token and get user info
+    # Verify token and get user info - handle token verification in controller
     get "/auth/verify", MobileAuthController, :verify
+    post "/auth/verify", MobileAuthController, :verify
     get "/me", MobileAuthController, :me
+
+    # Debug endpoint for testing
+    post "/auth/debug", MobileAuthController, :debug_verify
+
+    # Room ticket endpoints for P2P connection bootstrap
+    # GET /api/rooms/:id/ticket - get ticket for a room (requires auth + membership)
+    get "/rooms/:id/ticket", RoomTicketController, :show
+
+    # GET /api/rooms/by-code/:code/ticket - get ticket by join code (public)
+    get "/rooms/by-code/:code/ticket", RoomTicketController, :show_by_code
+
+    # POST /api/rooms/verify-ticket - verify and decode a ticket
+    post "/rooms/verify-ticket", RoomTicketController, :verify
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

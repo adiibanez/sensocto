@@ -43,8 +43,9 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to object3d events for this room
           PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
 
-          # Auto-join user's sensors to this room when visiting
-          auto_join_user_sensors(room)
+          # NOTE: Removed auto_join_user_sensors - sensors should be added:
+          # - Simulator sensors: automatically via SensorServer when started with room_id
+          # - Real sensors: manually by users via the "Add Sensor" modal
 
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
@@ -1326,24 +1327,6 @@ defmodule SensoctoWeb.RoomShowLive do
     Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     |> Map.values()
     |> Enum.reject(fn sensor -> MapSet.member?(room_sensor_ids, sensor.sensor_id) end)
-  end
-
-  # Auto-join all available sensors to this room when user visits
-  defp auto_join_user_sensors(room) do
-    room_sensor_ids =
-      (room.sensors || [])
-      |> Enum.map(& &1.sensor_id)
-      |> MapSet.new()
-
-    # Get all currently available sensors and add ones not already in room
-    Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-    |> Map.keys()
-    |> Enum.reject(fn sensor_id -> MapSet.member?(room_sensor_ids, sensor_id) end)
-    |> Enum.each(fn sensor_id ->
-      Sensocto.RoomStore.add_sensor(room.id, sensor_id)
-      # Subscribe to the newly added sensor's data
-      PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
-    end)
   end
 
   # Refresh lenses from current sensor state - returns socket with updated lenses if changed

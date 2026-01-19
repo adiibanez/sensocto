@@ -4,6 +4,8 @@
   import { logger } from "../logger_svelte.js";
   import { autostart } from "./stores.js";
 
+  export let compact = false;
+
   let loggerCtxName = "RichPresenceClient";
 
   let sensorService = getContext("sensorService");
@@ -196,7 +198,21 @@
     : "No media playing";
 </script>
 
-{#if presenceStatus === "unsupported" || !("mediaSession" in navigator)}
+{#if compact}
+  {#if "mediaSession" in navigator}
+    <button
+      on:click={isTracking ? stopPresenceTracking : startPresenceTracking}
+      class="icon-btn"
+      class:active={isTracking}
+      class:playing={presenceData?.playbackState === "playing"}
+      title={isTracking ? (presenceData?.title || "Tracking media") : "Start Presence"}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
+        <path fill-rule="evenodd" d="M19.952 1.651a.75.75 0 01.298.599V16.303a3 3 0 01-2.176 2.884l-1.32.377a2.553 2.553 0 11-1.403-4.909l2.311-.66a1.5 1.5 0 001.088-1.442V6.994l-9 2.572v9.737a3 3 0 01-2.176 2.884l-1.32.377a2.553 2.553 0 11-1.402-4.909l2.31-.66a1.5 1.5 0 001.088-1.442V5.25a.75.75 0 01.544-.721l10.5-3a.75.75 0 01.658.122z" clip-rule="evenodd"/>
+      </svg>
+    </button>
+  {/if}
+{:else if presenceStatus === "unsupported" || !("mediaSession" in navigator)}
   <div class="text-xs text-gray-400 p-2 bg-gray-800/50 rounded">
     <p>Rich Presence not available</p>
     <p class="text-gray-500 mt-1">Media Session API not supported.</p>
@@ -229,3 +245,31 @@
     </button>
   {/if}
 {/if}
+
+<style>
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.375rem;
+    background: #374151;
+    color: #9ca3af;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover {
+    background: #4b5563;
+    color: #d1d5db;
+  }
+  .icon-btn.active {
+    background: #8b5cf6;
+    color: white;
+  }
+  .icon-btn.playing {
+    background: #22c55e;
+    color: white;
+  }
+</style>

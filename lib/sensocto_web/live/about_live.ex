@@ -4,14 +4,209 @@ defmodule SensoctoWeb.AboutLive do
   """
   use SensoctoWeb, :live_view
 
+  # Use cases organized by viewing lens
+  # Each lens offers a different perspective on platform capabilities
+
+  @use_cases_by_lens %{
+    # TECHNICAL LENS - Focus on sensors, protocols, data flows
+    technical: [
+      {"stream", "cyan", "Movesense ECG and IMU data at 100Hz"},
+      {"connect", "teal", "Nordic Thingy:52 via Web Bluetooth"},
+      {"visualize", "blue", "GPS tracks from walking, cycling, or drones"},
+      {"analyze", "emerald", "underwater hydrophone feeds with spectrograms"},
+      {"process", "purple", "YOLOfish-style inference on live video"},
+      {"capture", "amber", "9-axis IMU quaternions for motion analysis"},
+      {"sync", "cyan", "distributed datasets via P2P CRDT networks"},
+      {"export", "teal", "time-series data in scientific formats"},
+      {"trigger", "violet", "actuators from sensor threshold rules"},
+      {"monitor", "blue", "temperature, humidity, pressure, air quality"},
+      {"stream", "pink", "ROV video feeds with real-time annotations"},
+      {"integrate", "emerald", "Buttplug.io for haptic device control"},
+      {"track", "cyan", "HRV and recovery metrics from medical wearables"},
+      {"collect", "teal", "field research data stored locally on mobile"},
+    ],
+
+    # EMPATHY LENS - Emotional, relational, experiential
+    empathy: [
+      {"feel", "pink", "someone's nervousness before they speak"},
+      {"sense", "rose", "a partner's desire without words"},
+      {"know", "purple", "a friend is struggling before they ask"},
+      {"share", "cyan", "your calm with an anxious loved one"},
+      {"sync", "teal", "your breathing with a meditation circle"},
+      {"notice", "amber", "your child's nightmare from another room"},
+      {"witness", "green", "trust forming in a therapy session"},
+      {"experience", "violet", "collective flow in a jam session"},
+      {"feel", "blue", "the ocean's rhythm through a hydrophone"},
+      {"sense", "pink", "when your partner needs to be held"},
+      {"know", "emerald", "when words aren't needed anymore"},
+      {"share", "cyan", "presence across distance and time"},
+      {"feel", "rose", "your body's wisdom guiding decisions"},
+      {"experience", "purple", "synchronized pleasure in real-time"},
+    ],
+
+    # FUN LENS - Games, play, entertainment, social experiences
+    fun: [
+      {"play", "yellow", "sensor-driven party games with friends"},
+      {"pilot", "orange", "drones while sharing your excitement"},
+      {"roll", "amber", "smart dice that glow with your heartbeat"},
+      {"dance", "pink", "with haptic feedback synced to the beat"},
+      {"explore", "cyan", "underwater worlds through ROV adventures"},
+      {"create", "violet", "music from your collective heartbeats"},
+      {"solve", "teal", "escape rooms with physiological puzzles"},
+      {"jam", "rose", "together as instruments respond to your mood"},
+      {"chill", "blue", "in calm-off sessions seeing who relaxes first"},
+      {"breathe", "emerald", "together and watch your sync grow"},
+      {"unlock", "purple", "new experiences by reaching flow states"},
+      {"stream", "cyan", "your gameplay with live biometrics overlay"},
+      {"vibe", "pink", "together at silent discos with shared pulse"},
+      {"laugh", "yellow", "as haptic devices tickle synchronized giggles"},
+    ],
+
+    # IMPACT LENS - Social good, accessibility, healthcare outcomes
+    impact: [
+      {"restore", "emerald", "coral reef ecosystems with AI monitoring"},
+      {"enable", "violet", "independence for wheelchair users"},
+      {"protect", "cyan", "marine biodiversity through acoustic detection"},
+      {"support", "green", "mental health with trusted peer networks"},
+      {"improve", "blue", "cystic fibrosis outcomes through gamification"},
+      {"empower", "teal", "non-verbal communication via physiology"},
+      {"prevent", "amber", "crises with early warning biometrics"},
+      {"democratize", "purple", "research with P2P data collection"},
+      {"assist", "pink", "caregivers with real-time patient monitoring"},
+      {"accelerate", "cyan", "trauma healing with biofeedback"},
+      {"detect", "emerald", "wandering risk via wearable location tracking"},
+      {"transform", "violet", "physiotherapy into engaging games"},
+      {"connect", "blue", "isolated individuals to support networks"},
+      {"verify", "teal", "consent through embodied signals"},
+    ],
+
+    # RESEARCH LENS - Scientific applications, data, analysis
+    research: [
+      {"quantify", "blue", "group synchronization in meditation studies"},
+      {"measure", "cyan", "HRV responses to therapeutic interventions"},
+      {"track", "teal", "marine migration patterns via bioacoustics"},
+      {"analyze", "emerald", "coral health metrics across reef systems"},
+      {"correlate", "purple", "physiological data with mood reports"},
+      {"validate", "amber", "freediving training protocols with ECG"},
+      {"study", "violet", "co-regulation dynamics in therapy dyads"},
+      {"document", "pink", "species diversity with automated detection"},
+      {"compare", "cyan", "recovery patterns across athlete cohorts"},
+      {"observe", "teal", "circadian rhythm impacts on chronic conditions"},
+      {"map", "blue", "stress patterns in distributed populations"},
+      {"assess", "emerald", "intervention effectiveness with biometrics"},
+      {"explore", "purple", "massive datasets like wildflow.org corals"},
+      {"prototype", "amber", "assistive interfaces with sensor feedback"},
+    ]
+  }
+
+  # Ordered list - empathy first and featured (larger button)
+  @lens_info [
+    {:empathy, %{
+      name: "Empathy",
+      icon: "hero-heart",
+      color: "pink",
+      description: "Feelings, relationships, presence",
+      featured: true
+    }},
+    {:fun, %{
+      name: "Fun",
+      icon: "hero-puzzle-piece",
+      color: "yellow",
+      description: "Games, play, entertainment",
+      featured: false
+    }},
+    {:technical, %{
+      name: "Technical",
+      icon: "hero-cpu-chip",
+      color: "cyan",
+      description: "Sensors, protocols, data flows",
+      featured: false
+    }},
+    {:impact, %{
+      name: "Impact",
+      icon: "hero-globe-alt",
+      color: "emerald",
+      description: "Social good, accessibility, outcomes",
+      featured: false
+    }},
+    {:research, %{
+      name: "Research",
+      icon: "hero-beaker",
+      color: "purple",
+      description: "Science, analysis, discovery",
+      featured: false
+    }}
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, detail_level: :spark, page_title: "About")}
+    # Start with empathy lens and shuffle its use cases
+    current_lens = :empathy
+    shuffled = Enum.shuffle(@use_cases_by_lens[current_lens])
+
+    socket =
+      socket
+      |> assign(:detail_level, :spark)
+      |> assign(:page_title, "About")
+      |> assign(:current_lens, current_lens)
+      |> assign(:lens_info, @lens_info)
+      |> assign(:use_cases, shuffled)
+      |> assign(:visible_count, 3)
+      |> assign(:current_offset, 0)
+
+    {:ok, socket}
   end
 
   @impl true
   def handle_event("set_level", %{"level" => level}, socket) do
     {:noreply, assign(socket, detail_level: String.to_existing_atom(level))}
+  end
+
+  @impl true
+  def handle_event("set_lens", %{"lens" => lens}, socket) do
+    lens = String.to_existing_atom(lens)
+    shuffled = Enum.shuffle(@use_cases_by_lens[lens])
+
+    socket =
+      socket
+      |> assign(:current_lens, lens)
+      |> assign(:use_cases, shuffled)
+      |> assign(:current_offset, 0)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("shuffle_use_cases", _params, socket) do
+    # Move to next batch or reshuffle if at the end
+    use_cases = socket.assigns.use_cases
+    visible_count = socket.assigns.visible_count
+    current_offset = socket.assigns.current_offset
+    total = length(use_cases)
+
+    new_offset = current_offset + visible_count
+
+    {new_cases, new_offset} =
+      if new_offset >= total do
+        {Enum.shuffle(use_cases), 0}
+      else
+        {use_cases, new_offset}
+      end
+
+    {:noreply, assign(socket, use_cases: new_cases, current_offset: new_offset)}
+  end
+
+  @impl true
+  def handle_event("set_visible_count", %{"count" => count}, socket) do
+    count = String.to_integer(count)
+    {:noreply, assign(socket, visible_count: count, current_offset: 0)}
+  end
+
+  # Helper to get visible use cases from the current offset
+  defp visible_use_cases(use_cases, offset, count) do
+    use_cases
+    |> Enum.drop(offset)
+    |> Enum.take(count)
   end
 
   @impl true
@@ -240,12 +435,63 @@ defmodule SensoctoWeb.AboutLive do
             We scroll, we perform, we feel more alone.
           </p>
 
-          <p class="text-xl text-gray-400 max-w-2xl mx-auto mb-8">
-            What if you could <span class="text-cyan-400">feel</span>
-            someone's nervousness before a presentation? <span class="text-pink-400">Sense</span>
-            a partner's arousal without words? <span class="text-blue-400">Know</span>
-            a friend is struggling before they ask for help?
-          </p>
+          <!-- Lens Switcher -->
+          <div class="flex justify-center items-center gap-2 mb-6">
+            <%= for {lens_key, info} <- @lens_info do %>
+              <button
+                phx-click="set_lens"
+                phx-value-lens={lens_key}
+                class={"flex items-center transition-all duration-300 rounded-full font-medium " <>
+                  if info.featured do
+                    "gap-2 px-4 py-2 text-sm "
+                  else
+                    "gap-1.5 px-3 py-1.5 text-xs "
+                  end <>
+                  if @current_lens == lens_key do
+                    "bg-#{info.color}-500/20 text-#{info.color}-400 ring-1 ring-#{info.color}-500/50"
+                  else
+                    "bg-gray-800/50 text-gray-500 hover:text-gray-300 hover:bg-gray-700/50"
+                  end}
+                title={info.description}
+              >
+                <.icon name={info.icon} class={if info.featured, do: "h-4 w-4", else: "h-3.5 w-3.5"} />
+                <span><%= info.name %></span>
+              </button>
+            <% end %>
+          </div>
+
+          <!-- Clickable Use Cases Carousel -->
+          <div
+            class="text-xl text-gray-400 max-w-2xl mx-auto mb-6 cursor-pointer hover:text-gray-300 transition-colors group"
+            phx-click="shuffle_use_cases"
+            title="Click for more examples"
+          >
+            <p class="leading-relaxed">
+              What if you could
+              <%= for {{verb, color, rest}, index} <- Enum.with_index(visible_use_cases(@use_cases, @current_offset, @visible_count)) do %>
+                <span class={"text-#{color}-400 font-medium"}><%= verb %></span>
+                <%= rest %><%= if index < @visible_count - 1, do: "? ", else: "?" %>
+              <% end %>
+            </p>
+            <div class="flex items-center justify-center gap-2 mt-3 text-sm text-gray-500 group-hover:text-gray-400 transition-colors">
+              <.icon name="hero-arrow-path" class="h-4 w-4" />
+              <span>Click for more examples</span>
+            </div>
+          </div>
+
+          <!-- Slider for visible count -->
+          <form phx-change="set_visible_count" class="flex items-center justify-center gap-4 mb-8">
+            <label class="text-sm text-gray-500">Show</label>
+            <input
+              type="range"
+              min="1"
+              max="6"
+              value={@visible_count}
+              name="count"
+              class="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            />
+            <span class="text-sm text-cyan-400 w-6 text-center"><%= @visible_count %></span>
+          </form>
 
           <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 max-w-2xl mx-auto">
             <p class="text-lg text-gray-300 italic">

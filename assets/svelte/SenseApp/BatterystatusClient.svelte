@@ -4,6 +4,8 @@
   import { usersettings, autostart } from "./stores.js";
   import { logger } from "../logger_svelte.js";
 
+  export let compact = false;
+
   let loggerCtxName = "BatteryStatusClient";
 
   let sensorService = getContext("sensorService");
@@ -178,7 +180,21 @@
   });
 </script>
 
-{#if batteryStatus === "unsupported" || !("getBattery" in navigator)}
+{#if compact}
+  {#if "getBattery" in navigator}
+    <button
+      on:click={batteryStarted ? stopBatterySensor : startBatterySensor}
+      class="icon-btn"
+      class:active={batteryStarted}
+      class:unsupported={batteryStatus === "unsupported"}
+      title={batteryStatus === "unsupported" ? "Battery API not supported" : batteryStarted ? "Stop Battery" : "Start Battery"}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
+        <path d="M21.75 10.5h-.375a.375.375 0 00-.375.375v2.25c0 .207.168.375.375.375h.375a.375.375 0 00.375-.375v-2.25a.375.375 0 00-.375-.375zM3 7.5A1.5 1.5 0 014.5 6h13.5A1.5 1.5 0 0119.5 7.5v9a1.5 1.5 0 01-1.5 1.5H4.5A1.5 1.5 0 013 16.5v-9z"/>
+      </svg>
+    </button>
+  {/if}
+{:else if batteryStatus === "unsupported" || !("getBattery" in navigator)}
   <div class="text-xs text-gray-400 p-2 bg-gray-800/50 rounded">
     <p>Battery Status not available</p>
     <p class="text-gray-500 mt-1">Safari and iOS don't support the Battery API.</p>
@@ -191,14 +207,37 @@
     {/if}
   </div>
 {:else if !$autostart}
-  <!-- Manual controls when autostart is disabled -->
   {#if batteryStatus === "active" && batteryData != null}
-    <button class="btn btn-blue text-xs" on:click={stopBatterySensor}
-      >Stop Battery</button
-    >
+    <button class="btn btn-blue text-xs" on:click={stopBatterySensor}>Stop Battery</button>
   {:else}
-    <button class="btn btn-blue text-xs" on:click={startBatterySensor}
-      >Start Battery</button
-    >
+    <button class="btn btn-blue text-xs" on:click={startBatterySensor}>Start Battery</button>
   {/if}
 {/if}
+
+<style>
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.375rem;
+    background: #374151;
+    color: #9ca3af;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover {
+    background: #4b5563;
+    color: #d1d5db;
+  }
+  .icon-btn.active {
+    background: #eab308;
+    color: white;
+  }
+  .icon-btn.unsupported {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+</style>

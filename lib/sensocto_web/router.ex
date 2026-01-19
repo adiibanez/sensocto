@@ -156,6 +156,16 @@ defmodule SensoctoWeb.Router do
     # Debug endpoint for testing
     post "/auth/debug", MobileAuthController, :debug_verify
 
+    # Room REST API endpoints
+    # GET /api/rooms - list user's rooms
+    get "/rooms", RoomController, :index
+
+    # GET /api/rooms/public - list public rooms
+    get "/rooms/public", RoomController, :public
+
+    # GET /api/rooms/:id - get room details (must come after /rooms/public)
+    get "/rooms/:id", RoomController, :show
+
     # Room ticket endpoints for P2P connection bootstrap
     # GET /api/rooms/:id/ticket - get ticket for a room (requires auth + membership)
     get "/rooms/:id/ticket", RoomTicketController, :show

@@ -136,11 +136,14 @@ defmodule Sensocto.Simulator.BatteryState do
     # Schedule next sync
     Process.send_after(self(), :sync_battery_states, @sync_interval_ms)
 
-    # Sync all battery states asynchronously
+    # Sync all battery states asynchronously via rate-limited task supervisor
     ets_size = :ets.info(@table_name, :size)
 
     if ets_size > 0 do
-      Task.start(fn -> sync_battery_states_to_postgres() end)
+      Task.Supervisor.start_child(
+        Sensocto.Simulator.DbTaskSupervisor,
+        fn -> sync_battery_states_to_postgres() end
+      )
     end
 
     {:noreply, state}

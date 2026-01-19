@@ -22,6 +22,9 @@ defmodule Sensocto.Simulator.Supervisor do
       # Registry for simulator processes
       {Registry, keys: :unique, name: Sensocto.Simulator.Registry},
 
+      # Task supervisor for DB sync operations (limited to 3 concurrent to not exhaust pool)
+      {Task.Supervisor, name: Sensocto.Simulator.DbTaskSupervisor, max_children: 3},
+
       # Battery state manager (for realistic battery simulation)
       Sensocto.Simulator.BatteryState,
 

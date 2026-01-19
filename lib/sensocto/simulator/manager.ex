@@ -425,18 +425,20 @@ defmodule Sensocto.Simulator.Manager do
         {:sync_scenario_started, scenario_name, room_id, config_path, connector_configs},
         state
       ) do
-    Task.start(fn ->
-      sync_scenario_to_postgres(scenario_name, room_id, config_path, connector_configs)
-    end)
+    Task.Supervisor.start_child(
+      Sensocto.Simulator.DbTaskSupervisor,
+      fn -> sync_scenario_to_postgres(scenario_name, room_id, config_path, connector_configs) end
+    )
 
     {:noreply, state}
   end
 
   @impl true
   def handle_info({:sync_scenario_stopped, scenario_name}, state) do
-    Task.start(fn ->
-      stop_scenario_in_postgres(scenario_name)
-    end)
+    Task.Supervisor.start_child(
+      Sensocto.Simulator.DbTaskSupervisor,
+      fn -> stop_scenario_in_postgres(scenario_name) end
+    )
 
     {:noreply, state}
   end

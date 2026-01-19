@@ -10,6 +10,8 @@
     import { isMobile } from "../utils.js";
     import { logger } from "../logger_svelte.js";
 
+    export let compact = false;
+
     let loggerCtxName = "IMUClient";
 
     let unsubscribeSocket;
@@ -416,28 +418,58 @@
 </script>
 
 {#if imuAvailable()}
-    <div>
-        {#if readingIMU}
-            <button on:click={() => stopIMU()} class="btn btn-blue text-xs"
-                >Stop IMU</button
-            ><button
-                on:click={resetInitialOrientation}
-                class="btn btn-blue text-xs">Cal</button
-            >
-            {imuFrequency} Hz
-        {/if}
-        {#if !readingIMU}
-            <button on:click={() => startIMU()} class="btn btn-blue text-xs"
-                >Start IMU</button
-            >
-            <input
-                type="number"
-                bind:value={imuFrequency}
-                min="1"
-                max="50"
-                aria-describedby="Frequency of IM"
-                required
-            /> Hz
-        {/if}
-    </div>
+    {#if compact}
+        <button
+            on:click={readingIMU ? stopIMU : startIMU}
+            class="icon-btn"
+            class:active={readingIMU}
+            title={readingIMU ? `IMU active (${imuFrequency}Hz)` : "Start IMU"}
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
+                <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM8.547 4.505a8.25 8.25 0 1011.672 11.672L8.547 4.505z" clip-rule="evenodd"/>
+            </svg>
+        </button>
+    {:else}
+        <div>
+            {#if readingIMU}
+                <button on:click={() => stopIMU()} class="btn btn-blue text-xs">Stop IMU</button>
+                <button on:click={resetInitialOrientation} class="btn btn-blue text-xs">Cal</button>
+                {imuFrequency} Hz
+            {:else}
+                <button on:click={() => startIMU()} class="btn btn-blue text-xs">Start IMU</button>
+                <input
+                    type="number"
+                    bind:value={imuFrequency}
+                    min="1"
+                    max="50"
+                    aria-describedby="Frequency of IM"
+                    required
+                /> Hz
+            {/if}
+        </div>
+    {/if}
 {/if}
+
+<style>
+    .icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 0.375rem;
+        background: #374151;
+        color: #9ca3af;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .icon-btn:hover {
+        background: #4b5563;
+        color: #d1d5db;
+    }
+    .icon-btn.active {
+        background: #f97316;
+        color: white;
+    }
+</style>

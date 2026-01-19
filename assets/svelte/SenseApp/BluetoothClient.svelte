@@ -11,6 +11,8 @@
   import { BluetoothUtils } from "../bluetooth-utils.js";
   import { bleDevices, bleCharacteristics, bleValues } from "./stores.js";
 
+  export let compact = false;
+
   let sensorService = getContext("sensorService");
   let loggerCtxName = "BluetoothClient";
 
@@ -593,23 +595,77 @@
   });
 </script>
 
-{#if "bluetooth" in navigator && "requestLEScan" in navigator.bluetooth}
-  <button on:click={requestLEScan} class="btn btn-blue text-xs"
-    >Request LE Scan</button
-  >
+{#if "bluetooth" in navigator}
+  {#if compact}
+    <button
+      on:click={scanDevices}
+      class="icon-btn"
+      class:active={devices.length > 0}
+      title={devices.length > 0 ? `${devices.length} BLE device(s) connected` : "Scan BLE devices"}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
+        <path d="M12.75 2v6.568l3.22-2.79a.75.75 0 01.98 1.136l-4.2 3.636 4.2 3.636a.75.75 0 01-.98 1.136l-3.22-2.79V22a.75.75 0 01-1.28.53l-4.72-4.72a.75.75 0 010-1.06l4-4-4-4a.75.75 0 010-1.06l4.72-4.72a.75.75 0 011.28.53z"/>
+      </svg>
+      {#if devices.length > 0}
+        <span class="badge">{devices.length}</span>
+      {/if}
+    </button>
+  {:else}
+    {#if "requestLEScan" in navigator.bluetooth}
+      <button on:click={requestLEScan} class="btn btn-blue text-xs">Request LE Scan</button>
+    {/if}
+    <button on:click={scanDevices} class="btn btn-blue text-xs">Scan BLE</button>
+    <ul class="flex gap-2">
+      {#each devices as device}
+        <li class="text-xs">
+          <button
+            class="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
+            on:click={() => disconnectBLEDevice(device)}
+            title="Click to disconnect"
+          >{getUniqueDeviceName(device)} ✕</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 {/if}
 
-{#if "bluetooth" in navigator}
-  <button on:click={scanDevices} class="btn btn-blue text-xs">Scan BLE</button>
-  <ul class="flex gap-2">
-    {#each devices as device}
-      <li class="text-xs">
-        <button
-          class="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
-          on:click={() => disconnectBLEDevice(device)}
-          title="Click to disconnect"
-        >{getUniqueDeviceName(device)} ✕</button>
-      </li>
-    {/each}
-  </ul>
-{/if}
+<style>
+  .icon-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.375rem;
+    background: #374151;
+    color: #9ca3af;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover {
+    background: #4b5563;
+    color: #d1d5db;
+  }
+  .icon-btn.active {
+    background: #2563eb;
+    color: white;
+  }
+  .badge {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    min-width: 0.875rem;
+    height: 0.875rem;
+    padding: 0 0.25rem;
+    font-size: 0.5rem;
+    font-weight: 600;
+    background: #22c55e;
+    color: white;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+</style>

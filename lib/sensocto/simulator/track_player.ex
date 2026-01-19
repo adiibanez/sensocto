@@ -287,9 +287,12 @@ defmodule Sensocto.Simulator.TrackPlayer do
     # Schedule next sync
     Process.send_after(self(), :sync_positions, @sync_interval_ms)
 
-    # Sync all positions asynchronously
+    # Sync all positions asynchronously via rate-limited task supervisor
     if map_size(state.players) > 0 do
-      Task.start(fn -> sync_positions_to_postgres(state.players) end)
+      Task.Supervisor.start_child(
+        Sensocto.Simulator.DbTaskSupervisor,
+        fn -> sync_positions_to_postgres(state.players) end
+      )
     end
 
     {:noreply, state}

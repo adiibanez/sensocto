@@ -3,10 +3,10 @@
 defmodule SensoctoWeb.AuthOverrides do
   use AshAuthentication.Phoenix.Overrides
 
-  # Override a property per component
   override AshAuthentication.Phoenix.Components.SignIn do
-    # include any number of properties you want to override
-    # set :image_url, "/images/rickroll.gif"
     set(:show_banner, false)
+    # Center the content, remove the large padding that shifts content right
+    set(:root_class, "w-full")
+    set(:strategy_class, "w-full")
   end
 end

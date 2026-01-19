@@ -628,7 +628,8 @@ export const CallHook = {
   },
 
   handleToggleAudio(data) {
-    this.audioEnabled = data.enabled;
+    // If enabled is explicitly provided, use it; otherwise toggle current state
+    this.audioEnabled = data.enabled !== undefined ? data.enabled : !this.audioEnabled;
 
     if (this.membraneClient) {
       this.membraneClient.toggleAudio(this.audioEnabled);
@@ -637,10 +638,14 @@ export const CallHook = {
     if (this.channel) {
       this.channel.push("toggle_audio", { enabled: this.audioEnabled });
     }
+
+    // Notify LiveView of the new state
+    this.pushEvent("audio_toggled", { enabled: this.audioEnabled });
   },
 
   handleToggleVideo(data) {
-    this.videoEnabled = data.enabled;
+    // If enabled is explicitly provided, use it; otherwise toggle current state
+    this.videoEnabled = data.enabled !== undefined ? data.enabled : !this.videoEnabled;
 
     if (this.membraneClient) {
       this.membraneClient.toggleVideo(this.videoEnabled);
@@ -649,6 +654,9 @@ export const CallHook = {
     if (this.channel) {
       this.channel.push("toggle_video", { enabled: this.videoEnabled });
     }
+
+    // Notify LiveView of the new state
+    this.pushEvent("video_toggled", { enabled: this.videoEnabled });
   },
 
   handleSetQuality(data) {

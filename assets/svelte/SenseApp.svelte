@@ -14,6 +14,7 @@
     import BatterystatusClient from "./SenseApp/BatterystatusClient.svelte";
     import PushButtonClient from "./SenseApp/PushButtonClient.svelte";
     import RichPresenceClient from "./SenseApp/RichPresenceClient.svelte";
+    import PoseClient from "./SenseApp/PoseClient.svelte";
     import NetworkQualityMonitor from "./SenseApp/NetworkQualityMonitor.svelte";
 
     import { usersettings, autostart } from "./SenseApp/stores.js";
@@ -97,6 +98,7 @@
                 <GeolocationClient compact={true} />
                 <BatterystatusClient compact={true} />
                 <IMUClient compact={true} />
+                <PoseClient compact={true} />
                 <RichPresenceClient compact={true} />
             </div>
         </div>

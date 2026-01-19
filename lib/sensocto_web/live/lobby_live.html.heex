@@ -65,15 +65,15 @@
           <div class="flex items-center gap-1">
             <button
               phx-click="toggle_call_audio"
-              class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-              title="Toggle microphone"
+              class={"p-2 rounded-lg transition-colors " <> if(@audio_enabled, do: "bg-gray-700 hover:bg-gray-600 text-gray-300", else: "bg-red-600 hover:bg-red-500 text-white")}
+              title={if @audio_enabled, do: "Mute microphone", else: "Unmute microphone"}
             >
-              <Heroicons.icon name="microphone" type="solid" class="h-4 w-4" />
+              <Heroicons.icon name={if @audio_enabled, do: "microphone", else: "microphone"} type="solid" class="h-4 w-4" />
             </button>
             <button
               phx-click="toggle_call_video"
-              class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-              title="Toggle camera"
+              class={"p-2 rounded-lg transition-colors " <> if(@video_enabled, do: "bg-gray-700 hover:bg-gray-600 text-gray-300", else: "bg-red-600 hover:bg-red-500 text-white")}
+              title={if @video_enabled, do: "Turn off camera", else: "Turn on camera"}
             >
               <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
             </button>

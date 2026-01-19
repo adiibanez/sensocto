@@ -99,6 +99,8 @@ defmodule SensoctoWeb.LobbyLive do
         in_call: false,
         call_participants: %{},
         call_speaking: false,
+        audio_enabled: true,
+        video_enabled: true,
         # Bump animation assigns for mode buttons
         media_bump: false,
         object3d_bump: false
@@ -916,6 +918,17 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("leave_call", _, socket) do
     {:noreply, push_event(socket, "leave_call", %{})}
+  end
+
+  # Handle audio/video toggled events from CallHook
+  @impl true
+  def handle_event("audio_toggled", %{"enabled" => enabled}, socket) do
+    {:noreply, assign(socket, :audio_enabled, enabled)}
+  end
+
+  @impl true
+  def handle_event("video_toggled", %{"enabled" => enabled}, socket) do
+    {:noreply, assign(socket, :video_enabled, enabled)}
   end
 
   # Restore lobby mode from localStorage (via JS hook)

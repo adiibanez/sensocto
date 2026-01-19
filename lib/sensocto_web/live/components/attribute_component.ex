@@ -1729,6 +1729,82 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  # ============================================================================
+  # SKELETON - Pose detection skeleton visualization
+  # ============================================================================
+
+  @impl true
+  def render(%{:attribute_type => "skeleton", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      id={"cnt_summary_#{@sensor_id}_#{@attribute_id}"}
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+      phx-hook="SensorDataAccumulator"
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3 w-3 text-purple-400">
+          <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z"/>
+        </svg>
+        Skeleton
+      </span>
+      <div :if={@lastvalue} class="flex items-center gap-1">
+        <.svelte
+          name="SkeletonVisualization"
+          props={
+            %{
+              sensor_id: @sensor_id,
+              attribute_id: @attribute_id,
+              size: "small"
+            }
+          }
+          socket={@socket}
+        />
+      </div>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  @impl true
+  def render(%{:attribute_type => "skeleton"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Pose Skeleton"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="py-2">
+          <.svelte
+            name="SkeletonVisualization"
+            props={
+              %{
+                sensor_id: @sensor_id,
+                attribute_id: @attribute_id,
+                size: "normal"
+              }
+            }
+            socket={@socket}
+          />
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:view_mode => :summary} = assigns) do
     ~H"""

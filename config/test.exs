@@ -45,3 +45,15 @@ config :phoenix, :plug_init_mode, :runtime
 config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Wallaby browser testing configuration
+config :wallaby,
+  driver: Wallaby.Chrome,
+  screenshot_on_failure: true,
+  screenshot_dir: "tmp/wallaby_screenshots",
+  # Use headless Chrome for CI
+  chromedriver: [
+    headless: System.get_env("CI") == "true"
+  ],
+  # Longer timeout for complex E2E tests
+  max_wait_time: 10_000

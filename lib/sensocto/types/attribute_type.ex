@@ -77,7 +77,10 @@ defmodule Sensocto.Types.AttributeType do
     "distance",
 
     # Specialty
-    "buttplug"
+    "buttplug",
+
+    # Pose/Skeleton
+    "skeleton"
   ]
 
   @type t :: String.t()
@@ -151,7 +154,7 @@ defmodule Sensocto.Types.AttributeType do
   def category(type) when is_binary(type) do
     case String.downcase(type) do
       t when t in ~w(ecg hrv hr heartrate spo2 respiration) -> :health
-      t when t in ~w(imu accelerometer gyroscope magnetometer quaternion euler heading gravity tap orientation) -> :motion
+      t when t in ~w(imu accelerometer gyroscope magnetometer quaternion euler heading gravity tap orientation skeleton) -> :motion
       t when t in ~w(geolocation altitude speed) -> :location
       t when t in ~w(temperature humidity pressure light proximity gas air_quality color) -> :environment
       t when t in ~w(battery button led speaker microphone body_location rich_presence) -> :device
@@ -234,6 +237,9 @@ defmodule Sensocto.Types.AttributeType do
       "rich_presence" ->
         %{chart_type: :card, component: "RichPresence"}
 
+      "skeleton" ->
+        %{chart_type: :skeleton, color: "#8b5cf6", component: "SkeletonVisualization"}
+
       _ ->
         %{chart_type: :sparkline, component: "SparklineWasm"}
     end
@@ -272,6 +278,7 @@ defmodule Sensocto.Types.AttributeType do
       "body_location" -> ["value"]
       "rich_presence" -> ["title", "description", "url", "image"]
       "buttplug" -> ["command"]
+      "skeleton" -> ["landmarks"]
       _ -> []
     end
   end

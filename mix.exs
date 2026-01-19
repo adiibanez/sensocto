@@ -128,6 +128,7 @@ defmodule Sensocto.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:machete, "~> 0.3.10", only: [:dev, :test], runtime: false},
       {:lazy_html, ">= 0.1.0", only: :test},
+      {:wallaby, "~> 0.30", only: :test, runtime: false},
       {:exacto_knife, "~> 0.1.5", only: [:dev, :test], runtime: false},
       # {:bridge,
       #  path:

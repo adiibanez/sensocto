@@ -9,6 +9,7 @@ defmodule SensoctoWeb.LobbyLive do
   alias SensoctoWeb.StatefulSensorLive
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
+  alias SensoctoWeb.Sensocto.Presence
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Calls
 
@@ -103,8 +104,40 @@ defmodule SensoctoWeb.LobbyLive do
         video_enabled: true,
         # Bump animation assigns for mode buttons
         media_bump: false,
-        object3d_bump: false
+        object3d_bump: false,
+        # Lobby mode presence counts
+        media_viewers: 0,
+        object3d_viewers: 0,
+        # Control request modal state
+        control_request_modal: nil
       )
+
+    # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
+    # Generate a unique presence key for this connection (allows multiple tabs per user)
+    presence_key = "#{user && user.id}:#{System.unique_integer([:positive])}"
+
+    new_socket =
+      if connected?(new_socket) and user do
+        # Subscribe to room mode presence updates
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "room:lobby:mode_presence")
+
+        # Track this connection's presence with their current room mode
+        # Using a unique key per connection to count each tab separately
+        Presence.track(self(), "room:lobby:mode_presence", presence_key, %{
+          room_mode: :media,
+          user_id: user.id
+        })
+
+        # Get initial presence counts
+        {media_count, object3d_count} = count_room_mode_presence("lobby")
+
+        new_socket
+        |> assign(:presence_key, presence_key)
+        |> assign(:media_viewers, media_count)
+        |> assign(:object3d_viewers, object3d_count)
+      else
+        assign(new_socket, :presence_key, presence_key)
+      end
 
     :telemetry.execute(
       [:sensocto, :live, :lobby, :mount],
@@ -124,6 +157,19 @@ defmodule SensoctoWeb.LobbyLive do
     sensors
     |> Enum.map(fn {_id, sensor} -> map_size(sensor.attributes || %{}) end)
     |> Enum.max(fn -> 0 end)
+  end
+
+  defp count_room_mode_presence(room_id) do
+    presences = Presence.list("room:#{room_id}:mode_presence")
+
+    Enum.reduce(presences, {0, 0}, fn {_user_id, %{metas: metas}}, {media, object3d} ->
+      # Get the most recent presence meta (last one)
+      case List.last(metas) do
+        %{room_mode: :media} -> {media + 1, object3d}
+        %{room_mode: :object3d} -> {media, object3d + 1}
+        _ -> {media, object3d}
+      end
+    end)
   end
 
   defp determine_view_mode(_sensors_count, _max_attributes) do
@@ -343,6 +389,24 @@ defmodule SensoctoWeb.LobbyLive do
     end)
   end
 
+  # Handle room mode presence diffs (for viewer counts) - MUST come before general presence_diff handler
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          topic: "room:lobby:mode_presence",
+          event: "presence_diff"
+        },
+        socket
+      ) do
+    {media_count, object3d_count} = count_room_mode_presence("lobby")
+
+    {:noreply,
+     socket
+     |> assign(:media_viewers, media_count)
+     |> assign(:object3d_viewers, object3d_count)}
+  end
+
+  # Handle sensor presence diffs
   @impl true
   def handle_info(
         %Phoenix.Socket.Broadcast{
@@ -664,20 +728,20 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_info(
-        {:control_requested, %{requester_id: _requester_id, requester_name: requester_name}},
+        {:control_requested, %{requester_id: requester_id, requester_name: requester_name}},
         socket
       ) do
     current_user = socket.assigns[:current_user]
     controller_user_id = socket.assigns[:object3d_controller_user_id]
 
-    # Only show flash to the controller
+    # Only show modal to the controller
     if current_user && controller_user_id && current_user.id == controller_user_id do
       {:noreply,
        socket
-       |> put_flash(
-         :info,
-         "🙋 #{requester_name} would like control of the 3D viewer. Click 'Release' to hand over control."
-       )}
+       |> assign(:control_request_modal, %{
+         requester_id: requester_id,
+         requester_name: requester_name
+       })}
     else
       {:noreply, socket}
     end
@@ -773,8 +837,7 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
-  def handle_info(msg, socket) do
-    IO.inspect(msg, label: "Lobby Unknown Message")
+  def handle_info(_msg, socket) do
     {:noreply, socket}
   end
 
@@ -888,6 +951,17 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_event("switch_lobby_mode", %{"mode" => mode}, socket) do
     new_mode = String.to_existing_atom(mode)
 
+    # Update presence to reflect new mode
+    user = socket.assigns.current_user
+    presence_key = socket.assigns[:presence_key]
+
+    if user && presence_key do
+      Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
+        room_mode: new_mode,
+        user_id: user.id
+      })
+    end
+
     socket =
       socket
       |> assign(:lobby_mode, new_mode)
@@ -935,7 +1009,47 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("restore_lobby_mode", %{"mode" => mode}, socket) do
     new_mode = String.to_existing_atom(mode)
+
+    # Update presence to reflect restored mode
+    user = socket.assigns.current_user
+    presence_key = socket.assigns[:presence_key]
+
+    if user && presence_key do
+      Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
+        room_mode: new_mode,
+        user_id: user.id
+      })
+    end
+
     {:noreply, assign(socket, :lobby_mode, new_mode)}
+  end
+
+  # Control request modal handlers
+  @impl true
+  def handle_event("dismiss_control_request", _, socket) do
+    {:noreply, assign(socket, :control_request_modal, nil)}
+  end
+
+  @impl true
+  def handle_event("release_control_from_modal", _, socket) do
+    current_user = socket.assigns.current_user
+    modal_data = socket.assigns.control_request_modal
+
+    if current_user && modal_data do
+      alias Sensocto.Object3D.Object3DPlayerServer
+
+      # First release control from current user
+      Object3DPlayerServer.release_control(:lobby, current_user.id)
+
+      # Then give control to the requester
+      Object3DPlayerServer.take_control(
+        :lobby,
+        modal_data.requester_id,
+        modal_data.requester_name
+      )
+    end
+
+    {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
   # Lens view selector (dropdown)

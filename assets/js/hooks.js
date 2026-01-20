@@ -1746,4 +1746,171 @@ Hooks.Object3DPlayerHook = {
     }
 };
 
+// DraggableBallsHook - Presence-tracked draggable balls for sign-in page
+Hooks.DraggableBallsHook = {
+    mounted() {
+        this.balls = new Map();
+        this.ownBallId = null;
+        this.isDragging = false;
+        this.lastUpdateTime = 0;
+        this.userActionUntil = 0;
+        this.THROTTLE_MS = 50;
+        this.GRACE_PERIOD_MS = 500;
+
+        // Get or create session ID for anonymous users
+        let sessionId = localStorage.getItem('sensocto_ball_session');
+        if (!sessionId) {
+            sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('sensocto_ball_session', sessionId);
+        }
+
+        // Join with session ID
+        this.pushEvent('ball_join', { session_id: sessionId });
+
+        // Handle full sync from server
+        this.handleEvent('ball_sync', ({ balls, own_id }) => {
+            this.ownBallId = own_id;
+            this.balls = new Map(Object.entries(balls));
+            this.render();
+        });
+
+        // Handle updates from server
+        this.handleEvent('ball_update', ({ balls }) => {
+            const now = Date.now();
+            Object.entries(balls).forEach(([id, ball]) => {
+                // Skip own ball updates during grace period to prevent rubber-banding
+                if (id === this.ownBallId && now < this.userActionUntil) {
+                    return;
+                }
+                this.balls.set(id, ball);
+            });
+            this.render();
+        });
+
+        // Handle vibration broadcast from any dragging ball
+        this.handleEvent('vibrate', () => {
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+        });
+
+        // Global mouse/touch handlers for drag
+        this.onMouseMove = this.handleDragMove.bind(this);
+        this.onMouseUp = this.handleDragEnd.bind(this);
+        this.onTouchMove = this.handleTouchMove.bind(this);
+        this.onTouchEnd = this.handleDragEnd.bind(this);
+
+        document.addEventListener('mousemove', this.onMouseMove);
+        document.addEventListener('mouseup', this.onMouseUp);
+        document.addEventListener('touchmove', this.onTouchMove, { passive: false });
+        document.addEventListener('touchend', this.onTouchEnd);
+    },
+
+    destroyed() {
+        document.removeEventListener('mousemove', this.onMouseMove);
+        document.removeEventListener('mouseup', this.onMouseUp);
+        document.removeEventListener('touchmove', this.onTouchMove);
+        document.removeEventListener('touchend', this.onTouchEnd);
+    },
+
+    render() {
+        // Clear existing balls
+        this.el.innerHTML = '';
+
+        this.balls.forEach((ball, id) => {
+            const div = document.createElement('div');
+            div.className = 'absolute rounded-full cursor-grab active:cursor-grabbing';
+            div.style.width = '32px';
+            div.style.height = '32px';
+            div.style.backgroundColor = ball.color;
+            div.style.left = `calc(${ball.x}% - 16px)`;
+            div.style.top = `calc(${ball.y}% - 16px)`;
+            div.style.pointerEvents = 'auto';
+            div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+            div.style.transition = 'box-shadow 0.2s ease, opacity 0.2s ease';
+            div.style.opacity = '0.7';
+
+            // Highlight own ball with white border, glow, and hand icon
+            if (id === this.ownBallId) {
+                div.style.border = '2px solid white';
+                div.style.boxShadow = '0 0 15px rgba(255,255,255,0.4), 0 4px 12px rgba(0,0,0,0.4)';
+                div.style.zIndex = '10';
+                div.style.display = 'flex';
+                div.style.alignItems = 'center';
+                div.style.justifyContent = 'center';
+                div.style.fontSize = '16px';
+                div.style.fontWeight = 'bold';
+                div.style.color = 'white';
+                div.style.textShadow = '0 1px 2px rgba(0,0,0,0.8)';
+                div.innerHTML = '✋';
+                div.title = 'Drag me!';
+
+                // Add drag handlers to own ball only
+                div.addEventListener('mousedown', (e) => this.handleDragStart(e));
+                div.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+            }
+
+            this.el.appendChild(div);
+        });
+    },
+
+    handleDragStart(e) {
+        e.preventDefault();
+        this.isDragging = true;
+        this.userActionUntil = Date.now() + this.GRACE_PERIOD_MS;
+        // Broadcast drag start to all tabs for synchronized vibration
+        this.pushEvent('ball_drag_start', {});
+    },
+
+    handleTouchStart(e) {
+        e.preventDefault();
+        this.isDragging = true;
+        this.userActionUntil = Date.now() + this.GRACE_PERIOD_MS;
+        // Broadcast drag start to all tabs for synchronized vibration
+        this.pushEvent('ball_drag_start', {});
+    },
+
+    handleDragMove(e) {
+        if (!this.isDragging) return;
+        this.updatePosition(e.clientX, e.clientY);
+    },
+
+    handleTouchMove(e) {
+        if (!this.isDragging) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        this.updatePosition(touch.clientX, touch.clientY);
+    },
+
+    updatePosition(clientX, clientY) {
+        const now = Date.now();
+
+        // Throttle updates to server
+        if (now - this.lastUpdateTime < this.THROTTLE_MS) return;
+        this.lastUpdateTime = now;
+
+        // Extend grace period during active drag
+        this.userActionUntil = now + this.GRACE_PERIOD_MS;
+
+        // Calculate percentage position relative to viewport
+        const x = Math.max(2, Math.min(98, (clientX / window.innerWidth) * 100));
+        const y = Math.max(2, Math.min(98, (clientY / window.innerHeight) * 100));
+
+        // Update local state immediately for responsiveness
+        if (this.ownBallId && this.balls.has(this.ownBallId)) {
+            const ball = this.balls.get(this.ownBallId);
+            ball.x = x;
+            ball.y = y;
+            this.render();
+        }
+
+        // Send position to server
+        this.pushEvent('ball_move', { x: x, y: y });
+    },
+
+    handleDragEnd() {
+        this.isDragging = false;
+    }
+};
+
 export default Hooks;

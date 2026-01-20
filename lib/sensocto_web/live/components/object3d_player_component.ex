@@ -4,6 +4,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   Handles viewer controls, playlist management, and coordinates with JavaScript hooks.
   """
   use SensoctoWeb, :live_component
+  require Logger
 
   alias Sensocto.Object3D
   alias Sensocto.Object3D.Object3DPlayerServer
@@ -219,7 +220,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
     if user && controller_user_id && user.id != controller_user_id do
       requester_name = user.email || "Someone"
 
-      # Broadcast the control request to the room - the controller will see it as a flash
+      # Broadcast the control request to the room - the controller will see it
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
         "object3d:#{room_id}",

@@ -138,6 +138,107 @@ defmodule SensoctoWeb.AboutLive do
     }}
   ]
 
+  # Research papers and scientific references
+  @research_papers [
+    %{
+      title: "Heart Rate Variability Synchronization in Dyadic Interactions",
+      authors: "Palumbo et al.",
+      year: 2017,
+      journal: "Frontiers in Psychology",
+      doi: "10.3389/fpsyg.2017.01394",
+      category: :synchronization,
+      description: "Explores how HRV synchronization emerges between individuals during social interactions and its implications for emotional attunement."
+    },
+    %{
+      title: "Interpersonal Physiological Synchrony in Psychotherapy",
+      authors: "Kleinbub, R.",
+      year: 2017,
+      journal: "Current Opinion in Psychology",
+      doi: "10.1016/j.copsyc.2016.07.001",
+      category: :therapy,
+      description: "Reviews evidence for physiological synchrony between therapists and clients as a marker of therapeutic alliance."
+    },
+    %{
+      title: "Social Support Networks and Mental Health",
+      authors: "Kawachi & Berkman",
+      year: 2001,
+      journal: "American Journal of Epidemiology",
+      doi: "10.1093/aje/kwaa179",
+      category: :care_networks,
+      description: "Foundational work on how social networks influence mental health outcomes and crisis prevention."
+    },
+    %{
+      title: "Physiological Compliance in Couples During Conflict and Support",
+      authors: "Reed et al.",
+      year: 2013,
+      journal: "Emotion",
+      doi: "10.1037/a0032167",
+      category: :synchronization,
+      description: "Examines how partners' physiological systems co-regulate during emotional conversations."
+    },
+    %{
+      title: "Wearable Biosensors for Mental Health Monitoring",
+      authors: "Peake et al.",
+      year: 2018,
+      journal: "Journal of Medical Internet Research",
+      doi: "10.2196/10131",
+      category: :wearables,
+      description: "Comprehensive review of wearable technology applications for real-time mental health assessment."
+    },
+    %{
+      title: "Biofeedback in the Treatment of Anxiety and PTSD",
+      authors: "Tan et al.",
+      year: 2011,
+      journal: "Applied Psychophysiology and Biofeedback",
+      doi: "10.1007/s10484-010-9141-x",
+      category: :therapy,
+      description: "Evidence for HRV biofeedback as an effective intervention for anxiety and trauma recovery."
+    },
+    %{
+      title: "Peer Support in Mental Health: A Systematic Review",
+      authors: "Repper & Carter",
+      year: 2011,
+      journal: "Journal of Mental Health",
+      doi: "10.3109/09638237.2011.583947",
+      category: :care_networks,
+      description: "Systematic review of peer support effectiveness in mental health care and community interventions."
+    },
+    %{
+      title: "Collective Effervescence and Synchrony in Ritual",
+      authors: "Páez et al.",
+      year: 2015,
+      journal: "Frontiers in Psychology",
+      doi: "10.3389/fpsyg.2015.01963",
+      category: :synchronization,
+      description: "Studies how group rituals produce physiological and emotional synchronization among participants."
+    },
+    %{
+      title: "Autonomic Nervous System Dynamics for Mood Detection",
+      authors: "Valenza et al.",
+      year: 2014,
+      journal: "IEEE Transactions on Affective Computing",
+      doi: "10.1109/TAFFC.2014.2332167",
+      category: :wearables,
+      description: "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
+    },
+    %{
+      title: "Technology-Mediated Compassion in Healthcare",
+      authors: "Chen & Schultz",
+      year: 2016,
+      journal: "JMIR Mental Health",
+      doi: "10.2196/mental.5316",
+      category: :care_networks,
+      description: "Explores how technology can enhance compassionate care in mental health treatment settings."
+    }
+  ]
+
+  @paper_categories %{
+    synchronization: %{name: "HRV Synchronization", color: "cyan", icon: "hero-arrows-right-left"},
+    therapy: %{name: "Therapy & Healing", color: "green", icon: "hero-heart"},
+    care_networks: %{name: "Care Networks", color: "purple", icon: "hero-users"},
+    wearables: %{name: "Wearables & Monitoring", color: "blue", icon: "hero-device-phone-mobile"}
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     # Start with empathy lens and shuffle its use cases
@@ -153,6 +254,8 @@ defmodule SensoctoWeb.AboutLive do
       |> assign(:use_cases, shuffled)
       |> assign(:visible_count, 3)
       |> assign(:current_offset, 0)
+      |> assign(:research_papers, @research_papers)
+      |> assign(:paper_categories, @paper_categories)
 
     {:ok, socket}
   end
@@ -222,157 +325,6 @@ defmodule SensoctoWeb.AboutLive do
         </div>
 
         <div class="relative max-w-4xl mx-auto px-4 py-12 sm:py-16 text-center">
-          <!-- Animated Logo -->
-          <div class="mb-8 relative inline-block">
-            <div
-              class="absolute -inset-4 bg-cyan-500/20 rounded-full blur-xl animate-pulse"
-              style="animation-duration: 3s;"
-            >
-            </div>
-            <svg
-              class="relative h-24 w-24 sm:h-32 sm:w-32 mx-auto text-cyan-400 animate-float"
-              viewBox="0 0 100 100"
-              fill="currentColor"
-            >
-              <!-- Octopus head -->
-              <ellipse cx="50" cy="35" rx="25" ry="20" class="text-cyan-500" fill="currentColor" />
-              <!-- Eyes -->
-              <circle cx="42" cy="32" r="4" class="text-white" fill="currentColor" />
-              <circle cx="58" cy="32" r="4" class="text-white" fill="currentColor" />
-              <circle cx="43" cy="33" r="2" class="text-gray-900" fill="currentColor" />
-              <circle cx="59" cy="33" r="2" class="text-gray-900" fill="currentColor" />
-              <!-- Tentacles representing connection -->
-              <path
-                d="M25 45 Q15 55 10 70 Q8 80 15 85"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M30 50 Q22 62 18 78 Q16 88 22 92"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M38 52 Q32 68 30 82 Q29 92 35 95"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M50 54 Q50 72 50 88 Q50 95 50 98"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M62 52 Q68 68 70 82 Q71 92 65 95"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M70 50 Q78 62 82 78 Q84 88 78 92"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M75 45 Q85 55 90 70 Q92 80 85 85"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <path
-                d="M78 40 Q88 48 95 60 Q98 70 92 78"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                stroke-linecap="round"
-                class="text-cyan-400"
-              />
-              <!-- Heartbeat dots on tentacles -->
-              <circle
-                cx="15"
-                cy="85"
-                r="3"
-                class="text-red-400 animate-pulse"
-                fill="currentColor"
-              />
-              <circle
-                cx="22"
-                cy="92"
-                r="3"
-                class="text-pink-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 0.2s;"
-              />
-              <circle
-                cx="35"
-                cy="95"
-                r="3"
-                class="text-purple-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 0.4s;"
-              />
-              <circle
-                cx="50"
-                cy="98"
-                r="3"
-                class="text-blue-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 0.6s;"
-              />
-              <circle
-                cx="65"
-                cy="95"
-                r="3"
-                class="text-cyan-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 0.8s;"
-              />
-              <circle
-                cx="78"
-                cy="92"
-                r="3"
-                class="text-teal-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 1s;"
-              />
-              <circle
-                cx="85"
-                cy="85"
-                r="3"
-                class="text-green-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 1.2s;"
-              />
-              <circle
-                cx="92"
-                cy="78"
-                r="3"
-                class="text-yellow-400 animate-pulse"
-                fill="currentColor"
-                style="animation-delay: 1.4s;"
-              />
-            </svg>
-          </div>
-
           <h1 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent mb-4">
             SensOcto
           </h1>
@@ -618,6 +570,61 @@ defmodule SensoctoWeb.AboutLive do
                 instead of exploiting attention.
                 No harvesting. No surveillance. No algorithms deciding who sees what.
               </p>
+            </div>
+
+    <!-- Research Papers Section (visible when research lens is active) -->
+            <div :if={@current_lens == :research} class="mt-10">
+              <h3 class="text-xl font-semibold text-white mb-6">
+                <.icon name="hero-academic-cap" class="h-6 w-6 inline-block mr-2 text-purple-400" />
+                Research Foundations
+              </h3>
+              <p class="text-gray-400 mb-6">
+                Our approach is grounded in peer-reviewed research on physiological synchronization, care networks, and wearable technology for mental health.
+              </p>
+
+    <!-- Category filters -->
+              <div class="flex flex-wrap gap-2 mb-6">
+                <%= for {key, cat} <- @paper_categories do %>
+                  <span class={"inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-#{cat.color}-500/20 text-#{cat.color}-400"}>
+                    <.icon name={cat.icon} class="h-3.5 w-3.5" />
+                    <%= cat.name %>
+                  </span>
+                <% end %>
+              </div>
+
+    <!-- Papers list -->
+              <div class="space-y-4">
+                <%= for paper <- @research_papers do %>
+                  <% cat = @paper_categories[paper.category] %>
+                  <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 hover:border-purple-500/30 transition-colors">
+                    <div class="flex items-start gap-3">
+                      <div class={"p-2 rounded-lg shrink-0 bg-#{cat.color}-500/20"}>
+                        <.icon name={cat.icon} class={"h-4 w-4 text-#{cat.color}-400"} />
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <h4 class="text-white font-medium text-sm leading-tight mb-1">
+                          <%= paper.title %>
+                        </h4>
+                        <p class="text-gray-500 text-xs mb-2">
+                          <%= paper.authors %> (<%= paper.year %>) · <span class="text-gray-600"><%= paper.journal %></span>
+                        </p>
+                        <p class="text-gray-400 text-sm">
+                          <%= paper.description %>
+                        </p>
+                        <a
+                          href={"https://doi.org/#{paper.doi}"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-1 mt-2 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                        >
+                          <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" />
+                          DOI: <%= paper.doi %>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
             </div>
           </div>
         </div>

@@ -248,7 +248,6 @@ defmodule SensoctoWeb.SearchLive do
                       </div>
                       <div class="flex-1 min-w-0">
                         <div class="text-sm text-white truncate">{user.name}</div>
-                        <div class="text-xs text-gray-500 truncate">{user.email}</div>
                       </div>
                     </div>
                   <% end %>

@@ -18,6 +18,7 @@ defmodule SensoctoWeb.RoomShowLive do
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
   alias SensoctoWeb.Live.Calls.MiniCallIndicatorComponent
+  alias SensoctoWeb.Sensocto.Presence
 
   @activity_check_interval 5000
 
@@ -95,6 +96,38 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:control_request_modal, nil)
           # Initialize object3d controller from server state
           |> assign(:object3d_controller_user_id, get_object3d_controller(room_id))
+          # Room mode presence counts
+          |> assign(:media_viewers, 0)
+          |> assign(:object3d_viewers, 0)
+
+        # Track and subscribe to room mode presence
+        # Generate a unique presence key for this connection (allows multiple tabs per user)
+        presence_key = "#{user && user.id}:#{System.unique_integer([:positive])}"
+
+        socket =
+          if connected?(socket) and user do
+            # Subscribe to room mode presence updates
+            PubSub.subscribe(Sensocto.PubSub, "room:#{room_id}:mode_presence")
+
+            # Track this connection's presence with their current room mode
+            # Using a unique key per connection to count each tab separately
+            default_mode = get_default_mode(room)
+
+            Presence.track(self(), "room:#{room_id}:mode_presence", presence_key, %{
+              room_mode: default_mode,
+              user_id: user.id
+            })
+
+            # Get initial presence counts
+            {media_count, object3d_count} = count_room_mode_presence(room_id)
+
+            socket
+            |> assign(:presence_key, presence_key)
+            |> assign(:media_viewers, media_count)
+            |> assign(:object3d_viewers, object3d_count)
+          else
+            assign(socket, :presence_key, presence_key)
+          end
 
         {:ok, socket}
 
@@ -149,6 +182,17 @@ defmodule SensoctoWeb.RoomShowLive do
         _ ->
           get_default_mode(room)
       end
+
+    # Update presence to reflect new mode
+    user = socket.assigns[:current_user]
+    presence_key = socket.assigns[:presence_key]
+
+    if user && presence_key do
+      Presence.update(self(), "room:#{room.id}:mode_presence", presence_key, %{
+        room_mode: mode,
+        user_id: user.id
+      })
+    end
 
     socket
     |> assign(:show_settings, false)
@@ -931,6 +975,24 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
+  # Handle room mode presence diffs (for viewer counts)
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          topic: "room:" <> _rest,
+          event: "presence_diff"
+        },
+        socket
+      ) do
+    room_id = socket.assigns.room.id
+    {media_count, object3d_count} = count_room_mode_presence(room_id)
+
+    {:noreply,
+     socket
+     |> assign(:media_viewers, media_count)
+     |> assign(:object3d_viewers, object3d_count)}
+  end
+
   @impl true
   def handle_info(
         {:measurement,
@@ -1362,6 +1424,19 @@ defmodule SensoctoWeb.RoomShowLive do
       Map.get(room, :object_3d_enabled, false) -> :object3d
       true -> :sensors
     end
+  end
+
+  defp count_room_mode_presence(room_id) do
+    presences = Presence.list("room:#{room_id}:mode_presence")
+
+    Enum.reduce(presences, {0, 0}, fn {_user_id, %{metas: metas}}, {media, object3d} ->
+      # Get the most recent presence meta (last one)
+      case List.last(metas) do
+        %{room_mode: :media} -> {media + 1, object3d}
+        %{room_mode: :object3d} -> {media, object3d + 1}
+        _ -> {media, object3d}
+      end
+    end)
   end
 
   defp get_object3d_controller(room_id) do
@@ -1904,6 +1979,9 @@ defmodule SensoctoWeb.RoomShowLive do
                 if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
             >
               <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
+              <span :if={@media_viewers > 0} class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+                {@media_viewers}
+              </span>
             </button>
           <% end %>
           <%= if Map.get(@room, :object_3d_enabled, false) do %>
@@ -1915,6 +1993,9 @@ defmodule SensoctoWeb.RoomShowLive do
                 if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
             >
               <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
+              <span :if={@object3d_viewers > 0} class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+                {@object3d_viewers}
+              </span>
             </button>
           <% end %>
           <%= if @in_call do %>

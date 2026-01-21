@@ -94,8 +94,11 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:object3d_bump, false)
           # Control request modal state
           |> assign(:control_request_modal, nil)
+          |> assign(:media_control_request_modal, nil)
           # Initialize object3d controller from server state
           |> assign(:object3d_controller_user_id, get_object3d_controller(room_id))
+          # Controller user IDs for request modals
+          |> assign(:media_controller_user_id, nil)
           # Room mode presence counts
           |> assign(:media_viewers, 0)
           |> assign(:object3d_viewers, 0)
@@ -975,6 +978,35 @@ defmodule SensoctoWeb.RoomShowLive do
     {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
+  # Media control request modal handlers
+  @impl true
+  def handle_event("dismiss_media_control_request", _, socket) do
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
+  end
+
+  @impl true
+  def handle_event("release_media_control_from_modal", _, socket) do
+    room_id = socket.assigns.room.id
+    current_user = socket.assigns.current_user
+    modal_data = socket.assigns.media_control_request_modal
+
+    if current_user && modal_data do
+      alias Sensocto.Media.MediaPlayerServer
+
+      # First release control from current user
+      MediaPlayerServer.release_control(room_id, current_user.id)
+
+      # Then give control to the requester
+      MediaPlayerServer.take_control(
+        room_id,
+        modal_data.requester_id,
+        modal_data.requester_name
+      )
+    end
+
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
+  end
+
   # Handle room mode presence diffs (for viewer counts)
   @impl true
   def handle_info(
@@ -1247,7 +1279,8 @@ defmodule SensoctoWeb.RoomShowLive do
       controller_user_name: user_name
     )
 
-    {:noreply, socket}
+    # Store controller_user_id so we can check if current user is the controller for request modal
+    {:noreply, assign(socket, :media_controller_user_id, user_id)}
   end
 
   # Object3D PubSub handlers
@@ -1359,6 +1392,28 @@ defmodule SensoctoWeb.RoomShowLive do
        })}
     else
       Logger.debug("[RoomShowLive] Not showing modal - user is not the controller")
+      {:noreply, socket}
+    end
+  end
+
+  # Handle media player control requests
+  @impl true
+  def handle_info(
+        {:media_control_requested, %{requester_id: requester_id, requester_name: requester_name}},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+    controller_user_id = socket.assigns[:media_controller_user_id]
+
+    # Only show modal to the controller
+    if current_user && controller_user_id && current_user.id == controller_user_id do
+      {:noreply,
+       socket
+       |> assign(:media_control_request_modal, %{
+         requester_id: requester_id,
+         requester_name: requester_name
+       })}
+    else
       {:noreply, socket}
     end
   end
@@ -2322,6 +2377,93 @@ defmodule SensoctoWeb.RoomShowLive do
                 <button
                   phx-click="release_control_from_modal"
                   class="flex-1 px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                    />
+                  </svg>
+                  Transfer Control
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <%!-- Media Control Request Modal --%>
+      <%= if @media_control_request_modal do %>
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <%!-- Header --%>
+            <div class="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-4">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-white/20 rounded-full">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <h2 class="text-xl font-bold text-white">Media Control Request</h2>
+              </div>
+            </div>
+
+            <%!-- Content --%>
+            <div class="p-6">
+              <div class="flex items-center gap-4 mb-6">
+                <div class="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center">
+                  <svg
+                    class="w-8 h-8 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-lg font-semibold text-white">
+                    {@media_control_request_modal.requester_name}
+                  </p>
+                  <p class="text-sm text-gray-400">
+                    wants to control the media player
+                  </p>
+                </div>
+              </div>
+
+              <p class="text-gray-300 text-sm mb-6">
+                Transferring control will allow them to play, pause, and navigate the media playlist.
+              </p>
+
+              <%!-- Actions --%>
+              <div class="flex gap-3">
+                <button
+                  phx-click="dismiss_media_control_request"
+                  class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+                >
+                  Keep Control
+                </button>
+                <button
+                  phx-click="release_media_control_from_modal"
+                  class="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path

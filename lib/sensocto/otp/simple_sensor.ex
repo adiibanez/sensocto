@@ -249,6 +249,31 @@ defmodule Sensocto.SimpleSensor do
 
     AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
 
+    # Auto-register attribute if not already registered
+    state =
+      if not Map.has_key?(state.attributes, attribute_id) do
+        inferred_type = infer_attribute_type(attribute_id, payload)
+        Logger.debug("Auto-registering attribute #{attribute_id} as type #{inferred_type}")
+
+        new_attributes =
+          Map.put(state.attributes, attribute_id, %{
+            attribute_type: inferred_type,
+            attribute_id: attribute_id,
+            sampling_rate: 1
+          })
+
+        # Broadcast state change so LiveViews refresh
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          "signal:#{sensor_id}",
+          {:new_state, sensor_id}
+        )
+
+        %{state | attributes: new_attributes}
+      else
+        state
+      end
+
     now = System.system_time(:millisecond)
 
     Phoenix.PubSub.broadcast(
@@ -343,6 +368,61 @@ defmodule Sensocto.SimpleSensor do
 
   defp schedule_mps_calculation do
     Process.send_after(self(), :calculate_mps, @mps_interval)
+  end
+
+  # Infer attribute type from attribute_id and payload structure
+  defp infer_attribute_type(attribute_id, payload) do
+    cond do
+      attribute_id in ["battery", "battery_level"] ->
+        "battery"
+
+      attribute_id in ["geolocation", "location", "gps"] ->
+        "geolocation"
+
+      attribute_id in ["button", "buttons"] ->
+        "button"
+
+      attribute_id in ["ecg", "heart", "heartbeat"] ->
+        "ecg"
+
+      attribute_id in ["heartrate", "heart_rate", "hr", "bpm"] ->
+        "heartrate"
+
+      attribute_id in ["imu", "accelerometer", "gyroscope", "motion"] ->
+        "imu"
+
+      attribute_id in ["temperature", "temp"] ->
+        "temperature"
+
+      attribute_id in ["humidity"] ->
+        "humidity"
+
+      attribute_id in ["pressure", "barometer"] ->
+        "pressure"
+
+      attribute_id in ["rich_presence", "media", "now_playing"] ->
+        "rich_presence"
+
+      # Infer from payload structure
+      is_map(payload) and Map.has_key?(payload, :level) and Map.has_key?(payload, :charging) ->
+        "battery"
+
+      is_map(payload) and Map.has_key?(payload, :latitude) ->
+        "geolocation"
+
+      is_map(payload) and Map.has_key?(payload, "latitude") ->
+        "geolocation"
+
+      is_map(payload) and Map.has_key?(payload, :artist) ->
+        "rich_presence"
+
+      is_map(payload) and Map.has_key?(payload, "artist") ->
+        "rich_presence"
+
+      # Default to generic numeric type
+      true ->
+        "numeric"
+    end
   end
 
   # Helper to get attribute_type from mixed key maps

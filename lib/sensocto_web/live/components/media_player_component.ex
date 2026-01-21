@@ -247,6 +247,33 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   @impl true
+  def handle_event("request_control", _, socket) do
+    user = socket.assigns.current_user
+    controller_user_id = socket.assigns.controller_user_id
+    room_id = socket.assigns.room_id
+
+    if user && controller_user_id && user.id != controller_user_id do
+      requester_name = user.email || "Someone"
+
+      # Broadcast the control request to the room - the controller will see it
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "media:#{room_id}",
+        {:media_control_requested, %{requester_id: user.id, requester_name: requester_name}}
+      )
+
+      {:noreply,
+       socket
+       |> Phoenix.LiveView.put_flash(
+         :info,
+         "Request sent to #{socket.assigns.controller_user_name}"
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("update_add_url", %{"url" => url}, socket) do
     {:noreply, assign(socket, :add_video_url, url)}
   end
@@ -594,6 +621,16 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                 >
                   Release
                 </button>
+              <% else %>
+                <%= if @current_user do %>
+                  <button
+                    phx-click="request_control"
+                    phx-target={@myself}
+                    class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
+                  >
+                    Request
+                  </button>
+                <% end %>
               <% end %>
             <% else %>
               <div class="text-sm text-gray-400">No one has control</div>

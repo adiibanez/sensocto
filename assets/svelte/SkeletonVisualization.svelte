@@ -152,8 +152,24 @@
         const eventData = event.detail?.data;
         if (!eventData) return;
 
-        // Handle both single measurement and batch formats
-        const payload = eventData.payload || eventData;
+        // Handle multiple data formats:
+        // 1. Array of measurements: [{timestamp, payload}, ...] (from measurements_batch)
+        // 2. Single measurement: {timestamp, payload} (from measurement event)
+        // 3. Direct payload: {landmarks: [...]}
+        let payload;
+        if (Array.isArray(eventData)) {
+            // Batch format - get the latest measurement's payload
+            const latest = eventData[eventData.length - 1];
+            payload = latest?.payload;
+        } else if (eventData.payload !== undefined) {
+            // Single measurement format
+            payload = eventData.payload;
+        } else {
+            // Direct payload format
+            payload = eventData;
+        }
+
+        if (!payload) return;
 
         try {
             const data = typeof payload === "string" ? JSON.parse(payload) : payload;

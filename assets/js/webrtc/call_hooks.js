@@ -1351,7 +1351,11 @@ export const VideoTileHook = {
   destroyed() {
     const videoEl = this.el.querySelector("video");
     if (videoEl && videoEl.srcObject) {
-      videoEl.srcObject.getTracks().forEach((track) => track.stop());
+      // Only stop tracks for remote participants, not for local video
+      // Local video stream is managed by CallHook and should persist across UI changes
+      if (!this.isLocal) {
+        videoEl.srcObject.getTracks().forEach((track) => track.stop());
+      }
       videoEl.srcObject = null;
     }
   },

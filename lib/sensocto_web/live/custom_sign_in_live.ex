@@ -138,54 +138,54 @@ defmodule SensoctoWeb.CustomSignInLive do
 
   @research_papers [
     %{
-      title: "Heart Rate Variability Synchronization in Dyadic Interactions",
+      title: "Interpersonal Autonomic Physiology: A Systematic Review of the Literature",
       authors: "Palumbo et al.",
       year: 2017,
-      journal: "Frontiers in Psychology",
-      doi: "10.3389/fpsyg.2017.01394",
+      journal: "Personality and Social Psychology Review",
+      doi: "10.1177/1088868316628405",
       category: :synchronization,
       description:
-        "Explores how HRV synchronization emerges between individuals during social interactions and its implications for emotional attunement."
+        "Systematic review defining interpersonal autonomic physiology and how physiological synchronization emerges during social interactions."
     },
     %{
-      title: "Interpersonal Physiological Synchrony in Psychotherapy",
+      title: "State of the Art of Interpersonal Physiology in Psychotherapy: A Systematic Review",
       authors: "Kleinbub, R.",
       year: 2017,
-      journal: "Current Opinion in Psychology",
-      doi: "10.1016/j.copsyc.2016.07.001",
+      journal: "Frontiers in Psychology",
+      doi: "10.3389/fpsyg.2017.02053",
       category: :therapy,
       description:
         "Reviews evidence for physiological synchrony between therapists and clients as a marker of therapeutic alliance."
     },
     %{
-      title: "Social Support Networks and Mental Health",
+      title: "Social Ties and Mental Health",
       authors: "Kawachi & Berkman",
       year: 2001,
-      journal: "American Journal of Epidemiology",
-      doi: "10.1093/aje/kwaa179",
+      journal: "Journal of Urban Health",
+      doi: "10.1093/jurban/78.3.458",
       category: :care_networks,
       description:
         "Foundational work on how social networks influence mental health outcomes and crisis prevention."
     },
     %{
-      title: "Physiological Compliance in Couples During Conflict and Support",
+      title: "Partner Influence and In-Phase Versus Anti-Phase Physiological Linkage in Romantic Couples",
       authors: "Reed et al.",
       year: 2013,
-      journal: "Emotion",
-      doi: "10.1037/a0032167",
+      journal: "International Journal of Psychophysiology",
+      doi: "10.1016/j.ijpsycho.2012.08.009",
       category: :synchronization,
       description:
-        "Examines how partners' physiological systems co-regulate during emotional conversations."
+        "Examines how partners' physiological systems co-regulate during emotional conversations and health discussions."
     },
     %{
-      title: "Wearable Biosensors for Mental Health Monitoring",
-      authors: "Peake et al.",
+      title: "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
+      authors: "Sano et al.",
       year: 2018,
       journal: "Journal of Medical Internet Research",
-      doi: "10.2196/10131",
+      doi: "10.2196/jmir.9410",
       category: :wearables,
       description:
-        "Comprehensive review of wearable technology applications for real-time mental health assessment."
+        "Uses wearable biosensors and machine learning to classify stress and mental health status in real-time."
     },
     %{
       title: "Biofeedback in the Treatment of Anxiety and PTSD",

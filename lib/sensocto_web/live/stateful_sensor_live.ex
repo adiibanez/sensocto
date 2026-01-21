@@ -166,10 +166,22 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # Get initial attention level - now uses ETS lookup (fast, no GenServer call)
     initial_attention = AttentionTracker.get_sensor_attention_level(sensor_id)
 
-    # Schedule the first throttle flush
-    if connected?(socket) do
-      Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
-    end
+    # Schedule the first throttle flush and re-fetch sensor state on connected mount
+    # to ensure we have the latest attributes (battery, location, etc. may be registered
+    # after the initial disconnected mount)
+    sensor_state =
+      if connected?(socket) do
+        Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
+        # Re-fetch to get any attributes registered between disconnected and connected mount
+        try do
+          task = Task.async(fn -> SimpleSensor.get_view_state(sensor_id) end)
+          Task.await(task, 1000)
+        catch
+          :exit, _ -> sensor_state
+        end
+      else
+        sensor_state
+      end
 
     # Default to summary view mode - child manages its own view mode
     # Parent can broadcast view mode changes via PubSub "ui:view_mode" topic
@@ -336,11 +348,16 @@ defmodule SensoctoWeb.StatefulSensorLive do
         {:new_state, _sensor_id},
         socket
       ) do
-    Logger.debug("New state for sensor")
-
     # Handle case where sensor process may have been terminated
     try do
       new_sensor_state = SimpleSensor.get_view_state(socket.assigns.sensor_id)
+      new_attrs = Map.keys(new_sensor_state.attributes)
+      old_attrs = Map.keys(socket.assigns.sensor.attributes)
+
+      if new_attrs != old_attrs do
+        Logger.info("Sensor #{socket.assigns.sensor_id} attributes changed: #{inspect(old_attrs)} -> #{inspect(new_attrs)}")
+      end
+
       {:noreply, assign(socket, :sensor, new_sensor_state)}
     catch
       :exit, {:noproc, _} ->

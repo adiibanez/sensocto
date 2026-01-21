@@ -48,8 +48,10 @@ defmodule SensoctoWeb.LobbyLive do
     sensor_ids = sensors |> Map.keys() |> Enum.sort()
 
     # Subscribe to data topics for all sensors (for composite views)
+    # Also subscribe to signal topics for attribute change notifications
     Enum.each(sensor_ids, fn sensor_id ->
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
     end)
 
     # Calculate max attributes across all sensors for view mode decision
@@ -61,6 +63,9 @@ defmodule SensoctoWeb.LobbyLive do
     # Extract composite visualization data
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} =
       extract_composite_data(sensors)
+
+    # Compute available lenses based on actual sensor attributes
+    available_lenses = compute_available_lenses(heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors)
 
     # Group sensors by connector (user)
     sensors_by_user = group_sensors_by_user(sensors)
@@ -90,6 +95,7 @@ defmodule SensoctoWeb.LobbyLive do
         location_sensors: location_sensors,
         ecg_sensors: ecg_sensors,
         battery_sensors: battery_sensors,
+        available_lenses: available_lenses,
         sensors_by_user: sensors_by_user,
         public_rooms: public_rooms,
         show_join_modal: false,
@@ -102,6 +108,7 @@ defmodule SensoctoWeb.LobbyLive do
         call_speaking: false,
         audio_enabled: true,
         video_enabled: true,
+        call_expanded: false,
         # Bump animation assigns for mode buttons
         media_bump: false,
         object3d_bump: false,
@@ -109,7 +116,10 @@ defmodule SensoctoWeb.LobbyLive do
         media_viewers: 0,
         object3d_viewers: 0,
         # Control request modal state
-        control_request_modal: nil
+        control_request_modal: nil,
+        media_control_request_modal: nil,
+        # Controller user IDs for request modals
+        media_controller_user_id: nil
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -130,6 +140,11 @@ defmodule SensoctoWeb.LobbyLive do
 
         # Get initial presence counts
         {media_count, object3d_count} = count_room_mode_presence("lobby")
+
+        # Schedule refreshes to catch late-registered attributes
+        # Attributes are auto-registered on first data receipt, which may happen after mount
+        Process.send_after(self(), :refresh_available_lenses, 1000)
+        Process.send_after(self(), :refresh_available_lenses, 3000)
 
         new_socket
         |> assign(:presence_key, presence_key)
@@ -318,6 +333,17 @@ defmodule SensoctoWeb.LobbyLive do
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors}
   end
 
+  # Compute which lens types are available based on actual sensor attributes
+  defp compute_available_lenses(heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors) do
+    lenses = []
+    lenses = if length(heartrate_sensors) > 0, do: [:heartrate | lenses], else: lenses
+    lenses = if length(imu_sensors) > 0, do: [:imu | lenses], else: lenses
+    lenses = if length(location_sensors) > 0, do: [:location | lenses], else: lenses
+    lenses = if length(ecg_sensors) > 0, do: [:ecg | lenses], else: lenses
+    lenses = if length(battery_sensors) > 0, do: [:battery | lenses], else: lenses
+    Enum.reverse(lenses)
+  end
+
   defp group_sensors_by_user(sensors) do
     sensors
     |> Enum.group_by(fn {_id, sensor} -> {sensor.connector_id, sensor.connector_name} end)
@@ -439,6 +465,9 @@ defmodule SensoctoWeb.LobbyLive do
         {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} =
           extract_composite_data(sensors)
 
+        # Recompute available lenses when sensors change
+        available_lenses = compute_available_lenses(heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors)
+
         updated_socket =
           socket
           |> assign(:sensors_online_count, sensors_count)
@@ -449,6 +478,7 @@ defmodule SensoctoWeb.LobbyLive do
           |> assign(:location_sensors, location_sensors)
           |> assign(:ecg_sensors, ecg_sensors)
           |> assign(:battery_sensors, battery_sensors)
+          |> assign(:available_lenses, available_lenses)
           |> assign(:sensors_by_user, group_sensors_by_user(sensors))
 
         # Only update sensors_offline if there are actual leaves
@@ -483,7 +513,7 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, put_flash(socket, :info, message)}
   end
 
-  # Handle single measurement for composite views
+  # Handle single measurement for composite views and individual sensors
   @impl true
   def handle_info(
         {:measurement,
@@ -495,11 +525,21 @@ defmodule SensoctoWeb.LobbyLive do
          }},
         socket
       ) do
-    # Only push events when on composite view tabs
     case socket.assigns.live_action do
+      # Composite views use composite_measurement event
       action when action in [:heartrate, :imu, :location, :ecg, :battery] ->
         {:noreply,
          push_event(socket, "composite_measurement", %{
+           sensor_id: sensor_id,
+           attribute_id: attribute_id,
+           payload: payload,
+           timestamp: timestamp
+         })}
+
+      # Sensors view uses measurement event for SensorDataAccumulator hook
+      :sensors ->
+        {:noreply,
+         push_event(socket, "measurement", %{
            sensor_id: sensor_id,
            attribute_id: attribute_id,
            payload: payload,
@@ -570,6 +610,25 @@ defmodule SensoctoWeb.LobbyLive do
           end)
 
         {:noreply, new_socket}
+
+      # Sensors view uses measurements_batch for SensorDataAccumulator hook
+      :sensors ->
+        # Push as measurements_batch event with attribute list format
+        attributes =
+          measurements_list
+          |> Enum.map(fn m ->
+            %{
+              attribute_id: m.attribute_id,
+              payload: m.payload,
+              timestamp: m.timestamp
+            }
+          end)
+
+        {:noreply,
+         push_event(socket, "measurements_batch", %{
+           sensor_id: sensor_id,
+           attributes: attributes
+         })}
 
       _ ->
         {:noreply, socket}
@@ -650,7 +709,8 @@ defmodule SensoctoWeb.LobbyLive do
       controller_user_name: user_name
     )
 
-    {:noreply, socket}
+    # Store controller_user_id so we can check if current user is the controller for request modal
+    {:noreply, assign(socket, :media_controller_user_id, user_id)}
   end
 
   # 3D Object player events - forward to component
@@ -747,6 +807,28 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
+  # Handle media player control requests
+  @impl true
+  def handle_info(
+        {:media_control_requested, %{requester_id: requester_id, requester_name: requester_name}},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+    controller_user_id = socket.assigns[:media_controller_user_id]
+
+    # Only show modal to the controller
+    if current_user && controller_user_id && current_user.id == controller_user_id do
+      {:noreply,
+       socket
+       |> assign(:media_control_request_modal, %{
+         requester_id: requester_id,
+         requester_name: requester_name
+       })}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # Handle call events from CallServer via PubSub
   @impl true
   def handle_info({:call_event, event}, socket) do
@@ -796,6 +878,34 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # Refresh available lenses after mount to catch late-registered attributes
+  @impl true
+  def handle_info(:refresh_available_lenses, socket) do
+    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} =
+      extract_composite_data(sensors)
+
+    available_lenses =
+      compute_available_lenses(
+        heartrate_sensors,
+        imu_sensors,
+        location_sensors,
+        ecg_sensors,
+        battery_sensors
+      )
+
+    {:noreply,
+     socket
+     |> assign(:heartrate_sensors, heartrate_sensors)
+     |> assign(:imu_sensors, imu_sensors)
+     |> assign(:location_sensors, location_sensors)
+     |> assign(:ecg_sensors, ecg_sensors)
+     |> assign(:battery_sensors, battery_sensors)
+     |> assign(:available_lenses, available_lenses)
+     |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
+  end
+
   # Clear bump animations after timeout
   @impl true
   def handle_info(:clear_media_bump, socket) do
@@ -834,6 +944,36 @@ defmodule SensoctoWeb.LobbyLive do
       })
 
     {:noreply, socket}
+  end
+
+  # Handle sensor state changes (e.g., new attributes registered)
+  # This refreshes available lenses when attributes are auto-registered
+  @impl true
+  def handle_info({:new_state, _sensor_id}, socket) do
+    # Re-fetch all sensors and recompute available lenses
+    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors} =
+      extract_composite_data(sensors)
+
+    available_lenses =
+      compute_available_lenses(
+        heartrate_sensors,
+        imu_sensors,
+        location_sensors,
+        ecg_sensors,
+        battery_sensors
+      )
+
+    {:noreply,
+     socket
+     |> assign(:heartrate_sensors, heartrate_sensors)
+     |> assign(:imu_sensors, imu_sensors)
+     |> assign(:location_sensors, location_sensors)
+     |> assign(:ecg_sensors, ecg_sensors)
+     |> assign(:battery_sensors, battery_sensors)
+     |> assign(:available_lenses, available_lenses)
+     |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
   end
 
   @impl true
@@ -990,6 +1130,11 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
+  def handle_event("toggle_call_expanded", _, socket) do
+    {:noreply, assign(socket, :call_expanded, !socket.assigns.call_expanded)}
+  end
+
+  @impl true
   def handle_event("leave_call", _, socket) do
     {:noreply, push_event(socket, "leave_call", %{})}
   end
@@ -1050,6 +1195,34 @@ defmodule SensoctoWeb.LobbyLive do
     end
 
     {:noreply, assign(socket, :control_request_modal, nil)}
+  end
+
+  # Media control request modal handlers
+  @impl true
+  def handle_event("dismiss_media_control_request", _, socket) do
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
+  end
+
+  @impl true
+  def handle_event("release_media_control_from_modal", _, socket) do
+    current_user = socket.assigns.current_user
+    modal_data = socket.assigns.media_control_request_modal
+
+    if current_user && modal_data do
+      alias Sensocto.Media.MediaPlayerServer
+
+      # First release control from current user
+      MediaPlayerServer.release_control(:lobby, current_user.id)
+
+      # Then give control to the requester
+      MediaPlayerServer.take_control(
+        :lobby,
+        modal_data.requester_id,
+        modal_data.requester_name
+      )
+    end
+
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
   end
 
   # Lens view selector (dropdown)

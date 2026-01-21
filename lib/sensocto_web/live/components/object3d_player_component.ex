@@ -411,7 +411,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             <% end %>
           <% else %>
             <span class="text-sm text-gray-300">
-              3D Object Viewer
+              Collab 3D Object Viewer
             </span>
             <%= if @loading do %>
               <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>

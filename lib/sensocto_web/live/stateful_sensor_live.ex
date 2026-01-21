@@ -94,7 +94,10 @@ defmodule SensoctoWeb.StatefulSensorLive do
       <span :if={@status == :streaming && @batch_window} class="text-gray-500 font-mono text-[10px]">
         {@batch_window}ms
       </span>
-      <span :if={@error_count > 0} class="text-red-400 font-mono text-[10px] flex items-center gap-0.5">
+      <span
+        :if={@error_count > 0}
+        class="text-red-400 font-mono text-[10px] flex items-center gap-0.5"
+      >
         <Heroicons.icon name="exclamation-triangle" type="solid" class="h-2.5 w-2.5" />
         {@error_count}
       </span>
@@ -264,6 +267,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # Buffer measurement for throttled push to client (for JS charts)
     pending = [measurement | socket.assigns.pending_measurements]
     now = System.monotonic_time(:millisecond)
+
     {:noreply,
      socket
      |> assign(:pending_measurements, pending)
@@ -302,6 +306,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # Buffer measurement for throttled push to client (for JS charts)
     pending = [measurement | socket.assigns.pending_measurements]
     now = System.monotonic_time(:millisecond)
+
     {:noreply,
      socket
      |> assign(:pending_measurements, pending)
@@ -336,6 +341,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # Prepend batch (newer batch at front), reverse at flush for chronological order
     pending = measurements_list ++ socket.assigns.pending_measurements
     now = System.monotonic_time(:millisecond)
+
     {:noreply,
      socket
      |> assign(:pending_measurements, pending)
@@ -355,7 +361,9 @@ defmodule SensoctoWeb.StatefulSensorLive do
       old_attrs = Map.keys(socket.assigns.sensor.attributes)
 
       if new_attrs != old_attrs do
-        Logger.info("Sensor #{socket.assigns.sensor_id} attributes changed: #{inspect(old_attrs)} -> #{inspect(new_attrs)}")
+        Logger.info(
+          "Sensor #{socket.assigns.sensor_id} attributes changed: #{inspect(old_attrs)} -> #{inspect(new_attrs)}"
+        )
       end
 
       {:noreply, assign(socket, :sensor, new_sensor_state)}

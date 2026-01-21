@@ -38,6 +38,7 @@ defmodule SensoctoWeb.SearchLive do
   def handle_event("search", %{"query" => query}, socket) do
     if String.length(query) >= 1 do
       results = SearchIndex.search(query)
+
       {:noreply,
        socket
        |> assign(:query, query)
@@ -149,7 +150,11 @@ defmodule SensoctoWeb.SearchLive do
             phx-click-away="close"
           >
             <div class="flex items-center px-4 py-3 border-b border-gray-700">
-              <Heroicons.icon name="magnifying-glass" type="outline" class="h-5 w-5 text-gray-400 mr-3" />
+              <Heroicons.icon
+                name="magnifying-glass"
+                type="outline"
+                class="h-5 w-5 text-gray-400 mr-3"
+              />
               <form phx-change="search" phx-submit="search" class="flex-1">
                 <input
                   type="text"
@@ -170,10 +175,14 @@ defmodule SensoctoWeb.SearchLive do
 
             <div class="max-h-96 overflow-y-auto">
               <div :if={@loading} class="px-4 py-8 text-center">
-                <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-gray-600 border-t-blue-500"></div>
+                <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-gray-600 border-t-blue-500">
+                </div>
               </div>
 
-              <div :if={!@loading && @query != "" && total_results(@results) == 0} class="px-4 py-8 text-center text-gray-400">
+              <div
+                :if={!@loading && @query != "" && total_results(@results) == 0}
+                class="px-4 py-8 text-center text-gray-400"
+              >
                 No results found for "{@query}"
               </div>
 
@@ -220,13 +229,22 @@ defmodule SensoctoWeb.SearchLive do
                       class={"w-full px-4 py-2 flex items-center gap-3 text-left hover:bg-gray-700/50 #{if adjusted_idx == @selected_index, do: "bg-gray-700/50", else: ""}"}
                     >
                       <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-                        <Heroicons.icon name="building-office" type="outline" class="h-4 w-4 text-green-400" />
+                        <Heroicons.icon
+                          name="building-office"
+                          type="outline"
+                          class="h-4 w-4 text-green-400"
+                        />
                       </div>
                       <div class="flex-1 min-w-0">
                         <div class="text-sm text-white truncate">{room.name}</div>
-                        <div :if={room.description} class="text-xs text-gray-500 truncate">{room.description}</div>
+                        <div :if={room.description} class="text-xs text-gray-500 truncate">
+                          {room.description}
+                        </div>
                       </div>
-                      <span :if={room.is_public} class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">
+                      <span
+                        :if={room.is_public}
+                        class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400"
+                      >
                         Public
                       </span>
                       <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4 text-gray-500" />
@@ -240,9 +258,7 @@ defmodule SensoctoWeb.SearchLive do
                   </div>
                   <%= for {user, idx} <- Enum.with_index(@results.users) do %>
                     <% adjusted_idx = idx + length(@results.sensors) + length(@results.rooms) %>
-                    <div
-                      class={"w-full px-4 py-2 flex items-center gap-3 text-left #{if adjusted_idx == @selected_index, do: "bg-gray-700/50", else: ""}"}
-                    >
+                    <div class={"w-full px-4 py-2 flex items-center gap-3 text-left #{if adjusted_idx == @selected_index, do: "bg-gray-700/50", else: ""}"}>
                       <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
                         <Heroicons.icon name="user" type="outline" class="h-4 w-4 text-purple-400" />
                       </div>
@@ -259,18 +275,15 @@ defmodule SensoctoWeb.SearchLive do
               <div class="flex items-center gap-4">
                 <span class="flex items-center gap-1">
                   <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">↑</kbd>
-                  <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">↓</kbd>
-                  Navigate
+                  <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">↓</kbd> Navigate
                 </span>
                 <span class="flex items-center gap-1">
-                  <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">↵</kbd>
-                  Select
+                  <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">↵</kbd> Select
                 </span>
               </div>
               <span class="hidden sm:inline">
                 <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">⌘</kbd>
-                <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">K</kbd>
-                to open
+                <kbd class="px-1.5 py-0.5 bg-gray-700 rounded">K</kbd> to open
               </span>
             </div>
           </div>

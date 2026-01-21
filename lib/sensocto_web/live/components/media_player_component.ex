@@ -4,6 +4,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   Handles player controls, playlist management, and coordinates with JavaScript hooks.
   """
   use SensoctoWeb, :live_component
+  require Logger
 
   alias Sensocto.Media
   alias Sensocto.Media.MediaPlayerServer
@@ -252,7 +253,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     controller_user_id = socket.assigns.controller_user_id
     room_id = socket.assigns.room_id
 
-    if user && controller_user_id && user.id != controller_user_id do
+    if user && controller_user_id && to_string(user.id) != to_string(controller_user_id) do
       requester_name = user.email || "Someone"
 
       # Broadcast the control request to the room - the controller will see it
@@ -356,8 +357,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     # JS hook requests current state - fetch from server and push to hook
     case MediaPlayerServer.get_state(socket.assigns.room_id) do
       {:ok, state} ->
-        require Logger
-
         Logger.debug(
           "MediaPlayerComponent pushing media_sync: #{state.state} pos=#{state.position_seconds}"
         )

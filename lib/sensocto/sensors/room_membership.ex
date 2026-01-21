@@ -12,37 +12,6 @@ defmodule Sensocto.Sensors.RoomMembership do
     repo Sensocto.Repo
   end
 
-  attributes do
-    uuid_primary_key :id
-
-    attribute :role, :atom do
-      constraints one_of: [:owner, :admin, :member]
-      default :member
-      allow_nil? false
-    end
-
-    attribute :joined_at, :utc_datetime_usec do
-      default &DateTime.utc_now/0
-      allow_nil? false
-    end
-  end
-
-  relationships do
-    belongs_to :room, Sensocto.Sensors.Room do
-      allow_nil? false
-      attribute_type :uuid
-    end
-
-    belongs_to :user, Sensocto.Accounts.User do
-      allow_nil? false
-      attribute_type :uuid
-    end
-  end
-
-  identities do
-    identity :unique_membership, [:room_id, :user_id]
-  end
-
   actions do
     defaults [:read, :destroy]
 
@@ -77,5 +46,36 @@ defmodule Sensocto.Sensors.RoomMembership do
     update :demote_to_member do
       change set_attribute(:role, :member)
     end
+  end
+
+  attributes do
+    uuid_primary_key :id
+
+    attribute :role, :atom do
+      constraints one_of: [:owner, :admin, :member]
+      default :member
+      allow_nil? false
+    end
+
+    attribute :joined_at, :utc_datetime_usec do
+      default &DateTime.utc_now/0
+      allow_nil? false
+    end
+  end
+
+  relationships do
+    belongs_to :room, Sensocto.Sensors.Room do
+      allow_nil? false
+      attribute_type :uuid
+    end
+
+    belongs_to :user, Sensocto.Accounts.User do
+      allow_nil? false
+      attribute_type :uuid
+    end
+  end
+
+  identities do
+    identity :unique_membership, [:room_id, :user_id]
   end
 end

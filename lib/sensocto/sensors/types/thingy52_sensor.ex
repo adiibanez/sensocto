@@ -112,7 +112,8 @@ defmodule Sensocto.Sensors.Types.Thingy52Sensor do
     {:ok, %{eco2: eco2, tvoc: tvoc, eco2_unit: "ppm", tvoc_unit: "ppb"}}
   end
 
-  def validate_payload(attr, %{"eco2" => eco2}) when attr in ["gas", "air_quality"] and is_number(eco2) do
+  def validate_payload(attr, %{"eco2" => eco2})
+      when attr in ["gas", "air_quality"] and is_number(eco2) do
     {:ok, %{eco2: eco2, tvoc: nil, eco2_unit: "ppm", tvoc_unit: "ppb"}}
   end
 
@@ -208,7 +209,8 @@ defmodule Sensocto.Sensors.Types.Thingy52Sensor do
   end
 
   # LED control (for setting LED state)
-  def validate_payload("led", %{"mode" => mode} = payload) when mode in ["off", "constant", "breathe", "one_shot"] do
+  def validate_payload("led", %{"mode" => mode} = payload)
+      when mode in ["off", "constant", "breathe", "one_shot"] do
     {:ok,
      %{
        mode: mode,

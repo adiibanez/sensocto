@@ -23,6 +23,17 @@ defmodule SensoctoWeb.LobbyLive do
   @summary_mode_threshold 3
   _ = @summary_mode_threshold
 
+  # Performance monitoring: batch flush interval in ms
+  # Measurements are buffered and flushed at this interval to reduce push_event calls
+  @measurement_flush_interval_ms 50
+
+  # Performance telemetry: log interval in ms
+  @perf_log_interval_ms 5_000
+
+  # Suppress unused warnings - these are used in handle_info callbacks
+  _ = @measurement_flush_interval_ms
+  _ = @perf_log_interval_ms
+
   @impl true
   def mount(_params, _session, socket) do
     start = System.monotonic_time()
@@ -128,8 +139,21 @@ defmodule SensoctoWeb.LobbyLive do
         # Control request modal state
         control_request_modal: nil,
         media_control_request_modal: nil,
+        # Timer refs for auto-transfer on timeout
+        media_control_request_timer: nil,
         # Controller user IDs for request modals
-        media_controller_user_id: nil
+        media_controller_user_id: nil,
+        # Performance monitoring: measurement buffer for batching push_events
+        measurement_buffer: %{},
+        measurement_flush_timer: nil,
+        # Performance stats for telemetry
+        perf_stats: %{
+          handle_info_count: 0,
+          handle_info_total_us: 0,
+          handle_info_max_us: 0,
+          push_event_count: 0,
+          last_report_time: System.monotonic_time(:millisecond)
+        }
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -155,6 +179,9 @@ defmodule SensoctoWeb.LobbyLive do
         # Attributes are auto-registered on first data receipt, which may happen after mount
         Process.send_after(self(), :refresh_available_lenses, 1000)
         Process.send_after(self(), :refresh_available_lenses, 3000)
+
+        # Start performance logging timer
+        Process.send_after(self(), :log_perf_stats, @perf_log_interval_ms)
 
         new_socket
         |> assign(:presence_key, presence_key)
@@ -280,7 +307,7 @@ defmodule SensoctoWeb.LobbyLive do
               %{lat: 0, lng: 0}
           end
 
-        %{sensor_id: sensor_id, lat: position.lat, lng: position.lng}
+        %{sensor_id: sensor_id, lat: position.lat, lng: position.lng, username: sensor.username}
       end)
 
     ecg_sensors =
@@ -670,8 +697,8 @@ defmodule SensoctoWeb.LobbyLive do
         {:noreply, new_socket}
 
       # Sensors view uses measurements_batch for SensorDataAccumulator hook
+      # Buffer measurements and flush periodically to reduce push_event calls
       :sensors ->
-        # Push as measurements_batch event with attribute list format
         attributes =
           measurements_list
           |> Enum.map(fn m ->
@@ -682,15 +709,94 @@ defmodule SensoctoWeb.LobbyLive do
             }
           end)
 
+        # Add to buffer (append to existing measurements for this sensor)
+        buffer = socket.assigns.measurement_buffer
+        existing = Map.get(buffer, sensor_id, [])
+        new_buffer = Map.put(buffer, sensor_id, existing ++ attributes)
+
+        # Schedule flush if not already scheduled
+        flush_timer = socket.assigns.measurement_flush_timer
+
+        new_timer =
+          if is_nil(flush_timer) do
+            Process.send_after(self(), :flush_measurement_buffer, @measurement_flush_interval_ms)
+          else
+            flush_timer
+          end
+
         {:noreply,
-         push_event(socket, "measurements_batch", %{
-           sensor_id: sensor_id,
-           attributes: attributes
-         })}
+         socket
+         |> assign(:measurement_buffer, new_buffer)
+         |> assign(:measurement_flush_timer, new_timer)}
 
       _ ->
         {:noreply, socket}
     end
+  end
+
+  # Flush measurement buffer - sends batched measurements to clients
+  @impl true
+  def handle_info(:flush_measurement_buffer, socket) do
+    buffer = socket.assigns.measurement_buffer
+
+    if map_size(buffer) > 0 do
+      # Push one batched event per sensor (combines all buffered measurements)
+      socket =
+        Enum.reduce(buffer, socket, fn {sensor_id, measurements}, acc ->
+          push_event(acc, "measurements_batch", %{
+            sensor_id: sensor_id,
+            attributes: measurements
+          })
+        end)
+
+      # Update perf stats
+      perf_stats = socket.assigns.perf_stats
+      push_count = map_size(buffer)
+
+      new_perf_stats = %{
+        perf_stats
+        | push_event_count: perf_stats.push_event_count + push_count
+      }
+
+      {:noreply,
+       socket
+       |> assign(:measurement_buffer, %{})
+       |> assign(:measurement_flush_timer, nil)
+       |> assign(:perf_stats, new_perf_stats)}
+    else
+      {:noreply, assign(socket, :measurement_flush_timer, nil)}
+    end
+  end
+
+  # Performance logging - reports server-side stats every 5 seconds
+  @impl true
+  def handle_info(:log_perf_stats, socket) do
+    perf_stats = socket.assigns.perf_stats
+    now = System.monotonic_time(:millisecond)
+    elapsed_ms = now - perf_stats.last_report_time
+
+    if perf_stats.handle_info_count > 0 and elapsed_ms > 0 do
+      avg_us = div(perf_stats.handle_info_total_us, perf_stats.handle_info_count)
+      rate = Float.round(perf_stats.handle_info_count * 1000 / elapsed_ms, 1)
+
+      Logger.info(
+        "[LobbyPerf] #{elapsed_ms}ms: #{perf_stats.handle_info_count} handle_info (#{rate}/s), " <>
+          "avg: #{avg_us}µs, max: #{perf_stats.handle_info_max_us}µs, " <>
+          "push_events: #{perf_stats.push_event_count}"
+      )
+    end
+
+    # Reset stats and schedule next report
+    Process.send_after(self(), :log_perf_stats, @perf_log_interval_ms)
+
+    {:noreply,
+     assign(socket, :perf_stats, %{
+       handle_info_count: 0,
+       handle_info_total_us: 0,
+       handle_info_max_us: 0,
+       push_event_count: 0,
+       last_report_time: now
+     })}
   end
 
   # Media player events - forward to component via send_update AND push events to JS hook
@@ -827,7 +933,9 @@ defmodule SensoctoWeb.LobbyLive do
     send_update(Object3DPlayerComponent,
       id: "lobby-object3d-player",
       controller_user_id: user_id,
-      controller_user_name: user_name
+      controller_user_name: user_name,
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
     )
 
     # Store controller_user_id so we can check if current user is the controller
@@ -853,7 +961,8 @@ defmodule SensoctoWeb.LobbyLive do
     controller_user_id = socket.assigns[:object3d_controller_user_id]
 
     # Only show modal to the controller
-    if current_user && controller_user_id && current_user.id == controller_user_id do
+    if current_user && controller_user_id &&
+         to_string(current_user.id) == to_string(controller_user_id) do
       {:noreply,
        socket
        |> assign(:control_request_modal, %{
@@ -863,6 +972,67 @@ defmodule SensoctoWeb.LobbyLive do
     else
       {:noreply, socket}
     end
+  end
+
+  # Handle object3d control request with 30s timeout (server-managed)
+  # Shows modal with Keep/Release buttons and audio notification
+  @impl true
+  def handle_info(
+        {:object3d_control_requested,
+         %{
+           requester_id: requester_id,
+           requester_name: requester_name,
+           controller_user_id: _controller_id,
+           timeout_seconds: _timeout
+         }},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+    controller_user_id = socket.assigns[:object3d_controller_user_id]
+
+    # Only show modal to the controller
+    if current_user && controller_user_id &&
+         to_string(current_user.id) == to_string(controller_user_id) do
+      # Update component with pending request info
+      send_update(Object3DPlayerComponent,
+        id: "lobby-object3d-player",
+        pending_request_user_id: requester_id,
+        pending_request_user_name: requester_name
+      )
+
+      # Show modal with Keep/Release buttons (uses existing control_request_modal)
+      {:noreply,
+       socket
+       |> assign(:control_request_modal, %{
+         requester_id: requester_id,
+         requester_name: requester_name
+       })}
+    else
+      # Not the controller - just update component (e.g., requester sees "pending")
+      send_update(Object3DPlayerComponent,
+        id: "lobby-object3d-player",
+        pending_request_user_id: requester_id,
+        pending_request_user_name: requester_name
+      )
+
+      {:noreply, socket}
+    end
+  end
+
+  # Handle object3d control request denied (keep control was clicked)
+  @impl true
+  def handle_info(
+        {:object3d_control_request_denied, %{requester_id: _requester_id}},
+        socket
+      ) do
+    send_update(Object3DPlayerComponent,
+      id: "lobby-object3d-player",
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    # Also dismiss the modal if it's open
+    {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
   # Handle media player control requests
@@ -875,13 +1045,69 @@ defmodule SensoctoWeb.LobbyLive do
     controller_user_id = socket.assigns[:media_controller_user_id]
 
     # Only show modal to the controller
-    if current_user && controller_user_id && current_user.id == controller_user_id do
+    if current_user && controller_user_id &&
+         to_string(current_user.id) == to_string(controller_user_id) do
+      # Cancel any existing timer
+      if socket.assigns[:media_control_request_timer] do
+        Process.cancel_timer(socket.assigns.media_control_request_timer)
+      end
+
+      # Start 30-second timeout timer for auto-transfer
+      timer_ref = Process.send_after(self(), :media_control_request_timeout, 30_000)
+
       {:noreply,
        socket
        |> assign(:media_control_request_modal, %{
          requester_id: requester_id,
          requester_name: requester_name
-       })}
+       })
+       |> assign(:media_control_request_timer, timer_ref)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Handle auto-transfer timeout for media control request
+  @impl true
+  def handle_info(:media_control_request_timeout, socket) do
+    modal_data = socket.assigns[:media_control_request_modal]
+    current_user = socket.assigns[:current_user]
+
+    if modal_data && current_user do
+      alias Sensocto.Media.MediaPlayerServer
+
+      # Auto-transfer control to the requester
+      MediaPlayerServer.release_control(:lobby, current_user.id)
+      MediaPlayerServer.take_control(:lobby, modal_data.requester_id, modal_data.requester_name)
+
+      {:noreply,
+       socket
+       |> assign(:media_control_request_modal, nil)
+       |> assign(:media_control_request_timer, nil)
+       |> put_flash(
+         :info,
+         "Control auto-transferred to #{modal_data.requester_name} (30s timeout)"
+       )}
+    else
+      {:noreply,
+       socket
+       |> assign(:media_control_request_modal, nil)
+       |> assign(:media_control_request_timer, nil)}
+    end
+  end
+
+  # Handle media control request denied notification (sent to requester)
+  @impl true
+  def handle_info(
+        {:media_control_request_denied,
+         %{requester_id: requester_id, controller_name: controller_name}},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+
+    # Only show flash to the requester
+    if current_user && current_user.id == requester_id do
+      {:noreply, put_flash(socket, :error, "#{controller_name} kept control of the media player")}
     else
       {:noreply, socket}
     end
@@ -1236,6 +1462,14 @@ defmodule SensoctoWeb.LobbyLive do
   # Control request modal handlers
   @impl true
   def handle_event("dismiss_control_request", _, socket) do
+    # "Keep Control" - cancel the pending request timer on the server
+    current_user = socket.assigns.current_user
+
+    if current_user do
+      alias Sensocto.Object3D.Object3DPlayerServer
+      Object3DPlayerServer.keep_control(:lobby, current_user.id)
+    end
+
     {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
@@ -1264,13 +1498,41 @@ defmodule SensoctoWeb.LobbyLive do
   # Media control request modal handlers
   @impl true
   def handle_event("dismiss_media_control_request", _, socket) do
-    {:noreply, assign(socket, :media_control_request_modal, nil)}
+    modal_data = socket.assigns[:media_control_request_modal]
+    current_user = socket.assigns[:current_user]
+
+    # Cancel the auto-transfer timer
+    if socket.assigns[:media_control_request_timer] do
+      Process.cancel_timer(socket.assigns.media_control_request_timer)
+    end
+
+    # Notify the requester that their request was denied
+    if modal_data && current_user do
+      controller_name = current_user.email || "The controller"
+
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "media:lobby",
+        {:media_control_request_denied,
+         %{requester_id: modal_data.requester_id, controller_name: controller_name}}
+      )
+    end
+
+    {:noreply,
+     socket
+     |> assign(:media_control_request_modal, nil)
+     |> assign(:media_control_request_timer, nil)}
   end
 
   @impl true
   def handle_event("release_media_control_from_modal", _, socket) do
     current_user = socket.assigns.current_user
     modal_data = socket.assigns.media_control_request_modal
+
+    # Cancel the auto-transfer timer
+    if socket.assigns[:media_control_request_timer] do
+      Process.cancel_timer(socket.assigns.media_control_request_timer)
+    end
 
     if current_user && modal_data do
       alias Sensocto.Media.MediaPlayerServer
@@ -1286,7 +1548,10 @@ defmodule SensoctoWeb.LobbyLive do
       )
     end
 
-    {:noreply, assign(socket, :media_control_request_modal, nil)}
+    {:noreply,
+     socket
+     |> assign(:media_control_request_modal, nil)
+     |> assign(:media_control_request_timer, nil)}
   end
 
   # Lens view selector (dropdown)

@@ -9,11 +9,34 @@
     maxTrailLength = 100,
     clusterMarkers = true
   }: {
-    positions: Array<{ sensor_id: string; lat: number; lng: number; mode?: string }>;
+    positions: Array<{ sensor_id: string; lat: number; lng: number; mode?: string; username?: string }>;
     showTrails?: boolean;
     maxTrailLength?: number;
     clusterMarkers?: boolean;
   } = $props();
+
+  // Store username mapping for realtime updates (username comes from initial props)
+  let usernameMap: Map<string, string> = new Map();
+
+  // Update username map when positions change
+  $effect(() => {
+    positions.forEach(p => {
+      if (p.username) {
+        usernameMap.set(p.sensor_id, p.username);
+      }
+    });
+  });
+
+  // Get display name: prefer username (email prefix), fallback to sensor_id
+  function getDisplayName(sensorId: string, username?: string): string {
+    const name = username || usernameMap.get(sensorId);
+    if (name) {
+      // Extract username from email (part before @)
+      const emailMatch = name.match(/^([^@]+)@/);
+      return emailMatch ? emailMatch[1] : name;
+    }
+    return sensorId.length > 12 ? sensorId.slice(0, 10) + '...' : sensorId;
+  }
 
   let mapContainer: HTMLDivElement;
   let map: maplibregl.Map | null = null;
@@ -50,17 +73,17 @@
     return mode ? (MODE_ICONS[mode] || '📍') : '📍';
   }
 
-  function createMarkerElement(color: string, sensorId: string, mode?: string): HTMLDivElement {
+  function createMarkerElement(color: string, sensorId: string, mode?: string, username?: string): HTMLDivElement {
     const el = document.createElement('div');
     el.className = 'composite-map-marker';
     const icon = getModeIcon(mode);
-    const shortId = sensorId.length > 12 ? sensorId.slice(0, 10) + '...' : sensorId;
+    const displayName = getDisplayName(sensorId, username);
 
     el.innerHTML = `
       <div class="marker-icon" style="background-color: ${color}">
         <span class="mode-icon">${icon}</span>
       </div>
-      <span class="marker-label">${shortId}</span>
+      <span class="marker-label">${displayName}</span>
     `;
     return el;
   }
@@ -149,7 +172,7 @@
       if (existingMarker) {
         existingMarker.setLngLat([position.lng, position.lat]);
       } else {
-        const el = createMarkerElement(color, position.sensor_id, position.mode);
+        const el = createMarkerElement(color, position.sensor_id, position.mode, position.username);
 
         const marker = new maplibregl.Marker({
           element: el,
@@ -225,7 +248,12 @@
     initMap();
 
     const handleCompositeMeasurement = (e: CustomEvent) => {
-      const { sensor_id, attribute_id, payload } = e.detail;
+      const { sensor_id, attribute_id, payload, username } = e.detail;
+
+      // Store username if provided (for display name lookup)
+      if (username) {
+        usernameMap.set(sensor_id, username);
+      }
 
       if (attribute_id === "geolocation" && map) {
         const lat = payload?.latitude || payload?.lat || 0;
@@ -240,7 +268,8 @@
         if (existingMarker) {
           existingMarker.setLngLat([lng, lat]);
         } else {
-          const el = createMarkerElement(color, sensor_id, mode);
+          // Use username from event or stored in map
+          const el = createMarkerElement(color, sensor_id, mode, username || usernameMap.get(sensor_id));
 
           const marker = new maplibregl.Marker({
             element: el,
@@ -375,11 +404,11 @@
         <button
           class="legend-item"
           onclick={() => centerOnSensor(position.sensor_id)}
-          title="Click to center on sensor"
+          title="Click to center on {getDisplayName(position.sensor_id, position.username)}"
         >
           <span class="legend-color" style="background-color: {getMarkerColor(position.sensor_id)}"></span>
           <span class="legend-icon">{getModeIcon(position.mode)}</span>
-          <span class="legend-label">{position.sensor_id.length > 15 ? position.sensor_id.slice(0, 12) + '...' : position.sensor_id}</span>
+          <span class="legend-label">{getDisplayName(position.sensor_id, position.username)}</span>
         </button>
       {/each}
     </div>

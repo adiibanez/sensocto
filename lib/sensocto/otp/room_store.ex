@@ -365,7 +365,8 @@ defmodule Sensocto.RoomStore do
   end
 
   @impl true
-  def handle_info({:room_state_sync, _room_data, origin_node}, state) when origin_node == node() do
+  def handle_info({:room_state_sync, _room_data, origin_node}, state)
+      when origin_node == node() do
     {:noreply, state}
   end
 
@@ -887,16 +888,29 @@ defmodule Sensocto.RoomStore do
         name: Map.get(room_data, :name) || Map.get(room_data, "name") || "Untitled Room",
         description: Map.get(room_data, :description) || Map.get(room_data, "description"),
         owner_id: Map.get(room_data, :owner_id) || Map.get(room_data, "owner_id"),
-        join_code: Map.get(room_data, :join_code) || Map.get(room_data, "join_code") || generate_join_code(),
+        join_code:
+          Map.get(room_data, :join_code) || Map.get(room_data, "join_code") ||
+            generate_join_code(),
         is_public: Map.get(room_data, :is_public, Map.get(room_data, "is_public", true)),
-        calls_enabled: Map.get(room_data, :calls_enabled, Map.get(room_data, "calls_enabled", true)),
-        media_playback_enabled: Map.get(room_data, :media_playback_enabled, Map.get(room_data, "media_playback_enabled", true)),
-        object_3d_enabled: Map.get(room_data, :object_3d_enabled, Map.get(room_data, "object_3d_enabled", false)),
-        configuration: Map.get(room_data, :configuration) || Map.get(room_data, "configuration") || %{},
-        members: normalize_members(Map.get(room_data, :members) || Map.get(room_data, "members") || %{}),
+        calls_enabled:
+          Map.get(room_data, :calls_enabled, Map.get(room_data, "calls_enabled", true)),
+        media_playback_enabled:
+          Map.get(
+            room_data,
+            :media_playback_enabled,
+            Map.get(room_data, "media_playback_enabled", true)
+          ),
+        object_3d_enabled:
+          Map.get(room_data, :object_3d_enabled, Map.get(room_data, "object_3d_enabled", false)),
+        configuration:
+          Map.get(room_data, :configuration) || Map.get(room_data, "configuration") || %{},
+        members:
+          normalize_members(Map.get(room_data, :members) || Map.get(room_data, "members") || %{}),
         sensor_ids: sensor_ids,
-        created_at: parse_datetime(Map.get(room_data, :created_at) || Map.get(room_data, "created_at")),
-        updated_at: parse_datetime(Map.get(room_data, :updated_at) || Map.get(room_data, "updated_at"))
+        created_at:
+          parse_datetime(Map.get(room_data, :created_at) || Map.get(room_data, "created_at")),
+        updated_at:
+          parse_datetime(Map.get(room_data, :updated_at) || Map.get(room_data, "updated_at"))
       }
 
       # Update state with the hydrated room
@@ -963,12 +977,18 @@ defmodule Sensocto.RoomStore do
 
   defp broadcast_cluster_room_sync(room) do
     # Convert MapSet to list for PubSub serialization
-    room_for_broadcast = Map.update(room, :sensor_ids, [], fn
-      %MapSet{} = set -> MapSet.to_list(set)
-      list when is_list(list) -> list
-      _ -> []
-    end)
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, "rooms:cluster", {:room_state_sync, room_for_broadcast, node()})
+    room_for_broadcast =
+      Map.update(room, :sensor_ids, [], fn
+        %MapSet{} = set -> MapSet.to_list(set)
+        list when is_list(list) -> list
+        _ -> []
+      end)
+
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "rooms:cluster",
+      {:room_state_sync, room_for_broadcast, node()}
+    )
   end
 
   # ============================================================================
@@ -995,8 +1015,11 @@ defmodule Sensocto.RoomStore do
   defp async_delete_room(room_id, true = _iroh_available) do
     Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case IrohStore.delete_room(room_id) do
-        :ok -> Logger.debug("[RoomStore] Deleted room #{room_id} from iroh")
-        {:error, reason} -> Logger.warning("[RoomStore] Failed to delete room from iroh: #{inspect(reason)}")
+        :ok ->
+          Logger.debug("[RoomStore] Deleted room #{room_id} from iroh")
+
+        {:error, reason} ->
+          Logger.warning("[RoomStore] Failed to delete room from iroh: #{inspect(reason)}")
       end
     end)
   end
@@ -1020,8 +1043,11 @@ defmodule Sensocto.RoomStore do
   defp async_delete_membership(room_id, user_id, true = _iroh_available) do
     Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case IrohStore.delete_membership(room_id, user_id) do
-        :ok -> Logger.debug("[RoomStore] Deleted membership #{room_id}:#{user_id} from iroh")
-        {:error, reason} -> Logger.warning("[RoomStore] Failed to delete membership from iroh: #{inspect(reason)}")
+        :ok ->
+          Logger.debug("[RoomStore] Deleted membership #{room_id}:#{user_id} from iroh")
+
+        {:error, reason} ->
+          Logger.warning("[RoomStore] Failed to delete membership from iroh: #{inspect(reason)}")
       end
     end)
   end
@@ -1044,7 +1070,9 @@ defmodule Sensocto.RoomStore do
         create_membership_in_postgres(room.id, owner_id, :owner)
       rescue
         e ->
-          Logger.error("[RoomStore] Failed to sync room and owner to PostgreSQL: #{Exception.message(e)}")
+          Logger.error(
+            "[RoomStore] Failed to sync room and owner to PostgreSQL: #{Exception.message(e)}"
+          )
       end
     end)
   end
@@ -1167,7 +1195,9 @@ defmodule Sensocto.RoomStore do
         end
       rescue
         e ->
-          Logger.error("[RoomStore] Failed to delete room from PostgreSQL: #{Exception.message(e)}")
+          Logger.error(
+            "[RoomStore] Failed to delete room from PostgreSQL: #{Exception.message(e)}"
+          )
       end
     end)
   end
@@ -1190,17 +1220,25 @@ defmodule Sensocto.RoomStore do
           )
 
         if existing do
-          Logger.debug("[RoomStore] Membership #{room_id}:#{user_id} already exists in PostgreSQL")
+          Logger.debug(
+            "[RoomStore] Membership #{room_id}:#{user_id} already exists in PostgreSQL"
+          )
         else
           RoomMembership
-          |> Ash.Changeset.for_create(:sync_create, %{room_id: room_id, user_id: user_id, role: role})
+          |> Ash.Changeset.for_create(:sync_create, %{
+            room_id: room_id,
+            user_id: user_id,
+            role: role
+          })
           |> Ash.create!()
 
           Logger.debug("[RoomStore] Synced membership #{room_id}:#{user_id} to PostgreSQL")
         end
       rescue
         e ->
-          Logger.error("[RoomStore] Failed to sync membership to PostgreSQL: #{Exception.message(e)}")
+          Logger.error(
+            "[RoomStore] Failed to sync membership to PostgreSQL: #{Exception.message(e)}"
+          )
       end
     end)
   end
@@ -1246,10 +1284,14 @@ defmodule Sensocto.RoomStore do
           set: [role: role_string, updated_at: now]
         )
 
-        Logger.debug("[RoomStore] Updated membership role #{room_id}:#{user_id} to #{new_role} in PostgreSQL")
+        Logger.debug(
+          "[RoomStore] Updated membership role #{room_id}:#{user_id} to #{new_role} in PostgreSQL"
+        )
       rescue
         e ->
-          Logger.error("[RoomStore] Failed to update membership role in PostgreSQL: #{inspect(e)}")
+          Logger.error(
+            "[RoomStore] Failed to update membership role in PostgreSQL: #{inspect(e)}"
+          )
       end
     end)
   end

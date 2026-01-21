@@ -74,7 +74,7 @@ defmodule SensoctoWeb.Components.BottomNav do
       ]}
     >
       <Heroicons.icon name={@icon} type="outline" class="w-5 h-5" />
-      <span class="text-[10px] font-medium"><%= @label %></span>
+      <span class="text-[10px] font-medium">{@label}</span>
     </a>
     """
   end

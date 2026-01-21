@@ -181,10 +181,13 @@ defmodule SensoctoWeb.Live.BaseComponents do
 
     ~H"""
     <div class="flex items-center m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
-      <p class={[
-        "flex-none font-bold",
-        if(@view_mode == :summary, do: "text-xs", else: "text-s")
-      ]} style="border:0 solid white">
+      <p
+        class={[
+          "flex-none font-bold",
+          if(@view_mode == :summary, do: "text-xs", else: "text-s")
+        ]}
+        style="border:0 solid white"
+      >
         {@sensor_name}
       </p>
     </div>

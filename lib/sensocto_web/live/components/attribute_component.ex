@@ -534,7 +534,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> -  {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]"> -    {@presence.artist}</span>
             <% end %>
           </div>
         <% else %>

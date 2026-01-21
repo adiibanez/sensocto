@@ -63,7 +63,11 @@
           phx-click="toggle_view_mode"
         >
           <Heroicons.icon
-            name={if @view_mode == :summary, do: "magnifying-glass-plus", else: "magnifying-glass-minus"}
+            name={
+              if @view_mode == :summary,
+                do: "magnifying-glass-plus",
+                else: "magnifying-glass-minus"
+            }
             type="outline"
             class="h-4 w-4"
           />
@@ -101,8 +105,8 @@
       </.live_component>
     </div>
   </div>
-
-  <!-- Map Modal -->
+  
+<!-- Map Modal -->
   <div
     :if={@show_map_modal}
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -144,8 +148,8 @@
       </div>
     </div>
   </div>
-
-  <!-- Detail Modal -->
+  
+<!-- Detail Modal -->
   <div
     :if={@show_detail_modal}
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
@@ -190,7 +194,6 @@
                     color="#22c55e"
                     backgroundColor="transparent"
                   />
-
                 <% "geolocation" -> %>
                   <%= if attribute.lastvalue do %>
                     <.svelte
@@ -213,7 +216,6 @@
                       No location data available
                     </div>
                   <% end %>
-
                 <% "imu" -> %>
                   <.svelte
                     name="ImuVisualization"
@@ -227,7 +229,19 @@
                     socket={@socket}
                     class="w-full h-full"
                   />
-
+                <% "skeleton" -> %>
+                  <.svelte
+                    name="SkeletonVisualization"
+                    props={
+                      %{
+                        sensor_id: @sensor_id,
+                        attribute_id: attribute_id,
+                        size: "normal"
+                      }
+                    }
+                    socket={@socket}
+                    class="w-full h-full"
+                  />
                 <% _ -> %>
                   <sensocto-sparkline-wasm-svelte
                     id={"detail_sparkline_#{@sensor_id}_#{attribute_id}"}
@@ -242,7 +256,8 @@
               <% end %>
             </div>
 
-            <%= if attribute.lastvalue do %>
+            <%!-- Hide raw JSON for skeleton attributes since visualization shows it --%>
+            <%= if attribute.lastvalue && attribute.attribute_type != "skeleton" do %>
               <div class="mt-3 flex items-center justify-between text-sm">
                 <span class="text-gray-400">Latest value:</span>
                 <span class="text-white font-mono">

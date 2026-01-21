@@ -32,7 +32,7 @@ defmodule SensoctoWeb.SenseLive do
          # flexsense
          "897fdb8d-dec3-40bc-98e8-2310a58b0189"
        ]
-     )}
+     ), layout: false}
   end
 
   @impl true

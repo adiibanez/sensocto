@@ -43,7 +43,9 @@ defmodule SensoctoWeb.IndexLive do
 
     # Filter out user's rooms from public rooms to avoid duplicates
     my_room_ids = MapSet.new(my_rooms, & &1.id)
-    public_rooms_filtered = Enum.reject(public_rooms, fn room -> MapSet.member?(my_room_ids, room.id) end)
+
+    public_rooms_filtered =
+      Enum.reject(public_rooms, fn room -> MapSet.member?(my_room_ids, room.id) end)
 
     new_socket =
       socket
@@ -194,7 +196,11 @@ defmodule SensoctoWeb.IndexLive do
     new_mode = if socket.assigns.global_view_mode == :summary, do: :normal, else: :summary
 
     # Broadcast to all sensor LiveViews to update their view mode
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, "ui:view_mode", {:global_view_mode_changed, new_mode})
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "ui:view_mode",
+      {:global_view_mode_changed, new_mode}
+    )
 
     {:noreply, assign(socket, :global_view_mode, new_mode)}
   end

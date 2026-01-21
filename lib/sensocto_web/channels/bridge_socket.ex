@@ -30,7 +30,8 @@ defmodule SensoctoWeb.BridgeSocket do
     configured_token = Application.get_env(:sensocto, :bridge_token)
 
     case configured_token do
-      nil -> true  # Allow any token if not configured
+      # Allow any token if not configured
+      nil -> true
       expected -> Plug.Crypto.secure_compare(token, expected)
     end
   end

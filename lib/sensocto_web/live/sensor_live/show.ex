@@ -84,7 +84,9 @@ defmodule SensoctoWeb.SensorLive.Show do
     )
 
     pending = [measurement | socket.assigns.pending_measurements]
-    {:noreply, socket |> assign(:pending_measurements, pending) |> assign(:pressed_buttons, pressed_buttons)}
+
+    {:noreply,
+     socket |> assign(:pending_measurements, pending) |> assign(:pressed_buttons, pressed_buttons)}
   end
 
   @impl true
@@ -245,7 +247,11 @@ defmodule SensoctoWeb.SensorLive.Show do
   end
 
   @impl true
-  def handle_event("clear-attribute", %{"sensor_id" => sensor_id, "attribute_id" => attribute_id}, socket) do
+  def handle_event(
+        "clear-attribute",
+        %{"sensor_id" => sensor_id, "attribute_id" => attribute_id},
+        socket
+      ) do
     {:noreply,
      push_event(socket, "clear-attribute", %{
        sensor_id: sensor_id,

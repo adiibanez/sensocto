@@ -1,25 +1,25 @@
 defmodule Sensocto.Calls.SnapshotManager do
   @moduledoc """
   Manages snapshot mode for non-attentive call participants.
-  
+
   When participants are in :viewer or :idle tier, they switch from
   continuous video streams to periodic JPEG snapshots, dramatically
   reducing bandwidth usage while maintaining visual presence.
 
   ## How It Works
-  
+
   1. Clients in snapshot mode capture periodic JPEG frames from their video
   2. Snapshots are sent via the Phoenix Channel (not WebRTC media track)
   3. This module stores the latest snapshot per user for late joiners
   4. Receivers display snapshots as static images instead of video
 
   ## Snapshot Intervals
-  
+
   - :viewer tier - 1000ms (1 fps) for passive watchers
   - :idle tier - 5000ms (0.2 fps) for AFK/hidden tab users
 
   ## Memory Management
-  
+
   Snapshots are stored in ETS for fast concurrent access.
   Old snapshots are automatically cleaned up when:
   - User leaves the call
@@ -40,11 +40,14 @@ defmodule Sensocto.Calls.SnapshotManager do
   defstruct [
     :user_id,
     :room_id,
-    :data,           # Base64 JPEG data
+    # Base64 JPEG data
+    :data,
     :width,
     :height,
-    :timestamp,      # When captured
-    :received_at     # When server received it
+    # When captured
+    :timestamp,
+    # When server received it
+    :received_at
   ]
 
   # Client API
@@ -101,7 +104,7 @@ defmodule Sensocto.Calls.SnapshotManager do
   @spec get_room_snapshots(String.t()) :: [map()]
   def get_room_snapshots(room_id) do
     match_spec = [{{{room_id, :"$1"}, :"$2"}, [], [:"$2"]}]
-    
+
     :ets.select(@table_name, match_spec)
     |> Enum.filter(&snapshot_valid?/1)
     |> Enum.map(&format_snapshot/1)
@@ -152,7 +155,7 @@ defmodule Sensocto.Calls.SnapshotManager do
   @spec get_snapshot_config(atom()) :: map()
   def get_snapshot_config(tier) do
     profile = QualityManager.get_tier_profile(tier)
-    
+
     %{
       enabled: profile.mode == :snapshot,
       interval_ms: Map.get(profile, :interval_ms, 1000),
@@ -214,7 +217,7 @@ defmodule Sensocto.Calls.SnapshotManager do
     ]
 
     deleted = :ets.select_delete(@table_name, match_spec)
-    
+
     if deleted > 0 do
       Logger.debug("SnapshotManager cleaned up #{deleted} expired snapshots")
     end

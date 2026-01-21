@@ -17,7 +17,10 @@ defmodule Sensocto.Object3D.Object3DPlaylist do
     field :is_lobby, :boolean, default: false
 
     belongs_to :room, Room
-    has_many :items, Object3DPlaylistItem, foreign_key: :playlist_id, preload_order: [asc: :position]
+
+    has_many :items, Object3DPlaylistItem,
+      foreign_key: :playlist_id,
+      preload_order: [asc: :position]
 
     timestamps(type: :utc_datetime_usec)
   end

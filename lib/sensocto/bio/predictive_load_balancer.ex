@@ -20,12 +20,10 @@ defmodule Sensocto.Bio.PredictiveLoadBalancer do
   @prediction_window 600
   @confidence_threshold 0.6
 
-  defstruct [
-    attention_history: [],
-    hourly_patterns: %{},
-    predictions: %{},
-    last_analysis: nil
-  ]
+  defstruct attention_history: [],
+            hourly_patterns: %{},
+            predictions: %{},
+            last_analysis: nil
 
   # ============================================================================
   # Client API
@@ -126,7 +124,9 @@ defmodule Sensocto.Bio.PredictiveLoadBalancer do
     hourly_patterns = analyze_hourly_patterns(history)
 
     if map_size(hourly_patterns) > 0 do
-      Logger.info("[Bio.PredictiveLoadBalancer] Patterns learned for #{map_size(hourly_patterns)} sensors")
+      Logger.info(
+        "[Bio.PredictiveLoadBalancer] Patterns learned for #{map_size(hourly_patterns)} sensors"
+      )
     end
 
     cleanup_old_history(cutoff)

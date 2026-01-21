@@ -744,7 +744,8 @@ defmodule SensoctoWeb.CoreComponents do
               class={[
                 "py-2 px-1 border-b-2 text-sm font-medium transition-colors",
                 tab[:active] && "border-blue-500 text-blue-400",
-                !tab[:active] && "border-transparent text-gray-400 hover:text-white hover:border-gray-500"
+                !tab[:active] &&
+                  "border-transparent text-gray-400 hover:text-white hover:border-gray-500"
               ]}
             >
               {render_slot(tab)}
@@ -755,7 +756,8 @@ defmodule SensoctoWeb.CoreComponents do
               class={[
                 "py-2 px-1 border-b-2 text-sm font-medium transition-colors",
                 tab[:active] && "border-blue-500 text-blue-400",
-                !tab[:active] && "border-transparent text-gray-400 hover:text-white hover:border-gray-500"
+                !tab[:active] &&
+                  "border-transparent text-gray-400 hover:text-white hover:border-gray-500"
               ]}
             >
               {render_slot(tab)}

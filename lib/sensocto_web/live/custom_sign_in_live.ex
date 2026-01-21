@@ -168,7 +168,8 @@ defmodule SensoctoWeb.CustomSignInLive do
         "Foundational work on how social networks influence mental health outcomes and crisis prevention."
     },
     %{
-      title: "Partner Influence and In-Phase Versus Anti-Phase Physiological Linkage in Romantic Couples",
+      title:
+        "Partner Influence and In-Phase Versus Anti-Phase Physiological Linkage in Romantic Couples",
       authors: "Reed et al.",
       year: 2013,
       journal: "International Journal of Psychophysiology",
@@ -178,7 +179,8 @@ defmodule SensoctoWeb.CustomSignInLive do
         "Examines how partners' physiological systems co-regulate during emotional conversations and health discussions."
     },
     %{
-      title: "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
+      title:
+        "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
       authors: "Sano et al.",
       year: 2018,
       journal: "Journal of Medical Internet Research",
@@ -370,7 +372,12 @@ defmodule SensoctoWeb.CustomSignInLive do
   @impl true
   def handle_event("ball_drag_start", _params, socket) do
     # Broadcast vibration event to all connected clients
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, @presence_topic, {:vibrate, socket.assigns.own_ball_id})
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      @presence_topic,
+      {:vibrate, socket.assigns.own_ball_id}
+    )
+
     {:noreply, socket}
   end
 
@@ -435,13 +442,14 @@ defmodule SensoctoWeb.CustomSignInLive do
   # Helper: Transform presence map to ball map
   defp transform_presences_to_balls(presences) do
     Enum.into(presences, %{}, fn {key, %{metas: [meta | _]}} ->
-      {key, %{
-        id: key,
-        x: meta.x,
-        y: meta.y,
-        color: meta.color,
-        user_type: meta.user_type
-      }}
+      {key,
+       %{
+         id: key,
+         x: meta.x,
+         y: meta.y,
+         color: meta.color,
+         user_type: meta.user_type
+       }}
     end)
   end
 
@@ -586,7 +594,7 @@ defmodule SensoctoWeb.CustomSignInLive do
                     name={info.icon}
                     class={if info.featured, do: "h-4 w-4", else: "h-3.5 w-3.5"}
                   />
-                  <span><%= info.name %></span>
+                  <span>{info.name}</span>
                 </button>
               <% end %>
             </div>
@@ -600,8 +608,8 @@ defmodule SensoctoWeb.CustomSignInLive do
               <p class="leading-relaxed">
                 What if you could
                 <%= for {{verb, color, rest}, index} <- Enum.with_index(visible_use_cases(@use_cases, @current_offset, @visible_count)) do %>
-                  <span class={"text-#{color}-400 font-medium"}><%= verb %></span>
-                  <%= rest %><%= if index < @visible_count - 1, do: "? ", else: "?" %>
+                  <span class={"text-#{color}-400 font-medium"}>{verb}</span>
+                  {rest}{if index < @visible_count - 1, do: "? ", else: "?"}
                 <% end %>
               </p>
               <div class="flex items-center justify-center gap-2 mt-3 text-sm text-gray-500 group-hover:text-gray-400 transition-colors">
@@ -621,7 +629,7 @@ defmodule SensoctoWeb.CustomSignInLive do
                 name="count"
                 class="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
               />
-              <span class="text-sm text-cyan-400 w-6 text-center"><%= @visible_count %></span>
+              <span class="text-sm text-cyan-400 w-6 text-center">{@visible_count}</span>
             </form>
 
             <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 max-w-2xl mx-auto">
@@ -770,7 +778,7 @@ defmodule SensoctoWeb.CustomSignInLive do
                   <%= for {_key, cat} <- @paper_categories do %>
                     <span class={"inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-#{cat.color}-500/20 text-#{cat.color}-400"}>
                       <.icon name={cat.icon} class="h-3.5 w-3.5" />
-                      <%= cat.name %>
+                      {cat.name}
                     </span>
                   <% end %>
                 </div>
@@ -786,13 +794,14 @@ defmodule SensoctoWeb.CustomSignInLive do
                         </div>
                         <div class="flex-1 min-w-0">
                           <h4 class="text-white font-medium text-sm leading-tight mb-1">
-                            <%= paper.title %>
+                            {paper.title}
                           </h4>
                           <p class="text-gray-500 text-xs mb-2">
-                            <%= paper.authors %> (<%= paper.year %>) · <span class="text-gray-600"><%= paper.journal %></span>
+                            {paper.authors} ({paper.year}) ·
+                            <span class="text-gray-600">{paper.journal}</span>
                           </p>
                           <p class="text-gray-400 text-sm">
-                            <%= paper.description %>
+                            {paper.description}
                           </p>
                           <a
                             href={"https://doi.org/#{paper.doi}"}
@@ -801,7 +810,7 @@ defmodule SensoctoWeb.CustomSignInLive do
                             class="inline-flex items-center gap-1 mt-2 text-xs text-purple-400 hover:text-purple-300 transition-colors"
                           >
                             <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" />
-                            DOI: <%= paper.doi %>
+                            DOI: {paper.doi}
                           </a>
                         </div>
                       </div>

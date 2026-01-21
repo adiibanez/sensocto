@@ -25,12 +25,10 @@ defmodule Sensocto.Bio.CircadianScheduler do
   @phase_check_interval :timer.minutes(10)
   @profile_learning_interval :timer.hours(6)
 
-  defstruct [
-    hourly_profile: %{},
-    current_phase: :unknown,
-    phase_adjustment: 1.0,
-    load_history: []
-  ]
+  defstruct hourly_profile: %{},
+            current_phase: :unknown,
+            phase_adjustment: 1.0,
+            load_history: []
 
   # ============================================================================
   # Client API
@@ -143,7 +141,9 @@ defmodule Sensocto.Bio.CircadianScheduler do
       end
 
     if new_phase != state.current_phase do
-      Logger.info("[Bio.CircadianScheduler] Phase: #{state.current_phase} → #{new_phase} (adj=#{adjustment})")
+      Logger.info(
+        "[Bio.CircadianScheduler] Phase: #{state.current_phase} → #{new_phase} (adj=#{adjustment})"
+      )
 
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
@@ -179,7 +179,9 @@ defmodule Sensocto.Bio.CircadianScheduler do
       end
 
     if new_profile != state.hourly_profile do
-      Logger.info("[Bio.CircadianScheduler] Profile updated from #{length(state.load_history)} samples")
+      Logger.info(
+        "[Bio.CircadianScheduler] Profile updated from #{length(state.load_history)} samples"
+      )
     end
 
     Process.send_after(self(), :learn_profile, @profile_learning_interval)

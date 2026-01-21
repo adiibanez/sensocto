@@ -24,12 +24,10 @@ defmodule Sensocto.Bio.ResourceArbiter do
   @reallocation_interval 5_000
   @power_law_exponent 1.3
 
-  defstruct [
-    sensor_priorities: %{},
-    allocations: %{},
-    total_sensors: 0,
-    last_allocation: nil
-  ]
+  defstruct sensor_priorities: %{},
+            allocations: %{},
+            total_sensors: 0,
+            last_allocation: nil
 
   # ============================================================================
   # Client API
@@ -109,11 +107,12 @@ defmodule Sensocto.Bio.ResourceArbiter do
           :ets.insert(:bio_resource_allocations, {sensor_id, multiplier})
         end)
 
-        %{state |
-          sensor_priorities: priorities,
-          allocations: allocations,
-          total_sensors: length(sensors),
-          last_allocation: DateTime.utc_now()
+        %{
+          state
+          | sensor_priorities: priorities,
+            allocations: allocations,
+            total_sensors: length(sensors),
+            last_allocation: DateTime.utc_now()
         }
       else
         state

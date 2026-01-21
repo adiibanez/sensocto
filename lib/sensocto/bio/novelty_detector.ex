@@ -26,11 +26,9 @@ defmodule Sensocto.Bio.NoveltyDetector do
   @min_samples 10
   @debounce_ms 10_000
 
-  defstruct [
-    sensor_stats: %{},
-    novelty_events: [],
-    threshold: @novelty_threshold
-  ]
+  defstruct sensor_stats: %{},
+            novelty_events: [],
+            threshold: @novelty_threshold
 
   defmodule Stats do
     @moduledoc false
@@ -111,7 +109,14 @@ defmodule Sensocto.Bio.NoveltyDetector do
 
       new_state =
         if max_z_score > state.threshold and new_stats.count >= @min_samples do
-          handle_novelty_detected(sensor_id, attribute_id, max_z_score, novelty_score, new_stats, state)
+          handle_novelty_detected(
+            sensor_id,
+            attribute_id,
+            max_z_score,
+            novelty_score,
+            new_stats,
+            state
+          )
         else
           state
         end

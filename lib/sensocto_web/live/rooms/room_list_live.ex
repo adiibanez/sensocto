@@ -19,7 +19,16 @@ defmodule SensoctoWeb.RoomListLive do
       |> assign(:public_rooms, Rooms.list_public_rooms())
       |> assign(:show_create_modal, false)
       |> assign(:active_tab, :all)
-      |> assign(:form, to_form(%{"name" => "", "description" => "", "is_public" => true, "is_persisted" => true, "calls_enabled" => true}))
+      |> assign(
+        :form,
+        to_form(%{
+          "name" => "",
+          "description" => "",
+          "is_public" => true,
+          "is_persisted" => true,
+          "calls_enabled" => true
+        })
+      )
 
     {:ok, socket}
   end
@@ -30,11 +39,12 @@ defmodule SensoctoWeb.RoomListLive do
   end
 
   defp apply_action(socket, :index, params) do
-    tab = case params["tab"] do
-      "my" -> :my
-      "public" -> :public
-      _ -> :all
-    end
+    tab =
+      case params["tab"] do
+        "my" -> :my
+        "public" -> :public
+        _ -> :all
+      end
 
     socket
     |> assign(:page_title, "Rooms")
@@ -61,19 +71,24 @@ defmodule SensoctoWeb.RoomListLive do
   @impl true
   def handle_event("validate", %{"name" => name, "description" => description} = params, socket) do
     # Checkboxes are only present in params when checked, absent when unchecked
-    form = to_form(%{
-      "name" => name,
-      "description" => description,
-      "is_public" => Map.has_key?(params, "is_public"),
-      "is_persisted" => Map.has_key?(params, "is_persisted"),
-      "calls_enabled" => Map.has_key?(params, "calls_enabled")
-    })
+    form =
+      to_form(%{
+        "name" => name,
+        "description" => description,
+        "is_public" => Map.has_key?(params, "is_public"),
+        "is_persisted" => Map.has_key?(params, "is_persisted"),
+        "calls_enabled" => Map.has_key?(params, "calls_enabled")
+      })
 
     {:noreply, assign(socket, :form, form)}
   end
 
   @impl true
-  def handle_event("create_room", %{"name" => name, "description" => description} = params, socket) do
+  def handle_event(
+        "create_room",
+        %{"name" => name, "description" => description} = params,
+        socket
+      ) do
     user = socket.assigns.current_user
 
     # Checkboxes are only present in params when checked
@@ -146,8 +161,7 @@ defmodule SensoctoWeb.RoomListLive do
           phx-click="open_create_modal"
           class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
         >
-          <Heroicons.icon name="plus" type="outline" class="h-5 w-5" />
-          Create Room
+          <Heroicons.icon name="plus" type="outline" class="h-5 w-5" /> Create Room
         </button>
       </div>
 
@@ -183,7 +197,6 @@ defmodule SensoctoWeb.RoomListLive do
               </div>
             <% end %>
           <% end %>
-
         <% :my -> %>
           <%= if Enum.empty?(@user_rooms) do %>
             <.empty_state message="You haven't created or joined any rooms yet." />
@@ -194,7 +207,6 @@ defmodule SensoctoWeb.RoomListLive do
               <% end %>
             </div>
           <% end %>
-
         <% :public -> %>
           <%= if Enum.empty?(@public_rooms) do %>
             <.empty_state message="No public rooms available." />
@@ -216,10 +228,11 @@ defmodule SensoctoWeb.RoomListLive do
 
   defp empty_state(assigns) do
     assigns = assign_new(assigns, :message, fn -> "No rooms found." end)
+
     ~H"""
     <div class="text-center py-12">
       <Heroicons.icon name="home" type="outline" class="h-12 w-12 mx-auto mb-4 text-gray-500" />
-      <p class="text-gray-400"><%= @message %></p>
+      <p class="text-gray-400">{@message}</p>
       <button
         phx-click="open_create_modal"
         class="mt-4 text-blue-400 hover:text-blue-300"
@@ -235,33 +248,47 @@ defmodule SensoctoWeb.RoomListLive do
     <div class="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors">
       <.link navigate={~p"/rooms/#{@room.id}"} class="block">
         <div class="flex items-start justify-between mb-2">
-          <h3 class="text-lg font-semibold truncate"><%= @room.name %></h3>
+          <h3 class="text-lg font-semibold truncate">{@room.name}</h3>
           <div class="flex gap-1">
             <%= if @room.is_public do %>
               <span class="px-2 py-0.5 text-xs bg-green-600/20 text-green-400 rounded">Public</span>
             <% else %>
-              <span class="px-2 py-0.5 text-xs bg-yellow-600/20 text-yellow-400 rounded">Private</span>
+              <span class="px-2 py-0.5 text-xs bg-yellow-600/20 text-yellow-400 rounded">
+                Private
+              </span>
             <% end %>
             <%= if not Map.get(@room, :is_persisted, true) do %>
-              <span class="px-2 py-0.5 text-xs bg-purple-600/20 text-purple-400 rounded">Temporary</span>
+              <span class="px-2 py-0.5 text-xs bg-purple-600/20 text-purple-400 rounded">
+                Temporary
+              </span>
             <% end %>
           </div>
         </div>
         <%= if @room.description do %>
-          <p class="text-gray-400 text-sm mb-3 line-clamp-2"><%= @room.description %></p>
+          <p class="text-gray-400 text-sm mb-3 line-clamp-2">{@room.description}</p>
         <% end %>
         <div class="flex items-center gap-4 text-sm text-gray-500">
           <span class="flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+              />
             </svg>
-            <%= Map.get(@room, :sensor_count, 0) %> sensors
+            {Map.get(@room, :sensor_count, 0)} sensors
           </span>
           <span class="flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+              />
             </svg>
-            <%= Map.get(@room, :member_count, 0) %> members
+            {Map.get(@room, :member_count, 0)} members
           </span>
         </div>
       </.link>
@@ -283,13 +310,21 @@ defmodule SensoctoWeb.RoomListLive do
 
   defp create_room_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" phx-click="close_modal">
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      phx-click="close_modal"
+    >
       <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" phx-click={%JS{}}>
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-semibold">Create New Room</h2>
           <button phx-click="close_modal" class="text-gray-400 hover:text-white">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -309,7 +344,9 @@ defmodule SensoctoWeb.RoomListLive do
           </div>
 
           <div>
-            <label for="description" class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+            <label for="description" class="block text-sm font-medium text-gray-300 mb-1">
+              Description
+            </label>
             <textarea
               name="description"
               id="description"

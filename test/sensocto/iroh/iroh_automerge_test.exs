@@ -245,7 +245,8 @@ defmodule Sensocto.Iroh.IrohAutomergeTest do
     test "deletes text at position", %{node_ref: node_ref} do
       doc_id = Native.automerge_create_doc(node_ref)
 
-      _text_id = Native.automerge_text_create(node_ref, doc_id, [], "content", "Hello Beautiful World")
+      _text_id =
+        Native.automerge_text_create(node_ref, doc_id, [], "content", "Hello Beautiful World")
 
       # Delete " Beautiful" (positions 5-15, length 10)
       :ok = Native.automerge_text_delete(node_ref, doc_id, ["content"], 5, 10)
@@ -338,17 +339,30 @@ defmodule Sensocto.Iroh.IrohAutomergeTest do
       :ok = Native.automerge_map_put(node_ref, doc_id, ["room"], "object_3d_enabled", false)
 
       # Set up participants list
-      _participants_id = Native.automerge_map_put_object(node_ref, doc_id, ["room"], "participants", "list")
+      _participants_id =
+        Native.automerge_map_put_object(node_ref, doc_id, ["room"], "participants", "list")
 
       # Add participants
       :ok = Native.automerge_list_push(node_ref, doc_id, ["room", "participants"], "user-1")
       :ok = Native.automerge_list_push(node_ref, doc_id, ["room", "participants"], "user-2")
 
       # Set up shared state (e.g., media player position)
-      _media_id = Native.automerge_map_put_object(node_ref, doc_id, ["room"], "media_state", "map")
-      :ok = Native.automerge_map_put(node_ref, doc_id, ["room", "media_state"], "current_url", "https://youtube.com/watch?v=abc")
+      _media_id =
+        Native.automerge_map_put_object(node_ref, doc_id, ["room"], "media_state", "map")
+
+      :ok =
+        Native.automerge_map_put(
+          node_ref,
+          doc_id,
+          ["room", "media_state"],
+          "current_url",
+          "https://youtube.com/watch?v=abc"
+        )
+
       :ok = Native.automerge_map_put(node_ref, doc_id, ["room", "media_state"], "position_ms", 0)
-      :ok = Native.automerge_map_put(node_ref, doc_id, ["room", "media_state"], "is_playing", false)
+
+      :ok =
+        Native.automerge_map_put(node_ref, doc_id, ["room", "media_state"], "is_playing", false)
 
       # Export and verify
       json_str = Native.automerge_to_json(node_ref, doc_id)

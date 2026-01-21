@@ -65,7 +65,9 @@ defmodule Sensocto.Simulator.AttributeServer do
 
   @impl true
   def init(%{attribute_id: attribute_id} = config) do
-    Logger.info("AttributeServer init: #{config.connector_id}/#{config.sensor_id}/#{attribute_id}")
+    Logger.info(
+      "AttributeServer init: #{config.connector_id}/#{config.sensor_id}/#{attribute_id}"
+    )
 
     sensor_id = Map.get(config, :sensor_id)
     # Ensure attribute_id is a string for consistent AttentionTracker lookups
@@ -85,11 +87,17 @@ defmodule Sensocto.Simulator.AttributeServer do
     {initial_attention, initial_batch_window} =
       try do
         attention = AttentionTracker.get_attention_level(sensor_id, attribute_id_str)
-        batch_window = AttentionTracker.calculate_batch_window(base_window, sensor_id, attribute_id_str)
+
+        batch_window =
+          AttentionTracker.calculate_batch_window(base_window, sensor_id, attribute_id_str)
+
         {attention, batch_window}
       catch
         :exit, {:noproc, _} ->
-          Logger.debug("AttentionTracker not available, using defaults for #{sensor_id}/#{attribute_id_str}")
+          Logger.debug(
+            "AttentionTracker not available, using defaults for #{sensor_id}/#{attribute_id_str}"
+          )
+
           {:none, base_window * 10}
       end
 
@@ -221,7 +229,9 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Receive data from data server
   @impl true
   def handle_info({:get_data_result, data}, state) do
-    Logger.debug("#{state.connector_id}/#{state.sensor_id}/#{state.attribute_id} got #{length(data)} data points")
+    Logger.debug(
+      "#{state.connector_id}/#{state.sensor_id}/#{state.attribute_id} got #{length(data)} data points"
+    )
 
     new_queue = state.messages_queue ++ data
     Process.send_after(self(), :process_queue, 0)
@@ -243,7 +253,10 @@ defmodule Sensocto.Simulator.AttributeServer do
 
   # Batch window timeout - push whatever is in the batch
   @impl true
-  def handle_info(:batch_window, %{batch_push_messages: messages, current_batch_window: batch_window} = state) do
+  def handle_info(
+        :batch_window,
+        %{batch_push_messages: messages, current_batch_window: batch_window} = state
+      ) do
     Process.send_after(self(), :batch_window, batch_window)
 
     if length(messages) > 0 do
@@ -319,9 +332,9 @@ defmodule Sensocto.Simulator.AttributeServer do
     if new_level != state.system_load_level do
       Logger.info(
         "AttributeServer #{state.sensor_id}/#{state.attribute_id_str} system load changed: " <>
-        "#{state.system_load_level} -> #{new_level}, " <>
-        "batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms " <>
-        "(scheduler: #{Float.round(load_info.scheduler_utilization * 100, 1)}%)"
+          "#{state.system_load_level} -> #{new_level}, " <>
+          "batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms " <>
+          "(scheduler: #{Float.round(load_info.scheduler_utilization * 100, 1)}%)"
       )
     end
 

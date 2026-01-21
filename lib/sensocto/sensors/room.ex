@@ -16,6 +16,131 @@ defmodule Sensocto.Sensors.Room do
     repo Sensocto.Repo
   end
 
+  actions do
+    defaults [:read, :destroy]
+
+    create :create do
+      accept [
+        :name,
+        :description,
+        :configuration,
+        :is_public,
+        :is_persisted,
+        :calls_enabled,
+        :media_playback_enabled,
+        :object_3d_enabled,
+        :skeleton_composite_enabled
+      ]
+
+      argument :owner_id, :uuid, allow_nil?: false
+
+      change set_attribute(:owner_id, arg(:owner_id))
+
+      change fn changeset, _context ->
+        join_code = generate_join_code()
+        Ash.Changeset.change_attribute(changeset, :join_code, join_code)
+      end
+    end
+
+    # Used by RoomStore to sync in-memory state to PostgreSQL
+    create :sync_create do
+      accept [
+        :name,
+        :description,
+        :configuration,
+        :is_public,
+        :is_persisted,
+        :calls_enabled,
+        :media_playback_enabled,
+        :object_3d_enabled,
+        :skeleton_composite_enabled,
+        :join_code,
+        :owner_id
+      ]
+
+      argument :id, :uuid, allow_nil?: false
+
+      change fn changeset, _context ->
+        # Set the ID from the argument
+        id = Ash.Changeset.get_argument(changeset, :id)
+        changeset = Ash.Changeset.force_change_attribute(changeset, :id, id)
+
+        # Use provided join_code or generate one
+        case Ash.Changeset.get_attribute(changeset, :join_code) do
+          nil -> Ash.Changeset.change_attribute(changeset, :join_code, generate_join_code())
+          _ -> changeset
+        end
+      end
+    end
+
+    update :update do
+      accept [
+        :name,
+        :description,
+        :configuration,
+        :is_public,
+        :calls_enabled,
+        :media_playback_enabled,
+        :object_3d_enabled,
+        :skeleton_composite_enabled
+      ]
+    end
+
+    # Used by RoomStore to sync updates
+    update :sync_update do
+      accept [
+        :name,
+        :description,
+        :configuration,
+        :is_public,
+        :calls_enabled,
+        :media_playback_enabled,
+        :object_3d_enabled,
+        :skeleton_composite_enabled,
+        :join_code
+      ]
+    end
+
+    update :regenerate_join_code do
+      require_atomic? false
+
+      change fn changeset, _context ->
+        join_code = generate_join_code()
+        Ash.Changeset.change_attribute(changeset, :join_code, join_code)
+      end
+    end
+
+    read :by_id do
+      argument :id, :uuid, allow_nil?: false
+      get? true
+      filter expr(id == ^arg(:id))
+    end
+
+    read :by_join_code do
+      argument :code, :string, allow_nil?: false
+      get? true
+      filter expr(join_code == ^arg(:code))
+    end
+
+    read :public_rooms do
+      filter expr(is_public == true and is_persisted == true)
+    end
+
+    read :user_owned_rooms do
+      argument :user_id, :uuid, allow_nil?: false
+      filter expr(owner_id == ^arg(:user_id))
+    end
+
+    read :user_member_rooms do
+      argument :user_id, :uuid, allow_nil?: false
+      filter expr(exists(room_memberships, user_id == ^arg(:user_id)))
+    end
+
+    # List all rooms for hydration on startup
+    read :all do
+    end
+  end
+
   attributes do
     uuid_primary_key :id
 
@@ -99,96 +224,13 @@ defmodule Sensocto.Sensors.Room do
     has_many :sensor_connections, SensorConnection
   end
 
-  identities do
-    identity :unique_join_code, [:join_code]
-  end
-
   calculations do
     calculate :member_count, :integer, expr(count(room_memberships))
     calculate :sensor_count, :integer, expr(count(sensor_connections))
   end
 
-  actions do
-    defaults [:read, :destroy]
-
-    create :create do
-      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled]
-      argument :owner_id, :uuid, allow_nil?: false
-
-      change set_attribute(:owner_id, arg(:owner_id))
-
-      change fn changeset, _context ->
-        join_code = generate_join_code()
-        Ash.Changeset.change_attribute(changeset, :join_code, join_code)
-      end
-    end
-
-    # Used by RoomStore to sync in-memory state to PostgreSQL
-    create :sync_create do
-      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled, :join_code, :owner_id]
-
-      argument :id, :uuid, allow_nil?: false
-
-      change fn changeset, _context ->
-        # Set the ID from the argument
-        id = Ash.Changeset.get_argument(changeset, :id)
-        changeset = Ash.Changeset.force_change_attribute(changeset, :id, id)
-
-        # Use provided join_code or generate one
-        case Ash.Changeset.get_attribute(changeset, :join_code) do
-          nil -> Ash.Changeset.change_attribute(changeset, :join_code, generate_join_code())
-          _ -> changeset
-        end
-      end
-    end
-
-    update :update do
-      accept [:name, :description, :configuration, :is_public, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled]
-    end
-
-    # Used by RoomStore to sync updates
-    update :sync_update do
-      accept [:name, :description, :configuration, :is_public, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled, :join_code]
-    end
-
-    update :regenerate_join_code do
-      require_atomic? false
-
-      change fn changeset, _context ->
-        join_code = generate_join_code()
-        Ash.Changeset.change_attribute(changeset, :join_code, join_code)
-      end
-    end
-
-    read :by_id do
-      argument :id, :uuid, allow_nil?: false
-      get? true
-      filter expr(id == ^arg(:id))
-    end
-
-    read :by_join_code do
-      argument :code, :string, allow_nil?: false
-      get? true
-      filter expr(join_code == ^arg(:code))
-    end
-
-    read :public_rooms do
-      filter expr(is_public == true and is_persisted == true)
-    end
-
-    read :user_owned_rooms do
-      argument :user_id, :uuid, allow_nil?: false
-      filter expr(owner_id == ^arg(:user_id))
-    end
-
-    read :user_member_rooms do
-      argument :user_id, :uuid, allow_nil?: false
-      filter expr(exists(room_memberships, user_id == ^arg(:user_id)))
-    end
-
-    # List all rooms for hydration on startup
-    read :all do
-    end
+  identities do
+    identity :unique_join_code, [:join_code]
   end
 
   @doc """

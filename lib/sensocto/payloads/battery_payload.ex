@@ -30,7 +30,8 @@ defmodule Sensocto.Payloads.BatteryPayload do
   - "voltage" - Battery voltage in volts
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
-  def from_map(%{"level" => level} = params) when is_integer(level) and level >= 0 and level <= 100 do
+  def from_map(%{"level" => level} = params)
+      when is_integer(level) and level >= 0 and level <= 100 do
     {:ok,
      %__MODULE__{
        level: level,

@@ -99,7 +99,10 @@ defmodule SensoctoWeb.MobileLinkLive do
     # Use AshAuthentication's token generation
     case AshAuthentication.Jwt.token_for_user(user) do
       {:ok, token, claims} ->
-        Logger.info("Generated JWT token for user #{user.id}, claims: #{inspect(Map.keys(claims))}")
+        Logger.info(
+          "Generated JWT token for user #{user.id}, claims: #{inspect(Map.keys(claims))}"
+        )
+
         # Note: The JWT has its own expiry from AshAuthentication config
         # Our expires_at is just for the UI countdown
         {token, expires_at}
@@ -116,6 +119,7 @@ defmodule SensoctoWeb.MobileLinkLive do
     # Simple signed token as fallback - NOTE: This won't work with load_from_bearer!
     # This is only here to prevent crashes, but the token won't authenticate.
     Logger.warning("Using fallback token - this will NOT work with API authentication!")
+
     data = %{
       user_id: user.id,
       email: user.email,
@@ -140,6 +144,7 @@ defmodule SensoctoWeb.MobileLinkLive do
   end
 
   defp format_time(seconds) when seconds <= 0, do: "0:00"
+
   defp format_time(seconds) do
     minutes = div(seconds, 60)
     secs = rem(seconds, 60)
@@ -167,7 +172,10 @@ defmodule SensoctoWeb.MobileLinkLive do
         <div class="text-center mb-6">
           <div class="flex items-center justify-center gap-2 text-gray-400 mb-2">
             <Heroicons.icon name="clock" type="outline" class="h-5 w-5" />
-            <span>Expires in <span class="font-mono font-bold text-white">{format_time(@time_remaining)}</span></span>
+            <span>
+              Expires in
+              <span class="font-mono font-bold text-white">{format_time(@time_remaining)}</span>
+            </span>
           </div>
 
           <button

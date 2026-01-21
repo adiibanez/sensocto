@@ -40,8 +40,11 @@ defmodule Sensocto.AttributeStoreTiered do
   # Uses composite keys {sensor_id, attribute_id} instead of per-sensor tables
   @warm_table :attribute_store_warm
 
-  defp hot_limit, do: Application.get_env(:sensocto, :attribute_store_hot_limit, @default_hot_limit)
-  defp warm_limit, do: Application.get_env(:sensocto, :attribute_store_warm_limit, @default_warm_limit)
+  defp hot_limit,
+    do: Application.get_env(:sensocto, :attribute_store_hot_limit, @default_hot_limit)
+
+  defp warm_limit,
+    do: Application.get_env(:sensocto, :attribute_store_warm_limit, @default_warm_limit)
 
   @doc """
   Ensures the global warm storage ETS table exists.
@@ -280,7 +283,10 @@ defmodule Sensocto.AttributeStoreTiered do
   # Handle nil, :infinity, or missing limit by returning all data
   defp maybe_take(payloads, nil), do: payloads
   defp maybe_take(payloads, :infinity), do: payloads
-  defp maybe_take(payloads, limit) when is_integer(limit) and limit > 0, do: Enum.take(payloads, limit)
+
+  defp maybe_take(payloads, limit) when is_integer(limit) and limit > 0,
+    do: Enum.take(payloads, limit)
+
   defp maybe_take(payloads, _), do: payloads
 
   defp via_tuple(sensor_id) do

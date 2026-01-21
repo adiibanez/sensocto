@@ -136,7 +136,10 @@ defmodule Sensocto.SystemLoadMonitor do
     Process.send_after(self(), :sample_scheduler, @scheduler_sample_interval)
     Process.send_after(self(), :calculate_load, @sample_interval)
 
-    Logger.info("SystemLoadMonitor started with weights: cpu=#{weights.cpu}, pubsub=#{weights.pubsub}, queue=#{weights.queue}, mem=#{weights.memory}")
+    Logger.info(
+      "SystemLoadMonitor started with weights: cpu=#{weights.cpu}, pubsub=#{weights.pubsub}, queue=#{weights.queue}, mem=#{weights.memory}"
+    )
+
     {:ok, state}
   end
 
@@ -155,10 +158,11 @@ defmodule Sensocto.SystemLoadMonitor do
         # Keep history for smoothing (last 5 samples)
         history = Enum.take([total_util | state.scheduler_history], 5)
 
-        %{state |
-          scheduler_utilization: total_util,
-          last_scheduler_sample: sample,
-          scheduler_history: history
+        %{
+          state
+          | scheduler_utilization: total_util,
+            last_scheduler_sample: sample,
+            scheduler_history: history
         }
       else
         %{state | last_scheduler_sample: sample}
@@ -194,27 +198,28 @@ defmodule Sensocto.SystemLoadMonitor do
 
     overall_pressure =
       (smoothed_util * weights.cpu +
-       pubsub_pressure * weights.pubsub +
-       msg_pressure * weights.queue +
-       mem_pressure * weights.memory) / total_weight
+         pubsub_pressure * weights.pubsub +
+         msg_pressure * weights.queue +
+         mem_pressure * weights.memory) / total_weight
 
     new_level = determine_load_level(overall_pressure)
 
-    new_state = %{state |
-      pubsub_pressure: pubsub_pressure,
-      message_queue_pressure: msg_pressure,
-      memory_pressure: mem_pressure,
-      scheduler_utilization: smoothed_util
+    new_state = %{
+      state
+      | pubsub_pressure: pubsub_pressure,
+        message_queue_pressure: msg_pressure,
+        memory_pressure: mem_pressure,
+        scheduler_utilization: smoothed_util
     }
 
     # Broadcast if level changed
     if new_level != state.current_load_level do
       Logger.info(
         "System load changed: #{state.current_load_level} -> #{new_level} " <>
-        "(cpu: #{Float.round(smoothed_util * 100, 1)}%, " <>
-        "pubsub: #{Float.round(pubsub_pressure * 100, 1)}%, " <>
-        "queue: #{Float.round(msg_pressure * 100, 1)}%, " <>
-        "memory: #{Float.round(mem_pressure * 100, 1)}%)"
+          "(cpu: #{Float.round(smoothed_util * 100, 1)}%, " <>
+          "pubsub: #{Float.round(pubsub_pressure * 100, 1)}%, " <>
+          "queue: #{Float.round(msg_pressure * 100, 1)}%, " <>
+          "memory: #{Float.round(mem_pressure * 100, 1)}%)"
       )
 
       update_ets_cache(new_level)
@@ -238,6 +243,7 @@ defmodule Sensocto.SystemLoadMonitor do
       config: @load_config,
       weights: state.weights
     }
+
     {:reply, metrics, state}
   end
 
@@ -251,9 +257,9 @@ defmodule Sensocto.SystemLoadMonitor do
     # - {scheduler_id, util, percent_string} for individual schedulers
     # Find the :total entry directly in the list
     case Enum.find(utilization, fn
-      {:total, _, _} -> true
-      _ -> false
-    end) do
+           {:total, _, _} -> true
+           _ -> false
+         end) do
       {:total, util, _percent} ->
         util
 
@@ -285,7 +291,9 @@ defmodule Sensocto.SystemLoadMonitor do
           {:registered_name, name} when is_atom(name) ->
             name_str = Atom.to_string(name)
             String.contains?(name_str, "PubSub") or String.contains?(name_str, "Phoenix.PubSub")
-          _ -> false
+
+          _ ->
+            false
         end
       end)
 
@@ -299,7 +307,9 @@ defmodule Sensocto.SystemLoadMonitor do
               {:pg, :init, 1},
               {Phoenix.PubSub.PG2, :init, 1}
             ]
-          _ -> false
+
+          _ ->
+            false
         end
       end)
 
@@ -315,7 +325,9 @@ defmodule Sensocto.SystemLoadMonitor do
       end)
 
     max_queue = Enum.max(queue_lengths, fn -> 0 end)
-    avg_queue = if length(queue_lengths) > 0, do: Enum.sum(queue_lengths) / length(queue_lengths), else: 0
+
+    avg_queue =
+      if length(queue_lengths) > 0, do: Enum.sum(queue_lengths) / length(queue_lengths), else: 0
 
     # Normalize: PubSub queue > 500 is critical, > 200 is high, > 50 is elevated
     cond do
@@ -340,7 +352,9 @@ defmodule Sensocto.SystemLoadMonitor do
       key_processes
       |> Enum.map(fn name ->
         case Process.whereis(name) do
-          nil -> 0
+          nil ->
+            0
+
           pid ->
             case Process.info(pid, :message_queue_len) do
               {:message_queue_len, len} -> len
@@ -385,7 +399,7 @@ defmodule Sensocto.SystemLoadMonitor do
       data when is_list(data) ->
         free = Keyword.get(data, :free_memory, 0)
         total_sys = Keyword.get(data, :total_memory, 1)
-        1.0 - (free / total_sys)
+        1.0 - free / total_sys
 
       _ ->
         # Fallback: estimate based on BEAM memory growth
@@ -419,14 +433,15 @@ defmodule Sensocto.SystemLoadMonitor do
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "system:load",
-      {:system_load_changed, %{
-        level: level,
-        multiplier: config.window_multiplier,
-        scheduler_utilization: state.scheduler_utilization,
-        pubsub_pressure: state.pubsub_pressure,
-        message_queue_pressure: state.message_queue_pressure,
-        memory_pressure: state.memory_pressure
-      }}
+      {:system_load_changed,
+       %{
+         level: level,
+         multiplier: config.window_multiplier,
+         scheduler_utilization: state.scheduler_utilization,
+         pubsub_pressure: state.pubsub_pressure,
+         message_queue_pressure: state.message_queue_pressure,
+         memory_pressure: state.memory_pressure
+       }}
     )
   end
 

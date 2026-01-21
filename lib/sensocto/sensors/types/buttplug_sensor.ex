@@ -124,8 +124,7 @@ defmodule Sensocto.Sensors.Types.ButtplugSensor do
 
   def handle_command(%{"type" => "linear", "position" => pos, "duration" => dur} = _cmd, context)
       when is_number(pos) and is_integer(dur) do
-    {:ok,
-     %{command: :linear, position: pos, duration: dur, device_id: context[:sensor_id]}}
+    {:ok, %{command: :linear, position: pos, duration: dur, device_id: context[:sensor_id]}}
   end
 
   def handle_command(_, _), do: {:error, :unknown_command}

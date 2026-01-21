@@ -585,7 +585,11 @@
 
 <%!-- Control Request Modal --%>
 <%= if @control_request_modal do %>
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+  <div
+    id="lobby-control-request-modal"
+    phx-hook="NotificationSound"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+  >
     <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
       <%!-- Header --%>
       <div class="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-4">
@@ -638,9 +642,29 @@
           </div>
         </div>
 
-        <p class="text-gray-300 text-sm mb-6">
+        <p class="text-gray-300 text-sm mb-4">
           Transferring control will allow them to navigate the 3D scene while you follow their view.
         </p>
+
+        <%!-- Auto-transfer warning with countdown --%>
+        <div
+          id="object3d-control-countdown"
+          phx-hook="CountdownTimer"
+          data-seconds="30"
+          class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
+        >
+          <p class="text-amber-200 text-sm flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Control will auto-transfer in <span class="font-bold countdown-display">30</span>s
+          </p>
+        </div>
 
         <%!-- Actions --%>
         <div class="flex gap-3">
@@ -672,7 +696,11 @@
 
 <%!-- Media Control Request Modal --%>
 <%= if @media_control_request_modal do %>
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+  <div
+    id="lobby-media-control-request-modal"
+    phx-hook="NotificationSound"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+  >
     <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
       <%!-- Header --%>
       <div class="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-4">
@@ -725,9 +753,29 @@
           </div>
         </div>
 
-        <p class="text-gray-300 text-sm mb-6">
+        <p class="text-gray-300 text-sm mb-4">
           Transferring control will allow them to play, pause, and navigate the media playlist.
         </p>
+
+        <%!-- Auto-transfer warning with countdown --%>
+        <div
+          id="media-control-countdown"
+          phx-hook="CountdownTimer"
+          data-seconds="30"
+          class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
+        >
+          <p class="text-amber-200 text-sm flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Control will auto-transfer in <span class="font-bold countdown-display">30</span>s
+          </p>
+        </div>
 
         <%!-- Actions --%>
         <div class="flex gap-3">

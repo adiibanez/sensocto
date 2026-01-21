@@ -211,6 +211,7 @@
     <div class="px-3 py-2">
       {live_render(@socket, SensoctoWeb.SenseLive,
         id: "bluetooth-mobile",
+        sticky: true,
         session: %{"parent_id" => self(), "mobile" => true}
       )}
     </div>
@@ -227,6 +228,7 @@
         <div class="flex-1 mx-4 overflow-x-auto">
           {live_render(@socket, SensoctoWeb.SenseLive,
             id: "bluetooth",
+            sticky: true,
             session: %{"parent_id" => self()}
           )}
         </div>

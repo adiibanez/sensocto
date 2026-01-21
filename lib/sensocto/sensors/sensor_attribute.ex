@@ -11,6 +11,13 @@ defmodule Sensocto.Sensors.SensorAttribute do
 
   alias Sensocto.Sensors.Sensor
 
+  validations do
+    # Validate attribute_id format matches SafeKeys.validate_attribute_id/1
+    validate match(:attribute_id, ~r/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
+      message:
+        "must start with a letter and contain only alphanumeric characters, underscores, or hyphens (max 64 chars)"
+  end
+
   attributes do
     uuid_primary_key :id
     attribute :sensor_id, :uuid, allow_nil?: false
@@ -20,12 +27,6 @@ defmodule Sensocto.Sensors.SensorAttribute do
     attribute :attribute_id, :string, allow_nil?: false
 
     attribute :values, :map, default: %{values: []}
-  end
-
-  validations do
-    # Validate attribute_id format matches SafeKeys.validate_attribute_id/1
-    validate match(:attribute_id, ~r/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
-      message: "must start with a letter and contain only alphanumeric characters, underscores, or hyphens (max 64 chars)"
   end
 
   relationships do

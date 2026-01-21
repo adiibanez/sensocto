@@ -188,7 +188,13 @@ defmodule SensoctoWeb.Live.MediaPlayerComponentTest do
       {:ok, room_id} = create_test_room()
       {:ok, playlist} = create_playlist_for_room(room_id)
       {:ok, item1} = add_test_video(playlist.id, %{title: "Video 1", position: 0})
-      {:ok, item2} = add_test_video(playlist.id, %{title: "Video 2", position: 1, youtube_video_id: "xQw4w9WgXcR"})
+
+      {:ok, item2} =
+        add_test_video(playlist.id, %{
+          title: "Video 2",
+          position: 1,
+          youtube_video_id: "xQw4w9WgXcR"
+        })
 
       on_exit(fn -> stop_media_player(room_id) end)
 
@@ -212,7 +218,13 @@ defmodule SensoctoWeb.Live.MediaPlayerComponentTest do
       {:ok, room_id} = create_test_room()
       {:ok, playlist} = create_playlist_for_room(room_id)
       {:ok, item1} = add_test_video(playlist.id, %{title: "Video 1", position: 0})
-      {:ok, item2} = add_test_video(playlist.id, %{title: "Video 2", position: 1, youtube_video_id: "xQw4w9WgXcR"})
+
+      {:ok, item2} =
+        add_test_video(playlist.id, %{
+          title: "Video 2",
+          position: 1,
+          youtube_video_id: "xQw4w9WgXcR"
+        })
 
       on_exit(fn -> stop_media_player(room_id) end)
 

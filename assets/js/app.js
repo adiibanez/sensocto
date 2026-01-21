@@ -210,6 +210,85 @@ Hooks.Vibrate = {
   }
 };
 
+// NotificationSound hook - plays an attention sound when the element appears (mounted)
+// Used for control request modals to alert the user
+// Optionally vibrates on mobile devices
+Hooks.NotificationSound = {
+  mounted() {
+    this.playNotificationSound();
+
+    // Also vibrate on mobile
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100, 50, 200]); // Pattern: short-pause-short-pause-long
+    }
+  },
+
+  playNotificationSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+
+      // Play a two-tone attention chime (like a doorbell)
+      // First tone - higher
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, now); // A5
+      gain1.gain.setValueAtTime(0, now);
+      gain1.gain.linearRampToValueAtTime(0.3, now + 0.02);
+      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc1.start(now);
+      osc1.stop(now + 0.35);
+
+      // Second tone - lower (classic ding-dong pattern)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(659.25, now + 0.15); // E5
+      gain2.gain.setValueAtTime(0, now);
+      gain2.gain.setValueAtTime(0, now + 0.15);
+      gain2.gain.linearRampToValueAtTime(0.3, now + 0.17);
+      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+      osc2.start(now + 0.15);
+      osc2.stop(now + 0.55);
+
+      console.log('[NotificationSound] Played attention chime');
+    } catch (e) {
+      console.warn('[NotificationSound] Could not play sound:', e);
+    }
+  }
+};
+
+// CountdownTimer hook - displays a countdown from data-seconds
+// Used for control request modals to show time remaining before auto-transfer
+Hooks.CountdownTimer = {
+  mounted() {
+    const seconds = parseInt(this.el.dataset.seconds) || 30;
+    this.remaining = seconds;
+    this.display = this.el.querySelector('.countdown-display');
+
+    this.interval = setInterval(() => {
+      this.remaining--;
+      if (this.display) {
+        this.display.textContent = this.remaining;
+      }
+      if (this.remaining <= 0) {
+        clearInterval(this.interval);
+      }
+    }, 1000);
+  },
+
+  destroyed() {
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+  }
+};
+
 Hooks.Formless = {
   mounted() {
 
@@ -302,10 +381,10 @@ Hooks.ConnectionHandler = {
 // and dispatches them as window events for Svelte components to consume
 Hooks.CompositeMeasurementHandler = {
   mounted() {
-    logger.log("Hooks.CompositeMeasurementHandler", "mounted");
+    console.log("[CompositeMeasurementHandler] mounted on element:", this.el.id);
 
     this.handleEvent("composite_measurement", (event) => {
-      logger.log("Hooks.CompositeMeasurementHandler", "composite_measurement", event);
+      console.log("[CompositeMeasurementHandler] composite_measurement received:", event);
       const customEvent = new CustomEvent('composite-measurement-event', {
         detail: event
       });
@@ -314,7 +393,7 @@ Hooks.CompositeMeasurementHandler = {
   },
 
   destroyed() {
-    logger.log("Hooks.CompositeMeasurementHandler", "destroyed");
+    console.log("[CompositeMeasurementHandler] destroyed");
   }
 }
 
@@ -719,7 +798,6 @@ Hooks.SensorDataAccumulator = {
 
     if ('pushEvent' in this && 'handleEvent' in this) {
       this.handleEvent("measurements_batch", (event) => {
-
         if (hookElement.dataset.seeding !== true && event.sensor_id == this.el.dataset.sensor_id) {
           // iterate over attributes and triage
           let uniqueAttributeIds = [...new Set(event.attributes.map(attribute => attribute.attribute_id))];

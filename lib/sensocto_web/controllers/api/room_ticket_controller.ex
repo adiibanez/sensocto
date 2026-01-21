@@ -141,11 +141,13 @@ defmodule SensoctoWeb.Api.RoomTicketController do
   # ============================================================================
 
   defp can_access_ticket?(room, nil), do: room.is_public
+
   defp can_access_ticket?(room, user) do
     room.is_public || Rooms.member?(room, user)
   end
 
   defp can_include_secret?(_room, nil), do: false
+
   defp can_include_secret?(room, user) do
     Rooms.can_manage?(room, user)
   end
@@ -183,12 +185,15 @@ defmodule SensoctoWeb.Api.RoomTicketController do
   end
 
   defp parse_expires_in(nil), do: 24 * 60 * 60
+
   defp parse_expires_in(value) when is_binary(value) do
     case Integer.parse(value) do
-      {seconds, _} when seconds > 0 -> min(seconds, 7 * 24 * 60 * 60) # Max 1 week
+      # Max 1 week
+      {seconds, _} when seconds > 0 -> min(seconds, 7 * 24 * 60 * 60)
       _ -> 24 * 60 * 60
     end
   end
+
   defp parse_expires_in(value) when is_integer(value), do: min(value, 7 * 24 * 60 * 60)
   defp parse_expires_in(_), do: 24 * 60 * 60
 end

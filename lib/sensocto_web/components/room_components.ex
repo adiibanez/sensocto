@@ -3,6 +3,7 @@ defmodule SensoctoWeb.RoomComponents do
   Reusable components for the rooms feature.
   """
   use Phoenix.Component
+
   use Phoenix.VerifiedRoutes,
     endpoint: SensoctoWeb.Endpoint,
     router: SensoctoWeb.Router,
@@ -24,23 +25,23 @@ defmodule SensoctoWeb.RoomComponents do
     <div class="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors">
       <.link navigate={~p"/rooms/#{@room.id}"} class="block">
         <div class="flex items-start justify-between mb-2">
-          <h3 class="text-lg font-semibold truncate"><%= @room.name %></h3>
+          <h3 class="text-lg font-semibold truncate">{@room.name}</h3>
           <div class="flex gap-1">
             <.visibility_badge is_public={@room.is_public} />
             <.persistence_badge is_persisted={Map.get(@room, :is_persisted, true)} />
           </div>
         </div>
         <%= if @room.description do %>
-          <p class="text-gray-400 text-sm mb-3 line-clamp-2"><%= @room.description %></p>
+          <p class="text-gray-400 text-sm mb-3 line-clamp-2">{@room.description}</p>
         <% end %>
         <div class="flex items-center gap-4 text-sm text-gray-500">
           <span class="flex items-center gap-1">
             <.sensor_count_icon />
-            <%= Map.get(@room, :sensor_count, 0) %> sensors
+            {Map.get(@room, :sensor_count, 0)} sensors
           </span>
           <span class="flex items-center gap-1">
             <.member_count_icon />
-            <%= Map.get(@room, :member_count, 0) %> members
+            {Map.get(@room, :member_count, 0)} members
           </span>
         </div>
       </.link>
@@ -80,15 +81,15 @@ defmodule SensoctoWeb.RoomComponents do
             <.sensor_type_icon type={@sensor.sensor_type} />
           </div>
           <div>
-            <h3 class="font-semibold truncate max-w-[120px]"><%= @sensor.sensor_name %></h3>
-            <p class="text-xs text-gray-500"><%= @sensor.sensor_type %></p>
+            <h3 class="font-semibold truncate max-w-[120px]">{@sensor.sensor_name}</h3>
+            <p class="text-xs text-gray-500">{@sensor.sensor_type}</p>
           </div>
         </div>
         <.activity_indicator status={@activity_status} />
       </div>
 
       <div class="text-sm text-gray-400">
-        <%= length(Map.keys(@sensor.attributes || %{})) %> attributes
+        {length(Map.keys(@sensor.attributes || %{}))} attributes
       </div>
 
       <%= if @on_remove do %>
@@ -121,7 +122,8 @@ defmodule SensoctoWeb.RoomComponents do
       <%= case @status do %>
         <% :active -> %>
           <span class="relative flex h-3 w-3">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75">
+            </span>
             <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
           </span>
           <span class="text-xs text-green-400">Active</span>
@@ -179,17 +181,47 @@ defmodule SensoctoWeb.RoomComponents do
     <svg class={@class} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <%= case @type do %>
         <% :ecg -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+          />
         <% :imu -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"
+          />
         <% :html5 -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+          />
         <% :buttplug -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M13 10V3L4 14h7v7l9-11h-7z"
+          />
         <% :skeleton -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z"
+          />
         <% _ -> %>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+          />
       <% end %>
     </svg>
     """
@@ -198,7 +230,12 @@ defmodule SensoctoWeb.RoomComponents do
   defp sensor_count_icon(assigns) do
     ~H"""
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+      />
     </svg>
     """
   end
@@ -206,7 +243,12 @@ defmodule SensoctoWeb.RoomComponents do
   defp member_count_icon(assigns) do
     ~H"""
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+      />
     </svg>
     """
   end

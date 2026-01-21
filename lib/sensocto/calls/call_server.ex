@@ -203,7 +203,10 @@ defmodule Sensocto.Calls.CallServer do
           state
 
         old_participant ->
-          Logger.info("User #{user_id} reconnecting - removing old endpoint #{old_participant.endpoint_id}")
+          Logger.info(
+            "User #{user_id} reconnecting - removing old endpoint #{old_participant.endpoint_id}"
+          )
+
           # Remove old endpoint from RTC Engine
           Engine.remove_endpoint(state.engine_pid, old_participant.endpoint_id)
           # Clean up tracks from old endpoint
@@ -213,6 +216,7 @@ defmodule Sensocto.Calls.CallServer do
               track_info.endpoint_id == old_participant.endpoint_id
             end)
             |> Map.new()
+
           # Remove from participants
           {_, new_participants} = Map.pop(state.participants, user_id)
           %{state | participants: new_participants, track_registry: new_track_registry}
@@ -407,12 +411,16 @@ defmodule Sensocto.Calls.CallServer do
         new_active_speakers =
           if speaking? do
             # Add to active speakers (limited to max)
-            ([user_id | state.active_speakers] |> Enum.uniq() |> Enum.take(@max_active_speakers))
+            [user_id | state.active_speakers] |> Enum.uniq() |> Enum.take(@max_active_speakers)
           else
             state.active_speakers
           end
 
-        new_state = %{state | participants: new_participants, active_speakers: new_active_speakers}
+        new_state = %{
+          state
+          | participants: new_participants,
+            active_speakers: new_active_speakers
+        }
 
         # Recalculate tiers if adaptive quality is enabled
         new_state =
@@ -451,7 +459,10 @@ defmodule Sensocto.Calls.CallServer do
 
   # Handle RTC Engine notifications
   @impl true
-  def handle_info(%Message.EndpointMessage{endpoint_id: endpoint_id, message: {:media_event, event}}, state) do
+  def handle_info(
+        %Message.EndpointMessage{endpoint_id: endpoint_id, message: {:media_event, event}},
+        state
+      ) do
     IO.puts(">>> CallServer: EndpointMessage media_event from #{endpoint_id}")
     # Forward media event to the participant's channel
     case find_participant_by_endpoint(state.participants, endpoint_id) do
@@ -687,7 +698,8 @@ defmodule Sensocto.Calls.CallServer do
 
     # First pass: identify who should be in each tier
     {new_participants, tier_changes} =
-      Enum.reduce(state.participants, {%{}, []}, fn {user_id, participant}, {acc_participants, acc_changes} ->
+      Enum.reduce(state.participants, {%{}, []}, fn {user_id, participant},
+                                                    {acc_participants, acc_changes} ->
         new_tier = calculate_tier(participant, state.active_speakers, now)
         old_tier = participant.tier
 
@@ -770,7 +782,7 @@ defmodule Sensocto.Calls.CallServer do
   defp recently_spoke?(participant, now) do
     case participant.last_spoke_at do
       nil -> false
-      last_spoke_at -> (now - last_spoke_at) < @recent_speaker_timeout_ms
+      last_spoke_at -> now - last_spoke_at < @recent_speaker_timeout_ms
     end
   end
 end

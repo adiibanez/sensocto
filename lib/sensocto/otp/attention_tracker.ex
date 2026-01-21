@@ -244,15 +244,16 @@ defmodule Sensocto.AttentionTracker do
     bio_factors = get_bio_factors(sensor_id, attribute_id)
 
     # Apply all multipliers
-    adjusted = trunc(
-      base_window *
-      config.window_multiplier *
-      load_multiplier *
-      bio_factors.novelty *
-      bio_factors.predictive *
-      bio_factors.competitive *
-      bio_factors.circadian
-    )
+    adjusted =
+      trunc(
+        base_window *
+          config.window_multiplier *
+          load_multiplier *
+          bio_factors.novelty *
+          bio_factors.predictive *
+          bio_factors.competitive *
+          bio_factors.circadian
+      )
 
     max(config.min_window, min(adjusted, config.max_window))
   end
@@ -356,7 +357,10 @@ defmodule Sensocto.AttentionTracker do
       last_cleanup: DateTime.utc_now()
     }
 
-    Logger.info("AttentionTracker started with ETS caching, battery awareness, and attention decay")
+    Logger.info(
+      "AttentionTracker started with ETS caching, battery awareness, and attention decay"
+    )
+
     {:ok, state}
   end
 
@@ -406,7 +410,9 @@ defmodule Sensocto.AttentionTracker do
 
   @impl true
   def handle_cast({:pin_sensor, sensor_id, user_id}, state) do
-    pinned = Map.update(state.pinned_sensors, sensor_id, MapSet.new([user_id]), &MapSet.put(&1, user_id))
+    pinned =
+      Map.update(state.pinned_sensors, sensor_id, MapSet.new([user_id]), &MapSet.put(&1, user_id))
+
     new_state = %{state | pinned_sensors: pinned}
 
     # Update ETS cache for all attributes of this sensor (now :high)
@@ -421,9 +427,12 @@ defmodule Sensocto.AttentionTracker do
   def handle_cast({:unpin_sensor, sensor_id, user_id}, state) do
     pinned =
       case Map.get(state.pinned_sensors, sensor_id) do
-        nil -> state.pinned_sensors
+        nil ->
+          state.pinned_sensors
+
         users ->
           remaining = MapSet.delete(users, user_id)
+
           if MapSet.size(remaining) == 0 do
             Map.delete(state.pinned_sensors, sensor_id)
           else
@@ -460,15 +469,15 @@ defmodule Sensocto.AttentionTracker do
               attr_state = Map.put_new(attr_state, :hovered, MapSet.new())
 
               new_attr_state = %{
-                attr_state |
-                viewers: MapSet.delete(attr_state.viewers, user_id),
-                hovered: MapSet.delete(attr_state.hovered, user_id),
-                focused: MapSet.delete(attr_state.focused, user_id)
+                attr_state
+                | viewers: MapSet.delete(attr_state.viewers, user_id),
+                  hovered: MapSet.delete(attr_state.hovered, user_id),
+                  focused: MapSet.delete(attr_state.focused, user_id)
               }
 
               if MapSet.size(new_attr_state.viewers) == 0 and
-                 MapSet.size(new_attr_state.hovered) == 0 and
-                 MapSet.size(new_attr_state.focused) == 0 do
+                   MapSet.size(new_attr_state.hovered) == 0 and
+                   MapSet.size(new_attr_state.focused) == 0 do
                 acc
               else
                 Map.put(acc, attr_id, new_attr_state)
@@ -483,14 +492,20 @@ defmodule Sensocto.AttentionTracker do
       end
 
     # Also remove from pinned
-    pinned = Map.update(state.pinned_sensors, sensor_id, MapSet.new(), &MapSet.delete(&1, user_id))
-    pinned = if MapSet.size(Map.get(pinned, sensor_id, MapSet.new())) == 0, do: Map.delete(pinned, sensor_id), else: pinned
+    pinned =
+      Map.update(state.pinned_sensors, sensor_id, MapSet.new(), &MapSet.delete(&1, user_id))
+
+    pinned =
+      if MapSet.size(Map.get(pinned, sensor_id, MapSet.new())) == 0,
+        do: Map.delete(pinned, sensor_id),
+        else: pinned
 
     new_state = %{state | attention_state: new_attention_state, pinned_sensors: pinned}
 
     # Update ETS cache for all affected attributes
     for attr_id <- old_attributes do
       level = do_get_attention_level(new_state, sensor_id, attr_id)
+
       if level == :none do
         delete_ets_cache(sensor_id, attr_id)
       else
@@ -650,36 +665,42 @@ defmodule Sensocto.AttentionTracker do
           %{attr_state | viewers: MapSet.delete(attr_state.viewers, user_id), last_updated: now}
 
         :add_hover ->
-          %{attr_state |
-            hovered: MapSet.put(attr_state.hovered, user_id),
-            viewers: MapSet.put(attr_state.viewers, user_id),
-            last_updated: now
+          %{
+            attr_state
+            | hovered: MapSet.put(attr_state.hovered, user_id),
+              viewers: MapSet.put(attr_state.viewers, user_id),
+              last_updated: now
           }
 
         :remove_hover ->
           # Set hover boost expiry
           hover_boost_until = DateTime.add(now, div(@hover_boost_duration, 1000), :second)
-          %{attr_state |
-            hovered: MapSet.delete(attr_state.hovered, user_id),
-            hover_boosted_until: hover_boost_until,
-            last_updated: now
+
+          %{
+            attr_state
+            | hovered: MapSet.delete(attr_state.hovered, user_id),
+              hover_boosted_until: hover_boost_until,
+              last_updated: now
           }
 
         :add_focus ->
-          %{attr_state |
-            focused: MapSet.put(attr_state.focused, user_id),
-            hovered: MapSet.put(attr_state.hovered, user_id),
-            viewers: MapSet.put(attr_state.viewers, user_id),
-            last_updated: now
+          %{
+            attr_state
+            | focused: MapSet.put(attr_state.focused, user_id),
+              hovered: MapSet.put(attr_state.hovered, user_id),
+              viewers: MapSet.put(attr_state.viewers, user_id),
+              last_updated: now
           }
 
         :remove_focus ->
           # Set focus boost expiry
           focus_boost_until = DateTime.add(now, div(@focus_boost_duration, 1000), :second)
-          %{attr_state |
-            focused: MapSet.delete(attr_state.focused, user_id),
-            focus_boosted_until: focus_boost_until,
-            last_updated: now
+
+          %{
+            attr_state
+            | focused: MapSet.delete(attr_state.focused, user_id),
+              focus_boosted_until: focus_boost_until,
+              last_updated: now
           }
       end
 
@@ -693,10 +714,12 @@ defmodule Sensocto.AttentionTracker do
   # Schedule a timer for boost decay
   defp schedule_boost_decay(state, sensor_id, attribute_id, boost_type) do
     timer_key = {sensor_id, attribute_id, boost_type}
-    duration = case boost_type do
-      :focus -> @focus_boost_duration
-      :hover -> @hover_boost_duration
-    end
+
+    duration =
+      case boost_type do
+        :focus -> @focus_boost_duration
+        :hover -> @hover_boost_duration
+      end
 
     # Cancel any existing timer for this key
     case Map.get(state.boost_timers, timer_key) do
@@ -705,7 +728,9 @@ defmodule Sensocto.AttentionTracker do
     end
 
     # Schedule new timer
-    timer_ref = Process.send_after(self(), {:boost_decay, sensor_id, attribute_id, boost_type}, duration)
+    timer_ref =
+      Process.send_after(self(), {:boost_decay, sensor_id, attribute_id, boost_type}, duration)
+
     new_boost_timers = Map.put(state.boost_timers, timer_key, timer_ref)
     %{state | boost_timers: new_boost_timers}
   end
@@ -713,14 +738,21 @@ defmodule Sensocto.AttentionTracker do
   # Clear boost expiry from attribute state
   defp clear_boost_expiry(state, sensor_id, attribute_id, boost_type) do
     case get_in(state.attention_state, [sensor_id, attribute_id]) do
-      nil -> state
+      nil ->
+        state
+
       attr_state ->
-        field = case boost_type do
-          :focus -> :focus_boosted_until
-          :hover -> :hover_boosted_until
-        end
+        field =
+          case boost_type do
+            :focus -> :focus_boosted_until
+            :hover -> :hover_boosted_until
+          end
+
         updated_attr_state = Map.put(attr_state, field, nil)
-        updated_attributes = Map.put(state.attention_state[sensor_id], attribute_id, updated_attr_state)
+
+        updated_attributes =
+          Map.put(state.attention_state[sensor_id], attribute_id, updated_attr_state)
+
         new_attention_state = Map.put(state.attention_state, sensor_id, updated_attributes)
         %{state | attention_state: new_attention_state}
     end
@@ -743,7 +775,9 @@ defmodule Sensocto.AttentionTracker do
       :high
     else
       case get_in(state.attention_state, [sensor_id, attribute_id]) do
-        nil -> :none
+        nil ->
+          :none
+
         attr_state ->
           calculate_attr_attention_level(attr_state)
       end
@@ -756,7 +790,9 @@ defmodule Sensocto.AttentionTracker do
       :high
     else
       case Map.get(state.attention_state, sensor_id) do
-        nil -> :none
+        nil ->
+          :none
+
         attributes ->
           # Get highest attention level across all attributes
           Enum.reduce(attributes, :none, fn {_attr_id, attr_state}, acc ->
@@ -821,12 +857,15 @@ defmodule Sensocto.AttentionTracker do
     update_ets_cache(sensor_id, attribute_id, new_level)
 
     if old_level != new_level do
-      Logger.debug("Attention changed for #{sensor_id}/#{attribute_id}: #{old_level} -> #{new_level}")
+      Logger.debug(
+        "Attention changed for #{sensor_id}/#{attribute_id}: #{old_level} -> #{new_level}"
+      )
 
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
         "attention:#{sensor_id}:#{attribute_id}",
-        {:attention_changed, %{sensor_id: sensor_id, attribute_id: attribute_id, level: new_level}}
+        {:attention_changed,
+         %{sensor_id: sensor_id, attribute_id: attribute_id, level: new_level}}
       )
 
       # Also broadcast sensor-level change
@@ -850,7 +889,9 @@ defmodule Sensocto.AttentionTracker do
   defp update_sensor_ets_cache(state, sensor_id) do
     # Update ETS cache for all attributes of this sensor
     case Map.get(state.attention_state, sensor_id) do
-      nil -> :ok
+      nil ->
+        :ok
+
       attributes ->
         for {attr_id, _} <- attributes do
           level = do_get_attention_level(state, sensor_id, attr_id)
@@ -888,7 +929,7 @@ defmodule Sensocto.AttentionTracker do
       user_is_viewing =
         Enum.any?(attributes, fn {_attr_id, attr_state} ->
           MapSet.member?(attr_state.viewers, user_id) or
-          MapSet.member?(attr_state.focused, user_id)
+            MapSet.member?(attr_state.focused, user_id)
         end)
 
       if user_is_viewing do
@@ -904,7 +945,8 @@ defmodule Sensocto.AttentionTracker do
           Phoenix.PubSub.broadcast(
             Sensocto.PubSub,
             "attention:#{sensor_id}:#{attr_id}",
-            {:attention_changed, %{sensor_id: sensor_id, attribute_id: attr_id, level: attr_level}}
+            {:attention_changed,
+             %{sensor_id: sensor_id, attribute_id: attr_id, level: attr_level}}
           )
         end)
       end

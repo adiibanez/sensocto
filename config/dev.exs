@@ -8,7 +8,11 @@ config :sensocto, Sensocto.Repo,
   username: System.get_env("DEV_DATABASE_USER", "postgres"),
   password: System.get_env("DEV_DATABASE_PASSWORD", "postgres"),
   hostname: System.get_env("DEV_DATABASE_HOST", "localhost"),
-  ssl: if(System.get_env("DEV_DATABASE_SSL") == "true", do: [cacerts: :public_key.cacerts_get()], else: false),
+  ssl:
+    if(System.get_env("DEV_DATABASE_SSL") == "true",
+      do: [cacerts: :public_key.cacerts_get()],
+      else: false
+    ),
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10,
@@ -21,7 +25,11 @@ config :sensocto, Sensocto.Repo.Replica,
   username: System.get_env("DEV_DATABASE_USER", "postgres"),
   password: System.get_env("DEV_DATABASE_PASSWORD", "postgres"),
   hostname: System.get_env("DEV_DATABASE_HOST", "localhost"),
-  ssl: if(System.get_env("DEV_DATABASE_SSL") == "true", do: [cacerts: :public_key.cacerts_get()], else: false),
+  ssl:
+    if(System.get_env("DEV_DATABASE_SSL") == "true",
+      do: [cacerts: :public_key.cacerts_get()],
+      else: false
+    ),
   pool_size: 5
 
 # Local PostgreSQL (uncomment to use local dev database instead of Neon)
@@ -75,7 +83,11 @@ config :sensocto, SensoctoWeb.Endpoint,
   check_origin: ["http://localhost:4000", "https://localhost:4001"],
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: System.get_env("DEV_SECRET_KEY_BASE", "dev_only_secret_key_base_not_for_production_use_generate_new_one"),
+  secret_key_base:
+    System.get_env(
+      "DEV_SECRET_KEY_BASE",
+      "dev_only_secret_key_base_not_for_production_use_generate_new_one"
+    ),
   watchers: [
     node: ["build.js", "--watch", cd: Path.expand("../assets", __DIR__)],
     tailwind: {Tailwind, :install_and_run, [:sensocto, ~w(--watch)]},
@@ -173,7 +185,9 @@ config :logger, :logger_name,
 config :ash_authentication, debug_authentication_failures?: true
 
 # Enable dev routes for dashboard and mailbox
-config :sensocto, dev_routes: true, token_signing_secret: System.get_env("DEV_TOKEN_SIGNING_SECRET", "dev_only_token_secret")
+config :sensocto,
+  dev_routes: true,
+  token_signing_secret: System.get_env("DEV_TOKEN_SIGNING_SECRET", "dev_only_token_secret")
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

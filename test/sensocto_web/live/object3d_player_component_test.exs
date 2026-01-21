@@ -170,7 +170,13 @@ defmodule SensoctoWeb.Live.Object3DPlayerComponentTest do
       {:ok, room_id} = create_test_room()
       {:ok, playlist} = create_playlist_for_room(room_id)
       {:ok, item1} = add_test_object(playlist.id, %{name: "Object 1", position: 0})
-      {:ok, item2} = add_test_object(playlist.id, %{name: "Object 2", position: 1, splat_url: "https://example.com/obj2.splat"})
+
+      {:ok, item2} =
+        add_test_object(playlist.id, %{
+          name: "Object 2",
+          position: 1,
+          splat_url: "https://example.com/obj2.splat"
+        })
 
       on_exit(fn -> stop_object3d_player(room_id) end)
 
@@ -194,7 +200,13 @@ defmodule SensoctoWeb.Live.Object3DPlayerComponentTest do
       {:ok, room_id} = create_test_room()
       {:ok, playlist} = create_playlist_for_room(room_id)
       {:ok, item1} = add_test_object(playlist.id, %{name: "Object 1", position: 0})
-      {:ok, item2} = add_test_object(playlist.id, %{name: "Object 2", position: 1, splat_url: "https://example.com/obj2.splat"})
+
+      {:ok, item2} =
+        add_test_object(playlist.id, %{
+          name: "Object 2",
+          position: 1,
+          splat_url: "https://example.com/obj2.splat"
+        })
 
       on_exit(fn -> stop_object3d_player(room_id) end)
 
@@ -218,7 +230,13 @@ defmodule SensoctoWeb.Live.Object3DPlayerComponentTest do
       {:ok, room_id} = create_test_room()
       {:ok, playlist} = create_playlist_for_room(room_id)
       {:ok, _item1} = add_test_object(playlist.id, %{name: "Object 1", position: 0})
-      {:ok, item2} = add_test_object(playlist.id, %{name: "Object 2", position: 1, splat_url: "https://example.com/obj2.splat"})
+
+      {:ok, item2} =
+        add_test_object(playlist.id, %{
+          name: "Object 2",
+          position: 1,
+          splat_url: "https://example.com/obj2.splat"
+        })
 
       on_exit(fn -> stop_object3d_player(room_id) end)
 
@@ -269,10 +287,12 @@ defmodule SensoctoWeb.Live.Object3DPlayerComponentTest do
 
       Object3DPlayerServer.take_control(room_id, "test_user", "Test User")
 
-      assert_receive {:object3d_controller_changed, %{
-        controller_user_id: "test_user",
-        controller_user_name: "Test User"
-      }}, 2_000
+      assert_receive {:object3d_controller_changed,
+                      %{
+                        controller_user_id: "test_user",
+                        controller_user_name: "Test User"
+                      }},
+                     2_000
     end
   end
 end

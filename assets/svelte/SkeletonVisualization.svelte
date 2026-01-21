@@ -9,6 +9,10 @@
     let ctx;
     let lastData = null;
 
+    // Throttling: only render on animation frame, drop intermediate updates
+    let pendingData = null;
+    let rafId = null;
+
     // MediaPipe Pose landmark indices
     const LANDMARK_NAMES = [
         "nose", "left_eye_inner", "left_eye", "left_eye_outer",
@@ -143,6 +147,23 @@
         ctx.globalAlpha = 1;
     }
 
+    // Throttled render using requestAnimationFrame
+    // Only renders at most once per frame, dropping intermediate updates
+    function scheduleRender(data) {
+        pendingData = data;
+
+        if (rafId === null) {
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                if (pendingData !== null) {
+                    lastData = pendingData;
+                    drawSkeleton(pendingData);
+                    pendingData = null;
+                }
+            });
+        }
+    }
+
     function handleAccumulatorEvent(event) {
         // Check if this event is for our sensor and attribute
         if (event.detail?.sensor_id !== sensor_id || event.detail?.attribute_id !== attribute_id) {
@@ -173,8 +194,8 @@
 
         try {
             const data = typeof payload === "string" ? JSON.parse(payload) : payload;
-            lastData = data;
-            drawSkeleton(data);
+            // Use throttled render instead of immediate draw
+            scheduleRender(data);
         } catch (e) {
             console.error("SkeletonVisualization: Failed to parse data", e);
         }
@@ -192,6 +213,11 @@
 
     onDestroy(() => {
         window.removeEventListener("accumulator-data-event", handleAccumulatorEvent);
+        // Cancel any pending animation frame
+        if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
     });
 
     // Expose method to update from parent
@@ -199,7 +225,7 @@
         handleAccumulatorEvent({ detail: { sensor_id, attribute_id, data: { payload } }});
     }
 
-    $: canvasSize = size === "small" ? { width: 80, height: 80 } : { width: 160, height: 160 };
+    $: canvasSize = size === "small" ? { width: 80, height: 80 } : { width: 300, height: 300 };
 </script>
 
 <div class="skeleton-container">
@@ -216,6 +242,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    canvas {
+        max-width: 100%;
+        max-height: 100%;
     }
 
     canvas {

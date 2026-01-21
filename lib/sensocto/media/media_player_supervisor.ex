@@ -46,7 +46,10 @@ defmodule Sensocto.Media.MediaPlayerSupervisor do
         {:ok, pid}
 
       {:error, reason} = error ->
-        Logger.error("Failed to start media player for #{player_name(room_id)}: #{inspect(reason)}")
+        Logger.error(
+          "Failed to start media player for #{player_name(room_id)}: #{inspect(reason)}"
+        )
+
         error
     end
   end

@@ -130,6 +130,7 @@ defmodule Sensocto.Calls.QualityManager do
   @spec get_tier_video_constraints(attention_tier()) :: map()
   def get_tier_video_constraints(tier) do
     profile = get_tier_profile(tier)
+
     case profile.mode do
       :video ->
         %{
@@ -137,13 +138,16 @@ defmodule Sensocto.Calls.QualityManager do
           height: %{ideal: profile.height, max: profile.height},
           frameRate: %{ideal: profile.max_framerate, max: profile.max_framerate}
         }
+
       :snapshot ->
         %{
           width: %{ideal: profile.width, max: profile.width},
           height: %{ideal: profile.height, max: profile.height},
           frameRate: %{ideal: 1, max: 5}
         }
-      :static -> %{}
+
+      :static ->
+        %{}
     end
   end
 
@@ -153,6 +157,7 @@ defmodule Sensocto.Calls.QualityManager do
   @spec get_tier_encoding_parameters(attention_tier()) :: map()
   def get_tier_encoding_parameters(tier) do
     profile = get_tier_profile(tier)
+
     case profile.mode do
       :video ->
         %{
@@ -160,7 +165,9 @@ defmodule Sensocto.Calls.QualityManager do
           maxFramerate: profile.max_framerate,
           scaleResolutionDownBy: tier_scale_factor(tier)
         }
-      _ -> %{maxBitrate: 0, maxFramerate: 0, scaleResolutionDownBy: 1.0}
+
+      _ ->
+        %{maxBitrate: 0, maxFramerate: 0, scaleResolutionDownBy: 1.0}
     end
   end
 
@@ -198,12 +205,15 @@ defmodule Sensocto.Calls.QualityManager do
   def estimate_bandwidth(tier_counts) do
     Enum.reduce(tier_counts, 0, fn {tier, count}, acc ->
       profile = get_tier_profile(tier)
-      tier_bw = case profile.mode do
-        :video -> profile.max_bitrate
-        :snapshot -> 50_000
-        :static -> 0
-      end
-      acc + (tier_bw * count)
+
+      tier_bw =
+        case profile.mode do
+          :video -> profile.max_bitrate
+          :snapshot -> 50_000
+          :static -> 0
+        end
+
+      acc + tier_bw * count
     end)
   end
 
@@ -250,6 +260,7 @@ defmodule Sensocto.Calls.QualityManager do
   @spec get_video_constraints(quality()) :: map()
   def get_video_constraints(quality) do
     profile = get_profile(quality)
+
     %{
       width: %{ideal: profile.width, max: profile.width},
       height: %{ideal: profile.height, max: profile.height},
@@ -263,6 +274,7 @@ defmodule Sensocto.Calls.QualityManager do
   @spec get_encoding_parameters(quality()) :: map()
   def get_encoding_parameters(quality) do
     profile = get_profile(quality)
+
     %{
       maxBitrate: profile.max_bitrate,
       maxFramerate: profile.max_framerate,

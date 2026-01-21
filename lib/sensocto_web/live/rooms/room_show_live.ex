@@ -94,6 +94,8 @@ defmodule SensoctoWeb.RoomShowLive do
           # Control request modal state
           |> assign(:control_request_modal, nil)
           |> assign(:media_control_request_modal, nil)
+          # Timer refs for auto-transfer on timeout
+          |> assign(:media_control_request_timer, nil)
           # Initialize object3d controller from server state
           |> assign(:object3d_controller_user_id, get_object3d_controller(room_id))
           # Controller user IDs for request modals
@@ -949,6 +951,15 @@ defmodule SensoctoWeb.RoomShowLive do
 
   @impl true
   def handle_event("dismiss_control_request", _, socket) do
+    # "Keep Control" - cancel the pending request timer on the server
+    room_id = socket.assigns.room.id
+    current_user = socket.assigns.current_user
+
+    if current_user do
+      alias Sensocto.Object3D.Object3DPlayerServer
+      Object3DPlayerServer.keep_control(room_id, current_user.id)
+    end
+
     {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
@@ -980,7 +991,31 @@ defmodule SensoctoWeb.RoomShowLive do
   # Media control request modal handlers
   @impl true
   def handle_event("dismiss_media_control_request", _, socket) do
-    {:noreply, assign(socket, :media_control_request_modal, nil)}
+    room_id = socket.assigns.room.id
+    modal_data = socket.assigns[:media_control_request_modal]
+    current_user = socket.assigns[:current_user]
+
+    # Cancel the auto-transfer timer
+    if socket.assigns[:media_control_request_timer] do
+      Process.cancel_timer(socket.assigns.media_control_request_timer)
+    end
+
+    # Notify the requester that their request was denied
+    if modal_data && current_user do
+      controller_name = current_user.email || "The controller"
+
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "media:#{room_id}",
+        {:media_control_request_denied,
+         %{requester_id: modal_data.requester_id, controller_name: controller_name}}
+      )
+    end
+
+    {:noreply,
+     socket
+     |> assign(:media_control_request_modal, nil)
+     |> assign(:media_control_request_timer, nil)}
   end
 
   @impl true
@@ -988,6 +1023,11 @@ defmodule SensoctoWeb.RoomShowLive do
     room_id = socket.assigns.room.id
     current_user = socket.assigns.current_user
     modal_data = socket.assigns.media_control_request_modal
+
+    # Cancel the auto-transfer timer
+    if socket.assigns[:media_control_request_timer] do
+      Process.cancel_timer(socket.assigns.media_control_request_timer)
+    end
 
     if current_user && modal_data do
       alias Sensocto.Media.MediaPlayerServer
@@ -1003,7 +1043,10 @@ defmodule SensoctoWeb.RoomShowLive do
       )
     end
 
-    {:noreply, assign(socket, :media_control_request_modal, nil)}
+    {:noreply,
+     socket
+     |> assign(:media_control_request_modal, nil)
+     |> assign(:media_control_request_timer, nil)}
   end
 
   # Handle room mode presence diffs (for viewer counts)
@@ -1445,13 +1488,70 @@ defmodule SensoctoWeb.RoomShowLive do
     send_update(Object3DPlayerComponent,
       id: "object3d-player-#{room_id}",
       controller_user_id: user_id,
-      controller_user_name: user_name
+      controller_user_name: user_name,
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
     )
 
     # Store controller info in socket for control request handling
     {:noreply,
      socket
      |> assign(:object3d_controller_user_id, user_id)}
+  end
+
+  # Handle object3d control request with 30s timeout (server-managed)
+  @impl true
+  def handle_info(
+        {:object3d_control_requested,
+         %{
+           requester_id: requester_id,
+           requester_name: requester_name,
+           controller_user_id: _controller_id,
+           timeout_seconds: _timeout
+         }},
+        socket
+      ) do
+    room_id = socket.assigns.room.id
+    current_user = socket.assigns[:current_user]
+    controller_user_id = socket.assigns[:object3d_controller_user_id]
+
+    # Update component with pending request info
+    send_update(Object3DPlayerComponent,
+      id: "object3d-player-#{room_id}",
+      pending_request_user_id: requester_id,
+      pending_request_user_name: requester_name
+    )
+
+    # Only show modal to the controller
+    if current_user && controller_user_id &&
+         to_string(current_user.id) == to_string(controller_user_id) do
+      {:noreply,
+       socket
+       |> assign(:control_request_modal, %{
+         requester_id: requester_id,
+         requester_name: requester_name
+       })}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Handle object3d control request denied (keep control was clicked)
+  @impl true
+  def handle_info(
+        {:object3d_control_request_denied, %{requester_id: _requester_id}},
+        socket
+      ) do
+    room_id = socket.assigns.room.id
+
+    send_update(Object3DPlayerComponent,
+      id: "object3d-player-#{room_id}",
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    # Also dismiss the modal if it's open
+    {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
   @impl true
@@ -1468,7 +1568,8 @@ defmodule SensoctoWeb.RoomShowLive do
     )
 
     # Only show the modal to the current controller
-    if current_user && controller_user_id && current_user.id == controller_user_id do
+    if current_user && controller_user_id &&
+         to_string(current_user.id) == to_string(controller_user_id) do
       Logger.info("[RoomShowLive] Showing control request modal to controller")
 
       {:noreply,
@@ -1493,13 +1594,70 @@ defmodule SensoctoWeb.RoomShowLive do
     controller_user_id = socket.assigns[:media_controller_user_id]
 
     # Only show modal to the controller
-    if current_user && controller_user_id && current_user.id == controller_user_id do
+    if current_user && controller_user_id &&
+         to_string(current_user.id) == to_string(controller_user_id) do
+      # Cancel any existing timer
+      if socket.assigns[:media_control_request_timer] do
+        Process.cancel_timer(socket.assigns.media_control_request_timer)
+      end
+
+      # Start 30-second timeout timer for auto-transfer
+      timer_ref = Process.send_after(self(), :media_control_request_timeout, 30_000)
+
       {:noreply,
        socket
        |> assign(:media_control_request_modal, %{
          requester_id: requester_id,
          requester_name: requester_name
-       })}
+       })
+       |> assign(:media_control_request_timer, timer_ref)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Handle auto-transfer timeout for media control request
+  @impl true
+  def handle_info(:media_control_request_timeout, socket) do
+    modal_data = socket.assigns[:media_control_request_modal]
+    current_user = socket.assigns[:current_user]
+    room_id = socket.assigns[:room].id
+
+    if modal_data && current_user do
+      alias Sensocto.Media.MediaPlayerServer
+
+      # Auto-transfer control to the requester
+      MediaPlayerServer.release_control(room_id, current_user.id)
+      MediaPlayerServer.take_control(room_id, modal_data.requester_id, modal_data.requester_name)
+
+      {:noreply,
+       socket
+       |> assign(:media_control_request_modal, nil)
+       |> assign(:media_control_request_timer, nil)
+       |> put_flash(
+         :info,
+         "Control auto-transferred to #{modal_data.requester_name} (30s timeout)"
+       )}
+    else
+      {:noreply,
+       socket
+       |> assign(:media_control_request_modal, nil)
+       |> assign(:media_control_request_timer, nil)}
+    end
+  end
+
+  # Handle media control request denied notification (sent to requester)
+  @impl true
+  def handle_info(
+        {:media_control_request_denied,
+         %{requester_id: requester_id, controller_name: controller_name}},
+        socket
+      ) do
+    current_user = socket.assigns[:current_user]
+
+    # Only show flash to the requester
+    if current_user && current_user.id == requester_id do
+      {:noreply, put_flash(socket, :error, "#{controller_name} kept control of the media player")}
     else
       {:noreply, socket}
     end
@@ -2411,7 +2569,11 @@ defmodule SensoctoWeb.RoomShowLive do
 
       <%!-- Control Request Modal --%>
       <%= if @control_request_modal do %>
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div
+          id="control-request-modal"
+          phx-hook="NotificationSound"
+          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+        >
           <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
             <%!-- Header --%>
             <div class="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-4">
@@ -2469,9 +2631,29 @@ defmodule SensoctoWeb.RoomShowLive do
                 </div>
               </div>
 
-              <p class="text-gray-300 text-sm mb-6">
+              <p class="text-gray-300 text-sm mb-4">
                 Transferring control will allow them to navigate the 3D scene while you follow their view.
               </p>
+
+              <%!-- Auto-transfer warning with countdown --%>
+              <div
+                id="room-object3d-control-countdown"
+                phx-hook="CountdownTimer"
+                data-seconds="30"
+                class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
+              >
+                <p class="text-amber-200 text-sm flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Control will auto-transfer in <span class="font-bold countdown-display">30</span>s
+                </p>
+              </div>
 
               <%!-- Actions --%>
               <div class="flex gap-3">
@@ -2503,7 +2685,11 @@ defmodule SensoctoWeb.RoomShowLive do
 
       <%!-- Media Control Request Modal --%>
       <%= if @media_control_request_modal do %>
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div
+          id="media-control-request-modal"
+          phx-hook="NotificationSound"
+          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+        >
           <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
             <%!-- Header --%>
             <div class="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-4">
@@ -2561,9 +2747,29 @@ defmodule SensoctoWeb.RoomShowLive do
                 </div>
               </div>
 
-              <p class="text-gray-300 text-sm mb-6">
+              <p class="text-gray-300 text-sm mb-4">
                 Transferring control will allow them to play, pause, and navigate the media playlist.
               </p>
+
+              <%!-- Auto-transfer warning with countdown --%>
+              <div
+                id="room-media-control-countdown"
+                phx-hook="CountdownTimer"
+                data-seconds="30"
+                class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
+              >
+                <p class="text-amber-200 text-sm flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Control will auto-transfer in <span class="font-bold countdown-display">30</span>s
+                </p>
+              </div>
 
               <%!-- Actions --%>
               <div class="flex gap-3">

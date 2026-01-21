@@ -96,11 +96,13 @@ defmodule SensoctoWeb.Api.RoomController do
     # Get token from Authorization header
     auth_header = Plug.Conn.get_req_header(conn, "authorization")
 
-    token = case auth_header do
-      ["Bearer " <> t] -> t
-      [t] -> t  # Try without Bearer prefix
-      _ -> nil
-    end
+    token =
+      case auth_header do
+        ["Bearer " <> t] -> t
+        # Try without Bearer prefix
+        [t] -> t
+        _ -> nil
+      end
 
     if token do
       verify_token_and_load_user(token)
@@ -165,10 +167,13 @@ defmodule SensoctoWeb.Api.RoomController do
   end
 
   defp parse_user_id_from_subject(nil), do: {:error, "No subject in token"}
+
   defp parse_user_id_from_subject(sub) when is_binary(sub) do
     # Subject is in format "user?id=UUID"
     case Regex.run(~r/id=([a-f0-9-]+)/i, sub) do
-      [_, id] -> {:ok, id}
+      [_, id] ->
+        {:ok, id}
+
       _ ->
         # Maybe it's just the UUID directly
         if String.match?(sub, ~r/^[a-f0-9-]+$/i) do
@@ -181,13 +186,16 @@ defmodule SensoctoWeb.Api.RoomController do
 
   defp load_user_by_query(user_id) do
     import Ecto.Query
-    query = from u in "users",
-      where: u.id == type(^user_id, :binary_id),
-      select: %{id: type(u.id, :string), email: u.email}
+
+    query =
+      from u in "users",
+        where: u.id == type(^user_id, :binary_id),
+        select: %{id: type(u.id, :string), email: u.email}
 
     case Sensocto.Repo.all(query) do
       [user_data] ->
         {:ok, %{id: user_data.id, email: user_data.email, display_name: user_data.email}}
+
       _ ->
         {:error, "User not found"}
     end
@@ -228,7 +236,9 @@ defmodule SensoctoWeb.Api.RoomController do
     %{
       id: Map.get(attr, :id) || Ecto.UUID.generate(),
       attribute_type: Map.get(attr, :attribute_type) || Map.get(attr, :type),
-      attribute_name: Map.get(attr, :attribute_name) || Map.get(attr, :name) || Map.get(attr, :attribute_type) || Map.get(attr, :type),
+      attribute_name:
+        Map.get(attr, :attribute_name) || Map.get(attr, :name) || Map.get(attr, :attribute_type) ||
+          Map.get(attr, :type),
       last_value: Map.get(attr, :last_value),
       last_updated: Map.get(attr, :last_updated) || Map.get(attr, :last_updated_at)
     }

@@ -10,7 +10,10 @@ defmodule Sensocto.Bio.NoveltyDetectorTest do
   end
 
   describe "get_novelty_score/2" do
-    test "returns 0.0 for unknown sensor/attribute", %{sensor_id: sensor_id, attribute_id: attr_id} do
+    test "returns 0.0 for unknown sensor/attribute", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id
+    } do
       assert NoveltyDetector.get_novelty_score(sensor_id, attr_id) == 0.0
     end
 
@@ -22,6 +25,7 @@ defmodule Sensocto.Bio.NoveltyDetectorTest do
           %{payload: %{value: 51.0}, timestamp: DateTime.utc_now()},
           %{payload: %{value: 49.0}, timestamp: DateTime.utc_now()}
         ]
+
         NoveltyDetector.report_batch(sensor_id, attr_id, batch)
         Process.sleep(10)
       end
@@ -34,13 +38,17 @@ defmodule Sensocto.Bio.NoveltyDetectorTest do
       assert is_float(score)
     end
 
-    test "detects anomalous batch with high z-score", %{sensor_id: sensor_id, attribute_id: attr_id} do
+    test "detects anomalous batch with high z-score", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id
+    } do
       # Report consistent batches to establish baseline
       for _ <- 1..20 do
         batch = [
           %{payload: %{value: 50.0}, timestamp: DateTime.utc_now()},
           %{payload: %{value: 51.0}, timestamp: DateTime.utc_now()}
         ]
+
         NoveltyDetector.report_batch(sensor_id, attr_id, batch)
         Process.sleep(5)
       end
@@ -52,6 +60,7 @@ defmodule Sensocto.Bio.NoveltyDetectorTest do
         %{payload: %{value: 500.0}, timestamp: DateTime.utc_now()},
         %{payload: %{value: 510.0}, timestamp: DateTime.utc_now()}
       ]
+
       NoveltyDetector.report_batch(sensor_id, attr_id, anomalous_batch)
 
       Process.sleep(100)
@@ -67,7 +76,10 @@ defmodule Sensocto.Bio.NoveltyDetectorTest do
       assert NoveltyDetector.get_stats(sensor_id, attr_id) == nil
     end
 
-    test "returns stats after sufficient reporting", %{sensor_id: sensor_id, attribute_id: attr_id} do
+    test "returns stats after sufficient reporting", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id
+    } do
       # Need to report enough batches to build statistics (min 10 samples)
       for _ <- 1..12 do
         batch = [%{payload: %{value: 50.0}, timestamp: DateTime.utc_now()}]
@@ -81,7 +93,8 @@ defmodule Sensocto.Bio.NoveltyDetectorTest do
       assert stats != nil
       assert Map.has_key?(stats, :count)
       assert Map.has_key?(stats, :mean)
-      assert Map.has_key?(stats, :m2)  # Welford's algorithm uses m2, not variance
+      # Welford's algorithm uses m2, not variance
+      assert Map.has_key?(stats, :m2)
     end
   end
 

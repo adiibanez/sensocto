@@ -127,7 +127,10 @@ defmodule Sensocto.RoomPresenceServer do
       end)
 
     # Broadcast room update
-    broadcast_room_update(room_id, {:user_joined, %{user_id: user_id, sensor_ids: sensor_ids, role: role}})
+    broadcast_room_update(
+      room_id,
+      {:user_joined, %{user_id: user_id, sensor_ids: sensor_ids, role: role}}
+    )
 
     {:reply, :ok, new_state}
   end
@@ -173,7 +176,10 @@ defmodule Sensocto.RoomPresenceServer do
         new_state = put_in(state, [room_id, user_id], updated_presence)
 
         # Broadcast room update
-        broadcast_room_update(room_id, {:sensors_updated, %{user_id: user_id, sensor_ids: sensor_ids}})
+        broadcast_room_update(
+          room_id,
+          {:sensors_updated, %{user_id: user_id, sensor_ids: sensor_ids}}
+        )
 
         {:reply, :ok, new_state}
     end
@@ -241,11 +247,12 @@ defmodule Sensocto.RoomPresenceServer do
     # Seed state from external source (P2P, mobile, etc)
     room_presences =
       Enum.into(presences, %{}, fn p ->
-        {p.user_id, %{
-          sensor_ids: MapSet.new(p.sensor_ids),
-          role: p.role,
-          joined_at: p.joined_at || DateTime.utc_now()
-        }}
+        {p.user_id,
+         %{
+           sensor_ids: MapSet.new(p.sensor_ids),
+           role: p.role,
+           joined_at: p.joined_at || DateTime.utc_now()
+         }}
       end)
 
     new_state = Map.put(state, room_id, room_presences)

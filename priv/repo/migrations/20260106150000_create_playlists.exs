@@ -22,9 +22,17 @@ defmodule Sensocto.Repo.Migrations.CreatePlaylists do
     end
 
     # Only one lobby playlist allowed
-    create unique_index(:playlists, [:is_lobby], where: "is_lobby = true", name: "playlists_unique_lobby_index")
+    create unique_index(:playlists, [:is_lobby],
+             where: "is_lobby = true",
+             name: "playlists_unique_lobby_index"
+           )
+
     # One playlist per room
-    create unique_index(:playlists, [:room_id], where: "room_id IS NOT NULL", name: "playlists_unique_room_index")
+    create unique_index(:playlists, [:room_id],
+             where: "room_id IS NOT NULL",
+             name: "playlists_unique_room_index"
+           )
+
     create index(:playlists, [:room_id])
 
     # Create playlist_items table

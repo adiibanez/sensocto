@@ -23,21 +23,22 @@ defmodule Sensocto.Repo.Migrations.CreateObject3dPlaylists do
 
     # Only one lobby playlist allowed
     create unique_index(:object3d_playlists, [:is_lobby],
-      where: "is_lobby = true",
-      name: "object3d_playlists_unique_lobby_index"
-    )
+             where: "is_lobby = true",
+             name: "object3d_playlists_unique_lobby_index"
+           )
 
     # One playlist per room
     create unique_index(:object3d_playlists, [:room_id],
-      where: "room_id IS NOT NULL",
-      name: "object3d_playlists_unique_room_index"
-    )
+             where: "room_id IS NOT NULL",
+             name: "object3d_playlists_unique_room_index"
+           )
 
     create index(:object3d_playlists, [:room_id])
 
     # Create object3d_playlist_items table
     create table(:object3d_playlist_items, primary_key: false) do
       add :id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true
+
       add :playlist_id, references(:object3d_playlists, type: :uuid, on_delete: :delete_all),
         null: false
 
@@ -75,8 +76,15 @@ defmodule Sensocto.Repo.Migrations.CreateObject3dPlaylists do
     drop_if_exists table(:object3d_playlist_items)
 
     drop_if_exists index(:object3d_playlists, [:room_id])
-    drop_if_exists unique_index(:object3d_playlists, [:room_id], name: "object3d_playlists_unique_room_index")
-    drop_if_exists unique_index(:object3d_playlists, [:is_lobby], name: "object3d_playlists_unique_lobby_index")
+
+    drop_if_exists unique_index(:object3d_playlists, [:room_id],
+                     name: "object3d_playlists_unique_room_index"
+                   )
+
+    drop_if_exists unique_index(:object3d_playlists, [:is_lobby],
+                     name: "object3d_playlists_unique_lobby_index"
+                   )
+
     drop_if_exists table(:object3d_playlists)
   end
 end

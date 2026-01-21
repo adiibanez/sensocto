@@ -65,7 +65,9 @@ defmodule Sensocto.Release do
     ]
 
     existing =
-      repo.all(from(pi in PlaylistItem, where: pi.playlist_id == ^lobby.id, select: pi.youtube_video_id))
+      repo.all(
+        from(pi in PlaylistItem, where: pi.playlist_id == ^lobby.id, select: pi.youtube_video_id)
+      )
       |> MapSet.new()
 
     videos

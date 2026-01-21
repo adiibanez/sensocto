@@ -21,8 +21,10 @@ defmodule Sensocto.Iroh.RoomSync do
   @max_retries 3
 
   defstruct [
-    pending_rooms: %{},       # room_id => room_data (pending writes)
-    pending_memberships: %{}, # {room_id, user_id} => {role, :add | :remove}
+    # room_id => room_data (pending writes)
+    pending_rooms: %{},
+    # {room_id, user_id} => {role, :add | :remove}
+    pending_memberships: %{},
     debounce_ref: nil,
     retry_count: 0,
     hydrated: false
@@ -186,7 +188,10 @@ defmodule Sensocto.Iroh.RoomSync do
       new_state = do_flush(state)
       {:noreply, new_state}
     else
-      Logger.error("[Iroh.RoomSync] Max retries exceeded, dropping #{map_size(state.pending_rooms)} rooms")
+      Logger.error(
+        "[Iroh.RoomSync] Max retries exceeded, dropping #{map_size(state.pending_rooms)} rooms"
+      )
+
       {:noreply, %{state | pending_rooms: %{}, pending_memberships: %{}, retry_count: 0}}
     end
   end
@@ -236,21 +241,20 @@ defmodule Sensocto.Iroh.RoomSync do
         Logger.warning("[Iroh.RoomSync] Some items failed to sync, scheduling retry")
         Process.send_after(self(), :retry_flush, @retry_delay_ms)
 
-        %{state |
-          pending_rooms: failed_rooms,
-          pending_memberships: failed_memberships,
-          retry_count: state.retry_count + 1
+        %{
+          state
+          | pending_rooms: failed_rooms,
+            pending_memberships: failed_memberships,
+            retry_count: state.retry_count + 1
         }
       else
         if succeeded_rooms > 0 or succeeded_memberships > 0 do
-          Logger.debug("[Iroh.RoomSync] Flushed #{succeeded_rooms} rooms, #{succeeded_memberships} memberships")
+          Logger.debug(
+            "[Iroh.RoomSync] Flushed #{succeeded_rooms} rooms, #{succeeded_memberships} memberships"
+          )
         end
 
-        %{state |
-          pending_rooms: %{},
-          pending_memberships: %{},
-          retry_count: 0
-        }
+        %{state | pending_rooms: %{}, pending_memberships: %{}, retry_count: 0}
       end
     end
   end
@@ -265,8 +269,12 @@ defmodule Sensocto.Iroh.RoomSync do
         end
 
       case result do
-        {:ok, _} -> {succeeded + 1, failed}
-        :ok -> {succeeded + 1, failed}
+        {:ok, _} ->
+          {succeeded + 1, failed}
+
+        :ok ->
+          {succeeded + 1, failed}
+
         {:error, reason} ->
           Logger.warning("[Iroh.RoomSync] Failed to sync room #{room_id}: #{inspect(reason)}")
           {succeeded, Map.put(failed, room_id, room_data)}
@@ -275,7 +283,8 @@ defmodule Sensocto.Iroh.RoomSync do
   end
 
   defp flush_memberships(pending_memberships) do
-    Enum.reduce(pending_memberships, {0, %{}}, fn {{room_id, user_id} = key, {role, action}}, {succeeded, failed} ->
+    Enum.reduce(pending_memberships, {0, %{}}, fn {{room_id, user_id} = key, {role, action}},
+                                                  {succeeded, failed} ->
       result =
         case action do
           :add -> IrohStore.store_membership(room_id, user_id, role)
@@ -283,10 +292,17 @@ defmodule Sensocto.Iroh.RoomSync do
         end
 
       case result do
-        {:ok, _} -> {succeeded + 1, failed}
-        :ok -> {succeeded + 1, failed}
+        {:ok, _} ->
+          {succeeded + 1, failed}
+
+        :ok ->
+          {succeeded + 1, failed}
+
         {:error, reason} ->
-          Logger.warning("[Iroh.RoomSync] Failed to sync membership #{room_id}:#{user_id}: #{inspect(reason)}")
+          Logger.warning(
+            "[Iroh.RoomSync] Failed to sync membership #{room_id}:#{user_id}: #{inspect(reason)}"
+          )
+
           {succeeded, Map.put(failed, key, {role, action})}
       end
     end)

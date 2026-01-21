@@ -67,6 +67,7 @@ defmodule SensoctoWeb.SensorLive.Index do
     |> Enum.map(fn sensor_id ->
       try do
         state = SimpleSensor.get_view_state(sensor_id)
+
         %{
           sensor_id: sensor_id,
           sensor_name: state.sensor_name,
@@ -151,8 +152,7 @@ defmodule SensoctoWeb.SensorLive.Index do
           </div>
 
           <div class="mt-3 flex items-center text-sm text-gray-500">
-            <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4 mr-1" />
-            View details
+            <Heroicons.icon name="arrow-right" type="outline" class="h-4 w-4 mr-1" /> View details
           </div>
         </.link>
       </div>

@@ -33,12 +33,19 @@ defmodule Sensocto.Repo.Migrations.AddRoomsFeature do
     create table(:room_memberships, primary_key: false) do
       add :id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true
       add :role, :text, null: false, default: "member"
-      add :joined_at, :utc_datetime_usec, null: false, default: fragment("(now() AT TIME ZONE 'utc')")
+
+      add :joined_at, :utc_datetime_usec,
+        null: false,
+        default: fragment("(now() AT TIME ZONE 'utc')")
+
       add :room_id, references(:rooms, type: :uuid, on_delete: :delete_all), null: false
       add :user_id, references(:users, type: :uuid, on_delete: :delete_all), null: false
     end
 
-    create unique_index(:room_memberships, [:room_id, :user_id], name: "room_memberships_unique_membership_index")
+    create unique_index(:room_memberships, [:room_id, :user_id],
+             name: "room_memberships_unique_membership_index"
+           )
+
     create index(:room_memberships, [:user_id])
 
     # Add room_id to sensor_connections if the table exists
@@ -68,7 +75,10 @@ defmodule Sensocto.Repo.Migrations.AddRoomsFeature do
     END $$;
     """
 
-    drop_if_exists unique_index(:room_memberships, [:room_id, :user_id], name: "room_memberships_unique_membership_index")
+    drop_if_exists unique_index(:room_memberships, [:room_id, :user_id],
+                     name: "room_memberships_unique_membership_index"
+                   )
+
     drop_if_exists index(:room_memberships, [:user_id])
     drop_if_exists table(:room_memberships)
 

@@ -10,40 +10,46 @@ defmodule Sensocto.Utils.OtpDsl.Genserver do
     initial_state = Keyword.get(options, :initial_state, nil)
 
     # Generate my_name/0 based on register type at compile time
-    my_name_fn = cond do
-      is_nil(register) ->
-        quote do
-          def my_name(), do: name_from(__MODULE__)
-        end
-      is_tuple(register) ->
-        name = elem(register, 1)
-        quote do
-          def my_name(), do: unquote(name)
-        end
-      is_atom(register) ->
-        quote do
-          def my_name(), do: unquote(register)
-        end
-      true ->
-        quote do
-          def my_name(), do: unquote(register)
-        end
-    end
+    my_name_fn =
+      cond do
+        is_nil(register) ->
+          quote do
+            def my_name(), do: name_from(__MODULE__)
+          end
+
+        is_tuple(register) ->
+          name = elem(register, 1)
+
+          quote do
+            def my_name(), do: unquote(name)
+          end
+
+        is_atom(register) ->
+          quote do
+            def my_name(), do: unquote(register)
+          end
+
+        true ->
+          quote do
+            def my_name(), do: unquote(register)
+          end
+      end
 
     # Generate _start_link/0 based on register type at compile time
-    start_link_fn = if is_nil(register) do
-      quote do
-        def _start_link() do
-          :gen_server.start_link({:local, my_name()}, __MODULE__, unquote(initial_state), [])
+    start_link_fn =
+      if is_nil(register) do
+        quote do
+          def _start_link() do
+            :gen_server.start_link({:local, my_name()}, __MODULE__, unquote(initial_state), [])
+          end
+        end
+      else
+        quote do
+          def _start_link() do
+            :gen_server.start_link(unquote(register), __MODULE__, unquote(initial_state), [])
+          end
         end
       end
-    else
-      quote do
-        def _start_link() do
-          :gen_server.start_link(unquote(register), __MODULE__, unquote(initial_state), [])
-        end
-      end
-    end
 
     quote do
       import unquote(__MODULE__)

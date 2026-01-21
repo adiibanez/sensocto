@@ -153,14 +153,30 @@ defmodule Sensocto.Types.AttributeType do
   @spec category(String.t()) :: atom()
   def category(type) when is_binary(type) do
     case String.downcase(type) do
-      t when t in ~w(ecg hrv hr heartrate spo2 respiration) -> :health
-      t when t in ~w(imu accelerometer gyroscope magnetometer quaternion euler heading gravity tap orientation skeleton) -> :motion
-      t when t in ~w(geolocation altitude speed) -> :location
-      t when t in ~w(temperature humidity pressure light proximity gas air_quality color) -> :environment
-      t when t in ~w(battery button led speaker microphone body_location rich_presence) -> :device
-      t when t in ~w(steps calories distance) -> :activity
-      "buttplug" -> :specialty
-      _ -> :unknown
+      t when t in ~w(ecg hrv hr heartrate spo2 respiration) ->
+        :health
+
+      t
+      when t in ~w(imu accelerometer gyroscope magnetometer quaternion euler heading gravity tap orientation skeleton) ->
+        :motion
+
+      t when t in ~w(geolocation altitude speed) ->
+        :location
+
+      t when t in ~w(temperature humidity pressure light proximity gas air_quality color) ->
+        :environment
+
+      t when t in ~w(battery button led speaker microphone body_location rich_presence) ->
+        :device
+
+      t when t in ~w(steps calories distance) ->
+        :activity
+
+      "buttplug" ->
+        :specialty
+
+      _ ->
+        :unknown
     end
   end
 

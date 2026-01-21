@@ -11,12 +11,19 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   # Heartbeat interval for periodic sync broadcasts
   @heartbeat_interval_ms 1_000
 
+  # Timeout for control request (30 seconds)
+  @control_request_timeout_ms 30_000
+
   defstruct [
     :room_id,
     :playlist_id,
     :current_item_id,
     :controller_user_id,
     :controller_user_name,
+    # Pending control request
+    :pending_request_user_id,
+    :pending_request_user_name,
+    :pending_request_timer_ref,
     camera_position: %{x: 0, y: 0, z: 5},
     camera_target: %{x: 0, y: 0, z: 0},
     camera_updated_at: nil,
@@ -95,6 +102,25 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   """
   def sync_camera(room_id, position, target, user_id) do
     GenServer.cast(via_tuple(room_id), {:sync_camera, position, target, user_id})
+  end
+
+  @doc """
+  Requests control from the current controller.
+  Starts a 30-second timer after which control auto-transfers unless controller keeps control.
+  """
+  def request_control(room_id, user_id, user_name) do
+    GenServer.call(via_tuple(room_id), {:request_control, user_id, user_name})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc """
+  Controller keeps control, canceling pending request.
+  """
+  def keep_control(room_id, user_id) do
+    GenServer.call(via_tuple(room_id), {:keep_control, user_id})
+  catch
+    :exit, _ -> {:error, :not_found}
   end
 
   @doc """
@@ -229,6 +255,9 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   @impl true
   def handle_call({:release_control, user_id}, _from, state) do
     if state.controller_user_id == user_id do
+      # Cancel any pending request timer
+      state = cancel_pending_request(state)
+
       new_state = %{
         state
         | controller_user_id: nil,
@@ -236,6 +265,62 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
       }
 
       broadcast_controller_change(new_state)
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_controller}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:request_control, user_id, user_name}, _from, state) do
+    cond do
+      # No controller - just take control directly
+      is_nil(state.controller_user_id) ->
+        new_state = %{
+          state
+          | controller_user_id: user_id,
+            controller_user_name: user_name
+        }
+
+        broadcast_controller_change(new_state)
+        {:reply, {:ok, :control_granted}, new_state}
+
+      # Already the controller
+      state.controller_user_id == user_id ->
+        {:reply, {:ok, :already_controller}, state}
+
+      # Someone else is controller - start pending request with timer
+      true ->
+        # Cancel any existing pending request
+        state = cancel_pending_request(state)
+
+        # Start timeout timer
+        timer_ref =
+          Process.send_after(
+            self(),
+            {:control_request_timeout, user_id},
+            @control_request_timeout_ms
+          )
+
+        new_state = %{
+          state
+          | pending_request_user_id: user_id,
+            pending_request_user_name: user_name,
+            pending_request_timer_ref: timer_ref
+        }
+
+        # Broadcast to notify controller of pending request
+        broadcast_control_request(new_state, user_id, user_name)
+        {:reply, {:ok, :request_pending}, new_state}
+    end
+  end
+
+  @impl true
+  def handle_call({:keep_control, user_id}, _from, state) do
+    if state.controller_user_id == user_id and state.pending_request_user_id do
+      # Cancel the pending request
+      new_state = cancel_pending_request(state)
+      broadcast_control_request_denied(new_state, state.pending_request_user_id)
       {:reply, :ok, new_state}
     else
       {:reply, {:error, :not_controller}, state}
@@ -395,6 +480,32 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_info({:control_request_timeout, requester_user_id}, state) do
+    # Check if this timeout is still valid (same requester pending)
+    if state.pending_request_user_id == requester_user_id do
+      Logger.info(
+        "Control request timeout - transferring control to #{state.pending_request_user_name}"
+      )
+
+      # Transfer control to requester
+      new_state = %{
+        state
+        | controller_user_id: state.pending_request_user_id,
+          controller_user_name: state.pending_request_user_name,
+          pending_request_user_id: nil,
+          pending_request_user_name: nil,
+          pending_request_timer_ref: nil
+      }
+
+      broadcast_controller_change(new_state)
+      {:noreply, new_state}
+    else
+      # Request was already handled, ignore
+      {:noreply, state}
+    end
+  end
+
   # ============================================================================
   # Private Helpers
   # ============================================================================
@@ -438,9 +549,50 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
       {:object3d_controller_changed,
        %{
          controller_user_id: state.controller_user_id,
-         controller_user_name: state.controller_user_name
+         controller_user_name: state.controller_user_name,
+         pending_request_user_id: state.pending_request_user_id,
+         pending_request_user_name: state.pending_request_user_name
        }}
     )
+  end
+
+  defp broadcast_control_request(state, requester_id, requester_name) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:object3d_control_requested,
+       %{
+         requester_id: requester_id,
+         requester_name: requester_name,
+         controller_user_id: state.controller_user_id,
+         timeout_seconds: div(@control_request_timeout_ms, 1000)
+       }}
+    )
+  end
+
+  defp broadcast_control_request_denied(state, requester_id) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:object3d_control_request_denied,
+       %{
+         requester_id: requester_id,
+         controller_user_id: state.controller_user_id
+       }}
+    )
+  end
+
+  defp cancel_pending_request(%{pending_request_timer_ref: nil} = state), do: state
+
+  defp cancel_pending_request(%{pending_request_timer_ref: timer_ref} = state) do
+    Process.cancel_timer(timer_ref)
+
+    %{
+      state
+      | pending_request_user_id: nil,
+        pending_request_user_name: nil,
+        pending_request_timer_ref: nil
+    }
   end
 
   # Check if a user can control

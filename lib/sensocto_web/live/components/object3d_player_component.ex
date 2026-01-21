@@ -18,6 +18,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
      |> assign(:playlist_items, [])
      |> assign(:controller_user_id, nil)
      |> assign(:controller_user_name, nil)
+     |> assign(:pending_request_user_id, nil)
+     |> assign(:pending_request_user_name, nil)
      |> assign(:camera_position, %{x: 0, y: 0, z: 5})
      |> assign(:camera_target, %{x: 0, y: 0, z: 0})
      |> assign(:show_playlist, true)
@@ -49,6 +51,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
       |> maybe_assign(assigns, :playlist_items)
       |> maybe_assign(assigns, :controller_user_id)
       |> maybe_assign(assigns, :controller_user_name)
+      |> maybe_assign(assigns, :pending_request_user_id)
+      |> maybe_assign(assigns, :pending_request_user_name)
       |> maybe_assign(assigns, :camera_position)
       |> maybe_assign(assigns, :camera_target)
 
@@ -215,27 +219,41 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   def handle_event("request_control", _, socket) do
     user = socket.assigns.current_user
     controller_user_id = socket.assigns.controller_user_id
-    room_id = socket.assigns.room_id
 
-    if user && controller_user_id && user.id != controller_user_id do
+    if user && controller_user_id && to_string(user.id) != to_string(controller_user_id) do
       requester_name = user.email || "Someone"
 
-      # Broadcast the control request to the room - the controller will see it
-      Phoenix.PubSub.broadcast(
-        Sensocto.PubSub,
-        "object3d:#{room_id}",
-        {:control_requested, %{requester_id: user.id, requester_name: requester_name}}
-      )
+      case Object3DPlayerServer.request_control(socket.assigns.room_id, user.id, requester_name) do
+        {:ok, :control_granted} ->
+          {:noreply,
+           socket
+           |> Phoenix.LiveView.put_flash(:info, "You now have control")}
 
-      {:noreply,
-       socket
-       |> Phoenix.LiveView.put_flash(
-         :info,
-         "Request sent to #{socket.assigns.controller_user_name}"
-       )}
+        {:ok, :request_pending} ->
+          {:noreply,
+           socket
+           |> Phoenix.LiveView.put_flash(
+             :info,
+             "Request sent - control transfers in 30s unless #{socket.assigns.controller_user_name} keeps control"
+           )}
+
+        _ ->
+          {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("keep_control", _, socket) do
+    user = socket.assigns.current_user
+
+    if user do
+      Object3DPlayerServer.keep_control(socket.assigns.room_id, user.id)
+    end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -273,10 +291,22 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
 
   @impl true
   def handle_event("camera_moved", %{"position" => position, "target" => target}, socket) do
-    user_id = get_user_id(socket)
+    user = socket.assigns.current_user
+    user_id = user && user.id
+    controller_user_id = socket.assigns.controller_user_id
 
-    # Only sync if we're the controller
-    if can_control?(socket.assigns.controller_user_id, socket.assigns.current_user) do
+    # Auto-take control if no one has control and user is logged in
+    socket =
+      if is_nil(controller_user_id) && user do
+        user_name = user.email || "Unknown"
+        Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name)
+        socket
+      else
+        socket
+      end
+
+    # Only sync if we're the controller (or just took control)
+    if can_control?(controller_user_id, user) do
       Object3DPlayerServer.sync_camera(
         socket.assigns.room_id,
         position,
@@ -534,46 +564,75 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
           <% end %>
 
           <%!-- Controller Info & Take Control --%>
-          <div class="mb-3 flex items-center justify-between">
-            <%= if @controller_user_id do %>
-              <div class="flex items-center gap-2 text-sm">
-                <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                <span class="text-gray-300">
-                  Controlled by
-                  <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
-                </span>
-              </div>
-              <%= if @current_user && @current_user.id == @controller_user_id do %>
-                <button
-                  phx-click="release_control"
-                  phx-target={@myself}
-                  class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                >
-                  Release
-                </button>
+          <div class="mb-3">
+            <div class="flex items-center justify-between">
+              <%= if @controller_user_id do %>
+                <div class="flex items-center gap-2 text-sm">
+                  <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+                  <span class="text-gray-300">
+                    Controlled by
+                    <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
+                  </span>
+                </div>
+                <%= if @current_user && @current_user.id == @controller_user_id do %>
+                  <%= if @pending_request_user_id do %>
+                    <button
+                      phx-click="keep_control"
+                      phx-target={@myself}
+                      class="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors animate-pulse"
+                    >
+                      Keep Control
+                    </button>
+                  <% else %>
+                    <button
+                      phx-click="release_control"
+                      phx-target={@myself}
+                      class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                    >
+                      Release
+                    </button>
+                  <% end %>
+                <% else %>
+                  <%= if @current_user do %>
+                    <%= if @pending_request_user_id && @pending_request_user_id == @current_user.id do %>
+                      <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded">
+                        Request pending...
+                      </span>
+                    <% else %>
+                      <button
+                        phx-click="request_control"
+                        phx-target={@myself}
+                        class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
+                        title="Send a polite request to the current controller"
+                      >
+                        <Heroicons.icon name="hand-raised" type="outline" class="w-3.5 h-3.5" />
+                        Request
+                      </button>
+                    <% end %>
+                  <% end %>
+                <% end %>
               <% else %>
+                <div class="text-sm text-gray-400">No one has control</div>
                 <%= if @current_user do %>
                   <button
-                    phx-click="request_control"
+                    phx-click="take_control"
                     phx-target={@myself}
-                    class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
-                    title="Send a polite request to the current controller"
+                    class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
                   >
-                    <Heroicons.icon name="hand-raised" type="outline" class="w-3.5 h-3.5" /> Request
+                    Take Control
                   </button>
                 <% end %>
               <% end %>
-            <% else %>
-              <div class="text-sm text-gray-400">No one has control</div>
-              <%= if @current_user do %>
-                <button
-                  phx-click="take_control"
-                  phx-target={@myself}
-                  class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
-                >
-                  Take Control
-                </button>
-              <% end %>
+            </div>
+            <%!-- Pending Request Alert for Controller --%>
+            <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>
+              <div class="mt-2 px-3 py-2 bg-amber-900/50 border border-amber-600 rounded text-xs text-amber-200 flex items-center gap-2">
+                <Heroicons.icon name="hand-raised" type="solid" class="w-4 h-4 text-amber-400" />
+                <span>
+                  <span class="font-medium">{@pending_request_user_name || "Someone"}</span>
+                  is requesting control (30s timeout)
+                </span>
+              </div>
             <% end %>
           </div>
 

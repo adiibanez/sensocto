@@ -93,6 +93,7 @@ defmodule Sensocto.Search.SearchIndex do
       users_count: map_size(state.users),
       prefixes_count: map_size(state.prefixes)
     }
+
     {:reply, stats, state}
   end
 
@@ -152,7 +153,9 @@ defmodule Sensocto.Search.SearchIndex do
     users = index_all_users()
     prefixes = build_prefix_index(sensors, rooms, users)
 
-    Logger.debug("[SearchIndex] Reindexed #{map_size(sensors)} sensors, #{map_size(rooms)} rooms, #{map_size(users)} users")
+    Logger.debug(
+      "[SearchIndex] Reindexed #{map_size(sensors)} sensors, #{map_size(rooms)} rooms, #{map_size(users)} users"
+    )
 
     %__MODULE__{
       sensors: sensors,
@@ -175,13 +178,15 @@ defmodule Sensocto.Search.SearchIndex do
   defp fetch_sensor_data(sensor_id) do
     try do
       state = SimpleSensor.get_view_state(sensor_id)
-      {:ok, %{
-        id: sensor_id,
-        name: state.sensor_name || sensor_id,
-        type: state.sensor_type || "unknown",
-        attributes: Map.keys(state.attributes || %{}),
-        searchable: build_searchable_text(state.sensor_name, state.sensor_type, sensor_id)
-      }}
+
+      {:ok,
+       %{
+         id: sensor_id,
+         name: state.sensor_name || sensor_id,
+         type: state.sensor_type || "unknown",
+         attributes: Map.keys(state.attributes || %{}),
+         searchable: build_searchable_text(state.sensor_name, state.sensor_type, sensor_id)
+       }}
     catch
       :exit, _ -> :error
     end
@@ -197,6 +202,7 @@ defmodule Sensocto.Search.SearchIndex do
         is_public: room.is_public,
         searchable: build_searchable_text(room.name, room.description, room.id)
       }
+
       Map.put(acc, room.id, room_data)
     end)
   end
@@ -206,12 +212,14 @@ defmodule Sensocto.Search.SearchIndex do
       {:ok, users} ->
         Enum.reduce(users, %{}, fn user, acc ->
           email = to_string(user.email)
+
           user_data = %{
             id: user.id,
             email: email,
             name: email_to_name(email),
             searchable: String.downcase(email)
           }
+
           Map.put(acc, user.id, user_data)
         end)
 
@@ -241,6 +249,7 @@ defmodule Sensocto.Search.SearchIndex do
     sensor_prefixes = build_prefixes_for_items(sensors, :sensor)
     room_prefixes = build_prefixes_for_items(rooms, :room)
     user_prefixes = build_prefixes_for_items(users, :user)
+
     sensor_prefixes
     |> merge_prefix_maps(room_prefixes)
     |> merge_prefix_maps(user_prefixes)
@@ -249,8 +258,10 @@ defmodule Sensocto.Search.SearchIndex do
   defp build_prefixes_for_items(items, type) do
     Enum.reduce(items, %{}, fn {id, data}, acc ->
       words = extract_words(data.searchable)
+
       Enum.reduce(words, acc, fn word, word_acc ->
         prefixes = generate_prefixes(word, 1, 10)
+
         Enum.reduce(prefixes, word_acc, fn prefix, prefix_acc ->
           existing = Map.get(prefix_acc, prefix, [])
           Map.put(prefix_acc, prefix, [{type, id} | existing])
@@ -286,11 +297,12 @@ defmodule Sensocto.Search.SearchIndex do
       name: sensor_data[:name] || sensor_id,
       type: sensor_data[:type] || "unknown",
       attributes: sensor_data[:attributes] || [],
-      searchable: build_searchable_text(
-        sensor_data[:name],
-        sensor_data[:type],
-        sensor_id
-      )
+      searchable:
+        build_searchable_text(
+          sensor_data[:name],
+          sensor_data[:type],
+          sensor_id
+        )
     }
 
     new_sensors = Map.put(state.sensors, sensor_id, data)
@@ -311,11 +323,12 @@ defmodule Sensocto.Search.SearchIndex do
       name: room_data[:name] || room_id,
       description: room_data[:description],
       is_public: room_data[:is_public] || false,
-      searchable: build_searchable_text(
-        room_data[:name],
-        room_data[:description],
-        room_id
-      )
+      searchable:
+        build_searchable_text(
+          room_data[:name],
+          room_data[:description],
+          room_id
+        )
     }
 
     new_rooms = Map.put(state.rooms, room_id, data)
@@ -384,14 +397,15 @@ defmodule Sensocto.Search.SearchIndex do
     name = String.downcase(item.name || "")
     searchable = item.searchable || ""
 
-    score = cond do
-      name == query -> 100
-      String.starts_with?(name, query) -> 80
-      String.contains?(name, query) -> 60
-      String.starts_with?(searchable, query) -> 40
-      String.contains?(searchable, query) -> 20
-      true -> 10
-    end
+    score =
+      cond do
+        name == query -> 100
+        String.starts_with?(name, query) -> 80
+        String.contains?(name, query) -> 60
+        String.starts_with?(searchable, query) -> 40
+        String.contains?(searchable, query) -> 20
+        true -> 10
+      end
 
     {item, score}
   end

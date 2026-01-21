@@ -340,18 +340,65 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
       case get_doc_id(state, room_id) do
         {:ok, doc_id} ->
           # Set camera position
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d", "camera_position"], "x", Map.get(position, :x, 0))
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d", "camera_position"], "y", Map.get(position, :y, 0))
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d", "camera_position"], "z", Map.get(position, :z, 5))
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d", "camera_position"],
+            "x",
+            Map.get(position, :x, 0)
+          )
+
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d", "camera_position"],
+            "y",
+            Map.get(position, :y, 0)
+          )
+
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d", "camera_position"],
+            "z",
+            Map.get(position, :z, 5)
+          )
 
           # Set camera target
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d", "camera_target"], "x", Map.get(target, :x, 0))
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d", "camera_target"], "y", Map.get(target, :y, 0))
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d", "camera_target"], "z", Map.get(target, :z, 0))
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d", "camera_target"],
+            "x",
+            Map.get(target, :x, 0)
+          )
+
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d", "camera_target"],
+            "y",
+            Map.get(target, :y, 0)
+          )
+
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d", "camera_target"],
+            "z",
+            Map.get(target, :z, 0)
+          )
 
           # Set metadata
           Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], "updated_by", user_id)
-          Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], "updated_at", DateTime.utc_now() |> DateTime.to_iso8601())
+
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            ["object_3d"],
+            "updated_at",
+            DateTime.utc_now() |> DateTime.to_iso8601()
+          )
 
           {:reply, :ok, state}
 
@@ -575,7 +622,15 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
       {:ok, doc_id} ->
         Native.automerge_map_put(state.node_ref, doc_id, ["media"], field, value)
         Native.automerge_map_put(state.node_ref, doc_id, ["media"], "updated_by", user_id)
-        Native.automerge_map_put(state.node_ref, doc_id, ["media"], "updated_at", DateTime.utc_now() |> DateTime.to_iso8601())
+
+        Native.automerge_map_put(
+          state.node_ref,
+          doc_id,
+          ["media"],
+          "updated_at",
+          DateTime.utc_now() |> DateTime.to_iso8601()
+        )
+
         :ok
 
       error ->
@@ -588,7 +643,15 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
       {:ok, doc_id} ->
         Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], field, value)
         Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], "updated_by", user_id)
-        Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], "updated_at", DateTime.utc_now() |> DateTime.to_iso8601())
+
+        Native.automerge_map_put(
+          state.node_ref,
+          doc_id,
+          ["object_3d"],
+          "updated_at",
+          DateTime.utc_now() |> DateTime.to_iso8601()
+        )
+
         :ok
 
       error ->
@@ -606,16 +669,34 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
         existing = Native.automerge_map_get(state.node_ref, doc_id, ["participants"], user_id)
 
         if existing == :not_found do
-          Native.automerge_map_put_object(state.node_ref, doc_id, ["participants"], user_id, "map")
+          Native.automerge_map_put_object(
+            state.node_ref,
+            doc_id,
+            ["participants"],
+            user_id,
+            "map"
+          )
         end
 
         # Update presence fields
         Enum.each(presence_data, fn {key, value} ->
-          Native.automerge_map_put(state.node_ref, doc_id, participant_path, to_string(key), value)
+          Native.automerge_map_put(
+            state.node_ref,
+            doc_id,
+            participant_path,
+            to_string(key),
+            value
+          )
         end)
 
         # Always update last_seen
-        Native.automerge_map_put(state.node_ref, doc_id, participant_path, "last_seen", DateTime.utc_now() |> DateTime.to_iso8601())
+        Native.automerge_map_put(
+          state.node_ref,
+          doc_id,
+          participant_path,
+          "last_seen",
+          DateTime.utc_now() |> DateTime.to_iso8601()
+        )
 
         :ok
 

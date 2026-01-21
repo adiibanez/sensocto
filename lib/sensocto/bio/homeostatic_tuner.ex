@@ -33,16 +33,14 @@ defmodule Sensocto.Bio.HomeostaticTuner do
   @adaptation_rate 0.005
   @sample_buffer_size 3600
 
-  defstruct [
-    load_samples: [],
-    threshold_offsets: %{
-      elevated: 0.0,
-      high: 0.0,
-      critical: 0.0
-    },
-    last_adaptation: nil,
-    actual_distribution: %{}
-  ]
+  defstruct load_samples: [],
+            threshold_offsets: %{
+              elevated: 0.0,
+              high: 0.0,
+              critical: 0.0
+            },
+            last_adaptation: nil,
+            actual_distribution: %{}
 
   # ============================================================================
   # Client API
@@ -128,10 +126,11 @@ defmodule Sensocto.Bio.HomeostaticTuner do
           {:adaptation, %{actual: actual_dist, offsets: new_offsets}}
         )
 
-        %{state |
-          threshold_offsets: new_offsets,
-          actual_distribution: actual_dist,
-          last_adaptation: DateTime.utc_now()
+        %{
+          state
+          | threshold_offsets: new_offsets,
+            actual_distribution: actual_dist,
+            last_adaptation: DateTime.utc_now()
         }
       else
         state

@@ -20,7 +20,15 @@ defmodule Sensocto.Bio.CircadianSchedulerTest do
     test "returns valid phase atom" do
       phase = CircadianScheduler.get_phase()
 
-      valid_phases = [:unknown, :normal, :approaching_peak, :peak, :approaching_off_peak, :off_peak]
+      valid_phases = [
+        :unknown,
+        :normal,
+        :approaching_peak,
+        :peak,
+        :approaching_off_peak,
+        :off_peak
+      ]
+
       assert phase in valid_phases
     end
   end

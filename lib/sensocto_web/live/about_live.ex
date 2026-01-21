@@ -23,7 +23,7 @@ defmodule SensoctoWeb.AboutLive do
       {"stream", "pink", "ROV video feeds with real-time annotations"},
       {"integrate", "emerald", "Buttplug.io for haptic device control"},
       {"track", "cyan", "HRV and recovery metrics from medical wearables"},
-      {"collect", "teal", "field research data stored locally on mobile"},
+      {"collect", "teal", "field research data stored locally on mobile"}
     ],
 
     # EMPATHY LENS - Emotional, relational, experiential
@@ -41,7 +41,7 @@ defmodule SensoctoWeb.AboutLive do
       {"know", "emerald", "when words aren't needed anymore"},
       {"share", "cyan", "presence across distance and time"},
       {"feel", "rose", "your body's wisdom guiding decisions"},
-      {"experience", "purple", "synchronized pleasure in real-time"},
+      {"experience", "purple", "synchronized pleasure in real-time"}
     ],
 
     # FUN LENS - Games, play, entertainment, social experiences
@@ -59,7 +59,7 @@ defmodule SensoctoWeb.AboutLive do
       {"unlock", "purple", "new experiences by reaching flow states"},
       {"stream", "cyan", "your gameplay with live biometrics overlay"},
       {"vibe", "pink", "together at silent discos with shared pulse"},
-      {"laugh", "yellow", "as haptic devices tickle synchronized giggles"},
+      {"laugh", "yellow", "as haptic devices tickle synchronized giggles"}
     ],
 
     # IMPACT LENS - Social good, accessibility, healthcare outcomes
@@ -77,7 +77,7 @@ defmodule SensoctoWeb.AboutLive do
       {"detect", "emerald", "wandering risk via wearable location tracking"},
       {"transform", "violet", "physiotherapy into engaging games"},
       {"connect", "blue", "isolated individuals to support networks"},
-      {"verify", "teal", "consent through embodied signals"},
+      {"verify", "teal", "consent through embodied signals"}
     ],
 
     # RESEARCH LENS - Scientific applications, data, analysis
@@ -95,47 +95,52 @@ defmodule SensoctoWeb.AboutLive do
       {"map", "blue", "stress patterns in distributed populations"},
       {"assess", "emerald", "intervention effectiveness with biometrics"},
       {"explore", "purple", "massive datasets like wildflow.org corals"},
-      {"prototype", "amber", "assistive interfaces with sensor feedback"},
+      {"prototype", "amber", "assistive interfaces with sensor feedback"}
     ]
   }
 
   # Ordered list - empathy first and featured (larger button)
   @lens_info [
-    {:empathy, %{
-      name: "Empathy",
-      icon: "hero-heart",
-      color: "pink",
-      description: "Feelings, relationships, presence",
-      featured: true
-    }},
-    {:fun, %{
-      name: "Fun",
-      icon: "hero-puzzle-piece",
-      color: "yellow",
-      description: "Games, play, entertainment",
-      featured: false
-    }},
-    {:technical, %{
-      name: "Technical",
-      icon: "hero-cpu-chip",
-      color: "cyan",
-      description: "Sensors, protocols, data flows",
-      featured: false
-    }},
-    {:impact, %{
-      name: "Impact",
-      icon: "hero-globe-alt",
-      color: "emerald",
-      description: "Social good, accessibility, outcomes",
-      featured: false
-    }},
-    {:research, %{
-      name: "Research",
-      icon: "hero-beaker",
-      color: "purple",
-      description: "Science, analysis, discovery",
-      featured: false
-    }}
+    {:empathy,
+     %{
+       name: "Empathy",
+       icon: "hero-heart",
+       color: "pink",
+       description: "Feelings, relationships, presence",
+       featured: true
+     }},
+    {:fun,
+     %{
+       name: "Fun",
+       icon: "hero-puzzle-piece",
+       color: "yellow",
+       description: "Games, play, entertainment",
+       featured: false
+     }},
+    {:technical,
+     %{
+       name: "Technical",
+       icon: "hero-cpu-chip",
+       color: "cyan",
+       description: "Sensors, protocols, data flows",
+       featured: false
+     }},
+    {:impact,
+     %{
+       name: "Impact",
+       icon: "hero-globe-alt",
+       color: "emerald",
+       description: "Social good, accessibility, outcomes",
+       featured: false
+     }},
+    {:research,
+     %{
+       name: "Research",
+       icon: "hero-beaker",
+       color: "purple",
+       description: "Science, analysis, discovery",
+       featured: false
+     }}
   ]
 
   # Research papers and scientific references
@@ -147,7 +152,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "Personality and Social Psychology Review",
       doi: "10.1177/1088868316628405",
       category: :synchronization,
-      description: "Systematic review defining interpersonal autonomic physiology and how physiological synchronization emerges during social interactions."
+      description:
+        "Systematic review defining interpersonal autonomic physiology and how physiological synchronization emerges during social interactions."
     },
     %{
       title: "State of the Art of Interpersonal Physiology in Psychotherapy: A Systematic Review",
@@ -156,7 +162,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "Frontiers in Psychology",
       doi: "10.3389/fpsyg.2017.02053",
       category: :therapy,
-      description: "Reviews evidence for physiological synchrony between therapists and clients as a marker of therapeutic alliance."
+      description:
+        "Reviews evidence for physiological synchrony between therapists and clients as a marker of therapeutic alliance."
     },
     %{
       title: "Social Ties and Mental Health",
@@ -165,25 +172,30 @@ defmodule SensoctoWeb.AboutLive do
       journal: "Journal of Urban Health",
       doi: "10.1093/jurban/78.3.458",
       category: :care_networks,
-      description: "Foundational work on how social networks influence mental health outcomes and crisis prevention."
+      description:
+        "Foundational work on how social networks influence mental health outcomes and crisis prevention."
     },
     %{
-      title: "Partner Influence and In-Phase Versus Anti-Phase Physiological Linkage in Romantic Couples",
+      title:
+        "Partner Influence and In-Phase Versus Anti-Phase Physiological Linkage in Romantic Couples",
       authors: "Reed et al.",
       year: 2013,
       journal: "International Journal of Psychophysiology",
       doi: "10.1016/j.ijpsycho.2012.08.009",
       category: :synchronization,
-      description: "Examines how partners' physiological systems co-regulate during emotional conversations and health discussions."
+      description:
+        "Examines how partners' physiological systems co-regulate during emotional conversations and health discussions."
     },
     %{
-      title: "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
+      title:
+        "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
       authors: "Sano et al.",
       year: 2018,
       journal: "Journal of Medical Internet Research",
       doi: "10.2196/jmir.9410",
       category: :wearables,
-      description: "Uses wearable biosensors and machine learning to classify stress and mental health status in real-time."
+      description:
+        "Uses wearable biosensors and machine learning to classify stress and mental health status in real-time."
     },
     %{
       title: "Biofeedback in the Treatment of Anxiety and PTSD",
@@ -192,7 +204,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "Applied Psychophysiology and Biofeedback",
       doi: "10.1007/s10484-010-9141-x",
       category: :therapy,
-      description: "Evidence for HRV biofeedback as an effective intervention for anxiety and trauma recovery."
+      description:
+        "Evidence for HRV biofeedback as an effective intervention for anxiety and trauma recovery."
     },
     %{
       title: "Peer Support in Mental Health: A Systematic Review",
@@ -201,7 +214,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "Journal of Mental Health",
       doi: "10.3109/09638237.2011.583947",
       category: :care_networks,
-      description: "Systematic review of peer support effectiveness in mental health care and community interventions."
+      description:
+        "Systematic review of peer support effectiveness in mental health care and community interventions."
     },
     %{
       title: "Collective Effervescence and Synchrony in Ritual",
@@ -210,7 +224,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "Frontiers in Psychology",
       doi: "10.3389/fpsyg.2015.01963",
       category: :synchronization,
-      description: "Studies how group rituals produce physiological and emotional synchronization among participants."
+      description:
+        "Studies how group rituals produce physiological and emotional synchronization among participants."
     },
     %{
       title: "Autonomic Nervous System Dynamics for Mood Detection",
@@ -219,7 +234,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "IEEE Transactions on Affective Computing",
       doi: "10.1109/TAFFC.2014.2332167",
       category: :wearables,
-      description: "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
+      description:
+        "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
     },
     %{
       title: "Technology-Mediated Compassion in Healthcare",
@@ -228,7 +244,8 @@ defmodule SensoctoWeb.AboutLive do
       journal: "JMIR Mental Health",
       doi: "10.2196/mental.5316",
       category: :care_networks,
-      description: "Explores how technology can enhance compassionate care in mental health treatment settings."
+      description:
+        "Explores how technology can enhance compassionate care in mental health treatment settings."
     }
   ]
 
@@ -386,8 +403,8 @@ defmodule SensoctoWeb.AboutLive do
             Technology promised connection and delivered <span class="text-gray-500">performance</span>.
             We scroll, we perform, we feel more alone.
           </p>
-
-          <!-- Lens Switcher -->
+          
+    <!-- Lens Switcher -->
           <div class="flex justify-center items-center gap-2 mb-6">
             <%= for {lens_key, info} <- @lens_info do %>
               <button
@@ -407,12 +424,12 @@ defmodule SensoctoWeb.AboutLive do
                 title={info.description}
               >
                 <.icon name={info.icon} class={if info.featured, do: "h-4 w-4", else: "h-3.5 w-3.5"} />
-                <span><%= info.name %></span>
+                <span>{info.name}</span>
               </button>
             <% end %>
           </div>
-
-          <!-- Clickable Use Cases Carousel -->
+          
+    <!-- Clickable Use Cases Carousel -->
           <div
             class="text-xl text-gray-400 max-w-2xl mx-auto mb-6 cursor-pointer hover:text-gray-300 transition-colors group"
             phx-click="shuffle_use_cases"
@@ -421,8 +438,8 @@ defmodule SensoctoWeb.AboutLive do
             <p class="leading-relaxed">
               What if you could
               <%= for {{verb, color, rest}, index} <- Enum.with_index(visible_use_cases(@use_cases, @current_offset, @visible_count)) do %>
-                <span class={"text-#{color}-400 font-medium"}><%= verb %></span>
-                <%= rest %><%= if index < @visible_count - 1, do: "? ", else: "?" %>
+                <span class={"text-#{color}-400 font-medium"}>{verb}</span>
+                {rest}{if index < @visible_count - 1, do: "? ", else: "?"}
               <% end %>
             </p>
             <div class="flex items-center justify-center gap-2 mt-3 text-sm text-gray-500 group-hover:text-gray-400 transition-colors">
@@ -430,8 +447,8 @@ defmodule SensoctoWeb.AboutLive do
               <span>Click for more examples</span>
             </div>
           </div>
-
-          <!-- Slider for visible count -->
+          
+    <!-- Slider for visible count -->
           <form phx-change="set_visible_count" class="flex items-center justify-center gap-4 mb-8">
             <label class="text-sm text-gray-500">Show</label>
             <input
@@ -442,7 +459,7 @@ defmodule SensoctoWeb.AboutLive do
               name="count"
               class="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
             />
-            <span class="text-sm text-cyan-400 w-6 text-center"><%= @visible_count %></span>
+            <span class="text-sm text-cyan-400 w-6 text-center">{@visible_count}</span>
           </form>
 
           <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 max-w-2xl mx-auto">
@@ -571,7 +588,7 @@ defmodule SensoctoWeb.AboutLive do
                 No harvesting. No surveillance. No algorithms deciding who sees what.
               </p>
             </div>
-
+            
     <!-- Research Papers Section (visible when research lens is active) -->
             <div :if={@current_lens == :research} class="mt-10">
               <h3 class="text-xl font-semibold text-white mb-6">
@@ -581,17 +598,17 @@ defmodule SensoctoWeb.AboutLive do
               <p class="text-gray-400 mb-6">
                 Our approach is grounded in peer-reviewed research on physiological synchronization, care networks, and wearable technology for mental health.
               </p>
-
+              
     <!-- Category filters -->
               <div class="flex flex-wrap gap-2 mb-6">
                 <%= for {key, cat} <- @paper_categories do %>
                   <span class={"inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-#{cat.color}-500/20 text-#{cat.color}-400"}>
                     <.icon name={cat.icon} class="h-3.5 w-3.5" />
-                    <%= cat.name %>
+                    {cat.name}
                   </span>
                 <% end %>
               </div>
-
+              
     <!-- Papers list -->
               <div class="space-y-4">
                 <%= for paper <- @research_papers do %>
@@ -603,13 +620,14 @@ defmodule SensoctoWeb.AboutLive do
                       </div>
                       <div class="flex-1 min-w-0">
                         <h4 class="text-white font-medium text-sm leading-tight mb-1">
-                          <%= paper.title %>
+                          {paper.title}
                         </h4>
                         <p class="text-gray-500 text-xs mb-2">
-                          <%= paper.authors %> (<%= paper.year %>) · <span class="text-gray-600"><%= paper.journal %></span>
+                          {paper.authors} ({paper.year}) ·
+                          <span class="text-gray-600">{paper.journal}</span>
                         </p>
                         <p class="text-gray-400 text-sm">
-                          <%= paper.description %>
+                          {paper.description}
                         </p>
                         <a
                           href={"https://doi.org/#{paper.doi}"}
@@ -618,7 +636,7 @@ defmodule SensoctoWeb.AboutLive do
                           class="inline-flex items-center gap-1 mt-2 text-xs text-purple-400 hover:text-purple-300 transition-colors"
                         >
                           <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" />
-                          DOI: <%= paper.doi %>
+                          DOI: {paper.doi}
                         </a>
                       </div>
                     </div>

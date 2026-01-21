@@ -29,22 +29,22 @@ defmodule Sensocto.P2P.RoomTicket do
   ]
 
   @type t :: %__MODULE__{
-    room_id: String.t(),
-    room_name: String.t(),
-    docs_namespace: String.t() | nil,
-    gossip_topic: String.t() | nil,
-    docs_secret: String.t() | nil,
-    bootstrap_peers: [peer_addr()],
-    relay_url: String.t() | nil,
-    created_at: integer(),
-    expires_at: integer() | nil
-  }
+          room_id: String.t(),
+          room_name: String.t(),
+          docs_namespace: String.t() | nil,
+          gossip_topic: String.t() | nil,
+          docs_secret: String.t() | nil,
+          bootstrap_peers: [peer_addr()],
+          relay_url: String.t() | nil,
+          created_at: integer(),
+          expires_at: integer() | nil
+        }
 
   @type peer_addr :: %{
-    node_id: String.t(),
-    addrs: [String.t()],
-    relay_url: String.t() | nil
-  }
+          node_id: String.t(),
+          addrs: [String.t()],
+          relay_url: String.t() | nil
+        }
 
   @doc """
   Generates a room ticket for P2P connection.
@@ -67,7 +67,6 @@ defmodule Sensocto.P2P.RoomTicket do
     with {:ok, docs_namespace} <- get_or_create_docs_namespace(room_id),
          {:ok, gossip_topic} <- get_or_create_gossip_topic(room_id),
          {:ok, bootstrap_peers} <- get_bootstrap_peers() do
-
       now = System.system_time(:second)
 
       ticket = %__MODULE__{
@@ -130,6 +129,7 @@ defmodule Sensocto.P2P.RoomTicket do
   Checks if a ticket has expired.
   """
   def expired?(%__MODULE__{expires_at: nil}), do: false
+
   def expired?(%__MODULE__{expires_at: expires_at}) do
     System.system_time(:second) > expires_at
   end
@@ -163,7 +163,8 @@ defmodule Sensocto.P2P.RoomTicket do
       docs_namespace: Map.get(map, "docs_namespace") || Map.get(map, :docs_namespace),
       gossip_topic: Map.get(map, "gossip_topic") || Map.get(map, :gossip_topic),
       docs_secret: Map.get(map, "docs_secret") || Map.get(map, :docs_secret),
-      bootstrap_peers: parse_peers(Map.get(map, "bootstrap_peers") || Map.get(map, :bootstrap_peers) || []),
+      bootstrap_peers:
+        parse_peers(Map.get(map, "bootstrap_peers") || Map.get(map, :bootstrap_peers) || []),
       relay_url: Map.get(map, "relay_url") || Map.get(map, :relay_url),
       created_at: Map.get(map, "created_at") || Map.get(map, :created_at),
       expires_at: Map.get(map, "expires_at") || Map.get(map, :expires_at)
@@ -234,22 +235,22 @@ defmodule Sensocto.P2P.RoomTicket do
   # Get our node's address info
   defp get_our_peer_addr(node_ref) do
     try do
-      # Get node ID (public key)
-      node_id = Native.node_id(node_ref)
+      # Get node address (contains node ID/public key)
+      case Native.gen_node_addr(node_ref) do
+        {:ok, node_addr} when is_binary(node_addr) ->
+          # Get known addresses
+          addrs = get_node_addrs(node_ref)
 
-      if is_binary(node_id) do
-        # Get known addresses
-        addrs = get_node_addrs(node_ref)
+          peer = %{
+            node_id: node_addr,
+            addrs: addrs,
+            relay_url: get_relay_url()
+          }
 
-        peer = %{
-          node_id: node_id,
-          addrs: addrs,
-          relay_url: get_relay_url()
-        }
+          {:ok, peer}
 
-        {:ok, peer}
-      else
-        :error
+        _ ->
+          :error
       end
     rescue
       _ -> :error
@@ -285,6 +286,7 @@ defmodule Sensocto.P2P.RoomTicket do
     case :ets.whereis(@namespace_table) do
       :undefined ->
         :ets.new(@namespace_table, [:set, :public, :named_table])
+
       _ ->
         :ok
     end
@@ -292,6 +294,7 @@ defmodule Sensocto.P2P.RoomTicket do
 
   defp get_cached_namespace(room_id, type) do
     ensure_cache_table()
+
     case :ets.lookup(@namespace_table, {room_id, type}) do
       [{_, namespace}] -> {:ok, namespace}
       [] -> :not_found

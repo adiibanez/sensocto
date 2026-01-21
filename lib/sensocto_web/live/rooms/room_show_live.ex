@@ -1596,7 +1596,7 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp has_composite_view?(attr_type) do
     # These attribute types have dedicated composite Svelte components
-    attr_type in ["heartrate", "hr", "imu", "geolocation", "ecg", "battery", "spo2"]
+    attr_type in ["heartrate", "hr", "imu", "geolocation", "ecg", "battery", "spo2", "skeleton"]
   end
 
   defp category_order(category) do
@@ -1620,6 +1620,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "ecg" -> extract_ecg_data(sensors_state)
       "battery" -> extract_battery_data(sensors_state)
       "spo2" -> extract_spo2_data(sensors_state)
+      "skeleton" -> extract_skeleton_data(sensors_state)
       _ -> extract_generic_data(sensors_state, lens_type)
     end
   end
@@ -1766,6 +1767,19 @@ defmodule SensoctoWeb.RoomShowLive do
         end
 
       %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, spo2: spo2}
+    end)
+  end
+
+  defp extract_skeleton_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "skeleton"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, _sensor} ->
+      %{sensor_id: sensor_id}
     end)
   end
 
@@ -2547,6 +2561,15 @@ defmodule SensoctoWeb.RoomShowLive do
             socket={@socket}
             class="w-full"
           />
+        <% "skeleton" -> %>
+          <div class="h-[500px]">
+            <.svelte
+              name="CompositeSkeletons"
+              props={%{sensors: @lens_data}}
+              socket={@socket}
+              class="w-full h-full"
+            />
+          </div>
         <% _ -> %>
           <%!-- Generic lens view - show list of matching sensors --%>
           <div class="text-gray-400">

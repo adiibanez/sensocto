@@ -80,6 +80,7 @@ defmodule SensoctoWeb.Router do
       live "/lobby/location", LobbyLive, :location
       live "/lobby/ecg", LobbyLive, :ecg
       live "/lobby/battery", LobbyLive, :battery
+      live "/lobby/skeleton", LobbyLive, :skeleton
       live "/lobby/users", LobbyLive, :users
       live "/sense", SenseLive, :index
       live "/sensors", SensorLive.Index, :index

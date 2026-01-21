@@ -264,6 +264,16 @@
         >
           <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
         </.link>
+        <.link
+          :if={:skeleton in @available_lenses}
+          patch={~p"/lobby/skeleton"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :skeleton,
+              do: "bg-purple-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
+        </.link>
       </div>
 
       <%!-- Lens Dropdown for all types - only shows available lenses --%>
@@ -282,6 +292,7 @@
             <option :if={:location in @available_lenses} value="location" selected={@live_action == :location}>Location</option>
             <option :if={:ecg in @available_lenses} value="ecg" selected={@live_action == :ecg}>ECG</option>
             <option :if={:battery in @available_lenses} value="battery" selected={@live_action == :battery}>Battery</option>
+            <option :if={:skeleton in @available_lenses} value="skeleton" selected={@live_action == :skeleton}>Skeleton</option>
           </optgroup>
         </select>
       </form>
@@ -396,6 +407,25 @@
       <Heroicons.icon name="battery-50" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No battery sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with battery monitoring</p>
+    </div>
+  </div>
+
+  <div
+    :if={@live_action == :skeleton}
+    id="composite-skeleton"
+    phx-hook="CompositeMeasurementHandler"
+    class="h-[500px]"
+  >
+    <.svelte
+      name="CompositeSkeletons"
+      props={%{sensors: @skeleton_sensors}}
+      socket={@socket}
+      class="w-full h-full"
+    />
+    <div :if={@skeleton_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="user" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No skeleton/pose sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with pose detection enabled</p>
     </div>
   </div>
 

@@ -61,6 +61,12 @@ defmodule Sensocto.Sensors.Room do
       description "Enable 3D object interaction (Gaussian splats, models)"
     end
 
+    attribute :skeleton_composite_enabled, :boolean do
+      default false
+      allow_nil? false
+      description "Enable skeleton/pose composite visualization"
+    end
+
     attribute :join_code, :string do
       allow_nil? true
       constraints min_length: 6, max_length: 12
@@ -106,7 +112,7 @@ defmodule Sensocto.Sensors.Room do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :media_playback_enabled, :object_3d_enabled]
+      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled]
       argument :owner_id, :uuid, allow_nil?: false
 
       change set_attribute(:owner_id, arg(:owner_id))
@@ -119,7 +125,7 @@ defmodule Sensocto.Sensors.Room do
 
     # Used by RoomStore to sync in-memory state to PostgreSQL
     create :sync_create do
-      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :join_code, :owner_id]
+      accept [:name, :description, :configuration, :is_public, :is_persisted, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled, :join_code, :owner_id]
 
       argument :id, :uuid, allow_nil?: false
 
@@ -137,12 +143,12 @@ defmodule Sensocto.Sensors.Room do
     end
 
     update :update do
-      accept [:name, :description, :configuration, :is_public, :calls_enabled, :media_playback_enabled, :object_3d_enabled]
+      accept [:name, :description, :configuration, :is_public, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled]
     end
 
     # Used by RoomStore to sync updates
     update :sync_update do
-      accept [:name, :description, :configuration, :is_public, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :join_code]
+      accept [:name, :description, :configuration, :is_public, :calls_enabled, :media_playback_enabled, :object_3d_enabled, :skeleton_composite_enabled, :join_code]
     end
 
     update :regenerate_join_code do

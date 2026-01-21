@@ -19,6 +19,11 @@ module.exports = {
     // Ensure pulsating logo classes are never purged (used by JS hook)
     'pulsating-logo',
     'pulsing',
+    // Dynamic button states (using custom 'orange' color, not orange-500 scale)
+    'bg-orange',
+    'hover:bg-hover-orange',
+    'text-orange',
+    'text-white',
   ],
   //purge: [
   //"../lib/sensocto_web/**/*.*ex",

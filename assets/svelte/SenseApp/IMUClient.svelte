@@ -57,11 +57,18 @@
     }
 
     // Subscribe to sensor settings changes for auto-reconnect
+    // Skip initial load - let onMount handle that
+    let initialSettingsLoad = true;
     sensorSettings.subscribe((settings) => {
-        logger.log(loggerCtxName, "sensorSettings update", settings.imu, readingIMU);
+        logger.log(loggerCtxName, "sensorSettings update", settings.imu, readingIMU, "initialLoad:", initialSettingsLoad);
 
-        if (settings.imu?.enabled && !readingIMU && imuAvailable()) {
-            // Clean up previous subscription if any
+        if (initialSettingsLoad) {
+            initialSettingsLoad = false;
+            return;
+        }
+
+        // Only auto-start if explicitly enabled after initial load
+        if (settings.imu?.enabled && settings.imu?.configured && !readingIMU && imuAvailable()) {
             if (autostartUnsubscribe) {
                 autostartUnsubscribe();
                 autostartUnsubscribe = null;
@@ -75,11 +82,18 @@
     });
 
     // Legacy autostart support (for backwards compatibility)
+    // Only triggers if user has NEVER configured the sensor (configured=false)
     autostart.subscribe((value) => {
         logger.log(loggerCtxName, "pre Autostart update", value, readingIMU);
 
+        // Check if user has explicitly configured this sensor - if so, respect their choice
+        const imuConfigured = sensorSettings.isSensorConfigured('imu');
+        if (imuConfigured) {
+            logger.log(loggerCtxName, "Autostart skipped - IMU already configured by user");
+            return;
+        }
+
         if (value === true && !readingIMU && imuAvailable()) {
-            // Clean up previous subscription if any
             if (autostartUnsubscribe) {
                 autostartUnsubscribe();
                 autostartUnsubscribe = null;
@@ -418,24 +432,25 @@
         unsubscribeSocket = sensorService.onSocketReady(() => {
             // Check per-sensor settings first (takes precedence)
             const imuEnabled = sensorSettings.isSensorEnabled('imu');
-            if (imuEnabled && imuAvailable()) {
-                logger.log(
-                    loggerCtxName,
-                    "onMount onSocketReady - IMU was previously enabled, restarting",
-                    imuEnabled,
-                );
-                startIMU();
+            const imuConfigured = sensorSettings.isSensorConfigured('imu');
+
+            logger.log(loggerCtxName, "onMount onSocketReady - checking settings", { imuEnabled, imuConfigured });
+
+            // If user has ever configured IMU settings, respect that choice
+            if (imuConfigured) {
+                if (imuEnabled && imuAvailable()) {
+                    logger.log(loggerCtxName, "onMount onSocketReady - IMU was previously enabled, restarting");
+                    startIMU();
+                } else {
+                    logger.log(loggerCtxName, "onMount onSocketReady - IMU is explicitly disabled, not starting");
+                }
                 return;
             }
 
-            // Fall back to legacy autostart behavior
+            // Fall back to legacy autostart behavior only if IMU was never configured
             const autostartValue = get(autostart);
-            if (autostartValue === true) {
-                logger.log(
-                    loggerCtxName,
-                    "onMount onSocketReady Autostart going to start",
-                    autostartValue,
-                );
+            if (autostartValue === true && imuAvailable()) {
+                logger.log(loggerCtxName, "onMount onSocketReady Autostart going to start", autostartValue);
                 enableIMU();
             }
         });

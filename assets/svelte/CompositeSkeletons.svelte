@@ -2,15 +2,27 @@
   import { onMount, onDestroy } from "svelte";
 
   let { sensors = [] }: {
-    sensors: Array<{ sensor_id: string }>;
+    sensors: Array<{ sensor_id: string; username?: string }>;
   } = $props();
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
   let animationFrameId: number | null = null;
 
-  // Store skeleton data per sensor
-  let skeletonData: Map<string, { landmarks: any[]; lastUpdate: number }> = new Map();
+  // Store skeleton data per sensor (including user email for display)
+  let skeletonData: Map<string, { landmarks: any[]; lastUpdate: number; username?: string }> = new Map();
+
+  // Build a map of sensor_id -> username from props for fallback lookup
+  $effect(() => {
+    sensors.forEach(s => {
+      if (s.username) {
+        const existing = skeletonData.get(s.sensor_id);
+        if (existing && !existing.username) {
+          existing.username = s.username;
+        }
+      }
+    });
+  });
 
   // MediaPipe Pose landmark connections
   const POSE_CONNECTIONS = [
@@ -72,7 +84,8 @@
     centerY: number,
     size: number,
     sensorColor: string,
-    sensorId: string
+    sensorId: string,
+    username?: string
   ) {
     if (!ctx || !landmarks || landmarks.length === 0) return;
 
@@ -133,22 +146,27 @@
 
     // Draw sensor label with colored indicator
     const labelY = centerY + size / 2 + 20;
-    const displayId = sensorId.length > 10 ? sensorId.slice(-8) : sensorId;
+    // Prefer username over sensor_id, truncate if too long
+    const displayLabel = username || sensorId;
+    const truncatedLabel = displayLabel.length > 25 ? displayLabel.slice(0, 22) + "..." : displayLabel;
 
-    // Draw colored dot
+    // Set font before measuring text
+    ctx.font = "11px sans-serif";
+    const textWidth = ctx.measureText(truncatedLabel).width;
+
+    // Draw colored dot to the left of the label
     ctx.fillStyle = sensorColor;
     ctx.beginPath();
-    ctx.arc(centerX - 25, labelY - 4, 5, 0, Math.PI * 2);
+    ctx.arc(centerX - textWidth / 2 - 10, labelY - 4, 5, 0, Math.PI * 2);
     ctx.fill();
 
     // Draw label
     ctx.fillStyle = "#9ca3af";
-    ctx.font = "11px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(displayId, centerX + 5, labelY);
+    ctx.fillText(truncatedLabel, centerX, labelY);
   }
 
-  function drawPlaceholder(centerX: number, centerY: number, size: number, label: string) {
+  function drawPlaceholder(centerX: number, centerY: number, size: number, sensorId: string, username?: string) {
     if (!ctx) return;
 
     // Draw dashed circle placeholder
@@ -166,11 +184,12 @@
     ctx.textAlign = "center";
     ctx.fillText("Waiting...", centerX, centerY);
 
-    // Draw label
-    const displayId = label.length > 10 ? label.slice(-8) : label;
+    // Draw label - prefer username over sensor_id
+    const displayLabel = username || sensorId;
+    const truncatedLabel = displayLabel.length > 25 ? displayLabel.slice(0, 22) + "..." : displayLabel;
     ctx.fillStyle = "#4b5563";
-    ctx.font = "11px monospace";
-    ctx.fillText(displayId, centerX, centerY + size / 2 + 20);
+    ctx.font = "11px sans-serif";
+    ctx.fillText(truncatedLabel, centerX, centerY + size / 2 + 20);
   }
 
   function render() {
@@ -226,11 +245,15 @@
       const y = numSensors === 1 ? centerY : centerY + radius * Math.sin(angle);
       const color = SENSOR_COLORS[index % SENSOR_COLORS.length];
 
+      // Get username from skeleton data or from props
       const data = skeletonData.get(sensorId);
+      const sensorFromProps = sensors.find(s => s.sensor_id === sensorId);
+      const username = data?.username || sensorFromProps?.username;
+
       if (data && data.landmarks && data.landmarks.length > 0) {
-        drawSkeleton(data.landmarks, x, y, skeletonSize, color, sensorId);
+        drawSkeleton(data.landmarks, x, y, skeletonSize, color, sensorId, username);
       } else {
-        drawPlaceholder(x, y, skeletonSize, sensorId);
+        drawPlaceholder(x, y, skeletonSize, sensorId, username);
       }
     });
 
@@ -242,7 +265,7 @@
   }
 
   function handleCompositeMeasurement(e: CustomEvent) {
-    const { sensor_id, attribute_id, payload, timestamp } = e.detail;
+    const { sensor_id, username, attribute_id, payload, timestamp } = e.detail;
 
     if (attribute_id === "skeleton" || attribute_id === "pose_skeleton") {
       let data;
@@ -259,7 +282,8 @@
       if (data && data.landmarks) {
         skeletonData.set(sensor_id, {
           landmarks: data.landmarks,
-          lastUpdate: timestamp || Date.now()
+          lastUpdate: timestamp || Date.now(),
+          username: username
         });
       }
     }

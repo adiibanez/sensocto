@@ -142,7 +142,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={@lastvalue} class="flex items-center justify-between text-xs">
           <span class="text-gray-400">
-            {Float.round(@lastvalue.payload.latitude / 1, 3)}, {Float.round(@lastvalue.payload.longitude / 1, 3)}
+            {Float.round(@lastvalue.payload.latitude / 1, 3)}, {Float.round(
+              @lastvalue.payload.longitude / 1,
+              3
+            )}
           </span>
           <div class="flex items-center gap-2">
             <a
@@ -192,7 +195,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={@lastvalue}>
           <p class="text-xs">
-            Lat: {Float.round(@lastvalue.payload.latitude / 1, 3)}, Lon: {Float.round(@lastvalue.payload.longitude / 1, 3)}, {Float.round(@lastvalue.payload.accuracy / 1, 1)}m
+            Lat: {Float.round(@lastvalue.payload.latitude / 1, 3)}, Lon: {Float.round(
+              @lastvalue.payload.longitude / 1,
+              3
+            )}, {Float.round(@lastvalue.payload.accuracy / 1, 1)}m
           </p>
           <div class="h-[150px]">
             <.svelte
@@ -229,18 +235,32 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="device-phone-mobile" type="outline" class="h-3 w-3 text-indigo-400" style={"transform: rotate(#{@imu_data.tilt_display}deg)"} />
-        IMU
+        <Heroicons.icon
+          name="device-phone-mobile"
+          type="outline"
+          class="h-3 w-3 text-indigo-400"
+          style={"transform: rotate(#{@imu_data.tilt_display}deg)"}
+        /> IMU
       </span>
       <div :if={@lastvalue} class="flex items-center gap-2">
         <%!-- Acceleration magnitude bar --%>
-        <div class="flex items-center gap-1" title={"Acceleration: #{Float.round(@imu_data.accel_magnitude, 1)} m/s²"}>
+        <div
+          class="flex items-center gap-1"
+          title={"Acceleration: #{Float.round(@imu_data.accel_magnitude, 1)} m/s²"}
+        >
           <div class="w-8 h-2 bg-gray-700 rounded-full overflow-hidden">
-            <div class={"h-full rounded-full #{accel_color(@imu_data.accel_magnitude)}"} style={"width: #{min(100, @imu_data.accel_magnitude * 10)}%"}></div>
+            <div
+              class={"h-full rounded-full #{accel_color(@imu_data.accel_magnitude)}"}
+              style={"width: #{min(100, @imu_data.accel_magnitude * 10)}%"}
+            >
+            </div>
           </div>
         </div>
         <%!-- Tilt indicator (pitch/roll visualization) --%>
-        <div class="relative w-5 h-5 rounded-full border border-gray-600 bg-gray-800" title={"Pitch: #{round(@imu_data.pitch)}° Roll: #{round(@imu_data.roll)}°"}>
+        <div
+          class="relative w-5 h-5 rounded-full border border-gray-600 bg-gray-800"
+          title={"Pitch: #{round(@imu_data.pitch)}° Roll: #{round(@imu_data.roll)}°"}
+        >
           <div
             class="absolute w-2 h-2 bg-indigo-400 rounded-full"
             style={"top: 50%; left: 50%; transform: translate(#{@imu_data.roll_display}%, #{@imu_data.pitch_display}%) translate(-50%, -50%)"}
@@ -248,7 +268,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         </div>
         <%!-- Compass direction --%>
         <div class="flex items-center gap-0.5" title={"Heading: #{round(@imu_data.heading)}°"}>
-          <Heroicons.icon name="arrow-up" type="solid" class="h-3 w-3 text-cyan-400" style={"transform: rotate(#{@imu_data.heading}deg)"} />
+          <Heroicons.icon
+            name="arrow-up"
+            type="solid"
+            class="h-3 w-3 text-cyan-400"
+            style={"transform: rotate(#{@imu_data.heading}deg)"}
+          />
           <span class="text-cyan-400 text-[10px] w-4">{heading_to_dir(@imu_data.heading)}</span>
         </div>
       </div>
@@ -303,10 +328,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             <div class="flex flex-col items-center">
               <div class="relative w-16 h-16">
                 <div class="absolute inset-0 rounded-full border-2 border-gray-600">
-                  <span class="absolute top-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">N</span>
-                  <span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">S</span>
-                  <span class="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">W</span>
-                  <span class="absolute right-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">E</span>
+                  <span class="absolute top-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+                    N
+                  </span>
+                  <span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+                    S
+                  </span>
+                  <span class="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+                    W
+                  </span>
+                  <span class="absolute right-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+                    E
+                  </span>
                 </div>
                 <Heroicons.icon
                   name="arrow-up"
@@ -315,7 +348,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
                   style={"transform: translate(-50%, -50%) rotate(#{@imu_data.heading}deg)"}
                 />
               </div>
-              <span class="text-[10px] text-gray-500 mt-1">{round(@imu_data.heading)}° {heading_to_dir(@imu_data.heading)}</span>
+              <span class="text-[10px] text-gray-500 mt-1">
+                {round(@imu_data.heading)}° {heading_to_dir(@imu_data.heading)}
+              </span>
             </div>
 
             <%!-- Acceleration magnitude --%>
@@ -499,7 +534,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> - {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]"> -  {@presence.artist}</span>
             <% end %>
           </div>
         <% else %>
@@ -593,7 +628,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       phx-hook="Vibrate"
       data-value={@lastvalue && @lastvalue.payload}
       data-event={@lastvalue && @lastvalue[:event]}
-      data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
+      data-timestamp={
+        @lastvalue &&
+          (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))
+      }
     >
       <span class="text-gray-400">{@attribute_id}</span>
       <div class="flex gap-0.5">
@@ -636,7 +674,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         >
         </.render_attribute_header>
 
-        <div :if={is_nil(@lastvalue) and MapSet.size(@pressed_buttons) == 0} class="text-xs text-gray-400">No button pressed</div>
+        <div
+          :if={is_nil(@lastvalue) and MapSet.size(@pressed_buttons) == 0}
+          class="text-xs text-gray-400"
+        >
+          No button pressed
+        </div>
 
         <div
           class="flex gap-1 items-center"
@@ -644,7 +687,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           phx-hook="Vibrate"
           data-value={@lastvalue && @lastvalue.payload}
           data-event={@lastvalue && @lastvalue[:event]}
-          data-timestamp={@lastvalue && (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))}
+          data-timestamp={
+            @lastvalue &&
+              (@lastvalue[:timestamp] || @lastvalue[:received_at] || System.system_time(:millisecond))
+          }
         >
           <div class="flex gap-1 flex-wrap">
             <%= for btn_id <- 1..8 do %>
@@ -763,8 +809,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="user" type="outline" class="h-3 w-3" />
-        Location
+        <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Location
       </span>
       <span :if={@lastvalue} class="text-white">
         {body_location_name(@lastvalue.payload)}
@@ -813,8 +858,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="fire" type="outline" class="h-3 w-3 text-orange-400" />
-        Temp
+        <Heroicons.icon name="fire" type="outline" class="h-3 w-3 text-orange-400" /> Temp
       </span>
       <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
         {format_temperature(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">°C</span>
@@ -846,9 +890,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={@lastvalue} class="flex items-center gap-4 py-2">
           <div class="flex items-center gap-2">
-            <div class={["w-3 h-12 rounded-full", temperature_gradient_class(@lastvalue.payload)]}></div>
+            <div class={["w-3 h-12 rounded-full", temperature_gradient_class(@lastvalue.payload)]}>
+            </div>
             <div class="text-center">
-              <span class="text-2xl font-bold text-white">{format_temperature(@lastvalue.payload)}</span>
+              <span class="text-2xl font-bold text-white">
+                {format_temperature(@lastvalue.payload)}
+              </span>
               <span class="text-sm text-gray-400 ml-1">°C</span>
             </div>
           </div>
@@ -905,7 +952,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={@lastvalue} class="flex items-center gap-4 py-2">
           <div class="relative w-16 h-16">
-            <svg class="w-full h-full text-blue-500" viewBox="0 0 24 24" fill="currentColor" style={"opacity: #{humidity_opacity(@lastvalue.payload)}"}>
+            <svg
+              class="w-full h-full text-blue-500"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={"opacity: #{humidity_opacity(@lastvalue.payload)}"}
+            >
               <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
             </svg>
             <div class="absolute inset-0 flex items-center justify-center">
@@ -1019,7 +1071,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   @impl true
-  def render(%{:attribute_type => attr, :view_mode => :summary} = assigns) when attr in ["gas", "air_quality"] do
+  def render(%{:attribute_type => attr, :view_mode => :summary} = assigns)
+      when attr in ["gas", "air_quality"] do
     ~H"""
     <div
       class="flex items-center justify-between text-xs py-0.5"
@@ -1027,11 +1080,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="cloud" type="outline" class={"h-3 w-3 #{air_quality_color(@lastvalue)}"} />
-        Air Quality
+        <Heroicons.icon
+          name="cloud"
+          type="outline"
+          class={"h-3 w-3 #{air_quality_color(@lastvalue)}"}
+        /> Air Quality
       </span>
       <div :if={@lastvalue} class="flex items-center gap-2">
-        <span class={["font-mono", air_quality_color(@lastvalue)]}>{air_quality_label(@lastvalue.payload)}</span>
+        <span class={["font-mono", air_quality_color(@lastvalue)]}>
+          {air_quality_label(@lastvalue.payload)}
+        </span>
       </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
@@ -1097,8 +1155,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="swatch" type="solid" class="h-3 w-3 text-pink-400" />
-        Color
+        <Heroicons.icon name="swatch" type="solid" class="h-3 w-3 text-pink-400" /> Color
       </span>
       <div :if={@lastvalue} class="flex items-center gap-1">
         <div
@@ -1181,11 +1238,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="cube" type="outline" class="h-3 w-3 text-indigo-400" />
-        Orientation
+        <Heroicons.icon name="cube" type="outline" class="h-3 w-3 text-indigo-400" /> Orientation
       </span>
       <span :if={@lastvalue} class="text-white font-mono text-[10px]">
-        Q({format_quat_component(@lastvalue.payload, :w)}, {format_quat_component(@lastvalue.payload, :x)}, {format_quat_component(@lastvalue.payload, :y)}, {format_quat_component(@lastvalue.payload, :z)})
+        Q({format_quat_component(@lastvalue.payload, :w)}, {format_quat_component(
+          @lastvalue.payload,
+          :x
+        )}, {format_quat_component(@lastvalue.payload, :y)}, {format_quat_component(
+          @lastvalue.payload,
+          :z
+        )})
       </span>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
@@ -1250,7 +1312,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         Euler
       </span>
       <span :if={@lastvalue} class="text-white font-mono text-[10px]">
-        R:{format_euler(@lastvalue.payload, :roll)}° P:{format_euler(@lastvalue.payload, :pitch)}° Y:{format_euler(@lastvalue.payload, :yaw)}°
+        R:{format_euler(@lastvalue.payload, :roll)}° P:{format_euler(@lastvalue.payload, :pitch)}° Y:{format_euler(
+          @lastvalue.payload,
+          :yaw
+        )}°
       </span>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
@@ -1281,15 +1346,21 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="grid grid-cols-3 gap-2 text-xs">
             <div class="bg-gray-800 rounded p-2 text-center">
               <div class="text-red-400">Roll</div>
-              <div class="text-white font-mono text-lg">{format_euler(@lastvalue.payload, :roll)}°</div>
+              <div class="text-white font-mono text-lg">
+                {format_euler(@lastvalue.payload, :roll)}°
+              </div>
             </div>
             <div class="bg-gray-800 rounded p-2 text-center">
               <div class="text-green-400">Pitch</div>
-              <div class="text-white font-mono text-lg">{format_euler(@lastvalue.payload, :pitch)}°</div>
+              <div class="text-white font-mono text-lg">
+                {format_euler(@lastvalue.payload, :pitch)}°
+              </div>
             </div>
             <div class="bg-gray-800 rounded p-2 text-center">
               <div class="text-blue-400">Yaw</div>
-              <div class="text-white font-mono text-lg">{format_euler(@lastvalue.payload, :yaw)}°</div>
+              <div class="text-white font-mono text-lg">
+                {format_euler(@lastvalue.payload, :yaw)}°
+              </div>
             </div>
           </div>
         </div>
@@ -1307,11 +1378,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="arrow-up" type="solid" class="h-3 w-3 text-cyan-400" style={"transform: rotate(#{heading_rotation(@lastvalue)}deg)"} />
-        Heading
+        <Heroicons.icon
+          name="arrow-up"
+          type="solid"
+          class="h-3 w-3 text-cyan-400"
+          style={"transform: rotate(#{heading_rotation(@lastvalue)}deg)"}
+        /> Heading
       </span>
       <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
-        {format_heading(@lastvalue.payload)}° <span class="text-cyan-400">{heading_direction(@lastvalue.payload)}</span>
+        {format_heading(@lastvalue.payload)}°
+        <span class="text-cyan-400">{heading_direction(@lastvalue.payload)}</span>
       </span>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
@@ -1342,7 +1418,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="relative w-24 h-24">
             <div class="absolute inset-0 rounded-full border-2 border-gray-600">
               <div class="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">N</div>
-              <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">S</div>
+              <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+                S
+              </div>
               <div class="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">W</div>
               <div class="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">E</div>
             </div>
@@ -1372,8 +1450,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="user" type="outline" class="h-3 w-3 text-green-400" />
-        Steps
+        <Heroicons.icon name="user" type="outline" class="h-3 w-3 text-green-400" /> Steps
       </span>
       <span :if={@lastvalue} class="text-white font-mono">
         {format_steps(@lastvalue.payload)}
@@ -1424,8 +1501,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="hand-raised" type="outline" class="h-3 w-3 text-amber-400" />
-        Tap
+        <Heroicons.icon name="hand-raised" type="outline" class="h-3 w-3 text-amber-400" /> Tap
       </span>
       <span :if={@lastvalue} class="text-amber-400 font-mono">
         {tap_direction(@lastvalue.payload)}
@@ -1480,8 +1556,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="device-phone-mobile" type="outline" class={"h-3 w-3 text-teal-400 #{orientation_rotation(@lastvalue)}"} />
-        Orientation
+        <Heroicons.icon
+          name="device-phone-mobile"
+          type="outline"
+          class={"h-3 w-3 text-teal-400 #{orientation_rotation(@lastvalue)}"}
+        /> Orientation
       </span>
       <span :if={@lastvalue} class="text-white">
         {orientation_label(@lastvalue.payload)}
@@ -1512,7 +1591,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <div :if={is_nil(@lastvalue)} class="loading"></div>
 
         <div :if={@lastvalue} class="flex items-center justify-center py-4">
-          <Heroicons.icon name="device-phone-mobile" type="outline" class={"h-12 w-12 text-teal-400 #{orientation_rotation(@lastvalue)}"} />
+          <Heroicons.icon
+            name="device-phone-mobile"
+            type="outline"
+            class={"h-12 w-12 text-teal-400 #{orientation_rotation(@lastvalue)}"}
+          />
           <div class="ml-4 text-center">
             <div class="text-xl font-bold text-white">{orientation_label(@lastvalue.payload)}</div>
           </div>
@@ -1531,8 +1614,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="light-bulb" type="solid" class="h-3 w-3 text-yellow-400" />
-        LED
+        <Heroicons.icon name="light-bulb" type="solid" class="h-3 w-3 text-yellow-400" /> LED
       </span>
       <div :if={@lastvalue} class="flex items-center gap-1">
         <div
@@ -1573,7 +1655,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
               style={"background-color: rgb(#{get_in(@lastvalue, [:payload, :r]) || 0}, #{get_in(@lastvalue, [:payload, :g]) || 0}, #{get_in(@lastvalue, [:payload, :b]) || 0}); box-shadow: 0 0 15px rgb(#{get_in(@lastvalue, [:payload, :r]) || 0}, #{get_in(@lastvalue, [:payload, :g]) || 0}, #{get_in(@lastvalue, [:payload, :b]) || 0})"}
             />
             <div>
-              <div class="text-white font-bold capitalize">{get_in(@lastvalue, [:payload, :mode]) || "off"}</div>
+              <div class="text-white font-bold capitalize">
+                {get_in(@lastvalue, [:payload, :mode]) || "off"}
+              </div>
               <div class="text-xs text-gray-400">
                 Intensity: {get_in(@lastvalue, [:payload, :intensity]) || 100}%
               </div>
@@ -1612,8 +1696,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="speaker-wave" type="outline" class="h-3 w-3 text-violet-400" />
-        Speaker
+        <Heroicons.icon name="speaker-wave" type="outline" class="h-3 w-3 text-violet-400" /> Speaker
       </span>
       <span :if={@lastvalue} class="text-violet-400">
         {format_speaker_status(@lastvalue.payload)}
@@ -1668,8 +1751,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       data-attribute_id={@attribute_id}
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="microphone" type="outline" class="h-3 w-3 text-rose-400" />
-        Mic
+        <Heroicons.icon name="microphone" type="outline" class="h-3 w-3 text-rose-400" /> Mic
       </span>
       <div :if={@lastvalue} class="flex items-center gap-1">
         <meter
@@ -1678,7 +1760,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           value={mic_level_normalized(@lastvalue.payload)}
           class="h-2 w-12"
         />
-        <span class="text-gray-400 font-mono text-[10px]">{format_mic_level(@lastvalue.payload)}</span>
+        <span class="text-gray-400 font-mono text-[10px]">
+          {format_mic_level(@lastvalue.payload)}
+        </span>
       </div>
       <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
@@ -1744,8 +1828,13 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       phx-hook="SensorDataAccumulator"
     >
       <span class="text-gray-400 flex items-center gap-1">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3 w-3 text-purple-400">
-          <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z"/>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          class="h-3 w-3 text-purple-400"
+        >
+          <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z" />
         </svg>
         Skeleton
       </span>
@@ -1876,12 +1965,14 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp body_location_name(value) when is_integer(value) do
     Map.get(@body_sensor_locations, value, "Unknown (#{value})")
   end
+
   defp body_location_name(value) when is_binary(value) do
     case Integer.parse(value) do
       {num, _} -> body_location_name(num)
       :error -> "Unknown"
     end
   end
+
   defp body_location_name(_), do: "Unknown"
 
   # ============================================================================
@@ -1892,7 +1983,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp format_temperature(value) when is_number(value), do: Float.round(value * 1.0, 1)
   defp format_temperature(_), do: "--"
 
-  defp temperature_gradient_class(%{value: value}) when is_number(value), do: temperature_gradient_class(value)
+  defp temperature_gradient_class(%{value: value}) when is_number(value),
+    do: temperature_gradient_class(value)
+
   defp temperature_gradient_class(value) when is_number(value) do
     cond do
       value < 10 -> "bg-gradient-to-t from-blue-600 to-blue-400"
@@ -1902,9 +1995,12 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       true -> "bg-gradient-to-t from-red-600 to-red-400"
     end
   end
+
   defp temperature_gradient_class(_), do: "bg-gray-600"
 
-  defp temperature_comfort_label(%{value: value}) when is_number(value), do: temperature_comfort_label(value)
+  defp temperature_comfort_label(%{value: value}) when is_number(value),
+    do: temperature_comfort_label(value)
+
   defp temperature_comfort_label(value) when is_number(value) do
     cond do
       value < 10 -> "Cold"
@@ -1914,6 +2010,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       true -> "Hot"
     end
   end
+
   defp temperature_comfort_label(_), do: ""
 
   # ============================================================================
@@ -1928,7 +2025,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp humidity_opacity(value) when is_number(value), do: max(0.3, min(1.0, value / 100))
   defp humidity_opacity(_), do: 0.5
 
-  defp humidity_comfort_label(%{value: value}) when is_number(value), do: humidity_comfort_label(value)
+  defp humidity_comfort_label(%{value: value}) when is_number(value),
+    do: humidity_comfort_label(value)
+
   defp humidity_comfort_label(value) when is_number(value) do
     cond do
       value < 30 -> "Dry"
@@ -1937,6 +2036,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       true -> "Very Humid"
     end
   end
+
   defp humidity_comfort_label(_), do: ""
 
   # ============================================================================
@@ -1947,7 +2047,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp format_pressure(value) when is_number(value), do: Float.round(value * 1.0, 1)
   defp format_pressure(_), do: "--"
 
-  defp pressure_weather_indicator(%{value: value}) when is_number(value), do: pressure_weather_indicator(value)
+  defp pressure_weather_indicator(%{value: value}) when is_number(value),
+    do: pressure_weather_indicator(value)
+
   defp pressure_weather_indicator(value) when is_number(value) do
     cond do
       value < 1000 -> "Low pressure - stormy"
@@ -1956,14 +2058,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       true -> "High pressure - fair"
     end
   end
+
   defp pressure_weather_indicator(_), do: ""
 
-  defp pressure_to_altitude(%{value: value}) when is_number(value), do: pressure_to_altitude(value)
+  defp pressure_to_altitude(%{value: value}) when is_number(value),
+    do: pressure_to_altitude(value)
+
   defp pressure_to_altitude(value) when is_number(value) do
     # Simplified barometric formula: h ≈ 44330 * (1 - (P/P0)^0.1903)
     # P0 = 1013.25 hPa (sea level)
     round(44330 * (1 - :math.pow(value / 1013.25, 0.1903)))
   end
+
   defp pressure_to_altitude(_), do: 0
 
   # ============================================================================
@@ -1979,6 +2085,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       true -> "Bad"
     end
   end
+
   defp air_quality_label(_), do: "--"
 
   defp air_quality_color(%{payload: %{eco2: eco2}}) when is_number(eco2) do
@@ -1990,13 +2097,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       true -> "text-red-400"
     end
   end
+
   defp air_quality_color(_), do: "text-gray-400"
 
   # ============================================================================
   # COLOR - RGB color swatch with color temperature
   # ============================================================================
 
-  defp extract_color_data(nil), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+  defp extract_color_data(nil),
+    do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+
   defp extract_color_data(%{payload: %{hex: hex} = payload}) when is_binary(hex) do
     %{
       r: Map.get(payload, :r, 0),
@@ -2007,8 +2117,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       color_temperature: Map.get(payload, :color_temperature)
     }
   end
-  defp extract_color_data(%{payload: %{r: r, g: g, b: b} = payload}) when is_integer(r) and is_integer(g) and is_integer(b) do
+
+  defp extract_color_data(%{payload: %{r: r, g: g, b: b} = payload})
+       when is_integer(r) and is_integer(g) and is_integer(b) do
     hex = "#" <> Base.encode16(<<min(255, r), min(255, g), min(255, b)>>, case: :lower)
+
     %{
       r: r,
       g: g,
@@ -2018,11 +2131,14 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       color_temperature: Map.get(payload, :color_temperature)
     }
   end
+
   defp extract_color_data(%{payload: value}) when is_integer(value) do
     # Raw integer - could be a palette index or single value
     %{r: value, g: value, b: value, clear: nil, hex: "#808080", color_temperature: nil}
   end
-  defp extract_color_data(_), do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
+
+  defp extract_color_data(_),
+    do: %{r: 0, g: 0, b: 0, clear: nil, hex: "#808080", color_temperature: nil}
 
   # ============================================================================
   # QUATERNION / EULER - 3D orientation visualization
@@ -2101,6 +2217,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     |> Enum.map(&String.capitalize/1)
     |> Enum.join(" ")
   end
+
   defp orientation_label(_), do: "Unknown"
 
   defp orientation_rotation(%{payload: %{orientation: orient}}) do
@@ -2111,6 +2228,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       _ -> ""
     end
   end
+
   defp orientation_rotation(_), do: ""
 
   # ============================================================================
@@ -2133,6 +2251,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     normalized = (level + 60) / 60 * 100
     max(0, min(100, normalized))
   end
+
   defp mic_level_normalized(_), do: 0
 
   # Summary mode for default/generic attributes (sparkline types)
@@ -2168,8 +2287,17 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       Logger.debug("attribute update (partial) id: #{assigns.id}")
 
       socket = assign(socket, :lastvalue, assigns.lastvalue)
-      socket = if Map.has_key?(assigns, :view_mode), do: assign(socket, :view_mode, assigns.view_mode), else: socket
-      socket = if Map.has_key?(assigns, :pressed_buttons), do: assign(socket, :pressed_buttons, assigns.pressed_buttons), else: socket
+
+      socket =
+        if Map.has_key?(assigns, :view_mode),
+          do: assign(socket, :view_mode, assigns.view_mode),
+          else: socket
+
+      socket =
+        if Map.has_key?(assigns, :pressed_buttons),
+          do: assign(socket, :pressed_buttons, assigns.pressed_buttons),
+          else: socket
+
       {:ok, socket}
     end
   end
@@ -2182,15 +2310,19 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       :erlang.float_to_binary(payload * 1.0, decimals: 1)
     end
   end
+
   defp format_payload(payload) when is_map(payload), do: "..."
   defp format_payload(payload) when is_binary(payload), do: payload
   defp format_payload(_), do: "--"
 
   # Helper to safely round payload values (handles both numbers and strings)
   defp safe_round(payload) when is_number(payload), do: round(payload)
+
   defp safe_round(payload) when is_binary(payload) do
     case Integer.parse(payload) do
-      {num, _} -> num
+      {num, _} ->
+        num
+
       :error ->
         case Float.parse(payload) do
           {num, _} -> round(num)
@@ -2198,15 +2330,27 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         end
     end
   end
+
   defp safe_round(_), do: 0
 
   # Small inline loading spinner for summary mode
   defp loading_spinner(assigns) do
     ~H"""
     <span class="inline-flex items-center">
-      <svg class="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      <svg
+        class="animate-spin h-3 w-3 text-gray-400"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+        </circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        >
+        </path>
       </svg>
     </span>
     """
@@ -2218,18 +2362,30 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   # Default IMU data structure
   @default_imu_data %{
-    ax: 0.0, ay: 0.0, az: 0.0,
-    rx: 0.0, ry: 0.0, rz: 0.0,
-    qw: 1.0, qx: 0.0, qy: 0.0, qz: 0.0,
-    pitch: 0.0, roll: 0.0, yaw: 0.0,
+    ax: 0.0,
+    ay: 0.0,
+    az: 0.0,
+    rx: 0.0,
+    ry: 0.0,
+    rz: 0.0,
+    qw: 1.0,
+    qx: 0.0,
+    qy: 0.0,
+    qz: 0.0,
+    pitch: 0.0,
+    roll: 0.0,
+    yaw: 0.0,
     heading: 0.0,
     accel_magnitude: 0.0,
-    pitch_display: 0.0, roll_display: 0.0, tilt_display: 0.0
+    pitch_display: 0.0,
+    roll_display: 0.0,
+    tilt_display: 0.0
   }
 
   # Parse IMU payload from comma-separated string:
   # timestamp,ax,ay,az,rx,ry,rz,qw,qx,qy,qz
   defp parse_imu_payload(nil), do: @default_imu_data
+
   defp parse_imu_payload(%{payload: payload}) when is_binary(payload) do
     parts = String.split(payload, ",")
 
@@ -2261,23 +2417,37 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       tilt_display = clamp(roll / 2, -45, 45)
 
       %{
-        ax: ax, ay: ay, az: az,
-        rx: rx, ry: ry, rz: rz,
-        qw: qw, qx: qx, qy: qy, qz: qz,
-        pitch: pitch, roll: roll, yaw: yaw,
+        ax: ax,
+        ay: ay,
+        az: az,
+        rx: rx,
+        ry: ry,
+        rz: rz,
+        qw: qw,
+        qx: qx,
+        qy: qy,
+        qz: qz,
+        pitch: pitch,
+        roll: roll,
+        yaw: yaw,
         heading: heading,
         accel_magnitude: accel_magnitude,
-        pitch_display: pitch_display, roll_display: roll_display, tilt_display: tilt_display
+        pitch_display: pitch_display,
+        roll_display: roll_display,
+        tilt_display: tilt_display
       }
     else
       @default_imu_data
     end
   end
+
   defp parse_imu_payload(_), do: @default_imu_data
 
   defp parse_float_at(parts, index) do
     case Enum.at(parts, index) do
-      nil -> 0.0
+      nil ->
+        0.0
+
       str ->
         case Float.parse(str) do
           {val, _} -> val
@@ -2295,11 +2465,13 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
     # Pitch (y-axis rotation)
     sinp = 2.0 * (qw * qy - qz * qx)
-    pitch = if abs(sinp) >= 1.0 do
-      sign(sinp) * 90.0
-    else
-      :math.asin(sinp) * 180.0 / :math.pi()
-    end
+
+    pitch =
+      if abs(sinp) >= 1.0 do
+        sign(sinp) * 90.0
+      else
+        :math.asin(sinp) * 180.0 / :math.pi()
+      end
 
     # Yaw (z-axis rotation)
     siny_cosp = 2.0 * (qw * qz + qx * qy)
@@ -2326,7 +2498,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   # Acceleration color based on magnitude
   defp accel_color(magnitude) when magnitude < 2, do: "text-green-400 bg-green-500"
   defp accel_color(magnitude) when magnitude < 5, do: "text-yellow-400 bg-yellow-500"
-  defp accel_color(magnitude) when magnitude < 10, do: "text-orange-400 bg-orange-500"
+  defp accel_color(magnitude) when magnitude < 10, do: "text-orange bg-orange"
   defp accel_color(_), do: "text-red-400 bg-red-500"
 
   defp container(assigns) do
@@ -2352,14 +2524,30 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   # Extract battery level and charging status from various payload formats
   defp extract_battery_info(nil), do: %{level: 0.0, charging: nil}
-  defp extract_battery_info(%{payload: %{level: level, charging: charging}}), do: %{level: level * 1.0, charging: charging}
+
+  defp extract_battery_info(%{payload: %{level: level, charging: charging}}),
+    do: %{level: level * 1.0, charging: charging}
+
   defp extract_battery_info(%{payload: %{level: level}}), do: %{level: level * 1.0, charging: nil}
-  defp extract_battery_info(%{payload: level}) when is_number(level), do: %{level: level * 1.0, charging: nil}
+
+  defp extract_battery_info(%{payload: level}) when is_number(level),
+    do: %{level: level * 1.0, charging: nil}
+
   defp extract_battery_info(_), do: %{level: 0.0, charging: nil}
 
   # Extract rich presence data from payload
-  defp extract_rich_presence(nil), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
-  defp extract_rich_presence(%{payload: %{title: title, artist: artist, album: album, artwork_url: artwork, state: state}}) do
+  defp extract_rich_presence(nil),
+    do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
+
+  defp extract_rich_presence(%{
+         payload: %{
+           title: title,
+           artist: artist,
+           album: album,
+           artwork_url: artwork,
+           state: state
+         }
+       }) do
     %{
       title: if(title == "", do: nil, else: title),
       artist: if(artist == "", do: nil, else: artist),
@@ -2368,6 +2556,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       state: state || "none"
     }
   end
+
   defp extract_rich_presence(%{payload: payload}) when is_map(payload) do
     %{
       title: Map.get(payload, :title) || Map.get(payload, "title"),
@@ -2377,7 +2566,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       state: Map.get(payload, :state) || Map.get(payload, "state") || "none"
     }
   end
-  defp extract_rich_presence(_), do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
+
+  defp extract_rich_presence(_),
+    do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
 
   # Button style for multi-press support using MapSet
   defp button_style_multi(pressed_buttons, button_id) do

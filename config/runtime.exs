@@ -90,6 +90,10 @@ if config_env() == :prod do
     # Queue settings help during connection pressure
     queue_target: 5000,
     queue_interval: 1000,
+    # Neon auto-suspends after inactivity, needs time to wake up
+    # Increased timeout to handle cold starts (default is 15000ms)
+    timeout: 60_000,
+    connect_timeout: 60_000,
     socket_options: maybe_ipv6
 
   # Read replica configuration (optional)
@@ -100,6 +104,8 @@ if config_env() == :prod do
       url: replica_url,
       ssl: [cacerts: :public_key.cacerts_get()],
       pool_size: String.to_integer(System.get_env("REPLICA_POOL_SIZE") || "5"),
+      timeout: 60_000,
+      connect_timeout: 60_000,
       socket_options: maybe_ipv6
   else
     # If no replica URL, configure replica to use primary (for simpler deployments)
@@ -107,6 +113,8 @@ if config_env() == :prod do
       url: database_url,
       ssl: [cacerts: :public_key.cacerts_get()],
       pool_size: String.to_integer(System.get_env("REPLICA_POOL_SIZE") || "5"),
+      timeout: 60_000,
+      connect_timeout: 60_000,
       socket_options: maybe_ipv6
   end
 

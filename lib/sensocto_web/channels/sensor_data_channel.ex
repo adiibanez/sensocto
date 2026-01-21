@@ -153,7 +153,17 @@ defmodule SensoctoWeb.SensorDataChannel do
       # Use safe key conversion to prevent atom exhaustion attacks
       {:ok, safe_params} = SafeKeys.safe_keys_to_atoms(params)
 
-      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, safe_params) do
+      # Extract username from bearer token for display purposes
+      username = extract_username(params)
+
+      safe_params_with_user =
+        if username do
+          Map.put(safe_params, :username, username)
+        else
+          safe_params
+        end
+
+      case Sensocto.SensorsDynamicSupervisor.add_sensor(sensor_id, safe_params_with_user) do
         {:ok, pid} when is_pid(pid) ->
           Logger.debug("Added sensor #{sensor_id}")
 
@@ -442,6 +452,34 @@ defmodule SensoctoWeb.SensorDataChannel do
         false
     end
   end
+
+  # Extract username from bearer token for display in composite views
+  # Uses the local part of the email (before @) as the username
+  defp extract_username(%{"bearer_token" => token}) when is_binary(token) and token != "" do
+    case AshAuthentication.Jwt.verify(token, :sensocto) do
+      {:ok, %{"sub" => subject}, resource} when not is_nil(resource) ->
+        # The subject contains "user?id=<uuid>", use get_by_subject action to load user
+        case Ash.read_one(
+               Ash.Query.for_read(resource, :get_by_subject, %{subject: subject}),
+               authorize?: false
+             ) do
+          {:ok, %{email: email}} when not is_nil(email) ->
+            # Extract local part of email as username
+            email
+            |> to_string()
+            |> String.split("@")
+            |> List.first()
+
+          _ ->
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp extract_username(_), do: nil
 
   @impl true
   @spec terminate(any(), Phoenix.Socket.t()) :: :ok

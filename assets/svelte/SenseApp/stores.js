@@ -14,13 +14,15 @@ export const usersettings = writable({
 const SENSOR_SETTINGS_KEY = 'sensocto_sensor_settings';
 
 // Default sensor settings
+// Note: 'configured' tracks if user has ever interacted with the sensor
+// This distinguishes between "never touched" (allow autostart fallback) and "explicitly disabled"
 const DEFAULT_SENSOR_SETTINGS = {
-    imu: { enabled: false },
-    geolocation: { enabled: false },
-    pose: { enabled: false },
-    battery: { enabled: false },
-    bluetooth: { enabled: false },
-    richPresence: { enabled: false }
+    imu: { enabled: false, configured: false },
+    geolocation: { enabled: false, configured: false },
+    pose: { enabled: false, configured: false },
+    battery: { enabled: false, configured: false },
+    bluetooth: { enabled: false, configured: false },
+    richPresence: { enabled: false, configured: false }
 };
 
 // Load settings from localStorage
@@ -66,11 +68,12 @@ function createSensorSettingsStore() {
             });
         },
         // Helper to enable/disable a specific sensor
+        // Also marks the sensor as 'configured' so we know user has interacted with it
         setSensorEnabled: (sensorId, enabled) => {
             update(current => {
                 const newValue = {
                     ...current,
-                    [sensorId]: { ...current[sensorId], enabled }
+                    [sensorId]: { ...current[sensorId], enabled, configured: true }
                 };
                 saveSensorSettings(newValue);
                 return newValue;
@@ -80,6 +83,11 @@ function createSensorSettingsStore() {
         isSensorEnabled: (sensorId) => {
             const current = get({ subscribe });
             return current[sensorId]?.enabled ?? false;
+        },
+        // Helper to check if a sensor has ever been configured by the user
+        isSensorConfigured: (sensorId) => {
+            const current = get({ subscribe });
+            return current[sensorId]?.configured ?? false;
         },
         // Reset all settings to defaults
         reset: () => {

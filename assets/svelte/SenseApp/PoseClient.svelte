@@ -25,9 +25,18 @@
     let usingStandalone = false;
     let cameraError = null;
 
-    const TARGET_FPS = 15;
+    // Mobile detection for adaptive performance
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // Lower FPS on mobile to reduce main thread blocking
+    // Mobile GPUs struggle with MediaPipe at higher frame rates
+    const TARGET_FPS = isMobile ? 8 : 15;
     const FRAME_INTERVAL = 1000 / TARGET_FPS;
     let lastFrameTime = 0;
+
+    // Skip frames counter for additional throttling under load
+    let frameSkipCounter = 0;
+    const MOBILE_FRAME_SKIP = isMobile ? 1 : 0; // Skip every other detection on mobile
 
     async function initPoseLandmarker() {
         try {
@@ -84,12 +93,18 @@
         logger.log(loggerCtxName, "Setting up standalone camera...");
         cameraError = null;
 
+        // Use lower resolution on mobile to reduce GPU/CPU load
+        const videoWidth = isMobile ? 320 : 640;
+        const videoHeight = isMobile ? 240 : 480;
+
         try {
             standaloneStream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    frameRate: { ideal: TARGET_FPS }
+                    width: { ideal: videoWidth },
+                    height: { ideal: videoHeight },
+                    frameRate: { ideal: TARGET_FPS },
+                    // On mobile, prefer rear camera for better pose detection
+                    facingMode: isMobile ? { ideal: "environment" } : "user"
                 },
                 audio: false
             });
@@ -102,8 +117,8 @@
             standaloneVideoEl.autoplay = true;
             standaloneVideoEl.playsInline = true;
             standaloneVideoEl.muted = true;
-            standaloneVideoEl.width = 640;
-            standaloneVideoEl.height = 480;
+            standaloneVideoEl.width = videoWidth;
+            standaloneVideoEl.height = videoHeight;
             standaloneVideoEl.style.position = "fixed";
             standaloneVideoEl.style.top = "-9999px";
             standaloneVideoEl.style.left = "-9999px";
@@ -256,6 +271,17 @@
         }
         lastFrameTime = now;
 
+        // Additional frame skipping for mobile - skip detection but still schedule next frame
+        // This prevents blocking the main thread with back-to-back ML inference
+        if (MOBILE_FRAME_SKIP > 0) {
+            frameSkipCounter++;
+            if (frameSkipCounter <= MOBILE_FRAME_SKIP) {
+                animationFrameId = requestAnimationFrame(() => detectFrame(videoEl));
+                return;
+            }
+            frameSkipCounter = 0;
+        }
+
         // Check if video source is still valid
         if (!videoEl.srcObject && !usingStandalone) {
             // Call video was removed, try to switch to standalone
@@ -295,23 +321,37 @@
     }
 
     function sendSkeletonData(results) {
+        // Guard: don't send if detection has been stopped
+        if (!detecting) {
+            logger.log(loggerCtxName, "Skipping send - detection stopped");
+            return;
+        }
+
         // Extract the first pose (we're configured for single pose)
         const landmarks = results.landmarks[0];
-        const worldLandmarks = results.worldLandmarks?.[0];
 
+        // Optimize: reduce precision to 3 decimal places to minimize payload size
+        // and reduce JSON serialization overhead on mobile
+        const roundTo3 = (n) => Math.round(n * 1000) / 1000;
+
+        // Build payload with reduced precision - skip worldLandmarks on mobile to reduce payload
         const payload = {
             landmarks: landmarks.map(lm => ({
-                x: lm.x,
-                y: lm.y,
-                z: lm.z,
-                v: lm.visibility ?? 1.0
-            })),
-            worldLandmarks: worldLandmarks?.map(lm => ({
-                x: lm.x,
-                y: lm.y,
-                z: lm.z
+                x: roundTo3(lm.x),
+                y: roundTo3(lm.y),
+                z: roundTo3(lm.z),
+                v: roundTo3(lm.visibility ?? 1.0)
             }))
         };
+
+        // Only include worldLandmarks on desktop (not critical for visualization)
+        if (!isMobile && results.worldLandmarks?.[0]) {
+            payload.worldLandmarks = results.worldLandmarks[0].map(lm => ({
+                x: roundTo3(lm.x),
+                y: roundTo3(lm.y),
+                z: roundTo3(lm.z)
+            }));
+        }
 
         sensorService.sendChannelMessage(channelIdentifier, {
             payload: JSON.stringify(payload),
@@ -325,6 +365,7 @@
 
         logger.log(loggerCtxName, "Stopping pose detection...");
 
+        // FIRST: Stop the detection loop to prevent new measurements
         detecting = false;
 
         if (animationFrameId) {
@@ -335,8 +376,12 @@
         // Cleanup standalone camera if we were using it
         cleanupStandaloneCamera();
 
-        sensorService.unregisterAttribute(channelIdentifier, "pose_skeleton");
-        sensorService.leaveChannelIfUnused(channelIdentifier);
+        // THEN: Unregister the attribute after detection is fully stopped
+        // Small delay ensures any in-flight sendSkeletonData calls see detecting=false
+        setTimeout(() => {
+            sensorService.unregisterAttribute(channelIdentifier, "pose_skeleton");
+            // Note: leaveChannelIfUnused is already called by unregisterAttribute after a delay
+        }, 50);
 
         logger.log(loggerCtxName, "Pose detection stopped");
     }
@@ -360,26 +405,110 @@
         }
     }
 
+    let unsubscribeSocket = null;
+    let autostartUnsubscribe = null;
+
+    // Subscribe to sensor settings changes for auto-reconnect and auto-stop
+    // This handles the case where settings change AFTER initial mount (e.g., user enables/disables via another instance)
+    // We only act on explicit enable actions (configured=true means user action)
+    let initialSettingsLoad = true;
+    sensorSettings.subscribe((settings) => {
+        logger.log(loggerCtxName, "sensorSettings update", settings.pose, "detecting:", detecting, "initialLoad:", initialSettingsLoad);
+
+        // Skip the initial subscription call - let onMount handle that
+        if (initialSettingsLoad) {
+            initialSettingsLoad = false;
+            return;
+        }
+
+        // If explicitly disabled (configured=true, enabled=false) and we're detecting, stop
+        if (settings.pose?.configured && !settings.pose?.enabled && detecting) {
+            logger.log(loggerCtxName, "Settings indicate disabled, stopping pose detection");
+            stopPose();
+            return;
+        }
+
+        // Only auto-start if explicitly enabled (configured=true means user action)
+        if (settings.pose?.enabled && settings.pose?.configured && !detecting) {
+            if (autostartUnsubscribe) {
+                autostartUnsubscribe();
+                autostartUnsubscribe = null;
+            }
+
+            autostartUnsubscribe = sensorService.onSocketReady(() => {
+                logger.log(loggerCtxName, "Auto-reconnect triggered via sensorSettings, starting pose");
+                startPose();
+            });
+        }
+    });
+
+    // Legacy autostart support (for backwards compatibility)
+    // Only triggers if user has NEVER configured the sensor (configured=false)
+    autostart.subscribe((value) => {
+        logger.log(loggerCtxName, "Autostart update", value, "detecting:", detecting);
+
+        // Check if user has explicitly configured this sensor - if so, respect their choice
+        const poseConfigured = sensorSettings.isSensorConfigured('pose');
+        if (poseConfigured) {
+            logger.log(loggerCtxName, "Autostart skipped - pose already configured by user");
+            return;
+        }
+
+        if (value === true && !detecting) {
+            if (autostartUnsubscribe) {
+                autostartUnsubscribe();
+                autostartUnsubscribe = null;
+            }
+
+            autostartUnsubscribe = sensorService.onSocketReady(() => {
+                logger.log(loggerCtxName, "Autostart triggered, starting pose detection");
+                enablePose();
+            });
+        }
+    });
+
     onMount(() => {
-        sensorService.onSocketReady(() => {
+        unsubscribeSocket = sensorService.onSocketReady(() => {
             // Check per-sensor settings first (takes precedence)
             const poseEnabled = sensorSettings.isSensorEnabled('pose');
-            if (poseEnabled) {
-                logger.log(loggerCtxName, "onMount onSocketReady - Pose was previously enabled, restarting");
-                startPose();
+            const poseConfigured = sensorSettings.isSensorConfigured('pose');
+
+            logger.log(loggerCtxName, "onMount onSocketReady - checking settings", { poseEnabled, poseConfigured });
+
+            // If user has ever configured pose settings, respect that choice
+            if (poseConfigured) {
+                if (poseEnabled) {
+                    logger.log(loggerCtxName, "onMount onSocketReady - Pose was previously enabled, restarting");
+                    startPose();
+                } else {
+                    logger.log(loggerCtxName, "onMount onSocketReady - Pose is explicitly disabled, not starting");
+                }
                 return;
             }
 
-            // Fall back to legacy autostart behavior
+            // Fall back to legacy autostart behavior only if pose was never configured
             const autostartValue = get(autostart);
             if (autostartValue === true) {
                 logger.log(loggerCtxName, "Autostart triggered, starting pose detection");
                 enablePose();
             }
         });
+
+        sensorService.onSocketDisconnected(() => {
+            if (detecting) {
+                // Don't clear settings on disconnect - just stop the sensor
+                stopPose();
+            }
+        });
     });
 
     onDestroy(() => {
+        if (unsubscribeSocket) {
+            unsubscribeSocket();
+        }
+        if (autostartUnsubscribe) {
+            autostartUnsubscribe();
+        }
         stopPose();
         cleanupStandaloneCamera();
         if (poseLandmarker) {
@@ -411,7 +540,7 @@
         {#if detecting}
             <button onclick={disablePose} class="btn btn-blue text-xs">Stop Pose</button>
             <span class="text-xs text-gray-400">
-                {TARGET_FPS} FPS
+                {TARGET_FPS} FPS{isMobile ? ' (mobile)' : ''}
                 {#if usingStandalone}
                     <span class="text-cyan-400">(standalone)</span>
                 {:else}

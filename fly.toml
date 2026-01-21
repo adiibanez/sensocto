@@ -11,6 +11,7 @@ kill_signal = 'SIGTERM'
 
 [deploy]
   release_command = '/app/bin/migrate'
+  wait_timeout = '5m'
 
 [env]
   PHX_HOST = 'sensocto.fly.dev'

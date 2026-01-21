@@ -61,11 +61,20 @@ defmodule SensoctoWeb.LobbyLive do
     default_view_mode = determine_view_mode(sensors_count, max_attributes)
 
     # Extract composite visualization data
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors} =
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+     skeleton_sensors} =
       extract_composite_data(sensors)
 
     # Compute available lenses based on actual sensor attributes
-    available_lenses = compute_available_lenses(heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors)
+    available_lenses =
+      compute_available_lenses(
+        heartrate_sensors,
+        imu_sensors,
+        location_sensors,
+        ecg_sensors,
+        battery_sensors,
+        skeleton_sensors
+      )
 
     # Group sensors by connector (user)
     sensors_by_user = group_sensors_by_user(sensors)
@@ -340,15 +349,23 @@ defmodule SensoctoWeb.LobbyLive do
           attr.attribute_type == "skeleton"
         end)
       end)
-      |> Enum.map(fn {sensor_id, _sensor} ->
-        %{sensor_id: sensor_id}
+      |> Enum.map(fn {sensor_id, sensor} ->
+        %{sensor_id: sensor_id, username: sensor.username}
       end)
 
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors}
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+     skeleton_sensors}
   end
 
   # Compute which lens types are available based on actual sensor attributes
-  defp compute_available_lenses(heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors) do
+  defp compute_available_lenses(
+         heartrate_sensors,
+         imu_sensors,
+         location_sensors,
+         ecg_sensors,
+         battery_sensors,
+         skeleton_sensors
+       ) do
     lenses = []
     lenses = if length(heartrate_sensors) > 0, do: [:heartrate | lenses], else: lenses
     lenses = if length(imu_sensors) > 0, do: [:imu | lenses], else: lenses
@@ -476,6 +493,7 @@ defmodule SensoctoWeb.LobbyLive do
       if new_sensor_ids != current_sensor_ids do
         # Subscribe to data topics for any new sensors
         new_sensors = new_sensor_ids -- current_sensor_ids
+
         Enum.each(new_sensors, fn sensor_id ->
           Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
           Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
@@ -484,11 +502,20 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
 
         # Update composite visualization data
-        {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors} =
+        {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+         skeleton_sensors} =
           extract_composite_data(sensors)
 
         # Recompute available lenses when sensors change
-        available_lenses = compute_available_lenses(heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors)
+        available_lenses =
+          compute_available_lenses(
+            heartrate_sensors,
+            imu_sensors,
+            location_sensors,
+            ecg_sensors,
+            battery_sensors,
+            skeleton_sensors
+          )
 
         updated_socket =
           socket
@@ -551,9 +578,17 @@ defmodule SensoctoWeb.LobbyLive do
     case socket.assigns.live_action do
       # Composite views use composite_measurement event
       action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
+        # Look up username from online sensors for display
+        username =
+          case Map.get(socket.assigns.sensors_online, sensor_id) do
+            %{username: name} when not is_nil(name) -> name
+            _ -> nil
+          end
+
         {:noreply,
          push_event(socket, "composite_measurement", %{
            sensor_id: sensor_id,
+           username: username,
            attribute_id: attribute_id,
            payload: payload,
            timestamp: timestamp
@@ -906,7 +941,8 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_info(:refresh_available_lenses, socket) do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors} =
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+     skeleton_sensors} =
       extract_composite_data(sensors)
 
     available_lenses =
@@ -978,7 +1014,8 @@ defmodule SensoctoWeb.LobbyLive do
     # Re-fetch all sensors and recompute available lenses
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors, skeleton_sensors} =
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+     skeleton_sensors} =
       extract_composite_data(sensors)
 
     available_lenses =

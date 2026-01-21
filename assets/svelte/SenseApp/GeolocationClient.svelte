@@ -79,10 +79,18 @@
   };
 
   // Subscribe to sensor settings changes for auto-reconnect
+  // Skip initial load - let onMount handle that
+  let initialSettingsLoad = true;
   sensorSettings.subscribe((settings) => {
-    logger.log(loggerCtxName, "sensorSettings update", settings.geolocation, geolocationData);
+    logger.log(loggerCtxName, "sensorSettings update", settings.geolocation, geolocationData, "initialLoad:", initialSettingsLoad);
 
-    if (settings.geolocation?.enabled && !geolocationData && !watchId) {
+    if (initialSettingsLoad) {
+      initialSettingsLoad = false;
+      return;
+    }
+
+    // Only auto-start if explicitly enabled after initial load
+    if (settings.geolocation?.enabled && settings.geolocation?.configured && !geolocationData && !watchId) {
       setTimeout(() => {
         logger.log(loggerCtxName, "Auto-reconnect triggered via sensorSettings");
         requestAndStartGeolocation();
@@ -91,8 +99,17 @@
   });
 
   // Legacy autostart support (for backwards compatibility)
+  // Only triggers if user has NEVER configured the sensor (configured=false)
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "pre Autostart", value, geolocationData);
+
+    // Check if user has explicitly configured this sensor - if so, respect their choice
+    const geoConfigured = sensorSettings.isSensorConfigured('geolocation');
+    if (geoConfigured) {
+      logger.log(loggerCtxName, "Autostart skipped - geolocation already configured by user");
+      return;
+    }
+
     if (value == true && !geolocationData) {
       logger.log(loggerCtxName, "Autostart", value, autostart);
 
@@ -187,14 +204,24 @@
     unsubscribeSocket = sensorService.onSocketReady(() => {
       // Check per-sensor settings first (takes precedence)
       const geoEnabled = sensorSettings.isSensorEnabled('geolocation');
-      if (geoEnabled) {
-        logger.log(loggerCtxName, "onMount onSocketReady - Geolocation was previously enabled, restarting");
-        requestAndStartGeolocation();
+      const geoConfigured = sensorSettings.isSensorConfigured('geolocation');
+
+      logger.log(loggerCtxName, "onMount onSocketReady - checking settings", { geoEnabled, geoConfigured });
+
+      // If user has ever configured geolocation settings, respect that choice
+      if (geoConfigured) {
+        if (geoEnabled) {
+          logger.log(loggerCtxName, "onMount onSocketReady - Geolocation was previously enabled, restarting");
+          requestAndStartGeolocation();
+        } else {
+          logger.log(loggerCtxName, "onMount onSocketReady - Geolocation is explicitly disabled, not starting");
+        }
         return;
       }
 
-      // Fall back to legacy autostart behavior
-      if (autostart == true) {
+      // Fall back to legacy autostart behavior only if geolocation was never configured
+      const autostartValue = get(autostart);
+      if (autostartValue === true) {
         enableGeolocation();
       }
     });

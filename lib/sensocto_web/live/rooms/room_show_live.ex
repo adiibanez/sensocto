@@ -44,9 +44,8 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to object3d events for this room
           PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
 
-          # NOTE: Removed auto_join_user_sensors - sensors should be added:
-          # - Simulator sensors: automatically via SensorServer when started with room_id
-          # - Real sensors: manually by users via the "Add Sensor" modal
+          # Subscribe to global sensor events to auto-join web connector sensors
+          PubSub.subscribe(Sensocto.PubSub, "sensors:global")
 
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
@@ -1046,8 +1045,16 @@ defmodule SensoctoWeb.RoomShowLive do
     # Push composite_measurement event when lens is active
     socket =
       if socket.assigns[:current_lens] do
+        # Look up username from sensors_state for display
+        username =
+          case Map.get(socket.assigns.sensors_state, sensor_id) do
+            %{username: name} when not is_nil(name) -> name
+            _ -> nil
+          end
+
         push_event(socket, "composite_measurement", %{
           sensor_id: sensor_id,
+          username: username,
           attribute_id: attribute_id,
           payload: payload,
           timestamp: timestamp
@@ -1085,6 +1092,13 @@ defmodule SensoctoWeb.RoomShowLive do
     # Push composite_measurement events when lens is active
     socket =
       if socket.assigns[:current_lens] do
+        # Look up username from sensors_state for display
+        username =
+          case Map.get(socket.assigns.sensors_state, sensor_id) do
+            %{username: name} when not is_nil(name) -> name
+            _ -> nil
+          end
+
         # Get latest measurement per attribute
         latest_by_attr =
           measurements_list
@@ -1094,6 +1108,7 @@ defmodule SensoctoWeb.RoomShowLive do
 
             %{
               sensor_id: sensor_id,
+              username: username,
               attribute_id: attr_id,
               payload: latest.payload,
               timestamp: latest.timestamp
@@ -1168,6 +1183,78 @@ defmodule SensoctoWeb.RoomShowLive do
       end
 
     {:noreply, assign(socket, :sensor_activity, socket.assigns.sensor_activity)}
+  end
+
+  # Handle global sensor online events - auto-join web connector sensors to room
+  @impl true
+  def handle_info({:sensor_online, sensor_id, configuration}, socket) do
+    # Get the current user to check if this sensor belongs to them
+    user = socket.assigns.current_user
+    sensor_username = Map.get(configuration, :username)
+
+    # Auto-join sensor if it belongs to the current user (matching username from email)
+    user_username =
+      if user && user.email do
+        user.email |> to_string() |> String.split("@") |> List.first()
+      else
+        nil
+      end
+
+    # Only auto-join if:
+    # 1. The sensor has a username that matches the current user
+    # 2. OR the sensor doesn't have a username (legacy support)
+    should_join =
+      (sensor_username && user_username && sensor_username == user_username) ||
+        (!sensor_username && user)
+
+    if should_join do
+      # Check if sensor is already in the room
+      current_sensor_ids = Enum.map(socket.assigns.sensors, & &1.sensor_id) |> MapSet.new()
+
+      if not MapSet.member?(current_sensor_ids, sensor_id) do
+        Logger.debug("Auto-joining sensor #{sensor_id} to room #{socket.assigns.room.id}")
+
+        # Subscribe to sensor data
+        PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
+
+        # Create a minimal sensor struct for the list
+        new_sensor = %{sensor_id: sensor_id}
+        sensors = [new_sensor | socket.assigns.sensors]
+
+        # Refresh sensor state and lenses
+        sensors_state = get_sensors_state(sensors)
+        available_lenses = extract_available_lenses(sensors_state)
+
+        {:noreply,
+         socket
+         |> assign(:sensors, sensors)
+         |> assign(:sensors_state, sensors_state)
+         |> assign(:available_lenses, available_lenses)
+         |> assign(:sensor_activity, build_activity_map(sensors))}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Handle sensor offline events
+  @impl true
+  def handle_info({:sensor_offline, sensor_id}, socket) do
+    # Remove sensor from the room's list
+    sensors = Enum.reject(socket.assigns.sensors, &(&1.sensor_id == sensor_id))
+
+    # Refresh sensor state and lenses
+    sensors_state = get_sensors_state(sensors)
+    available_lenses = extract_available_lenses(sensors_state)
+
+    {:noreply,
+     socket
+     |> assign(:sensors, sensors)
+     |> assign(:sensors_state, sensors_state)
+     |> assign(:available_lenses, available_lenses)
+     |> assign(:sensor_activity, build_activity_map(sensors))}
   end
 
   # Handle call events from CallServer via PubSub
@@ -1778,8 +1865,8 @@ defmodule SensoctoWeb.RoomShowLive do
         attr.attribute_type == "skeleton"
       end)
     end)
-    |> Enum.map(fn {sensor_id, _sensor} ->
-      %{sensor_id: sensor_id}
+    |> Enum.map(fn {sensor_id, sensor} ->
+      %{sensor_id: sensor_id, username: sensor.username}
     end)
   end
 
@@ -1922,7 +2009,7 @@ defmodule SensoctoWeb.RoomShowLive do
             <button
               phx-click="leave_room"
               data-confirm="Are you sure you want to leave this room? Your sensors will be disconnected from the room."
-              class="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
+              class="bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold py-2 px-3 sm:px-4 rounded-lg transition-colors flex items-center gap-2 text-sm sm:text-base"
             >
               <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -2048,7 +2135,10 @@ defmodule SensoctoWeb.RoomShowLive do
                 if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
             >
               <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
-              <span :if={@media_viewers > 0} class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+              <span
+                :if={@media_viewers > 0}
+                class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"
+              >
                 {@media_viewers}
               </span>
             </button>
@@ -2062,7 +2152,10 @@ defmodule SensoctoWeb.RoomShowLive do
                 if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
             >
               <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
-              <span :if={@object3d_viewers > 0} class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+              <span
+                :if={@object3d_viewers > 0}
+                class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"
+              >
                 {@object3d_viewers}
               </span>
             </button>
@@ -2164,7 +2257,7 @@ defmodule SensoctoWeb.RoomShowLive do
                     phx-value-lens={lens.type}
                     class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
                         if(@current_lens == lens.type,
-                          do: "bg-orange-500 text-white",
+                          do: "bg-orange text-white",
                           else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
                     title={"#{lens.sensor_count} sensor(s)"}
                   >
@@ -2416,7 +2509,12 @@ defmodule SensoctoWeb.RoomShowLive do
             <div class="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-4">
               <div class="flex items-center gap-3">
                 <div class="p-2 bg-white/20 rounded-full">
-                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    class="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"

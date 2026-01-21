@@ -41,11 +41,18 @@
   };
 
   // Subscribe to sensor settings changes for auto-reconnect
+  // Skip initial load - let onMount handle that
+  let initialSettingsLoad = true;
   sensorSettings.subscribe((settings) => {
-    logger.log(loggerCtxName, "sensorSettings update", settings.battery, "batteryStarted:", batteryStarted);
+    logger.log(loggerCtxName, "sensorSettings update", settings.battery, "batteryStarted:", batteryStarted, "initialLoad:", initialSettingsLoad);
 
-    if (settings.battery?.enabled && !batteryStarted) {
-      // Clean up previous subscription if any
+    if (initialSettingsLoad) {
+      initialSettingsLoad = false;
+      return;
+    }
+
+    // Only auto-start if explicitly enabled after initial load
+    if (settings.battery?.enabled && settings.battery?.configured && !batteryStarted) {
       if (autostartUnsubscribe) {
         autostartUnsubscribe();
         autostartUnsubscribe = null;
@@ -59,17 +66,23 @@
   });
 
   // Legacy autostart support (for backwards compatibility)
+  // Only triggers if user has NEVER configured the sensor (configured=false)
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "Autostart update", value, "batteryStarted:", batteryStarted);
 
+    // Check if user has explicitly configured this sensor - if so, respect their choice
+    const batteryConfigured = sensorSettings.isSensorConfigured('battery');
+    if (batteryConfigured) {
+      logger.log(loggerCtxName, "Autostart skipped - battery already configured by user");
+      return;
+    }
+
     if (value === true && !batteryStarted) {
-      // Clean up previous subscription if any
       if (autostartUnsubscribe) {
         autostartUnsubscribe();
         autostartUnsubscribe = null;
       }
 
-      // Register for socket ready - this will fire immediately if socket is already ready
       autostartUnsubscribe = sensorService.onSocketReady(() => {
         logger.log(loggerCtxName, "Autostart triggered via subscribe, starting battery");
         enableBattery();
@@ -181,23 +194,25 @@
     unsubscribeSocket = sensorService.onSocketReady(() => {
       // Check per-sensor settings first (takes precedence)
       const batteryEnabled = sensorSettings.isSensorEnabled('battery');
-      if (batteryEnabled) {
-        logger.log(
-          loggerCtxName,
-          "onMount onSocketReady - Battery was previously enabled, restarting"
-        );
-        requestAndStartBattery();
+      const batteryConfigured = sensorSettings.isSensorConfigured('battery');
+
+      logger.log(loggerCtxName, "onMount onSocketReady - checking settings", { batteryEnabled, batteryConfigured });
+
+      // If user has ever configured battery settings, respect that choice
+      if (batteryConfigured) {
+        if (batteryEnabled) {
+          logger.log(loggerCtxName, "onMount onSocketReady - Battery was previously enabled, restarting");
+          requestAndStartBattery();
+        } else {
+          logger.log(loggerCtxName, "onMount onSocketReady - Battery is explicitly disabled, not starting");
+        }
         return;
       }
 
-      // Fall back to legacy autostart behavior
+      // Fall back to legacy autostart behavior only if battery was never configured
       const autostartValue = get(autostart);
       if (autostartValue === true) {
-        logger.log(
-          loggerCtxName,
-          "onMount onSocketReady Autostart going to start",
-          autostartValue
-        );
+        logger.log(loggerCtxName, "onMount onSocketReady Autostart going to start", autostartValue);
         enableBattery();
       }
     });

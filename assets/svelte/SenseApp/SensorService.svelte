@@ -147,16 +147,25 @@
                 `Unregistered attribute ${attributeId} from ${fullChannelName}`,
             );
 
-            // If no attributes left, leave the channel
-            if (channelAttributes[fullChannelName].size === 0) {
-                leaveChannelIfUnused(sensorId);
-            } else {
-                // Notify server about attribute removal
-                sensorChannels[fullChannelName]?.push("update_attributes", {
+            // Always notify server about attribute removal BEFORE potentially leaving the channel
+            // This ensures the server removes the attribute from its state even if the channel closes
+            const channel = sensorChannels[fullChannelName];
+            if (channel) {
+                channel.push("update_attributes", {
                     action: "unregister",
                     attribute_id: attributeId,
                     metadata: {},
+                }).receive("ok", () => {
+                    logger.log(loggerCtxName, `Server confirmed unregister of ${attributeId}`);
                 });
+            }
+
+            // If no attributes left, leave the channel after a short delay
+            // to ensure the unregister message is sent
+            if (channelAttributes[fullChannelName].size === 0) {
+                setTimeout(() => {
+                    leaveChannelIfUnused(sensorId);
+                }, 100);
             }
         }
     }

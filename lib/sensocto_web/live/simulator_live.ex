@@ -120,6 +120,7 @@ defmodule SensoctoWeb.SimulatorLive do
       case Manager.start_scenario(scenario_name, room_id: room_id) do
         :ok ->
           room_info = if room_id, do: " (room: #{room_id})", else: ""
+
           {:noreply,
            socket
            |> put_flash(:info, "Started scenario: #{scenario_name}#{room_info}")
@@ -160,6 +161,7 @@ defmodule SensoctoWeb.SimulatorLive do
       case Manager.switch_scenario(scenario_name, room_id: room_id) do
         :ok ->
           room_info = if room_id, do: " (room: #{room_id})", else: ""
+
           {:noreply,
            socket
            |> put_flash(:info, "Loaded scenario: #{scenario_name}#{room_info}")
@@ -219,8 +221,8 @@ defmodule SensoctoWeb.SimulatorLive do
             </span>
           </div>
         </div>
-
-        <!-- Running Scenarios -->
+        
+    <!-- Running Scenarios -->
         <%= if map_size(@running_scenarios) > 0 do %>
           <div class="bg-gray-800 rounded-lg p-6 mb-6">
             <h2 class="text-xl font-semibold text-orange-300 mb-4">Running Scenarios</h2>
@@ -228,7 +230,9 @@ defmodule SensoctoWeb.SimulatorLive do
               <%= for {scenario_name, info} <- @running_scenarios do %>
                 <div class="bg-gray-700 rounded-lg p-4 flex items-center justify-between">
                   <div>
-                    <h3 class="text-lg font-medium text-white capitalize">{String.replace(scenario_name, "_", " ")}</h3>
+                    <h3 class="text-lg font-medium text-white capitalize">
+                      {String.replace(scenario_name, "_", " ")}
+                    </h3>
                     <div class="flex items-center gap-4 mt-1 text-sm text-gray-400">
                       <span>{length(info.connector_ids)} connectors</span>
                       <%= if info.room_name do %>
@@ -253,8 +257,8 @@ defmodule SensoctoWeb.SimulatorLive do
             </div>
           </div>
         <% end %>
-
-        <!-- Scenario Selection -->
+        
+    <!-- Scenario Selection -->
         <div class="bg-gray-800 rounded-lg p-6 mb-6">
           <div class="flex items-center justify-between mb-4">
             <div>
@@ -301,20 +305,26 @@ defmodule SensoctoWeb.SimulatorLive do
                   class={[
                     "rounded-lg p-4 border-2 cursor-pointer transition-all hover:border-orange-400",
                     is_running && "border-green-500 bg-gray-700",
-                    @selected_scenario == scenario.name && !is_running && "border-orange-500 bg-gray-700",
-                    @selected_scenario != scenario.name && !is_running && "border-gray-600 bg-gray-700/50"
+                    @selected_scenario == scenario.name && !is_running &&
+                      "border-orange-500 bg-gray-700",
+                    @selected_scenario != scenario.name && !is_running &&
+                      "border-gray-600 bg-gray-700/50"
                   ]}
                   phx-click="select_scenario"
                   phx-value-scenario={scenario.name}
                 >
                   <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-lg font-medium text-white capitalize">{String.replace(scenario.name, "_", " ")}</h3>
+                    <h3 class="text-lg font-medium text-white capitalize">
+                      {String.replace(scenario.name, "_", " ")}
+                    </h3>
                     <div class="flex gap-1">
                       <%= if @selected_scenario == scenario.name && !is_running do %>
-                        <span class="px-2 py-1 bg-orange-500 rounded text-xs font-medium">Selected</span>
+                        <span class="px-2 py-1 bg-orange rounded text-xs font-medium">Selected</span>
                       <% end %>
                       <%= if is_running do %>
-                        <span class="px-2 py-1 bg-green-600 rounded text-xs font-medium">Running</span>
+                        <span class="px-2 py-1 bg-green-600 rounded text-xs font-medium">
+                          Running
+                        </span>
                       <% end %>
                     </div>
                   </div>
@@ -410,11 +420,15 @@ defmodule SensoctoWeb.SimulatorLive do
 
                   <%= if Map.has_key?(connector, :sensors) and map_size(connector.sensors) > 0 do %>
                     <div class="mt-3 border-t border-gray-600 pt-3">
-                      <h4 class="text-sm font-medium text-gray-300 mb-2">Sensors ({map_size(connector.sensors)})</h4>
+                      <h4 class="text-sm font-medium text-gray-300 mb-2">
+                        Sensors ({map_size(connector.sensors)})
+                      </h4>
                       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                         <%= for {sensor_id, sensor} <- connector.sensors do %>
                           <div class="bg-gray-800 rounded px-3 py-2">
-                            <p class="text-sm font-medium text-white truncate">{sensor.name || sensor_id}</p>
+                            <p class="text-sm font-medium text-white truncate">
+                              {sensor.name || sensor_id}
+                            </p>
                             <p class="text-xs text-gray-400">{sensor_id}</p>
                             <%= if Map.has_key?(sensor, :attributes) do %>
                               <p class="text-xs text-gray-500 mt-1">

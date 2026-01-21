@@ -123,10 +123,18 @@
   };
 
   // Subscribe to sensor settings changes for auto-reconnect
+  // Skip initial load - let onMount handle that
+  let initialSettingsLoad = true;
   sensorSettings.subscribe((settings) => {
-    logger.log(loggerCtxName, "sensorSettings update", settings.richPresence, "isTracking:", isTracking);
+    logger.log(loggerCtxName, "sensorSettings update", settings.richPresence, "isTracking:", isTracking, "initialLoad:", initialSettingsLoad);
 
-    if (settings.richPresence?.enabled && !isTracking) {
+    if (initialSettingsLoad) {
+      initialSettingsLoad = false;
+      return;
+    }
+
+    // Only auto-start if explicitly enabled after initial load
+    if (settings.richPresence?.enabled && settings.richPresence?.configured && !isTracking) {
       if (autostartUnsubscribe) {
         autostartUnsubscribe();
         autostartUnsubscribe = null;
@@ -140,8 +148,16 @@
   });
 
   // Legacy autostart support (for backwards compatibility)
+  // Only triggers if user has NEVER configured the sensor (configured=false)
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "Autostart update", value, "isTracking:", isTracking);
+
+    // Check if user has explicitly configured this sensor - if so, respect their choice
+    const richPresenceConfigured = sensorSettings.isSensorConfigured('richPresence');
+    if (richPresenceConfigured) {
+      logger.log(loggerCtxName, "Autostart skipped - rich presence already configured by user");
+      return;
+    }
 
     if (value === true && !isTracking) {
       if (autostartUnsubscribe) {
@@ -199,13 +215,22 @@
     unsubscribeSocket = sensorService.onSocketReady(() => {
       // Check per-sensor settings first (takes precedence)
       const richPresenceEnabled = sensorSettings.isSensorEnabled('richPresence');
-      if (richPresenceEnabled) {
-        logger.log(loggerCtxName, "onMount onSocketReady - Rich presence was previously enabled, restarting");
-        startPresenceTracking();
+      const richPresenceConfigured = sensorSettings.isSensorConfigured('richPresence');
+
+      logger.log(loggerCtxName, "onMount onSocketReady - checking settings", { richPresenceEnabled, richPresenceConfigured });
+
+      // If user has ever configured rich presence settings, respect that choice
+      if (richPresenceConfigured) {
+        if (richPresenceEnabled) {
+          logger.log(loggerCtxName, "onMount onSocketReady - Rich presence was previously enabled, restarting");
+          startPresenceTracking();
+        } else {
+          logger.log(loggerCtxName, "onMount onSocketReady - Rich presence is explicitly disabled, not starting");
+        }
         return;
       }
 
-      // Fall back to legacy autostart behavior
+      // Fall back to legacy autostart behavior only if rich presence was never configured
       const autostartValue = get(autostart);
       if (autostartValue === true) {
         logger.log(loggerCtxName, "onMount onSocketReady - autostart enabled");

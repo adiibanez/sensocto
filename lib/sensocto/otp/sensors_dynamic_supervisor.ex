@@ -39,6 +39,14 @@ defmodule Sensocto.SensorsDynamicSupervisor do
       # case Sensocto.RegistryUtils.dynamic_start_child(Sensocto.SensorsDynamicSupervisor, __MODULE__, child_spec) do
       {:ok, pid} when is_pid(pid) ->
         Logger.debug("Added sensor #{sensor_id}")
+
+        # Broadcast sensor online event for rooms to auto-join
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          "sensors:global",
+          {:sensor_online, sensor_id, configuration}
+        )
+
         {:ok, pid}
 
       {:error, {:already_started, _pid}} ->
@@ -56,6 +64,14 @@ defmodule Sensocto.SensorsDynamicSupervisor do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(__MODULE__, pid)
         Logger.debug("Stopped sensor #{sensor_id}")
+
+        # Broadcast sensor offline event
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          "sensors:global",
+          {:sensor_offline, sensor_id}
+        )
+
         :ok
 
       [] ->

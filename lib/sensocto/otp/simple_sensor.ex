@@ -113,6 +113,7 @@ defmodule Sensocto.SimpleSensor do
       batch_size: metadata.batch_size,
       connector_id: metadata.connector_id,
       connector_name: metadata.connector_name,
+      username: Map.get(metadata, :username),
       attributes: transformed_attributes
     }
   end
@@ -403,6 +404,9 @@ defmodule Sensocto.SimpleSensor do
       attribute_id in ["rich_presence", "media", "now_playing"] ->
         "rich_presence"
 
+      attribute_id in ["skeleton", "pose_skeleton", "pose", "body_pose"] ->
+        "skeleton"
+
       # Infer from payload structure
       is_map(payload) and Map.has_key?(payload, :level) and Map.has_key?(payload, :charging) ->
         "battery"
@@ -418,6 +422,13 @@ defmodule Sensocto.SimpleSensor do
 
       is_map(payload) and Map.has_key?(payload, "artist") ->
         "rich_presence"
+
+      # Skeleton/pose data has landmarks array
+      is_map(payload) and Map.has_key?(payload, :landmarks) ->
+        "skeleton"
+
+      is_map(payload) and Map.has_key?(payload, "landmarks") ->
+        "skeleton"
 
       # Default to generic numeric type
       true ->

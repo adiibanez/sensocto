@@ -2,7 +2,7 @@
   import { getContext, onMount, onDestroy } from "svelte";
   import { get } from "svelte/store";
   import { logger } from "../logger_svelte.js";
-  import { autostart } from "./stores.js";
+  import { autostart, sensorSettings } from "./stores.js";
 
   export let compact = false;
 
@@ -111,6 +111,35 @@
     sensorService.sendChannelMessage(channelIdentifier, payload);
   };
 
+  // Wrapper functions that also persist to localStorage
+  const enableRichPresence = () => {
+    sensorSettings.setSensorEnabled('richPresence', true);
+    startPresenceTracking();
+  };
+
+  const disableRichPresence = () => {
+    sensorSettings.setSensorEnabled('richPresence', false);
+    stopPresenceTracking();
+  };
+
+  // Subscribe to sensor settings changes for auto-reconnect
+  sensorSettings.subscribe((settings) => {
+    logger.log(loggerCtxName, "sensorSettings update", settings.richPresence, "isTracking:", isTracking);
+
+    if (settings.richPresence?.enabled && !isTracking) {
+      if (autostartUnsubscribe) {
+        autostartUnsubscribe();
+        autostartUnsubscribe = null;
+      }
+
+      autostartUnsubscribe = sensorService.onSocketReady(() => {
+        logger.log(loggerCtxName, "Auto-reconnect triggered via sensorSettings, starting presence tracking");
+        startPresenceTracking();
+      });
+    }
+  });
+
+  // Legacy autostart support (for backwards compatibility)
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "Autostart update", value, "isTracking:", isTracking);
 
@@ -122,7 +151,7 @@
 
       autostartUnsubscribe = sensorService.onSocketReady(() => {
         logger.log(loggerCtxName, "Autostart triggered, starting presence tracking");
-        startPresenceTracking();
+        enableRichPresence();
       });
     }
   });
@@ -168,15 +197,25 @@
 
   onMount(() => {
     unsubscribeSocket = sensorService.onSocketReady(() => {
+      // Check per-sensor settings first (takes precedence)
+      const richPresenceEnabled = sensorSettings.isSensorEnabled('richPresence');
+      if (richPresenceEnabled) {
+        logger.log(loggerCtxName, "onMount onSocketReady - Rich presence was previously enabled, restarting");
+        startPresenceTracking();
+        return;
+      }
+
+      // Fall back to legacy autostart behavior
       const autostartValue = get(autostart);
       if (autostartValue === true) {
         logger.log(loggerCtxName, "onMount onSocketReady - autostart enabled");
-        startPresenceTracking();
+        enableRichPresence();
       }
     });
 
     sensorService.onSocketDisconnected(() => {
       if (isTracking) {
+        // Don't clear settings on disconnect - just stop the sensor
         stopPresenceTracking();
       }
     });
@@ -201,7 +240,7 @@
 {#if compact}
   {#if "mediaSession" in navigator}
     <button
-      on:click={isTracking ? stopPresenceTracking : startPresenceTracking}
+      on:click={isTracking ? disableRichPresence : enableRichPresence}
       class="icon-btn"
       class:active={isTracking}
       class:playing={presenceData?.playbackState === "playing"}
@@ -220,7 +259,7 @@
 {:else if !$autostart}
   {#if isTracking}
     <div class="flex items-center gap-2">
-      <button class="btn btn-blue text-xs" on:click={stopPresenceTracking}>
+      <button class="btn btn-blue text-xs" on:click={disableRichPresence}>
         Stop Presence
       </button>
       {#if presenceData?.playbackState === "playing"}
@@ -240,7 +279,7 @@
       </p>
     {/if}
   {:else}
-    <button class="btn btn-blue text-xs" on:click={startPresenceTracking}>
+    <button class="btn btn-blue text-xs" on:click={enableRichPresence}>
       Start Presence
     </button>
   {/if}

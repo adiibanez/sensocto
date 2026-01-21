@@ -1,7 +1,7 @@
 <script>
     import { getContext, onMount, onDestroy } from "svelte";
     import { get } from "svelte/store";
-    import { autostart } from "./stores.js";
+    import { autostart, sensorSettings } from "./stores.js";
     import { logger } from "../logger_svelte.js";
     import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 
@@ -341,23 +341,42 @@
         logger.log(loggerCtxName, "Pose detection stopped");
     }
 
+    // Wrapper functions that also persist to localStorage
+    function enablePose() {
+        sensorSettings.setSensorEnabled('pose', true);
+        startPose();
+    }
+
+    function disablePose() {
+        sensorSettings.setSensorEnabled('pose', false);
+        stopPose();
+    }
+
     function togglePose() {
         if (detecting) {
-            stopPose();
+            disablePose();
         } else {
-            startPose();
+            enablePose();
         }
     }
 
     onMount(() => {
-        // Check if autostart is enabled
-        const autostartValue = get(autostart);
-        if (autostartValue === true) {
-            sensorService.onSocketReady(() => {
-                logger.log(loggerCtxName, "Autostart triggered, starting pose detection");
+        sensorService.onSocketReady(() => {
+            // Check per-sensor settings first (takes precedence)
+            const poseEnabled = sensorSettings.isSensorEnabled('pose');
+            if (poseEnabled) {
+                logger.log(loggerCtxName, "onMount onSocketReady - Pose was previously enabled, restarting");
                 startPose();
-            });
-        }
+                return;
+            }
+
+            // Fall back to legacy autostart behavior
+            const autostartValue = get(autostart);
+            if (autostartValue === true) {
+                logger.log(loggerCtxName, "Autostart triggered, starting pose detection");
+                enablePose();
+            }
+        });
     });
 
     onDestroy(() => {
@@ -390,7 +409,7 @@
 {:else}
     <div class="flex items-center gap-2">
         {#if detecting}
-            <button onclick={stopPose} class="btn btn-blue text-xs">Stop Pose</button>
+            <button onclick={disablePose} class="btn btn-blue text-xs">Stop Pose</button>
             <span class="text-xs text-gray-400">
                 {TARGET_FPS} FPS
                 {#if usingStandalone}
@@ -400,7 +419,7 @@
                 {/if}
             </span>
         {:else}
-            <button onclick={startPose} class="btn btn-blue text-xs">Start Pose</button>
+            <button onclick={enablePose} class="btn btn-blue text-xs">Start Pose</button>
             {#if cameraError}
                 <span class="text-xs text-red-400">{cameraError}</span>
             {/if}

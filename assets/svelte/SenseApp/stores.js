@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
 export const autostart = writable(false);
 
@@ -6,6 +6,90 @@ export const usersettings = writable({
     autostart: false,
     deviceName: ''
 });
+
+// ============================================================================
+// SENSOR SETTINGS - Per-sensor persistence with localStorage
+// ============================================================================
+
+const SENSOR_SETTINGS_KEY = 'sensocto_sensor_settings';
+
+// Default sensor settings
+const DEFAULT_SENSOR_SETTINGS = {
+    imu: { enabled: false },
+    geolocation: { enabled: false },
+    pose: { enabled: false },
+    battery: { enabled: false },
+    bluetooth: { enabled: false },
+    richPresence: { enabled: false }
+};
+
+// Load settings from localStorage
+function loadSensorSettings() {
+    try {
+        const stored = localStorage.getItem(SENSOR_SETTINGS_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            // Merge with defaults to ensure all sensors have settings
+            return { ...DEFAULT_SENSOR_SETTINGS, ...parsed };
+        }
+    } catch (e) {
+        console.warn('Failed to load sensor settings from localStorage:', e);
+    }
+    return { ...DEFAULT_SENSOR_SETTINGS };
+}
+
+// Save settings to localStorage
+function saveSensorSettings(settings) {
+    try {
+        localStorage.setItem(SENSOR_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) {
+        console.warn('Failed to save sensor settings to localStorage:', e);
+    }
+}
+
+// Create sensor settings store with localStorage persistence
+function createSensorSettingsStore() {
+    const initial = loadSensorSettings();
+    const { subscribe, set, update } = writable(initial);
+
+    return {
+        subscribe,
+        set: (value) => {
+            saveSensorSettings(value);
+            set(value);
+        },
+        update: (fn) => {
+            update(current => {
+                const newValue = fn(current);
+                saveSensorSettings(newValue);
+                return newValue;
+            });
+        },
+        // Helper to enable/disable a specific sensor
+        setSensorEnabled: (sensorId, enabled) => {
+            update(current => {
+                const newValue = {
+                    ...current,
+                    [sensorId]: { ...current[sensorId], enabled }
+                };
+                saveSensorSettings(newValue);
+                return newValue;
+            });
+        },
+        // Helper to check if a sensor is enabled
+        isSensorEnabled: (sensorId) => {
+            const current = get({ subscribe });
+            return current[sensorId]?.enabled ?? false;
+        },
+        // Reset all settings to defaults
+        reset: () => {
+            saveSensorSettings(DEFAULT_SENSOR_SETTINGS);
+            set({ ...DEFAULT_SENSOR_SETTINGS });
+        }
+    };
+}
+
+export const sensorSettings = createSensorSettingsStore();
 
 // Global BLE device state that persists across LiveView navigations
 // We use window object to ensure truly global state across component remounts

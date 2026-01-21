@@ -6,7 +6,7 @@
         onMount,
     } from "svelte";
     import { get } from "svelte/store";
-    import { usersettings, autostart } from "./stores.js";
+    import { usersettings, autostart, sensorSettings } from "./stores.js";
     import { isMobile } from "../utils.js";
     import { logger } from "../logger_svelte.js";
 
@@ -35,7 +35,7 @@
     let accelerometer;
     let gyroscope;
 
-    let imuFrequency = 5; //Default IMU frequency
+    let imuFrequency = 25; //Default IMU frequency
     let imuOutput = null;
     let initialOrientation;
     let previousTimestamp = null;
@@ -45,6 +45,36 @@
 
     let autostartUnsubscribe = null;
 
+    // Wrapper functions that also persist to localStorage
+    function enableIMU() {
+        sensorSettings.setSensorEnabled('imu', true);
+        startIMU();
+    }
+
+    function disableIMU() {
+        sensorSettings.setSensorEnabled('imu', false);
+        stopIMU();
+    }
+
+    // Subscribe to sensor settings changes for auto-reconnect
+    sensorSettings.subscribe((settings) => {
+        logger.log(loggerCtxName, "sensorSettings update", settings.imu, readingIMU);
+
+        if (settings.imu?.enabled && !readingIMU && imuAvailable()) {
+            // Clean up previous subscription if any
+            if (autostartUnsubscribe) {
+                autostartUnsubscribe();
+                autostartUnsubscribe = null;
+            }
+
+            autostartUnsubscribe = sensorService.onSocketReady(() => {
+                logger.log(loggerCtxName, "Auto-reconnect triggered via sensorSettings, starting IMU");
+                startIMU();
+            });
+        }
+    });
+
+    // Legacy autostart support (for backwards compatibility)
     autostart.subscribe((value) => {
         logger.log(loggerCtxName, "pre Autostart update", value, readingIMU);
 
@@ -57,7 +87,7 @@
 
             autostartUnsubscribe = sensorService.onSocketReady(() => {
                 logger.log(loggerCtxName, "Autostart triggered via subscribe, starting IMU");
-                startIMU();
+                enableIMU();
             });
         }
     });
@@ -386,6 +416,19 @@
 
     onMount(() => {
         unsubscribeSocket = sensorService.onSocketReady(() => {
+            // Check per-sensor settings first (takes precedence)
+            const imuEnabled = sensorSettings.isSensorEnabled('imu');
+            if (imuEnabled && imuAvailable()) {
+                logger.log(
+                    loggerCtxName,
+                    "onMount onSocketReady - IMU was previously enabled, restarting",
+                    imuEnabled,
+                );
+                startIMU();
+                return;
+            }
+
+            // Fall back to legacy autostart behavior
             const autostartValue = get(autostart);
             if (autostartValue === true) {
                 logger.log(
@@ -393,12 +436,13 @@
                     "onMount onSocketReady Autostart going to start",
                     autostartValue,
                 );
-                startIMU();
+                enableIMU();
             }
         });
 
         sensorService.onSocketDisconnected(() => {
             if (readingIMU) {
+                // Don't clear settings on disconnect - just stop the sensor
                 stopIMU();
             }
         });
@@ -420,7 +464,7 @@
 {#if imuAvailable()}
     {#if compact}
         <button
-            on:click={readingIMU ? stopIMU : startIMU}
+            on:click={readingIMU ? disableIMU : enableIMU}
             class="icon-btn"
             class:active={readingIMU}
             title={readingIMU ? `IMU active (${imuFrequency}Hz)` : "Start IMU"}
@@ -432,11 +476,11 @@
     {:else}
         <div>
             {#if readingIMU}
-                <button on:click={() => stopIMU()} class="btn btn-blue text-xs">Stop IMU</button>
+                <button on:click={() => disableIMU()} class="btn btn-blue text-xs">Stop IMU</button>
                 <button on:click={resetInitialOrientation} class="btn btn-blue text-xs">Cal</button>
                 {imuFrequency} Hz
             {:else}
-                <button on:click={() => startIMU()} class="btn btn-blue text-xs">Start IMU</button>
+                <button on:click={() => enableIMU()} class="btn btn-blue text-xs">Start IMU</button>
                 <input
                     type="number"
                     bind:value={imuFrequency}

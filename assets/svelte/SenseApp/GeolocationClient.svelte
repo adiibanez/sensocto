@@ -1,7 +1,7 @@
 <script>
   import { getContext, onMount, onDestroy } from "svelte";
   import { logger } from "../logger_svelte.js";
-  import { usersettings, autostart } from "./stores.js";
+  import { usersettings, autostart, sensorSettings } from "./stores.js";
 
   export let compact = false;
 
@@ -67,13 +67,37 @@
     startGeolocationInternal();
   };
 
+  // Wrapper functions that also persist to localStorage
+  const enableGeolocation = () => {
+    sensorSettings.setSensorEnabled('geolocation', true);
+    requestAndStartGeolocation();
+  };
+
+  const disableGeolocation = () => {
+    sensorSettings.setSensorEnabled('geolocation', false);
+    stopGeolocation();
+  };
+
+  // Subscribe to sensor settings changes for auto-reconnect
+  sensorSettings.subscribe((settings) => {
+    logger.log(loggerCtxName, "sensorSettings update", settings.geolocation, geolocationData);
+
+    if (settings.geolocation?.enabled && !geolocationData && !watchId) {
+      setTimeout(() => {
+        logger.log(loggerCtxName, "Auto-reconnect triggered via sensorSettings");
+        requestAndStartGeolocation();
+      }, 1000);
+    }
+  });
+
+  // Legacy autostart support (for backwards compatibility)
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "pre Autostart", value, geolocationData);
     if (value == true && !geolocationData) {
       logger.log(loggerCtxName, "Autostart", value, autostart);
 
       setTimeout(() => {
-        requestAndStartGeolocation();
+        enableGeolocation();
       }, 1000);
     }
   });
@@ -161,13 +185,23 @@
 
   onMount(() => {
     unsubscribeSocket = sensorService.onSocketReady(() => {
+      // Check per-sensor settings first (takes precedence)
+      const geoEnabled = sensorSettings.isSensorEnabled('geolocation');
+      if (geoEnabled) {
+        logger.log(loggerCtxName, "onMount onSocketReady - Geolocation was previously enabled, restarting");
+        requestAndStartGeolocation();
+        return;
+      }
+
+      // Fall back to legacy autostart behavior
       if (autostart == true) {
-        startGeolocation();
+        enableGeolocation();
       }
     });
 
     sensorService.onSocketDisconnected(() => {
       if (geolocationData) {
+        // Don't clear settings on disconnect - just stop the sensor
         stopGeolocation();
       }
     });
@@ -191,7 +225,7 @@
 {#if navigator.geolocation}
   {#if compact}
     <button
-      on:click={watchId ? stopGeolocation : startGeolocation}
+      on:click={watchId ? disableGeolocation : enableGeolocation}
       class="icon-btn"
       class:active={watchId}
       class:error={permissionState === "denied"}
@@ -208,9 +242,9 @@
         <p class="text-gray-400 mt-1">Enable in browser settings to use geolocation.</p>
       </div>
     {:else if watchId}
-      <button class="btn btn-blue text-xs" on:click={stopGeolocation}>Stop Geolocation</button>
+      <button class="btn btn-blue text-xs" on:click={disableGeolocation}>Stop Geolocation</button>
     {:else}
-      <button class="btn btn-blue text-xs" on:click={startGeolocation}>Start Geolocation</button>
+      <button class="btn btn-blue text-xs" on:click={enableGeolocation}>Start Geolocation</button>
     {/if}
     {#if geolocationData}
       {#if geolocationData.error && permissionState !== "denied"}

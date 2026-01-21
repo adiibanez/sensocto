@@ -1,7 +1,7 @@
 <script>
   import { getContext, onDestroy, onMount } from "svelte";
   import { get } from "svelte/store";
-  import { usersettings, autostart } from "./stores.js";
+  import { usersettings, autostart, sensorSettings } from "./stores.js";
   import { logger } from "../logger_svelte.js";
 
   export let compact = false;
@@ -29,6 +29,36 @@
   // Track if we've subscribed to socket ready
   let autostartUnsubscribe = null;
 
+  // Wrapper functions that also persist to localStorage
+  const enableBattery = () => {
+    sensorSettings.setSensorEnabled('battery', true);
+    requestAndStartBattery();
+  };
+
+  const disableBattery = () => {
+    sensorSettings.setSensorEnabled('battery', false);
+    stopBatterySensor();
+  };
+
+  // Subscribe to sensor settings changes for auto-reconnect
+  sensorSettings.subscribe((settings) => {
+    logger.log(loggerCtxName, "sensorSettings update", settings.battery, "batteryStarted:", batteryStarted);
+
+    if (settings.battery?.enabled && !batteryStarted) {
+      // Clean up previous subscription if any
+      if (autostartUnsubscribe) {
+        autostartUnsubscribe();
+        autostartUnsubscribe = null;
+      }
+
+      autostartUnsubscribe = sensorService.onSocketReady(() => {
+        logger.log(loggerCtxName, "Auto-reconnect triggered via sensorSettings, starting battery");
+        requestAndStartBattery();
+      });
+    }
+  });
+
+  // Legacy autostart support (for backwards compatibility)
   autostart.subscribe((value) => {
     logger.log(loggerCtxName, "Autostart update", value, "batteryStarted:", batteryStarted);
 
@@ -42,7 +72,7 @@
       // Register for socket ready - this will fire immediately if socket is already ready
       autostartUnsubscribe = sensorService.onSocketReady(() => {
         logger.log(loggerCtxName, "Autostart triggered via subscribe, starting battery");
-        requestAndStartBattery();
+        enableBattery();
       });
     }
   });
@@ -149,6 +179,18 @@
 
   onMount(() => {
     unsubscribeSocket = sensorService.onSocketReady(() => {
+      // Check per-sensor settings first (takes precedence)
+      const batteryEnabled = sensorSettings.isSensorEnabled('battery');
+      if (batteryEnabled) {
+        logger.log(
+          loggerCtxName,
+          "onMount onSocketReady - Battery was previously enabled, restarting"
+        );
+        requestAndStartBattery();
+        return;
+      }
+
+      // Fall back to legacy autostart behavior
       const autostartValue = get(autostart);
       if (autostartValue === true) {
         logger.log(
@@ -156,12 +198,13 @@
           "onMount onSocketReady Autostart going to start",
           autostartValue
         );
-        startBatterySensor();
+        enableBattery();
       }
     });
 
     sensorService.onSocketDisconnected(() => {
       if (batteryData) {
+        // Don't clear settings on disconnect - just stop the sensor
         stopBatterySensor();
       }
     });
@@ -183,7 +226,7 @@
 {#if compact}
   {#if "getBattery" in navigator}
     <button
-      on:click={batteryStarted ? stopBatterySensor : startBatterySensor}
+      on:click={batteryStarted ? disableBattery : enableBattery}
       class="icon-btn"
       class:active={batteryStarted}
       class:unsupported={batteryStatus === "unsupported"}
@@ -208,9 +251,9 @@
   </div>
 {:else if !$autostart}
   {#if batteryStatus === "active" && batteryData != null}
-    <button class="btn btn-blue text-xs" on:click={stopBatterySensor}>Stop Battery</button>
+    <button class="btn btn-blue text-xs" on:click={disableBattery}>Stop Battery</button>
   {:else}
-    <button class="btn btn-blue text-xs" on:click={startBatterySensor}>Start Battery</button>
+    <button class="btn btn-blue text-xs" on:click={enableBattery}>Start Battery</button>
   {/if}
 {/if}
 

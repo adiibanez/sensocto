@@ -13,12 +13,19 @@ defmodule Sensocto.Media.MediaPlayerServer do
   # 500ms is reliable - faster sync comes from client polling and PubSub pushes
   @heartbeat_interval_ms 500
 
+  # Timeout for control request (30 seconds)
+  @control_request_timeout_ms 30_000
+
   defstruct [
     :room_id,
     :playlist_id,
     :current_item_id,
     :controller_user_id,
     :controller_user_name,
+    # Pending control request
+    :pending_request_user_id,
+    :pending_request_user_name,
+    :pending_request_timer_ref,
     state: :stopped,
     position_seconds: 0.0,
     position_updated_at: nil,
@@ -116,6 +123,34 @@ defmodule Sensocto.Media.MediaPlayerServer do
   """
   def release_control(room_id, user_id) do
     GenServer.call(via_tuple(room_id), {:release_control, user_id})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc """
+  Requests control from the current controller.
+  Starts a 30-second timer after which control auto-transfers unless controller keeps control.
+  """
+  def request_control(room_id, user_id, user_name) do
+    GenServer.call(via_tuple(room_id), {:request_control, user_id, user_name})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc """
+  Controller keeps control, canceling pending request.
+  """
+  def keep_control(room_id, user_id) do
+    GenServer.call(via_tuple(room_id), {:keep_control, user_id})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc """
+  Cancels a pending control request (called by the requester).
+  """
+  def cancel_request(room_id, user_id) do
+    GenServer.call(via_tuple(room_id), {:cancel_request, user_id})
   catch
     :exit, _ -> {:error, :not_found}
   end
@@ -302,6 +337,9 @@ defmodule Sensocto.Media.MediaPlayerServer do
   @impl true
   def handle_call({:release_control, user_id}, _from, state) do
     if state.controller_user_id == user_id do
+      # Cancel any pending request timer
+      state = cancel_pending_request(state)
+
       new_state = %{
         state
         | controller_user_id: nil,
@@ -312,6 +350,76 @@ defmodule Sensocto.Media.MediaPlayerServer do
       {:reply, :ok, new_state}
     else
       {:reply, {:error, :not_controller}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:request_control, user_id, user_name}, _from, state) do
+    cond do
+      # No controller - just take control directly
+      is_nil(state.controller_user_id) ->
+        new_state = %{
+          state
+          | controller_user_id: user_id,
+            controller_user_name: user_name
+        }
+
+        broadcast_controller_change(new_state)
+        {:reply, {:ok, :control_granted}, new_state}
+
+      # Already the controller
+      to_string(state.controller_user_id) == to_string(user_id) ->
+        {:reply, {:ok, :already_controller}, state}
+
+      # Someone else is controller - start pending request with timer
+      true ->
+        # Cancel any existing pending request
+        state = cancel_pending_request(state)
+
+        # Start timeout timer
+        timer_ref =
+          Process.send_after(
+            self(),
+            {:control_request_timeout, user_id},
+            @control_request_timeout_ms
+          )
+
+        new_state = %{
+          state
+          | pending_request_user_id: user_id,
+            pending_request_user_name: user_name,
+            pending_request_timer_ref: timer_ref
+        }
+
+        # Broadcast to notify controller of pending request
+        broadcast_control_request(new_state, user_id, user_name)
+        {:reply, {:ok, :request_pending}, new_state}
+    end
+  end
+
+  @impl true
+  def handle_call({:keep_control, user_id}, _from, state) do
+    if to_string(state.controller_user_id) == to_string(user_id) &&
+         state.pending_request_user_id do
+      # Cancel the pending request
+      new_state = cancel_pending_request(state)
+      broadcast_control_request_denied(new_state, state.pending_request_user_id)
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_controller}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:cancel_request, user_id}, _from, state) do
+    if state.pending_request_user_id &&
+         to_string(state.pending_request_user_id) == to_string(user_id) do
+      # Cancel the pending request
+      new_state = cancel_pending_request(state)
+      broadcast_control_request_cancelled(new_state)
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :no_pending_request}, state}
     end
   end
 
@@ -395,6 +503,33 @@ defmodule Sensocto.Media.MediaPlayerServer do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_info({:control_request_timeout, requester_user_id}, state) do
+    # Check if this timeout is still valid (same requester pending)
+    if state.pending_request_user_id &&
+         to_string(state.pending_request_user_id) == to_string(requester_user_id) do
+      Logger.info(
+        "Media control request timeout - transferring control to #{state.pending_request_user_name}"
+      )
+
+      # Transfer control to requester
+      new_state = %{
+        state
+        | controller_user_id: state.pending_request_user_id,
+          controller_user_name: state.pending_request_user_name,
+          pending_request_user_id: nil,
+          pending_request_user_name: nil,
+          pending_request_timer_ref: nil
+      }
+
+      broadcast_controller_change(new_state)
+      {:noreply, new_state}
+    else
+      # Request was already handled, ignore
+      {:noreply, state}
+    end
+  end
+
   # ============================================================================
   # Private Helpers
   # ============================================================================
@@ -449,9 +584,60 @@ defmodule Sensocto.Media.MediaPlayerServer do
       {:media_controller_changed,
        %{
          controller_user_id: state.controller_user_id,
-         controller_user_name: state.controller_user_name
+         controller_user_name: state.controller_user_name,
+         pending_request_user_id: state.pending_request_user_id
        }}
     )
+  end
+
+  defp broadcast_control_request(state, requester_id, requester_name) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:media_control_requested,
+       %{
+         requester_id: requester_id,
+         requester_name: requester_name,
+         controller_user_id: state.controller_user_id,
+         timeout_seconds: div(@control_request_timeout_ms, 1000)
+       }}
+    )
+  end
+
+  defp broadcast_control_request_denied(state, requester_id) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:media_control_request_denied,
+       %{
+         requester_id: requester_id,
+         controller_user_id: state.controller_user_id
+       }}
+    )
+  end
+
+  defp broadcast_control_request_cancelled(state) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:media_control_request_cancelled,
+       %{
+         pending_request_user_id: nil
+       }}
+    )
+  end
+
+  defp cancel_pending_request(%{pending_request_timer_ref: nil} = state), do: state
+
+  defp cancel_pending_request(%{pending_request_timer_ref: timer_ref} = state) do
+    Process.cancel_timer(timer_ref)
+
+    %{
+      state
+      | pending_request_user_id: nil,
+        pending_request_user_name: nil,
+        pending_request_timer_ref: nil
+    }
   end
 
   # Check if a user can control playback

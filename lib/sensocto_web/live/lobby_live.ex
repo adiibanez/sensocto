@@ -864,17 +864,25 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_info(
         {:media_controller_changed,
-         %{controller_user_id: user_id, controller_user_name: user_name}},
+         %{controller_user_id: user_id, controller_user_name: user_name} = params},
         socket
       ) do
+    # pending_request_user_id comes from server (nil when control changes)
+    pending_request_user_id = Map.get(params, :pending_request_user_id)
+
     send_update(MediaPlayerComponent,
       id: "lobby-media-player",
       controller_user_id: user_id,
-      controller_user_name: user_name
+      controller_user_name: user_name,
+      pending_request_user_id: pending_request_user_id
     )
 
     # Store controller_user_id so we can check if current user is the controller for request modal
-    {:noreply, assign(socket, :media_controller_user_id, user_id)}
+    # Also close the modal if control changed (request was fulfilled or timed out)
+    {:noreply,
+     socket
+     |> assign(:media_controller_user_id, user_id)
+     |> assign(:media_control_request_modal, nil)}
   end
 
   # 3D Object player events - forward to component
@@ -1035,83 +1043,63 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :control_request_modal, nil)}
   end
 
-  # Handle media player control requests
+  # Handle media player control requests (server manages the 30s timeout)
   @impl true
   def handle_info(
-        {:media_control_requested, %{requester_id: requester_id, requester_name: requester_name}},
+        {:media_control_requested,
+         %{requester_id: requester_id, requester_name: requester_name} = _params},
         socket
       ) do
     current_user = socket.assigns[:current_user]
     controller_user_id = socket.assigns[:media_controller_user_id]
 
+    # Update all clients with pending request info (for requester countdown display)
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      pending_request_user_id: requester_id
+    )
+
     # Only show modal to the controller
     if current_user && controller_user_id &&
          to_string(current_user.id) == to_string(controller_user_id) do
-      # Cancel any existing timer
-      if socket.assigns[:media_control_request_timer] do
-        Process.cancel_timer(socket.assigns.media_control_request_timer)
-      end
-
-      # Start 30-second timeout timer for auto-transfer
-      timer_ref = Process.send_after(self(), :media_control_request_timeout, 30_000)
-
       {:noreply,
        socket
        |> assign(:media_control_request_modal, %{
          requester_id: requester_id,
          requester_name: requester_name
-       })
-       |> assign(:media_control_request_timer, timer_ref)}
+       })}
     else
       {:noreply, socket}
     end
   end
 
-  # Handle auto-transfer timeout for media control request
+  # Handle media control request cancellation
   @impl true
-  def handle_info(:media_control_request_timeout, socket) do
-    modal_data = socket.assigns[:media_control_request_modal]
-    current_user = socket.assigns[:current_user]
+  def handle_info({:media_control_request_cancelled, _params}, socket) do
+    # Clear pending request in component
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      pending_request_user_id: nil
+    )
 
-    if modal_data && current_user do
-      alias Sensocto.Media.MediaPlayerServer
-
-      # Auto-transfer control to the requester
-      MediaPlayerServer.release_control(:lobby, current_user.id)
-      MediaPlayerServer.take_control(:lobby, modal_data.requester_id, modal_data.requester_name)
-
-      {:noreply,
-       socket
-       |> assign(:media_control_request_modal, nil)
-       |> assign(:media_control_request_timer, nil)
-       |> put_flash(
-         :info,
-         "Control auto-transferred to #{modal_data.requester_name} (30s timeout)"
-       )}
-    else
-      {:noreply,
-       socket
-       |> assign(:media_control_request_modal, nil)
-       |> assign(:media_control_request_timer, nil)}
-    end
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
   end
 
-  # Handle media control request denied notification (sent to requester)
+  # Handle media control request denied (keep control was clicked)
   @impl true
-  def handle_info(
-        {:media_control_request_denied,
-         %{requester_id: requester_id, controller_name: controller_name}},
-        socket
-      ) do
-    current_user = socket.assigns[:current_user]
+  def handle_info({:media_control_request_denied, _params}, socket) do
+    # Clear pending request in component
+    send_update(MediaPlayerComponent,
+      id: "lobby-media-player",
+      pending_request_user_id: nil
+    )
 
-    # Only show flash to the requester
-    if current_user && current_user.id == requester_id do
-      {:noreply, put_flash(socket, :error, "#{controller_name} kept control of the media player")}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
   end
+
+  # Legacy handler - no longer used since server manages timeout
+  # Keep for backwards compatibility but it should never fire
+  # Handle call events from CallServer via PubSub
 
   # Handle call events from CallServer via PubSub
   @impl true
@@ -1498,41 +1486,21 @@ defmodule SensoctoWeb.LobbyLive do
   # Media control request modal handlers
   @impl true
   def handle_event("dismiss_media_control_request", _, socket) do
-    modal_data = socket.assigns[:media_control_request_modal]
     current_user = socket.assigns[:current_user]
 
-    # Cancel the auto-transfer timer
-    if socket.assigns[:media_control_request_timer] do
-      Process.cancel_timer(socket.assigns.media_control_request_timer)
+    # Use server's keep_control to cancel the request and notify others
+    if current_user do
+      alias Sensocto.Media.MediaPlayerServer
+      MediaPlayerServer.keep_control(:lobby, current_user.id)
     end
 
-    # Notify the requester that their request was denied
-    if modal_data && current_user do
-      controller_name = current_user.email || "The controller"
-
-      Phoenix.PubSub.broadcast(
-        Sensocto.PubSub,
-        "media:lobby",
-        {:media_control_request_denied,
-         %{requester_id: modal_data.requester_id, controller_name: controller_name}}
-      )
-    end
-
-    {:noreply,
-     socket
-     |> assign(:media_control_request_modal, nil)
-     |> assign(:media_control_request_timer, nil)}
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
   end
 
   @impl true
   def handle_event("release_media_control_from_modal", _, socket) do
     current_user = socket.assigns.current_user
     modal_data = socket.assigns.media_control_request_modal
-
-    # Cancel the auto-transfer timer
-    if socket.assigns[:media_control_request_timer] do
-      Process.cancel_timer(socket.assigns.media_control_request_timer)
-    end
 
     if current_user && modal_data do
       alias Sensocto.Media.MediaPlayerServer
@@ -1548,10 +1516,7 @@ defmodule SensoctoWeb.LobbyLive do
       )
     end
 
-    {:noreply,
-     socket
-     |> assign(:media_control_request_modal, nil)
-     |> assign(:media_control_request_timer, nil)}
+    {:noreply, assign(socket, :media_control_request_modal, nil)}
   end
 
   # Lens view selector (dropdown)

@@ -56,6 +56,9 @@ defmodule SensoctoWeb.Router do
     # live "/sensors/:id/edit", SensorLive.Index, :edit
     # live "/sensors/:id", SensorLive.Index, :show
 
+    # Guest authentication route - must come before any auth routes
+    get "/auth/guest/:guest_id/:token", GuestAuthController, :sign_in
+
     auth_routes(Controllers.AuthController, Sensocto.Accounts.User, path: "/auth")
     sign_out_route(Controllers.AuthController)
 
@@ -189,6 +192,12 @@ defmodule SensoctoWeb.Router do
   scope "/dev" do
     pipe_through :browser
     forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
+
+  # Health check endpoints (no auth required)
+  scope "/health", SensoctoWeb do
+    get "/live", HealthController, :liveness
+    get "/ready", HealthController, :readiness
   end
 
   # end

@@ -1913,4 +1913,45 @@ Hooks.DraggableBallsHook = {
     }
 };
 
+// GuestCredentials hook - Store and restore guest credentials in localStorage
+Hooks.GuestCredentials = {
+    mounted() {
+        // Listen for store-guest-credentials event from LiveView
+        this.handleEvent('store-guest-credentials', ({ guest_id, token }) => {
+            console.log('[GuestCredentials] Storing guest credentials in localStorage');
+            localStorage.setItem('guest_id', guest_id);
+            localStorage.setItem('guest_token', token);
+            localStorage.setItem('guest_stored_at', Date.now().toString());
+        });
+
+        // On mount, check if we have stored guest credentials
+        const guestId = localStorage.getItem('guest_id');
+        const guestToken = localStorage.getItem('guest_token');
+        const storedAt = localStorage.getItem('guest_stored_at');
+
+        if (guestId && guestToken && storedAt) {
+            // Check if credentials are not too old (7 days)
+            const age = Date.now() - parseInt(storedAt);
+            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
+            if (age < maxAge) {
+                console.log('[GuestCredentials] Found stored guest credentials, pushing to LiveView');
+                this.pushEvent('restore_guest_credentials', {
+                    guest_id: guestId,
+                    guest_token: guestToken
+                });
+            } else {
+                console.log('[GuestCredentials] Guest credentials expired, clearing');
+                this.clearStoredCredentials();
+            }
+        }
+    },
+
+    clearStoredCredentials() {
+        localStorage.removeItem('guest_id');
+        localStorage.removeItem('guest_token');
+        localStorage.removeItem('guest_stored_at');
+    }
+};
+
 export default Hooks;

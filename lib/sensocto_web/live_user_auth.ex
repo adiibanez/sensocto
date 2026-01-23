@@ -9,23 +9,55 @@ defmodule SensoctoWeb.LiveUserAuth do
 
   alias Sensocto.Accounts.UserPreferences
 
-  def on_mount(:live_user_optional, _params, _session, socket) do
-    if socket.assigns[:current_user] do
-      {:cont, socket}
-    else
-      {:cont, assign(socket, :current_user, nil)}
+  def on_mount(:live_user_optional, _params, session, socket) do
+    cond do
+      socket.assigns[:current_user] ->
+        {:cont, socket}
+
+      session["is_guest"] == true ->
+        # Load guest user from the in-memory store
+        guest_id = session["guest_id"]
+
+        case Sensocto.Accounts.GuestUserStore.get_guest(guest_id) do
+          {:ok, guest} ->
+            Sensocto.Accounts.GuestUserStore.touch_guest(guest_id)
+            {:cont, assign(socket, :current_user, guest)}
+
+          {:error, :not_found} ->
+            {:cont, assign(socket, :current_user, nil)}
+        end
+
+      true ->
+        {:cont, assign(socket, :current_user, nil)}
     end
   end
 
   def on_mount(:live_user_required, params, session, socket) do
-    if socket.assigns[:current_user] do
-      {:cont, socket}
-    else
-      Logger.debug(
-        "live_user_required: socket assigns: #{inspect(socket.assigns)} params: #{inspect(params)} session:#{inspect(session)}"
-      )
+    cond do
+      socket.assigns[:current_user] ->
+        {:cont, socket}
 
-      {:halt, Phoenix.LiveView.redirect(socket, to: get_sign_from_params(params))}
+      session["is_guest"] == true ->
+        # Load guest user from the in-memory store
+        guest_id = session["guest_id"]
+
+        case Sensocto.Accounts.GuestUserStore.get_guest(guest_id) do
+          {:ok, guest} ->
+            # Touch guest to update last_active
+            Sensocto.Accounts.GuestUserStore.touch_guest(guest_id)
+            {:cont, assign(socket, :current_user, guest)}
+
+          {:error, :not_found} ->
+            Logger.debug("Guest session expired or invalid: #{inspect(guest_id)}")
+            {:halt, Phoenix.LiveView.redirect(socket, to: get_sign_from_params(params))}
+        end
+
+      true ->
+        Logger.debug(
+          "live_user_required: socket assigns: #{inspect(socket.assigns)} params: #{inspect(params)} session:#{inspect(session)}"
+        )
+
+        {:halt, Phoenix.LiveView.redirect(socket, to: get_sign_from_params(params))}
     end
   end
 

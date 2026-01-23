@@ -10,6 +10,10 @@ defmodule Sensocto.SimpleSensor do
   # 1 second
   @mps_interval 1_000
 
+  # Hibernation config - hibernate after 5 minutes of low/no attention
+  @idle_check_interval :timer.minutes(1)
+  @idle_threshold_ms :timer.minutes(5)
+
   @spec start_link(%{:sensor_id => any(), optional(any()) => any()}) ::
           :ignore | {:error, any()} | {:ok, pid()}
   def start_link(%{:sensor_id => sensor_id} = configuration) do
@@ -24,6 +28,12 @@ defmodule Sensocto.SimpleSensor do
 
     schedule_mps_calculation()
 
+    # Subscribe to attention changes for hibernation decisions
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
+
+    # Schedule periodic idle check for hibernation
+    schedule_idle_check()
+
     Sensor
     |> Ash.Changeset.for_create(:create, %{name: sensor_id})
     |> Ash.create()
@@ -34,7 +44,9 @@ defmodule Sensocto.SimpleSensor do
      state
      |> Map.put(:attributes, state.attributes || %{})
      |> Map.merge(%{message_timestamps: []})
-     |> Map.put(:mps_interval, 5000)}
+     |> Map.put(:mps_interval, 5000)
+     |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))
+     |> Map.put(:attention_level, :none)}
   end
 
   @impl true
@@ -289,7 +301,8 @@ defmodule Sensocto.SimpleSensor do
 
     {:noreply,
      state
-     |> Map.update!(:message_timestamps, &[now | &1])}
+     |> Map.update!(:message_timestamps, &[now | &1])
+     |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))}
   end
 
   @impl true
@@ -327,7 +340,8 @@ defmodule Sensocto.SimpleSensor do
 
     {:noreply,
      state
-     |> Map.update!(:message_timestamps, &[now | &1])}
+     |> Map.update!(:message_timestamps, &[now | &1])
+     |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))}
   end
 
   @impl true
@@ -367,8 +381,49 @@ defmodule Sensocto.SimpleSensor do
     {:noreply, %{state | message_timestamps: recent_timestamps}}
   end
 
+  # Handle attention level changes from AttentionTracker
+  @impl true
+  def handle_info({:attention_changed, %{sensor_id: sensor_id, level: new_level}}, state) do
+    if state.sensor_id == sensor_id do
+      Logger.debug("SimpleSensor #{sensor_id} attention changed to #{new_level}")
+      {:noreply, %{state | attention_level: new_level}}
+    else
+      {:noreply, state}
+    end
+  end
+
+  # Periodic idle check - hibernate if low attention and idle
+  @impl true
+  def handle_info(:check_idle, state) do
+    now = System.monotonic_time(:millisecond)
+    idle_duration = now - Map.get(state, :last_activity_at, now)
+    attention_level = Map.get(state, :attention_level, :none)
+
+    # Hibernate if:
+    # 1. Attention is :low or :none (no one actively watching)
+    # 2. No messages received for @idle_threshold_ms
+    should_hibernate =
+      attention_level in [:low, :none] and idle_duration > @idle_threshold_ms
+
+    schedule_idle_check()
+
+    if should_hibernate do
+      Logger.debug(
+        "SimpleSensor #{state.sensor_id} hibernating (idle: #{idle_duration}ms, attention: #{attention_level})"
+      )
+
+      {:noreply, state, :hibernate}
+    else
+      {:noreply, state}
+    end
+  end
+
   defp schedule_mps_calculation do
     Process.send_after(self(), :calculate_mps, @mps_interval)
+  end
+
+  defp schedule_idle_check do
+    Process.send_after(self(), :check_idle, @idle_check_interval)
   end
 
   # Infer attribute type from attribute_id and payload structure

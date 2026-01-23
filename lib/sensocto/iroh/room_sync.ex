@@ -15,10 +15,23 @@ defmodule Sensocto.Iroh.RoomSync do
   require Logger
   alias Sensocto.Iroh.RoomStore, as: IrohStore
 
-  @debounce_ms 500
-  @max_batch_size 50
-  @retry_delay_ms 5000
-  @max_retries 3
+  # Default values (can be overridden via config :sensocto, :room_sync)
+  @default_debounce_ms 500
+  @default_max_batch_size 50
+  @default_retry_delay_ms 5000
+  @default_max_retries 3
+
+  # Runtime config accessors for metabolic mode switching
+  defp debounce_ms, do: get_config(:debounce_ms, @default_debounce_ms)
+  defp max_batch_size, do: get_config(:max_batch_size, @default_max_batch_size)
+  defp retry_delay_ms, do: get_config(:retry_delay_ms, @default_retry_delay_ms)
+  defp max_retries, do: get_config(:max_retries, @default_max_retries)
+
+  defp get_config(key, default) do
+    :sensocto
+    |> Application.get_env(:room_sync, [])
+    |> Keyword.get(key, default)
+  end
 
   defstruct [
     # room_id => room_data (pending writes)
@@ -166,12 +179,12 @@ defmodule Sensocto.Iroh.RoomSync do
 
         {:error, reason} ->
           Logger.warning("[Iroh.RoomSync] Auto-hydration failed: #{inspect(reason)}, will retry")
-          Process.send_after(self(), :attempt_hydration, @retry_delay_ms)
+          Process.send_after(self(), :attempt_hydration, retry_delay_ms())
           {:noreply, state}
       end
     else
       Logger.debug("[Iroh.RoomSync] Iroh not ready, will retry hydration")
-      Process.send_after(self(), :attempt_hydration, @retry_delay_ms)
+      Process.send_after(self(), :attempt_hydration, retry_delay_ms())
       {:noreply, state}
     end
   end
@@ -184,7 +197,7 @@ defmodule Sensocto.Iroh.RoomSync do
 
   @impl true
   def handle_info(:retry_flush, state) do
-    if state.retry_count < @max_retries do
+    if state.retry_count < max_retries() do
       new_state = do_flush(state)
       {:noreply, new_state}
     else
@@ -215,12 +228,12 @@ defmodule Sensocto.Iroh.RoomSync do
     # Check if we should flush immediately due to batch size
     total_pending = map_size(state.pending_rooms) + map_size(state.pending_memberships)
 
-    if total_pending >= @max_batch_size do
+    if total_pending >= max_batch_size() do
       # Flush immediately
       do_flush(%{state | debounce_ref: nil})
     else
       # Schedule debounced flush
-      ref = Process.send_after(self(), :flush, @debounce_ms)
+      ref = Process.send_after(self(), :flush, debounce_ms())
       %{state | debounce_ref: ref}
     end
   end
@@ -228,7 +241,7 @@ defmodule Sensocto.Iroh.RoomSync do
   defp do_flush(state) do
     if not IrohStore.ready?() do
       Logger.debug("[Iroh.RoomSync] Iroh not ready, deferring flush")
-      Process.send_after(self(), :retry_flush, @retry_delay_ms)
+      Process.send_after(self(), :retry_flush, retry_delay_ms())
       %{state | retry_count: state.retry_count + 1}
     else
       # Flush rooms
@@ -239,7 +252,7 @@ defmodule Sensocto.Iroh.RoomSync do
 
       if map_size(failed_rooms) > 0 or map_size(failed_memberships) > 0 do
         Logger.warning("[Iroh.RoomSync] Some items failed to sync, scheduling retry")
-        Process.send_after(self(), :retry_flush, @retry_delay_ms)
+        Process.send_after(self(), :retry_flush, retry_delay_ms())
 
         %{
           state

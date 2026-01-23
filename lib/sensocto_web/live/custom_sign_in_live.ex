@@ -257,31 +257,42 @@ defmodule SensoctoWeb.CustomSignInLive do
   }
 
   @impl true
-  def mount(_params, _session, socket) do
-    current_lens = :empathy
-    shuffled = Enum.shuffle(@use_cases_by_lens[current_lens])
+  def mount(_params, session, socket) do
+    # Check if user is already signed in as guest AND the guest still exists
+    valid_guest? =
+      session["is_guest"] == true and
+        match?({:ok, _}, Sensocto.Accounts.GuestUserStore.get_guest(session["guest_id"]))
 
-    # Subscribe to presence updates for draggable balls
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, @presence_topic)
+    if valid_guest? do
+      {:ok, redirect(socket, to: ~p"/lobby")}
+    else
+      current_lens = :empathy
+      shuffled = Enum.shuffle(@use_cases_by_lens[current_lens])
+
+      # Subscribe to presence updates for draggable balls
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, @presence_topic)
+      end
+
+      socket =
+        socket
+        |> assign(:detail_level, :spark)
+        |> assign(:show_about, true)
+        |> assign(:current_lens, current_lens)
+        |> assign(:lens_info, @lens_info)
+        |> assign(:use_cases, shuffled)
+        |> assign(:visible_count, 3)
+        |> assign(:current_offset, 0)
+        |> assign(:research_papers, @research_papers)
+        |> assign(:paper_categories, @paper_categories)
+        # Ball presence state
+        |> assign(:balls, %{})
+        |> assign(:own_ball_id, nil)
+        # Guest remember me (LocalStorage vs in-memory)
+        |> assign(:guest_remember_me, false)
+
+      {:ok, socket, layout: {SensoctoWeb.Layouts, :auth}}
     end
-
-    socket =
-      socket
-      |> assign(:detail_level, :spark)
-      |> assign(:show_about, true)
-      |> assign(:current_lens, current_lens)
-      |> assign(:lens_info, @lens_info)
-      |> assign(:use_cases, shuffled)
-      |> assign(:visible_count, 3)
-      |> assign(:current_offset, 0)
-      |> assign(:research_papers, @research_papers)
-      |> assign(:paper_categories, @paper_categories)
-      # Ball presence state
-      |> assign(:balls, %{})
-      |> assign(:own_ball_id, nil)
-
-    {:ok, socket, layout: {SensoctoWeb.Layouts, :auth}}
   end
 
   @impl true
@@ -337,6 +348,58 @@ defmodule SensoctoWeb.CustomSignInLive do
   def handle_event("set_visible_count", %{"count" => count}, socket) do
     count = String.to_integer(count)
     {:noreply, assign(socket, visible_count: count, current_offset: 0)}
+  end
+
+  @impl true
+  def handle_event("toggle_guest_remember", _params, socket) do
+    {:noreply, assign(socket, :guest_remember_me, !socket.assigns.guest_remember_me)}
+  end
+
+  @impl true
+  def handle_event(
+        "restore_guest_credentials",
+        %{"guest_id" => guest_id, "guest_token" => token},
+        socket
+      ) do
+    # Try to automatically sign in with stored credentials
+    case Sensocto.Accounts.GuestUserStore.get_guest(guest_id) do
+      {:ok, guest} ->
+        if guest.token == token do
+          # Valid stored credentials, auto sign-in
+          {:noreply, redirect(socket, to: "/auth/guest/#{guest_id}/#{token}")}
+        else
+          # Token mismatch, credentials invalid
+          {:noreply, socket}
+        end
+
+      {:error, :not_found} ->
+        # Guest not found in memory, credentials expired
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("join_as_guest", _params, socket) do
+    case Sensocto.Accounts.GuestUserStore.create_guest() do
+      {:ok, guest} ->
+        # If remember_me is enabled, push event to store in localStorage via JS hook
+        socket =
+          if socket.assigns.guest_remember_me do
+            push_event(socket, "store-guest-credentials", %{
+              guest_id: guest.id,
+              token: guest.token
+            })
+          else
+            socket
+          end
+
+        # Redirect to a route that will handle guest session creation
+        {:noreply, redirect(socket, to: "/auth/guest/#{guest.id}/#{guest.token}")}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Failed to create guest session: #{inspect(reason)}")}
+    end
   end
 
   # Ball presence event handlers
@@ -472,6 +535,9 @@ defmodule SensoctoWeb.CustomSignInLive do
       <%!-- Balls rendered by JS hook --%>
     </div>
 
+    <%!-- Guest Credentials Hook Container --%>
+    <div id="guest-credentials-hook" phx-hook="GuestCredentials" class="hidden"></div>
+
     <div class="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex flex-col">
       <%!-- Sign In Form (always on top) --%>
       <div class="flex items-center justify-center p-4 lg:p-8 bg-gray-900/50">
@@ -494,6 +560,40 @@ defmodule SensoctoWeb.CustomSignInLive do
               auth_routes_prefix="/auth"
               overrides={[SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]}
             />
+
+            <%!-- Guest Sign In Section --%>
+            <div class="mt-6 p-4 bg-gray-700/30 rounded-lg border border-gray-600/50">
+              <button
+                phx-click="join_as_guest"
+                class="w-full flex items-center justify-center gap-2 group"
+                title={"Browse without an account - data stored in #{if @guest_remember_me, do: "LocalStorage (persistent)", else: "memory only"}"}
+              >
+                <.icon name="hero-user" class="h-5 w-5 text-gray-400 group-hover:text-white" />
+                <div class="text-left">
+                  <div class="font-medium text-white group-hover:text-gray-200">
+                    Continue as Guest
+                  </div>
+                  <div class="text-xs text-gray-400 group-hover:text-gray-300">
+                    No account needed •
+                    <%= if @guest_remember_me do %>
+                      LocalStorage (persistent across sessions)
+                    <% else %>
+                      In-memory session only
+                    <% end %>
+                  </div>
+                </div>
+              </button>
+              <label class="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  id="guest-remember-me"
+                  phx-click="toggle_guest_remember"
+                  checked={@guest_remember_me}
+                  class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
+                />
+                <span class="text-sm text-gray-300">Remember me (store in LocalStorage)</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>

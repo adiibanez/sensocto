@@ -178,6 +178,9 @@ defmodule SensoctoWeb.SensorDataChannel do
       # Subscribe to attention changes for this sensor (backpressure protocol)
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
 
+      # Subscribe to system load changes for adaptive backpressure
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "system:load")
+
       # Send initial backpressure configuration to connector
       send(self(), :send_backpressure_config)
 
@@ -408,6 +411,24 @@ defmodule SensoctoWeb.SensorDataChannel do
     {:noreply, socket}
   end
 
+  # Handle system load changes - push updated backpressure config to client
+  def handle_info({:system_load_changed, %{level: new_level}}, socket) do
+    case Map.get(socket.assigns, :sensor_id) do
+      nil ->
+        {:noreply, socket}
+
+      sensor_id ->
+        config = get_backpressure_config(sensor_id)
+        push(socket, "backpressure_config", config)
+
+        Logger.debug(
+          "System load changed to #{new_level}, pushed backpressure config for #{sensor_id}: paused=#{config.paused}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
   # Security: Validate bearer tokens against stored credentials
   # H-003 Fix: Previously only checked if bearer_token key existed, not its validity.
   # Now properly validates JWT tokens using AshAuthentication.
@@ -488,33 +509,44 @@ defmodule SensoctoWeb.SensorDataChannel do
       sensor_id when is_binary(sensor_id) ->
         Logger.debug("Channel terminated for sensor: #{sensor_id}, #{inspect(reason)}")
 
-        # First untrack this connection from presence
-        Presence.untrack(socket.channel_pid, "presence:all", sensor_id)
+        # Fire-and-forget cleanup via TaskSupervisor (non-blocking)
+        # This prevents terminate/2 from blocking on Presence and DynamicSupervisor calls
+        channel_pid = socket.channel_pid
 
-        # Small delay to let presence state propagate
-        Process.sleep(50)
-
-        # Check if there are other active connections for this sensor
-        # Only remove the sensor if no other connections exist
-        presence_list = Presence.list("presence:all")
-        other_connections = Map.get(presence_list, sensor_id, %{metas: []})
-
-        case other_connections do
-          %{metas: [_ | _] = metas} ->
-            Logger.debug(
-              "Sensor #{sensor_id} still has #{length(metas)} other connections - keeping sensor alive"
-            )
-
-          _ ->
-            Logger.debug("Sensor #{sensor_id} has no other connections - removing sensor")
-            disconnect_sensor_supervisor(sensor_id)
-        end
+        Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
+          cleanup_sensor_connection(sensor_id, channel_pid)
+        end)
 
       _ ->
         Logger.debug("Channel terminated for connection without sensor_id #{inspect(reason)}")
     end
 
     :ok
+  end
+
+  # Async cleanup of sensor connection (runs in TaskSupervisor)
+  defp cleanup_sensor_connection(sensor_id, channel_pid) do
+    # First untrack this connection from presence
+    Presence.untrack(channel_pid, "presence:all", sensor_id)
+
+    # Small delay to let presence state propagate
+    Process.sleep(50)
+
+    # Check if there are other active connections for this sensor
+    # Only remove the sensor if no other connections exist
+    presence_list = Presence.list("presence:all")
+    other_connections = Map.get(presence_list, sensor_id, %{metas: []})
+
+    case other_connections do
+      %{metas: [_ | _] = metas} ->
+        Logger.debug(
+          "Sensor #{sensor_id} still has #{length(metas)} other connections - keeping sensor alive"
+        )
+
+      _ ->
+        Logger.debug("Sensor #{sensor_id} has no other connections - removing sensor")
+        disconnect_sensor_supervisor(sensor_id)
+    end
   end
 
   defp disconnect_sensor_supervisor(sensor_id) do
@@ -528,20 +560,30 @@ defmodule SensoctoWeb.SensorDataChannel do
     end
   end
 
-  # Calculate backpressure configuration based on current attention level
+  # Calculate backpressure configuration based on current attention level and system load
   # This is pushed to connectors so they can adjust their data transmission rates
   defp get_backpressure_config(sensor_id) do
     # Get attention level, defaulting to :none if tracker not available
-    level =
+    attention_level =
       try do
         AttentionTracker.get_sensor_attention_level(sensor_id)
       catch
         :exit, {:noproc, _} -> :none
       end
 
-    # Batch window and size recommendations based on attention level
-    {recommended_batch_window, recommended_batch_size} =
-      case level do
+    # Get system load level
+    {system_load, load_multiplier} =
+      try do
+        level = Sensocto.SystemLoadMonitor.get_load_level()
+        multiplier = Sensocto.SystemLoadMonitor.get_load_multiplier()
+        {level, multiplier}
+      catch
+        :exit, {:noproc, _} -> {:normal, 1.0}
+      end
+
+    # Base batch window and size recommendations based on attention level
+    {base_batch_window, base_batch_size} =
+      case attention_level do
         # Fast updates, small batches
         :high -> {100, 1}
         # Normal updates
@@ -552,10 +594,19 @@ defmodule SensoctoWeb.SensorDataChannel do
         :none -> {5000, 20}
       end
 
+    # Apply system load multiplier to batch window
+    adjusted_batch_window = trunc(base_batch_window * load_multiplier)
+
+    # Determine if client should pause transmission (critical load + low attention)
+    paused = system_load == :critical and attention_level in [:low, :none]
+
     %{
-      attention_level: level,
-      recommended_batch_window: recommended_batch_window,
-      recommended_batch_size: recommended_batch_size,
+      attention_level: attention_level,
+      system_load: system_load,
+      paused: paused,
+      recommended_batch_window: adjusted_batch_window,
+      recommended_batch_size: base_batch_size,
+      load_multiplier: load_multiplier,
       timestamp: System.system_time(:millisecond)
     }
   end

@@ -120,8 +120,10 @@ defmodule Sensocto.AttributeStoreTiered do
       hot_data = get_hot_data(state, attribute_id)
       warm_data = get_warm_data(sensor_id, attribute_id)
 
-      # Combine hot and warm data (hot is newer)
-      all_data = hot_data ++ warm_data
+      # Combine hot and warm data (hot is newer) and sort by timestamp
+      all_data =
+        (hot_data ++ warm_data)
+        |> Enum.sort_by(& &1.timestamp)
 
       filtered =
         all_data
@@ -142,6 +144,7 @@ defmodule Sensocto.AttributeStoreTiered do
       warm_data = get_warm_data(sensor_id, attribute_id)
 
       (hot_data ++ warm_data)
+      |> Enum.sort_by(& &1.timestamp)
       |> Enum.take(limit)
     end)
   end

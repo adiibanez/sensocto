@@ -181,7 +181,9 @@
     phx-hook="CallHook"
     data-room-id="lobby"
     data-user-id={@current_user.id}
-    data-user-name={@current_user.email |> to_string()}
+    data-user-name={
+      Map.get(@current_user, :email) || Map.get(@current_user, :display_name) |> to_string()
+    }
     data-in-call={to_string(@in_call)}
     class="hidden"
   >

@@ -9,7 +9,13 @@ defmodule Sensocto.Accounts.UserPreferences do
   @doc """
   Gets user preferences for a given user_id.
   Creates default preferences if none exist.
+  Guest users (IDs starting with "guest_") return empty preferences without database access.
   """
+  def get_or_create("guest_" <> _ = _guest_id) do
+    # Guest users don't have database preferences
+    {:ok, %UserPreference{ui_state: %{}}}
+  end
+
   def get_or_create(user_id) when is_binary(user_id) do
     case Repo.get_by(UserPreference, user_id: user_id) do
       nil ->
@@ -26,7 +32,10 @@ defmodule Sensocto.Accounts.UserPreferences do
 
   @doc """
   Gets user preferences without creating if not exists.
+  Guest users return nil (no preferences stored).
   """
+  def get("guest_" <> _), do: nil
+
   def get(user_id) when is_binary(user_id) do
     Repo.get_by(UserPreference, user_id: user_id)
   end
@@ -37,6 +46,11 @@ defmodule Sensocto.Accounts.UserPreferences do
   Updates a specific UI state key for a user.
   Creates preferences if they don't exist.
   """
+  def set_ui_state("guest_" <> _, _key, _value) do
+    # Guest users don't persist preferences
+    {:ok, %UserPreference{ui_state: %{}}}
+  end
+
   def set_ui_state(user_id, key, value) when is_binary(user_id) do
     case get_or_create(user_id) do
       {:ok, preference} ->
@@ -70,7 +84,10 @@ defmodule Sensocto.Accounts.UserPreferences do
 
   @doc """
   Updates the last visited path for a user.
+  Guest users don't persist this.
   """
+  def set_last_visited_path("guest_" <> _, _path), do: {:ok, nil}
+
   def set_last_visited_path(user_id, path) when is_binary(user_id) and is_binary(path) do
     case get_or_create(user_id) do
       {:ok, preference} ->
@@ -99,7 +116,12 @@ defmodule Sensocto.Accounts.UserPreferences do
 
   @doc """
   Bulk updates multiple UI state keys at once.
+  Guest users don't persist preferences.
   """
+  def update_ui_state("guest_" <> _, _updates) do
+    {:ok, %UserPreference{ui_state: %{}}}
+  end
+
   def update_ui_state(user_id, updates) when is_binary(user_id) and is_map(updates) do
     case get_or_create(user_id) do
       {:ok, preference} ->

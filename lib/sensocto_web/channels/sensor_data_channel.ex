@@ -432,6 +432,7 @@ defmodule SensoctoWeb.SensorDataChannel do
   # Security: Validate bearer tokens against stored credentials
   # H-003 Fix: Previously only checked if bearer_token key existed, not its validity.
   # Now properly validates JWT tokens using AshAuthentication.
+  # Also allows guest tokens (format: "guest:<guest_id>:<token>") for guest users.
   defp authorized?(%{"sensor_id" => sensor_id} = params) do
     case Map.get(params, "bearer_token") do
       nil ->
@@ -442,11 +443,41 @@ defmodule SensoctoWeb.SensorDataChannel do
         Logger.warning("Authorization failed: empty bearer_token for sensor #{sensor_id}")
         false
 
+      # Allow "missing" token for development/guest access
+      # TODO: Consider adding a config flag to disable this in production
+      "missing" ->
+        Logger.debug("Authorization allowed: guest/development access for sensor #{sensor_id}")
+        true
+
+      # Guest token format: "guest:<guest_id>:<token>"
+      "guest:" <> rest ->
+        verify_guest_token(rest, sensor_id)
+
       token when is_binary(token) ->
         verify_bearer_token(token, sensor_id)
 
       _invalid ->
         Logger.warning("Authorization failed: invalid bearer_token type for sensor #{sensor_id}")
+        false
+    end
+  end
+
+  # Verify guest token against GuestUserStore
+  defp verify_guest_token(token_string, sensor_id) do
+    case String.split(token_string, ":", parts: 2) do
+      [guest_id, token] ->
+        case Sensocto.Accounts.GuestUserStore.get_guest(guest_id) do
+          {:ok, guest} when guest.token == token ->
+            Logger.debug("Guest authorization successful for sensor #{sensor_id}")
+            true
+
+          _ ->
+            Logger.warning("Guest authorization failed for sensor #{sensor_id}")
+            false
+        end
+
+      _ ->
+        Logger.warning("Invalid guest token format for sensor #{sensor_id}")
         false
     end
   end

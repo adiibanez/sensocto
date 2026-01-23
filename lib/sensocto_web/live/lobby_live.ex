@@ -105,6 +105,7 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_online: %{},
         sensors_offline: %{},
         sensor_ids: sensor_ids,
+        all_sensor_ids: sensor_ids,
         global_view_mode: default_view_mode,
         grid_cols_sm: min(@grid_cols_sm_default, max(1, sensors_count)),
         grid_cols_lg: min(@grid_cols_lg_default, max(1, sensors_count)),
@@ -153,7 +154,9 @@ defmodule SensoctoWeb.LobbyLive do
           handle_info_max_us: 0,
           push_event_count: 0,
           last_report_time: System.monotonic_time(:millisecond)
-        }
+        },
+        # Minimum attention filter (0=none, 1=low, 2=medium, 3=high)
+        min_attention: 0
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -210,6 +213,27 @@ defmodule SensoctoWeb.LobbyLive do
     |> Enum.map(fn {_id, sensor} -> map_size(sensor.attributes || %{}) end)
     |> Enum.max(fn -> 0 end)
   end
+
+  # Filter sensor IDs by minimum attention level
+  # Returns only sensors that meet or exceed the minimum attention threshold
+  defp filter_sensors_by_attention(sensor_ids, min_attention) when min_attention == 0 do
+    # No filter - return all sensors
+    sensor_ids
+  end
+
+  defp filter_sensors_by_attention(sensor_ids, min_attention) do
+    Enum.filter(sensor_ids, fn sensor_id ->
+      level = Sensocto.AttentionTracker.get_sensor_attention_level(sensor_id)
+      attention_level_to_int(level) >= min_attention
+    end)
+  end
+
+  # Convert attention level atom to integer for comparison
+  defp attention_level_to_int(:none), do: 0
+  defp attention_level_to_int(:low), do: 1
+  defp attention_level_to_int(:medium), do: 2
+  defp attention_level_to_int(:high), do: 3
+  defp attention_level_to_int(_), do: 0
 
   defp count_room_mode_presence(room_id) do
     presences = Presence.list("room:#{room_id}:mode_presence")
@@ -544,11 +568,16 @@ defmodule SensoctoWeb.LobbyLive do
             skeleton_sensors
           )
 
+        # Filter sensor IDs based on current min_attention setting
+        min_attention = socket.assigns[:min_attention] || 0
+        filtered_sensor_ids = filter_sensors_by_attention(new_sensor_ids, min_attention)
+
         updated_socket =
           socket
           |> assign(:sensors_online_count, sensors_count)
           |> assign(:sensors_online, sensors_online)
-          |> assign(:sensor_ids, new_sensor_ids)
+          |> assign(:all_sensor_ids, new_sensor_ids)
+          |> assign(:sensor_ids, filtered_sensor_ids)
           |> assign(:heartrate_sensors, heartrate_sensors)
           |> assign(:imu_sensors, imu_sensors)
           |> assign(:location_sensors, location_sensors)
@@ -1517,6 +1546,19 @@ defmodule SensoctoWeb.LobbyLive do
     end
 
     {:noreply, assign(socket, :media_control_request_modal, nil)}
+  end
+
+  # Minimum attention filter slider
+  @impl true
+  def handle_event("set_min_attention", %{"min_attention" => value}, socket) do
+    min_attention = String.to_integer(value)
+    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
+    filtered_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+
+    {:noreply,
+     socket
+     |> assign(:min_attention, min_attention)
+     |> assign(:sensor_ids, filtered_ids)}
   end
 
   # Lens view selector (dropdown)

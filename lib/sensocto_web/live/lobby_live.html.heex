@@ -335,6 +335,27 @@
           </optgroup>
         </select>
       </form>
+
+      <%!-- Minimum Attention Filter Slider --%>
+      <form phx-change="set_min_attention" class="flex items-center gap-2 ml-4">
+        <label class="text-xs text-gray-400 whitespace-nowrap">Min Attention:</label>
+        <input
+          type="range"
+          name="min_attention"
+          min="0"
+          max="3"
+          value={@min_attention}
+          class="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+        />
+        <span class="text-xs text-gray-300 w-14">
+          {case @min_attention do
+            0 -> "None"
+            1 -> "Low"
+            2 -> "Medium"
+            3 -> "High"
+          end}
+        </span>
+      </form>
     </div>
   </div>
 

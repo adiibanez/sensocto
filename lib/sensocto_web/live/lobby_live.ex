@@ -1198,6 +1198,12 @@ defmodule SensoctoWeb.LobbyLive do
         skeleton_sensors
       )
 
+    # Re-filter sensors based on current min_attention setting
+    # This ensures sensors are removed when their attention drops below threshold
+    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
+    min_attention = socket.assigns[:min_attention] || 0
+    filtered_sensor_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+
     {:noreply,
      socket
      |> assign(:heartrate_sensors, heartrate_sensors)
@@ -1207,7 +1213,8 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:battery_sensors, battery_sensors)
      |> assign(:skeleton_sensors, skeleton_sensors)
      |> assign(:available_lenses, available_lenses)
-     |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
+     |> assign(:sensors_by_user, group_sensors_by_user(sensors))
+     |> assign(:sensor_ids, filtered_sensor_ids)}
   end
 
   # Clear bump animations after timeout

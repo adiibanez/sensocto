@@ -1,0 +1,325 @@
+# SensOcto Component Library
+# Reusable UI components - both Phoenix function components and Svelte
+
+phoenix_components:
+  - module: SensoctoWeb.CoreComponents
+    file: lib/sensocto_web/components/core_components.ex
+    description: "Core UI primitives from Phoenix generator"
+    components:
+      - name: button
+        props: [type, class, disabled, rest]
+        slots: [inner_block]
+      - name: input
+        props: [id, name, type, value, label, errors, class]
+        slots: []
+      - name: modal
+        props: [id, show, on_cancel]
+        slots: [inner_block]
+      - name: flash
+        props: [kind, title, flash]
+        slots: [inner_block]
+      - name: table
+        props: [id, rows, row_id, row_click]
+        slots: [col, action]
+      - name: list
+        props: []
+        slots: [item]
+      - name: icon
+        props: [name, class]
+        slots: []
+
+  - module: SensoctoWeb.CallContainerComponent
+    file: lib/sensocto_web/live/calls/call_container_component.ex
+    description: "WebRTC call UI container"
+    props:
+      - name: call_state
+        type: map
+        required: true
+      - name: participants
+        type: list
+        required: true
+      - name: local_stream
+        type: MediaStream
+        required: false
+    slots:
+      - inner_block
+    events_emitted:
+      - join_call
+      - leave_call
+      - toggle_mute
+      - toggle_video
+
+  - module: SensoctoWeb.MiniCallIndicatorComponent
+    file: lib/sensocto_web/live/calls/mini_call_indicator_component.ex
+    description: "Compact call status indicator"
+    props:
+      - name: active
+        type: boolean
+      - name: participant_count
+        type: integer
+      - name: muted
+        type: boolean
+
+  - module: SensoctoWeb.UserVideoCardComponent
+    file: lib/sensocto_web/live/components/user_video_card_component.ex
+    description: "Individual participant video tile"
+    props:
+      - name: user_id
+        type: string
+      - name: stream_id
+        type: string
+      - name: muted
+        type: boolean
+      - name: video_enabled
+        type: boolean
+
+svelte_components:
+  visualizations:
+    - name: ECGVisualization
+      file: assets/svelte/ECGVisualization.svelte
+      description: "Real-time ECG waveform display using canvas"
+      props:
+        - name: id
+          type: string
+          description: "Container element ID"
+        - name: sensor_id
+          type: string
+        - name: attribute_id
+          type: string
+        - name: timewindow
+          type: number
+          default: 10
+          description: "Seconds of data to display"
+        - name: width
+          type: number
+          default: 200
+        - name: height
+          type: number
+          default: 100
+        - name: color
+          type: string
+        - name: backgroundColor
+          type: string
+          default: "transparent"
+        - name: samplingrate
+          type: number
+        - name: minValue
+          type: number
+          default: -1.0
+        - name: maxValue
+          type: number
+          default: 2
+        - name: highlighted_areas
+          type: array
+          default: []
+      data_format:
+        input: "Array of {timestamp: number, payload: number}"
+        rendering: "Canvas 2D line graph with axes"
+      events_listened:
+        - accumulator-data-event
+        - storage-worker-event
+        - seeddata-event
+
+    - name: HeartbeatVisualization
+      file: assets/svelte/HeartbeatVisualization.svelte
+      description: "Animated heart rate display"
+      props:
+        - name: heartrate
+          type: number
+        - name: color
+          type: string
+      features:
+        - Pulsing animation synced to BPM
+        - Large numeric display
+
+    - name: PressureVisualization
+      file: assets/svelte/PressureVisualization.svelte
+      description: "Breathing pressure gauge (inhale/exhale)"
+      props:
+        - name: value
+          type: number
+        - name: state
+          type: string (INHALE|EXHALE|NEUTRAL)
+      rendering: "SVG radial gauge"
+
+    - name: ButtonVisualization
+      file: assets/svelte/ButtonVisualization.svelte
+      description: "Physical button state indicator"
+      props:
+        - name: pressed
+          type: boolean
+
+    - name: IMU
+      file: assets/svelte/IMU.svelte
+      description: "3D orientation visualization"
+      props:
+        - name: quaternion
+          type: "{w, x, y, z}"
+        - name: euler
+          type: "{roll, pitch, yaw}"
+      rendering: "Three.js 3D model rotation"
+
+    - name: CompositeIMU
+      file: assets/svelte/CompositeIMU.svelte
+      description: "Full IMU with accel/gyro/compass"
+      props:
+        - name: accelerometer
+          type: "{x, y, z}"
+        - name: gyroscope
+          type: "{x, y, z}"
+        - name: compass
+          type: "{x, y, z}"
+
+  charts:
+    - name: ChartJS
+      file: assets/svelte/ChartJS.svelte
+      description: "Chart.js wrapper for various chart types"
+      props:
+        - name: type
+          type: string (line|bar|doughnut)
+        - name: data
+          type: ChartJS data object
+        - name: options
+          type: ChartJS options object
+
+    - name: SparklineWasm
+      file: assets/svelte/SparklineWasm.svelte
+      description: "WebAssembly-accelerated sparkline"
+      props:
+        - name: data
+          type: array of numbers
+        - name: width
+          type: number
+        - name: height
+          type: number
+
+    - name: MiniECGSparkline
+      file: assets/svelte/MiniECGSparkline.svelte
+      description: "Compact ECG preview"
+
+    - name: MiniPressureSparkline
+      file: assets/svelte/MiniPressureSparkline.svelte
+      description: "Compact pressure preview"
+
+  maps:
+    - name: Map
+      file: assets/svelte/Map.svelte
+      description: "Leaflet map for geolocation"
+      props:
+        - name: latitude
+          type: number
+        - name: longitude
+          type: number
+        - name: zoom
+          type: number
+          default: 13
+        - name: markers
+          type: array
+
+    - name: CompositeMap
+      file: assets/svelte/CompositeMap.svelte
+      description: "Map with multiple sensor tracks"
+
+    - name: GeolocationGraph
+      file: assets/svelte/GeolocationGraph.svelte
+      description: "Location track history"
+
+  sensor_clients:
+    - name: SensorService
+      file: assets/svelte/SenseApp/SensorService.svelte
+      description: "Central sensor connection manager"
+      manages:
+        - Device name persistence (cookies)
+        - Phoenix Socket connection
+        - Channel lifecycle
+
+    - name: BluetoothClient
+      file: assets/svelte/SenseApp/BluetoothClient.svelte
+      description: "BLE device scanner and connector"
+      features:
+        - Device discovery
+        - Service/characteristic enumeration
+        - Notification subscriptions
+
+    - name: IMUClient
+      file: assets/svelte/SenseApp/IMUClient.svelte
+      description: "Device motion API client"
+      sensors: [accelerometer, gyroscope, orientation]
+
+    - name: GeolocationClient
+      file: assets/svelte/SenseApp/GeolocationClient.svelte
+      description: "GPS location tracker"
+      features:
+        - Watch position
+        - High accuracy mode
+        - Background tracking
+
+    - name: BatterystatusClient
+      file: assets/svelte/SenseApp/BatterystatusClient.svelte
+      description: "Device battery level monitor"
+
+    - name: PushButtonClient
+      file: assets/svelte/SenseApp/PushButtonClient.svelte
+      description: "Virtual button for manual triggers"
+
+    - name: RichPresenceClient
+      file: assets/svelte/SenseApp/RichPresenceClient.svelte
+      description: "User presence/activity status"
+
+    - name: NetworkQualityMonitor
+      file: assets/svelte/SenseApp/NetworkQualityMonitor.svelte
+      description: "Connection quality metrics"
+
+  composites:
+    - name: CompositeHeartrate
+      file: assets/svelte/CompositeHeartrate.svelte
+      description: "Full heart monitoring view"
+      includes: [HeartbeatVisualization, ECGVisualization, SpO2]
+
+    - name: CompositeSpo2
+      file: assets/svelte/CompositeSpo2.svelte
+      description: "Blood oxygen saturation display"
+
+    - name: CompositeECG
+      file: assets/svelte/CompositeECG.svelte
+      description: "Full ECG view with controls"
+
+    - name: CompositeBattery
+      file: assets/svelte/CompositeBattery.svelte
+      description: "Battery status with history"
+
+    - name: CompositeGeolocation
+      file: assets/svelte/CompositeGeolocation.svelte
+      description: "Location with map and coordinates"
+
+# Component communication patterns
+communication_patterns:
+  svelte_to_liveview:
+    description: "Svelte dispatches events caught by LiveView hooks"
+    example: |
+      // Svelte
+      dispatch('sensor-data', { value: 42 });
+
+      // LiveView hook
+      this.handleEvent('sensor-data', (data) => {
+        this.pushEvent('measurement', data);
+      });
+
+  liveview_to_svelte:
+    description: "LiveView pushes events via hook"
+    example: |
+      # LiveView
+      {:noreply, push_event(socket, "new-data", %{values: data})}
+
+      // Hook
+      this.handleEvent("new-data", ({values}) => {
+        svelteComponent.$set({data: values});
+      });
+
+  window_events:
+    description: "Global events for cross-component communication"
+    events:
+      - accumulator-data-event
+      - storage-worker-event
+      - seeddata-event
+      - resizeend

@@ -1,0 +1,91 @@
+# Sensocto Action Plan
+
+**Generated:** January 12, 2026
+**Based on:** Security, Resilience, Testing, and Accessibility Agent Reports
+
+---
+
+## Priority 1: Critical (Immediate)
+
+### Security Fixes
+
+- [ ] **S-001**: Move hardcoded DB credentials to environment variables (`config/dev.exs`)
+- [ ] **S-002**: Move hardcoded secret keys to environment variables (`config/dev.exs`)
+- [ ] **S-003**: Move Neo4j credentials to environment variables (`config/config.exs`)
+- [ ] **S-004**: Enable WebSocket `check_origin` in production (`config/prod.exs`)
+
+### Resilience Fixes
+
+- [ ] **R-001**: Add `Task.Supervisor` to supervision tree (`lib/sensocto/application.ex`)
+- [ ] **R-002**: Replace `Task.start/1` with `Task.Supervisor.start_child/2` in RoomStore
+
+---
+
+## Priority 2: High
+
+### Security Fixes
+
+- [ ] **S-005**: Sanitize RequestLogger plug to filter sensitive data
+- [ ] **S-006**: Add security headers (CSP, X-Frame-Options, etc.) to endpoint
+
+### Resilience Fixes
+
+- [ ] **R-003**: Replace `IO.puts` with `Logger` in CallChannel
+- [ ] **R-004**: Add explicit timeouts to GenServer calls in RoomStore
+
+---
+
+## Priority 3: Medium
+
+### Security Fixes
+
+- [ ] **S-007**: Reduce token lifetime from 365 days to 30 days
+
+### Testing & Accessibility
+
+- [ ] **T-001**: Add comprehensive LiveView test coverage
+- [ ] **A-001**: Fix critical WCAG violations in forms and modals
+
+---
+
+## Implementation Status
+
+| ID | Status | Description |
+|----|--------|-------------|
+| S-001 | DONE | Move DB credentials to env vars |
+| S-002 | DONE | Move secret keys to env vars |
+| S-003 | DONE | Move Neo4j credentials to env vars |
+| S-004 | DONE | Enable WebSocket origin checking |
+| S-005 | DONE | Sanitize RequestLogger |
+| S-006 | DONE | Add security headers |
+| S-007 | DONE | Reduce token lifetime (365 -> 30 days) |
+| R-001 | DONE | Add Task.Supervisor |
+| R-002 | DONE | Fix fire-and-forget Tasks (11 instances) |
+| R-003 | DONE | Replace IO.puts with Logger |
+| R-004 | PENDING | Add GenServer timeouts |
+
+---
+
+## Files to Modify
+
+1. `config/dev.exs` - Move credentials, secrets
+2. `config/prod.exs` - Enable check_origin
+3. `config/config.exs` - Neo4j credentials
+4. `lib/sensocto/application.ex` - Add Task.Supervisor
+5. `lib/sensocto/otp/room_store.ex` - Use Task.Supervisor
+6. `lib/sensocto_web/plugs/request_logger.ex` - Sanitize logging
+7. `lib/sensocto_web/endpoint.ex` - Add security headers
+8. `lib/sensocto/accounts/user.ex` - Reduce token lifetime
+9. `lib/sensocto_web/channels/call_channel.ex` - Replace IO.puts
+
+---
+
+## Post-Implementation Verification
+
+After implementing all fixes:
+
+1. Run test suite: `mix test`
+2. Verify app starts: `mix phx.server`
+3. Check credentials are read from env: `echo $DATABASE_URL`
+4. Verify security headers in browser DevTools
+5. Test WebSocket connections still work

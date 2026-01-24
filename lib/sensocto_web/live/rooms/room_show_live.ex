@@ -2310,7 +2310,9 @@ defmodule SensoctoWeb.RoomShowLive do
         data-room-id={@room.id}
         data-user-id={@current_user.id}
         data-in-call={to_string(@in_call)}
-        data-user-name={@current_user.email |> to_string()}
+        data-user-name={
+          Map.get(@current_user, :email) || Map.get(@current_user, :display_name) || "Guest"
+        }
         class="hidden"
       >
       </div>

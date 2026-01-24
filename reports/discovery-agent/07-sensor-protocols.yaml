@@ -1,0 +1,377 @@
+# SensOcto Sensor Protocols
+# BLE services, characteristics, and data parsing
+
+supported_devices:
+  - name: Movesense
+    prefix: "Movesense"
+    type: medical_wearable
+    services:
+      - uuid: "heart_rate"
+        standard: true
+        characteristics:
+          - uuid: "00002a37-0000-1000-8000-00805f9b34fb"
+            name: heartRateMeasurement
+            properties: [notify]
+            data_format:
+              byte_0: flags
+              byte_1: heart_rate_uint8 (if flags & 0x01 == 0)
+              bytes_1_2: heart_rate_uint16 (if flags & 0x01 == 1)
+            decoder: decodeHeartRate
+            attribute_type: heartrate
+            sampling_rate: 1 Hz
+      - uuid: "battery_service"
+        standard: true
+        characteristics:
+          - uuid: "00002a19-0000-1000-8000-00805f9b34fb"
+            name: batteryLevel
+            properties: [read, notify]
+            data_format: uint8 (0-100)
+            attribute_type: battery
+
+  - name: Polar H10
+    prefix: "Polar"
+    type: medical_wearable
+    services:
+      - uuid: "heart_rate"
+        characteristics:
+          - name: heartRateMeasurement
+            uuid: "00002a37-0000-1000-8000-00805f9b34fb"
+            attribute_type: heartrate
+
+  - name: Nordic Thingy:52
+    prefix: "Thingy"
+    type: environmental_sensor
+    documentation: "https://nordicsemiconductor.github.io/Nordic-Thingy52-FW/documentation/firmware_architecture.html"
+    services:
+      - uuid: "ef680100-9b35-4933-9b10-52ffa9740042"
+        name: environmentService
+        characteristics:
+          - uuid: "ef680101-9b35-4933-9b10-52ffa9740042"
+            name: temperatureCharacteristic
+            properties: [notify]
+            data_format:
+              byte_0: integer (int8)
+              byte_1: decimal (uint8, in 1/100ths)
+            decoder: decodeThingyTemperature
+            attribute_type: temperature
+            unit: celsius
+
+          - uuid: "ef680102-9b35-4933-9b10-52ffa9740042"
+            name: pressureCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_3: integer (int32)
+              byte_4: decimal (uint8, in 1/100ths)
+            decoder: decodeThingyPressure
+            attribute_type: pressure
+            unit: hPa
+
+          - uuid: "ef680103-9b35-4933-9b10-52ffa9740042"
+            name: humidityCharacteristic
+            properties: [notify]
+            data_format: uint8 (percent)
+            attribute_type: humidity
+            unit: percent
+
+          - uuid: "ef680104-9b35-4933-9b10-52ffa9740042"
+            name: airQualityCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_1: eCO2 (uint16)
+              bytes_2_3: TVOC (uint16)
+            decoder: decodeAirQuality
+            attribute_type: air_quality
+
+          - uuid: "ef680105-9b35-4933-9b10-52ffa9740042"
+            name: colorCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_1: red (uint16)
+              bytes_2_3: green (uint16)
+              bytes_4_5: blue (uint16)
+              bytes_6_7: clear (uint16)
+            decoder: decodeColor
+            attribute_type: color
+
+      - uuid: "ef680200-9b35-4933-9b10-52ffa9740042"
+        name: userInterfaceService
+        characteristics:
+          - uuid: "ef680201-9b35-4933-9b10-52ffa9740042"
+            name: ledCharacteristic
+            properties: [write, read]
+            data_format:
+              byte_0: red (uint8)
+              byte_1: green (uint8)
+              byte_2: blue (uint8)
+            decoder: decodeLED
+            attribute_type: led
+
+          - uuid: "ef680202-9b35-4933-9b10-52ffa9740042"
+            name: buttonCharacteristic
+            properties: [notify]
+            data_format: uint8 (0 or 1)
+            attribute_type: button
+
+      - uuid: "ef680300-9b35-4933-9b10-52ffa9740042"
+        name: motionService
+        characteristics:
+          - uuid: "ef680301-9b35-4933-9b10-52ffa9740042"
+            name: tapCharacteristic
+            properties: [notify]
+            data_format:
+              byte_0: direction (uint8)
+              byte_1: count (uint8)
+            decoder: decodeTap
+            attribute_type: tap
+
+          - uuid: "ef680302-9b35-4933-9b10-52ffa9740042"
+            name: orientationCharacteristic
+            properties: [notify]
+            data_format: uint8
+            attribute_type: orientation
+
+          - uuid: "ef680303-9b35-4933-9b10-52ffa9740042"
+            name: quaternionCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_3: w (float32)
+              bytes_4_7: x (float32)
+              bytes_8_11: y (float32)
+              bytes_12_15: z (float32)
+            decoder: decodeQuaternion
+            attribute_type: imu
+
+          - uuid: "ef680304-9b35-4933-9b10-52ffa9740042"
+            name: stepCounterCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_3: steps (uint32)
+              bytes_4_5: time (uint16)
+            decoder: decodeStepCounter
+            attribute_type: steps
+
+          - uuid: "ef680305-9b35-4933-9b10-52ffa9740042"
+            name: rawDataCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_5: accelerometer (3x int16)
+              bytes_6_11: gyroscope (3x int16)
+              bytes_12_17: compass (3x int16)
+            decoder: decodeRawMotionData
+            attribute_type: imu
+
+          - uuid: "ef680306-9b35-4933-9b10-52ffa9740042"
+            name: eulerAngleCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_3: roll (float32)
+              bytes_4_7: pitch (float32)
+              bytes_8_11: yaw (float32)
+            decoder: decodeEuler
+            attribute_type: imu
+
+          - uuid: "ef680308-9b35-4933-9b10-52ffa9740042"
+            name: headingCharacteristic
+            properties: [notify]
+            data_format: float32
+            attribute_type: heading
+
+          - uuid: "ef680309-9b35-4933-9b10-52ffa9740042"
+            name: gravityVectorCharacteristic
+            properties: [notify]
+            data_format:
+              bytes_0_3: x (float32)
+              bytes_4_7: y (float32)
+              bytes_8_11: z (float32)
+            decoder: decodeGravity
+            attribute_type: gravity
+
+      - uuid: "ef680400-9b35-4933-9b10-52ffa9740042"
+        name: soundService
+        characteristics:
+          - uuid: "ef680403-9b35-4933-9b10-52ffa9740042"
+            name: microphoneCharacteristic
+            properties: [notify]
+            data_format: rawData
+            notes: "Audio streaming, not currently processed"
+
+  - name: PressureSensor (Thesma)
+    prefix: "PressureSensor"
+    type: breathing_sensor
+    services:
+      - uuid: "453b02b0-71a1-11ea-ab12-0800200c9a66"
+        name: pressureService
+        characteristics:
+          - uuid: "61d20a90-71a1-11ea-ab12-0800200c9a66"
+            name: breathingPressure
+            properties: [notify]
+            data_format: float32 (little-endian)
+            attribute_type: pressure
+            states:
+              INHALE: "value <= -0.1"
+              EXHALE: "value >= 0.1"
+              NEUTRAL: "otherwise"
+
+  - name: Oximeter (Body Sensor)
+    prefix: "PressureSensor"
+    type: oximeter
+    services:
+      - uuid: "a688bc90-09e2-4643-8e9a-ff3076703bc3"
+        name: oximeterService
+        characteristics:
+          - uuid: "d0b02e79-854a-4129-9475-7610e938a4dc"
+            name: bodyCharacteristic
+            properties: [notify]
+            data_format:
+              byte_0: state (uint8)
+              byte_1: heartrate (uint8)
+              byte_2: spo2 (uint8)
+              byte_3: confidence (uint8)
+            states:
+              0: "No object detected"
+              1: "Object detected"
+              2: "Object other than finger"
+              3: "Finger detected"
+            attribute_types: [heartrate, spo2]
+
+  - name: FlexSenseSensor
+    prefix: "FlexSenseSensor"
+    type: flex_sensor
+    services:
+      - uuid: "897fdb8d-dec3-40bc-98e8-2310a58b0189"
+        name: flexSenseService
+        characteristics:
+          - uuid: "feb7cb83-e359-4b57-abc6-628286b7a79b"
+            name: flexSenseCharacteristic
+            properties: [notify]
+            data_format: float32 (percent)
+            attribute_type: flex
+
+  - name: Puffer Sensor
+    prefix: "Puffer"
+    type: classification_sensor
+    services:
+      - uuid: "f75966a4-2f01-404b-be19-84af8df52728"
+        name: pufferService
+        characteristics:
+          - uuid: "63692f11-9daf-4c7d-ab89-45fbe50af19d"
+            name: pufferClassification
+            properties: [notify]
+            data_format: utf8String
+            attribute_type: classification
+
+          - uuid: "56e03b21-09a3-45ae-b7bb-c3d0817f430c"
+            name: pufferImuRawdata
+            properties: [notify]
+            data_format:
+              bytes_0_11: accelerometer (3x float32)
+              bytes_12_23: gyroscope (3x float32)
+            decoder: decodePufferImuPacket
+            attribute_type: imu
+
+# Built-in device sensors (Web APIs)
+web_apis:
+  - name: DeviceMotion
+    api: "window.DeviceMotionEvent"
+    component: IMUClient.svelte
+    data:
+      accelerometer: "{x, y, z}"
+      gyroscope: "{x, y, z}"
+      orientation: "{alpha, beta, gamma}"
+    sampling_rate: 60 Hz
+    attribute_type: imu
+
+  - name: Geolocation
+    api: "navigator.geolocation"
+    component: GeolocationClient.svelte
+    data:
+      latitude: float
+      longitude: float
+      altitude: float
+      accuracy: float
+      heading: float
+      speed: float
+    sampling_rate: 1 Hz (configurable)
+    attribute_type: geolocation
+
+  - name: Battery
+    api: "navigator.getBattery()"
+    component: BatterystatusClient.svelte
+    data:
+      level: float (0-1)
+      charging: boolean
+    sampling_rate: event-driven
+    attribute_type: battery
+
+# Channel message formats
+channel_protocol:
+  measurement:
+    description: "Single sensor measurement"
+    format:
+      type: string (attribute type)
+      state: string|number (optional state)
+      value: any (measurement payload)
+      timestamp: number (Unix ms)
+    example:
+      type: "heartrate"
+      value: 72
+      timestamp: 1705596000000
+
+  measurements_batch:
+    description: "Batched measurements"
+    format: "[measurement, measurement, ...]"
+    use_case: "Backpressure batching"
+
+  discovery:
+    description: "New sensor/attribute discovered"
+    format:
+      type: string
+      state: string|null
+      value: any|null
+      timestamp: number
+    triggers: "Attribute registration in SimpleSensor"
+
+  disconnect:
+    description: "Sensor disconnected"
+    format:
+      type: string
+      timestamp: number
+    triggers: "Attribute cleanup"
+
+# Data parsing pipeline (Dioxus port reference)
+parsing_pipeline:
+  steps:
+    1_receive:
+      input: "BLE characteristic notification (DataView)"
+      action: "Route to decoder based on UUID"
+
+    2_decode:
+      input: "Raw bytes"
+      action: "Parse according to data_format spec"
+      output: "Typed value (number, object, etc.)"
+
+    3_normalize:
+      input: "Decoded value"
+      action: "Map to standard attribute_type"
+      output: "Normalized measurement object"
+
+    4_timestamp:
+      input: "Measurement object"
+      action: "Add client timestamp"
+      output: "{type, value, timestamp, state?}"
+
+    5_batch:
+      input: "Timestamped measurement"
+      action: "Queue in BackpressureManager"
+      output: "Batched or immediate send"
+
+    6_transmit:
+      input: "Measurement(s)"
+      action: "Send via Phoenix Channel"
+      output: "Server acknowledgment"
+
+  rust_equivalents:
+    BluetoothUtils: "btleplug crate for BLE"
+    DataView: "bytes/byteorder crates"
+    BackpressureManager: "tokio channels with buffering"
+    Phoenix_Channel: "WebSocket client (tokio-tungstenite)"

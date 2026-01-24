@@ -1,0 +1,304 @@
+# SensOcto User Flows
+# Complete user interaction sequences
+
+flows:
+  - name: Connect BLE Sensor
+    description: "User connects a Bluetooth sensor and starts streaming"
+    screens: [LobbyLive, SenseLive]
+    steps:
+      - step: 1
+        action: "User clicks Bluetooth button in SenseApp toolbar"
+        component: BluetoothClient.svelte
+        ui_element: "BLE connect button"
+
+      - step: 2
+        action: "Browser shows device picker"
+        api: "navigator.bluetooth.requestDevice()"
+        filters:
+          - "namePrefix: Movesense"
+          - "namePrefix: Polar"
+          - "namePrefix: Thingy"
+          - "namePrefix: PressureSensor"
+
+      - step: 3
+        action: "User selects device"
+        result: "GATT connection established"
+
+      - step: 4
+        action: "System enumerates services/characteristics"
+        code: "server.getPrimaryServices()"
+        result: "List of available characteristics"
+
+      - step: 5
+        action: "System registers characteristics for notifications"
+        code: "characteristic.startNotifications()"
+        result: "Notification handlers attached"
+
+      - step: 6
+        action: "System sends discovery message"
+        channel_event: "discovery"
+        payload: "{type, state, value, timestamp}"
+
+      - step: 7
+        action: "Server creates/updates SimpleSensor GenServer"
+        server_action: "SimpleSensor.start_link() or update_attribute_registry()"
+
+      - step: 8
+        action: "Notifications arrive from device"
+        handler: "handleCharacteristic handlers"
+        result: "Data decoded and queued"
+
+      - step: 9
+        action: "BackpressureManager batches and sends"
+        channel_event: "measurement or measurements_batch"
+
+      - step: 10
+        action: "Server broadcasts via PubSub"
+        topic: "data:{sensor_id}"
+        event: ":measurement"
+
+      - step: 11
+        action: "LiveView receives and updates UI"
+        result: "Visualization renders new data"
+
+  - name: View Sensor Details
+    description: "User navigates to detailed sensor view"
+    screens: [LobbyLive, StatefulSensorLive]
+    steps:
+      - step: 1
+        action: "User clicks sensor card"
+        event: "navigate to /sensor/:sensor_id"
+
+      - step: 2
+        action: "LiveView mounts and subscribes"
+        subscriptions:
+          - "data:{sensor_id}"
+          - "signal:{sensor_id}"
+
+      - step: 3
+        action: "Initial state loaded"
+        call: "SimpleSensor.get_view_state(sensor_id)"
+
+      - step: 4
+        action: "Svelte visualizations mounted"
+        hook: "Svelte hook"
+        components: "Based on attribute types"
+
+      - step: 5
+        action: "Real-time updates flow"
+        pubsub: ":measurement events"
+        result: "Continuous visualization updates"
+
+      - step: 6
+        action: "Attention tracking activates"
+        hook: "VisibilityTracker"
+        result: "Backpressure config sent to client"
+
+  - name: Create and Join Room
+    description: "User creates a room and invites others"
+    screens: [LobbyLive, RoomShowLive]
+    steps:
+      - step: 1
+        action: "User clicks Create Room"
+        event: "create_room"
+
+      - step: 2
+        action: "Room form submitted"
+        data: "{name, description}"
+
+      - step: 3
+        action: "Server creates room"
+        calls:
+          - "RoomStore.create_room()"
+          - "Generate join_code"
+          - "Create Iroh document"
+        result: "Room with join_code and iroh_ticket"
+
+      - step: 4
+        action: "User redirected to room"
+        route: "/rooms/:id"
+
+      - step: 5
+        action: "User shares join code"
+        ui: "Copy join code button"
+
+      - step: 6
+        action: "Other user enters join code"
+        screen: LobbyLive
+        event: "join_room"
+
+      - step: 7
+        action: "Membership created"
+        call: "RoomStore.add_member()"
+        pubsub: "room:{id} :member_joined"
+
+      - step: 8
+        action: "Both users see each other"
+        sync: "Presence tracking"
+
+  - name: Start Voice/Video Call
+    description: "Room members start a WebRTC call"
+    screens: [RoomShowLive]
+    steps:
+      - step: 1
+        action: "User clicks Call button"
+        event: "join_call"
+
+      - step: 2
+        action: "Request media permissions"
+        api: "getUserMedia({audio: true, video: true})"
+
+      - step: 3
+        action: "Local stream attached"
+        ui: "Self-view video tile"
+
+      - step: 4
+        action: "Broadcast call join"
+        pubsub: "room:{id}:call :peer_joined"
+
+      - step: 5
+        action: "Other members notified"
+        result: "Call indicator shown"
+
+      - step: 6
+        action: "Peer creates offer"
+        api: "peerConnection.createOffer()"
+        pubsub: ":offer event"
+
+      - step: 7
+        action: "Original user creates answer"
+        api: "peerConnection.createAnswer()"
+        pubsub: ":answer event"
+
+      - step: 8
+        action: "ICE candidates exchanged"
+        pubsub: ":ice_candidate events"
+
+      - step: 9
+        action: "Peer connection established"
+        result: "Direct audio/video stream"
+
+      - step: 10
+        action: "User leaves call"
+        event: "leave_call"
+        cleanup: "Stop tracks, close connection"
+
+  - name: Add Sensor to Room
+    description: "User adds their sensor to a shared room"
+    screens: [RoomShowLive]
+    steps:
+      - step: 1
+        action: "User clicks Add Sensor"
+        event: "show_sensor_picker"
+
+      - step: 2
+        action: "Available sensors listed"
+        source: "Connected sensors from session"
+
+      - step: 3
+        action: "User selects sensor"
+        event: "add_sensor"
+        payload: "{sensor_id}"
+
+      - step: 4
+        action: "Sensor added to room"
+        call: "RoomStore.add_sensor(room_id, sensor_id)"
+
+      - step: 5
+        action: "Room members notified"
+        pubsub: "room:{id} :sensor_added"
+
+      - step: 6
+        action: "Sensor data shared with room"
+        result: "All room members can view sensor"
+
+  - name: Enable Device Motion (IMU)
+    description: "User enables device accelerometer/gyroscope"
+    screens: [SenseLive, Any with SenseApp]
+    steps:
+      - step: 1
+        action: "User clicks IMU button"
+        component: IMUClient.svelte
+
+      - step: 2
+        action: "Request motion permission (iOS)"
+        api: "DeviceMotionEvent.requestPermission()"
+
+      - step: 3
+        action: "Start motion listener"
+        api: "window.addEventListener('devicemotion', handler)"
+
+      - step: 4
+        action: "Motion data sent to channel"
+        channel_event: "measurement"
+        payload: "{type: 'imu', value: {acc, gyro}}"
+
+      - step: 5
+        action: "3D visualization updates"
+        component: IMU.svelte or CompositeIMU.svelte
+
+  - name: Track Geolocation
+    description: "User enables GPS tracking"
+    screens: [SenseLive]
+    steps:
+      - step: 1
+        action: "User clicks Location button"
+        component: GeolocationClient.svelte
+
+      - step: 2
+        action: "Request location permission"
+        api: "navigator.geolocation.watchPosition()"
+
+      - step: 3
+        action: "Location updates streamed"
+        channel_event: "measurement"
+        payload: "{type: 'geolocation', value: {lat, lng, ...}}"
+
+      - step: 4
+        action: "Map updates position"
+        component: Map.svelte
+
+# User interactions summary
+interactions:
+  clicks:
+    - "Connect BLE device"
+    - "Disconnect BLE device"
+    - "Enable/disable IMU"
+    - "Enable/disable Geolocation"
+    - "Enable/disable Battery monitoring"
+    - "Push virtual button"
+    - "Create room"
+    - "Join room (by code)"
+    - "Leave room"
+    - "Add sensor to room"
+    - "Remove sensor from room"
+    - "Start call"
+    - "End call"
+    - "Mute/unmute"
+    - "Enable/disable video"
+    - "Toggle autostart"
+    - "Save device name"
+    - "Navigate between views"
+    - "Expand/collapse sections"
+    - "Zoom visualization time window"
+
+  inputs:
+    - "Device name (text)"
+    - "Room name (text)"
+    - "Room description (textarea)"
+    - "Join code (text)"
+    - "User email (auth)"
+    - "Password (auth)"
+
+  gestures:
+    - "Scroll sensor list"
+    - "Scroll visualization time window (drag)"
+    - "Pinch zoom on map"
+    - "Pan on map"
+
+  automatic:
+    - "Visibility tracking (IntersectionObserver)"
+    - "Window resize handling"
+    - "Connection state changes"
+    - "Battery level changes"
+    - "Network quality changes"

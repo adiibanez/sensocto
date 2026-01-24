@@ -1,0 +1,248 @@
+# SensOcto LiveView Inventory
+# Each LiveView module with routes, assigns, events, and subscriptions
+
+liveviews:
+  - module: SensoctoWeb.LobbyLive
+    file: lib/sensocto_web/live/lobby_live.ex
+    route: "/"
+    description: "Landing page with room list and sensor overview"
+    assigns:
+      - name: current_user
+        type: User struct or nil
+        source: session
+      - name: rooms
+        type: list of Room
+        source: RoomStore.list_rooms()
+      - name: sensors
+        type: list of Sensor
+        source: PubSub subscription
+      - name: show_mobile_menu
+        type: boolean
+        default: false
+    events:
+      - name: toggle_mobile_menu
+        handler: handle_event("toggle_mobile_menu", _, socket)
+        action: Toggles mobile navigation
+      - name: join_room
+        handler: handle_event("join_room", %{"room_id" => id}, socket)
+        action: Navigate to room
+      - name: create_room
+        handler: handle_event("create_room", params, socket)
+        action: Creates new room via RoomStore
+    pubsub_subscriptions:
+      - topic: "sensors:status"
+        events: [":sensor_connected", ":sensor_disconnected"]
+      - topic: "rooms:updates"
+        events: [":room_created", ":room_updated"]
+    components_used:
+      - SensoctoWeb.Components.NavBar
+      - SensoctoWeb.Components.RoomCard
+      - SensoctoWeb.Components.SensorList
+
+  - module: SensoctoWeb.IndexLive
+    file: lib/sensocto_web/live/index_live.ex
+    route: "/dashboard"
+    description: "Main dashboard with sensor grid"
+    assigns:
+      - name: sensors
+        type: map of sensor_id => sensor_state
+        source: SimpleSensor.get_view_state()
+      - name: layout
+        type: string (grid|list)
+        default: "grid"
+    events:
+      - name: refresh
+        handler: handle_event("refresh", _, socket)
+        action: Reloads sensor states
+      - name: toggle_layout
+        handler: handle_event("toggle_layout", _, socket)
+        action: Switch between grid/list view
+    pubsub_subscriptions:
+      - topic: "sensors:all"
+        events: [":sensor_list_updated"]
+
+  - module: SensoctoWeb.SenseLive
+    file: lib/sensocto_web/live/sense_live.ex
+    route: "/sense"
+    description: "Sensor visualization page with Svelte components"
+    assigns:
+      - name: sensor_id
+        type: string
+        source: URL params or session
+      - name: attributes
+        type: map
+        source: SimpleSensor state
+      - name: svelte_components
+        type: list
+        description: Mounted Svelte visualizations
+    events:
+      - name: mount_svelte
+        handler: phx-hook based
+        action: Initializes Svelte components
+    pubsub_subscriptions:
+      - topic: "data:{sensor_id}"
+        events: [":measurement", ":measurements_batch"]
+
+  - module: SensoctoWeb.StatefulSensorLive
+    file: lib/sensocto_web/live/stateful_sensor_live.ex
+    route: "/sensor/:sensor_id"
+    description: "Individual sensor view with attention tracking"
+    assigns:
+      - name: sensor_id
+        type: string
+        source: URL params
+      - name: state
+        type: map
+        source: SimpleSensor.get_view_state()
+      - name: attention_level
+        type: atom (:high | :medium | :low | :none)
+        source: IntersectionObserver via hook
+      - name: batch_buffer
+        type: list
+        description: Buffered measurements for batched updates
+      - name: batch_timer
+        type: reference
+        description: Timer for batch flush
+    events:
+      - name: visibility_changed
+        handler: handle_event("visibility_changed", %{"visible" => bool}, socket)
+        action: Updates attention tracking
+      - name: flush_batch
+        handler: handle_info(:flush_batch, socket)
+        action: Sends buffered measurements to client
+    pubsub_subscriptions:
+      - topic: "data:{sensor_id}"
+        events: [":measurement", ":measurements_batch"]
+      - topic: "signal:{sensor_id}"
+        events: [":new_state"]
+    attention_system:
+      description: |
+        Implements adaptive backpressure based on UI visibility.
+        When sensor view is not visible, data updates are batched
+        more aggressively to reduce network/processing overhead.
+      levels:
+        - name: high
+          batch_size: 1
+          batch_window_ms: 50
+          description: Immediate updates (actively viewing)
+        - name: medium
+          batch_size: 5
+          batch_window_ms: 200
+          description: Small batches (visible but not focused)
+        - name: low
+          batch_size: 10
+          batch_window_ms: 1000
+          description: Larger batches (scrolled away)
+        - name: none
+          batch_size: 20
+          batch_window_ms: 5000
+          description: Maximum batching (tab hidden)
+
+  - module: SensoctoWeb.RoomShowLive
+    file: lib/sensocto_web/live/rooms/room_show_live.ex
+    route: "/rooms/:id"
+    description: "Room view with members, sensors, and WebRTC calls"
+    assigns:
+      - name: room
+        type: Room struct
+        source: RoomStore.get_room()
+      - name: members
+        type: list of User
+        source: RoomStore.get_members()
+      - name: sensors
+        type: list of Sensor
+        source: RoomStore
+      - name: call_state
+        type: map
+        source: WebRTC hooks
+      - name: presence
+        type: map
+        source: Phoenix Presence
+    events:
+      - name: join_call
+        handler: handle_event("join_call", _, socket)
+        action: Initiates WebRTC connection
+      - name: leave_call
+        handler: handle_event("leave_call", _, socket)
+        action: Disconnects from call
+      - name: toggle_mute
+        handler: handle_event("toggle_mute", _, socket)
+        action: Mutes/unmutes audio
+      - name: invite_member
+        handler: handle_event("invite_member", params, socket)
+        action: Generates join code
+      - name: add_sensor
+        handler: handle_event("add_sensor", %{"sensor_id" => id}, socket)
+        action: Adds sensor to room
+    pubsub_subscriptions:
+      - topic: "room:{room_id}"
+        events: [":member_joined", ":member_left", ":sensor_added"]
+      - topic: "room:{room_id}:call"
+        events: [":peer_joined", ":peer_left", ":offer", ":answer", ":ice_candidate"]
+    components_used:
+      - SensoctoWeb.CallContainerComponent
+      - SensoctoWeb.MiniCallIndicatorComponent
+      - SensoctoWeb.UserVideoCardComponent
+
+  - module: SensoctoWeb.RoomEditLive
+    file: lib/sensocto_web/live/rooms/room_edit_live.ex
+    route: "/rooms/:id/edit"
+    description: "Room settings and configuration"
+    assigns:
+      - name: room
+        type: Room struct
+        source: RoomStore
+      - name: changeset
+        type: Ecto.Changeset
+        source: Room.changeset()
+    events:
+      - name: validate
+        handler: handle_event("validate", params, socket)
+        action: Validates form changes
+      - name: save
+        handler: handle_event("save", params, socket)
+        action: Persists room changes
+
+  - module: SensoctoWeb.SettingsLive
+    file: lib/sensocto_web/live/settings_live.ex
+    route: "/settings"
+    description: "User account settings"
+    assigns:
+      - name: current_user
+        type: User struct
+        source: session
+      - name: preferences
+        type: UserPreference
+        source: database
+    events:
+      - name: update_preferences
+        handler: handle_event("update_preferences", params, socket)
+        action: Saves user preferences
+
+# Common patterns across LiveViews
+patterns:
+  data_loading:
+    description: "Most LiveViews use mount/3 for initial data fetch"
+    example: |
+      def mount(params, session, socket) do
+        if connected?(socket) do
+          subscribe_to_updates()
+        end
+        {:ok, assign_initial_data(socket)}
+      end
+
+  pubsub_handling:
+    description: "PubSub messages handled via handle_info/2"
+    example: |
+      def handle_info({:measurement, data}, socket) do
+        {:noreply, update(socket, :measurements, &[data | &1])}
+      end
+
+  component_communication:
+    description: "Parent-child via assigns, child-parent via send/2"
+    example: |
+      # Parent passes data down
+      <.live_component module={SensorCard} sensor={@sensor} />
+
+      # Child sends events up
+      send(self(), {:sensor_selected, sensor_id})

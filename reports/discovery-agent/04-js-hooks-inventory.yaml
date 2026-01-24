@@ -1,0 +1,232 @@
+# SensOcto JavaScript Hooks Inventory
+# LiveView JS hooks and their interactions
+
+hooks:
+  - name: Svelte
+    file: assets/js/hooks.js
+    description: "Mount Svelte components in LiveView templates"
+    lifecycle:
+      mounted: |
+        - Reads component name from data-name attribute
+        - Reads props from data-props attribute (JSON)
+        - Dynamically imports Svelte component
+        - Mounts component with props
+        - Stores reference for updates/destroy
+      updated: |
+        - Reads updated props from data-props
+        - Calls svelteComponent.$set() with new props
+      destroyed: |
+        - Calls svelteComponent.$destroy()
+        - Cleans up event listeners
+    usage: |
+      <div id="ecg-viz"
+           phx-hook="Svelte"
+           data-name="ECGVisualization"
+           data-props={Jason.encode!(%{sensor_id: @sensor_id})} />
+
+  - name: VideoCallHook
+    file: assets/js/webrtc/call_hooks.js
+    description: "WebRTC call management"
+    lifecycle:
+      mounted: |
+        - Initializes PeerConnection
+        - Sets up ICE candidate handling
+        - Requests user media (audio/video)
+        - Listens for LiveView events
+      destroyed: |
+        - Closes PeerConnection
+        - Stops media tracks
+    events_pushed:
+      - name: offer
+        payload: "{sdp: RTCSessionDescription}"
+      - name: answer
+        payload: "{sdp: RTCSessionDescription}"
+      - name: ice_candidate
+        payload: "{candidate: RTCIceCandidate}"
+      - name: call_ended
+        payload: "{reason: string}"
+    events_handled:
+      - name: offer_received
+        action: "Creates answer, sets remote description"
+      - name: answer_received
+        action: "Sets remote description"
+      - name: ice_candidate_received
+        action: "Adds ICE candidate"
+      - name: peer_joined
+        action: "Creates offer for new peer"
+      - name: peer_left
+        action: "Removes peer connection"
+    external_apis:
+      - RTCPeerConnection
+      - getUserMedia
+      - MediaStream
+
+  - name: UserVideoTile
+    file: assets/js/hooks/user_video_tile.js
+    description: "Individual video element for call participants"
+    lifecycle:
+      mounted: |
+        - Attaches MediaStream to video element
+        - Sets up audio/video track monitoring
+      updated: |
+        - Updates stream if changed
+        - Handles mute/unmute state
+      destroyed: |
+        - Detaches stream
+    props_from_server:
+      - stream_id
+      - muted
+      - video_enabled
+
+  - name: MiniCallIndicator
+    file: assets/js/hooks/mini_call_indicator.js
+    description: "Compact call status in navbar"
+    events_pushed:
+      - toggle_call_panel
+
+  - name: VisibilityTracker
+    file: assets/js/hooks.js
+    description: "Tracks element visibility for attention system"
+    lifecycle:
+      mounted: |
+        - Creates IntersectionObserver
+        - Observes element visibility
+        - Reports visibility changes to server
+    events_pushed:
+      - name: visibility_changed
+        payload: "{visible: boolean, ratio: number}"
+    server_integration: |
+      Used by StatefulSensorLive to adjust data streaming
+      based on whether user is viewing the sensor
+
+  - name: AccordionSection
+    file: assets/js/hooks.js
+    description: "Collapsible accordion panels"
+    lifecycle:
+      mounted: |
+        - Reads initial expanded state from data attribute
+        - Sets up click handlers
+      updated: |
+        - Animates height transitions
+    events_pushed:
+      - toggle_section
+
+  - name: SvelteMount
+    file: assets/js/hooks.js
+    description: "Alternative Svelte mounting hook"
+    notes: "Legacy hook, prefer 'Svelte' hook"
+
+  - name: TiptapEditor
+    file: assets/js/hooks.js
+    description: "Rich text editor integration"
+    lifecycle:
+      mounted: |
+        - Initializes Tiptap editor
+        - Syncs content with hidden input
+    events_pushed:
+      - content_changed
+
+# BLE-specific JavaScript (not hooks, but key JS)
+ble_integration:
+  file: assets/js/ble.js
+  description: "Web Bluetooth API integration"
+  classes:
+    - name: BackpressureManager
+      description: "Client-side message batching based on server config"
+      methods:
+        - updateConfig(payload): "Updates batching parameters from server"
+        - queueMeasurement(measurement): "Queues for batched sending"
+        - flush(): "Sends queued messages"
+        - cleanup(): "Flushes and stops timers"
+      config_params:
+        - attentionLevel: "none|low|medium|high"
+        - batchWindowMs: "Time window for batching"
+        - batchSize: "Max messages per batch"
+
+  functions:
+    - name: setupBleGui
+      description: "Initializes BLE UI and channel"
+      actions:
+        - Creates Phoenix channel connection
+        - Sets up device request filters
+        - Registers characteristic handlers
+
+    - name: requestDevice
+      description: "Prompts user to select BLE device"
+      filters:
+        - namePrefix: ["PressureSensor", "Movesense", "BlueNRG", "FlexSenseSensor"]
+      optional_services:
+        - "453b02b0-71a1-11ea-ab12-0800200c9a66" # pressure
+        - "heart_rate"
+        - "battery_service"
+        - "61353090-8231-49cc-b57a-886370740041"
+        - "a688bc90-09e2-4643-8e9a-ff3076703bc3" # oximeter
+        - "897fdb8d-dec3-40bc-98e8-2310a58b0189" # flexsense
+
+    - name: handleCharacteristic
+      description: "Routes characteristics to appropriate handlers"
+      handlers:
+        - uuid: "61d20a90-71a1-11ea-ab12-0800200c9a66"
+          name: pressure
+          handler: handlePressureChanged
+        - uuid: "d0b02e79-854a-4129-9475-7610e938a4dc"
+          name: body (oximeter)
+          handler: handleBodyChanged
+        - uuid: "feb7cb83-e359-4b57-abc6-628286b7a79b"
+          name: flexsense
+          handler: handleFlexSenseChanged
+        - uuid: "00002a37-0000-1000-8000-00805f9b34fb"
+          name: heartrate
+          handler: handleHeartrateChanged
+        - uuid: "00002a19-0000-1000-8000-00805f9b34fb"
+          name: battery
+          handler: handleBatteryLevelChanged
+
+  channel_messages:
+    outbound:
+      - name: measurement
+        payload: "{type, state, value, timestamp}"
+      - name: measurements_batch
+        payload: "[{type, state, value, timestamp}, ...]"
+      - name: discovery
+        payload: "{type, state, value, timestamp}"
+      - name: disconnect
+        payload: "{type, timestamp}"
+    inbound:
+      - name: backpressure_config
+        payload: "{attention_level, recommended_batch_window, recommended_batch_size}"
+
+# Svelte-specific JavaScript utilities
+svelte_utils:
+  - file: assets/svelte/bluetooth-utils.js
+    description: "BLE UUID mapping and data decoders"
+    exports:
+      - BluetoothUtils
+    key_methods:
+      - name: name(uuid)
+        returns: "Human-readable characteristic name"
+      - name: normalizedType(uuid)
+        returns: "Sensor attribute type for backend"
+      - name: decodeValue(uuid, dataView)
+        returns: "Parsed value based on data type"
+      - name: isConfigOnly(uuid)
+        returns: "Whether characteristic is config-only"
+
+  - file: assets/svelte/services-sensor-data.js
+    description: "Sensor data processing utilities"
+    exports:
+      - processStorageWorkerEvent
+      - processAccumulatorEvent
+      - processSeedDataEvent
+
+  - file: assets/svelte/stores.js
+    description: "Svelte stores for global state"
+    stores:
+      - usersettings
+      - autostart
+
+  - file: assets/svelte/logger_svelte.js
+    description: "Filtered logging utility"
+    features:
+      - Context-based log filtering
+      - Enable/disable per component

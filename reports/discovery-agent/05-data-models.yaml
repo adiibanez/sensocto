@@ -1,0 +1,382 @@
+# SensOcto Data Models
+# Ecto schemas, Ash resources, and in-memory state structures
+
+ecto_schemas:
+  accounts:
+    - module: Sensocto.Accounts.User
+      table: users
+      fields:
+        - name: id
+          type: :uuid
+          primary_key: true
+        - name: email
+          type: :string
+          constraints: [unique]
+        - name: hashed_password
+          type: :string
+        - name: confirmed_at
+          type: :utc_datetime
+      relationships:
+        - has_many: :tokens, Sensocto.Accounts.Token
+        - has_one: :preference, Sensocto.Accounts.UserPreference
+        - many_to_many: :rooms, through: :room_memberships
+      ash_resource: true
+      authentication: ash_authentication (JWT)
+
+    - module: Sensocto.Accounts.Token
+      table: tokens
+      fields:
+        - name: id
+          type: :uuid
+        - name: token
+          type: :string
+        - name: context
+          type: :string
+        - name: sent_to
+          type: :string
+        - name: user_id
+          type: :uuid
+      relationships:
+        - belongs_to: :user, Sensocto.Accounts.User
+
+    - module: Sensocto.Accounts.UserPreference
+      table: user_preferences
+      fields:
+        - name: id
+          type: :uuid
+        - name: user_id
+          type: :uuid
+        - name: theme
+          type: :string
+          default: "dark"
+        - name: notification_settings
+          type: :map
+        - name: default_room_id
+          type: :uuid
+
+  sensors:
+    - module: Sensocto.Sensors.Sensor
+      table: sensors
+      fields:
+        - name: id
+          type: :uuid
+        - name: name
+          type: :string
+          description: "Unique sensor identifier (often device UUID)"
+        - name: sensor_type_id
+          type: :uuid
+        - name: status
+          type: :string
+          enum: [online, offline, error]
+        - name: last_seen_at
+          type: :utc_datetime
+        - name: metadata
+          type: :map
+      relationships:
+        - belongs_to: :sensor_type, Sensocto.Sensors.SensorType
+        - has_many: :attributes, Sensocto.Sensors.SensorAttribute
+        - has_many: :connections, Sensocto.Sensors.SensorConnection
+        - many_to_many: :rooms, through: :room_sensor_types
+      ash_resource: true
+
+    - module: Sensocto.Sensors.SensorType
+      table: sensor_types
+      fields:
+        - name: id
+          type: :uuid
+        - name: name
+          type: :string
+          examples: [movesense, polar_h10, thingy52, generic_ble]
+        - name: manufacturer
+          type: :string
+        - name: default_attributes
+          type: {:array, :map}
+          description: "Default attribute definitions for this sensor type"
+      relationships:
+        - has_many: :sensors, Sensocto.Sensors.Sensor
+        - has_many: :connector_sensor_types, Sensocto.Sensors.ConnectorSensorType
+
+    - module: Sensocto.Sensors.SensorAttribute
+      table: sensor_attributes
+      fields:
+        - name: id
+          type: :uuid
+        - name: sensor_id
+          type: :uuid
+        - name: attribute_id
+          type: :string
+          description: "Attribute identifier (e.g., 'heartrate', 'temperature')"
+        - name: attribute_type
+          type: :string
+          description: "Rendering hint (e.g., 'ecg', 'gauge', 'numeric')"
+        - name: sampling_rate
+          type: :integer
+          description: "Expected samples per second"
+        - name: unit
+          type: :string
+          examples: [bpm, celsius, hPa, mV]
+        - name: metadata
+          type: :map
+      relationships:
+        - belongs_to: :sensor, Sensocto.Sensors.Sensor
+        - has_many: :data, Sensocto.Sensors.SensorAttributeData
+
+    - module: Sensocto.Sensors.SensorAttributeData
+      table: sensor_attribute_data
+      description: "Cold storage for historical sensor data"
+      fields:
+        - name: id
+          type: :uuid
+        - name: sensor_attribute_id
+          type: :uuid
+        - name: timestamp
+          type: :integer
+          description: "Unix timestamp in milliseconds"
+        - name: payload
+          type: :map
+          description: "Flexible payload structure"
+      indexes:
+        - [sensor_attribute_id, timestamp]
+      partitioning: "Consider time-based partitioning for scale"
+
+    - module: Sensocto.Sensors.Room
+      table: rooms
+      fields:
+        - name: id
+          type: :uuid
+        - name: name
+          type: :string
+        - name: description
+          type: :text
+        - name: join_code
+          type: :string
+          constraints: [unique]
+        - name: owner_id
+          type: :uuid
+        - name: settings
+          type: :map
+        - name: iroh_ticket
+          type: :string
+          description: "Iroh document sync ticket"
+      relationships:
+        - belongs_to: :owner, Sensocto.Accounts.User
+        - has_many: :memberships, Sensocto.Sensors.RoomMembership
+        - many_to_many: :members, through: :memberships
+        - has_many: :room_sensor_types, Sensocto.Sensors.RoomSensorType
+      ash_resource: true
+
+    - module: Sensocto.Sensors.RoomMembership
+      table: room_memberships
+      fields:
+        - name: id
+          type: :uuid
+        - name: room_id
+          type: :uuid
+        - name: user_id
+          type: :uuid
+        - name: role
+          type: :string
+          enum: [owner, admin, member, viewer]
+        - name: joined_at
+          type: :utc_datetime
+      relationships:
+        - belongs_to: :room, Sensocto.Sensors.Room
+        - belongs_to: :user, Sensocto.Accounts.User
+      constraints:
+        - unique: [room_id, user_id]
+
+    - module: Sensocto.Sensors.Connector
+      table: connectors
+      description: "Physical device that connects sensors"
+      fields:
+        - name: id
+          type: :uuid
+        - name: name
+          type: :string
+        - name: device_id
+          type: :string
+          description: "Browser-generated UUID"
+        - name: user_agent
+          type: :string
+        - name: last_seen_at
+          type: :utc_datetime
+      relationships:
+        - has_many: :connector_sensor_types, Sensocto.Sensors.ConnectorSensorType
+
+    - module: Sensocto.Sensors.SensorConnection
+      table: sensor_connections
+      description: "Active sensor-to-connector bindings"
+      fields:
+        - name: id
+          type: :uuid
+        - name: sensor_id
+          type: :uuid
+        - name: connector_id
+          type: :uuid
+        - name: connected_at
+          type: :utc_datetime
+        - name: disconnected_at
+          type: :utc_datetime
+
+  media:
+    - module: Sensocto.Media.Playlist
+      table: playlists
+      fields:
+        - name: id
+          type: :uuid
+        - name: name
+          type: :string
+        - name: user_id
+          type: :uuid
+
+    - module: Sensocto.Object3D.Object3DPlaylist
+      table: object3d_playlists
+      description: "3D object playlists for visualization"
+
+# In-memory state structures (GenServer state)
+genserver_state:
+  - module: Sensocto.SimpleSensor
+    description: "Per-sensor GenServer state"
+    state_shape:
+      sensor_id: :string
+      sensor_name: :string
+      sensor_type: :string
+      sampling_rate: :integer
+      batch_size: :integer
+      connector_id: :string
+      connector_name: :string
+      attributes:
+        type: :map
+        description: "Map of attribute_id => attribute_metadata"
+        example:
+          heartrate:
+            attribute_type: "heartrate"
+            sampling_rate: 1
+          ecg:
+            attribute_type: "ecg"
+            sampling_rate: 512
+      message_timestamps:
+        type: :list
+        description: "Recent timestamps for MPS calculation"
+      mps_interval:
+        type: :integer
+        default: 5000
+    persistence: "Attribute data stored via AttributeStoreTiered"
+
+  - module: Sensocto.Otp.RoomStore
+    description: "In-memory room state with PostgreSQL/Iroh sync"
+    state_shape:
+      rooms:
+        type: :map
+        description: "Map of room_id => room_data"
+        room_data:
+          id: :uuid
+          name: :string
+          join_code: :string
+          owner_id: :uuid
+          members: "Map of user_id => member_data"
+          sensors: "List of sensor_ids"
+          settings: :map
+          iroh_doc_id: :string
+      join_codes:
+        type: :map
+        description: "Map of join_code => room_id for quick lookup"
+      pending_syncs:
+        type: :list
+        description: "Operations pending sync to Iroh"
+    sync_strategy:
+      postgres: "Immediate for critical operations"
+      iroh: "Batched/debounced for P2P sync"
+
+  - module: Sensocto.AttributeStoreTiered
+    description: "Tiered attribute storage"
+    tiers:
+      hot:
+        storage: "GenServer state map"
+        capacity: "Last N values per attribute"
+        access: "Immediate"
+      warm:
+        storage: "ETS tables"
+        capacity: "Configurable time window"
+        access: "Fast local"
+      cold:
+        storage: "PostgreSQL via Repo"
+        capacity: "Unlimited"
+        access: "Slower, batched writes"
+
+# Attribute types and their data formats
+attribute_types:
+  - type: heartrate
+    unit: bpm
+    payload_format: "{value: integer}"
+    visualization: HeartbeatVisualization
+    sampling_rate: 1
+
+  - type: ecg
+    unit: mV
+    payload_format: "{value: float}"
+    visualization: ECGVisualization
+    sampling_rate: 512
+
+  - type: pressure
+    unit: hPa
+    payload_format: "{value: float, state: INHALE|EXHALE|NEUTRAL}"
+    visualization: PressureVisualization
+    sampling_rate: 50
+
+  - type: temperature
+    unit: celsius
+    payload_format: "{value: float}"
+    visualization: numeric
+    sampling_rate: 1
+
+  - type: humidity
+    unit: percent
+    payload_format: "{value: float}"
+    visualization: numeric
+    sampling_rate: 1
+
+  - type: imu
+    unit: various
+    payload_format: |
+      {
+        accelerometer: {x, y, z},
+        gyroscope: {x, y, z},
+        compass: {x, y, z}
+      }
+      OR
+      {quaternion: {w, x, y, z}}
+      OR
+      {euler: {roll, pitch, yaw}}
+    visualization: IMU, CompositeIMU
+    sampling_rate: 60
+
+  - type: battery
+    unit: percent
+    payload_format: "{value: integer}"
+    visualization: numeric, gauge
+    sampling_rate: 0.1
+
+  - type: geolocation
+    unit: degrees
+    payload_format: "{latitude, longitude, altitude, accuracy}"
+    visualization: Map, CompositeGeolocation
+    sampling_rate: 1
+
+  - type: button
+    unit: boolean
+    payload_format: "{pressed: boolean}"
+    visualization: ButtonVisualization
+    sampling_rate: event_driven
+
+  - type: spo2
+    unit: percent
+    payload_format: "{value: integer, confidence: integer}"
+    visualization: numeric, gauge
+    sampling_rate: 1
+
+  - type: air_quality
+    unit: various
+    payload_format: "{eCO2: ppm, TVOC: ppb}"
+    visualization: numeric
+    sampling_rate: 1

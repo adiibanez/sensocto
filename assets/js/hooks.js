@@ -899,27 +899,8 @@ Hooks.MobileMenu = {
         const dropdown = this.el.querySelector('#mobile-menu-dropdown');
 
         if (button && dropdown) {
-            button.addEventListener('click', (e) => {
-                e.stopPropagation();
-                dropdown.classList.toggle('hidden');
-            });
-
-            document.addEventListener('click', (e) => {
-                if (!this.el.contains(e.target)) {
-                    dropdown.classList.add('hidden');
-                }
-            });
-        }
-    }
-};
-
-Hooks.UserMenu = {
-    mounted() {
-        const button = this.el.querySelector('#user-menu-button');
-        const dropdown = this.el.querySelector('#user-menu-dropdown');
-
-        if (button && dropdown) {
             this.isOpen = false;
+            this.justOpened = false;
 
             this.handleButtonClick = (e) => {
                 e.stopPropagation();
@@ -927,12 +908,15 @@ Hooks.UserMenu = {
                 this.isOpen = !this.isOpen;
                 if (this.isOpen) {
                     dropdown.classList.remove('hidden');
+                    this.justOpened = true;
+                    setTimeout(() => { this.justOpened = false; }, 100);
                 } else {
                     dropdown.classList.add('hidden');
                 }
             };
 
             this.handleDocumentClick = (e) => {
+                if (this.justOpened) return;
                 if (this.isOpen && !this.el.contains(e.target)) {
                     this.isOpen = false;
                     dropdown.classList.add('hidden');
@@ -947,6 +931,67 @@ Hooks.UserMenu = {
     destroyed() {
         if (this.handleDocumentClick) {
             document.removeEventListener('click', this.handleDocumentClick);
+        }
+    }
+};
+
+Hooks.UserMenu = {
+    mounted() {
+        const button = this.el.querySelector('#user-menu-button');
+        const dropdown = this.el.querySelector('#user-menu-dropdown');
+
+        if (button && dropdown) {
+            this.isOpen = false;
+            this.justOpened = false;
+
+            this.handleButtonClick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                this.isOpen = !this.isOpen;
+                if (this.isOpen) {
+                    dropdown.classList.remove('hidden');
+                    // Prevent immediate close on mobile touch devices
+                    this.justOpened = true;
+                    setTimeout(() => { this.justOpened = false; }, 100);
+                } else {
+                    dropdown.classList.add('hidden');
+                }
+            };
+
+            this.handleDocumentClick = (e) => {
+                // Skip if we just opened (prevents mobile touch double-fire)
+                if (this.justOpened) return;
+                if (this.isOpen && !this.el.contains(e.target)) {
+                    this.isOpen = false;
+                    dropdown.classList.add('hidden');
+                }
+            };
+
+            // Handle touchend to prevent ghost clicks on mobile
+            this.handleTouchEnd = (e) => {
+                if (this.isOpen && !this.el.contains(e.target)) {
+                    // Small delay to allow link clicks to register
+                    setTimeout(() => {
+                        if (this.isOpen && !this.el.contains(document.activeElement)) {
+                            this.isOpen = false;
+                            dropdown.classList.add('hidden');
+                        }
+                    }, 50);
+                }
+            };
+
+            button.addEventListener('click', this.handleButtonClick);
+            document.addEventListener('click', this.handleDocumentClick);
+            document.addEventListener('touchend', this.handleTouchEnd);
+        }
+    },
+
+    destroyed() {
+        if (this.handleDocumentClick) {
+            document.removeEventListener('click', this.handleDocumentClick);
+        }
+        if (this.handleTouchEnd) {
+            document.removeEventListener('touchend', this.handleTouchEnd);
         }
     }
 };

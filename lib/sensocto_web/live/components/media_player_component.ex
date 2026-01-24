@@ -410,7 +410,10 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     current_user = socket.assigns[:current_user]
 
     if is_nil(controller_id) && current_user do
-      user_name = current_user.email || current_user.name || "Unknown"
+      user_name =
+        Map.get(current_user, :email) || Map.get(current_user, :display_name) ||
+          Map.get(current_user, :name) || "Unknown"
+
       MediaPlayerServer.take_control(socket.assigns.room_id, current_user.id, user_name)
       assign(socket, :controller_user_id, current_user.id)
     else

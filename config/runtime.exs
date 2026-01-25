@@ -65,15 +65,25 @@ if System.get_env("TIGRIS_BUCKET") || System.get_env("BUCKET_NAME") do
     batch_size: String.to_integer(System.get_env("BACKUP_BATCH_SIZE") || "10")
 end
 
-# TURN server configuration for video/voice calls (Membrane RTC Engine ExWebRTC)
+# Optional TURN server for video/voice calls (Membrane RTC Engine ExWebRTC)
+# TURN is only needed when clients are behind symmetric NATs
 if turn_url = System.get_env("TURN_SERVER_URL") do
   turn_username = System.get_env("TURN_USERNAME")
   turn_password = System.get_env("TURN_PASSWORD")
 
   config :membrane_rtc_engine_ex_webrtc,
     ice_servers: [
+      # Google public STUN servers
       %{urls: "stun:stun.l.google.com:19302"},
       %{urls: "stun:stun1.l.google.com:19302"},
+      %{urls: "stun:stun2.l.google.com:19302"},
+      %{urls: "stun:stun3.l.google.com:19302"},
+      %{urls: "stun:stun4.l.google.com:19302"},
+      # Twilio public STUN
+      %{urls: "stun:global.stun.twilio.com:3478"},
+      # Cloudflare public STUN
+      %{urls: "stun:stun.cloudflare.com:3478"},
+      # TURN relay (optional)
       %{
         urls: turn_url,
         username: turn_username,

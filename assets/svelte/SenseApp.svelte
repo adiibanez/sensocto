@@ -14,7 +14,7 @@
     import BatterystatusClient from "./SenseApp/BatterystatusClient.svelte";
     import PushButtonClient from "./SenseApp/PushButtonClient.svelte";
     import RichPresenceClient from "./SenseApp/RichPresenceClient.svelte";
-    import PoseClient from "./SenseApp/PoseClient.svelte";
+    import HybridPoseClient from "./SenseApp/HybridPoseClient.svelte";
     import NetworkQualityMonitor from "./SenseApp/NetworkQualityMonitor.svelte";
 
     import { usersettings, autostart } from "./SenseApp/stores.js";
@@ -236,7 +236,7 @@
                     on:click|capture={(e) => { if (showInfoPanel) { e.stopPropagation(); showSensorInfo('pose'); }}}
                     on:contextmenu|preventDefault={() => showSensorInfo('pose')}
                 >
-                    <PoseClient compact={true} />
+                    <HybridPoseClient compact={true} />
                 </div>
                 <!-- Presence -->
                 <div

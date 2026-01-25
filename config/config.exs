@@ -81,10 +81,19 @@ config :sensocto, :calls,
   default_quality_profile: :auto
 
 # Membrane RTC Engine ExWebRTC ICE configuration
+# Multiple STUN servers for redundancy and better NAT traversal
 config :membrane_rtc_engine_ex_webrtc,
   ice_servers: [
+    # Google public STUN servers
     %{urls: "stun:stun.l.google.com:19302"},
-    %{urls: "stun:stun1.l.google.com:19302"}
+    %{urls: "stun:stun1.l.google.com:19302"},
+    %{urls: "stun:stun2.l.google.com:19302"},
+    %{urls: "stun:stun3.l.google.com:19302"},
+    %{urls: "stun:stun4.l.google.com:19302"},
+    # Twilio public STUN
+    %{urls: "stun:global.stun.twilio.com:3478"},
+    # Cloudflare public STUN
+    %{urls: "stun:stun.cloudflare.com:3478"}
   ]
 
 config :ex_heroicons, type: "outline"

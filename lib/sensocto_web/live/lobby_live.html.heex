@@ -393,7 +393,18 @@
       </div>
     </div>
 
-    <div :if={@sensor_ids == []} class="text-center py-12 text-gray-400">
+    <div :if={@sensor_ids == [] and @min_attention > 0 and length(@all_sensor_ids) > 0} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="funnel" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No sensors match attention filter</p>
+      <p class="text-sm mt-2">
+        {length(@all_sensor_ids)} sensor(s) hidden by "Min Attention" filter.
+        <button phx-click="set_min_attention" phx-value-min_attention="0" class="text-orange-400 hover:text-orange-300 underline">
+          Show all
+        </button>
+      </p>
+    </div>
+
+    <div :if={@sensor_ids == [] and (@min_attention == 0 or length(@all_sensor_ids) == 0)} class="text-center py-12 text-gray-400">
       <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor using the connectors below</p>

@@ -240,6 +240,24 @@ defmodule SensoctoWeb.SensorDataChannel do
     end
   end
 
+  def handle_in(
+        "update_connector",
+        %{"connector_name" => connector_name},
+        socket
+      ) do
+    Logger.debug("update connector name to: #{inspect(connector_name)}")
+
+    # Validate connector name (basic string validation)
+    if is_binary(connector_name) and byte_size(connector_name) > 0 and
+         byte_size(connector_name) <= 100 do
+      SimpleSensor.update_connector_name(socket.assigns.sensor_id, connector_name)
+      {:reply, {:ok, %{connector_name: connector_name}}, socket}
+    else
+      Logger.warning("Invalid connector_name: #{inspect(connector_name)}")
+      {:reply, {:error, %{reason: "invalid_connector_name"}}, socket}
+    end
+  end
+
   @impl true
   @spec handle_in(<<_::32, _::_*8>>, any(), any()) ::
           {:noreply, Phoenix.Socket.t()} | {:reply, {:ok, any()}, any()}

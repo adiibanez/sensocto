@@ -146,6 +146,18 @@ defmodule Sensocto.SimpleSensor do
     )
   end
 
+  @doc """
+  Updates the connector name for a sensor. Broadcasts change via PubSub.
+  """
+  def update_connector_name(sensor_id, new_name) do
+    Logger.debug("Client: update_connector_name #{inspect(sensor_id)} to #{inspect(new_name)}")
+
+    GenServer.cast(
+      via_tuple(sensor_id),
+      {:update_connector_name, new_name}
+    )
+  end
+
   def put_attribute(sensor_id, attribute) do
     GenServer.cast(
       via_tuple(sensor_id),
@@ -246,6 +258,25 @@ defmodule Sensocto.SimpleSensor do
         :new_state,
         sensor_id
       }
+    )
+
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast(
+        {:update_connector_name, new_name},
+        %{sensor_id: sensor_id} = state
+      ) do
+    Logger.debug("Server: :update_connector_name #{sensor_id} to #{new_name}")
+
+    new_state = Map.put(state, :connector_name, new_name)
+
+    # Broadcast the connector name change so LiveViews update in realtime
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "signal:#{sensor_id}",
+      {:new_state, sensor_id}
     )
 
     {:noreply, new_state}

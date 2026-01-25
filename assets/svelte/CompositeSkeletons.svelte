@@ -12,6 +12,9 @@
   // Store skeleton data per sensor with activity tracking
   let skeletonData: Map<string, {
     landmarks: any[];
+    faceLandmarks?: any[];   // 468 face mesh landmarks (optional)
+    blendshapes?: any;       // Face blendshapes for expressions
+    mode?: string;           // "full" or "face" from hybrid client
     lastUpdate: number;
     username?: string;
     activity: number;        // 0-1 based on movement
@@ -105,6 +108,447 @@
     [24, 26], [26, 28], [28, 30], [28, 32], [30, 32]
   ];
 
+  // Face-only connections - minimal, used as fallback
+  const FACE_CONNECTIONS = [
+    [9, 10],                  // mouth line
+  ];
+
+  // MediaPipe Face Mesh landmark indices for key features (468 landmarks)
+  const FACE_MESH_INDICES = {
+    // Face oval contour
+    silhouette: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
+    // Left eyebrow
+    leftEyebrowUpper: [336, 296, 334, 293, 300],
+    // Right eyebrow
+    rightEyebrowUpper: [107, 66, 105, 63, 70],
+    // Left eye contour
+    leftEyeUpper: [362, 398, 384, 385, 386, 387, 388, 466, 263],
+    leftEyeLower: [263, 249, 390, 373, 374, 380, 381, 382, 362],
+    // Right eye contour
+    rightEyeUpper: [133, 173, 157, 158, 159, 160, 161, 246, 33],
+    rightEyeLower: [33, 7, 163, 144, 145, 153, 154, 155, 133],
+    // Nose
+    noseBridge: [168, 6, 197, 195, 5],
+    noseBottom: [4, 45, 220, 115, 48, 64, 98, 97, 2, 326, 327, 278, 294, 440, 275],
+    // Lips outer contour
+    lipsUpperOuter: [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291],
+    lipsLowerOuter: [291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61],
+    // Lips inner contour
+    lipsUpperInner: [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308],
+    lipsLowerInner: [308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78],
+  };
+
+  // Draw detailed face using 468 face mesh landmarks
+  function drawFaceMesh(
+    ctx: CanvasRenderingContext2D,
+    faceLandmarks: any[],
+    toCanvasX: (x: number) => number,
+    toCanvasY: (y: number) => number,
+    scale: number,
+    blendshapes?: any
+  ) {
+    if (!faceLandmarks || faceLandmarks.length < 468) return;
+
+    const getLm = (idx: number) => {
+      const lm = faceLandmarks[idx];
+      if (!lm) return null;
+      return { x: toCanvasX(lm.x), y: toCanvasY(lm.y) };
+    };
+
+    // Helper to draw a path through landmark indices
+    const drawPath = (indices: number[], closed = false) => {
+      const points = indices.map(getLm).filter((p): p is {x: number; y: number} => p !== null);
+      if (points.length < 2) return;
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      if (closed) ctx.closePath();
+    };
+
+    // Calculate face dimensions for scaling stroke widths
+    const leftCheek = getLm(234);
+    const rightCheek = getLm(454);
+    const faceWidth = leftCheek && rightCheek ? Math.abs(rightCheek.x - leftCheek.x) : 100 * scale;
+    const strokeWidth = Math.max(1, Math.min(3, faceWidth * 0.015));
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // 1. Face silhouette (oval)
+    ctx.strokeStyle = "#a78bfa";
+    ctx.lineWidth = strokeWidth * 1.2;
+    ctx.globalAlpha = 0.5;
+    drawPath(FACE_MESH_INDICES.silhouette, true);
+    ctx.stroke();
+
+    // 2. Eyebrows
+    ctx.strokeStyle = "#d4d4d8";
+    ctx.lineWidth = strokeWidth * 1.5;
+    ctx.globalAlpha = 0.8;
+
+    drawPath(FACE_MESH_INDICES.leftEyebrowUpper);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.rightEyebrowUpper);
+    ctx.stroke();
+
+    // 3. Eyes
+    ctx.strokeStyle = "#60a5fa";
+    ctx.lineWidth = strokeWidth;
+    ctx.globalAlpha = 0.9;
+
+    drawPath(FACE_MESH_INDICES.leftEyeUpper);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.leftEyeLower);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.rightEyeUpper);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.rightEyeLower);
+    ctx.stroke();
+
+    // Draw iris centers
+    ctx.fillStyle = "#1e293b";
+    ctx.globalAlpha = 0.8;
+
+    const leftIrisCenter = getLm(473);
+    if (leftIrisCenter) {
+      const irisRadius = faceWidth * 0.025;
+      ctx.beginPath();
+      ctx.arc(leftIrisCenter.x, leftIrisCenter.y, irisRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const rightIrisCenter = getLm(468);
+    if (rightIrisCenter) {
+      const irisRadius = faceWidth * 0.025;
+      ctx.beginPath();
+      ctx.arc(rightIrisCenter.x, rightIrisCenter.y, irisRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Nose
+    ctx.strokeStyle = "#f472b6";
+    ctx.lineWidth = strokeWidth;
+    ctx.globalAlpha = 0.7;
+
+    drawPath(FACE_MESH_INDICES.noseBridge);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.noseBottom);
+    ctx.stroke();
+
+    // 5. Lips - with blendshape-based mouth openness
+    const jawOpen = blendshapes?.jawOpen ?? 0;
+
+    ctx.strokeStyle = "#f87171";
+    ctx.lineWidth = strokeWidth * 1.3;
+    ctx.globalAlpha = 0.85;
+
+    drawPath(FACE_MESH_INDICES.lipsUpperOuter);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.lipsLowerOuter);
+    ctx.stroke();
+
+    // Inner mouth when open
+    if (jawOpen > 0.1) {
+      ctx.fillStyle = "#1e293b";
+      ctx.globalAlpha = Math.min(0.7, jawOpen);
+
+      const innerPoints = FACE_MESH_INDICES.lipsUpperInner.concat(
+        FACE_MESH_INDICES.lipsLowerInner.slice(1, -1).reverse()
+      ).map(getLm).filter((p): p is {x: number; y: number} => p !== null);
+
+      if (innerPoints.length >= 3) {
+        ctx.beginPath();
+        ctx.moveTo(innerPoints[0].x, innerPoints[0].y);
+        for (let i = 1; i < innerPoints.length; i++) {
+          ctx.lineTo(innerPoints[i].x, innerPoints[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Inner lip lines
+    ctx.strokeStyle = "#dc2626";
+    ctx.lineWidth = strokeWidth * 0.8;
+    ctx.globalAlpha = 0.6;
+    drawPath(FACE_MESH_INDICES.lipsUpperInner);
+    ctx.stroke();
+    drawPath(FACE_MESH_INDICES.lipsLowerInner);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw a natural-looking face with proper facial features (from 33 pose landmarks)
+  function drawFaceFromPose(
+    ctx: CanvasRenderingContext2D,
+    landmarks: any[],
+    toCanvasX: (x: number) => number,
+    toCanvasY: (y: number) => number,
+    scale: number
+  ) {
+    const minVisibility = 0.3;
+    const getLm = (idx: number) => {
+      const lm = landmarks[idx];
+      if (!lm || (lm.v ?? 1) < minVisibility) return null;
+      return { x: toCanvasX(lm.x), y: toCanvasY(lm.y), v: lm.v ?? 1 };
+    };
+
+    // Get key face landmarks
+    const nose = getLm(0);
+    const leftEyeInner = getLm(1);
+    const leftEye = getLm(2);
+    const leftEyeOuter = getLm(3);
+    const rightEyeInner = getLm(4);
+    const rightEye = getLm(5);
+    const rightEyeOuter = getLm(6);
+    const leftEar = getLm(7);
+    const rightEar = getLm(8);
+    const mouthLeft = getLm(9);
+    const mouthRight = getLm(10);
+
+    if (!nose) return;
+
+    // Calculate face dimensions for proportional drawing
+    const eyeWidth = leftEyeOuter && leftEyeInner
+      ? Math.abs(leftEyeOuter.x - leftEyeInner.x)
+      : 20 * scale;
+    const faceWidth = leftEar && rightEar
+      ? Math.abs(rightEar.x - leftEar.x)
+      : eyeWidth * 4;
+    const strokeWidth = Math.max(2, Math.min(4, faceWidth * 0.02));
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // 1. Draw head contour (oval)
+    if (leftEar && rightEar && nose) {
+      const centerX = (leftEar.x + rightEar.x) / 2;
+      const centerY = nose.y;
+      const radiusX = faceWidth / 2 * 1.1;
+      const radiusY = faceWidth / 1.5;
+
+      ctx.strokeStyle = "#a78bfa"; // light purple
+      ctx.lineWidth = strokeWidth * 1.2;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 2. Draw eyebrows (curved arcs above eyes)
+    ctx.strokeStyle = "#d4d4d8"; // light gray
+    ctx.lineWidth = strokeWidth * 1.5;
+    ctx.globalAlpha = 0.8;
+
+    // Left eyebrow
+    if (leftEyeInner && leftEyeOuter) {
+      const browY = leftEye ? leftEye.y - eyeWidth * 0.5 : leftEyeInner.y - eyeWidth * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(leftEyeInner.x, browY + eyeWidth * 0.1);
+      ctx.quadraticCurveTo(
+        (leftEyeInner.x + leftEyeOuter.x) / 2,
+        browY - eyeWidth * 0.15,
+        leftEyeOuter.x,
+        browY + eyeWidth * 0.05
+      );
+      ctx.stroke();
+    }
+
+    // Right eyebrow
+    if (rightEyeInner && rightEyeOuter) {
+      const browY = rightEye ? rightEye.y - eyeWidth * 0.5 : rightEyeInner.y - eyeWidth * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(rightEyeInner.x, browY + eyeWidth * 0.1);
+      ctx.quadraticCurveTo(
+        (rightEyeInner.x + rightEyeOuter.x) / 2,
+        browY - eyeWidth * 0.15,
+        rightEyeOuter.x,
+        browY + eyeWidth * 0.05
+      );
+      ctx.stroke();
+    }
+
+    // 3. Draw eyes (almond shapes)
+    ctx.fillStyle = "#60a5fa"; // light blue
+    ctx.globalAlpha = 0.9;
+
+    // Left eye
+    if (leftEyeInner && leftEyeOuter && leftEye) {
+      const eyeCenterX = leftEye.x;
+      const eyeCenterY = leftEye.y;
+      const eyeRadiusX = eyeWidth * 0.4;
+      const eyeRadiusY = eyeWidth * 0.2;
+
+      ctx.beginPath();
+      ctx.ellipse(eyeCenterX, eyeCenterY, eyeRadiusX, eyeRadiusY, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pupil
+      ctx.fillStyle = "#1e293b";
+      ctx.beginPath();
+      ctx.arc(eyeCenterX, eyeCenterY, eyeRadiusY * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Right eye
+    ctx.fillStyle = "#60a5fa";
+    if (rightEyeInner && rightEyeOuter && rightEye) {
+      const eyeCenterX = rightEye.x;
+      const eyeCenterY = rightEye.y;
+      const eyeRadiusX = eyeWidth * 0.4;
+      const eyeRadiusY = eyeWidth * 0.2;
+
+      ctx.beginPath();
+      ctx.ellipse(eyeCenterX, eyeCenterY, eyeRadiusX, eyeRadiusY, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pupil
+      ctx.fillStyle = "#1e293b";
+      ctx.beginPath();
+      ctx.arc(eyeCenterX, eyeCenterY, eyeRadiusY * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Draw nose
+    if (nose && mouthLeft && mouthRight) {
+      const mouthCenterY = (mouthLeft.y + mouthRight.y) / 2;
+      const noseHeight = Math.abs(mouthCenterY - nose.y) * 0.6;
+      const noseWidth = eyeWidth * 0.4;
+
+      ctx.strokeStyle = "#f472b6"; // pink
+      ctx.lineWidth = strokeWidth;
+      ctx.globalAlpha = 0.7;
+
+      // Nose bridge and tip
+      ctx.beginPath();
+      // Start from between eyes, draw down to nose tip
+      const noseBridgeY = nose.y - noseHeight * 0.3;
+      ctx.moveTo(nose.x, noseBridgeY);
+      ctx.lineTo(nose.x, nose.y);
+      // Nose wings
+      ctx.moveTo(nose.x - noseWidth, nose.y + noseHeight * 0.1);
+      ctx.quadraticCurveTo(nose.x, nose.y + noseHeight * 0.3, nose.x + noseWidth, nose.y + noseHeight * 0.1);
+      ctx.stroke();
+    }
+
+    // 5. Draw mouth (with open/closed state based on landmark positions)
+    if (mouthLeft && mouthRight && nose) {
+      const mouthWidth = Math.abs(mouthRight.x - mouthLeft.x);
+      const mouthCenterX = (mouthLeft.x + mouthRight.x) / 2;
+      const mouthCenterY = (mouthLeft.y + mouthRight.y) / 2;
+
+      // Estimate mouth openness from vertical difference between corners
+      // and distance from nose (mouth opens = corners move down and apart vertically)
+      const cornerVerticalDiff = Math.abs(mouthLeft.y - mouthRight.y);
+      const noseToMouthDist = mouthCenterY - nose.y;
+
+      // Normalize openness: when mouth corners are at different heights or far from nose
+      // A typical closed mouth has corners at same height
+      // Ratio of vertical diff to mouth width indicates openness
+      const openRatio = Math.min(1, (cornerVerticalDiff / mouthWidth) * 3 +
+                                     Math.max(0, (noseToMouthDist - eyeWidth * 0.8) / eyeWidth) * 0.5);
+      const mouthOpenness = openRatio * mouthWidth * 0.4; // Max opening is 40% of mouth width
+
+      ctx.strokeStyle = "#f87171"; // red/coral
+      ctx.lineWidth = strokeWidth * 1.3;
+      ctx.globalAlpha = 0.85;
+
+      // Upper lip line
+      ctx.beginPath();
+      ctx.moveTo(mouthLeft.x, mouthLeft.y);
+      ctx.quadraticCurveTo(
+        mouthCenterX,
+        mouthCenterY - mouthWidth * 0.08,
+        mouthRight.x,
+        mouthRight.y
+      );
+      ctx.stroke();
+
+      // Lower lip - moves down when mouth is open
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(mouthLeft.x + mouthWidth * 0.1, mouthLeft.y);
+      ctx.quadraticCurveTo(
+        mouthCenterX,
+        mouthCenterY + mouthWidth * 0.12 + mouthOpenness,
+        mouthRight.x - mouthWidth * 0.1,
+        mouthRight.y
+      );
+      ctx.stroke();
+
+      // If mouth is significantly open, draw inner mouth (dark opening)
+      if (mouthOpenness > mouthWidth * 0.08) {
+        ctx.fillStyle = "#1e293b"; // dark
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(mouthLeft.x + mouthWidth * 0.15, mouthLeft.y);
+        ctx.quadraticCurveTo(
+          mouthCenterX,
+          mouthCenterY - mouthWidth * 0.05,
+          mouthRight.x - mouthWidth * 0.15,
+          mouthRight.y
+        );
+        ctx.quadraticCurveTo(
+          mouthCenterX,
+          mouthCenterY + mouthOpenness * 0.8,
+          mouthLeft.x + mouthWidth * 0.15,
+          mouthLeft.y
+        );
+        ctx.fill();
+      }
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // Landmark indices for body part detection
+  const FACE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const SHOULDER_INDICES = [11, 12];
+  const UPPER_ARM_INDICES = [13, 14];
+  const HIP_INDICES = [23, 24];
+  const LEG_INDICES = [25, 26, 27, 28, 29, 30, 31, 32];
+
+  // Wrist/hand indices for detecting full arm visibility
+  const LOWER_ARM_INDICES = [15, 16, 17, 18, 19, 20, 21, 22];
+
+  // Detect visualization mode based on visible landmarks
+  // Switch to face mode when only upper body (shoulders + elbows) is visible
+  // Show full mode when hands/wrists, hips, or legs are visible
+  function detectVisualizationMode(landmarks: any[], minVisibility = 0.3): "full" | "face" {
+    const isVisible = (idx: number) => {
+      const lm = landmarks[idx];
+      return lm && (lm.v ?? 1) >= minVisibility;
+    };
+
+    const countVisible = (indices: number[]) => indices.filter(isVisible).length;
+
+    const faceVisible = countVisible(FACE_INDICES);
+    const shouldersVisible = countVisible(SHOULDER_INDICES);
+    const upperArmsVisible = countVisible(UPPER_ARM_INDICES);
+    const lowerArmsVisible = countVisible(LOWER_ARM_INDICES);
+    const hipsVisible = countVisible(HIP_INDICES);
+    const legsVisible = countVisible(LEG_INDICES);
+
+    const hasFace = faceVisible >= 3;
+
+    // Show full mode if we have meaningful body parts beyond just shoulders/elbows:
+    // - Any wrists/hands visible (lower arms)
+    // - Any hips visible
+    // - Any legs visible
+    const hasSubstantialBody = lowerArmsVisible >= 1 || hipsVisible >= 1 || legsVisible >= 1;
+
+    // Face mode: only face + maybe shoulders/elbows, but no hands/hips/legs
+    if (hasFace && !hasSubstantialBody) {
+      return "face";
+    }
+
+    return "full";
+  }
+
   // Colors for different body parts
   const BODY_COLORS = {
     face: "#8b5cf6",      // purple
@@ -112,7 +556,14 @@
     leftArm: "#22c55e",   // green
     rightArm: "#ef4444",  // red
     leftLeg: "#22c55e",   // green
-    rightLeg: "#ef4444"   // red
+    rightLeg: "#ef4444",  // red
+    // Face detail colors for enhanced visualization
+    nose: "#f472b6",      // pink
+    leftEye: "#60a5fa",   // light blue
+    rightEye: "#34d399",  // light green
+    mouth: "#fbbf24",     // amber
+    ears: "#a78bfa",      // light purple
+    jawline: "#fb923c"    // orange
   };
 
   // Distinct colors for each sensor's skeleton
@@ -140,12 +591,20 @@
   }
 
   // Calculate bounding box of visible landmarks
-  function getLandmarkBounds(landmarks: any[]): { minX: number; maxX: number; minY: number; maxY: number } | null {
+  function getLandmarkBounds(landmarks: any[], mode: "full" | "face" = "full"): { minX: number; maxX: number; minY: number; maxY: number } | null {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     let hasVisible = false;
 
-    for (const lm of landmarks) {
+    // In face mode, only consider face landmarks for bounding box
+    const indicesToConsider = mode === "face" ? FACE_INDICES : null;
+
+    for (let i = 0; i < landmarks.length; i++) {
+      const lm = landmarks[i];
       if (!lm || (lm.v ?? 1) < 0.3) continue;
+
+      // Skip non-face landmarks in face mode
+      if (indicesToConsider && !indicesToConsider.includes(i)) continue;
+
       hasVisible = true;
       minX = Math.min(minX, lm.x);
       maxX = Math.max(maxX, lm.x);
@@ -157,6 +616,25 @@
     return { minX, maxX, minY, maxY };
   }
 
+  // Wrapper function that chooses the best face drawing method
+  function drawFace(
+    ctx: CanvasRenderingContext2D,
+    landmarks: any[],
+    faceLandmarks: any[] | null | undefined,
+    blendshapes: any,
+    toCanvasX: (x: number) => number,
+    toCanvasY: (y: number) => number,
+    scale: number
+  ) {
+    // Prefer detailed face mesh if available (468 landmarks)
+    if (faceLandmarks && faceLandmarks.length >= 468) {
+      drawFaceMesh(ctx, faceLandmarks, toCanvasX, toCanvasY, scale, blendshapes);
+    } else {
+      // Fall back to pose-based face drawing (11 landmarks)
+      drawFaceFromPose(ctx, landmarks, toCanvasX, toCanvasY, scale);
+    }
+  }
+
   function drawSkeleton(
     landmarks: any[],
     areaX: number,
@@ -165,12 +643,19 @@
     areaHeight: number,
     sensorColor: string,
     sensorId: string,
-    username?: string
+    username?: string,
+    faceLandmarks?: any[],
+    blendshapes?: any,
+    dataMode?: string
   ) {
     if (!ctx || !landmarks || landmarks.length === 0) return;
 
-    // Calculate actual bounding box of the skeleton
-    const bounds = getLandmarkBounds(landmarks);
+    // Detect visualization mode (full skeleton or face-only)
+    // Prefer the mode sent by the client if available
+    const mode = dataMode || detectVisualizationMode(landmarks);
+
+    // Calculate actual bounding box based on mode
+    const bounds = getLandmarkBounds(landmarks, mode);
     if (!bounds) return;
 
     const { minX, maxX, minY, maxY } = bounds;
@@ -179,98 +664,119 @@
 
     // Reserve space for label
     const labelHeight = 25;
-    const availableHeight = areaHeight - labelHeight;
-
-    // Calculate scale to maximize skeleton size while fitting in area
-    // Add small padding (5%) to prevent clipping at edges
-    const padding = 0.05;
-    const scaleX = (areaWidth * (1 - padding * 2)) / Math.max(skeletonWidth, 0.01);
-    const scaleY = (availableHeight * (1 - padding * 2)) / Math.max(skeletonHeight, 0.01);
-    const scale = Math.min(scaleX, scaleY);
+    const drawHeight = areaHeight - labelHeight;
 
     // Calculate center of skeleton in normalized coords
     const skeletonCenterX = (minX + maxX) / 2;
     const skeletonCenterY = (minY + maxY) / 2;
 
-    // Calculate offset to center skeleton in drawing area
-    const areaCenterX = areaX + areaWidth / 2;
-    const areaCenterY = areaY + availableHeight / 2;
+    // Add padding (more for face mode)
+    const padding = mode === "face" ? 0.15 : 0.1;
+    const availableWidth = areaWidth * (1 - 2 * padding);
+    const availableDrawHeight = drawHeight * (1 - 2 * padding);
 
-    // Transform function: normalized coords -> canvas coords (centered)
-    const toCanvasX = (x: number) => areaCenterX + (x - skeletonCenterX) * scale;
-    const toCanvasY = (y: number) => areaCenterY + (y - skeletonCenterY) * scale;
+    // Scale to fit while maintaining aspect ratio
+    // Formula matches SkeletonVisualization.svelte: availableSize / (bboxSize * canvasSize)
+    const scaleX = availableWidth / (skeletonWidth * areaWidth);
+    const scaleY = availableDrawHeight / (skeletonHeight * drawHeight);
+    // Cap the zoom - higher for face mode since face is small
+    const maxZoom = mode === "face" ? 4.0 : 2.5;
+    const scale = Math.min(scaleX, scaleY, maxZoom);
 
-    // Draw connections with thicker lines for larger skeletons
-    const lineWidth = Math.max(2, Math.min(4, scale * 0.015));
-    ctx.lineWidth = lineWidth;
+    // Calculate offset to center the skeleton in the drawing area
+    // Offset formula: (areaCenter) - (skeletonCenter * areaSize * scale)
+    const offsetX = (areaX + areaWidth / 2) - (skeletonCenterX * areaWidth * scale);
+    const offsetY = (areaY + drawHeight / 2) - (skeletonCenterY * drawHeight * scale);
 
-    for (const [start, end] of POSE_CONNECTIONS) {
-      const startLm = landmarks[start];
-      const endLm = landmarks[end];
+    // Transform function: normalized coords -> canvas coords
+    // Same formula as SkeletonVisualization: x * size * scale + offset
+    const toCanvasX = (x: number) => x * areaWidth * scale + offsetX;
+    const toCanvasY = (y: number) => y * drawHeight * scale + offsetY;
 
-      if (!startLm || !endLm) continue;
+    // Full body mode: draw body skeleton connections (skip face connections)
+    if (mode === "full") {
+      const lineWidth = Math.max(2, Math.min(4, scale * 0.015));
+      ctx.lineWidth = lineWidth;
 
-      const minVisibility = 0.3;
-      if ((startLm.v ?? 1) < minVisibility || (endLm.v ?? 1) < minVisibility) continue;
+      for (const [start, end] of POSE_CONNECTIONS) {
+        // Skip face connections - we'll draw the face separately
+        if (start <= 10 && end <= 10) continue;
 
-      const x1 = toCanvasX(startLm.x);
-      const y1 = toCanvasY(startLm.y);
-      const x2 = toCanvasX(endLm.x);
-      const y2 = toCanvasY(endLm.y);
+        const startLm = landmarks[start];
+        const endLm = landmarks[end];
 
-      ctx.strokeStyle = getConnectionColor(start, end);
-      ctx.globalAlpha = Math.min(startLm.v ?? 1, endLm.v ?? 1) * 0.9;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
+        if (!startLm || !endLm) continue;
+
+        const minVisibility = 0.3;
+        if ((startLm.v ?? 1) < minVisibility || (endLm.v ?? 1) < minVisibility) continue;
+
+        const x1 = toCanvasX(startLm.x);
+        const y1 = toCanvasY(startLm.y);
+        const x2 = toCanvasX(endLm.x);
+        const y2 = toCanvasY(endLm.y);
+
+        ctx.strokeStyle = getConnectionColor(start, end);
+        ctx.globalAlpha = Math.min(startLm.v ?? 1, endLm.v ?? 1) * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      // Draw body landmark points (skip face landmarks - indices 0-10)
+      ctx.globalAlpha = 1;
+      const pointRadius = Math.max(3, Math.min(6, scale * 0.01));
+
+      for (let i = 11; i < landmarks.length; i++) {
+        const lm = landmarks[i];
+        if (!lm || (lm.v ?? 1) < 0.3) continue;
+
+        const x = toCanvasX(lm.x);
+        const y = toCanvasY(lm.y);
+
+        let color = BODY_COLORS.torso;
+        if ([11, 13, 15, 17, 19, 21].includes(i)) color = BODY_COLORS.leftArm;
+        else if ([12, 14, 16, 18, 20, 22].includes(i)) color = BODY_COLORS.rightArm;
+        else if ([23, 25, 27, 29, 31].includes(i)) color = BODY_COLORS.leftLeg;
+        else if ([24, 26, 28, 30, 32].includes(i)) color = BODY_COLORS.rightLeg;
+
+        ctx.fillStyle = color;
+        ctx.globalAlpha = lm.v ?? 1;
+        ctx.beginPath();
+        ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    // Draw landmark points with size proportional to skeleton scale
-    ctx.globalAlpha = 1;
-    const pointRadius = Math.max(3, Math.min(6, scale * 0.01));
-
-    for (let i = 0; i < landmarks.length; i++) {
-      const lm = landmarks[i];
-      if (!lm || (lm.v ?? 1) < 0.3) continue;
-
-      const x = toCanvasX(lm.x);
-      const y = toCanvasY(lm.y);
-
-      let color = BODY_COLORS.torso;
-      if (i <= 10) color = BODY_COLORS.face;
-      else if ([11, 13, 15, 17, 19, 21].includes(i)) color = BODY_COLORS.leftArm;
-      else if ([12, 14, 16, 18, 20, 22].includes(i)) color = BODY_COLORS.rightArm;
-      else if ([23, 25, 27, 29, 31].includes(i)) color = BODY_COLORS.leftLeg;
-      else if ([24, 26, 28, 30, 32].includes(i)) color = BODY_COLORS.rightLeg;
-
-      ctx.fillStyle = color;
-      ctx.globalAlpha = lm.v ?? 1;
-      ctx.beginPath();
-      ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Always draw the face visualization (in both face and full body modes)
+    // Uses detailed 468 face mesh when available, otherwise falls back to pose landmarks
+    drawFace(ctx, landmarks, faceLandmarks, blendshapes, toCanvasX, toCanvasY, scale);
 
     ctx.globalAlpha = 1;
 
     // Draw sensor label at bottom of area
     const labelY = areaY + areaHeight - 8;
+    const labelCenterX = areaX + areaWidth / 2;
     const displayLabel = username || sensorId;
     const truncatedLabel = displayLabel.length > 25 ? displayLabel.slice(0, 22) + "..." : displayLabel;
 
+    // Add mode indicator for face mode
+    const modeIndicator = mode === "face" ? " (face)" : "";
+    const fullLabel = truncatedLabel + modeIndicator;
+
     ctx.font = "11px sans-serif";
-    const textWidth = ctx.measureText(truncatedLabel).width;
+    const textWidth = ctx.measureText(fullLabel).width;
 
     // Draw colored dot to the left of the label
     ctx.fillStyle = sensorColor;
     ctx.beginPath();
-    ctx.arc(areaCenterX - textWidth / 2 - 10, labelY - 4, 5, 0, Math.PI * 2);
+    ctx.arc(labelCenterX - textWidth / 2 - 10, labelY - 4, 5, 0, Math.PI * 2);
     ctx.fill();
 
     // Draw label
     ctx.fillStyle = "#9ca3af";
     ctx.textAlign = "center";
-    ctx.fillText(truncatedLabel, areaCenterX, labelY);
+    ctx.fillText(fullLabel, labelCenterX, labelY);
   }
 
   function drawPlaceholder(centerX: number, centerY: number, size: number, sensorId: string, username?: string) {
@@ -418,7 +924,7 @@
       const areaHeight = height - titleHeight;
 
       if (data && data.landmarks && data.landmarks.length > 0) {
-        drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username);
+        drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.faceLandmarks, data.blendshapes, data.mode);
 
         // Draw heart if BPM available - position relative to skeleton bounds
         if (bpm > 0) {
@@ -460,7 +966,7 @@
         const color = SENSOR_COLORS[index % SENSOR_COLORS.length];
 
         if (data && data.landmarks && data.landmarks.length > 0) {
-          drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username);
+          drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.faceLandmarks, data.blendshapes, data.mode);
 
           // Draw heart if BPM available
           if (bpm > 0) {
@@ -513,6 +1019,9 @@
 
         skeletonData.set(sensor_id, {
           landmarks: data.landmarks,
+          faceLandmarks: data.faceLandmarks,
+          blendshapes: data.blendshapes,
+          mode: data.mode,
           lastUpdate: timestamp || Date.now(),
           username: username || existing?.username,
           activity: activity,
@@ -593,6 +1102,9 @@
 
         skeletonData.set(eventSensorId, {
           landmarks: data.landmarks,
+          faceLandmarks: data.faceLandmarks,
+          blendshapes: data.blendshapes,
+          mode: data.mode,
           lastUpdate: Date.now(),
           username: existing?.username,
           activity: activity,

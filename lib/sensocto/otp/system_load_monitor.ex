@@ -92,9 +92,10 @@ defmodule Sensocto.SystemLoadMonitor do
 
   @doc """
   Get detailed load metrics for debugging/display.
+  Uses a short timeout to avoid blocking the UI.
   """
   def get_metrics do
-    GenServer.call(__MODULE__, :get_metrics)
+    GenServer.call(__MODULE__, :get_metrics, 1000)
   end
 
   @doc """

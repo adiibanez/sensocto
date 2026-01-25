@@ -473,6 +473,12 @@ Hooks.MediaPlayerHook = {
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
         }
+        if (this._unstartedRecoveryInterval) {
+            clearInterval(this._unstartedRecoveryInterval);
+        }
+        if (this._mutedCheckInterval) {
+            clearInterval(this._mutedCheckInterval);
+        }
         if (this.observer) {
             this.observer.disconnect();
         }
@@ -563,6 +569,8 @@ Hooks.MediaPlayerHook = {
 
     onPlayerReady(event) {
         this.isReady = true;
+        this._mutedPlaybackAttempted = false;
+        this._unstartedCheckCount = 0;
 
         // If we need to autoplay but Chrome blocked it, try muted playback
         if (this.pendingAutoplay) {
@@ -589,6 +597,93 @@ Hooks.MediaPlayerHook = {
 
         // Start sync interval - poll server every second for multi-tab sync
         this.startSyncInterval();
+
+        // Start recovery check for stuck UNSTARTED state
+        this.startUnstartedRecovery();
+    },
+
+    startUnstartedRecovery() {
+        // Clear any existing recovery interval
+        if (this._unstartedRecoveryInterval) {
+            clearInterval(this._unstartedRecoveryInterval);
+        }
+
+        this._unstartedCheckCount = 0;
+
+        // Check every 2 seconds if player is stuck in UNSTARTED
+        this._unstartedRecoveryInterval = setInterval(() => {
+            if (!this.isReady || !this.player) return;
+
+            // Guard against invalid player object (can happen if iframe is removed/replaced)
+            if (typeof this.player.getPlayerState !== 'function') {
+                return;
+            }
+
+            try {
+                const state = this.player.getPlayerState();
+                const serverState = this.el.dataset.playerState;
+
+                // Only check if server says we should be playing
+                if (serverState !== 'playing') {
+                    this._unstartedCheckCount = 0;
+                    this.hideClickToPlayOverlay();
+                    return;
+                }
+
+                if (state === YT.PlayerState.UNSTARTED || state === YT.PlayerState.CUED) {
+                    this._unstartedCheckCount++;
+
+                    // After 3 checks (6 seconds), show click-to-play overlay
+                    if (this._unstartedCheckCount >= 3) {
+                        console.log('[MediaPlayer] Player stuck in UNSTARTED, showing click-to-play overlay');
+                        this.showClickToPlayOverlay();
+                    }
+                } else {
+                    // Player is playing/buffering/paused, reset counter and hide overlay
+                    this._unstartedCheckCount = 0;
+                    this.hideClickToPlayOverlay();
+                }
+            } catch (e) {
+                // Player API error - likely iframe was removed
+                console.warn('[MediaPlayer] Recovery check error:', e.message);
+            }
+        }, 2000);
+    },
+
+    showClickToPlayOverlay() {
+        const existingOverlay = this.el.querySelector('#click-to-play-overlay-' + this.roomId);
+        if (existingOverlay) return;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'click-to-play-overlay-' + this.roomId;
+        overlay.className = 'absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-20 cursor-pointer';
+        overlay.innerHTML = `
+            <svg class="w-16 h-16 text-white mb-2" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+            <span class="text-white text-lg font-medium">Click to Play</span>
+            <span class="text-gray-300 text-sm mt-1">Autoplay was blocked by your browser</span>
+        `;
+        overlay.onclick = () => {
+            if (this.player) {
+                this.grantUserControl();
+                this.player.playVideo();
+                overlay.remove();
+                this._unstartedCheckCount = 0;
+            }
+        };
+
+        const container = this.el.querySelector('.relative.aspect-video');
+        if (container) {
+            container.appendChild(overlay);
+        }
+    },
+
+    hideClickToPlayOverlay() {
+        const overlay = this.el.querySelector('#click-to-play-overlay-' + this.roomId);
+        if (overlay) {
+            overlay.remove();
+        }
     },
 
     startSyncInterval() {
@@ -687,6 +782,8 @@ Hooks.MediaPlayerHook = {
         this.consecutiveSyncSeeks = 0;
         this.isSeeking = false;
         this.lastSyncSeekAt = 0;
+        // Reset autoplay attempt flag so we can retry muted playback
+        this._mutedPlaybackAttempted = false;
 
         if (!this.isReady || !this.player) {
             // Not ready yet - reinitialize

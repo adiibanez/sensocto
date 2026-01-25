@@ -15,6 +15,7 @@ let enabledComponents = [
     //"SensorDataService",
     //"IndexedDB",
     // "IndexedDB.Worker",
+    "HybridPoseClient",  // Debug pose issues
 ];
 
 export function setLogging(value) {
@@ -33,8 +34,14 @@ export function warn(componentName, message, ...args) {
     console.warn(`[${componentName}]: ${message}`, ...args);
 }
 
+export function error(componentName, message, ...args) {
+    // Always show errors
+    console.error(`[${componentName}]: ${message}`, ...args);
+}
+
 export const logger = {
     setLogging,
     log,
     warn,
+    error,
 };

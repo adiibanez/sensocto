@@ -102,7 +102,8 @@ defmodule SensoctoWeb.SystemMetricsComponent do
     try do
       Sensocto.SystemLoadMonitor.get_metrics()
     catch
-      :exit, {:noproc, _} ->
+      :exit, _ ->
+        # Handle noproc, timeout, or any other exit reason
         %{
           load_level: :unknown,
           scheduler_utilization: 0.0,

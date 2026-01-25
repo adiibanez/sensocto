@@ -23,6 +23,10 @@
     let batchTimeouts = {};
     let messagesSent = {};
 
+    // Backpressure state per channel
+    let backpressureConfigs = {};
+    let backpressureCallbacks = {}; // sensorId -> Set of callbacks
+
     export let defaultBatchSize = 10;
     export let defaultBatchTimeout = 1000 / 24;
     export let bearerToken = null;
@@ -63,6 +67,31 @@
         isChannelReady: (sensorId) => {
             const fullChannelName = getFullChannelName(sensorId);
             return channelStates[fullChannelName] === 'joined';
+        },
+        // Backpressure API
+        onBackpressure: (sensorId, callback) => {
+            if (!backpressureCallbacks[sensorId]) {
+                backpressureCallbacks[sensorId] = new Set();
+            }
+            backpressureCallbacks[sensorId].add(callback);
+
+            // Immediately call with current config if available
+            const fullChannelName = getFullChannelName(sensorId);
+            if (backpressureConfigs[fullChannelName]) {
+                callback(backpressureConfigs[fullChannelName]);
+            }
+
+            return () => {
+                backpressureCallbacks[sensorId]?.delete(callback);
+            };
+        },
+        getBackpressureConfig: (sensorId) => {
+            const fullChannelName = getFullChannelName(sensorId);
+            return backpressureConfigs[fullChannelName] || null;
+        },
+        isPaused: (sensorId) => {
+            const fullChannelName = getFullChannelName(sensorId);
+            return backpressureConfigs[fullChannelName]?.paused || false;
         },
     });
 
@@ -182,6 +211,8 @@
                 delete messageQueues[fullChannelName];
                 delete batchTimeouts[fullChannelName];
                 delete messagesSent[fullChannelName];
+                delete backpressureConfigs[fullChannelName];
+                delete backpressureCallbacks[sensorId];
                 logger.log(
                     loggerCtxName,
                     `Channel ${fullChannelName} closed - no active attributes`,
@@ -274,7 +305,20 @@
         // Handle channel close
         channel.onClose(() => {
             channelStates[fullChannelName] = 'closed';
+            delete backpressureConfigs[fullChannelName];
             logger.log(loggerCtxName, `Channel closed: ${fullChannelName}`);
+        });
+
+        // Listen for backpressure configuration from server
+        channel.on("backpressure_config", (config) => {
+            logger.log(loggerCtxName, `Backpressure config received for ${fullChannelName}:`, config);
+            backpressureConfigs[fullChannelName] = config;
+
+            // Notify all registered callbacks for this sensor
+            const callbacks = backpressureCallbacks[sensorId];
+            if (callbacks) {
+                callbacks.forEach(cb => cb(config));
+            }
         });
 
         sensorChannels[fullChannelName] = channel;
@@ -466,6 +510,19 @@
     export function setDeviceName(deviceName) {
         if (deviceName) {
             setCookie("device_name", deviceName);
+
+            // Push update to all active channels for realtime sync
+            Object.entries(sensorChannels).forEach(([channelName, channel]) => {
+                if (channelStates[channelName] === 'joined') {
+                    channel.push("update_connector", { connector_name: deviceName })
+                        .receive("ok", () => {
+                            logger.log(loggerCtxName, `Connector name updated on ${channelName}`);
+                        })
+                        .receive("error", (err) => {
+                            logger.warn(loggerCtxName, `Failed to update connector name on ${channelName}`, err);
+                        });
+                }
+            });
         }
     }
 </script>

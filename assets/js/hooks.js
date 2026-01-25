@@ -3,7 +3,7 @@ import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 
 let Hooks = {};
 
-// Lobby Preferences Hook - persists lobby mode to localStorage
+// Lobby Preferences Hook - persists lobby mode and min_attention to localStorage
 Hooks.LobbyPreferences = {
     mounted() {
         // Restore saved lobby mode on mount
@@ -12,9 +12,23 @@ Hooks.LobbyPreferences = {
             this.pushEvent('restore_lobby_mode', { mode: savedMode });
         }
 
+        // Restore saved min_attention on mount
+        const savedMinAttention = localStorage.getItem('lobby_min_attention');
+        if (savedMinAttention !== null) {
+            const minAttention = parseInt(savedMinAttention, 10);
+            if (!isNaN(minAttention) && minAttention >= 0 && minAttention <= 3) {
+                this.pushEvent('restore_min_attention', { min_attention: minAttention });
+            }
+        }
+
         // Listen for mode changes to save them
         this.handleEvent('save_lobby_mode', ({ mode }) => {
             localStorage.setItem('lobby_mode', mode);
+        });
+
+        // Listen for min_attention changes to save them
+        this.handleEvent('save_min_attention', ({ min_attention }) => {
+            localStorage.setItem('lobby_min_attention', min_attention.toString());
         });
     }
 };

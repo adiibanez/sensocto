@@ -5,6 +5,10 @@ defmodule SensoctoWeb.Router do
   use AshAuthentication.Phoenix.Router
   alias SensoctoWeb.LiveUserAuth
 
+  # Suppress warnings for optional OpenApiSpex modules
+  @compile {:no_warn_undefined,
+            [OpenApiSpex.Plug.PutApiSpec, OpenApiSpex.Plug.RenderSpec, OpenApiSpex.Plug.SwaggerUI]}
+
   pipeline :browser do
     plug :accepts, [
       "html",
@@ -202,7 +206,8 @@ defmodule SensoctoWeb.Router do
 
   # OpenAPI specification and Swagger UI
   # These routes are only available when open_api_spex is loaded
-  if Code.ensure_loaded?(OpenApiSpex) do
+  # Use Application.spec to check if the dep is included (works at compile time)
+  if Application.spec(:open_api_spex) != nil do
     pipeline :openapi do
       plug :accepts, ["json"]
       plug OpenApiSpex.Plug.PutApiSpec, module: SensoctoWeb.ApiSpec

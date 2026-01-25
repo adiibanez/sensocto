@@ -1,0 +1,104 @@
+# Pose Tracking Demo - Simulated skeleton/pose estimation sensors
+# Use case: Testing skeleton visualization without real cameras
+#
+# Motion types available:
+# - idle: Subtle breathing and sway
+# - walking: Walking cycle with arm swing
+# - waving: Right hand wave
+# - jumping: Jump animation
+# - dancing: Hip sway and arm groove
+# - exercise: Squats, arm raises, side stretches
+
+connectors:
+  pose_demo:
+    connector_id: "pose_demo"
+    connector_name: "Pose_Tracking_Demo"
+    sensors:
+      # Person doing various activities
+      dancer_1:
+        sensor_id: "dancer_1"
+        sensor_name: "Dancer"
+        attributes:
+          skeleton:
+            attribute_id: "skeleton"
+            sensor_type: "skeleton"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 15
+            motion_type: "dancing"
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            heart_rate: 110
+            dummy_data: true
+
+      walker_1:
+        sensor_id: "walker_1"
+        sensor_name: "Walker"
+        attributes:
+          skeleton:
+            attribute_id: "skeleton"
+            sensor_type: "skeleton"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 15
+            motion_type: "walking"
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            heart_rate: 85
+            dummy_data: true
+
+      exerciser_1:
+        sensor_id: "exerciser_1"
+        sensor_name: "Exerciser"
+        attributes:
+          skeleton:
+            attribute_id: "skeleton"
+            sensor_type: "skeleton"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 15
+            motion_type: "exercise"
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            heart_rate: 130
+            dummy_data: true
+
+      waver_1:
+        sensor_id: "waver_1"
+        sensor_name: "Greeter"
+        attributes:
+          skeleton:
+            attribute_id: "skeleton"
+            sensor_type: "skeleton"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 15
+            motion_type: "waving"
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 2000
+            duration: 0
+            sampling_rate: 0.5
+            heart_rate: 72
+            dummy_data: true

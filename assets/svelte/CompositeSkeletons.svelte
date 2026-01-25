@@ -2,27 +2,88 @@
   import { onMount, onDestroy } from "svelte";
 
   let { sensors = [] }: {
-    sensors: Array<{ sensor_id: string; username?: string }>;
+    sensors: Array<{ sensor_id: string; username?: string; attention?: number; bpm?: number }>;
   } = $props();
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
   let animationFrameId: number | null = null;
 
-  // Store skeleton data per sensor (including user email for display)
-  let skeletonData: Map<string, { landmarks: any[]; lastUpdate: number; username?: string }> = new Map();
+  // Store skeleton data per sensor with activity tracking
+  let skeletonData: Map<string, {
+    landmarks: any[];
+    lastUpdate: number;
+    username?: string;
+    activity: number;        // 0-1 based on movement
+    attention: number;       // 0-3 from props
+    movementHistory: number[]; // Track recent movement for smoothing
+    bpm: number;             // Heart rate in beats per minute
+    lastHeartbeat: number;   // Timestamp of last heartbeat animation
+    heartScale: number;      // Current heart animation scale (1.0 = normal, 1.3 = peak)
+  }> = new Map();
 
-  // Build a map of sensor_id -> username from props for fallback lookup
+  // Activity calculation constants
+  const ACTIVITY_HISTORY_LENGTH = 10;
+
+  // Build a map of sensor_id -> username/attention/bpm from props for fallback lookup
   $effect(() => {
     sensors.forEach(s => {
-      if (s.username) {
-        const existing = skeletonData.get(s.sensor_id);
-        if (existing && !existing.username) {
+      const existing = skeletonData.get(s.sensor_id);
+      if (existing) {
+        if (s.username && !existing.username) {
           existing.username = s.username;
+        }
+        if (s.attention !== undefined) {
+          existing.attention = s.attention;
+        }
+        if (s.bpm !== undefined && s.bpm > 0) {
+          existing.bpm = s.bpm;
         }
       }
     });
   });
+
+  // Calculate activity level from landmark movement
+  function calculateActivity(sensorId: string, newLandmarks: any[]): number {
+    const existing = skeletonData.get(sensorId);
+    if (!existing || !existing.landmarks || existing.landmarks.length === 0) {
+      return 0.5; // Default medium activity for new sensors
+    }
+
+    // Calculate total movement across key body landmarks (shoulders, hips, hands, feet)
+    const keyLandmarks = [11, 12, 15, 16, 23, 24, 27, 28]; // shoulders, wrists, hips, ankles
+    let totalMovement = 0;
+    let validPoints = 0;
+
+    for (const idx of keyLandmarks) {
+      const oldLm = existing.landmarks[idx];
+      const newLm = newLandmarks[idx];
+      if (oldLm && newLm && (oldLm.v ?? 1) > 0.3 && (newLm.v ?? 1) > 0.3) {
+        const dx = (newLm.x - oldLm.x);
+        const dy = (newLm.y - oldLm.y);
+        totalMovement += Math.sqrt(dx * dx + dy * dy);
+        validPoints++;
+      }
+    }
+
+    if (validPoints === 0) return existing.activity;
+
+    // Normalize movement (0-1 scale, with 0.1 being significant movement)
+    const avgMovement = totalMovement / validPoints;
+    const normalizedMovement = Math.min(1, avgMovement / 0.1);
+
+    // Smooth with history
+    const history = existing.movementHistory || [];
+    history.push(normalizedMovement);
+    if (history.length > ACTIVITY_HISTORY_LENGTH) {
+      history.shift();
+    }
+
+    // Calculate smoothed activity
+    const smoothedActivity = history.reduce((a, b) => a + b, 0) / history.length;
+
+    return smoothedActivity;
+  }
 
   // MediaPipe Pose landmark connections
   const POSE_CONNECTIONS = [
@@ -78,23 +139,71 @@
     return BODY_COLORS.torso;
   }
 
+  // Calculate bounding box of visible landmarks
+  function getLandmarkBounds(landmarks: any[]): { minX: number; maxX: number; minY: number; maxY: number } | null {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let hasVisible = false;
+
+    for (const lm of landmarks) {
+      if (!lm || (lm.v ?? 1) < 0.3) continue;
+      hasVisible = true;
+      minX = Math.min(minX, lm.x);
+      maxX = Math.max(maxX, lm.x);
+      minY = Math.min(minY, lm.y);
+      maxY = Math.max(maxY, lm.y);
+    }
+
+    if (!hasVisible) return null;
+    return { minX, maxX, minY, maxY };
+  }
+
   function drawSkeleton(
     landmarks: any[],
-    centerX: number,
-    centerY: number,
-    size: number,
+    areaX: number,
+    areaY: number,
+    areaWidth: number,
+    areaHeight: number,
     sensorColor: string,
     sensorId: string,
     username?: string
   ) {
     if (!ctx || !landmarks || landmarks.length === 0) return;
 
-    const scale = size * 0.8;
-    const offsetX = centerX - scale / 2;
-    const offsetY = centerY - scale / 2;
+    // Calculate actual bounding box of the skeleton
+    const bounds = getLandmarkBounds(landmarks);
+    if (!bounds) return;
 
-    // Draw connections
-    ctx.lineWidth = 2;
+    const { minX, maxX, minY, maxY } = bounds;
+    const skeletonWidth = maxX - minX;
+    const skeletonHeight = maxY - minY;
+
+    // Reserve space for label
+    const labelHeight = 25;
+    const availableHeight = areaHeight - labelHeight;
+
+    // Calculate scale to maximize skeleton size while fitting in area
+    // Add small padding (5%) to prevent clipping at edges
+    const padding = 0.05;
+    const scaleX = (areaWidth * (1 - padding * 2)) / Math.max(skeletonWidth, 0.01);
+    const scaleY = (availableHeight * (1 - padding * 2)) / Math.max(skeletonHeight, 0.01);
+    const scale = Math.min(scaleX, scaleY);
+
+    // Calculate center of skeleton in normalized coords
+    const skeletonCenterX = (minX + maxX) / 2;
+    const skeletonCenterY = (minY + maxY) / 2;
+
+    // Calculate offset to center skeleton in drawing area
+    const areaCenterX = areaX + areaWidth / 2;
+    const areaCenterY = areaY + availableHeight / 2;
+
+    // Transform function: normalized coords -> canvas coords (centered)
+    const toCanvasX = (x: number) => areaCenterX + (x - skeletonCenterX) * scale;
+    const toCanvasY = (y: number) => areaCenterY + (y - skeletonCenterY) * scale;
+
+    // Draw connections with thicker lines for larger skeletons
+    const lineWidth = Math.max(2, Math.min(4, scale * 0.015));
+    ctx.lineWidth = lineWidth;
+
     for (const [start, end] of POSE_CONNECTIONS) {
       const startLm = landmarks[start];
       const endLm = landmarks[end];
@@ -104,10 +213,10 @@
       const minVisibility = 0.3;
       if ((startLm.v ?? 1) < minVisibility || (endLm.v ?? 1) < minVisibility) continue;
 
-      const x1 = offsetX + startLm.x * scale;
-      const y1 = offsetY + startLm.y * scale;
-      const x2 = offsetX + endLm.x * scale;
-      const y2 = offsetY + endLm.y * scale;
+      const x1 = toCanvasX(startLm.x);
+      const y1 = toCanvasY(startLm.y);
+      const x2 = toCanvasX(endLm.x);
+      const y2 = toCanvasY(endLm.y);
 
       ctx.strokeStyle = getConnectionColor(start, end);
       ctx.globalAlpha = Math.min(startLm.v ?? 1, endLm.v ?? 1) * 0.9;
@@ -117,16 +226,16 @@
       ctx.stroke();
     }
 
-    // Draw landmark points
+    // Draw landmark points with size proportional to skeleton scale
     ctx.globalAlpha = 1;
-    const pointRadius = 3;
+    const pointRadius = Math.max(3, Math.min(6, scale * 0.01));
 
     for (let i = 0; i < landmarks.length; i++) {
       const lm = landmarks[i];
       if (!lm || (lm.v ?? 1) < 0.3) continue;
 
-      const x = offsetX + lm.x * scale;
-      const y = offsetY + lm.y * scale;
+      const x = toCanvasX(lm.x);
+      const y = toCanvasY(lm.y);
 
       let color = BODY_COLORS.torso;
       if (i <= 10) color = BODY_COLORS.face;
@@ -144,26 +253,24 @@
 
     ctx.globalAlpha = 1;
 
-    // Draw sensor label with colored indicator
-    const labelY = centerY + size / 2 + 20;
-    // Prefer username over sensor_id, truncate if too long
+    // Draw sensor label at bottom of area
+    const labelY = areaY + areaHeight - 8;
     const displayLabel = username || sensorId;
     const truncatedLabel = displayLabel.length > 25 ? displayLabel.slice(0, 22) + "..." : displayLabel;
 
-    // Set font before measuring text
     ctx.font = "11px sans-serif";
     const textWidth = ctx.measureText(truncatedLabel).width;
 
     // Draw colored dot to the left of the label
     ctx.fillStyle = sensorColor;
     ctx.beginPath();
-    ctx.arc(centerX - textWidth / 2 - 10, labelY - 4, 5, 0, Math.PI * 2);
+    ctx.arc(areaCenterX - textWidth / 2 - 10, labelY - 4, 5, 0, Math.PI * 2);
     ctx.fill();
 
     // Draw label
     ctx.fillStyle = "#9ca3af";
     ctx.textAlign = "center";
-    ctx.fillText(truncatedLabel, centerX, labelY);
+    ctx.fillText(truncatedLabel, areaCenterX, labelY);
   }
 
   function drawPlaceholder(centerX: number, centerY: number, size: number, sensorId: string, username?: string) {
@@ -190,6 +297,70 @@
     ctx.fillStyle = "#4b5563";
     ctx.font = "11px sans-serif";
     ctx.fillText(truncatedLabel, centerX, centerY + size / 2 + 20);
+  }
+
+  // Draw a beating heart with BPM
+  function drawHeart(x: number, y: number, size: number, bpm: number, scale: number) {
+    if (!ctx || bpm <= 0) return;
+
+    const heartSize = size * scale;
+
+    // Heart color based on BPM zones
+    let heartColor = "#22c55e"; // green - normal (60-99)
+    if (bpm < 60) heartColor = "#3b82f6"; // blue - low
+    else if (bpm >= 100 && bpm < 120) heartColor = "#eab308"; // yellow - elevated
+    else if (bpm >= 120) heartColor = "#ef4444"; // red - high
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(heartSize / 24, heartSize / 24);
+    ctx.translate(-12, -12);
+
+    // Draw heart shape (SVG path converted to canvas)
+    ctx.beginPath();
+    ctx.moveTo(12, 21.35);
+    ctx.bezierCurveTo(10.55, 20.03, 5, 14.56, 5, 10);
+    ctx.bezierCurveTo(5, 7.42, 7.42, 5, 10, 5);
+    ctx.bezierCurveTo(11.31, 5, 12, 5.69, 12, 5.69);
+    ctx.bezierCurveTo(12, 5.69, 12.69, 5, 14, 5);
+    ctx.bezierCurveTo(16.58, 5, 19, 7.42, 19, 10);
+    ctx.bezierCurveTo(19, 14.56, 13.45, 20.03, 12, 21.35);
+    ctx.closePath();
+
+    ctx.fillStyle = heartColor;
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+
+    ctx.restore();
+
+    // Draw BPM text below heart
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = heartColor;
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${Math.round(bpm)}`, x, y + heartSize / 2 + 10);
+  }
+
+  // Update heart animation based on BPM
+  function updateHeartAnimation(sensorId: string, now: number) {
+    const data = skeletonData.get(sensorId);
+    if (!data || data.bpm <= 0) return 1.0;
+
+    const msPerBeat = 60000 / data.bpm;
+    const timeSinceLastBeat = now - (data.lastHeartbeat || 0);
+
+    if (timeSinceLastBeat >= msPerBeat) {
+      data.lastHeartbeat = now;
+      data.heartScale = 1.3; // Start pulse
+    } else if (timeSinceLastBeat < 150) {
+      // Pulse animation (150ms duration)
+      const pulseProgress = timeSinceLastBeat / 150;
+      data.heartScale = 1.3 - (0.3 * pulseProgress);
+    } else {
+      data.heartScale = 1.0;
+    }
+
+    return data.heartScale;
   }
 
   function render() {
@@ -219,49 +390,105 @@
       return;
     }
 
-    // Calculate layout - arrange in circle
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const maxSkeletonSize = Math.min(width, height) * 0.4;
+    // Sort sensors by username for stable ordering
+    const sortedSensors = sensorList.map(sensorId => {
+      const data = skeletonData.get(sensorId);
+      const sensorFromProps = sensors.find(s => s.sensor_id === sensorId);
+      const username = data?.username || sensorFromProps?.username || sensorId;
+      return { sensorId, username };
+    }).sort((a, b) => a.username.localeCompare(b.username));
 
-    // Adjust size based on number of sensors
-    let skeletonSize: number;
-    let radius: number;
+    const now = Date.now();
+    const titleHeight = 18; // Space for title at top
 
+    // Layout based on number of sensors - maximize space usage
     if (numSensors === 1) {
-      skeletonSize = maxSkeletonSize;
-      radius = 0;
-    } else if (numSensors <= 4) {
-      skeletonSize = maxSkeletonSize * 0.6;
-      radius = Math.min(width, height) * 0.25;
-    } else {
-      skeletonSize = maxSkeletonSize * 0.4;
-      radius = Math.min(width, height) * 0.35;
-    }
-
-    sensorList.forEach((sensorId, index) => {
-      const angle = (2 * Math.PI * index) / numSensors - Math.PI / 2;
-      const x = numSensors === 1 ? centerX : centerX + radius * Math.cos(angle);
-      const y = numSensors === 1 ? centerY : centerY + radius * Math.sin(angle);
-      const color = SENSOR_COLORS[index % SENSOR_COLORS.length];
-
-      // Get username from skeleton data or from props
+      // Single sensor - use entire canvas (minus title)
+      const { sensorId } = sortedSensors[0];
       const data = skeletonData.get(sensorId);
       const sensorFromProps = sensors.find(s => s.sensor_id === sensorId);
       const username = data?.username || sensorFromProps?.username;
+      const bpm = data?.bpm || sensorFromProps?.bpm || 0;
+      const color = SENSOR_COLORS[0];
+
+      // Full canvas area for skeleton (minus title)
+      const areaX = 0;
+      const areaY = titleHeight;
+      const areaWidth = width;
+      const areaHeight = height - titleHeight;
 
       if (data && data.landmarks && data.landmarks.length > 0) {
-        drawSkeleton(data.landmarks, x, y, skeletonSize, color, sensorId, username);
-      } else {
-        drawPlaceholder(x, y, skeletonSize, sensorId, username);
-      }
-    });
+        drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username);
 
-    // Draw title
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = "bold 12px sans-serif";
+        // Draw heart if BPM available - position relative to skeleton bounds
+        if (bpm > 0) {
+          const bounds = getLandmarkBounds(data.landmarks);
+          if (bounds) {
+            const heartScale = updateHeartAnimation(sensorId, now);
+            // Position heart at top-right of the drawn skeleton
+            const heartX = width * 0.85;
+            const heartY = titleHeight + 30;
+            drawHeart(heartX, heartY, 28, bpm, heartScale);
+          }
+        }
+      } else {
+        const size = Math.min(areaWidth, areaHeight) * 0.5;
+        drawPlaceholder(areaX + areaWidth / 2, areaY + areaHeight / 2, size, sensorId, username);
+      }
+    } else {
+      // Multiple sensors - pack in grid, maximizing space
+      const cols = numSensors <= 2 ? 2 : numSensors <= 4 ? 2 : numSensors <= 6 ? 3 : 4;
+      const rows = Math.ceil(numSensors / cols);
+
+      const cellWidth = width / cols;
+      const cellHeight = (height - titleHeight) / rows;
+
+      sortedSensors.forEach(({ sensorId }, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+
+        // Cell area for this skeleton
+        const areaX = col * cellWidth;
+        const areaY = titleHeight + row * cellHeight;
+        const areaWidth = cellWidth;
+        const areaHeight = cellHeight;
+
+        const data = skeletonData.get(sensorId);
+        const sensorFromProps = sensors.find(s => s.sensor_id === sensorId);
+        const username = data?.username || sensorFromProps?.username;
+        const bpm = data?.bpm || sensorFromProps?.bpm || 0;
+        const color = SENSOR_COLORS[index % SENSOR_COLORS.length];
+
+        if (data && data.landmarks && data.landmarks.length > 0) {
+          drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username);
+
+          // Draw heart if BPM available
+          if (bpm > 0) {
+            const heartScale = updateHeartAnimation(sensorId, now);
+            const heartX = areaX + areaWidth * 0.85;
+            const heartY = areaY + 25;
+            drawHeart(heartX, heartY, 20, bpm, heartScale);
+          }
+        } else {
+          const size = Math.min(areaWidth, areaHeight) * 0.5;
+          drawPlaceholder(areaX + areaWidth / 2, areaY + areaHeight / 2, size, sensorId, username);
+        }
+      });
+    }
+
+    // Draw compact title
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "10px sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(`Pose Composite (${numSensors} sensor${numSensors !== 1 ? 's' : ''})`, 10, 20);
+    ctx.fillText(`Pose (${numSensors})`, 8, 14);
+
+    // Draw distance hint on first render or when few sensors
+    if (numSensors <= 2) {
+      ctx.fillStyle = "#4b5563";
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText("Tip: Stand 1-2m from camera", width - 8, 14);
+    }
   }
 
   function handleCompositeMeasurement(e: CustomEvent) {
@@ -280,11 +507,51 @@
       }
 
       if (data && data.landmarks) {
+        const existing = skeletonData.get(sensor_id);
+        const activity = calculateActivity(sensor_id, data.landmarks);
+        const sensorFromProps = sensors.find(s => s.sensor_id === sensor_id);
+
         skeletonData.set(sensor_id, {
           landmarks: data.landmarks,
           lastUpdate: timestamp || Date.now(),
-          username: username
+          username: username || existing?.username,
+          activity: activity,
+          attention: existing?.attention ?? sensorFromProps?.attention ?? 1,
+          movementHistory: existing?.movementHistory || [],
+          bpm: existing?.bpm ?? sensorFromProps?.bpm ?? 0,
+          lastHeartbeat: existing?.lastHeartbeat ?? 0,
+          heartScale: existing?.heartScale ?? 1.0
         });
+      }
+    }
+
+    // Also handle heartrate events
+    if (attribute_id === "heartrate" || attribute_id === "hr") {
+      let bpm = 0;
+      if (typeof payload === "number") {
+        bpm = payload;
+      } else if (typeof payload === "object" && payload !== null) {
+        bpm = payload.bpm ?? payload.heartRate ?? payload.value ?? 0;
+      }
+
+      if (bpm > 0) {
+        const existing = skeletonData.get(sensor_id);
+        if (existing) {
+          existing.bpm = bpm;
+        } else {
+          const sensorFromProps = sensors.find(s => s.sensor_id === sensor_id);
+          skeletonData.set(sensor_id, {
+            landmarks: [],
+            lastUpdate: Date.now(),
+            username: username || sensorFromProps?.username,
+            activity: 0.5,
+            attention: sensorFromProps?.attention ?? 1,
+            movementHistory: [],
+            bpm: bpm,
+            lastHeartbeat: 0,
+            heartScale: 1.0
+          });
+        }
       }
     }
   }
@@ -320,10 +587,47 @@
       }
 
       if (data && data.landmarks) {
+        const existing = skeletonData.get(eventSensorId);
+        const activity = calculateActivity(eventSensorId, data.landmarks);
+        const sensorFromProps = sensors.find(s => s.sensor_id === eventSensorId);
+
         skeletonData.set(eventSensorId, {
           landmarks: data.landmarks,
-          lastUpdate: Date.now()
+          lastUpdate: Date.now(),
+          username: existing?.username,
+          activity: activity,
+          attention: existing?.attention ?? sensorFromProps?.attention ?? 1,
+          movementHistory: existing?.movementHistory || [],
+          bpm: existing?.bpm ?? sensorFromProps?.bpm ?? 0,
+          lastHeartbeat: existing?.lastHeartbeat ?? 0,
+          heartScale: existing?.heartScale ?? 1.0
         });
+      }
+    }
+
+    // Also handle heartrate events from accumulator
+    if (attributeId === "heartrate" || attributeId === "hr") {
+      const eventData = e?.detail?.data;
+      let bpm = 0;
+
+      if (Array.isArray(eventData)) {
+        const latest = eventData[eventData.length - 1];
+        const payload = latest?.payload;
+        if (typeof payload === "number") bpm = payload;
+        else if (payload?.bpm) bpm = payload.bpm;
+      } else if (typeof eventData === "number") {
+        bpm = eventData;
+      } else if (eventData?.payload) {
+        const payload = eventData.payload;
+        if (typeof payload === "number") bpm = payload;
+        else if (payload?.bpm) bpm = payload.bpm;
+      }
+
+      if (bpm > 0) {
+        const existing = skeletonData.get(eventSensorId);
+        if (existing) {
+          existing.bpm = bpm;
+        }
       }
     }
   }
@@ -376,10 +680,10 @@
   .composite-skeletons-container {
     width: 100%;
     height: 100%;
-    min-height: 400px;
+    min-height: 200px;
     background: #111827;
-    border-radius: 0.5rem;
-    border: 1px solid rgba(107, 114, 128, 0.3);
+    border-radius: 0.375rem;
+    border: 1px solid rgba(75, 85, 99, 0.3);
     overflow: hidden;
   }
 
@@ -387,5 +691,18 @@
     width: 100%;
     height: 100%;
     display: block;
+  }
+
+  /* Responsive height based on viewport */
+  @media (max-height: 600px) {
+    .composite-skeletons-container {
+      min-height: 150px;
+    }
+  }
+
+  @media (min-height: 800px) {
+    .composite-skeletons-container {
+      min-height: 300px;
+    }
   }
 </style>

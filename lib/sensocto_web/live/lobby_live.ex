@@ -45,6 +45,8 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
     # Subscribe to 3D object player events
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:lobby")
+    # Subscribe to global attention changes to re-filter sensor list in realtime
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:global")
 
     # Subscribe to user-specific attention level updates for webcam backpressure
     user = socket.assigns[:current_user]
@@ -161,7 +163,9 @@ defmodule SensoctoWeb.LobbyLive do
           last_report_time: System.monotonic_time(:millisecond)
         },
         # Minimum attention filter (0=none, 1=low, 2=medium, 3=high)
-        min_attention: 0
+        min_attention: 0,
+        # Timer for debouncing attention filter updates
+        attention_filter_timer: nil
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -434,7 +438,19 @@ defmodule SensoctoWeb.LobbyLive do
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
-        %{sensor_id: sensor_id, username: sensor.username}
+        # Also check if this sensor has heartrate data
+        hr_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type in ["heartrate", "hr"]
+          end)
+
+        bpm =
+          case hr_attr do
+            {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+            nil -> 0
+          end
+
+        %{sensor_id: sensor_id, username: sensor.username, bpm: bpm}
       end)
 
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
@@ -1233,6 +1249,39 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # Handle sensor attention changes to re-filter sensor list in realtime
+  # Debounced to avoid excessive re-renders from rapid attention changes
+  @impl true
+  def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do
+    min_attention = socket.assigns[:min_attention] || 0
+
+    # Only schedule re-filter if min_attention > 0 (otherwise all sensors are shown)
+    if min_attention > 0 do
+      # Cancel any pending attention filter timer
+      if socket.assigns[:attention_filter_timer] do
+        Process.cancel_timer(socket.assigns[:attention_filter_timer])
+      end
+
+      # Debounce: schedule re-filter in 500ms
+      timer = Process.send_after(self(), :refilter_by_attention, 500)
+      {:noreply, assign(socket, :attention_filter_timer, timer)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:refilter_by_attention, socket) do
+    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
+    min_attention = socket.assigns[:min_attention] || 0
+    filtered_sensor_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+
+    {:noreply,
+     socket
+     |> assign(:sensor_ids, filtered_sensor_ids)
+     |> assign(:attention_filter_timer, nil)}
+  end
+
   # Refresh available lenses after mount to catch late-registered attributes
   @impl true
   def handle_info(:refresh_available_lenses, socket) do
@@ -1636,6 +1685,19 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("set_min_attention", %{"min_attention" => value}, socket) do
     min_attention = String.to_integer(value)
+    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
+    filtered_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+
+    {:noreply,
+     socket
+     |> assign(:min_attention, min_attention)
+     |> assign(:sensor_ids, filtered_ids)
+     |> push_event("save_min_attention", %{min_attention: min_attention})}
+  end
+
+  # Restore min_attention from localStorage (via JS hook)
+  @impl true
+  def handle_event("restore_min_attention", %{"min_attention" => min_attention}, socket) do
     all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
     filtered_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
 

@@ -143,6 +143,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
     start_battery drain_rate charge_rate eco2 tvoc
     track_mode start_lat start_lng playback_speed random_start no_loop
     track_duration track_name generate_track base_lat base_lng base_alt unit
+    motion_type
   )a
 
   defp string_keys_to_atom_keys(map) when is_map(map) do

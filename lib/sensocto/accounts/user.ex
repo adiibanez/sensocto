@@ -388,7 +388,8 @@ defmodule Sensocto.Accounts.User do
   end
 
   relationships do
-    has_many :connectors, Sensocto.Sensors.Connector
+    # Connectors are stored in ETS, not Postgres, so no direct relationship
+    # Use Sensocto.Sensors.Connector.list_for_user(user.id) to get user's connectors
   end
 
   identities do

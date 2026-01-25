@@ -31,6 +31,9 @@ defmodule Sensocto.Registry.Supervisor do
   - `DistributedRoomRegistry` - Cluster-wide room lookup
   - `DistributedJoinCodeRegistry` - Cluster-wide join code lookup
 
+  **Connector Domain (Distributed - Horde):**
+  - `DistributedConnectorRegistry` - Cluster-wide connector lookup
+
   **Feature Domains:**
   - `CallRegistry` - Video/voice call processes
   - `MediaRegistry` - Media player processes
@@ -71,6 +74,10 @@ defmodule Sensocto.Registry.Supervisor do
       {Horde.Registry, [name: Sensocto.DistributedRoomRegistry, keys: :unique, members: :auto]},
       {Horde.Registry,
        [name: Sensocto.DistributedJoinCodeRegistry, keys: :unique, members: :auto]},
+
+      # Connector domain - distributed registry for cluster-wide connector lookup
+      {Horde.Registry,
+       [name: Sensocto.DistributedConnectorRegistry, keys: :unique, members: :auto]},
 
       # Feature domain registries
       {Registry, keys: :unique, name: Sensocto.CallRegistry},

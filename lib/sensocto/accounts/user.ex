@@ -388,10 +388,8 @@ defmodule Sensocto.Accounts.User do
   end
 
   relationships do
-    # many_to_many :tokens, Sensocto.Accounts.Token, through: :user_tokens
-    # many_to_many :connectors, Sensocto.Sensors.Connector, through: :user_connectors
-    # many_to_many :sensors, Sensocto.Sensors.Sensor, through: :user_sensors
-    # many_to_many :rooms, Sensocto.Rooms.Room, through: :user_rooms
+    # Connectors are stored in ETS, not Postgres, so no direct relationship
+    # Use Sensocto.Sensors.Connector.list_for_user(user.id) to get user's connectors
   end
 
   identities do

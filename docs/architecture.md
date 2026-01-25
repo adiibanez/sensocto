@@ -1,6 +1,8 @@
 # Sensocto Architecture
 
-Sensocto is a real-time sensor data platform built with Phoenix/Elixir, using the Ash framework for domain modeling and LiveView for reactive UI.
+Sensocto is a real-time sensor data platform built with Phoenix/Elixir, using the Ash framework for domain modeling and LiveView for reactive UI. The system features attention-aware back-pressure control, biomimetic resource management, and distributed room coordination via Horde.
+
+**Last Updated:** January 2026
 
 ## System Overview
 
@@ -30,10 +32,11 @@ Sensocto is a real-time sensor data platform built with Phoenix/Elixir, using th
 │         └───────────────────┴───────────────────┐                       │
 │                                                 │                       │
 │  ┌──────────────────────────────────────────────▼────────────────────┐ │
-│  │                        OTP Layer                                   │ │
+│  │                   7-Layer OTP Supervision Tree                     │ │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │ │
-│  │  │ Attention   │  │  Sensors    │  │   Rooms     │               │ │
-│  │  │ Tracker     │  │ Supervisor  │  │ Supervisor  │               │ │
+│  │  │ Bio Layer   │  │  Domain     │  │   Storage   │               │ │
+│  │  │ (Adaptive)  │  │ (Sensors/   │  │   (Iroh/    │               │ │
+│  │  │             │  │  Rooms)     │  │    CRDT)    │               │ │
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                 │                       │
@@ -42,9 +45,14 @@ Sensocto is a real-time sensor data platform built with Phoenix/Elixir, using th
 │                    │  Sensor | SensorAttribute | Room | User       │   │
 │                    └────────────────────────────┬──────────────────┘   │
 │                                                 │                       │
-│                    ┌────────────────────────────▼──────────────────┐   │
-│                    │              PostgreSQL                        │   │
-│                    └───────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────▼────────────────────┐ │
+│  │                      Persistence Layer                             │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │ │
+│  │  │ PostgreSQL  │  │  In-Memory  │  │  P2P/Iroh   │               │ │
+│  │  │ (Primary +  │  │  (RoomStore │  │  (Document  │               │ │
+│  │  │  Replica)   │  │   Guest)    │  │   Sync)     │               │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -60,53 +68,70 @@ Sensocto.Supervisor (root, :rest_for_one)
 │
 ├── Layer 1: Infrastructure.Supervisor (:one_for_one)
 │   ├── SensoctoWeb.Telemetry          # Metrics collection
-│   ├── Sensocto.Repo                  # Database connection pool
-│   ├── Phoenix.PubSub                 # Inter-process messaging
-│   ├── SensoctoWeb.Sensocto.Presence  # User presence tracking
+│   ├── Task.Supervisor                # Async task pool
+│   ├── Sensocto.Repo                  # Primary DB (Neon.tech PostgreSQL)
+│   ├── Sensocto.Repo.Replica          # Read replica DB
 │   ├── DNSCluster                     # Service discovery (Fly.io)
+│   ├── Phoenix.PubSub                 # Inter-process messaging backbone
+│   ├── SensoctoWeb.Presence           # User presence tracking
 │   └── Finch                          # HTTP client pool
 │
 ├── Layer 2: Registry.Supervisor (:one_for_one)
-│   ├── Sensocto.SimpleSensorRegistry
-│   ├── Sensocto.SimpleAttributeRegistry
-│   ├── Sensocto.RoomRegistry
-│   ├── Sensocto.RoomJoinCodeRegistry
-│   ├── Sensocto.CallRegistry
-│   ├── Sensocto.MediaRegistry
-│   └── Sensocto.Object3DRegistry
+│   ├── Sensor Domain:
+│   │   ├── SimpleSensorRegistry       # Sensor process lookup
+│   │   ├── SimpleAttributeRegistry    # Attribute process lookup
+│   │   ├── SensorPairRegistry         # Sensor pair coordination
+│   │   └── Sensors.Registry (legacy)
+│   ├── Room Domain:
+│   │   ├── RoomRegistry               # Local room lookup
+│   │   ├── RoomJoinCodeRegistry       # Join code mapping
+│   │   ├── DistributedRoomRegistry (Horde)      # Cluster-wide room lookup
+│   │   └── DistributedJoinCodeRegistry (Horde)  # Cluster-wide join codes
+│   └── Feature Domains:
+│       ├── CallRegistry               # WebRTC call processes
+│       ├── MediaRegistry              # Media player processes
+│       └── Object3DRegistry           # 3D viewer processes
 │
 ├── Layer 3: Storage.Supervisor (:rest_for_one)
-│   ├── Iroh.RoomStore                 # P2P room document storage
-│   ├── RoomStore                      # Room state persistence
-│   ├── Iroh.RoomSync                  # Room sync coordination
-│   └── RoomStateCRDT                  # CRDT-based state merging
+│   ├── Iroh.RoomStore                 # Low-level P2P document storage
+│   ├── RoomStore                      # In-memory room state cache
+│   ├── Iroh.RoomSync                  # Async persistence layer
+│   ├── Iroh.RoomStateCRDT             # Real-time CRDT-based state
+│   └── RoomPresenceServer             # Room presence tracking
 │
-├── Layer 4: Bio.Supervisor (:one_for_one)
-│   ├── NoveltyDetector                # Adaptive novelty detection
-│   ├── PredictiveLoadBalancer         # Predictive resource management
-│   ├── HomeostaticTuner               # System homeostasis
-│   └── [Biomimetic layer processes]
+├── Layer 4: Bio.Supervisor (:one_for_one) [Biomimetic Layer]
+│   ├── NoveltyDetector                # Locus Coeruleus - anomaly detection
+│   ├── PredictiveLoadBalancer         # Cerebellum - predictive resource mgmt
+│   ├── HomeostaticTuner               # Synaptic Plasticity - homeostasis
+│   ├── ResourceArbiter                # Lateral Inhibition - resource negotiation
+│   └── CircadianScheduler             # SCN - temporal scheduling
 │
 ├── Layer 5: Domain.Supervisor (:one_for_one)
-│   ├── Sensocto.AttentionTracker      # Back-pressure control (ETS-backed)
-│   ├── Sensocto.SensorsDynamicSupervisor
-│   │   └── SensorSupervisor (per sensor)
-│   │       ├── SimpleSensor (GenServer)
-│   │       └── AttributeStore (Agent per attribute)
-│   ├── Sensocto.RoomsDynamicSupervisor
-│   │   └── RoomServer (per room)
-│   ├── Sensocto.CallSupervisor        # WebRTC call management
-│   ├── Sensocto.MediaPlayerSupervisor # Media playback
-│   └── Sensocto.Object3DPlayerSupervisor  # 3D object streaming
+│   ├── AttentionTracker               # Back-pressure control (ETS-backed)
+│   ├── SystemLoadMonitor              # CPU/PubSub/Memory load tracking
+│   ├── SensorsStateAgent              # Sensor state cache
+│   ├── SensorsDynamicSupervisor       # Manages individual sensors
+│   │   └── SensorSupervisor (per sensor, :one_for_one)
+│   │       ├── SimpleSensor           # Per-sensor GenServer
+│   │       └── AttributeStore         # Per-attribute data cache (Agent)
+│   ├── RoomsDynamicSupervisor (Horde) # Distributed room management
+│   │   └── RoomServer (per room, via Horde.Registry)
+│   ├── CallSupervisor                 # WebRTC call management
+│   ├── MediaPlayerSupervisor          # Media playback management
+│   ├── Object3DPlayerSupervisor       # 3D object streaming
+│   ├── RepoReplicatorPool             # Database sync pool (8 workers)
+│   └── Search.SearchIndex             # Global search index
 │
-├── Layer 6: SensoctoWeb.Endpoint      # Phoenix endpoint
-├── Layer 7: AshAuthentication.Supervisor  # Auth management
+├── Layer 5.5: Accounts.GuestUserStore # In-memory guest user sessions (2h TTL)
 │
-└── [Optional] Sensocto.Simulator.Supervisor
-    ├── Sensocto.Simulator.Manager
+├── Layer 6: SensoctoWeb.Endpoint      # Phoenix HTTP/WebSocket endpoint
+│
+├── Layer 7: AshAuthentication.Supervisor  # External auth supervisor
+│
+└── [Optional] Sensocto.Simulator.Supervisor (if enabled)
+    ├── Simulator.Manager
     └── ConnectorSupervisor
         └── SensorServer (per simulated sensor)
-            └── AttributeServer (per attribute)
 ```
 
 ### Supervision Strategy Rationale
@@ -119,12 +144,103 @@ Sensocto.Supervisor (root, :rest_for_one)
 
 ### Blast Radius Examples
 
-- Media player crash: Only that room's player restarts. No other impact.
-- Sensor registry crash: Sensor lookups fail briefly. Rooms unaffected.
-- Iroh.RoomStore crash: All storage processes restart. Domains stay up.
-- Infrastructure crash: Everything restarts in order. Full recovery.
+| Crash Location | Impact | Recovery |
+|----------------|--------|----------|
+| Single sensor | Only that sensor restarts | Other sensors and rooms unaffected |
+| Sensor registry | Brief lookup failure | Room processes survive and re-register |
+| RoomServer | Only that room restarts | Other rooms continue, members reconnect |
+| Iroh.RoomStore | All storage processes restart (rest_for_one) | Room domain stays up, temporary unavailability |
+| Bio.NoveltyDetector | Novelty detection offline | Sensors continue at current settings |
+| PubSub | Infrastructure restarts + all downstream | Full recovery via rest_for_one cascade |
+| System load spike | SystemLoadMonitor broadcasts multipliers | AttentionTracker adjusts batch windows |
 
 See `docs/supervision-tree.md` for interactive Mermaid diagrams of the supervision tree.
+
+## Persistence Layer
+
+Sensocto uses a multi-tier persistence architecture combining PostgreSQL, in-memory stores, and P2P distributed storage.
+
+### Database Layer (PostgreSQL)
+
+| Repository | Purpose | Configuration |
+|------------|---------|---------------|
+| `Sensocto.Repo` | Primary read/write | Neon.tech PostgreSQL 16+ |
+| `Sensocto.Repo.Replica` | Read-only queries | Offloads read-heavy operations |
+
+**Key files:**
+- `lib/sensocto/repo.ex` - AshPostgres.Repo configuration
+
+### In-Memory Storage
+
+| Store | Type | Purpose | Persistence |
+|-------|------|---------|-------------|
+| `RoomStore` | GenServer | Room state cache | Synced to Iroh.RoomStore |
+| `GuestUserStore` | GenServer | Temporary guest sessions | None (2-hour TTL) |
+| `AttentionTracker` | GenServer + ETS | Attention levels | None (ephemeral) |
+| `SystemLoadMonitor` | GenServer + ETS | Load metrics | None (ephemeral) |
+| `NoveltyDetector` | GenServer + ETS | Anomaly statistics | None (ephemeral) |
+| `AttributeStore` | Agent | Per-attribute data cache | None (latest values only) |
+
+### P2P Distributed Storage (Iroh)
+
+The Iroh layer provides distributed document sync for room state:
+
+```
+Iroh.RoomStore (low-level)
+    ↓
+RoomStore (in-memory cache)
+    ↓
+Iroh.RoomSync (async persistence)
+    ↓
+Iroh.RoomStateCRDT (real-time collaborative state)
+```
+
+**Key features:**
+- CRDT-based conflict-free merging (Automerge)
+- P2P sync without central coordination
+- Used for media sync, 3D viewer state, presence
+
+### ETS Tables
+
+| Table | Owner | Purpose | Access |
+|-------|-------|---------|--------|
+| `:attention_tracker` | AttentionTracker | Attention levels | Fast O(1) lookup |
+| `:system_load` | SystemLoadMonitor | Load metrics | Fast O(1) lookup |
+| `:novelty_detector` | NoveltyDetector | Anomaly scores | Fast O(1) lookup |
+
+**Why ETS?** Hot-path lookups (attention level per sensor) must avoid GenServer bottlenecks. ETS provides O(1) concurrent reads.
+
+## GenServer Inventory
+
+### Core GenServers
+
+| GenServer | Location | Purpose | State Type |
+|-----------|----------|---------|------------|
+| `AttentionTracker` | `otp/attention_tracker.ex` | Back-pressure coordination | ETS + process state |
+| `SystemLoadMonitor` | `otp/system_load_monitor.ex` | CPU/memory/PubSub monitoring | ETS + metrics |
+| `SimpleSensor` | `otp/simple_sensor.ex` | Per-sensor data management | In-process map |
+| `RoomServer` | `otp/room_server.ex` | Per-room state (Horde) | In-process map |
+| `GuestUserStore` | `accounts/guest_user_store.ex` | Guest sessions | In-process map |
+
+### Biomimetic GenServers
+
+| GenServer | Biological Inspiration | Function |
+|-----------|------------------------|----------|
+| `NoveltyDetector` | Locus Coeruleus | Anomaly detection via Welford's algorithm |
+| `PredictiveLoadBalancer` | Cerebellum | Predictive resource management |
+| `HomeostaticTuner` | Synaptic Plasticity | System balance maintenance |
+| `ResourceArbiter` | Lateral Inhibition | Competitive resource allocation |
+| `CircadianScheduler` | SCN (Suprachiasmatic Nucleus) | Time-of-day scheduling |
+
+### Dynamic Supervisors
+
+| Supervisor | Child Type | Distribution |
+|------------|------------|--------------|
+| `SensorsDynamicSupervisor` | SensorSupervisor | Local (per-node) |
+| `RoomsDynamicSupervisor` | RoomServer | Horde (cluster-wide) |
+| `CallSupervisor` | CallServer | Local (per-node) |
+| `MediaPlayerSupervisor` | MediaPlayerServer | Local (per-node) |
+| `Object3DPlayerSupervisor` | Object3DPlayerServer | Local (per-node) |
 
 ## Key Components
 
@@ -178,20 +294,43 @@ Room (Ash Resource)
 
 The project uses [Ash](https://ash-hq.org) for domain modeling:
 
-**Resources:**
-| Resource | Location | Purpose |
-|----------|----------|---------|
-| `User` | `lib/sensocto/accounts/user.ex` | Authentication |
-| `Sensor` | `lib/sensocto/sensors/sensor.ex` | Sensor metadata |
-| `SensorAttribute` | `lib/sensocto/sensors/sensor_attribute.ex` | Attribute definitions |
-| `SensorAttributeData` | `lib/sensocto/sensors/sensor_attribute_data.ex` | Historical data |
-| `SensorType` | `lib/sensocto/sensors/sensor_type.ex` | Sensor categories |
-| `Connector` | `lib/sensocto/sensors/connector.ex` | Connection protocols |
-| `Room` | `lib/sensocto/sensors/room.ex` | Collaboration spaces |
-
 **Domains:**
-- `Sensocto.Accounts` - User management
-- `Sensocto.Sensors` - Sensor domain
+
+| Domain | Purpose |
+|--------|---------|
+| `Sensocto.Accounts` | User authentication, OAuth, tokens, preferences |
+| `Sensocto.Sensors` | Sensors, rooms, connectors, types, attributes |
+
+**Accounts Domain Resources:**
+| Resource | Purpose |
+|----------|---------|
+| `User` | Authentication (OAuth, magic links, password) |
+| `Token` | JWT tokens with 14-day lifetime |
+| `UserPreference` | User settings and preferences |
+
+**Sensors Domain Resources:**
+| Resource | Purpose |
+|----------|---------|
+| `Sensor` | Sensor metadata (name, type, MAC address) |
+| `SensorAttribute` | Attribute definitions per sensor type |
+| `SensorAttributeData` | Historical data points |
+| `SensorType` | Sensor categories |
+| `Connector` | Connection protocols (BLE, WiFi, Simulator) |
+| `ConnectorSensorType` | Connector ↔ SensorType relationships |
+| `Room` | Collaboration spaces |
+| `RoomMembership` | User access to rooms |
+| `RoomSensorType` | Room-specific sensor configuration |
+| `SensorConnection` | Sensor connectivity tracking |
+| `SensorSensorConnection` | Sensor-to-sensor relationships |
+| `SimulatorScenario` | Simulation scenarios |
+| `SimulatorConnector` | Simulator connector instances |
+| `SimulatorTrackPosition` | Simulated position tracking |
+| `SimulatorBatteryState` | Simulated battery state |
+
+**Authentication:**
+- Ash Authentication with Google OAuth, magic links, password reset
+- 14-day token lifetime with stored tokens for revocation
+- GuestUserStore for session-only guest users (not Ash-managed)
 
 ### 5. Web Layer
 
@@ -275,13 +414,14 @@ Key environment variables (see `.env.sample`):
 | Real-time UI | Phoenix LiveView 1.0 |
 | Frontend | Svelte 5 (via live_svelte), Tailwind CSS, DaisyUI |
 | Domain Framework | Ash 3.0 |
-| Database | PostgreSQL with Ecto |
-| Authentication | Ash Authentication (OAuth, magic links) |
+| Database | PostgreSQL 16+ (Neon.tech) with AshPostgres |
+| Authentication | Ash Authentication (OAuth, magic links, password) |
 | Process Management | OTP GenServers, DynamicSupervisors, Horde |
-| P2P Storage | Iroh (distributed document sync) |
+| P2P Storage | Iroh (distributed document sync) with Automerge CRDTs |
 | WebRTC | Membrane RTC Engine with ex_webrtc |
 | Deployment | Fly.io with hot code upgrades (FlyDeploy) |
 | HTTP Client | Finch, Req |
+| Clustering | Horde, DNSCluster, libcluster |
 
 ## Further Reading
 
@@ -291,14 +431,25 @@ Key environment variables (see `.env.sample`):
 - `docs/simulator-integration.md` - Sensor simulation
 - `docs/scalability.md` - Scaling characteristics and tuning
 - `docs/beam-vm-tuning.md` - BEAM VM optimization
+- `docs/supervision-tree.md` - Mermaid diagrams of supervision tree
 
 **Architecture & Planning:**
 - `docs/CLUSTERING_PLAN.md` - Distributed clustering roadmap
 - `docs/room-markdown-format.md` - Room document format specification
 - `docs/attributes.md` - Supported sensor attribute types
+- `docs/letsgobio.md` - Biomimetic layer documentation
+
+**Agent Reports (`.claude/agents/reports/`):**
+- `resilient-systems-architect-report.md` - OTP architecture assessment
+- `security-advisor-report.md` - Security posture analysis
+- `livebook-tester-report.md` - Testing strategy and coverage
+- `interdisciplinary-innovator-report.md` - Biomimetic patterns analysis
+- `api-client-developer-report.md` - API client development guide
+- `elixir-test-accessibility-expert-report.md` - Testing and accessibility audit
 
 **External Documentation:**
 - [Ash Framework Docs](https://hexdocs.pm/ash)
 - [Phoenix LiveView Docs](https://hexdocs.pm/phoenix_live_view)
 - [Membrane RTC Engine](https://hexdocs.pm/membrane_rtc_engine)
 - [Iroh Docs](https://iroh.computer/docs)
+- [Horde Documentation](https://hexdocs.pm/horde)

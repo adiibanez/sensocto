@@ -2,6 +2,8 @@
 
 This document provides a visual representation of Sensocto's OTP supervision tree architecture.
 
+**Last Updated:** January 2026
+
 ## Mermaid Diagram
 
 ```mermaid
@@ -9,21 +11,32 @@ flowchart TB
     subgraph Root["Sensocto.Supervisor - rest_for_one"]
         subgraph L1["Layer 1: Infrastructure.Supervisor"]
             Telemetry["Telemetry"]
-            Repo["Repo"]
+            TaskSup["Task.Supervisor"]
+            Repo["Repo (Primary)"]
+            RepoReplica["Repo.Replica"]
+            DNS["DNSCluster"]
             PubSub["PubSub"]
             Presence["Presence"]
-            DNS["DNSCluster"]
             Finch["Finch"]
         end
 
         subgraph L2["Layer 2: Registry.Supervisor"]
-            SensorReg["SimpleSensorRegistry"]
-            AttrReg["SimpleAttributeRegistry"]
-            RoomReg["RoomRegistry"]
-            JoinReg["RoomJoinCodeRegistry"]
-            CallReg["CallRegistry"]
-            MediaReg["MediaRegistry"]
-            Obj3DReg["Object3DRegistry"]
+            subgraph SensorRegs["Sensor Registries"]
+                SensorReg["SimpleSensorRegistry"]
+                AttrReg["SimpleAttributeRegistry"]
+                PairReg["SensorPairRegistry"]
+            end
+            subgraph RoomRegs["Room Registries"]
+                RoomReg["RoomRegistry"]
+                JoinReg["RoomJoinCodeRegistry"]
+                DistRoomReg["DistributedRoomRegistry (Horde)"]
+                DistJoinReg["DistributedJoinCodeRegistry (Horde)"]
+            end
+            subgraph FeatureRegs["Feature Registries"]
+                CallReg["CallRegistry"]
+                MediaReg["MediaRegistry"]
+                Obj3DReg["Object3DRegistry"]
+            end
         end
 
         subgraph L3["Layer 3: Storage.Supervisor - rest_for_one"]
@@ -31,31 +44,41 @@ flowchart TB
             RoomStore["RoomStore"]
             IrohSync["Iroh.RoomSync"]
             CRDT["RoomStateCRDT"]
+            RoomPresence["RoomPresenceServer"]
         end
 
-        subgraph L4["Layer 4: Bio.Supervisor"]
-            Novelty["NoveltyDetector"]
-            LoadBalancer["PredictiveLoadBalancer"]
-            Tuner["HomeostaticTuner"]
+        subgraph L4["Layer 4: Bio.Supervisor (Biomimetic)"]
+            Novelty["NoveltyDetector<br/>(Locus Coeruleus)"]
+            LoadBalancer["PredictiveLoadBalancer<br/>(Cerebellum)"]
+            Tuner["HomeostaticTuner<br/>(Synaptic Plasticity)"]
+            Arbiter["ResourceArbiter<br/>(Lateral Inhibition)"]
+            Circadian["CircadianScheduler<br/>(SCN)"]
         end
 
         subgraph L5["Layer 5: Domain.Supervisor"]
-            Attention["AttentionTracker"]
+            Attention["AttentionTracker (ETS)"]
+            SysLoad["SystemLoadMonitor (ETS)"]
+            SensorsState["SensorsStateAgent"]
 
             subgraph SensorsSup["SensorsDynamicSupervisor"]
-                Sensor1["SimpleSensor"]
-                Attr1["AttributeStore"]
+                subgraph SensorSup["SensorSupervisor (per sensor)"]
+                    Sensor1["SimpleSensor"]
+                    Attr1["AttributeStore"]
+                end
             end
 
-            subgraph RoomsSup["RoomsDynamicSupervisor"]
+            subgraph RoomsSup["RoomsDynamicSupervisor (Horde)"]
                 Room1["RoomServer"]
             end
 
             CallSup["CallSupervisor"]
             MediaSup["MediaPlayerSupervisor"]
             Obj3DSup["Object3DPlayerSupervisor"]
+            RepoPool["RepoReplicatorPool (8)"]
+            SearchIdx["Search.SearchIndex"]
         end
 
+        GuestStore["GuestUserStore (2h TTL)"]
         Endpoint["SensoctoWeb.Endpoint"]
         Auth["AshAuthentication.Supervisor"]
 
@@ -69,7 +92,8 @@ flowchart TB
     Obj3DReg --> IrohStore
     CRDT --> Novelty
     Tuner --> Attention
-    Obj3DSup --> Endpoint
+    Obj3DSup --> GuestStore
+    GuestStore --> Endpoint
     Endpoint --> Auth
     Auth -.-> SimMgr
 
@@ -81,12 +105,12 @@ flowchart TB
     classDef endpoint fill:#e0f2f1,stroke:#00695c
     classDef optional fill:#f5f5f5,stroke:#616161,stroke-dasharray:5,5
 
-    class Telemetry,Repo,PubSub,Presence,DNS,Finch infrastructure
-    class SensorReg,AttrReg,RoomReg,JoinReg,CallReg,MediaReg,Obj3DReg registry
-    class IrohStore,RoomStore,IrohSync,CRDT storage
-    class Novelty,LoadBalancer,Tuner bio
-    class Attention,CallSup,MediaSup,Obj3DSup,Sensor1,Attr1,Room1 domain
-    class Endpoint,Auth endpoint
+    class Telemetry,TaskSup,Repo,RepoReplica,PubSub,Presence,DNS,Finch infrastructure
+    class SensorReg,AttrReg,PairReg,RoomReg,JoinReg,DistRoomReg,DistJoinReg,CallReg,MediaReg,Obj3DReg registry
+    class IrohStore,RoomStore,IrohSync,CRDT,RoomPresence storage
+    class Novelty,LoadBalancer,Tuner,Arbiter,Circadian bio
+    class Attention,SysLoad,SensorsState,CallSup,MediaSup,Obj3DSup,RepoPool,SearchIdx,Sensor1,Attr1,Room1 domain
+    class GuestStore,Endpoint,Auth endpoint
     class SimMgr,SimConn optional
 ```
 
@@ -153,9 +177,32 @@ flowchart TD
 
 ## Blast Radius
 
-| Crash | Impact |
-|-------|--------|
-| Single sensor | Only that sensor restarts |
-| Sensor registry | Brief lookup failure, rooms unaffected |
-| Storage layer | All storage restarts, domains continue |
-| Infrastructure | Full cascade restart, clean recovery |
+| Crash Location | Impact | Recovery Time | Affected Users |
+|----------------|--------|---------------|----------------|
+| Single SimpleSensor | Only that sensor restarts | ~100ms | Users viewing that sensor |
+| Single RoomServer | Only that room restarts | ~200ms | Room members |
+| Sensor registry | Brief lookup failure | ~500ms | All sensor lookups |
+| Room registry | Brief lookup failure | ~500ms | Room joins/lookups |
+| Bio.NoveltyDetector | Novelty detection offline | ~100ms | None (advisory only) |
+| Iroh.RoomStore | All storage processes restart | ~2s | Room state operations |
+| PubSub | Full infrastructure cascade | ~5s | All users |
+| Repo | Full infrastructure cascade | ~5s | All users |
+
+## ETS Tables (Fast Path Lookups)
+
+| Table | Owner | Purpose |
+|-------|-------|---------|
+| `:attention_tracker` | AttentionTracker | O(1) attention level queries |
+| `:system_load` | SystemLoadMonitor | O(1) load metrics |
+| `:novelty_detector` | NoveltyDetector | O(1) anomaly scores |
+
+## PubSub Topics
+
+| Topic Pattern | Publisher | Subscribers |
+|---------------|-----------|-------------|
+| `sensor:SENSOR_ID:data` | SimpleSensor | LiveViews |
+| `attention:SENSOR_ID` | AttentionTracker | SimpleSensor |
+| `system:load` | SystemLoadMonitor | AttentionTracker |
+| `rooms:cluster` | RoomsDynamicSupervisor | LiveViews |
+| `sensors:global` | SensorsDynamicSupervisor | LiveViews |
+| `bio:novelty:SENSOR_ID` | NoveltyDetector | AttentionTracker |

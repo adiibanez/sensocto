@@ -71,6 +71,10 @@ defmodule Sensocto.Domain.Supervisor do
       # Sensor domain - manages individual sensor processes
       Sensocto.SensorsDynamicSupervisor,
 
+      # Connector domain - distributed connector coordination
+      # Uses :pg for cluster-wide connector discovery and ETS for local storage
+      Sensocto.Sensors.ConnectorManager,
+
       # Room domain - distributed room processes (Horde)
       Sensocto.RoomsDynamicSupervisor,
 

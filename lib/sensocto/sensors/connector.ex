@@ -50,7 +50,7 @@ defmodule Sensocto.Sensors.Connector do
 
     create :register do
       description "Register a new connector when client connects"
-      accept [:id, :name, :connector_type, :configuration, :user_id]
+      accept [:id, :name, :connector_type, :configuration, :user_id, :node, :pid]
 
       change set_attribute(:status, :online)
       change set_attribute(:last_seen_at, &DateTime.utc_now/0)

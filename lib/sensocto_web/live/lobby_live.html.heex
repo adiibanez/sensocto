@@ -173,6 +173,16 @@
         {@object3d_viewers}
       </span>
     </button>
+
+    <%!-- Sync Status Indicator --%>
+    <.live_component
+      module={SensoctoWeb.Live.Components.SyncStatusComponent}
+      id="lobby-sync-status"
+      synced_users={@synced_users}
+      solo_users={@solo_users}
+      controller_user_id={@media_controller_user_id}
+      current_user={@current_user}
+    />
   </div>
 
   <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>

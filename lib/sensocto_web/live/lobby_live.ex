@@ -175,10 +175,12 @@ defmodule SensoctoWeb.LobbyLive do
 
         # Track this connection's presence with their current room mode
         # Using a unique key per connection to count each tab separately
+        user_name = Map.get(user, :email) || Map.get(user, :display_name) || "Anonymous"
+
         Presence.track(self(), "room:lobby:mode_presence", presence_key, %{
           room_mode: :media,
           user_id: user.id,
-          user_name: user.email || "Anonymous",
+          user_name: user_name,
           sync_mode: :synced
         })
 
@@ -1465,7 +1467,7 @@ defmodule SensoctoWeb.LobbyLive do
       Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
         room_mode: new_mode,
         user_id: user.id,
-        user_name: user.email || "Anonymous",
+        user_name: Map.get(user, :email) || Map.get(user, :display_name) || "Anonymous",
         sync_mode: socket.assigns.sync_mode
       })
     end
@@ -1513,7 +1515,7 @@ defmodule SensoctoWeb.LobbyLive do
       Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
         room_mode: socket.assigns.lobby_mode,
         user_id: user.id,
-        user_name: user.email || "Anonymous",
+        user_name: Map.get(user, :email) || Map.get(user, :display_name) || "Anonymous",
         sync_mode: new_mode
       })
     end
@@ -1550,7 +1552,7 @@ defmodule SensoctoWeb.LobbyLive do
       Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
         room_mode: new_mode,
         user_id: user.id,
-        user_name: user.email || "Anonymous",
+        user_name: Map.get(user, :email) || Map.get(user, :display_name) || "Anonymous",
         sync_mode: socket.assigns.sync_mode
       })
     end

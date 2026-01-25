@@ -221,3 +221,6 @@ config :sensocto, :simulator,
   enabled: true,
   autostart: true,
   config_path: "config/simulators.yaml"
+
+# OpenAPI spec - disable caching in development for faster iteration
+config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache

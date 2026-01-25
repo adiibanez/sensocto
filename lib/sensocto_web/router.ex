@@ -200,6 +200,25 @@ defmodule SensoctoWeb.Router do
     get "/ready", HealthController, :readiness
   end
 
+  # OpenAPI specification and Swagger UI
+  # These routes are only available when open_api_spex is loaded
+  if Code.ensure_loaded?(OpenApiSpex) do
+    pipeline :openapi do
+      plug :accepts, ["json"]
+      plug OpenApiSpex.Plug.PutApiSpec, module: SensoctoWeb.ApiSpec
+    end
+
+    scope "/api" do
+      pipe_through :openapi
+      get "/openapi", OpenApiSpex.Plug.RenderSpec, []
+    end
+
+    scope "/" do
+      pipe_through :browser
+      get "/swaggerui", OpenApiSpex.Plug.SwaggerUI, path: "/api/openapi"
+    end
+  end
+
   # end
 
   defp admin_basic_auth(conn, _opts) do

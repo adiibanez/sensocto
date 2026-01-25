@@ -1,6 +1,7 @@
 defmodule SensoctoWeb.CoreComponentsTest do
   use SensoctoWeb.ConnCase, async: true
   import Phoenix.LiveViewTest
+  import Phoenix.Component
   import SensoctoWeb.CoreComponents
 
   describe "modal/1 accessibility" do

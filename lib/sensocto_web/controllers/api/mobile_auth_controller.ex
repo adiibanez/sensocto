@@ -6,7 +6,56 @@ defmodule SensoctoWeb.Api.MobileAuthController do
   and retrieve user information.
   """
   use SensoctoWeb, :controller
+  use OpenApiSpex.ControllerSpecs
   require Logger
+
+  alias SensoctoWeb.Schemas.Auth
+  alias SensoctoWeb.Schemas.Common
+
+  tags(["Authentication"])
+
+  security([%{"bearerAuth" => []}])
+
+  operation(:verify,
+    summary: "Verify authentication token",
+    description: """
+    Verifies a JWT token and returns the authenticated user's information.
+    The token should be sent as a Bearer token in the Authorization header.
+    This endpoint is used by mobile apps after scanning a QR code or
+    receiving a deep link with an authentication token.
+    """,
+    responses: [
+      ok: {"Successful verification", "application/json", Auth.VerifyResponse},
+      unauthorized: {"Invalid or missing token", "application/json", Common.Error}
+    ]
+  )
+
+  operation(:me,
+    summary: "Get current user info",
+    description: """
+    Returns the current authenticated user's information.
+    Same as verify but semantically for getting user info after auth.
+    """,
+    responses: [
+      ok: {"User information", "application/json", Auth.VerifyResponse},
+      unauthorized: {"Invalid or missing token", "application/json", Common.Error}
+    ]
+  )
+
+  operation(:debug_verify,
+    summary: "Debug token verification",
+    description: """
+    Debug endpoint to manually verify a token without the load_from_bearer plug.
+    For testing purposes only.
+    """,
+    security: [],
+    request_body: {"Token to verify", "application/json", Auth.DebugVerifyRequest},
+    responses: [
+      ok: {"Successful verification", "application/json", Auth.VerifyResponse},
+      bad_request: {"Missing token", "application/json", Common.Error},
+      unauthorized: {"Invalid token", "application/json", Common.Error}
+    ]
+  )
 
   # Catch any crashes and return a proper error
   def call(conn, opts) do

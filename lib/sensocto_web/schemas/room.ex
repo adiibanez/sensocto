@@ -59,7 +59,10 @@ defmodule SensoctoWeb.Schemas.Room do
       properties: %{
         sensor_id: %Schema{type: :string, description: "Unique sensor identifier"},
         sensor_name: %Schema{type: :string, description: "Human-readable sensor name"},
-        sensor_type: %Schema{type: :string, description: "Type of sensor (e.g., generic, wearable)"},
+        sensor_type: %Schema{
+          type: :string,
+          description: "Type of sensor (e.g., generic, wearable)"
+        },
         connector_id: %Schema{type: :string, description: "ID of the connector/user"},
         connector_name: %Schema{type: :string, description: "Name of the connector/user"},
         activity_status: %Schema{
@@ -98,10 +101,17 @@ defmodule SensoctoWeb.Schemas.Room do
         name: %Schema{type: :string, description: "Room name"},
         description: %Schema{type: :string, description: "Room description", nullable: true},
         owner_id: %Schema{type: :string, format: :uuid, description: "ID of the room owner"},
-        join_code: %Schema{type: :string, description: "Code for joining the room", nullable: true},
+        join_code: %Schema{
+          type: :string,
+          description: "Code for joining the room",
+          nullable: true
+        },
         is_public: %Schema{type: :boolean, description: "Whether the room is publicly accessible"},
         is_persisted: %Schema{type: :boolean, description: "Whether room data is persisted"},
-        calls_enabled: %Schema{type: :boolean, description: "Whether video/voice calls are enabled"},
+        calls_enabled: %Schema{
+          type: :boolean,
+          description: "Whether video/voice calls are enabled"
+        },
         media_playback_enabled: %Schema{
           type: :boolean,
           description: "Whether media playback is enabled"

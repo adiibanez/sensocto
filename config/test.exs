@@ -46,6 +46,12 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
+# Mark test environment for rate limiter to skip by default
+config :sensocto, env: :test
+
+# Disable rate limiting in tests by default (can be enabled per-test)
+config :sensocto, enable_rate_limiting_in_test: false
+
 # Wallaby browser testing configuration
 config :wallaby,
   driver: Wallaby.Chrome,

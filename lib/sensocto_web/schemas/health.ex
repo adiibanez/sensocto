@@ -16,7 +16,11 @@ defmodule SensoctoWeb.Schemas.Health do
       type: :object,
       properties: %{
         status: %Schema{type: :string, enum: ["ok"], description: "Status indicator"},
-        timestamp: %Schema{type: :string, format: :"date-time", description: "Current server time"}
+        timestamp: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "Current server time"
+        }
       },
       required: [:status, :timestamp],
       example: %{

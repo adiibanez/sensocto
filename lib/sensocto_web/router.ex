@@ -40,6 +40,23 @@ defmodule SensoctoWeb.Router do
     plug :admin_basic_auth
   end
 
+  # Rate limiting pipelines for authentication endpoints
+  pipeline :rate_limit_auth do
+    plug SensoctoWeb.Plugs.RateLimiter, type: :auth
+  end
+
+  pipeline :rate_limit_registration do
+    plug SensoctoWeb.Plugs.RateLimiter, type: :registration
+  end
+
+  pipeline :rate_limit_api_auth do
+    plug SensoctoWeb.Plugs.RateLimiter, type: :api_auth
+  end
+
+  pipeline :rate_limit_guest_auth do
+    plug SensoctoWeb.Plugs.RateLimiter, type: :guest_auth
+  end
+
   scope "/", SensoctoWeb do
     pipe_through [:browser]
 
@@ -60,18 +77,48 @@ defmodule SensoctoWeb.Router do
     # live "/sensors/:id/edit", SensorLive.Index, :edit
     # live "/sensors/:id", SensorLive.Index, :show
 
-    # Guest authentication route - must come before any auth routes
-    get "/auth/guest/:guest_id/:token", GuestAuthController, :sign_in
-
-    auth_routes(Controllers.AuthController, Sensocto.Accounts.User, path: "/auth")
+    # Sign out route (no rate limiting needed)
     sign_out_route(Controllers.AuthController)
+  end
 
-    # Prebuilt LiveViews for signing in, registration, resetting, etc.
-    # Leave out `register_path` and `reset_path` if you don't want to support
-    # user registration and/or password resets respectively.
+  # Rate-limited authentication routes
+  scope "/", SensoctoWeb do
+    pipe_through [:browser, :rate_limit_guest_auth]
 
-    # live "/register", AuthIndex, :register
-    # live "/sign-in", AuthIndex, :sign_in
+    # Guest authentication route - rate limited
+    get "/auth/guest/:guest_id/:token", GuestAuthController, :sign_in
+  end
+
+  scope "/", SensoctoWeb do
+    pipe_through [:browser, :rate_limit_auth]
+
+    # Standard auth routes with rate limiting
+    auth_routes(Controllers.AuthController, Sensocto.Accounts.User, path: "/auth")
+
+    # Sign-in, registration, and reset routes with rate limiting
+    sign_in_route(
+      live_view: SensoctoWeb.CustomSignInLive,
+      overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default],
+      register_path: "/register",
+      reset_path: "/reset",
+      auth_routes_prefix: "/auth"
+    )
+
+    reset_route(auth_routes_prefix: "/auth")
+
+    # Magic link confirmation page (for require_interaction? true)
+    magic_sign_in_route(
+      Sensocto.Accounts.User,
+      :magic_link,
+      auth_routes_prefix: "/auth",
+      live_view: SensoctoWeb.MagicSignInLive,
+      overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
+    )
+  end
+
+  # Authenticated routes (no rate limiting needed - already authenticated)
+  scope "/", SensoctoWeb do
+    pipe_through [:browser]
 
     ash_authentication_live_session :authentication_required,
       on_mount: [
@@ -116,25 +163,6 @@ defmodule SensoctoWeb.Router do
       on_mount: {LiveUserAuth, :live_user_optional} do
       live "/rooms/join/:code", RoomJoinLive, :join
     end
-
-    sign_in_route(
-      live_view: SensoctoWeb.CustomSignInLive,
-      overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default],
-      register_path: "/register",
-      reset_path: "/reset",
-      auth_routes_prefix: "/auth"
-    )
-
-    reset_route(auth_routes_prefix: "/auth")
-
-    # Magic link confirmation page (for require_interaction? true)
-    magic_sign_in_route(
-      Sensocto.Accounts.User,
-      :magic_link,
-      auth_routes_prefix: "/auth",
-      live_view: SensoctoWeb.MagicSignInLive,
-      overrides: [SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
-    )
   end
 
   scope "/admin", SensoctoWeb do
@@ -154,8 +182,10 @@ defmodule SensoctoWeb.Router do
     ash_admin "/ash-admin"
   end
 
-  # Mobile API endpoints (bypasses load_from_bearer to handle token manually)
+  # Mobile API authentication endpoints with rate limiting
   scope "/api", SensoctoWeb.Api do
+    pipe_through [:rate_limit_api_auth]
+
     # Verify token and get user info - handle token verification in controller
     get "/auth/verify", MobileAuthController, :verify
     post "/auth/verify", MobileAuthController, :verify
@@ -163,7 +193,10 @@ defmodule SensoctoWeb.Router do
 
     # Debug endpoint for testing
     post "/auth/debug", MobileAuthController, :debug_verify
+  end
 
+  # Mobile API endpoints (non-auth routes - no rate limiting)
+  scope "/api", SensoctoWeb.Api do
     # Room REST API endpoints
     # GET /api/rooms - list user's rooms
     get "/rooms", RoomController, :index

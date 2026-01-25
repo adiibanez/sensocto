@@ -170,6 +170,26 @@ config :mime, :types, %{
 # LVN_ACTIVATION   ],
 # LVN_ACTIVATION   output: "priv/static/assets"
 
+# Rate limiting configuration for authentication endpoints
+# Protects against brute-force attacks and credential stuffing
+config :sensocto, SensoctoWeb.Plugs.RateLimiter,
+  # Authentication endpoints (login, password reset, magic link)
+  # 10 requests per minute per IP
+  auth_limit: 10,
+  auth_window_ms: 60_000,
+  # Registration endpoints - stricter to prevent bot signups
+  # 5 requests per minute per IP
+  registration_limit: 5,
+  registration_window_ms: 60_000,
+  # API authentication endpoints (mobile token verification)
+  # 20 requests per minute per IP
+  api_auth_limit: 20,
+  api_auth_window_ms: 60_000,
+  # Guest authentication - moderate limits
+  # 10 requests per minute per IP
+  guest_auth_limit: 10,
+  guest_auth_window_ms: 60_000
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

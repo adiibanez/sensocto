@@ -28,9 +28,13 @@
     // Mobile detection for adaptive performance
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+    // Edge browser detection - Edge has issues with MediaPipe GPU delegate
+    const isEdge = /Edg\//i.test(navigator.userAgent);
+
     // Lower FPS on mobile to reduce main thread blocking
     // Mobile GPUs struggle with MediaPipe at higher frame rates
-    const TARGET_FPS = isMobile ? 8 : 15;
+    // Edge with CPU delegate also needs lower FPS
+    const TARGET_FPS = (isMobile || isEdge) ? 8 : 15;
     const FRAME_INTERVAL = 1000 / TARGET_FPS;
     let lastFrameTime = 0;
 
@@ -38,27 +42,59 @@
     let frameSkipCounter = 0;
     const MOBILE_FRAME_SKIP = isMobile ? 1 : 0; // Skip every other detection on mobile
 
+    // Track which delegate is being used
+    let usingDelegate = "GPU";
+
     async function initPoseLandmarker() {
+        // Determine initial delegate - Edge browser has known issues with GPU delegate
+        const preferredDelegate = isEdge ? "CPU" : "GPU";
+
         try {
             const vision = await FilesetResolver.forVisionTasks(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
             );
 
-            poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                    delegate: "GPU"
-                },
-                runningMode: "VIDEO",
-                numPoses: 1,
-                minPoseDetectionConfidence: 0.5,
-                minPosePresenceConfidence: 0.5,
-                minTrackingConfidence: 0.5,
-                outputSegmentationMasks: false
-            });
+            // Try with preferred delegate first
+            try {
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                        delegate: preferredDelegate
+                    },
+                    runningMode: "VIDEO",
+                    numPoses: 1,
+                    minPoseDetectionConfidence: 0.5,
+                    minPosePresenceConfidence: 0.5,
+                    minTrackingConfidence: 0.5,
+                    outputSegmentationMasks: false
+                });
+                usingDelegate = preferredDelegate;
+                logger.log(loggerCtxName, `PoseLandmarker initialized with ${preferredDelegate} delegate`);
+                return true;
+            } catch (gpuError) {
+                // If GPU failed, try CPU fallback (unless we already tried CPU)
+                if (preferredDelegate === "GPU") {
+                    logger.warn(loggerCtxName, `GPU delegate failed, falling back to CPU:`, gpuError);
 
-            logger.log(loggerCtxName, "PoseLandmarker initialized successfully");
-            return true;
+                    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                            delegate: "CPU"
+                        },
+                        runningMode: "VIDEO",
+                        numPoses: 1,
+                        minPoseDetectionConfidence: 0.5,
+                        minPosePresenceConfidence: 0.5,
+                        minTrackingConfidence: 0.5,
+                        outputSegmentationMasks: false
+                    });
+                    usingDelegate = "CPU";
+                    logger.log(loggerCtxName, "PoseLandmarker initialized with CPU delegate (fallback)");
+                    return true;
+                } else {
+                    throw gpuError;
+                }
+            }
         } catch (error) {
             logger.error(loggerCtxName, "Failed to initialize PoseLandmarker:", error);
             return false;
@@ -525,7 +561,7 @@
         class:active={detecting}
         class:standalone={detecting && usingStandalone}
         title={detecting
-            ? `Pose detection active (${usingStandalone ? "standalone camera" : "call video"})`
+            ? `Pose detection active (${usingStandalone ? "standalone camera" : "call video"}, ${usingDelegate})`
             : "Start pose detection"}
     >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
@@ -540,11 +576,14 @@
         {#if detecting}
             <button onclick={disablePose} class="btn btn-blue text-xs">Stop Pose</button>
             <span class="text-xs text-gray-400">
-                {TARGET_FPS} FPS{isMobile ? ' (mobile)' : ''}
+                {TARGET_FPS} FPS{isMobile ? ' (mobile)' : ''}{isEdge ? ' (Edge)' : ''}
                 {#if usingStandalone}
                     <span class="text-cyan-400">(standalone)</span>
                 {:else}
                     <span class="text-green-400">(call)</span>
+                {/if}
+                {#if usingDelegate === "CPU"}
+                    <span class="text-yellow-400">(CPU)</span>
                 {/if}
             </span>
         {:else}

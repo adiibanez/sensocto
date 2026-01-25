@@ -1,0 +1,53 @@
+name: Testing & Livebook Request
+description: Request test creation or Livebook documentation from the livebook-tester agent
+title: "[Testing] "
+labels: ["agent:livebook-tester", "testing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Testing & Documentation Request
+        The livebook-tester agent will create interactive Livebooks and comprehensive tests.
+
+  - type: dropdown
+    id: request-type
+    attributes:
+      label: Request Type
+      options:
+        - Create Test Suite
+        - Create Interactive Livebook
+        - Debug / Reproduce Bug
+        - End-to-End Test Design
+        - Document Feature with Examples
+        - Gamify Testing Workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what you need tested or documented
+      placeholder: |
+        I need comprehensive tests for the new sensor aggregation module...
+    validations:
+      required: true
+
+  - type: textarea
+    id: modules
+    attributes:
+      label: Modules to Test/Document
+      description: List specific modules or features
+      placeholder: |
+        - Sensocto.Sensors.Aggregator
+        - The time window aggregation logic
+
+  - type: textarea
+    id: edge-cases
+    attributes:
+      label: Known Edge Cases
+      description: Any specific edge cases or scenarios to cover?
+      placeholder: |
+        - Empty sensor readings
+        - Readings with nil values
+        - Very large datasets

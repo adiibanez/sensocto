@@ -132,7 +132,7 @@ defmodule SensoctoWeb.SearchLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="global-search" phx-hook="GlobalSearch">
+    <div id="search-container" phx-hook="GlobalSearch">
       <div
         :if={@open}
         class="fixed inset-0 z-[100] overflow-y-auto"
@@ -155,12 +155,13 @@ defmodule SensoctoWeb.SearchLive do
                 type="outline"
                 class="h-5 w-5 text-gray-400 mr-3"
               />
-              <form phx-change="search" phx-submit="search" class="flex-1">
+              <form phx-change="search" phx-submit="search" class="flex-1" role="search">
                 <input
                   type="text"
                   name="query"
                   value={@query}
                   placeholder="Search sensors, rooms..."
+                  aria-label="Search sensors, rooms, and users"
                   class="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none text-lg"
                   autocomplete="off"
                   phx-debounce="150"

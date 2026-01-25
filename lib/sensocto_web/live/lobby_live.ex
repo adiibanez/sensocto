@@ -144,6 +144,11 @@ defmodule SensoctoWeb.LobbyLive do
         media_control_request_timer: nil,
         # Controller user IDs for request modals
         media_controller_user_id: nil,
+        # Sync mode: :synced (default) or :solo (watch independently)
+        sync_mode: :synced,
+        # Users grouped by sync mode for visual indicator
+        synced_users: [],
+        solo_users: [],
         # Performance monitoring: measurement buffer for batching push_events
         measurement_buffer: %{},
         measurement_flush_timer: nil,
@@ -172,11 +177,14 @@ defmodule SensoctoWeb.LobbyLive do
         # Using a unique key per connection to count each tab separately
         Presence.track(self(), "room:lobby:mode_presence", presence_key, %{
           room_mode: :media,
-          user_id: user.id
+          user_id: user.id,
+          user_name: user.email || "Anonymous",
+          sync_mode: :synced
         })
 
         # Get initial presence counts
         {media_count, object3d_count} = count_room_mode_presence("lobby")
+        {synced_users, solo_users} = get_sync_mode_users("lobby")
 
         # Schedule refreshes to catch late-registered attributes
         # Attributes are auto-registered on first data receipt, which may happen after mount
@@ -190,6 +198,8 @@ defmodule SensoctoWeb.LobbyLive do
         |> assign(:presence_key, presence_key)
         |> assign(:media_viewers, media_count)
         |> assign(:object3d_viewers, object3d_count)
+        |> assign(:synced_users, synced_users)
+        |> assign(:solo_users, solo_users)
       else
         assign(new_socket, :presence_key, presence_key)
       end
@@ -244,6 +254,27 @@ defmodule SensoctoWeb.LobbyLive do
         %{room_mode: :media} -> {media + 1, object3d}
         %{room_mode: :object3d} -> {media, object3d + 1}
         _ -> {media, object3d}
+      end
+    end)
+  end
+
+  defp get_sync_mode_users(room_id) do
+    presences = Presence.list("room:#{room_id}:mode_presence")
+
+    Enum.reduce(presences, {[], []}, fn {_key, %{metas: metas}}, {synced, solo} ->
+      case List.last(metas) do
+        %{sync_mode: :solo, user_id: uid, user_name: uname} ->
+          {synced, [%{user_id: uid, user_name: uname} | solo]}
+
+        %{user_id: uid, user_name: uname} ->
+          # Default to synced if sync_mode not set
+          {[%{user_id: uid, user_name: uname} | synced], solo}
+
+        %{user_id: uid} ->
+          {[%{user_id: uid, user_name: "Anonymous"} | synced], solo}
+
+        _ ->
+          {synced, solo}
       end
     end)
   end
@@ -508,11 +539,14 @@ defmodule SensoctoWeb.LobbyLive do
         socket
       ) do
     {media_count, object3d_count} = count_room_mode_presence("lobby")
+    {synced_users, solo_users} = get_sync_mode_users("lobby")
 
     {:noreply,
      socket
      |> assign(:media_viewers, media_count)
-     |> assign(:object3d_viewers, object3d_count)}
+     |> assign(:object3d_viewers, object3d_count)
+     |> assign(:synced_users, synced_users)
+     |> assign(:solo_users, solo_users)}
   end
 
   # Handle sensor presence diffs
@@ -835,32 +869,45 @@ defmodule SensoctoWeb.LobbyLive do
       "LobbyLive received media_state_changed: #{inspect(state.state)} pos=#{state.position_seconds}"
     )
 
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      player_state: state.state,
-      position_seconds: state.position_seconds,
-      current_item: state.current_item
-    )
+    # In solo mode, ignore position syncs but still update component state for info display
+    if socket.assigns.sync_mode == :solo do
+      # Only update component state, don't push sync events to JS
+      send_update(MediaPlayerComponent,
+        id: "lobby-media-player",
+        player_state: state.state,
+        position_seconds: state.position_seconds,
+        current_item: state.current_item
+      )
 
-    # Push sync event directly to JS hook from parent LiveView
-    socket =
-      push_event(socket, "media_sync", %{
-        state: state.state,
-        position_seconds: state.position_seconds
-      })
+      {:noreply, socket}
+    else
+      send_update(MediaPlayerComponent,
+        id: "lobby-media-player",
+        player_state: state.state,
+        position_seconds: state.position_seconds,
+        current_item: state.current_item
+      )
 
-    # Trigger bump animation only on active user interaction (not heartbeat syncs)
-    is_active = Map.get(state, :is_active, false)
+      # Push sync event directly to JS hook from parent LiveView
+      socket =
+        push_event(socket, "media_sync", %{
+          state: state.state,
+          position_seconds: state.position_seconds
+        })
 
-    socket =
-      if is_active and not socket.assigns.media_bump do
-        Process.send_after(self(), :clear_media_bump, 300)
-        assign(socket, :media_bump, true)
-      else
-        socket
-      end
+      # Trigger bump animation only on active user interaction (not heartbeat syncs)
+      is_active = Map.get(state, :is_active, false)
 
-    {:noreply, socket}
+      socket =
+        if is_active and not socket.assigns.media_bump do
+          Process.send_after(self(), :clear_media_bump, 300)
+          assign(socket, :media_bump, true)
+        else
+          socket
+        end
+
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -936,29 +983,34 @@ defmodule SensoctoWeb.LobbyLive do
          %{camera_position: position, camera_target: target, user_id: user_id} = event},
         socket
       ) do
-    current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
+    # In solo mode, ignore camera syncs entirely
+    if socket.assigns.sync_mode == :solo do
+      {:noreply, socket}
+    else
+      current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
 
-    # Don't forward camera sync to the controller themselves - they're the source
-    if user_id != current_user_id do
-      send_update(Object3DPlayerComponent,
-        id: "lobby-object3d-player",
-        synced_camera_position: position,
-        synced_camera_target: target
-      )
-    end
-
-    # Trigger bump animation only on active camera movement (not heartbeat syncs)
-    is_active = Map.get(event, :is_active, false)
-
-    socket =
-      if is_active and not socket.assigns.object3d_bump do
-        Process.send_after(self(), :clear_object3d_bump, 300)
-        assign(socket, :object3d_bump, true)
-      else
-        socket
+      # Don't forward camera sync to the controller themselves - they're the source
+      if user_id != current_user_id do
+        send_update(Object3DPlayerComponent,
+          id: "lobby-object3d-player",
+          synced_camera_position: position,
+          synced_camera_target: target
+        )
       end
 
-    {:noreply, socket}
+      # Trigger bump animation only on active camera movement (not heartbeat syncs)
+      is_active = Map.get(event, :is_active, false)
+
+      socket =
+        if is_active and not socket.assigns.object3d_bump do
+          Process.send_after(self(), :clear_object3d_bump, 300)
+          assign(socket, :object3d_bump, true)
+        else
+          socket
+        end
+
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -1412,7 +1464,9 @@ defmodule SensoctoWeb.LobbyLive do
     if user && presence_key do
       Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
         room_mode: new_mode,
-        user_id: user.id
+        user_id: user.id,
+        user_name: user.email || "Anonymous",
+        sync_mode: socket.assigns.sync_mode
       })
     end
 
@@ -1449,6 +1503,25 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
+  def handle_event("toggle_sync_mode", _, socket) do
+    new_mode = if socket.assigns.sync_mode == :synced, do: :solo, else: :synced
+    user = socket.assigns.current_user
+    presence_key = socket.assigns[:presence_key]
+
+    # Update presence to reflect sync mode change
+    if user && presence_key do
+      Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
+        room_mode: socket.assigns.lobby_mode,
+        user_id: user.id,
+        user_name: user.email || "Anonymous",
+        sync_mode: new_mode
+      })
+    end
+
+    {:noreply, assign(socket, :sync_mode, new_mode)}
+  end
+
+  @impl true
   def handle_event("leave_call", _, socket) do
     {:noreply, push_event(socket, "leave_call", %{})}
   end
@@ -1476,7 +1549,9 @@ defmodule SensoctoWeb.LobbyLive do
     if user && presence_key do
       Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
         room_mode: new_mode,
-        user_id: user.id
+        user_id: user.id,
+        user_name: user.email || "Anonymous",
+        sync_mode: socket.assigns.sync_mode
       })
     end
 

@@ -44,9 +44,20 @@ defmodule SensoctoWeb.Endpoint do
     gzip: Mix.env() == :prod,
     only: SensoctoWeb.static_paths()
 
-  # Tidewave AI debugging (dev only)
+  # Tidewave AI debugging
+  # In dev: enabled by default (no auth required for localhost)
+  # In prod: requires ENABLE_TIDEWAVE=true and TIDEWAVE_USER/TIDEWAVE_PASS
   if Code.ensure_loaded?(Tidewave) do
-    plug Tidewave
+    if Mix.env() == :prod do
+      # Production: use authenticated wrapper with Basic Auth
+      # Runtime check happens inside the plug
+      plug SensoctoWeb.Plugs.AuthenticatedTidewave,
+        allow_remote_access: true,
+        allowed_origins: ["https://sensocto.fly.dev", "https://*.sensocto.fly.dev"]
+    else
+      # Development: no auth required (localhost only by default)
+      plug Tidewave
+    end
   end
 
   # Code reloading can be explicitly enabled under the

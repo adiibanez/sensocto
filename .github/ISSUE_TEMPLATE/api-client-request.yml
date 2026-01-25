@@ -1,0 +1,58 @@
+name: API Client Development
+description: Request API client development or improvement from the api-client-developer agent
+title: "[API Client] "
+labels: ["agent:api-client-developer", "sdk"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## API Client Development Request
+        The api-client-developer agent will help create or improve API clients for different platforms.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target Platform
+      description: Which platform needs the API client?
+      options:
+        - Unity (C#)
+        - Rust
+        - Python
+        - Livebook (Elixir)
+        - JavaScript/TypeScript
+        - Other
+      multiple: true
+    validations:
+      required: true
+
+  - type: dropdown
+    id: request-type
+    attributes:
+      label: Request Type
+      options:
+        - New SDK / Client Library
+        - Add Feature to Existing Client
+        - Improve Documentation
+        - Fix Bug in Client
+        - Improve Developer Onboarding
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what you need
+      placeholder: |
+        I need to add support for the new streaming endpoint in the Unity SDK...
+    validations:
+      required: true
+
+  - type: textarea
+    id: api-endpoints
+    attributes:
+      label: API Endpoints
+      description: List relevant API endpoints (if applicable)
+      placeholder: |
+        - POST /api/sensors
+        - GET /api/sensors/:id/stream

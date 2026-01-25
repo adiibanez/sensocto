@@ -118,19 +118,49 @@
         //sensorService.leaveChannel(channelIdentifier);
     });
 
+    // Detect iOS for permission handling
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    // Track permission state for UI feedback
+    let motionPermissionState = null; // 'granted', 'denied', 'prompt', or null
+
     function imuAvailable() {
         if (!isMobile()) return false;
 
         if ("LinearAccelerationSensor" in window && "Gyroscope" in window) {
             // Both Linear Acceleration and Gyroscope sensors are available. This is ideal for mobile devices.
+            // Note: These APIs are NOT available on iOS Safari
             return "mobile";
         } else if (window.DeviceMotionEvent) {
-            // DeviceMotionEvent is available, but specific sensor types are not guaranteed. This might work on some desktops.
+            // DeviceMotionEvent is available, but specific sensor types are not guaranteed.
+            // On iOS 13+, this requires explicit permission request
             return "desktop"; // Or 'maybe' if you're unsure
         } else {
             // No motion sensors are available
             return false;
         }
+    }
+
+    // iOS 13+ requires explicit permission for DeviceMotionEvent
+    async function requestMotionPermission() {
+        // Check if this is iOS and requires permission
+        if (typeof DeviceMotionEvent !== 'undefined' &&
+            typeof DeviceMotionEvent.requestPermission === 'function') {
+            try {
+                const permission = await DeviceMotionEvent.requestPermission();
+                logger.log(loggerCtxName, "DeviceMotionEvent permission:", permission);
+                motionPermissionState = permission;
+                return permission === 'granted';
+            } catch (error) {
+                logger.error(loggerCtxName, "Error requesting DeviceMotionEvent permission:", error);
+                motionPermissionState = 'denied';
+                return false;
+            }
+        }
+        // requestPermission not needed (non-iOS or older iOS)
+        motionPermissionState = 'granted';
+        return true;
     }
 
     function resetInitialOrientation() {
@@ -194,6 +224,21 @@
                 readingIMU = false; // Set readingIMU to false if an error occurs
             }
         } else if (imuType === "desktop") {
+            // On iOS 13+, DeviceMotionEvent requires explicit permission
+            // This MUST be called from a user gesture (click/tap)
+            const hasPermission = await requestMotionPermission();
+            if (!hasPermission) {
+                logger.error(loggerCtxName, "Motion permission denied on iOS");
+                return;
+            }
+
+            sensorService.setupChannel(channelIdentifier);
+            sensorService.registerAttribute(channelIdentifier, {
+                attribute_id: "imu",
+                attribute_type: "imu",
+                sampling_rate: imuFrequency,
+            });
+
             readingIMU = true;
             window.addEventListener("devicemotion", handleDeviceMotion);
         }
@@ -482,7 +527,14 @@
             on:click={readingIMU ? disableIMU : enableIMU}
             class="icon-btn"
             class:active={readingIMU}
-            title={readingIMU ? `IMU active (${imuFrequency}Hz)` : "Start IMU"}
+            class:error={motionPermissionState === 'denied'}
+            title={motionPermissionState === 'denied'
+                ? "Motion permission denied"
+                : readingIMU
+                    ? `IMU active (${imuFrequency}Hz)`
+                    : isIOS
+                        ? "Start IMU (will request permission)"
+                        : "Start IMU"}
         >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
                 <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM8.547 4.505a8.25 8.25 0 1011.672 11.672L8.547 4.505z" clip-rule="evenodd"/>
@@ -529,6 +581,10 @@
     }
     .icon-btn.active {
         background: #f97316;
+        color: white;
+    }
+    .icon-btn.error {
+        background: #dc2626;
         color: white;
     }
 </style>

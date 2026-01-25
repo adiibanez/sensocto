@@ -1,0 +1,64 @@
+name: Innovation & Brainstorm
+description: Request creative cross-domain problem solving from the interdisciplinary-innovator agent
+title: "[Innovation] "
+labels: ["agent:interdisciplinary-innovator", "innovation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Innovation & Cross-Domain Problem Solving
+        The interdisciplinary-innovator agent draws from biology, neurology, and systems thinking to find novel solutions.
+
+  - type: dropdown
+    id: problem-type
+    attributes:
+      label: Problem Type
+      options:
+        - Algorithm Design
+        - System Architecture
+        - Self-Healing/Resilience
+        - Adaptive Behavior
+        - Pattern Recognition
+        - Cross-Domain Synthesis
+        - Research Direction
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Description
+      description: Describe the challenge you're facing
+      placeholder: |
+        I'm struggling to design a fault-tolerant distributed system that can self-heal after failures...
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints & Requirements
+      description: List any constraints or requirements
+      placeholder: |
+        - Must work with existing Elixir infrastructure
+        - Needs to handle up to 10,000 concurrent connections
+        - Recovery time should be under 5 seconds
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What You've Tried
+      description: What approaches have you already considered?
+      placeholder: |
+        - Tried simple supervision trees but they don't handle cascading failures well
+        - Considered circuit breakers but need something more adaptive
+
+  - type: textarea
+    id: inspiration
+    attributes:
+      label: Inspiration Areas (Optional)
+      description: Are there any natural/biological systems you'd like the agent to draw from?
+      placeholder: |
+        - Immune systems
+        - Neural plasticity
+        - Swarm behavior

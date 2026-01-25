@@ -197,6 +197,7 @@
       is_lobby={true}
       current_user={@current_user}
       can_manage={true}
+      sync_mode={@sync_mode}
     />
   </div>
 
@@ -208,6 +209,7 @@
       is_lobby={true}
       current_user={@current_user}
       can_manage={true}
+      sync_mode={@sync_mode}
     />
   </div>
 
@@ -542,14 +544,18 @@
 
       <%!-- Join by Code --%>
       <div class="mb-6">
-        <label class="block text-sm font-medium text-gray-300 mb-2">Enter Room Code</label>
+        <label for="join_code" class="block text-sm font-medium text-gray-300 mb-2">
+          Enter Room Code
+        </label>
         <form phx-submit="join_room_by_code" class="flex gap-2">
           <input
             type="text"
             name="join_code"
+            id="join_code"
             value={@join_code}
             phx-change="update_join_code"
             placeholder="ABCD1234"
+            aria-describedby="join_code_help"
             class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white uppercase tracking-wider font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             maxlength="12"
             autocomplete="off"
@@ -561,7 +567,7 @@
             Join
           </button>
         </form>
-        <p class="text-xs text-gray-500 mt-1">
+        <p id="join_code_help" class="text-xs text-gray-500 mt-1">
           Enter the room's join code to connect with your sensors
         </p>
       </div>

@@ -382,7 +382,10 @@ Hooks.MediaPlayerHook = {
 
         // Sync-triggered seek cooldown - prevents seek loops when buffering
         this.lastSyncSeekAt = 0;
-        this.SYNC_SEEK_COOLDOWN_MS = 5000; // 5 seconds after a sync seek before allowing another
+        this.SYNC_SEEK_COOLDOWN_MS = 5000; // Base cooldown: 5 seconds after a sync seek
+        this.consecutiveSyncSeeks = 0; // Track consecutive seeks for exponential backoff
+        this.MAX_CONSECUTIVE_SEEKS = 3; // After this many seeks, stop syncing position
+        this.isSeeking = false; // Track if we're in the middle of a seek operation
 
         // Track programmatic vs user-initiated state changes
         this.expectingStateChange = false;
@@ -620,12 +623,20 @@ Hooks.MediaPlayerHook = {
             return;
         }
 
-        // Report duration when playing starts
+        // When buffering ends and playback resumes, reset seek-related state
         if (event.data === YT.PlayerState.PLAYING) {
+            // Playback successfully started/resumed - clear seeking flag
+            this.isSeeking = false;
+
             const duration = this.player.getDuration();
             if (duration > 0) {
                 this.pushEventTo(this.el, "report_duration", { duration: duration });
             }
+        }
+
+        // Track when buffering starts - don't allow new seeks during buffering
+        if (event.data === YT.PlayerState.BUFFERING) {
+            this.isSeeking = true;
         }
 
         // If we're expecting this state change (programmatic), just clear the flag
@@ -658,6 +669,10 @@ Hooks.MediaPlayerHook = {
 
     loadVideo(videoId, startSeconds = 0) {
         this.currentVideoId = videoId;
+        // New video - reset sync state
+        this.consecutiveSyncSeeks = 0;
+        this.isSeeking = false;
+        this.lastSyncSeekAt = 0;
 
         if (!this.isReady || !this.player) {
             // Not ready yet - reinitialize
@@ -736,19 +751,45 @@ Hooks.MediaPlayerHook = {
         const drift = Math.abs(currentPosition - serverPosition);
         const timeSinceLastSyncSeek = Date.now() - this.lastSyncSeekAt;
 
+        // Calculate effective cooldown with exponential backoff
+        // Base: 5s, then 10s, then 20s, etc. up to max
+        const effectiveCooldown = this.SYNC_SEEK_COOLDOWN_MS * Math.pow(2, Math.min(this.consecutiveSyncSeeks, 3));
+
+        // Reset consecutive seeks counter if we've been stable for a while (2x cooldown)
+        if (timeSinceLastSyncSeek > effectiveCooldown * 2) {
+            this.consecutiveSyncSeeks = 0;
+        }
+
         // Only seek if:
         // - Playing and drift > 2 seconds
         // - Not currently buffering (would just cause another buffer)
+        // - Not currently seeking (would just cause another seek)
         // - Haven't done a sync seek recently (prevents seek loops)
-        if (shouldPlay && drift > 2 && !isBuffering) {
-            if (timeSinceLastSyncSeek > this.SYNC_SEEK_COOLDOWN_MS) {
-                console.log(`[MediaPlayer] Sync seek: drift=${drift.toFixed(1)}s, server=${serverPosition.toFixed(1)}, client=${currentPosition.toFixed(1)}`);
+        // - Haven't hit max consecutive seeks (gives up after too many attempts)
+        if (shouldPlay && drift > 2 && !isBuffering && !this.isSeeking) {
+            if (this.consecutiveSyncSeeks >= this.MAX_CONSECUTIVE_SEEKS) {
+                // Too many consecutive seeks - give up on position sync, just let it play
+                // Position will naturally converge on next video or after user interaction
+                if (timeSinceLastSyncSeek > 30000) {
+                    // After 30 seconds, try again
+                    console.log(`[MediaPlayer] Resetting consecutive seek counter after 30s pause`);
+                    this.consecutiveSyncSeeks = 0;
+                }
+            } else if (timeSinceLastSyncSeek > effectiveCooldown) {
+                console.log(`[MediaPlayer] Sync seek: drift=${drift.toFixed(1)}s, server=${serverPosition.toFixed(1)}, client=${currentPosition.toFixed(1)}, attempt=${this.consecutiveSyncSeeks + 1}`);
                 this.lastSyncSeekAt = Date.now();
+                this.consecutiveSyncSeeks++;
+                this.isSeeking = true;
                 this.player.seekTo(serverPosition, true);
                 this.lastKnownPosition = serverPosition;
                 this.lastReportedPosition = serverPosition;
+
+                // Clear isSeeking flag after a short delay (allow seek to complete)
+                setTimeout(() => {
+                    this.isSeeking = false;
+                }, 1500);
             } else {
-                console.log(`[MediaPlayer] Skipping sync seek (cooldown): drift=${drift.toFixed(1)}s, cooldown remaining=${((this.SYNC_SEEK_COOLDOWN_MS - timeSinceLastSyncSeek) / 1000).toFixed(1)}s`);
+                console.log(`[MediaPlayer] Skipping sync seek (cooldown): drift=${drift.toFixed(1)}s, cooldown remaining=${((effectiveCooldown - timeSinceLastSyncSeek) / 1000).toFixed(1)}s`);
             }
         }
     },
@@ -796,6 +837,9 @@ Hooks.MediaPlayerHook = {
     // Grant user control for the grace period - sync will be IGNORED during this time
     grantUserControl() {
         this.userActionUntil = Date.now() + this.USER_ACTION_GRACE_MS;
+        // User action means player is responsive - reset backoff counters
+        this.consecutiveSyncSeeks = 0;
+        this.isSeeking = false;
     },
 
     // Check if user is currently in control (grace period active)

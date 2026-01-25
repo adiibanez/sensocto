@@ -583,15 +583,21 @@ defmodule SensoctoWeb.CustomSignInLive do
                   </div>
                 </div>
               </button>
-              <label class="flex items-center gap-2 mt-3 cursor-pointer select-none">
+              <label
+                for="guest-remember-me"
+                class="flex items-center gap-2 mt-3 cursor-pointer select-none"
+              >
                 <input
                   type="checkbox"
                   id="guest-remember-me"
                   phx-click="toggle_guest_remember"
                   checked={@guest_remember_me}
+                  aria-describedby="guest-remember-help"
                   class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
                 />
-                <span class="text-sm text-gray-300">Remember me (store in LocalStorage)</span>
+                <span id="guest-remember-help" class="text-sm text-gray-300">
+                  Remember me (store in LocalStorage)
+                </span>
               </label>
             </div>
           </div>

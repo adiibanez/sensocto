@@ -1,0 +1,91 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Auto-review new PRs
+  auto-review:
+    if: |
+      github.event_name == 'pull_request' &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request:
+
+            PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+
+            ${{ github.event.pull_request.body }}
+
+            Review checklist:
+            1. Code quality and Elixir best practices
+            2. Test coverage for new code
+            3. Security considerations
+            4. Performance implications
+            5. Documentation updates needed
+
+            Provide a constructive review with:
+            - Summary of changes
+            - Specific line comments for issues
+            - Suggestions for improvement
+            - Approval recommendation (approve/request changes)
+
+            Be helpful and constructive, not nitpicky.
+          timeout_minutes: 10
+
+  # Respond to review comments mentioning @claude
+  respond-to-comments:
+    if: |
+      github.event_name == 'pull_request_review_comment' &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          trigger_phrase: "@claude"
+          timeout_minutes: 15

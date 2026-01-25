@@ -1,0 +1,56 @@
+name: Security Review Request
+description: Request a security review from the security-advisor agent
+title: "[Security] "
+labels: ["agent:security-advisor", "security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Security Review Request
+        The security-advisor agent will analyze your request and provide recommendations.
+
+  - type: dropdown
+    id: review-type
+    attributes:
+      label: Review Type
+      description: What type of security review do you need?
+      options:
+        - Authentication/Authorization
+        - Input Validation
+        - Data Protection
+        - Bot Protection / Rate Limiting
+        - General Security Audit
+        - OWASP Top 10 Check
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what you need reviewed or the security concern
+      placeholder: |
+        I've implemented a new login flow and want to ensure it follows security best practices...
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant Files
+      description: List files or components to review (optional)
+      placeholder: |
+        - lib/sensocto_web/controllers/auth_controller.ex
+        - lib/sensocto/accounts/user.ex
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Low - General review
+        - Medium - Pre-release check
+        - High - Potential vulnerability
+        - Critical - Active security issue
+    validations:
+      required: true

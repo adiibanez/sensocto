@@ -1,0 +1,54 @@
+name: Accessibility & Test Review
+description: Request accessibility and testing review from the elixir-test-accessibility-expert agent
+title: "[A11y/Test] "
+labels: ["agent:elixir-test-accessibility", "accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Accessibility & Test Coverage Review
+        The elixir-test-accessibility-expert agent will review your code for accessibility compliance and test coverage.
+
+  - type: dropdown
+    id: review-type
+    attributes:
+      label: Review Type
+      options:
+        - LiveView Component Accessibility
+        - Form Usability
+        - WCAG Compliance Audit
+        - Test Coverage Review
+        - Keyboard Navigation
+        - Screen Reader Support
+      multiple: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what you need reviewed
+      placeholder: |
+        I've created a new modal component and want to ensure it's accessible...
+    validations:
+      required: true
+
+  - type: textarea
+    id: components
+    attributes:
+      label: Components to Review
+      description: List the components or templates to review
+      placeholder: |
+        - lib/sensocto_web/live/components/modal_component.ex
+        - lib/sensocto_web/templates/form.html.heex
+
+  - type: dropdown
+    id: wcag-level
+    attributes:
+      label: WCAG Conformance Target
+      options:
+        - Level A (Minimum)
+        - Level AA (Recommended)
+        - Level AAA (Enhanced)
+      default: 1

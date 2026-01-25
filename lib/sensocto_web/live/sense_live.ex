@@ -6,10 +6,34 @@ defmodule SensoctoWeb.SenseLive do
   def mount(_params, session, socket) do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
 
-    # Get JWT token from session (passed from parent LiveView)
-    # This is more reliable than socket.assigns[:current_user] for nested LiveViews
-    bearer_token = Map.get(session, "user_token")
-    Logger.debug("SenseLive mount - bearer_token present: #{bearer_token != nil}")
+    # Get bearer token from session
+    # For regular users: use user_token (JWT from Ash Authentication)
+    # For guests: use guest_token (from GuestUserStore)
+    bearer_token =
+      cond do
+        # Check for regular user token first
+        token = Map.get(session, "user_token") ->
+          token
+
+        # Check for guest token
+        session["is_guest"] == true ->
+          guest_id = Map.get(session, "guest_id")
+          guest_token = Map.get(session, "guest_token")
+
+          if guest_id && guest_token do
+            # Prefix with "guest:" so channel can identify it as a guest token
+            "guest:#{guest_id}:#{guest_token}"
+          else
+            nil
+          end
+
+        true ->
+          nil
+      end
+
+    Logger.debug(
+      "SenseLive mount - bearer_token present: #{bearer_token != nil}, is_guest: #{session["is_guest"]}"
+    )
 
     parent_id = Map.get(session, "parent_id")
 

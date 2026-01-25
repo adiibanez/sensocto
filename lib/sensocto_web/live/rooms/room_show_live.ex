@@ -1214,10 +1214,9 @@ defmodule SensoctoWeb.RoomShowLive do
 
     # Auto-join sensor if it belongs to the current user (matching username from email)
     user_username =
-      if user && user.email do
-        user.email |> to_string() |> String.split("@") |> List.first()
-      else
-        nil
+      case user && Map.get(user, :email) do
+        nil -> nil
+        email -> email |> to_string() |> String.split("@") |> List.first()
       end
 
     # Only auto-join if:

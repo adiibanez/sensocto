@@ -4,10 +4,6 @@ defmodule SensoctoWeb.StatefulSensorLiveTest do
   import Phoenix.LiveViewTest
 
   @moduletag :integration
-  # Skip these tests - StatefulSensorLive embeds SearchLive which creates duplicate
-  # id="global-search" elements. Phoenix LiveViewTest requires unique IDs across all
-  # nested LiveViews. Fix requires refactoring the component structure.
-  @moduletag :skip
 
   describe "StatefulSensorLive" do
     setup %{conn: conn} do

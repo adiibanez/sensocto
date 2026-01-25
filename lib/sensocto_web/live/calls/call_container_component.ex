@@ -83,7 +83,7 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
       phx-hook={if @external_hook, do: nil, else: "CallHook"}
       data-room-id={@room.id}
       data-user-id={@user.id}
-      data-user-name={@user.email |> to_string()}
+      data-user-name={Map.get(@user, :email) || Map.get(@user, :display_name) || "Guest"}
     >
       <%= if @in_call do %>
         <%!-- In-call panel --%>
@@ -222,7 +222,10 @@ defmodule SensoctoWeb.Live.Calls.CallContainerComponent do
         <div class="absolute inset-0 flex items-center justify-center bg-gray-800">
           <div class="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center">
             <span class="text-2xl text-gray-400">
-              {@user.email |> to_string() |> String.first() |> String.upcase()}
+              {(Map.get(@user, :email) || Map.get(@user, :display_name) || "G")
+              |> to_string()
+              |> String.first()
+              |> String.upcase()}
             </span>
           </div>
         </div>

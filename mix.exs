@@ -145,10 +145,15 @@ defmodule Sensocto.MixProject do
 
       {:rustler, "~> 0.36 or ~> 0.37", optional: true},
       {:usage_rules, "~> 0.1", only: :dev},
-      {:tidewave, "~> 0.5", only: :dev},
+      # Tidewave - can be enabled in production with ENABLE_TIDEWAVE=true
+      # Protected by Basic Auth via AuthenticatedTidewave plug
+      {:tidewave, "~> 0.5"},
 
       # QR code generation for room sharing
       {:eqrcode, "~> 0.1.10"},
+
+      # OpenAPI specification generation
+      {:open_api_spex, "~> 3.21"},
 
       # Hot code upgrades for Fly.io deployments
       {:fly_deploy, "~> 0.1.15"}

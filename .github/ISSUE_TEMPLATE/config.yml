@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: General Discussion
+    url: https://github.com/adiibanez/sensocto/discussions
+    about: For general questions and discussions about the project
+  - name: Quick Agent Command
+    url: https://github.com/adiibanez/sensocto/issues/new?title=%5BAgent%5D&body=Use%20%60%2Fagent%20%3Cname%3E%20%3Caction%3E%60%20to%20invoke%20an%20agent.%0A%0AAvailable%20agents%3A%0A-%20security-advisor%0A-%20api-client-developer%0A-%20resilient-systems-architect%0A-%20livebook-tester%0A-%20elixir-test-accessibility%0A-%20interdisciplinary-innovator
+    about: Quickly dispatch an agent with a command

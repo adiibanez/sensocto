@@ -22,20 +22,57 @@ defmodule SensoctoWeb.CoreComponents do
     backend: SensoctoWeb.Gettext
 
   @doc """
-  Renders a modal.
+  Renders an accessible modal dialog.
+
+  This component implements WCAG 2.1 AA compliant modal dialogs with:
+  - Proper ARIA attributes (role="dialog", aria-modal, aria-labelledby, aria-describedby)
+  - Keyboard navigation (Escape to close)
+  - Focus management (focus trap using focus_wrap)
+  - Click-away to close
+  - Screen reader compatibility
+
+  ## Accessibility Requirements
+
+  To ensure proper accessibility, always include:
+  - A heading with id="{modal-id}-title" for aria-labelledby
+  - A description with id="{modal-id}-description" for aria-describedby
 
   ## Examples
 
       <.modal id="confirm-modal">
-        This is a modal.
+        <.header>
+          <h2 id="confirm-modal-title">Confirm Action</h2>
+          <:subtitle>
+            <p id="confirm-modal-description">
+              Are you sure you want to proceed with this action?
+            </p>
+          </:subtitle>
+        </.header>
+        <div class="mt-4">
+          <button type="button" phx-click="confirm">Confirm</button>
+        </div>
       </.modal>
 
   JS commands may be passed to the `:on_cancel` to configure
   the closing/cancel event, for example:
 
       <.modal id="confirm" on_cancel={JS.navigate(~p"/posts")}>
-        This is another modal.
+        <h2 id="confirm-title">Navigation Modal</h2>
+        <p id="confirm-description">This modal will navigate on close.</p>
       </.modal>
+
+  ## Focus Management
+
+  The modal uses Phoenix LiveView's focus_wrap component to:
+  - Trap focus within the modal when open
+  - Return focus to the triggering element when closed (via JS.pop_focus)
+  - Focus the first interactive element when opened (via JS.focus_first)
+
+  ## Keyboard Navigation
+
+  - **Escape key**: Closes the modal
+  - **Tab**: Cycles focus through interactive elements within the modal
+  - **Shift+Tab**: Cycles focus backwards
 
   """
   attr(:id, :string, required: true)

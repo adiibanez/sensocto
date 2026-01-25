@@ -26,7 +26,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
      |> assign(:add_object_url, "")
      |> assign(:add_object_error, nil)
      |> assign(:collapsed, false)
-     |> assign(:loading, false)}
+     |> assign(:loading, false)
+     |> assign(:sync_mode, :synced)}
   end
 
   @impl true
@@ -55,6 +56,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
       |> maybe_assign(assigns, :pending_request_user_name)
       |> maybe_assign(assigns, :camera_position)
       |> maybe_assign(assigns, :camera_target)
+      |> maybe_assign(assigns, :sync_mode)
 
     # On first update, load initial state from server
     socket =
@@ -203,7 +205,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   @impl true
   def handle_event("take_control", _, socket) do
     user = socket.assigns.current_user
-    user_name = user.email || "Unknown"
+    user_name = Map.get(user, :email) || Map.get(user, :display_name) || "Unknown"
     Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name)
     {:noreply, socket}
   end
@@ -221,7 +223,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
     controller_user_id = socket.assigns.controller_user_id
 
     if user && controller_user_id && to_string(user.id) != to_string(controller_user_id) do
-      requester_name = user.email || "Someone"
+      requester_name = Map.get(user, :email) || Map.get(user, :display_name) || "Someone"
 
       case Object3DPlayerServer.request_control(socket.assigns.room_id, user.id, requester_name) do
         {:ok, :control_granted} ->
@@ -298,7 +300,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
     # Auto-take control if no one has control and user is logged in
     socket =
       if is_nil(controller_user_id) && user do
-        user_name = user.email || "Unknown"
+        user_name = Map.get(user, :email) || Map.get(user, :display_name) || "Unknown"
         Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name)
         socket
       else
@@ -636,16 +638,44 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             <% end %>
           </div>
 
+          <%!-- Sync Mode Toggle --%>
+          <%= if @current_user do %>
+            <div class="mb-3 flex items-center justify-between">
+              <div class="flex items-center gap-2 text-sm">
+                <%= if @sync_mode == :solo do %>
+                  <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
+                  <span class="text-slate-400">Exploring Solo</span>
+                <% else %>
+                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span class="text-gray-300">Synced with group</span>
+                <% end %>
+              </div>
+              <button
+                phx-click="toggle_sync_mode"
+                class={"px-3 py-1 text-xs rounded transition-colors " <>
+                  if @sync_mode == :solo,
+                    do: "bg-green-600 hover:bg-green-500 text-white",
+                    else: "bg-slate-600 hover:bg-slate-500 text-white"}
+                title={if @sync_mode == :solo, do: "Join group sync", else: "Explore independently"}
+              >
+                {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
+              </button>
+            </div>
+          <% end %>
+
           <%!-- Add Object Input --%>
           <form phx-submit="add_object" phx-target={@myself} class="mb-3">
+            <label for="add-object-url" class="sr-only">3D object URL</label>
             <div class="flex gap-2">
               <input
                 type="text"
                 name="url"
+                id="add-object-url"
                 value={@add_object_url}
                 phx-change="update_add_url"
                 phx-target={@myself}
                 placeholder="Paste 3D object URL (.ply, .splat)..."
+                aria-label="3D object URL"
                 class="flex-1 bg-gray-700 border border-gray-600 text-white text-sm rounded px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500"
               />
               <button

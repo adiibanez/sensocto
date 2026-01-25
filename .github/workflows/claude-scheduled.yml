@@ -1,0 +1,185 @@
+name: Claude Scheduled Tasks
+
+on:
+  schedule:
+    # Run every 6 hours to check for ready tasks
+    - cron: '0 */6 * * *'
+
+  workflow_dispatch:
+    inputs:
+      task_type:
+        description: 'Type of scheduled task to run'
+        required: true
+        type: choice
+        options:
+          - process-ready-issues
+          - dependency-update
+          - code-health-check
+          - security-scan
+
+concurrency:
+  group: claude-scheduled
+  cancel-in-progress: false
+
+jobs:
+  # Process issues marked as ready for AI
+  process-ready-issues:
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.task_type == 'process-ready-issues')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Get ready issues
+        id: issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get issues with 'ai-task' label that don't have PRs yet
+          gh issue list --label "ai-task" --state open --json number,title,body --limit 3 > ready_issues.json
+          echo "count=$(jq length ready_issues.json)" >> $GITHUB_OUTPUT
+
+      - name: Process issues with Claude
+        if: steps.issues.outputs.count != '0'
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Process these ready issues from the backlog:
+
+            $(cat ready_issues.json)
+
+            For each issue:
+            1. Create a feature branch
+            2. Implement following CLAUDE.md conventions
+            3. Run tests and format code
+            4. Create a PR linking the issue
+
+            Work on them one at a time. Stop if tests fail.
+          timeout_minutes: 45
+
+  # Weekly dependency health check
+  dependency-update:
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.task_type == 'dependency-update'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Check for outdated dependencies and update them safely:
+
+            1. Run `mix hex.outdated` to check for updates
+            2. For minor/patch updates, update mix.exs
+            3. Run `mix deps.get && mix deps.compile`
+            4. Run `mix test` to verify nothing broke
+            5. If all passes, create a PR with the updates
+
+            Skip major version updates - just report them in the PR description.
+          timeout_minutes: 20
+
+  # Code health check
+  code-health-check:
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.task_type == 'code-health-check'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Perform a code health check:
+
+            1. Run `mix credo --strict` for code quality
+            2. Run `mix dialyzer` for type checking (if available)
+            3. Check for TODO/FIXME comments that need attention
+            4. Look for dead code or unused functions
+            5. Check test coverage gaps
+
+            Create a GitHub issue summarizing findings with actionable items.
+            Label it with 'ai-task' so it can be picked up later.
+          timeout_minutes: 15
+
+  # Security scan
+  security-scan:
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.task_type == 'security-scan'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Perform a security audit:
+
+            1. Run `mix deps.audit` for known vulnerabilities
+            2. Check for hardcoded secrets or API keys
+            3. Review authentication/authorization code
+            4. Check for SQL injection, XSS, CSRF vulnerabilities
+            5. Review Phoenix security headers
+
+            Create a GitHub issue with findings, labeled 'security' and 'ai-task'.
+            For critical issues, also label with 'priority:high'.
+          timeout_minutes: 20

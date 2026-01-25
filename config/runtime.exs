@@ -20,6 +20,19 @@ if System.get_env("PHX_SERVER") do
   config :sensocto, SensoctoWeb.Endpoint, server: true
 end
 
+# Tidewave AI debugging - can be enabled in production via environment variable
+# Requires TIDEWAVE_USER and TIDEWAVE_PASS for authentication
+# Access at https://your-app.fly.dev/tidewave
+config :sensocto, :enable_tidewave, System.get_env("ENABLE_TIDEWAVE") in ~w(true 1)
+
+# Tidewave needs project_name and root configured explicitly in releases
+# (in dev, it auto-detects via Mix.Project)
+if System.get_env("ENABLE_TIDEWAVE") in ~w(true 1) do
+  config :tidewave,
+    project_name: "sensocto",
+    root: System.get_env("RELEASE_ROOT") || File.cwd!()
+end
+
 # Simulator configuration - can be enabled via environment variable
 if System.get_env("SIMULATOR_ENABLED") in ~w(true 1) do
   config :sensocto, :simulator,

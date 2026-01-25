@@ -1,0 +1,225 @@
+name: Claude Agent Tasks
+
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Triggered when an issue is labeled with an agent label
+  dispatch-agent:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' &&
+      contains(fromJSON('["agent:security-advisor", "agent:api-client-developer", "agent:resilient-systems-architect", "agent:livebook-tester", "agent:elixir-test-accessibility", "agent:interdisciplinary-innovator"]'), github.event.label.name)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Acknowledge agent assignment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const agentLabel = context.payload.label.name;
+            const agentName = agentLabel.replace('agent:', '');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🤖 **${agentName}** agent has been assigned to this task.\n\nThe agent will analyze this issue and provide recommendations. You can interact with the agent by commenting on this issue.\n\n---\n*Automated by Claude Agents workflow*`
+            });
+
+      - name: Add to project board
+        uses: actions/github-script@v7
+        env:
+          PROJECT_NUMBER: ${{ vars.AGENTS_PROJECT_NUMBER || '1' }}
+        with:
+          script: |
+            // Get the project
+            const projectQuery = `
+              query($owner: String!, $number: Int!) {
+                user(login: $owner) {
+                  projectV2(number: $number) {
+                    id
+                    fields(first: 20) {
+                      nodes {
+                        ... on ProjectV2Field {
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            try {
+              const projectResult = await github.graphql(projectQuery, {
+                owner: context.repo.owner,
+                number: parseInt(process.env.PROJECT_NUMBER)
+              });
+
+              if (!projectResult.user?.projectV2) {
+                console.log('Project not found, skipping project integration');
+                return;
+              }
+
+              const projectId = projectResult.user.projectV2.id;
+
+              // Add issue to project
+              const addMutation = `
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemByContentId(input: {projectId: $projectId, contentId: $contentId}) {
+                    item {
+                      id
+                    }
+                  }
+                }
+              `;
+
+              await github.graphql(addMutation, {
+                projectId: projectId,
+                contentId: context.payload.issue.node_id
+              });
+
+              console.log('Issue added to project board');
+            } catch (error) {
+              console.log('Could not add to project:', error.message);
+            }
+
+  # Handle comments that trigger agent actions
+  handle-agent-command:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      startsWith(github.event.comment.body, '/agent')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse command and respond
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            const lines = comment.split('\n');
+            const command = lines[0].trim();
+
+            // Parse /agent <name> <action>
+            const match = command.match(/^\/agent\s+(\S+)\s*(.*)$/);
+
+            if (!match) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `❓ Unknown command format. Use:\n\`/agent <name> [action]\`\n\nAvailable agents:\n- security-advisor\n- api-client-developer\n- resilient-systems-architect\n- livebook-tester\n- elixir-test-accessibility\n- interdisciplinary-innovator`
+              });
+              return;
+            }
+
+            const agentName = match[1];
+            const action = match[2] || 'analyze';
+
+            const validAgents = [
+              'security-advisor',
+              'api-client-developer',
+              'resilient-systems-architect',
+              'livebook-tester',
+              'elixir-test-accessibility',
+              'interdisciplinary-innovator'
+            ];
+
+            if (!validAgents.includes(agentName)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `❌ Unknown agent: \`${agentName}\`\n\nAvailable agents:\n${validAgents.map(a => '- ' + a).join('\n')}`
+              });
+              return;
+            }
+
+            // Add the agent label to trigger analysis
+            const labelName = `agent:${agentName}`;
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [labelName]
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🚀 Dispatching **${agentName}** agent with action: \`${action}\`\n\nThe agent will analyze this issue and respond shortly.`
+            });
+
+  # Sync agent reports to issues
+  sync-reports:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.modified, '.claude/agents/reports/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Process updated reports
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const reportsDir = '.claude/agents/reports';
+
+            if (!fs.existsSync(reportsDir)) {
+              console.log('No reports directory found');
+              return;
+            }
+
+            const reports = fs.readdirSync(reportsDir)
+              .filter(f => f.endsWith('-report.md'));
+
+            for (const report of reports) {
+              const agentName = report.replace('-report.md', '');
+              const content = fs.readFileSync(path.join(reportsDir, report), 'utf8');
+
+              // Find issues with this agent's label
+              const issues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: `agent:${agentName}`,
+                state: 'open'
+              });
+
+              // Comment on open issues with latest report summary
+              for (const issue of issues.data) {
+                // Extract summary from report (first section)
+                const summaryMatch = content.match(/## Summary\n([\s\S]*?)(?=\n##|$)/);
+                const summary = summaryMatch ? summaryMatch[1].trim() : 'Report updated.';
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `📋 **${agentName}** report updated:\n\n${summary.slice(0, 500)}${summary.length > 500 ? '...' : ''}\n\n[View full report](.claude/agents/reports/${report})`
+                });
+              }
+            }

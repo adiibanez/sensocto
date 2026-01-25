@@ -179,7 +179,10 @@ defmodule SensoctoWeb.Live.Calls.MiniCallIndicatorComponent do
               <div class="absolute inset-0 flex items-center justify-center bg-gray-800">
                 <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
                   <span class="text-sm text-gray-400">
-                    {@user.email |> to_string() |> String.first() |> String.upcase()}
+                    {(Map.get(@user, :email) || Map.get(@user, :display_name) || "G")
+                    |> to_string()
+                    |> String.first()
+                    |> String.upcase()}
                   </span>
                 </div>
               </div>

@@ -212,7 +212,7 @@
       {live_render(@socket, SensoctoWeb.SenseLive,
         id: "bluetooth-mobile",
         sticky: true,
-        session: %{"parent_id" => self(), "mobile" => true}
+        session: SensoctoWeb.Layouts.sense_session(@socket, mobile: true)
       )}
     </div>
   </div>
@@ -229,7 +229,7 @@
           {live_render(@socket, SensoctoWeb.SenseLive,
             id: "bluetooth",
             sticky: true,
-            session: %{"parent_id" => self()}
+            session: SensoctoWeb.Layouts.sense_session(@socket)
           )}
         </div>
       </div>

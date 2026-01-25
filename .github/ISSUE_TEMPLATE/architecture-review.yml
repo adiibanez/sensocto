@@ -1,0 +1,56 @@
+name: Architecture Review
+description: Request architecture review from the resilient-systems-architect agent
+title: "[Architecture] "
+labels: ["agent:resilient-systems-architect", "architecture"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Architecture Review Request
+        The resilient-systems-architect agent will analyze your system design and provide recommendations for fault tolerance and scalability.
+
+  - type: dropdown
+    id: review-area
+    attributes:
+      label: Review Area
+      description: What aspect of architecture needs review?
+      options:
+        - Supervision Tree Design
+        - GenServer/Process Design
+        - Fault Tolerance / Recovery
+        - Distribution / Scalability
+        - State Management
+        - Phoenix/Ash Architecture
+        - OTP Patterns
+      multiple: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the architecture or design decision you need reviewed
+      placeholder: |
+        I'm designing a job queue for processing sensor data uploads. Should I use a GenServer with a DynamicSupervisor, or would Oban be better suited?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide relevant context (scale, constraints, existing patterns)
+      placeholder: |
+        - Expected load: 1000 events/second
+        - Must handle node failures gracefully
+        - Currently using Ash Framework
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant Files
+      description: List files or modules to review (optional)
+      placeholder: |
+        - lib/sensocto/workers/
+        - lib/sensocto/application.ex

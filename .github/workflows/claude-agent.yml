@@ -1,0 +1,358 @@
+name: Claude Code Agent
+
+on:
+  schedule:
+    # Run every 4 hours
+    - cron: '0 */4 * * *'
+
+  # Trigger on @claude mentions
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+  # Trigger on ai-task labeled issues
+  issues:
+    types: [opened, labeled]
+
+  workflow_dispatch:
+    inputs:
+      task_override:
+        description: 'Override task (skip project board)'
+        required: false
+        type: string
+      issue_number:
+        description: 'Specific issue number to work on'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (no commits/PRs)'
+        required: false
+        type: boolean
+        default: false
+
+# Only one agent at a time
+concurrency:
+  group: claude-agent
+  cancel-in-progress: false  # Don't cancel running agents
+
+env:
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+jobs:
+  # Handle scheduled runs and manual dispatch
+  run-agent:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache Elixir deps
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+
+      - name: Install dependencies
+        run: |
+          mix deps.get
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Fetch tasks from GitHub Issues
+        id: tasks
+        if: ${{ !inputs.task_override && !inputs.issue_number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch issues with 'ai-task' label, prioritize by agent tags
+          TASK=$(gh issue list \
+            --label "ai-task" \
+            --state open \
+            --json number,title,body,labels \
+            --jq 'sort_by(.number) | .[0] // empty' \
+            | head -1)
+
+          if [ -z "$TASK" ]; then
+            echo "No ai-task issues found"
+            echo "has_task=false" >> $GITHUB_OUTPUT
+          else
+            echo "task=$TASK" >> $GITHUB_OUTPUT
+            echo "has_task=true" >> $GITHUB_OUTPUT
+            echo "Found task: $(echo $TASK | jq -r '.title')"
+          fi
+
+      - name: Get specific issue
+        id: specific_issue
+        if: ${{ inputs.issue_number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TASK=$(gh issue view ${{ inputs.issue_number }} --json number,title,body)
+          echo "task=$TASK" >> $GITHUB_OUTPUT
+          echo "has_task=true" >> $GITHUB_OUTPUT
+
+      - name: Run Claude Agent
+        if: steps.tasks.outputs.has_task == 'true' || steps.specific_issue.outputs.has_task == 'true' || inputs.task_override
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          # Determine task source
+          if [ -n "${{ inputs.task_override }}" ]; then
+            TASK="${{ inputs.task_override }}"
+            TASK_TITLE="Manual task"
+            ISSUE_NUM=""
+          elif [ -n "${{ inputs.issue_number }}" ]; then
+            TASK=$(echo '${{ steps.specific_issue.outputs.task }}' | jq -r '.body')
+            TASK_TITLE=$(echo '${{ steps.specific_issue.outputs.task }}' | jq -r '.title')
+            ISSUE_NUM="${{ inputs.issue_number }}"
+          else
+            TASK=$(echo '${{ steps.tasks.outputs.task }}' | jq -r '.body')
+            TASK_TITLE=$(echo '${{ steps.tasks.outputs.task }}' | jq -r '.title')
+            ISSUE_NUM=$(echo '${{ steps.tasks.outputs.task }}' | jq -r '.number')
+          fi
+
+          # Configure git for commits
+          git config user.name "Claude Agent"
+          git config user.email "claude-agent@users.noreply.github.com"
+
+          # Create feature branch
+          if [ -n "$ISSUE_NUM" ]; then
+            BRANCH="feature/issue-${ISSUE_NUM}"
+          else
+            BRANCH="agent/task-$(date +%Y%m%d-%H%M%S)"
+          fi
+          git checkout -b "$BRANCH"
+
+          # Build the prompt
+          PROMPT="Implement this task autonomously:
+
+          Title: ${TASK_TITLE}
+
+          ${TASK}
+
+          Instructions:
+          1. Read CLAUDE.md for project conventions
+          2. Explore relevant code to understand patterns
+          3. Implement the solution
+          4. Run 'mix test' and 'mix format'
+          5. Commit with descriptive message
+
+          Only ask for clarification if requirements are truly ambiguous.
+          Work autonomously - the software should build itself."
+
+          # Run Claude Code with full permissions
+          claude --print --dangerously-skip-permissions "$PROMPT"
+
+          # Check if there are changes
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes made"
+            exit 0
+          fi
+
+          # Exit early if dry run
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run - skipping commit and PR creation"
+            git diff --stat
+            exit 0
+          fi
+
+          # Commit and push
+          git add -A
+          git commit -m "feat: ${TASK_TITLE}
+
+          Closes #${ISSUE_NUM}
+
+          Co-Authored-By: Claude Agent <claude-agent@users.noreply.github.com>"
+
+          git push -u origin "$BRANCH"
+
+          # Create PR
+          PR_BODY="## Summary
+          Automated implementation from Claude Agent.
+
+          ## Task
+          ${TASK_TITLE}
+
+          ${TASK}
+
+          ## Closes
+          ${ISSUE_NUM:+Closes #$ISSUE_NUM}
+
+          ---
+          *This PR was created automatically by Claude Code Agent*"
+
+          gh pr create \
+            --title "feat: ${TASK_TITLE}" \
+            --body "$PR_BODY" \
+            --base main
+
+          # Remove ai-task label since it's now being worked on
+          if [ -n "$ISSUE_NUM" ]; then
+            gh issue edit "$ISSUE_NUM" --remove-label "ai-task" --add-label "in-progress"
+          fi
+
+  # Handle @claude mentions in issues/PRs
+  handle-mention:
+    if: |
+      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          mix deps.get
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Extract task from comment
+        id: extract
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          # Remove @claude mention and get the task
+          TASK=$(echo "$COMMENT" | sed 's/@claude//g' | xargs)
+          echo "task=$TASK" >> $GITHUB_OUTPUT
+
+      - name: Run Claude Agent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "Claude Agent"
+          git config user.email "claude-agent@users.noreply.github.com"
+
+          TASK="${{ steps.extract.outputs.task }}"
+
+          # Run Claude with the extracted task
+          RESPONSE=$(claude --print --dangerously-skip-permissions "$TASK" 2>&1)
+
+          # Post response as comment
+          gh issue comment ${{ github.event.issue.number }} --body "## Claude Response
+
+          $RESPONSE
+
+          ---
+          *Response from Claude Code Agent*"
+
+  # Handle new ai-task labeled issues
+  handle-new-task:
+    if: |
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'ai-task')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.17'
+          otp-version: '27'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          mix deps.get
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Agent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "Claude Agent"
+          git config user.email "claude-agent@users.noreply.github.com"
+
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          TASK_TITLE="${{ github.event.issue.title }}"
+          TASK="${{ github.event.issue.body }}"
+
+          # Create feature branch
+          BRANCH="feature/issue-${ISSUE_NUM}"
+          git checkout -b "$BRANCH"
+
+          PROMPT="Implement this GitHub issue autonomously:
+
+          Issue #${ISSUE_NUM}: ${TASK_TITLE}
+
+          ${TASK}
+
+          Instructions:
+          1. Read CLAUDE.md for project conventions
+          2. Explore relevant code to understand patterns
+          3. Implement the solution
+          4. Run 'mix test' and 'mix format'
+          5. Commit with descriptive message
+
+          Only ask for clarification if requirements are truly ambiguous."
+
+          claude --print --dangerously-skip-permissions "$PROMPT"
+
+          # Check for changes and create PR
+          if ! git diff --quiet || ! git diff --staged --quiet; then
+            git add -A
+            git commit -m "feat: ${TASK_TITLE}
+
+          Closes #${ISSUE_NUM}
+
+          Co-Authored-By: Claude Agent <claude-agent@users.noreply.github.com>"
+
+            git push -u origin "$BRANCH"
+
+            gh pr create \
+              --title "feat: ${TASK_TITLE}" \
+              --body "Closes #${ISSUE_NUM}
+
+          Automated implementation by Claude Agent." \
+              --base main
+
+            gh issue edit "$ISSUE_NUM" --remove-label "ai-task" --add-label "in-progress"
+          fi

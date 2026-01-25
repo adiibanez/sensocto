@@ -182,6 +182,12 @@
         if(@whiteboard_bump, do: " animate-bump ring-1 ring-green-300/50", else: "")}
     >
       <Heroicons.icon name="pencil-square" type="solid" class="h-3 w-3" /> Whiteboard
+      <span
+        :if={@whiteboard_viewers > 0}
+        class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+      >
+        {@whiteboard_viewers}
+      </span>
     </button>
 
     <%!-- Sync Status Indicator --%>

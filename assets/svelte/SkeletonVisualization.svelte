@@ -560,16 +560,19 @@
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
 
-        // Add padding (15% for face mode to give more breathing room, 10% otherwise)
-        const padding = mode === "face" ? 0.15 : 0.1;
+        // Add padding to ensure content is fully contained
+        // Face mode needs more padding (25%) because face oval/eyebrows extend beyond landmarks
+        // Full body mode uses 12% padding
+        const padding = mode === "face" ? 0.25 : 0.12;
         const availableWidth = width * (1 - 2 * padding);
         const availableHeight = height * (1 - 2 * padding);
 
         // Scale to fit while maintaining aspect ratio
         const scaleX = availableWidth / (bboxWidth * width);
         const scaleY = availableHeight / (bboxHeight * height);
-        // Higher max zoom for face mode (4x) since face is small
-        const maxZoom = mode === "face" ? 4.0 : 2.5;
+        // Lower max zoom for face mode (2.5x) to prevent clipping at edges
+        // Full body mode caps at 2.0x
+        const maxZoom = mode === "face" ? 2.5 : 2.0;
         const scale = Math.min(scaleX, scaleY, maxZoom);
 
         // Calculate offset to center the skeleton

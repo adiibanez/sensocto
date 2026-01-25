@@ -143,6 +143,7 @@ defmodule SensoctoWeb.LobbyLive do
         # Lobby mode presence counts
         media_viewers: 0,
         object3d_viewers: 0,
+        whiteboard_viewers: 0,
         # Control request modal state
         control_request_modal: nil,
         media_control_request_modal: nil,
@@ -193,7 +194,7 @@ defmodule SensoctoWeb.LobbyLive do
         })
 
         # Get initial presence counts
-        {media_count, object3d_count} = count_room_mode_presence("lobby")
+        {media_count, object3d_count, whiteboard_count} = count_room_mode_presence("lobby")
         {synced_users, solo_users} = get_sync_mode_users("lobby")
 
         # Schedule refreshes to catch late-registered attributes
@@ -208,6 +209,7 @@ defmodule SensoctoWeb.LobbyLive do
         |> assign(:presence_key, presence_key)
         |> assign(:media_viewers, media_count)
         |> assign(:object3d_viewers, object3d_count)
+        |> assign(:whiteboard_viewers, whiteboard_count)
         |> assign(:synced_users, synced_users)
         |> assign(:solo_users, solo_users)
       else
@@ -258,12 +260,14 @@ defmodule SensoctoWeb.LobbyLive do
   defp count_room_mode_presence(room_id) do
     presences = Presence.list("room:#{room_id}:mode_presence")
 
-    Enum.reduce(presences, {0, 0}, fn {_user_id, %{metas: metas}}, {media, object3d} ->
+    Enum.reduce(presences, {0, 0, 0}, fn {_user_id, %{metas: metas}},
+                                         {media, object3d, whiteboard} ->
       # Get the most recent presence meta (last one)
       case List.last(metas) do
-        %{room_mode: :media} -> {media + 1, object3d}
-        %{room_mode: :object3d} -> {media, object3d + 1}
-        _ -> {media, object3d}
+        %{room_mode: :media} -> {media + 1, object3d, whiteboard}
+        %{room_mode: :object3d} -> {media, object3d + 1, whiteboard}
+        %{room_mode: :whiteboard} -> {media, object3d, whiteboard + 1}
+        _ -> {media, object3d, whiteboard}
       end
     end)
   end
@@ -560,13 +564,14 @@ defmodule SensoctoWeb.LobbyLive do
         },
         socket
       ) do
-    {media_count, object3d_count} = count_room_mode_presence("lobby")
+    {media_count, object3d_count, whiteboard_count} = count_room_mode_presence("lobby")
     {synced_users, solo_users} = get_sync_mode_users("lobby")
 
     {:noreply,
      socket
      |> assign(:media_viewers, media_count)
      |> assign(:object3d_viewers, object3d_count)
+     |> assign(:whiteboard_viewers, whiteboard_count)
      |> assign(:synced_users, synced_users)
      |> assign(:solo_users, solo_users)}
   end

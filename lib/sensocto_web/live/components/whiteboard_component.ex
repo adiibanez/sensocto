@@ -120,7 +120,10 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
 
   @impl true
   def handle_event("set_color", %{"color" => color}, socket) do
-    {:noreply, assign(socket, :stroke_color, color)}
+    {:noreply,
+     socket
+     |> assign(:stroke_color, color)
+     |> assign(:show_color_picker, false)}
   end
 
   @impl true

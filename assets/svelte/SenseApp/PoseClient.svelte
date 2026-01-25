@@ -28,7 +28,7 @@
     // Mobile detection for adaptive performance
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-    // Edge browser detection - Edge has issues with MediaPipe GPU delegate
+    // Edge browser detection - Edge has issues with MediaPipe GPU delegate (used for FPS adjustment)
     const isEdge = /Edg\//i.test(navigator.userAgent);
 
     // Lower FPS on mobile to reduce main thread blocking
@@ -46,20 +46,17 @@
     let usingDelegate = "GPU";
 
     async function initPoseLandmarker() {
-        // Determine initial delegate - Edge browser has known issues with GPU delegate
-        const preferredDelegate = isEdge ? "CPU" : "GPU";
-
         try {
             const vision = await FilesetResolver.forVisionTasks(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
             );
 
-            // Try with preferred delegate first
+            // Always try GPU first, then fall back to CPU
             try {
                 poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
                     baseOptions: {
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                        delegate: preferredDelegate
+                        delegate: "GPU"
                     },
                     runningMode: "VIDEO",
                     numPoses: 1,
@@ -68,32 +65,28 @@
                     minTrackingConfidence: 0.5,
                     outputSegmentationMasks: false
                 });
-                usingDelegate = preferredDelegate;
-                logger.log(loggerCtxName, `PoseLandmarker initialized with ${preferredDelegate} delegate`);
+                usingDelegate = "GPU";
+                logger.log(loggerCtxName, "PoseLandmarker initialized with GPU delegate");
                 return true;
             } catch (gpuError) {
-                // If GPU failed, try CPU fallback (unless we already tried CPU)
-                if (preferredDelegate === "GPU") {
-                    logger.warn(loggerCtxName, `GPU delegate failed, falling back to CPU:`, gpuError);
+                // GPU failed, fall back to CPU
+                logger.warn(loggerCtxName, `GPU delegate failed, falling back to CPU:`, gpuError);
 
-                    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                        baseOptions: {
-                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                            delegate: "CPU"
-                        },
-                        runningMode: "VIDEO",
-                        numPoses: 1,
-                        minPoseDetectionConfidence: 0.5,
-                        minPosePresenceConfidence: 0.5,
-                        minTrackingConfidence: 0.5,
-                        outputSegmentationMasks: false
-                    });
-                    usingDelegate = "CPU";
-                    logger.log(loggerCtxName, "PoseLandmarker initialized with CPU delegate (fallback)");
-                    return true;
-                } else {
-                    throw gpuError;
-                }
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                        delegate: "CPU"
+                    },
+                    runningMode: "VIDEO",
+                    numPoses: 1,
+                    minPoseDetectionConfidence: 0.5,
+                    minPosePresenceConfidence: 0.5,
+                    minTrackingConfidence: 0.5,
+                    outputSegmentationMasks: false
+                });
+                usingDelegate = "CPU";
+                logger.log(loggerCtxName, "PoseLandmarker initialized with CPU delegate (fallback)");
+                return true;
             }
         } catch (error) {
             logger.error(loggerCtxName, "Failed to initialize PoseLandmarker:", error);
@@ -139,8 +132,8 @@
                     width: { ideal: videoWidth },
                     height: { ideal: videoHeight },
                     frameRate: { ideal: TARGET_FPS },
-                    // On mobile, prefer rear camera for better pose detection
-                    facingMode: isMobile ? { ideal: "environment" } : "user"
+                    // Use front camera so user can see themselves while streaming facial landmarks
+                    facingMode: "user"
                 },
                 audio: false
             });
@@ -163,17 +156,37 @@
             document.body.appendChild(standaloneVideoEl);
 
             // Wait for video to be ready and playing
+            // Use canplay event which is more reliable on Android Chrome
             await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => reject(new Error("Video load timeout")), 5000);
-                standaloneVideoEl.onloadeddata = async () => {
+                const timeout = setTimeout(() => reject(new Error("Video load timeout")), 10000);
+
+                const tryPlay = async () => {
                     clearTimeout(timeout);
                     try {
+                        // On Android, play() may need multiple attempts
                         await standaloneVideoEl.play();
                         resolve();
                     } catch (e) {
-                        reject(e);
+                        // If autoplay blocked, try again after a short delay
+                        if (e.name === "NotAllowedError") {
+                            logger.warn(loggerCtxName, "Autoplay blocked, retrying...");
+                            setTimeout(async () => {
+                                try {
+                                    await standaloneVideoEl.play();
+                                    resolve();
+                                } catch (e2) {
+                                    reject(e2);
+                                }
+                            }, 100);
+                        } else {
+                            reject(e);
+                        }
                     }
                 };
+
+                // Try both events - canplay fires earlier and is more reliable on Android
+                standaloneVideoEl.oncanplay = tryPlay;
+                standaloneVideoEl.onloadeddata = tryPlay;
                 standaloneVideoEl.onerror = (e) => {
                     clearTimeout(timeout);
                     reject(e);

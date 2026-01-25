@@ -31,8 +31,7 @@ defmodule Sensocto.RoomStore do
   require Logger
 
   alias Sensocto.Iroh.RoomStore, as: IrohStore
-  alias Sensocto.Sensors.Room, as: RoomResource
-  alias Sensocto.Sensors.RoomMembership
+  alias Sensocto.Storage.HydrationManager
 
   # Default timeout for GenServer calls (5 seconds)
   @call_timeout 5_000
@@ -230,10 +229,13 @@ defmodule Sensocto.RoomStore do
     # Subscribe to cluster-wide room updates for multi-node sync
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "rooms:cluster")
 
-    # Hydrate from PostgreSQL immediately (primary persistence)
-    Process.send_after(self(), :hydrate_from_postgres, 100)
+    # Subscribe to hydration events from HydrationManager
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "hydration:rooms")
 
-    # Check if iroh store is available after a delay (secondary/P2P)
+    # Hydrate via HydrationManager (coordinates multiple backends)
+    Process.send_after(self(), :hydrate_via_manager, 100)
+
+    # Check if iroh store is available after a delay (for direct sync fallback)
     Process.send_after(self(), :check_iroh, 1000)
 
     {:ok, %__MODULE__{}}
@@ -259,43 +261,44 @@ defmodule Sensocto.RoomStore do
   end
 
   @impl true
-  def handle_info(:hydrate_from_postgres, state) do
-    Logger.info("[RoomStore] Hydrating state from PostgreSQL...")
+  def handle_info(:hydrate_via_manager, state) do
+    Logger.info("[RoomStore] Hydrating state via HydrationManager...")
 
-    new_state =
-      try do
-        # Load all rooms from PostgreSQL with their memberships
-        rooms = RoomResource |> Ash.read!(action: :all) |> Ash.load!(:room_memberships)
+    # Request hydration from HydrationManager (async, results come via PubSub)
+    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
+      case HydrationManager.hydrate_all() do
+        {:ok, count} ->
+          Logger.info("[RoomStore] HydrationManager hydrated #{count} rooms")
 
-        Enum.reduce(rooms, state, fn room, acc ->
-          # Convert Ash resource to our internal map format
-          room_data = %{
-            id: room.id,
-            name: room.name,
-            description: room.description,
-            owner_id: room.owner_id,
-            join_code: room.join_code,
-            is_public: room.is_public,
-            configuration: room.configuration || %{},
-            members: build_members_map(room),
-            sensor_ids: MapSet.new(),
-            created_at: room.inserted_at,
-            updated_at: room.updated_at
-          }
+        {:error, reason} ->
+          Logger.error("[RoomStore] HydrationManager hydration failed: #{inspect(reason)}")
+      end
+    end)
 
-          acc
-          |> put_in([Access.key(:rooms), room.id], room_data)
-          |> put_in([Access.key(:join_codes), room.join_code], room.id)
-          |> hydrate_user_rooms(room_data.members, room.id)
-        end)
-      rescue
-        e ->
-          Logger.error("[RoomStore] Failed to hydrate from PostgreSQL: #{inspect(e)}")
-          state
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:room_hydrated, snapshot}, state) do
+    # Handle room hydrated event from HydrationManager
+    room_data = snapshot.data
+    room_id = snapshot.room_id
+
+    # Ensure sensor_ids is a MapSet
+    sensor_ids =
+      case Map.get(room_data, :sensor_ids) do
+        %MapSet{} = set -> set
+        list when is_list(list) -> MapSet.new(list)
+        _ -> MapSet.new()
       end
 
-    room_count = map_size(new_state.rooms)
-    Logger.info("[RoomStore] Hydrated #{room_count} rooms from PostgreSQL")
+    room = Map.put(room_data, :sensor_ids, sensor_ids)
+
+    new_state =
+      state
+      |> put_in([Access.key(:rooms), room_id], room)
+      |> put_in([Access.key(:join_codes), room.join_code], room_id)
+      |> hydrate_user_rooms(room.members, room_id)
 
     {:noreply, new_state}
   end
@@ -412,11 +415,8 @@ defmodule Sensocto.RoomStore do
         |> put_in([Access.key(:join_codes), join_code], room_id)
         |> update_user_rooms(owner_id, room_id, :add)
 
-      # Sync to PostgreSQL (primary persistence) - room first, then owner membership
-      sync_room_and_owner_to_postgres(room, owner_id)
-
-      # Async sync to iroh (secondary/P2P)
-      async_sync_room(room, state.iroh_available)
+      # Sync to all backends via HydrationManager (PostgreSQL, Iroh, LocalStorage)
+      HydrationManager.snapshot_room(room_id, room)
 
       broadcast_room_update(room_id, :room_created)
       # Broadcast to cluster for multi-node sync
@@ -475,11 +475,8 @@ defmodule Sensocto.RoomStore do
 
         new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
 
-        # Sync to PostgreSQL (primary persistence)
-        sync_room_update_to_postgres(updated_room)
-
-        # Async sync to iroh (secondary/P2P)
-        async_sync_room(updated_room, state.iroh_available)
+        # Sync to all backends via HydrationManager
+        HydrationManager.snapshot_room(room_id, updated_room)
 
         broadcast_room_update(room_id, :room_updated)
 
@@ -503,11 +500,8 @@ defmodule Sensocto.RoomStore do
           |> update_in([Access.key(:join_codes)], &Map.delete(&1, room.join_code))
           |> remove_room_from_all_users(room_id, room.members)
 
-        # Delete from PostgreSQL (primary persistence)
-        delete_room_from_postgres(room_id)
-
-        # Async delete from iroh (secondary/P2P)
-        async_delete_room(room_id, state.iroh_available)
+        # Delete from all backends via HydrationManager
+        HydrationManager.delete_room(room_id)
 
         broadcast_room_update(room_id, :room_deleted)
         # Broadcast to cluster for multi-node sync
@@ -571,11 +565,8 @@ defmodule Sensocto.RoomStore do
             |> put_in([Access.key(:rooms), room_id], updated_room)
             |> update_user_rooms(user_id, room_id, :add)
 
-          # Sync to PostgreSQL (primary persistence)
-          sync_membership_to_postgres(room_id, user_id, role)
-
-          # Async sync to iroh (secondary/P2P)
-          async_sync_membership(room_id, user_id, role, state.iroh_available)
+          # Sync to all backends via HydrationManager
+          HydrationManager.snapshot_room(room_id, updated_room)
 
           broadcast_room_update(room_id, {:member_joined, user_id, role})
 
@@ -606,11 +597,8 @@ defmodule Sensocto.RoomStore do
             |> put_in([Access.key(:rooms), room_id], updated_room)
             |> update_user_rooms(user_id, room_id, :remove)
 
-          # Delete from PostgreSQL (primary persistence)
-          delete_membership_from_postgres(room_id, user_id)
-
-          # Async sync to iroh (secondary/P2P)
-          async_delete_membership(room_id, user_id, state.iroh_available)
+          # Sync to all backends via HydrationManager
+          HydrationManager.snapshot_room(room_id, updated_room)
 
           broadcast_room_update(room_id, {:member_left, user_id})
 
@@ -661,7 +649,7 @@ defmodule Sensocto.RoomStore do
 
         new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
 
-        async_sync_room(updated_room, state.iroh_available)
+        HydrationManager.snapshot_room(room_id, updated_room)
 
         broadcast_room_update(room_id, {:sensor_added, sensor_id})
 
@@ -685,7 +673,7 @@ defmodule Sensocto.RoomStore do
 
         new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
 
-        async_sync_room(updated_room, state.iroh_available)
+        HydrationManager.snapshot_room(room_id, updated_room)
 
         broadcast_room_update(room_id, {:sensor_removed, sensor_id})
 
@@ -720,8 +708,8 @@ defmodule Sensocto.RoomStore do
 
             new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
 
-            # Sync to PostgreSQL
-            update_membership_role_in_postgres(room_id, user_id, :admin)
+            # Sync to all backends via HydrationManager
+            HydrationManager.snapshot_room(room_id, updated_room)
 
             broadcast_room_update(room_id, {:member_promoted, user_id, :admin})
 
@@ -757,8 +745,8 @@ defmodule Sensocto.RoomStore do
 
             new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
 
-            # Sync to PostgreSQL
-            update_membership_role_in_postgres(room_id, user_id, :member)
+            # Sync to all backends via HydrationManager
+            HydrationManager.snapshot_room(room_id, updated_room)
 
             broadcast_room_update(room_id, {:member_demoted, user_id, :member})
 
@@ -794,8 +782,8 @@ defmodule Sensocto.RoomStore do
               |> put_in([Access.key(:rooms), room_id], updated_room)
               |> update_user_rooms(user_id, room_id, :remove)
 
-            # Delete from PostgreSQL
-            delete_membership_from_postgres(room_id, user_id)
+            # Sync to all backends via HydrationManager
+            HydrationManager.snapshot_room(room_id, updated_room)
 
             broadcast_room_update(room_id, {:member_kicked, user_id})
 
@@ -841,11 +829,8 @@ defmodule Sensocto.RoomStore do
           |> update_in([Access.key(:join_codes)], &Map.delete(&1, old_code))
           |> put_in([Access.key(:join_codes), new_code], room_id)
 
-        # Sync to PostgreSQL (primary persistence)
-        sync_room_update_to_postgres(updated_room)
-
-        # Async sync to iroh (secondary/P2P)
-        async_sync_room(updated_room, state.iroh_available)
+        # Sync to all backends via HydrationManager
+        HydrationManager.snapshot_room(room_id, updated_room)
 
         {:reply, {:ok, new_code}, new_state}
     end
@@ -992,329 +977,8 @@ defmodule Sensocto.RoomStore do
   end
 
   # ============================================================================
-  # Async Iroh Sync
-  # ============================================================================
-
-  defp async_sync_room(room, true = _iroh_available) do
-    # Convert MapSet to list for JSON serialization
-    room_for_storage = Map.update(room, :sensor_ids, [], &MapSet.to_list/1)
-
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      case IrohStore.store_room(room_for_storage) do
-        {:ok, _hash} ->
-          Logger.debug("[RoomStore] Synced room #{room.id} to iroh")
-
-        {:error, reason} ->
-          Logger.warning("[RoomStore] Failed to sync room to iroh: #{inspect(reason)}")
-      end
-    end)
-  end
-
-  defp async_sync_room(_room, false), do: :ok
-
-  defp async_delete_room(room_id, true = _iroh_available) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      case IrohStore.delete_room(room_id) do
-        :ok ->
-          Logger.debug("[RoomStore] Deleted room #{room_id} from iroh")
-
-        {:error, reason} ->
-          Logger.warning("[RoomStore] Failed to delete room from iroh: #{inspect(reason)}")
-      end
-    end)
-  end
-
-  defp async_delete_room(_room_id, false), do: :ok
-
-  defp async_sync_membership(room_id, user_id, role, true = _iroh_available) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      case IrohStore.store_membership(room_id, user_id, role) do
-        {:ok, _hash} ->
-          Logger.debug("[RoomStore] Synced membership #{room_id}:#{user_id} to iroh")
-
-        {:error, reason} ->
-          Logger.warning("[RoomStore] Failed to sync membership to iroh: #{inspect(reason)}")
-      end
-    end)
-  end
-
-  defp async_sync_membership(_room_id, _user_id, _role, false), do: :ok
-
-  defp async_delete_membership(room_id, user_id, true = _iroh_available) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      case IrohStore.delete_membership(room_id, user_id) do
-        :ok ->
-          Logger.debug("[RoomStore] Deleted membership #{room_id}:#{user_id} from iroh")
-
-        {:error, reason} ->
-          Logger.warning("[RoomStore] Failed to delete membership from iroh: #{inspect(reason)}")
-      end
-    end)
-  end
-
-  defp async_delete_membership(_room_id, _user_id, false), do: :ok
-
-  # ============================================================================
-  # PostgreSQL Sync
-  # ============================================================================
-
-  # Creates room and owner membership in sequence (room first, then membership)
-  # to avoid FK constraint violation race condition
-  defp sync_room_and_owner_to_postgres(room, owner_id) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        # Step 1: Create the room first
-        create_room_in_postgres(room)
-
-        # Step 2: Then create owner membership (room now exists)
-        create_membership_in_postgres(room.id, owner_id, :owner)
-      rescue
-        e ->
-          Logger.error(
-            "[RoomStore] Failed to sync room and owner to PostgreSQL: #{Exception.message(e)}"
-          )
-      end
-    end)
-  end
-
-  # Synchronous room creation (called within a Task)
-  defp create_room_in_postgres(room) do
-    attrs = %{
-      id: room.id,
-      name: room.name,
-      description: room.description,
-      owner_id: room.owner_id,
-      join_code: room.join_code,
-      is_public: room.is_public,
-      is_persisted: true,
-      calls_enabled: Map.get(room, :calls_enabled, true),
-      configuration: room.configuration || %{}
-    }
-
-    existing = RoomResource |> Ash.get(room.id, error?: false)
-
-    case existing do
-      {:ok, nil} ->
-        RoomResource
-        |> Ash.Changeset.for_create(:sync_create, attrs)
-        |> Ash.create!()
-
-        Logger.debug("[RoomStore] Synced new room #{room.id} to PostgreSQL")
-
-      {:ok, _room} ->
-        Logger.debug("[RoomStore] Room #{room.id} already exists in PostgreSQL")
-
-      {:error, _reason} ->
-        RoomResource
-        |> Ash.Changeset.for_create(:sync_create, attrs)
-        |> Ash.create!()
-
-        Logger.debug("[RoomStore] Synced new room #{room.id} to PostgreSQL")
-    end
-  end
-
-  # Synchronous membership creation (called within a Task)
-  defp create_membership_in_postgres(room_id, user_id, role) do
-    import Ecto.Query
-
-    {:ok, room_uuid} = Ecto.UUID.dump(room_id)
-    {:ok, user_uuid} = Ecto.UUID.dump(user_id)
-
-    existing =
-      Sensocto.Repo.one(
-        from m in "room_memberships",
-          where: m.room_id == ^room_uuid and m.user_id == ^user_uuid,
-          select: m.id
-      )
-
-    if existing do
-      Logger.debug("[RoomStore] Membership #{room_id}:#{user_id} already exists in PostgreSQL")
-    else
-      RoomMembership
-      |> Ash.Changeset.for_create(:sync_create, %{room_id: room_id, user_id: user_id, role: role})
-      |> Ash.create!()
-
-      Logger.debug("[RoomStore] Synced membership #{room_id}:#{user_id} to PostgreSQL")
-    end
-  end
-
-  defp sync_room_to_postgres(room) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        create_room_in_postgres(room)
-      rescue
-        e ->
-          Logger.error("[RoomStore] Failed to sync room to PostgreSQL: #{Exception.message(e)}")
-      end
-    end)
-  end
-
-  defp sync_room_update_to_postgres(room) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        existing = RoomResource |> Ash.get(room.id, error?: false)
-
-        case existing do
-          {:ok, record} when not is_nil(record) ->
-            record
-            |> Ash.Changeset.for_update(:sync_update, %{
-              name: room.name,
-              description: room.description,
-              is_public: room.is_public,
-              calls_enabled: Map.get(room, :calls_enabled, true),
-              media_playback_enabled: Map.get(room, :media_playback_enabled, true),
-              object_3d_enabled: Map.get(room, :object_3d_enabled, false),
-              configuration: room.configuration,
-              join_code: room.join_code
-            })
-            |> Ash.update!()
-
-            Logger.debug("[RoomStore] Updated room #{room.id} in PostgreSQL")
-
-          _ ->
-            # Room doesn't exist, create it
-            sync_room_to_postgres(room)
-        end
-      rescue
-        e ->
-          Logger.error("[RoomStore] Failed to update room in PostgreSQL: #{Exception.message(e)}")
-      end
-    end)
-  end
-
-  defp delete_room_from_postgres(room_id) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        case RoomResource |> Ash.get(room_id, error?: false) do
-          {:ok, room} when not is_nil(room) ->
-            Ash.destroy!(room)
-            Logger.debug("[RoomStore] Deleted room #{room_id} from PostgreSQL")
-
-          _ ->
-            Logger.debug("[RoomStore] Room #{room_id} not found in PostgreSQL, skipping delete")
-        end
-      rescue
-        e ->
-          Logger.error(
-            "[RoomStore] Failed to delete room from PostgreSQL: #{Exception.message(e)}"
-          )
-      end
-    end)
-  end
-
-  defp sync_membership_to_postgres(room_id, user_id, role) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        # Check if membership exists using Ash
-        import Ecto.Query
-
-        # Convert string UUIDs to binary for raw query
-        {:ok, room_uuid} = Ecto.UUID.dump(room_id)
-        {:ok, user_uuid} = Ecto.UUID.dump(user_id)
-
-        existing =
-          Sensocto.Repo.one(
-            from m in "room_memberships",
-              where: m.room_id == ^room_uuid and m.user_id == ^user_uuid,
-              select: m.id
-          )
-
-        if existing do
-          Logger.debug(
-            "[RoomStore] Membership #{room_id}:#{user_id} already exists in PostgreSQL"
-          )
-        else
-          RoomMembership
-          |> Ash.Changeset.for_create(:sync_create, %{
-            room_id: room_id,
-            user_id: user_id,
-            role: role
-          })
-          |> Ash.create!()
-
-          Logger.debug("[RoomStore] Synced membership #{room_id}:#{user_id} to PostgreSQL")
-        end
-      rescue
-        e ->
-          Logger.error(
-            "[RoomStore] Failed to sync membership to PostgreSQL: #{Exception.message(e)}"
-          )
-      end
-    end)
-  end
-
-  defp delete_membership_from_postgres(room_id, user_id) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        import Ecto.Query
-
-        # Convert string UUIDs to binary for raw query
-        {:ok, room_uuid} = Ecto.UUID.dump(room_id)
-        {:ok, user_uuid} = Ecto.UUID.dump(user_id)
-
-        Sensocto.Repo.delete_all(
-          from m in "room_memberships",
-            where: m.room_id == ^room_uuid and m.user_id == ^user_uuid
-        )
-
-        Logger.debug("[RoomStore] Deleted membership #{room_id}:#{user_id} from PostgreSQL")
-      rescue
-        e ->
-          Logger.error("[RoomStore] Failed to delete membership from PostgreSQL: #{inspect(e)}")
-      end
-    end)
-  end
-
-  defp update_membership_role_in_postgres(room_id, user_id, new_role) do
-    Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
-      try do
-        import Ecto.Query
-
-        # Convert string UUIDs to binary for raw query
-        {:ok, room_uuid} = Ecto.UUID.dump(room_id)
-        {:ok, user_uuid} = Ecto.UUID.dump(user_id)
-
-        role_string = Atom.to_string(new_role)
-        now = DateTime.utc_now()
-
-        Sensocto.Repo.update_all(
-          from(m in "room_memberships",
-            where: m.room_id == ^room_uuid and m.user_id == ^user_uuid
-          ),
-          set: [role: role_string, updated_at: now]
-        )
-
-        Logger.debug(
-          "[RoomStore] Updated membership role #{room_id}:#{user_id} to #{new_role} in PostgreSQL"
-        )
-      rescue
-        e ->
-          Logger.error(
-            "[RoomStore] Failed to update membership role in PostgreSQL: #{inspect(e)}"
-          )
-      end
-    end)
-  end
-
-  # ============================================================================
   # Hydration Helpers
   # ============================================================================
-
-  defp build_members_map(room) do
-    # Build members map from room_memberships
-    # Always include owner
-    base = %{room.owner_id => :owner}
-
-    case room.room_memberships do
-      memberships when is_list(memberships) ->
-        Enum.reduce(memberships, base, fn membership, acc ->
-          Map.put(acc, membership.user_id, membership.role)
-        end)
-
-      _ ->
-        base
-    end
-  end
 
   defp normalize_members(members) when is_map(members) do
     Map.new(members, fn {user_id, role} ->

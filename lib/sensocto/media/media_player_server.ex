@@ -667,31 +667,44 @@ defmodule Sensocto.Media.MediaPlayerServer do
   end
 
   defp do_play(state) do
-    new_state = %{
-      state
-      | state: :playing,
-        position_updated_at: DateTime.utc_now()
-    }
+    # If already playing, don't reset position tracking - just acknowledge
+    # This prevents position drift when clients send redundant play events
+    if state.state == :playing do
+      {:reply, :ok, state}
+    else
+      # Transitioning from paused/stopped to playing
+      new_state = %{
+        state
+        | state: :playing,
+          position_updated_at: DateTime.utc_now()
+      }
 
-    current_item = Media.get_item(state.current_item_id)
-    broadcast_state_change(new_state, current_item)
-    {:reply, :ok, new_state}
+      current_item = Media.get_item(state.current_item_id)
+      broadcast_state_change(new_state, current_item)
+      {:reply, :ok, new_state}
+    end
   end
 
   # Internal pause implementation
   defp do_pause(state) do
-    current_position = calculate_current_position(state)
+    # If already paused, don't recalculate position - just acknowledge
+    # This prevents position drift when clients send redundant pause events
+    if state.state == :paused do
+      {:reply, :ok, state}
+    else
+      current_position = calculate_current_position(state)
 
-    new_state = %{
-      state
-      | state: :paused,
-        position_seconds: current_position,
-        position_updated_at: DateTime.utc_now()
-    }
+      new_state = %{
+        state
+        | state: :paused,
+          position_seconds: current_position,
+          position_updated_at: DateTime.utc_now()
+      }
 
-    current_item = Media.get_item(state.current_item_id)
-    broadcast_state_change(new_state, current_item)
-    {:reply, :ok, new_state}
+      current_item = Media.get_item(state.current_item_id)
+      broadcast_state_change(new_state, current_item)
+      {:reply, :ok, new_state}
+    end
   end
 
   # Internal seek implementation

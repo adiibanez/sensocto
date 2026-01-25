@@ -259,6 +259,11 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   end
 
   @impl true
+  def handle_event("dismiss_request_modal", _, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("update_add_url", %{"url" => url}, socket) do
     {:noreply, assign(socket, :add_object_url, url)}
   end
@@ -801,6 +806,67 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
               <% end %>
             </div>
           <% end %>
+        </div>
+      <% end %>
+
+      <%!-- Control Request Modal - Shows to controller when someone requests control --%>
+      <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>
+        <%!-- Audio notification when modal appears --%>
+        <div
+          id={"object3d-request-sound-#{@room_id}"}
+          phx-hook="NotificationSound"
+          class="hidden"
+        >
+        </div>
+        <div
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          phx-click="dismiss_request_modal"
+          phx-target={@myself}
+        >
+          <div
+            id={"object3d-control-request-modal-#{@room_id}"}
+            phx-hook="CountdownTimer"
+            data-seconds="30"
+            class="bg-gray-800 rounded-lg p-6 max-w-sm w-full shadow-xl border border-amber-500/50"
+            phx-click-away="dismiss_request_modal"
+            phx-target={@myself}
+          >
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <Heroicons.icon name="hand-raised" type="solid" class="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 class="text-white font-medium">Control Requested</h3>
+                <p class="text-amber-300 text-sm">
+                  {@pending_request_user_name || "Someone"} wants control
+                </p>
+              </div>
+            </div>
+
+            <p class="text-gray-300 text-sm mb-4">
+              Control will transfer in
+              <span class="countdown-display font-bold text-amber-400">30</span>
+              seconds
+              unless you keep it.
+            </p>
+
+            <div class="flex gap-3">
+              <button
+                phx-click="keep_control"
+                phx-target={@myself}
+                class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+              >
+                Keep Control
+              </button>
+              <button
+                phx-click="release_control"
+                phx-target={@myself}
+                class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg font-medium transition-colors"
+              >
+                Release
+              </button>
+            </div>
+          </div>
         </div>
       <% end %>
     </div>

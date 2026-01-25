@@ -9,6 +9,7 @@ defmodule SensoctoWeb.LobbyLive do
   alias SensoctoWeb.StatefulSensorLive
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
+  alias SensoctoWeb.Live.Components.WhiteboardComponent
   alias SensoctoWeb.Sensocto.Presence
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Calls
@@ -45,6 +46,8 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
     # Subscribe to 3D object player events
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:lobby")
+    # Subscribe to whiteboard events
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
     # Subscribe to global attention changes to re-filter sensor list in realtime
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:global")
 
@@ -136,6 +139,7 @@ defmodule SensoctoWeb.LobbyLive do
         # Bump animation assigns for mode buttons
         media_bump: false,
         object3d_bump: false,
+        whiteboard_bump: false,
         # Lobby mode presence counts
         media_viewers: 0,
         object3d_viewers: 0,
@@ -1329,6 +1333,102 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_info(:clear_object3d_bump, socket) do
     {:noreply, assign(socket, :object3d_bump, false)}
+  end
+
+  @impl true
+  def handle_info(:clear_whiteboard_bump, socket) do
+    {:noreply, assign(socket, :whiteboard_bump, false)}
+  end
+
+  # Whiteboard PubSub handlers
+  @impl true
+  def handle_info({:whiteboard_stroke_added, %{stroke: stroke}}, socket) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      new_stroke: stroke
+    )
+
+    socket =
+      if not socket.assigns.whiteboard_bump do
+        Process.send_after(self(), :clear_whiteboard_bump, 300)
+        assign(socket, :whiteboard_bump, true)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_cleared, _params}, socket) do
+    send_update(WhiteboardComponent, id: "lobby-whiteboard", strokes: [])
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_undo, _params}, socket) do
+    send_update(WhiteboardComponent, id: "lobby-whiteboard")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_background_changed, %{color: color}}, socket) do
+    send_update(WhiteboardComponent, id: "lobby-whiteboard", background_color: color)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:whiteboard_controller_changed,
+         %{controller_user_id: user_id, controller_user_name: user_name}},
+        socket
+      ) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      controller_user_id: user_id,
+      controller_user_name: user_name,
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:whiteboard_control_requested,
+         %{requester_id: requester_id, requester_name: requester_name}},
+        socket
+      ) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      pending_request_user_id: requester_id,
+      pending_request_user_name: requester_name
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_control_request_denied, _params}, socket) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_control_request_cancelled, _params}, socket) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    {:noreply, socket}
   end
 
   # Handle attention changes from UserVideoCardComponent

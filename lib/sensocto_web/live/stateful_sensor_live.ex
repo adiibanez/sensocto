@@ -21,6 +21,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
   attr :status, :atom, required: true
   attr :last_data_at, :any, default: nil
   attr :batch_window, :integer, default: nil
+  attr :latency_ms, :integer, default: nil
   attr :error_count, :integer, default: 0
 
   def connection_status_badge(assigns) do
@@ -80,19 +81,34 @@ defmodule SensoctoWeb.StatefulSensorLive do
       |> assign(:pulse, pulse)
       |> assign(:staleness_text, staleness_text)
 
+    # Determine latency color based on value
+    latency_color =
+      case assigns[:latency_ms] do
+        nil -> "text-gray-500"
+        ms when ms < 50 -> "text-green-400"
+        ms when ms < 150 -> "text-yellow-400"
+        _ -> "text-orange-400"
+      end
+
+    assigns = assign(assigns, :latency_color, latency_color)
+
     ~H"""
     <div
       class={"flex items-center gap-1 text-xs #{@color_class}"}
       title={"Status: #{@label}" <>
         (if @staleness_text, do: " • Last data: #{@staleness_text}", else: "") <>
-        (if @batch_window, do: " • Batch: #{@batch_window}ms", else: "") <>
+        (if @latency_ms, do: " • Latency: #{@latency_ms}ms", else: "") <>
         (if @error_count > 0, do: " • #{@error_count} errors", else: "")}
     >
       <span class={["flex items-center", if(@pulse, do: "animate-pulse", else: "")]}>
         <Heroicons.icon name={@icon_name} type="solid" class="h-3 w-3" />
       </span>
-      <span :if={@status == :streaming && @batch_window} class="text-gray-500 font-mono text-[10px]">
-        {@batch_window}ms
+      <span
+        :if={@latency_ms}
+        class={[@latency_color, "font-mono text-[10px] cursor-pointer"]}
+        title="Server roundtrip latency"
+      >
+        {@latency_ms}ms
       </span>
       <span
         :if={@error_count > 0}
@@ -212,7 +228,8 @@ defmodule SensoctoWeb.StatefulSensorLive do
      |> assign(:connection_status, :connected)
      |> assign(:last_data_at, nil)
      |> assign(:batch_window, Map.get(sensor_state, :batch_size, 100))
-     |> assign(:error_count, 0)}
+     |> assign(:error_count, 0)
+     |> assign(:latency_ms, nil)}
   end
 
   # def _render(assigns) do
@@ -472,6 +489,16 @@ defmodule SensoctoWeb.StatefulSensorLive do
 
   def handle_event("close_detail_modal", _params, socket) do
     {:noreply, assign(socket, :show_detail_modal, false)}
+  end
+
+  # Latency ping/pong - client sends ping with ID, we echo it back for roundtrip measurement
+  def handle_event("latency_ping", %{"ping_id" => ping_id}, socket) do
+    {:noreply, push_event(socket, "latency_pong", %{ping_id: ping_id})}
+  end
+
+  # Client reports measured roundtrip latency
+  def handle_event("latency_report", %{"latency_ms" => latency_ms}, socket) do
+    {:noreply, assign(socket, :latency_ms, latency_ms)}
   end
 
   def handle_event("update-parameter", params, socket) do

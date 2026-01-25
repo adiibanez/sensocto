@@ -17,6 +17,7 @@ defmodule SensoctoWeb.RoomShowLive do
   alias Phoenix.PubSub
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
+  alias SensoctoWeb.Live.Components.WhiteboardComponent
   alias SensoctoWeb.Live.Calls.MiniCallIndicatorComponent
   alias SensoctoWeb.Sensocto.Presence
 
@@ -43,6 +44,9 @@ defmodule SensoctoWeb.RoomShowLive do
 
           # Subscribe to object3d events for this room
           PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+          # Subscribe to whiteboard events for this room
+          PubSub.subscribe(Sensocto.PubSub, "whiteboard:#{room_id}")
 
           # Subscribe to global sensor events to auto-join web connector sensors
           PubSub.subscribe(Sensocto.PubSub, "sensors:global")
@@ -91,6 +95,7 @@ defmodule SensoctoWeb.RoomShowLive do
           # Bump animation assigns for mode buttons
           |> assign(:media_bump, false)
           |> assign(:object3d_bump, false)
+          |> assign(:whiteboard_bump, false)
           # Control request modal state
           |> assign(:control_request_modal, nil)
           |> assign(:media_control_request_modal, nil)
@@ -299,7 +304,8 @@ defmodule SensoctoWeb.RoomShowLive do
         "is_public" => Map.has_key?(params, "is_public"),
         "calls_enabled" => Map.has_key?(params, "calls_enabled"),
         "media_playback_enabled" => Map.has_key?(params, "media_playback_enabled"),
-        "object_3d_enabled" => Map.has_key?(params, "object_3d_enabled")
+        "object_3d_enabled" => Map.has_key?(params, "object_3d_enabled"),
+        "whiteboard_enabled" => Map.has_key?(params, "whiteboard_enabled")
       })
 
     {:noreply, assign(socket, :edit_form, form)}
@@ -316,7 +322,8 @@ defmodule SensoctoWeb.RoomShowLive do
       is_public: Map.has_key?(params, "is_public"),
       calls_enabled: Map.has_key?(params, "calls_enabled"),
       media_playback_enabled: Map.has_key?(params, "media_playback_enabled"),
-      object_3d_enabled: Map.has_key?(params, "object_3d_enabled")
+      object_3d_enabled: Map.has_key?(params, "object_3d_enabled"),
+      whiteboard_enabled: Map.has_key?(params, "whiteboard_enabled")
     }
 
     case Rooms.update_room(room, attrs, user) do
@@ -1637,6 +1644,127 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
+  def handle_info(:clear_whiteboard_bump, socket) do
+    {:noreply, assign(socket, :whiteboard_bump, false)}
+  end
+
+  # Whiteboard PubSub handlers
+  @impl true
+  def handle_info({:whiteboard_stroke_added, %{stroke: stroke}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      new_stroke: stroke
+    )
+
+    # Trigger bump animation
+    socket =
+      if not socket.assigns.whiteboard_bump do
+        Process.send_after(self(), :clear_whiteboard_bump, 300)
+        assign(socket, :whiteboard_bump, true)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_cleared, _params}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      strokes: []
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_undo, _params}, socket) do
+    room_id = socket.assigns.room.id
+    # Request fresh state from component on next render
+    send_update(WhiteboardComponent, id: "whiteboard-#{room_id}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_background_changed, %{color: color}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      background_color: color
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:whiteboard_controller_changed,
+         %{controller_user_id: user_id, controller_user_name: user_name}},
+        socket
+      ) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      controller_user_id: user_id,
+      controller_user_name: user_name,
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:whiteboard_control_requested,
+         %{requester_id: requester_id, requester_name: requester_name}},
+        socket
+      ) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      pending_request_user_id: requester_id,
+      pending_request_user_name: requester_name
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_control_request_denied, _params}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:whiteboard_control_request_cancelled, _params}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      pending_request_user_id: nil,
+      pending_request_user_name: nil
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(msg, socket) do
     Logger.debug("RoomShowLive received unknown message: #{inspect(msg)}")
     {:noreply, socket}
@@ -1684,6 +1812,7 @@ defmodule SensoctoWeb.RoomShowLive do
       Map.get(room, :calls_enabled, true) -> :call
       Map.get(room, :media_playback_enabled, true) -> :media
       Map.get(room, :object_3d_enabled, false) -> :object3d
+      Map.get(room, :whiteboard_enabled, false) -> :whiteboard
       true -> :sensors
     end
   end
@@ -1715,7 +1844,8 @@ defmodule SensoctoWeb.RoomShowLive do
       "is_public" => Map.get(room, :is_public, true),
       "calls_enabled" => Map.get(room, :calls_enabled, true),
       "media_playback_enabled" => Map.get(room, :media_playback_enabled, true),
-      "object_3d_enabled" => Map.get(room, :object_3d_enabled, false)
+      "object_3d_enabled" => Map.get(room, :object_3d_enabled, false),
+      "whiteboard_enabled" => Map.get(room, :whiteboard_enabled, false)
     })
   end
 
@@ -2244,7 +2374,7 @@ defmodule SensoctoWeb.RoomShowLive do
       <% end %>
 
       <%!-- Mode Switcher Tabs - only show if any collaboration feature is enabled --%>
-      <%= if Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) do %>
+      <%= if Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) or Map.get(@room, :whiteboard_enabled, false) do %>
         <div class="flex items-center justify-start gap-2 mb-6 flex-wrap">
           <%= if Map.get(@room, :media_playback_enabled, true) do %>
             <button
@@ -2278,6 +2408,17 @@ defmodule SensoctoWeb.RoomShowLive do
               >
                 {@object3d_viewers}
               </span>
+            </button>
+          <% end %>
+          <%= if Map.get(@room, :whiteboard_enabled, false) do %>
+            <button
+              phx-click="switch_room_mode"
+              phx-value-mode="whiteboard"
+              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :whiteboard, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+                if(@whiteboard_bump, do: " animate-bump ring-1 ring-green-300/50", else: "")}
+            >
+              <Heroicons.icon name="pencil-square" type="solid" class="h-4 w-4" /> Whiteboard
             </button>
           <% end %>
           <%= if @in_call do %>
@@ -2356,6 +2497,17 @@ defmodule SensoctoWeb.RoomShowLive do
         <.live_component
           module={Object3DPlayerComponent}
           id={"object3d-player-#{@room.id}"}
+          room_id={@room.id}
+          current_user={@current_user}
+          can_manage={@can_manage}
+        />
+      </div>
+
+      <%!-- Whiteboard Panel - shown when in whiteboard mode --%>
+      <div :if={@room_mode == :whiteboard and Map.get(@room, :whiteboard_enabled, false)} class="mb-6">
+        <.live_component
+          module={WhiteboardComponent}
+          id={"whiteboard-#{@room.id}"}
           room_id={@room.id}
           current_user={@current_user}
           can_manage={@can_manage}

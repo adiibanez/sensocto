@@ -87,6 +87,9 @@ defmodule Sensocto.Domain.Supervisor do
       # 3D visualization domain - Gaussian splat viewers
       Sensocto.Object3D.Object3DPlayerSupervisor,
 
+      # Whiteboard domain - collaborative drawing
+      Sensocto.Whiteboard.WhiteboardSupervisor,
+
       # Database replication pool - scalable sync operations
       {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
 

@@ -7,18 +7,20 @@ defmodule Sensocto.Storage.Supervisor do
   Uses `:rest_for_one` because these processes have explicit dependencies:
 
   1. `Iroh.RoomStore` - Low-level iroh document storage
-  2. `RoomStore` - In-memory room state cache (reads from Iroh.RoomStore)
-  3. `Iroh.RoomSync` - Async persistence layer (writes to Iroh.RoomStore)
-  4. `Iroh.RoomStateCRDT` - Real-time collaborative state using Automerge
+  2. `HydrationManager` - Coordinates multiple storage backends
+  3. `RoomStore` - In-memory room state cache (uses HydrationManager for persistence)
+  4. `Iroh.RoomSync` - Async persistence layer (writes to Iroh.RoomStore)
+  5. `Iroh.RoomStateCRDT` - Real-time collaborative state using Automerge
 
   If `Iroh.RoomStore` crashes, the downstream processes that depend on it
-  (RoomStore, RoomSync, RoomStateCRDT) must be restarted to maintain
-  consistency. This is the textbook use case for `:rest_for_one`.
+  (HydrationManager, RoomStore, RoomSync, RoomStateCRDT) must be restarted
+  to maintain consistency. This is the textbook use case for `:rest_for_one`.
 
   ## State Recovery
 
   - `Iroh.RoomStore`: Recovers from persistent storage on restart
-  - `RoomStore`: Rebuilds in-memory cache from Iroh.RoomStore
+  - `HydrationManager`: Re-initializes backends (PostgreSQL, Iroh, LocalStorage)
+  - `RoomStore`: Rebuilds in-memory cache via HydrationManager
   - `Iroh.RoomSync`: Resumes async sync operations
   - `Iroh.RoomStateCRDT`: Reloads CRDT state from storage
 
@@ -38,10 +40,18 @@ defmodule Sensocto.Storage.Supervisor do
   @impl true
   def init(_opts) do
     children = [
-      # Room storage: iroh docs (low-level) -> RoomStore (in-memory) -> RoomSync (async persistence)
+      # Room storage: iroh docs (low-level) -> HydrationManager -> RoomStore (in-memory)
       # Order matters! Later processes depend on earlier ones.
       Sensocto.Iroh.RoomStore,
+
+      # Multi-backend hydration coordinator (PostgreSQL, Iroh, LocalStorage)
+      # Must start before RoomStore so it can handle hydration requests
+      Sensocto.Storage.HydrationManager,
+
+      # In-memory room state cache - uses HydrationManager for persistence
       Sensocto.RoomStore,
+
+      # Async persistence layer (writes to Iroh.RoomStore)
       Sensocto.Iroh.RoomSync,
 
       # Real-time collaborative state using Automerge CRDTs (media sync, 3D viewer, presence)

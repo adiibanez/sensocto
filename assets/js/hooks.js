@@ -1,7 +1,11 @@
 import Sortable from 'sortablejs';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+import WhiteboardHook from './hooks/whiteboard_hook';
 
 let Hooks = {};
+
+// Whiteboard Hook
+Hooks.WhiteboardHook = WhiteboardHook;
 
 // Lobby Preferences Hook - persists lobby mode and min_attention to localStorage
 Hooks.LobbyPreferences = {
@@ -379,172 +383,144 @@ function loadYouTubeAPI() {
     });
 }
 
+// ============================================================================
+// MediaPlayerHook - State Machine Based YouTube Player Sync
+// ============================================================================
+//
+// States:
+//   INIT        - Waiting for YouTube API and player element
+//   LOADING     - YouTube player is loading
+//   READY       - Player ready, waiting for sync
+//   SYNCING     - Executing a sync command (play/pause/seek)
+//   PLAYING     - Video is playing, following server
+//   PAUSED      - Video is paused, following server
+//   USER_CONTROL- User interacted, ignoring server for grace period
+//   BLOCKED     - Autoplay blocked, showing overlay
+//   ERROR       - Player error state
+//
+// Transitions are explicit and logged for debugging.
+// ============================================================================
+
 Hooks.MediaPlayerHook = {
-    // Robust media player synchronization
-    // Design principle: User actions are KING during grace period, then server is authoritative
+    // === CONFIGURATION ===
+    CONFIG: {
+        USER_GRACE_MS: 1500,        // How long user keeps control after action (was 3000)
+        SYNC_COOLDOWN_MS: 250,      // Min time between sync operations (was 500)
+        SEEK_DRIFT_THRESHOLD: 1,    // Seconds of drift before seeking (was 3)
+        POSITION_REPORT_INTERVAL: 0.5, // Report position every N seconds of change (was 1)
+        POLL_INTERVAL_MS: 250,      // How often to poll player state (was 500)
+        AUTOPLAY_RETRY_MS: 5000,    // How long to wait before retrying autoplay
+        MAX_INIT_RETRIES: 5,        // Max retries for player initialization
+    },
+
+    // === STATE MACHINE ===
+    STATES: {
+        INIT: 'INIT',
+        LOADING: 'LOADING',
+        READY: 'READY',
+        SYNCING: 'SYNCING',
+        PLAYING: 'PLAYING',
+        PAUSED: 'PAUSED',
+        USER_CONTROL: 'USER_CONTROL',
+        BLOCKED: 'BLOCKED',
+        ERROR: 'ERROR',
+    },
+
     mounted() {
-        this.player = null;
         this.roomId = this.el.dataset.roomId;
+        this.player = null;
         this.currentVideoId = null;
-        this.isReady = false;
-        this.lastKnownPosition = 0;
+
+        // State machine
+        this.state = this.STATES.INIT;
+        this.previousState = null;
+
+        // Timers and tracking
+        this.userControlUntil = 0;
+        this.lastSyncAt = 0;
+        this.lastAutoplayAttemptAt = 0;
+        this.lastPosition = 0;
         this.lastReportedPosition = 0;
+        this.pollInterval = null;
 
-        // Grace period tracking - when set, sync is IGNORED
-        this.userActionUntil = 0; // Timestamp until which user has control
-        this.USER_ACTION_GRACE_MS = 3000; // 3 seconds of user control after any action
+        // Initialize
+        this.log('Mounted, starting initialization');
+        this.setupEventHandlers();
+        this.loadYouTubeAndInit();
+    },
 
-        // Sync-triggered seek cooldown - prevents seek loops when buffering
-        this.lastSyncSeekAt = 0;
-        this.SYNC_SEEK_COOLDOWN_MS = 5000; // Base cooldown: 5 seconds after a sync seek
-        this.consecutiveSyncSeeks = 0; // Track consecutive seeks for exponential backoff
-        this.MAX_CONSECUTIVE_SEEKS = 3; // After this many seeks, stop syncing position
-        this.isSeeking = false; // Track if we're in the middle of a seek operation
+    // === STATE TRANSITIONS ===
 
-        // Track programmatic vs user-initiated state changes
-        this.expectingStateChange = false;
+    transition(newState, reason = '') {
+        if (this.state === newState) return;
 
-        // Load YouTube API and initialize player
-        loadYouTubeAPI().then(() => {
-            requestAnimationFrame(() => {
-                this.initializePlayer();
-            });
-        });
+        this.previousState = this.state;
+        this.state = newState;
+        this.log(`${this.previousState} → ${newState}${reason ? ` (${reason})` : ''}`);
 
-        // Handle sync events from server - this is the primary sync mechanism
-        this.handleEvent("media_sync", (data) => {
-            this.handleSync(data);
-        });
+        // Handle state entry actions
+        this.onStateEnter(newState);
+    },
 
-        // Handle explicit video load commands
-        this.handleEvent("media_load_video", (data) => {
-            this.loadVideo(data.video_id, data.start_seconds || 0);
-        });
+    onStateEnter(state) {
+        switch (state) {
+            case this.STATES.BLOCKED:
+                this.showClickToPlayOverlay();
+                break;
+            case this.STATES.PLAYING:
+            case this.STATES.PAUSED:
+            case this.STATES.USER_CONTROL:
+                this.hideClickToPlayOverlay();
+                break;
+            case this.STATES.ERROR:
+                this.hideClickToPlayOverlay();
+                break;
+        }
+    },
 
-        // Listen for user action events (play/pause clicks) to set grace period
-        this.handleEvent("media_user_action", () => {
-            this.grantUserControl();
-        });
+    // === EVENT HANDLERS SETUP ===
 
-        // Handle seek commands from progress bar
-        this.handleEvent("seek_to", (data) => {
-            if (this.isReady && this.player) {
-                this.grantUserControl();
-                this.player.seekTo(data.position, true);
-                this.lastKnownPosition = data.position;
-                this.lastReportedPosition = data.position;
-            }
-        });
+    setupEventHandlers() {
+        // Server sync events
+        this.handleEvent("media_sync", (data) => this.onServerSync(data));
+        this.handleEvent("media_load_video", (data) => this.loadVideo(data.video_id, data.start_seconds || 0));
+        this.handleEvent("seek_to", (data) => this.onSeekCommand(data.position));
+        this.handleEvent("media_user_action", () => this.enterUserControl('server event'));
 
-        // Intercept clicks on play/pause buttons - grant user control BEFORE the event fires
+        // Intercept UI clicks before they fire
         this.el.addEventListener('click', (e) => {
             const target = e.target.closest('[phx-click="play"], [phx-click="pause"], [phx-click="next"], [phx-click="previous"]');
-            if (target) {
-                this.grantUserControl();
-            }
-        }, true); // Use capture phase to run before phx-click
+            if (target) this.enterUserControl('UI click');
+        }, true);
 
-        // Watch for player container being removed (e.g., section collapsed)
+        // Watch for player element changes
         this.setupObserver();
     },
 
-    updated() {
-        // Check if video changed via data-current-video-id attribute on the hook element
-        // This is the primary mechanism for video switching since push_event may not reach hooks reliably
-        const newVideoId = this.el.dataset.currentVideoId;
-        if (newVideoId && newVideoId !== this.currentVideoId && this.isReady && this.player) {
-            this.loadVideo(newVideoId, 0);
-        }
+    // === INITIALIZATION ===
 
-        // NOTE: Do NOT call handleSync from updated() with data attributes!
-        // The data-player-state and data-position attributes can be stale when
-        // the updated() hook fires. This causes a race condition where clicking
-        // pause triggers updated() with the OLD state before the server responds,
-        // immediately resuming playback.
-        // Sync should ONLY come from the "media_sync" event handler.
-
-        // If player not initialized, try to init (e.g., after collapse toggle)
-        if (!this.player && !this.isReady) {
-            this.initializePlayer();
-        }
-    },
-
-    destroyed() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-        }
-        if (this._unstartedRecoveryInterval) {
-            clearInterval(this._unstartedRecoveryInterval);
-        }
-        if (this._mutedCheckInterval) {
-            clearInterval(this._mutedCheckInterval);
-        }
-        if (this.observer) {
-            this.observer.disconnect();
-        }
-        if (this.player) {
-            try {
-                this.player.destroy();
-            } catch (e) {
-                // Ignore destroy errors
-            }
-        }
-    },
-
-    setupObserver() {
-        // Only watch for player element removal (collapsed section)
-        this.observer = new MutationObserver(() => {
-            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
-            if (!playerEl && this.player) {
-                try {
-                    this.player.destroy();
-                } catch (e) {
-                    // Ignore
-                }
-                this.player = null;
-                this.isReady = false;
-            } else if (playerEl && !this.player && !this.isReady) {
-                // Player element reappeared
-                this.initializePlayer();
-            }
-        });
-
-        this.observer.observe(this.el, {
-            childList: true,
-            subtree: true
+    loadYouTubeAndInit() {
+        loadYouTubeAPI().then(() => {
+            requestAnimationFrame(() => this.initializePlayer());
         });
     },
 
     initializePlayer(retryCount = 0) {
-        // Select the actual player div (where YT.Player will be initialized)
-        // Use more specific selector to avoid matching wrapper or container
         const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"]):not([id*="container"])');
-
-        if (!playerEl) {
-            if (retryCount < 5) {
-                setTimeout(() => this.initializePlayer(retryCount + 1), 200);
-            }
-            return;
-        }
-
-        // Read video ID from the hook element (this.el) which is updated by LiveView
-        // The wrapper element is inside phx-update="ignore" so its data attributes are stale
         const videoId = this.el.dataset.currentVideoId;
-        if (!videoId) {
-            if (retryCount < 5) {
+
+        if (!playerEl || !videoId) {
+            if (retryCount < this.CONFIG.MAX_INIT_RETRIES) {
                 setTimeout(() => this.initializePlayer(retryCount + 1), 200);
             }
             return;
         }
 
+        this.transition(this.STATES.LOADING, 'creating player');
         this.currentVideoId = videoId;
 
-        // Read state/position from hook element as well
         const autoplay = this.el.dataset.playerState === 'playing';
         const startSeconds = parseInt(this.el.dataset.position) || 0;
-
-        // Track if we need to autoplay - will start muted to comply with Chrome's autoplay policy
-        this.pendingAutoplay = autoplay;
 
         this.player = new YT.Player(playerEl.id, {
             height: '100%',
@@ -560,99 +536,290 @@ Hooks.MediaPlayerHook = {
                 origin: window.location.origin
             },
             events: {
-                onReady: (event) => this.onPlayerReady(event),
-                onStateChange: (event) => this.onPlayerStateChange(event),
-                onError: (event) => this.onPlayerError(event)
+                onReady: () => this.onPlayerReady(autoplay),
+                onStateChange: (e) => this.onYouTubeStateChange(e),
+                onError: (e) => this.onPlayerError(e)
             }
         });
+
+        // Expose for debugging
+        window.__mediaPlayer = this.player;
+        window.__mediaHook = this;
     },
 
-    onPlayerReady(event) {
-        this.isReady = true;
-        this._mutedPlaybackAttempted = false;
-        this._unstartedCheckCount = 0;
+    // === PLAYER EVENTS ===
 
-        // If we need to autoplay but Chrome blocked it, try muted playback
-        if (this.pendingAutoplay) {
-            const state = this.player.getPlayerState();
-            // -1 = unstarted, meaning autoplay was blocked
-            if (state === YT.PlayerState.UNSTARTED || state === YT.PlayerState.CUED) {
-                console.log('[MediaPlayer] Autoplay was blocked, trying muted playback');
-                this.player.mute();
-                this.player.playVideo();
-                // Show a notice that video is muted
-                this.showMutedNotice();
-            }
-            this.pendingAutoplay = false;
+    onPlayerReady(wantAutoplay) {
+        this.log('Player ready');
+
+        // Test event push to verify connectivity
+        console.log(`[MediaPlayer:${this.roomId}] Testing pushEventTo - el.id=${this.el.id}`);
+        this.pushEventTo(this.el, "test_hook_connection", { test: "from_hook" });
+        console.log(`[MediaPlayer:${this.roomId}] pushEventTo called`);
+
+        // Sync initial position if needed
+        const serverPos = parseFloat(this.el.dataset.position) || 0;
+        const playerPos = this.player.getCurrentTime() || 0;
+
+        if (Math.abs(serverPos - playerPos) > this.CONFIG.SEEK_DRIFT_THRESHOLD) {
+            this.log(`Initial seek: ${playerPos.toFixed(1)} → ${serverPos.toFixed(1)}`);
+            this.player.seekTo(serverPos, true);
         }
 
-        // Report duration to server
+        this.lastPosition = serverPos;
+        this.lastReportedPosition = serverPos;
+
+        // Report duration
         const duration = this.player.getDuration();
         if (duration > 0) {
-            this.pushEvent("report_duration", { duration: duration });
+            this.pushEvent("report_duration", { duration });
         }
 
-        // Request current state from server to sync up
+        // Check autoplay status
+        const ytState = this.player.getPlayerState();
+        if (wantAutoplay && (ytState === YT.PlayerState.UNSTARTED || ytState === YT.PlayerState.CUED)) {
+            this.log('Autoplay blocked, trying muted');
+            this.player.mute();
+            this.player.playVideo();
+            this.showMutedNotice();
+        }
+
+        // Determine initial state
+        this.transition(this.STATES.READY, 'player ready');
+
+        // Start polling
+        this.startPolling();
+
+        // Request sync from server
         this.pushEventTo(this.el, "request_media_sync", {});
-
-        // Start sync interval - poll server every second for multi-tab sync
-        this.startSyncInterval();
-
-        // Start recovery check for stuck UNSTARTED state
-        this.startUnstartedRecovery();
     },
 
-    startUnstartedRecovery() {
-        // Clear any existing recovery interval
-        if (this._unstartedRecoveryInterval) {
-            clearInterval(this._unstartedRecoveryInterval);
+    onYouTubeStateChange(event) {
+        const ytState = event.data;
+        const stateName = this.ytStateToName(ytState);
+
+        console.log(`[MediaPlayer:${this.roomId}] YT state change: ${stateName} (current state: ${this.state})`);
+
+        // Handle video ended
+        if (ytState === YT.PlayerState.ENDED) {
+            this.log('Video ended');
+            this.pushEventTo(this.el, "video_ended", {});
+            return;
         }
 
-        this._unstartedCheckCount = 0;
-
-        // Check every 2 seconds if player is stuck in UNSTARTED
-        this._unstartedRecoveryInterval = setInterval(() => {
-            if (!this.isReady || !this.player) return;
-
-            // Guard against invalid player object (can happen if iframe is removed/replaced)
-            if (typeof this.player.getPlayerState !== 'function') {
-                return;
+        // If we're in SYNCING state, we expected this change
+        if (this.state === this.STATES.SYNCING) {
+            this.log(`Sync complete: ${stateName}`);
+            if (ytState === YT.PlayerState.PLAYING) {
+                this.transition(this.STATES.PLAYING, 'sync complete');
+            } else if (ytState === YT.PlayerState.PAUSED) {
+                this.transition(this.STATES.PAUSED, 'sync complete');
             }
+            // Report duration when playing starts
+            if (ytState === YT.PlayerState.PLAYING) {
+                const duration = this.player.getDuration();
+                if (duration > 0) {
+                    this.pushEventTo(this.el, "report_duration", { duration });
+                }
+            }
+            return;
+        }
+
+        // If we're in USER_CONTROL, forward to server
+        if (this.state === this.STATES.USER_CONTROL) {
+            console.log(`[MediaPlayer:${this.roomId}] In USER_CONTROL, forwarding ${stateName} to server`);
+            if (ytState === YT.PlayerState.PLAYING) {
+                console.log(`[MediaPlayer:${this.roomId}] >>> PUSHING PLAY EVENT <<<`);
+                this.pushEventTo(this.el, "play", {});
+                const duration = this.player.getDuration();
+                if (duration > 0) {
+                    this.pushEventTo(this.el, "report_duration", { duration });
+                }
+            } else if (ytState === YT.PlayerState.PAUSED) {
+                console.log(`[MediaPlayer:${this.roomId}] >>> PUSHING PAUSE EVENT <<<`);
+                this.pushEventTo(this.el, "pause", {});
+            }
+            return;
+        }
+
+        // Unexpected state change - user interaction via YouTube controls
+        if (ytState === YT.PlayerState.PLAYING || ytState === YT.PlayerState.PAUSED) {
+            console.log(`[MediaPlayer:${this.roomId}] Unexpected ${stateName}, entering USER_CONTROL`);
+            this.enterUserControl('YouTube controls');
+            if (ytState === YT.PlayerState.PLAYING) {
+                console.log(`[MediaPlayer:${this.roomId}] Pushing play event to server`);
+                this.pushEventTo(this.el, "play", {});
+            } else {
+                console.log(`[MediaPlayer:${this.roomId}] Pushing pause event to server`);
+                this.pushEventTo(this.el, "pause", {});
+            }
+        }
+    },
+
+    onPlayerError(event) {
+        const errors = { 2: 'Invalid ID', 5: 'HTML5 error', 100: 'Not found', 101: 'Embed blocked', 150: 'Embed blocked' };
+        this.log(`Error: ${errors[event.data] || 'Unknown'}`);
+        this.transition(this.STATES.ERROR, errors[event.data]);
+    },
+
+    // === SERVER SYNC ===
+
+    onServerSync(data) {
+        const serverState = data.state;
+        const serverPosition = data.position_seconds || 0;
+        const now = Date.now();
+
+        console.log(`[MediaPlayer:${this.roomId}] onServerSync: server=${serverState}, hook=${this.state}, userControlUntil=${this.userControlUntil}, now=${now}`);
+
+        // Ignore if not ready
+        if (!this.player || this.state === this.STATES.INIT || this.state === this.STATES.LOADING) {
+            console.log(`[MediaPlayer:${this.roomId}] Ignoring sync - not ready`);
+            return;
+        }
+
+        // Ignore if user is in control
+        if (this.state === this.STATES.USER_CONTROL && now < this.userControlUntil) {
+            console.log(`[MediaPlayer:${this.roomId}] Ignoring sync - user in control (${this.userControlUntil - now}ms remaining)`);
+            return;
+        } else if (this.state === this.STATES.USER_CONTROL && now >= this.userControlUntil) {
+            // Grace period expired, exit user control
+            this.log('User control grace period expired');
+        }
+
+        // Ignore if in BLOCKED state (waiting for user click)
+        if (this.state === this.STATES.BLOCKED) {
+            return;
+        }
+
+        // Rate limit syncs
+        if (now - this.lastSyncAt < this.CONFIG.SYNC_COOLDOWN_MS) {
+            return;
+        }
+        this.lastSyncAt = now;
+
+        const ytState = this.player.getPlayerState();
+        const currentPos = this.player.getCurrentTime() || 0;
+        const shouldPlay = serverState === 'playing';
+        const isPlaying = ytState === YT.PlayerState.PLAYING;
+        const isBuffering = ytState === YT.PlayerState.BUFFERING;
+        const isBlocked = ytState === YT.PlayerState.UNSTARTED || ytState === YT.PlayerState.CUED;
+
+        // Handle autoplay blocked
+        if (shouldPlay && isBlocked) {
+            if (now - this.lastAutoplayAttemptAt > this.CONFIG.AUTOPLAY_RETRY_MS) {
+                this.lastAutoplayAttemptAt = now;
+                this.log('Attempting autoplay');
+                this.transition(this.STATES.SYNCING, 'autoplay attempt');
+                this.player.playVideo();
+
+                // Check if it worked after a short delay
+                setTimeout(() => {
+                    if (!this.player) return;
+                    const newState = this.player.getPlayerState();
+                    if (newState === YT.PlayerState.UNSTARTED || newState === YT.PlayerState.CUED) {
+                        this.log('Autoplay still blocked');
+                        this.transition(this.STATES.BLOCKED, 'autoplay blocked');
+                    }
+                }, 1000);
+            }
+            return;
+        }
+
+        // Handle play/pause sync
+        if (shouldPlay && !isPlaying && !isBuffering) {
+            this.log('Server says play');
+            this.transition(this.STATES.SYNCING, 'play');
+            this.player.playVideo();
+        } else if (!shouldPlay && isPlaying) {
+            this.log('Server says pause');
+            this.transition(this.STATES.SYNCING, 'pause');
+            this.player.pauseVideo();
+        } else {
+            // State matches, update our tracking
+            if (isPlaying && this.state !== this.STATES.PLAYING) {
+                this.transition(this.STATES.PLAYING, 'state match');
+            } else if (!isPlaying && !isBuffering && this.state !== this.STATES.PAUSED) {
+                this.transition(this.STATES.PAUSED, 'state match');
+            }
+        }
+
+        // Handle position drift (only when playing)
+        if (shouldPlay && isPlaying) {
+            const drift = Math.abs(currentPos - serverPosition);
+            if (drift > this.CONFIG.SEEK_DRIFT_THRESHOLD) {
+                this.log(`Position drift: ${drift.toFixed(1)}s, seeking`);
+                this.transition(this.STATES.SYNCING, 'seek');
+                this.player.seekTo(serverPosition, true);
+                this.lastPosition = serverPosition;
+            }
+        }
+    },
+
+    // === USER CONTROL ===
+
+    enterUserControl(reason) {
+        this.userControlUntil = Date.now() + this.CONFIG.USER_GRACE_MS;
+        console.log(`[MediaPlayer:${this.roomId}] enterUserControl: grace until ${this.userControlUntil}, reason: ${reason}`);
+        this.transition(this.STATES.USER_CONTROL, reason);
+    },
+
+    onSeekCommand(position) {
+        if (!this.player) return;
+        this.enterUserControl('seek command');
+        this.player.seekTo(position, true);
+        this.lastPosition = position;
+        this.lastReportedPosition = position;
+    },
+
+    // === POLLING ===
+
+    startPolling() {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+
+        this.pollInterval = setInterval(() => {
+            if (!this.player) return;
 
             try {
-                const state = this.player.getPlayerState();
-                const serverState = this.el.dataset.playerState;
+                const currentPos = this.player.getCurrentTime() || 0;
+                const now = Date.now();
 
-                // Only check if server says we should be playing
-                if (serverState !== 'playing') {
-                    this._unstartedCheckCount = 0;
-                    this.hideClickToPlayOverlay();
-                    return;
+                // Check if user control expired
+                if (this.state === this.STATES.USER_CONTROL && now >= this.userControlUntil) {
+                    this.pushEventTo(this.el, "request_media_sync", {});
                 }
 
-                if (state === YT.PlayerState.UNSTARTED || state === YT.PlayerState.CUED) {
-                    this._unstartedCheckCount++;
+                // Detect user seek via YouTube controls
+                const posDelta = Math.abs(currentPos - this.lastPosition);
+                if (posDelta > this.CONFIG.SEEK_DRIFT_THRESHOLD && this.state !== this.STATES.SYNCING) {
+                    this.enterUserControl('detected seek');
+                    this.pushEventTo(this.el, "client_seek", { position: currentPos });
+                }
 
-                    // After 3 checks (6 seconds), show click-to-play overlay
-                    if (this._unstartedCheckCount >= 3) {
-                        console.log('[MediaPlayer] Player stuck in UNSTARTED, showing click-to-play overlay');
-                        this.showClickToPlayOverlay();
+                this.lastPosition = currentPos;
+
+                // Report position updates
+                if (Math.abs(currentPos - this.lastReportedPosition) > this.CONFIG.POSITION_REPORT_INTERVAL) {
+                    this.lastReportedPosition = currentPos;
+                    this.pushEventTo(this.el, "position_update", { position: currentPos });
+                }
+
+                // Check for stuck BLOCKED state recovery
+                if (this.state === this.STATES.BLOCKED) {
+                    const ytState = this.player.getPlayerState();
+                    if (ytState === YT.PlayerState.PLAYING || ytState === YT.PlayerState.PAUSED) {
+                        this.transition(ytState === YT.PlayerState.PLAYING ? this.STATES.PLAYING : this.STATES.PAUSED, 'recovered');
                     }
-                } else {
-                    // Player is playing/buffering/paused, reset counter and hide overlay
-                    this._unstartedCheckCount = 0;
-                    this.hideClickToPlayOverlay();
                 }
             } catch (e) {
-                // Player API error - likely iframe was removed
-                console.warn('[MediaPlayer] Recovery check error:', e.message);
+                // Player might have been destroyed
             }
-        }, 2000);
+        }, this.CONFIG.POLL_INTERVAL_MS);
     },
 
+    // === UI OVERLAYS ===
+
     showClickToPlayOverlay() {
-        const existingOverlay = this.el.querySelector('#click-to-play-overlay-' + this.roomId);
-        if (existingOverlay) return;
+        if (this.el.querySelector('#click-to-play-overlay-' + this.roomId)) return;
 
         const overlay = document.createElement('div');
         overlay.id = 'click-to-play-overlay-' + this.roomId;
@@ -665,298 +832,110 @@ Hooks.MediaPlayerHook = {
             <span class="text-gray-300 text-sm mt-1">Autoplay was blocked by your browser</span>
         `;
         overlay.onclick = () => {
-            if (this.player) {
-                this.grantUserControl();
-                this.player.playVideo();
-                overlay.remove();
-                this._unstartedCheckCount = 0;
-            }
+            this.enterUserControl('overlay click');
+            this.player.playVideo();
+            overlay.remove();
         };
 
         const container = this.el.querySelector('.relative.aspect-video');
-        if (container) {
-            container.appendChild(overlay);
-        }
+        if (container) container.appendChild(overlay);
     },
 
     hideClickToPlayOverlay() {
         const overlay = this.el.querySelector('#click-to-play-overlay-' + this.roomId);
-        if (overlay) {
-            overlay.remove();
-        }
+        if (overlay) overlay.remove();
     },
 
-    startSyncInterval() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-        }
-        // Sync interval (500ms) - slower is more reliable, server pushes are the primary sync
-        this.syncInterval = setInterval(() => {
-            if (!this.isReady || !this.player) return;
-
-            // NEVER sync during user control period
-            if (this.isUserInControl()) {
-                this.lastKnownPosition = this.player.getCurrentTime() || 0;
-                return;
-            }
-
-            const currentPosition = this.player.getCurrentTime() || 0;
-            const positionDelta = Math.abs(currentPosition - this.lastKnownPosition);
-            const timeSinceLastSyncSeek = Date.now() - this.lastSyncSeekAt;
-
-            // Detect if user seeked via YouTube controls (position jumped > 3 seconds)
-            // BUT ignore if we recently did a sync seek (that's expected position change)
-            if (positionDelta > 3 && timeSinceLastSyncSeek > this.SYNC_SEEK_COOLDOWN_MS) {
-                this.grantUserControl();
-                this.lastReportedPosition = currentPosition;
-                this.pushEventTo(this.el, "client_seek", { position: currentPosition });
-            }
-
-            this.lastKnownPosition = currentPosition;
-
-            // Report position for UI updates (every 1 second of change)
-            if (Math.abs(currentPosition - this.lastReportedPosition) > 1) {
-                this.lastReportedPosition = currentPosition;
-                this.pushEventTo(this.el, "position_update", { position: currentPosition });
-            }
-
-            // Request sync from server
-            this.pushEventTo(this.el, "request_media_sync", {});
-        }, 500);
-    },
-
-    onPlayerStateChange(event) {
-        // Report video ended so server can advance playlist
-        if (event.data === YT.PlayerState.ENDED) {
-            this.pushEventTo(this.el, "video_ended", {});
-            return;
-        }
-
-        // When buffering ends and playback resumes, reset seek-related state
-        if (event.data === YT.PlayerState.PLAYING) {
-            // Playback successfully started/resumed - clear seeking flag
-            this.isSeeking = false;
-
-            const duration = this.player.getDuration();
-            if (duration > 0) {
-                this.pushEventTo(this.el, "report_duration", { duration: duration });
-            }
-        }
-
-        // Track when buffering starts - don't allow new seeks during buffering
-        if (event.data === YT.PlayerState.BUFFERING) {
-            this.isSeeking = true;
-        }
-
-        // If we're expecting this state change (programmatic), just clear the flag
-        if (this.expectingStateChange) {
-            this.expectingStateChange = false;
-            return;
-        }
-
-        // This was a USER action (YouTube controls or our buttons already granted control)
-        // Forward to server
-        if (event.data === YT.PlayerState.PLAYING) {
-            this.grantUserControl();
-            this.pushEventTo(this.el, "play", {});
-        } else if (event.data === YT.PlayerState.PAUSED) {
-            this.grantUserControl();
-            this.pushEventTo(this.el, "pause", {});
-        }
-    },
-
-    onPlayerError(event) {
-        const errorCodes = {
-            2: 'Invalid video ID',
-            5: 'HTML5 player error',
-            100: 'Video not found',
-            101: 'Embedding not allowed',
-            150: 'Embedding not allowed'
-        };
-        console.error('[MediaPlayer] Error:', errorCodes[event.data] || 'Unknown error');
-    },
-
-    loadVideo(videoId, startSeconds = 0) {
-        this.currentVideoId = videoId;
-        // New video - reset sync state
-        this.consecutiveSyncSeeks = 0;
-        this.isSeeking = false;
-        this.lastSyncSeekAt = 0;
-        // Reset autoplay attempt flag so we can retry muted playback
-        this._mutedPlaybackAttempted = false;
-
-        if (!this.isReady || !this.player) {
-            // Not ready yet - reinitialize
-            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"]):not([id*="container"])');
-            if (playerEl && youtubeAPILoaded) {
-                if (this.player) {
-                    try {
-                        this.player.destroy();
-                    } catch (e) {
-                        // Ignore
-                    }
-                }
-                this.player = null;
-                this.isReady = false;
-                this.initializePlayer();
-            }
-            return;
-        }
-
-        // Load and autoplay the video
-        this.player.loadVideoById({
-            videoId: videoId,
-            startSeconds: startSeconds
-        });
-    },
-
-    handleSync(data) {
-        if (!this.isReady || !this.player) {
-            return;
-        }
-
-        // CRITICAL: If user is in control, COMPLETELY IGNORE sync
-        // This is the key to reliable playback - user actions are never overridden
-        if (this.isUserInControl()) {
-            return;
-        }
-
-        const serverPosition = data.position_seconds || 0;
-        const serverState = data.state;
-        const currentPosition = this.player.getCurrentTime() || 0;
-        const playerState = this.player.getPlayerState();
-
-        const isPlaying = playerState === YT.PlayerState.PLAYING;
-        const isBuffering = playerState === YT.PlayerState.BUFFERING;
-        const isUnstarted = playerState === YT.PlayerState.UNSTARTED;
-        const isCued = playerState === YT.PlayerState.CUED;
-        const shouldPlay = serverState === 'playing';
-
-        // 1. Handle play/pause state synchronization
-        if (shouldPlay && !isPlaying && !isBuffering) {
-            this.expectingStateChange = true;
-            this.player.playVideo();
-
-            // Handle Chrome autoplay blocking
-            if ((isUnstarted || isCued) && !this._mutedPlaybackAttempted) {
-                this._mutedPlaybackAttempted = true;
-                setTimeout(() => {
-                    if (!this.player) return;
-                    const newState = this.player.getPlayerState();
-                    if (newState === YT.PlayerState.UNSTARTED || newState === YT.PlayerState.CUED) {
-                        console.log('[MediaPlayer] Autoplay blocked, trying muted playback');
-                        this.expectingStateChange = true;
-                        this.player.mute();
-                        this.player.playVideo();
-                        this.showMutedNotice();
-                    }
-                }, 500);
-            }
-        } else if (!shouldPlay && isPlaying) {
-            this.expectingStateChange = true;
-            this.player.pauseVideo();
-        }
-
-        // 2. Correct position drift (only when playing and drift > 2 seconds)
-        // Larger threshold = less jarring, more tolerant
-        const drift = Math.abs(currentPosition - serverPosition);
-        const timeSinceLastSyncSeek = Date.now() - this.lastSyncSeekAt;
-
-        // Calculate effective cooldown with exponential backoff
-        // Base: 5s, then 10s, then 20s, etc. up to max
-        const effectiveCooldown = this.SYNC_SEEK_COOLDOWN_MS * Math.pow(2, Math.min(this.consecutiveSyncSeeks, 3));
-
-        // Reset consecutive seeks counter if we've been stable for a while (2x cooldown)
-        if (timeSinceLastSyncSeek > effectiveCooldown * 2) {
-            this.consecutiveSyncSeeks = 0;
-        }
-
-        // Only seek if:
-        // - Playing and drift > 2 seconds
-        // - Not currently buffering (would just cause another buffer)
-        // - Not currently seeking (would just cause another seek)
-        // - Haven't done a sync seek recently (prevents seek loops)
-        // - Haven't hit max consecutive seeks (gives up after too many attempts)
-        if (shouldPlay && drift > 2 && !isBuffering && !this.isSeeking) {
-            if (this.consecutiveSyncSeeks >= this.MAX_CONSECUTIVE_SEEKS) {
-                // Too many consecutive seeks - give up on position sync, just let it play
-                // Position will naturally converge on next video or after user interaction
-                if (timeSinceLastSyncSeek > 30000) {
-                    // After 30 seconds, try again
-                    console.log(`[MediaPlayer] Resetting consecutive seek counter after 30s pause`);
-                    this.consecutiveSyncSeeks = 0;
-                }
-            } else if (timeSinceLastSyncSeek > effectiveCooldown) {
-                console.log(`[MediaPlayer] Sync seek: drift=${drift.toFixed(1)}s, server=${serverPosition.toFixed(1)}, client=${currentPosition.toFixed(1)}, attempt=${this.consecutiveSyncSeeks + 1}`);
-                this.lastSyncSeekAt = Date.now();
-                this.consecutiveSyncSeeks++;
-                this.isSeeking = true;
-                this.player.seekTo(serverPosition, true);
-                this.lastKnownPosition = serverPosition;
-                this.lastReportedPosition = serverPosition;
-
-                // Clear isSeeking flag after a short delay (allow seek to complete)
-                setTimeout(() => {
-                    this.isSeeking = false;
-                }, 1500);
-            } else {
-                console.log(`[MediaPlayer] Skipping sync seek (cooldown): drift=${drift.toFixed(1)}s, cooldown remaining=${((effectiveCooldown - timeSinceLastSyncSeek) / 1000).toFixed(1)}s`);
-            }
-        }
-    },
-
-    // Show a notice that video is muted due to autoplay policy
     showMutedNotice() {
-        // Create muted notice overlay
+        if (this.el.querySelector('#muted-notice-' + this.roomId)) return;
+
         const notice = document.createElement('div');
         notice.id = 'muted-notice-' + this.roomId;
         notice.className = 'absolute top-2 left-2 right-2 bg-amber-600/90 text-white px-3 py-2 rounded-lg text-sm flex items-center justify-between z-20 cursor-pointer';
         notice.innerHTML = `
             <span class="flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
                 </svg>
-                Click to unmute
+                Video is muted - click to unmute
             </span>
         `;
         notice.onclick = () => {
-            if (this.player && this.player.isMuted()) {
+            if (this.player) {
                 this.player.unMute();
                 notice.remove();
             }
         };
 
-        // Find the player container and add the notice
         const container = this.el.querySelector('.relative.aspect-video');
-        if (container) {
-            // Remove any existing notice
-            const existing = container.querySelector('#muted-notice-' + this.roomId);
-            if (existing) existing.remove();
-            container.appendChild(notice);
+        if (container) container.appendChild(notice);
+
+        // Auto-hide after 10 seconds
+        setTimeout(() => notice.remove(), 10000);
+    },
+
+    // === VIDEO LOADING ===
+
+    loadVideo(videoId, startSeconds = 0) {
+        this.log(`Loading video: ${videoId}`);
+        this.currentVideoId = videoId;
+        this.lastAutoplayAttemptAt = 0;
+
+        if (!this.player) {
+            this.initializePlayer();
+            return;
         }
 
-        // Auto-remove notice when user unmutes via YouTube controls
-        this._mutedCheckInterval = setInterval(() => {
-            if (this.player && !this.player.isMuted()) {
-                notice.remove();
-                clearInterval(this._mutedCheckInterval);
+        this.transition(this.STATES.LOADING, 'new video');
+        this.player.loadVideoById({ videoId, startSeconds });
+    },
+
+    // === UTILITIES ===
+
+    log(msg) {
+        console.log(`[MediaPlayer:${this.roomId}] [${this.state}] ${msg}`);
+    },
+
+    ytStateToName(state) {
+        const names = { [-1]: 'UNSTARTED', 0: 'ENDED', 1: 'PLAYING', 2: 'PAUSED', 3: 'BUFFERING', 5: 'CUED' };
+        return names[state] || 'UNKNOWN';
+    },
+
+    setupObserver() {
+        this.observer = new MutationObserver(() => {
+            const playerEl = this.el.querySelector('[id^="youtube-player-"]:not([id*="wrapper"])');
+            if (!playerEl && this.player) {
+                try { this.player.destroy(); } catch (e) {}
+                this.player = null;
+                this.transition(this.STATES.INIT, 'player removed');
+            } else if (playerEl && !this.player && this.state === this.STATES.INIT) {
+                this.initializePlayer();
             }
-        }, 500);
+        });
+        this.observer.observe(this.el, { childList: true, subtree: true });
     },
 
-    // Grant user control for the grace period - sync will be IGNORED during this time
-    grantUserControl() {
-        this.userActionUntil = Date.now() + this.USER_ACTION_GRACE_MS;
-        // User action means player is responsive - reset backoff counters
-        this.consecutiveSyncSeeks = 0;
-        this.isSeeking = false;
+    // === LIFECYCLE ===
+
+    updated() {
+        const newVideoId = this.el.dataset.currentVideoId;
+        if (newVideoId && newVideoId !== this.currentVideoId && this.player) {
+            this.loadVideo(newVideoId, 0);
+        }
+        if (!this.player && this.state === this.STATES.INIT) {
+            this.initializePlayer();
+        }
     },
 
-    // Check if user is currently in control (grace period active)
-    isUserInControl() {
-        return Date.now() < this.userActionUntil;
-    }
+    destroyed() {
+        this.log('Destroyed');
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        if (this.observer) this.observer.disconnect();
+        if (this.player) {
+            try { this.player.destroy(); } catch (e) {}
+        }
+    },
 };
 
 // SeekBar hook for progress bar seeking
@@ -1271,479 +1250,236 @@ Hooks.SortablePlaylist = {
     }
 };
 
-// Object3D Player Hook - Synchronized 3D Gaussian Splat viewer with playlist support
+// Object3DPlayerHook - State Machine Based 3D Gaussian Splat Viewer Sync
+// ============================================================================
+//
+// States:
+//   INIT        - Waiting for container and viewer element
+//   LOADING     - 3D viewer is loading a splat
+//   READY       - Viewer ready, waiting for content or sync
+//   SYNCED      - Following controller's camera movements
+//   USER_CONTROL- User interacted, ignoring server sync for grace period
+//   ERROR       - Viewer error state
+//
+// Transitions are explicit and logged for debugging.
+// ============================================================================
+
 Hooks.Object3DPlayerHook = {
-    async mounted() {
-        this.viewer = null;
-        this.isLoading = false;
-        this.loadError = null;
+    // === CONFIGURATION ===
+    CONFIG: {
+        USER_GRACE_MS: 500,         // How long user keeps control after action
+        CAMERA_SYNC_THROTTLE_MS: 200, // Min time between camera sync sends
+        CAMERA_SYNC_POLL_MS: 100,   // How often to poll camera position
+        CAMERA_MOVE_THRESHOLD: 0.01, // Min camera movement to trigger sync
+        LOAD_TIMEOUT_MS: 30000,     // Max time to wait for splat load
+        INIT_RETRY_MS: 100,         // Retry interval for container init
+        MAX_INIT_RETRIES: 50,       // Max retries for container init
+    },
+
+    // === STATE MACHINE ===
+    STATES: {
+        INIT: 'INIT',
+        LOADING: 'LOADING',
+        READY: 'READY',
+        SYNCED: 'SYNCED',
+        USER_CONTROL: 'USER_CONTROL',
+        ERROR: 'ERROR',
+    },
+
+    mounted() {
         this.roomId = this.el.dataset.roomId;
-        this.isController = false;
-        this.controllerId = null;
-        this.canControl = true; // Initially true since no controller is set
         this.currentUserId = this.el.dataset.currentUserId;
-        this.lastCameraSyncTime = 0;
-        this.cameraSyncThrottle = 200; // Sync camera every 200ms max
-        this.gracePeriod = 500; // Ignore incoming syncs for 500ms after user action
-        this.lastUserActionTime = 0;
+        this.viewer = null;
+        this.viewerContainer = null;
+
+        // State machine
+        this.state = this.STATES.INIT;
+        this.previousState = null;
+
+        // Controller tracking
+        this.controllerId = null;
+
+        // Content tracking
         this.currentItemId = null;
-        this.viewerReady = false;
+        this.currentSplatUrl = null;
 
         // Camera state
         this.cameraPosition = { x: 0, y: 0, z: 5 };
         this.cameraTarget = { x: 0, y: 0, z: 0 };
 
+        // Timers and tracking
+        this.userControlUntil = 0;
+        this.lastCameraSyncTime = 0;
+        this.cameraPollInterval = null;
+        this.initRetryCount = 0;
+
+        // Initialize
+        this.log('Mounted, starting initialization');
+        this.setupEventHandlers();
+        this.initializeViewer();
+    },
+
+    // === LOGGING ===
+    log(msg, data = null) {
+        const prefix = `[Object3D:${this.roomId}]`;
+        if (data) {
+            console.log(`${prefix} ${msg}`, data);
+        } else {
+            console.log(`${prefix} ${msg}`);
+        }
+    },
+
+    // === STATE TRANSITIONS ===
+    transition(newState, reason = '') {
+        if (this.state === newState) return;
+
+        this.previousState = this.state;
+        this.state = newState;
+        this.log(`${this.previousState} → ${newState}${reason ? ` (${reason})` : ''}`);
+
+        // Handle state entry actions
+        this.onStateEnter(newState);
+    },
+
+    onStateEnter(state) {
+        switch (state) {
+            case this.STATES.READY:
+                // Request initial sync from server
+                this.pushEventTo(this.el, "request_object3d_sync", {});
+                break;
+            case this.STATES.SYNCED:
+                // Start camera polling when synced
+                this.startCameraPoll();
+                break;
+            case this.STATES.USER_CONTROL:
+                // Keep polling in user control mode
+                this.startCameraPoll();
+                break;
+            case this.STATES.ERROR:
+                this.stopCameraPoll();
+                break;
+        }
+    },
+
+    // === EVENT HANDLERS SETUP ===
+    setupEventHandlers() {
+        // Server sync events
+        this.handleEvent("object3d_sync", (data) => this.onServerSync(data));
+        this.handleEvent("object3d_load", (data) => this.onLoadCommand(data));
+        this.handleEvent("object3d_camera_sync", (data) => this.onCameraSync(data));
+        this.handleEvent("object3d_reset_camera", () => this.resetCamera());
+        this.handleEvent("object3d_center_object", () => this.centerObject());
+        this.handleEvent("object3d_controller_changed", (data) => this.onControllerChanged(data));
+
         // Handle window resize
         this.handleResize = () => {
             if (this.viewer && this.viewer.renderer) {
-                const rect = this.el.getBoundingClientRect();
+                const container = this.viewerContainer || this.el;
+                const rect = container.getBoundingClientRect();
                 this.viewer.renderer.setSize(rect.width, rect.height);
             }
         };
         window.addEventListener('resize', this.handleResize);
-
-        // Handle sync events from server
-        this.handleEvent("object3d_sync", (data) => {
-            this.handleSync(data);
-        });
-
-        this.handleEvent("object3d_load", (data) => {
-            this.loadSplat(data.url, data.camera_position, data.camera_target);
-        });
-
-        this.handleEvent("object3d_camera_sync", (data) => {
-            this.handleCameraSync(data);
-        });
-
-        this.handleEvent("object3d_reset_camera", () => {
-            this.resetCamera();
-        });
-
-        this.handleEvent("object3d_center_object", () => {
-            this.centerObject();
-        });
-
-        this.handleEvent("object3d_controller_changed", (data) => {
-            this.controllerId = data.controller_user_id;
-            this.isController = this.controllerId === this.currentUserId;
-            this.canControl = this.isController || !this.controllerId;
-            console.log('[Object3DPlayer] Controller changed:', this.controllerId, 'isController:', this.isController, 'canControl:', this.canControl);
-        });
-
-        // Initialize viewer first, then request sync
-        // This ensures the viewer is ready before we try to load content
-        await this.initViewer();
-
-        // Request initial state from server now that viewer is ready
-        console.log('[Object3DPlayer] Requesting initial sync from server');
-        this.pushEventTo(this.el, "request_object3d_sync", {});
-
-        // Start camera sync interval for controller
-        this.startCameraSyncInterval();
     },
 
-    parseVector(str, defaultVal) {
-        if (!str) return defaultVal;
-        try {
-            const parts = str.split(',').map(s => parseFloat(s.trim()));
-            if (parts.length >= 3 && parts.every(n => !isNaN(n))) {
-                return { x: parts[0], y: parts[1], z: parts[2] };
-            }
-        } catch (e) {
-            console.warn('[Object3DPlayer] Error parsing vector:', str);
-        }
-        return defaultVal;
-    },
-
-    async initViewer() {
-        if (this.viewer) return;
-
+    // === INITIALIZATION ===
+    initializeViewer() {
         const container = this.el.querySelector('[data-object3d-viewer]') || this.el;
         const rect = container.getBoundingClientRect();
 
         if (rect.width === 0 || rect.height === 0) {
-            // Wait for container to have dimensions
-            await new Promise(resolve => setTimeout(resolve, 100));
-            return this.initViewer();
+            // Container not ready yet
+            this.initRetryCount++;
+            if (this.initRetryCount < this.CONFIG.MAX_INIT_RETRIES) {
+                setTimeout(() => this.initializeViewer(), this.CONFIG.INIT_RETRY_MS);
+            } else {
+                this.transition(this.STATES.ERROR, 'container never became visible');
+            }
+            return;
         }
 
+        this.viewerContainer = container;
+
         try {
-            const initialPosition = [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z];
-            const initialLookAt = [this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z];
-
-            // Store container reference for later
-            this.viewerContainer = container;
-
-            this.viewer = new GaussianSplats3D.Viewer({
-                cameraUp: [0, -1, 0],
-                initialCameraPosition: initialPosition,
-                initialCameraLookAt: initialLookAt,
-                rootElement: container,
-                selfDrivenMode: true,
-                useBuiltInControls: true,
-                dynamicScene: true,
-                antialiased: true,
-                focalAdjustment: 1.0,
-                sharedMemoryForWorkers: false,
-            });
-
-            console.log('[Object3DPlayer] Viewer initialized');
-
-            // Configure controls (may not be available until viewer starts)
-            this.configureControls();
-
-            // Setup canvas events when canvas is added
-            const existingCanvas = container.querySelector('canvas');
-            if (existingCanvas) {
-                this.setupCanvasEvents(existingCanvas);
-            }
-
-            const observer = new MutationObserver((mutations) => {
-                for (const mutation of mutations) {
-                    for (const node of mutation.addedNodes) {
-                        if (node.tagName === 'CANVAS') {
-                            this.setupCanvasEvents(node);
-                            // Also try to configure controls when canvas appears
-                            setTimeout(() => this.configureControls(), 100);
-                        }
-                    }
-                }
-            });
-            observer.observe(container, { childList: true });
-            this.canvasObserver = observer;
-
-            this.viewerReady = true;
-            this.pushEventTo(this.el, "viewer_ready", {});
-
-            // NOTE: Do NOT load from data-splat-url here
-            // Let handleSync handle all loading to avoid race conditions
+            this.createViewer();
+            this.transition(this.STATES.READY, 'viewer initialized');
         } catch (error) {
-            console.error('[Object3DPlayer] Error initializing viewer:', error);
+            this.log('Error initializing viewer:', error);
+            this.transition(this.STATES.ERROR, error.message);
             this.pushEventTo(this.el, "viewer_error", { message: error.message });
         }
     },
 
-    async loadSplat(url, cameraPosition, cameraTarget) {
-        console.log('[Object3DPlayer] loadSplat called with:', { url, cameraPosition, cameraTarget });
+    createViewer() {
+        const initialPosition = [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z];
+        const initialLookAt = [this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z];
 
-        if (this.isLoading) {
-            console.warn('[Object3DPlayer] Already loading a splat, queueing...');
-            this.pendingLoad = { url, cameraPosition, cameraTarget };
-            return;
-        }
-
-        // Wait for viewer to be ready
-        if (!this.viewerReady || !this.viewer) {
-            console.log('[Object3DPlayer] Viewer not ready, waiting...');
-            await new Promise(resolve => setTimeout(resolve, 200));
-            if (!this.viewerReady || !this.viewer) {
-                console.warn('[Object3DPlayer] Viewer still not ready, reinitializing...');
-                await this.initViewer();
-            }
-        }
-
-        this.isLoading = true;
-        this._fadeInFixed = false; // Reset for new load
-        this.pushEventTo(this.el, "loading_started", { url });
-
-        const container = this.viewerContainer || this.el.querySelector('[data-object3d-viewer]') || this.el;
-
-        // Update camera position/target if provided
-        if (cameraPosition) {
-            this.cameraPosition = cameraPosition;
-        }
-        if (cameraTarget) {
-            this.cameraTarget = cameraTarget;
-        }
-
-        try {
-            // ALWAYS dispose and recreate the viewer when loading a new model
-            // This is the most reliable way to clear previous scenes - removeSplatScenes()
-            // has proven unreliable and can leave ghost models
-            if (this.viewer) {
-                console.log('[Object3DPlayer] Disposing viewer before loading new model');
-                try {
-                    this.viewer.dispose();
-                } catch (e) {
-                    console.warn('[Object3DPlayer] Error disposing viewer:', e);
-                }
-                this.viewer = null;
-                this.viewerReady = false;
-            }
-            await this.initViewer();
-
-            console.log('[Object3DPlayer] Calling addSplatScene with URL:', url);
-
-            // Use a timeout to catch hanging promises
-            const loadPromise = this.viewer.addSplatScene(url, {
-                splatAlphaRemovalThreshold: 5,
-                showLoadingUI: true,
-                position: [0, 0, 0],
-                rotation: [0, 0, 0, 1],
-                scale: [1, 1, 1],
-                progressiveLoad: true
-            });
-
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('addSplatScene timed out after 30s')), 30000);
-            });
-
-            await Promise.race([loadPromise, timeoutPromise]);
-            console.log('[Object3DPlayer] addSplatScene completed');
-
-        } catch (error) {
-            console.error('[Object3DPlayer] Error in addSplatScene:', error);
-            this.loadError = error.message;
-            this.pushEventTo(this.el, "loading_error", { message: error.message, url });
-            this.isLoading = false;
-            return;
-        }
-
-        // Post-loading setup (separated from try/catch to ensure it runs)
-        try {
-            console.log('[Object3DPlayer] Starting post-load setup');
-
-            // Start the viewer
-            this.viewer.start();
-            console.log('[Object3DPlayer] viewer.start() called');
-
-            // Wait a bit for the viewer to fully initialize
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            // WORKAROUND: GaussianSplats3D sometimes doesn't properly add splatMesh to scene
-            if (this.viewer.splatMesh && this.viewer.threeScene) {
-                if (!this.viewer.splatMesh.parent) {
-                    console.log('[Object3DPlayer] Adding splatMesh to scene (workaround)');
-                    this.viewer.threeScene.add(this.viewer.splatMesh);
-                }
-                this.viewer.splatMesh.visible = true;
-
-                // Force material update and fix fadeInComplete uniform
-                if (this.viewer.splatMesh.material) {
-                    this.viewer.splatMesh.material.needsUpdate = true;
-
-                    // WORKAROUND: fadeInComplete uniform stays at 0, making splats invisible
-                    if (this.viewer.splatMesh.material.uniforms?.fadeInComplete) {
-                        console.log('[Object3DPlayer] Setting fadeInComplete to 1 (workaround)');
-                        this.viewer.splatMesh.material.uniforms.fadeInComplete.value = 1;
-                    }
-                }
-            }
-
-            // WORKAROUND: Ensure render loop is actually running
-            this.startRenderLoop();
-
-            // Update camera position after loading
-            if (this.viewer.camera) {
-                this.viewer.camera.position.set(
-                    this.cameraPosition.x,
-                    this.cameraPosition.y,
-                    this.cameraPosition.z
-                );
-                this.viewer.camera.lookAt(
-                    this.cameraTarget.x,
-                    this.cameraTarget.y,
-                    this.cameraTarget.z
-                );
-            }
-
-            // Configure controls AFTER splat has loaded
-            await new Promise(resolve => setTimeout(resolve, 100));
-            this.configureControls();
-
-            // Setup canvas events
-            const loadedCanvas = container.querySelector('canvas');
-            if (loadedCanvas) {
-                this.setupCanvasEvents(loadedCanvas);
-            }
-
-            console.log('[Object3DPlayer] Splat loaded successfully');
-            this.pushEventTo(this.el, "loading_complete", { url });
-
-        } catch (error) {
-            console.error('[Object3DPlayer] Error in post-load setup:', error);
-        }
-
-        // Always reset loading state
-        this.isLoading = false;
-
-        // Process any pending load
-        if (this.pendingLoad) {
-            const pending = this.pendingLoad;
-            this.pendingLoad = null;
-            console.log('[Object3DPlayer] Processing pending load');
-            setTimeout(() => {
-                this.loadSplat(pending.url, pending.cameraPosition, pending.cameraTarget);
-            }, 100);
-        }
-    },
-
-    startRenderLoop() {
-        if (this._renderLoopRunning) {
-            console.log('[Object3DPlayer] Render loop already running');
-            return;
-        }
-
-        this._renderLoopRunning = true;
-        this._renderFrameCount = 0;
-        this._fadeInFixed = false;
-
-        const renderLoop = () => {
-            if (!this._renderLoopRunning || !this.viewer) {
-                console.log('[Object3DPlayer] Render loop stopped');
-                return;
-            }
-
-            try {
-                // WORKAROUND: Keep checking fadeInComplete until it's fixed
-                // The splatMesh material might not be ready immediately after addSplatScene
-                if (!this._fadeInFixed && this.viewer.splatMesh?.material?.uniforms?.fadeInComplete) {
-                    const fadeUniform = this.viewer.splatMesh.material.uniforms.fadeInComplete;
-                    if (fadeUniform.value < 1) {
-                        fadeUniform.value = 1;
-                        this.viewer.splatMesh.material.needsUpdate = true;
-                        console.log('[Object3DPlayer] Fixed fadeInComplete in render loop');
-                    }
-                    this._fadeInFixed = true;
-                }
-
-                if (this.viewer.update) {
-                    this.viewer.update();
-                }
-                if (this.viewer.render) {
-                    this.viewer.render();
-                }
-
-                this._renderFrameCount++;
-                if (this._renderFrameCount === 1 || this._renderFrameCount === 10) {
-                    console.log('[Object3DPlayer] Render frame:', this._renderFrameCount);
-                }
-            } catch (e) {
-                console.error('[Object3DPlayer] Error in render loop:', e);
-            }
-
-            this._renderFrameId = requestAnimationFrame(renderLoop);
-        };
-
-        renderLoop();
-        console.log('[Object3DPlayer] Started manual render loop');
-    },
-
-    handleSync(data) {
-        // Update controller status
-        this.controllerId = data.controller_user_id;
-        // User can control if they're the controller OR if no controller is set (anyone can control)
-        this.isController = this.controllerId === this.currentUserId;
-        this.canControl = this.isController || !this.controllerId;
-        console.log('[Object3DPlayer] Sync received:', {
-            controllerId: this.controllerId,
-            currentUserId: this.currentUserId,
-            isController: this.isController,
-            canControl: this.canControl,
-            hasCurrentItem: !!data.current_item,
-            currentItemId: data.current_item?.id,
-            thisCurrentItemId: this.currentItemId,
-            splatUrl: data.current_item?.splat_url
+        this.viewer = new GaussianSplats3D.Viewer({
+            cameraUp: [0, -1, 0],
+            initialCameraPosition: initialPosition,
+            initialCameraLookAt: initialLookAt,
+            rootElement: this.viewerContainer,
+            selfDrivenMode: true,
+            useBuiltInControls: true,
+            dynamicScene: true,
+            antialiased: true,
+            focalAdjustment: 1.0,
+            sharedMemoryForWorkers: false,
         });
 
-        // Update current item
-        if (data.current_item && data.current_item.id !== this.currentItemId) {
-            console.log('[Object3DPlayer] New item detected, loading splat');
-            this.currentItemId = data.current_item.id;
-            if (data.current_item.splat_url) {
-                this.loadSplat(
-                    data.current_item.splat_url,
-                    data.camera_position,
-                    data.camera_target
-                );
-            } else {
-                console.warn('[Object3DPlayer] No splat_url in current_item');
-            }
-        } else if (!data.current_item) {
-            console.log('[Object3DPlayer] No current_item in sync data');
-        } else {
-            console.log('[Object3DPlayer] Same item, skipping load');
-        }
+        this.log('Viewer created');
+
+        // Setup canvas when it appears
+        this.setupCanvasObserver();
+        this.pushEventTo(this.el, "viewer_ready", {});
     },
 
-    handleCameraSync(data) {
-        // Ignore if we're the controller (we're sending, not receiving)
-        if (this.isController) return;
-
-        // If no controller is set, don't apply any sync - allow free movement
-        if (!this.controllerId) return;
-
-        // Ignore if in grace period (user just interacted)
-        const now = Date.now();
-        if (now - this.lastUserActionTime < this.gracePeriod) return;
-
-        // Apply camera position from controller
-        if (this.viewer && this.viewer.camera && data.camera_position && data.camera_target) {
-            this.cameraPosition = data.camera_position;
-            this.cameraTarget = data.camera_target;
-
-            this.viewer.camera.position.set(
-                data.camera_position.x,
-                data.camera_position.y,
-                data.camera_position.z
-            );
-            this.viewer.camera.lookAt(
-                data.camera_target.x,
-                data.camera_target.y,
-                data.camera_target.z
-            );
-
-            // Also update orbit controls if present
-            const controls = this.viewer.perspectiveControls || this.viewer.orthographicControls;
-            if (controls) {
-                controls.target.set(
-                    data.camera_target.x,
-                    data.camera_target.y,
-                    data.camera_target.z
-                );
-                controls.update();
-            }
+    setupCanvasObserver() {
+        const existingCanvas = this.viewerContainer.querySelector('canvas');
+        if (existingCanvas) {
+            this.setupCanvas(existingCanvas);
         }
+
+        this.canvasObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.tagName === 'CANVAS') {
+                        this.setupCanvas(node);
+                    }
+                }
+            }
+        });
+        this.canvasObserver.observe(this.viewerContainer, { childList: true });
     },
 
-    startCameraSyncInterval() {
-        this.cameraSyncInterval = setInterval(() => {
-            // Only sync if we can control (controller or no controller set)
-            if (!this.canControl || !this.viewer || !this.viewer.camera) return;
+    setupCanvas(canvas) {
+        // Style for proper event handling
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '50';
+        canvas.style.pointerEvents = 'auto';
+        canvas.style.touchAction = 'none';
+        canvas.tabIndex = 0;
 
-            const now = Date.now();
-            if (now - this.lastCameraSyncTime < this.cameraSyncThrottle) return;
+        // User interaction events
+        canvas.addEventListener('mousedown', () => this.markUserAction());
+        canvas.addEventListener('wheel', () => this.markUserAction(), { passive: true });
+        canvas.addEventListener('touchstart', () => this.markUserAction(), { passive: true });
+        canvas.addEventListener('pointerdown', () => this.markUserAction());
 
-            const pos = this.viewer.camera.position;
-            const controls = this.viewer.perspectiveControls ||
-                            this.viewer.orthographicControls ||
-                            this.viewer.controls ||
-                            this.viewer.orbitControls;
-            const target = controls ? controls.target : { x: 0, y: 0, z: 0 };
+        // Prevent default touch behavior
+        canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
-            // Check if camera actually moved
-            const posDelta = Math.abs(pos.x - this.cameraPosition.x) +
-                            Math.abs(pos.y - this.cameraPosition.y) +
-                            Math.abs(pos.z - this.cameraPosition.z);
-
-            if (posDelta > 0.01) {
-                this.cameraPosition = { x: pos.x, y: pos.y, z: pos.z };
-                this.cameraTarget = { x: target.x, y: target.y, z: target.z };
-
-                this.pushEventTo(this.el, "camera_moved", {
-                    position: this.cameraPosition,
-                    target: this.cameraTarget
-                });
-
-                this.lastCameraSyncTime = now;
-            }
-        }, 100);
+        this.log('Canvas configured');
+        this.configureControls();
     },
 
     configureControls() {
         if (!this.viewer) return;
 
-        // Try multiple control property names that GaussianSplats3D might use
         const controls = this.viewer.perspectiveControls ||
                          this.viewer.orthographicControls ||
                          this.viewer.controls ||
@@ -1756,177 +1492,335 @@ Hooks.Object3DPlayerHook = {
             controls.enableZoom = true;
             controls.enablePan = true;
             controls.enabled = true;
-
-            // Safari fix: Ensure the controls are listening to the correct DOM element
-            // Sometimes OrbitControls don't properly attach in Safari
-            if (controls.domElement) {
-                // Ensure the dom element is the canvas
-                const canvas = this.viewerContainer ? this.viewerContainer.querySelector('canvas') : null;
-                if (canvas && controls.domElement !== canvas) {
-                    console.log('[Object3DPlayer] Reconnecting controls to canvas');
-                    // Re-enable event listeners by calling dispose and then enabling
-                    if (typeof controls.connect === 'function') {
-                        controls.connect();
-                    }
-                }
-            }
-
-            // Force update
             if (typeof controls.update === 'function') {
                 controls.update();
             }
+            this.log('Controls configured');
+        }
+    },
 
-            console.log('[Object3DPlayer] Controls configured successfully:', {
-                enabled: controls.enabled,
-                enableRotate: controls.enableRotate,
-                enableZoom: controls.enableZoom,
-                enablePan: controls.enablePan,
-                domElement: controls.domElement ? controls.domElement.tagName : 'none'
+    // === SERVER EVENT HANDLERS ===
+    onServerSync(data) {
+        this.log('Server sync received', {
+            itemId: data.current_item?.id,
+            controllerId: data.controller_user_id,
+            currentState: this.state
+        });
+
+        // Update controller
+        this.controllerId = data.controller_user_id;
+
+        // Ignore if in user control grace period
+        if (this.state === this.STATES.USER_CONTROL && Date.now() < this.userControlUntil) {
+            this.log('Ignoring sync - user in control');
+            return;
+        }
+
+        // Check if we need to load a new item
+        if (data.current_item && data.current_item.id !== this.currentItemId) {
+            this.currentItemId = data.current_item.id;
+            if (data.current_item.splat_url) {
+                this.loadSplat(data.current_item.splat_url, data.camera_position, data.camera_target);
+            }
+        } else if (data.current_item && this.state === this.STATES.READY) {
+            // Same item but we're ready - transition to synced
+            this.transition(this.STATES.SYNCED, 'sync received');
+        }
+    },
+
+    onLoadCommand(data) {
+        this.log('Load command received', data);
+        this.loadSplat(data.url, data.camera_position, data.camera_target);
+    },
+
+    onCameraSync(data) {
+        // Ignore if we're the controller
+        if (this.isController()) {
+            return;
+        }
+
+        // Ignore if no controller set (free movement mode)
+        if (!this.controllerId) {
+            return;
+        }
+
+        // Ignore if in user control grace period
+        if (this.state === this.STATES.USER_CONTROL && Date.now() < this.userControlUntil) {
+            return;
+        }
+
+        // Apply camera position from controller
+        this.applyCameraPosition(data.camera_position, data.camera_target);
+    },
+
+    onControllerChanged(data) {
+        const wasController = this.isController();
+        this.controllerId = data.controller_user_id;
+        const isNowController = this.isController();
+
+        this.log('Controller changed', {
+            controllerId: this.controllerId,
+            isController: isNowController
+        });
+
+        // If we became controller, transition to synced (we'll be sending)
+        if (!wasController && isNowController && this.state !== this.STATES.LOADING) {
+            this.transition(this.STATES.SYNCED, 'became controller');
+        }
+    },
+
+    // === LOADING ===
+    async loadSplat(url, cameraPosition, cameraTarget) {
+        if (this.state === this.STATES.LOADING) {
+            this.log('Already loading, queueing new load');
+            this.pendingLoad = { url, cameraPosition, cameraTarget };
+            return;
+        }
+
+        this.transition(this.STATES.LOADING, 'loading splat');
+        this.currentSplatUrl = url;
+        this.pushEventTo(this.el, "loading_started", { url });
+
+        // Update camera targets
+        if (cameraPosition) this.cameraPosition = cameraPosition;
+        if (cameraTarget) this.cameraTarget = cameraTarget;
+
+        try {
+            // Dispose old viewer and create fresh one
+            await this.recreateViewer();
+
+            // Load the splat with timeout
+            const loadPromise = this.viewer.addSplatScene(url, {
+                splatAlphaRemovalThreshold: 5,
+                showLoadingUI: true,
+                position: [0, 0, 0],
+                rotation: [0, 0, 0, 1],
+                scale: [1, 1, 1],
+                progressiveLoad: true
             });
-        } else {
-            console.warn('[Object3DPlayer] No controls found on viewer. Available properties:',
-                Object.keys(this.viewer).filter(k => k.toLowerCase().includes('control')));
 
-            // Retry after a short delay - controls might be created asynchronously
-            if (!this._controlRetryCount) this._controlRetryCount = 0;
-            if (this._controlRetryCount < 5) {
-                this._controlRetryCount++;
-                setTimeout(() => this.configureControls(), 200);
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Load timeout')), this.CONFIG.LOAD_TIMEOUT_MS);
+            });
+
+            await Promise.race([loadPromise, timeoutPromise]);
+
+            // Start viewer and apply workarounds
+            this.viewer.start();
+            await this.applyPostLoadWorkarounds();
+
+            // Set camera position
+            this.applyCameraPosition(this.cameraPosition, this.cameraTarget);
+
+            this.log('Splat loaded successfully');
+            this.pushEventTo(this.el, "loading_complete", { url });
+            this.transition(this.STATES.SYNCED, 'load complete');
+
+            // Process any pending load
+            if (this.pendingLoad) {
+                const pending = this.pendingLoad;
+                this.pendingLoad = null;
+                setTimeout(() => this.loadSplat(pending.url, pending.cameraPosition, pending.cameraTarget), 100);
+            }
+
+        } catch (error) {
+            this.log('Error loading splat:', error);
+            this.pushEventTo(this.el, "loading_error", { message: error.message, url });
+            this.transition(this.STATES.ERROR, error.message);
+        }
+    },
+
+    async recreateViewer() {
+        // Dispose existing viewer
+        if (this.viewer) {
+            try {
+                this.viewer.dispose();
+            } catch (e) {
+                this.log('Error disposing viewer:', e);
+            }
+            this.viewer = null;
+        }
+
+        // Create fresh viewer
+        this.createViewer();
+        await new Promise(resolve => setTimeout(resolve, 100));
+    },
+
+    async applyPostLoadWorkarounds() {
+        // Wait for viewer to stabilize
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Workaround: Ensure splatMesh is in scene
+        if (this.viewer.splatMesh && this.viewer.threeScene) {
+            if (!this.viewer.splatMesh.parent) {
+                this.viewer.threeScene.add(this.viewer.splatMesh);
+            }
+            this.viewer.splatMesh.visible = true;
+
+            // Workaround: Fix fadeInComplete uniform
+            if (this.viewer.splatMesh.material?.uniforms?.fadeInComplete) {
+                this.viewer.splatMesh.material.uniforms.fadeInComplete.value = 1;
+                this.viewer.splatMesh.material.needsUpdate = true;
+            }
+        }
+
+        this.configureControls();
+    },
+
+    // === CAMERA ===
+    applyCameraPosition(position, target) {
+        if (!this.viewer || !this.viewer.camera) return;
+
+        if (position) {
+            this.cameraPosition = position;
+            this.viewer.camera.position.set(position.x, position.y, position.z);
+        }
+
+        if (target) {
+            this.cameraTarget = target;
+            this.viewer.camera.lookAt(target.x, target.y, target.z);
+
+            // Update orbit controls target
+            const controls = this.getControls();
+            if (controls) {
+                controls.target.set(target.x, target.y, target.z);
+                controls.update();
             }
         }
     },
 
-    setupCanvasEvents(canvas) {
-        if (!canvas) return;
-
-        // Critical styles for event handling across all browsers including Safari
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '50';
-        canvas.style.pointerEvents = 'auto';
-        canvas.style.touchAction = 'none';
-        canvas.style.userSelect = 'none';
-        canvas.style.webkitUserSelect = 'none';
-        canvas.tabIndex = 0;
-
-        // Prevent default touch behavior on the canvas for Safari
-        canvas.addEventListener('touchstart', (e) => {
-            this.markUserAction();
-        }, { passive: true });
-
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        canvas.addEventListener('gesturestart', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        canvas.addEventListener('gesturechange', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        // Mouse events
-        canvas.addEventListener('mousedown', () => this.markUserAction());
-        canvas.addEventListener('wheel', () => this.markUserAction(), { passive: true });
-
-        // Pointer events (modern browsers)
-        canvas.addEventListener('pointerdown', () => this.markUserAction());
-
-        console.log('[Object3DPlayer] Canvas events configured');
+    getControls() {
+        if (!this.viewer) return null;
+        return this.viewer.perspectiveControls ||
+               this.viewer.orthographicControls ||
+               this.viewer.controls ||
+               this.viewer.orbitControls;
     },
 
-    markUserAction() {
-        this.lastUserActionTime = Date.now();
+    startCameraPoll() {
+        if (this.cameraPollInterval) return;
+
+        this.cameraPollInterval = setInterval(() => {
+            this.pollCameraAndSync();
+        }, this.CONFIG.CAMERA_SYNC_POLL_MS);
+    },
+
+    stopCameraPoll() {
+        if (this.cameraPollInterval) {
+            clearInterval(this.cameraPollInterval);
+            this.cameraPollInterval = null;
+        }
+    },
+
+    pollCameraAndSync() {
+        if (!this.viewer || !this.viewer.camera) return;
+
+        // Only send camera updates if we can control
+        if (!this.canControl()) return;
+
+        const now = Date.now();
+        if (now - this.lastCameraSyncTime < this.CONFIG.CAMERA_SYNC_THROTTLE_MS) return;
+
+        const pos = this.viewer.camera.position;
+        const controls = this.getControls();
+        const target = controls ? controls.target : { x: 0, y: 0, z: 0 };
+
+        // Check if camera moved
+        const posDelta = Math.abs(pos.x - this.cameraPosition.x) +
+                        Math.abs(pos.y - this.cameraPosition.y) +
+                        Math.abs(pos.z - this.cameraPosition.z);
+
+        if (posDelta > this.CONFIG.CAMERA_MOVE_THRESHOLD) {
+            this.cameraPosition = { x: pos.x, y: pos.y, z: pos.z };
+            this.cameraTarget = { x: target.x, y: target.y, z: target.z };
+
+            this.pushEventTo(this.el, "camera_moved", {
+                position: this.cameraPosition,
+                target: this.cameraTarget
+            });
+
+            this.lastCameraSyncTime = now;
+        }
     },
 
     resetCamera() {
         this.markUserAction();
-        if (this.viewer && this.viewer.camera) {
-            this.viewer.camera.position.set(0, 0, 5);
-            this.viewer.camera.lookAt(0, 0, 0);
-            if (this.viewer.controls) {
-                this.viewer.controls.target.set(0, 0, 0);
-                this.viewer.controls.update();
-            }
-            this.cameraPosition = { x: 0, y: 0, z: 5 };
-            this.cameraTarget = { x: 0, y: 0, z: 0 };
-        }
+        this.applyCameraPosition({ x: 0, y: 0, z: 5 }, { x: 0, y: 0, z: 0 });
     },
 
     centerObject() {
         this.markUserAction();
-        if (!this.viewer || !this.viewer.camera) return;
+
+        if (!this.viewer?.splatMesh?.geometry) {
+            this.resetCamera();
+            return;
+        }
 
         try {
-            // Try to get the splat mesh bounding box for proper centering
-            let center = { x: 0, y: 0, z: 0 };
-            let distance = 5;
+            const geometry = this.viewer.splatMesh.geometry;
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox;
 
-            // Check if the viewer has scene data we can use
-            if (this.viewer.splatMesh && this.viewer.splatMesh.geometry) {
-                const geometry = this.viewer.splatMesh.geometry;
-                geometry.computeBoundingBox();
-                const box = geometry.boundingBox;
+            if (box) {
+                const center = {
+                    x: (box.min.x + box.max.x) / 2,
+                    y: (box.min.y + box.max.y) / 2,
+                    z: (box.min.z + box.max.z) / 2
+                };
 
-                if (box) {
-                    center = {
-                        x: (box.min.x + box.max.x) / 2,
-                        y: (box.min.y + box.max.y) / 2,
-                        z: (box.min.z + box.max.z) / 2
-                    };
+                const size = Math.max(
+                    box.max.x - box.min.x,
+                    box.max.y - box.min.y,
+                    box.max.z - box.min.z
+                );
+                const distance = size * 1.5;
 
-                    // Calculate appropriate viewing distance based on object size
-                    const size = Math.max(
-                        box.max.x - box.min.x,
-                        box.max.y - box.min.y,
-                        box.max.z - box.min.z
-                    );
-                    distance = size * 1.5;
-                }
+                const cameraPos = {
+                    x: center.x,
+                    y: center.y + distance * 0.3,
+                    z: center.z + distance
+                };
+
+                this.applyCameraPosition(cameraPos, center);
+                this.log('Centered on object');
             }
-
-            // Position camera to look at center from a good viewing angle
-            const cameraPos = {
-                x: center.x,
-                y: center.y + distance * 0.3,
-                z: center.z + distance
-            };
-
-            this.viewer.camera.position.set(cameraPos.x, cameraPos.y, cameraPos.z);
-            this.viewer.camera.lookAt(center.x, center.y, center.z);
-
-            if (this.viewer.controls) {
-                this.viewer.controls.target.set(center.x, center.y, center.z);
-                this.viewer.controls.update();
-            }
-
-            this.cameraPosition = cameraPos;
-            this.cameraTarget = center;
-
-            console.log('[Object3DPlayer] Centered on object at:', center, 'distance:', distance);
         } catch (error) {
-            console.warn('[Object3DPlayer] Error centering object, using default position:', error);
+            this.log('Error centering, using default:', error);
             this.resetCamera();
         }
     },
 
+    // === USER CONTROL ===
+    markUserAction() {
+        const wasInUserControl = this.state === this.STATES.USER_CONTROL;
+        this.userControlUntil = Date.now() + this.CONFIG.USER_GRACE_MS;
+
+        if (!wasInUserControl && this.state !== this.STATES.LOADING && this.state !== this.STATES.INIT) {
+            this.transition(this.STATES.USER_CONTROL, 'user interaction');
+        }
+
+        // Schedule return to synced state
+        setTimeout(() => {
+            if (this.state === this.STATES.USER_CONTROL && Date.now() >= this.userControlUntil) {
+                this.transition(this.STATES.SYNCED, 'grace period ended');
+            }
+        }, this.CONFIG.USER_GRACE_MS + 50);
+    },
+
+    // === HELPERS ===
+    isController() {
+        return this.controllerId && this.controllerId === this.currentUserId;
+    },
+
+    canControl() {
+        // User can control if they're the controller OR if no controller is set
+        return this.isController() || !this.controllerId;
+    },
+
+    // === CLEANUP ===
     destroyed() {
         window.removeEventListener('resize', this.handleResize);
-
-        // Stop manual render loop
-        this._renderLoopRunning = false;
-        if (this._renderFrameId) {
-            cancelAnimationFrame(this._renderFrameId);
-            this._renderFrameId = null;
-        }
-
-        if (this.cameraSyncInterval) {
-            clearInterval(this.cameraSyncInterval);
-        }
+        this.stopCameraPoll();
 
         if (this.canvasObserver) {
             this.canvasObserver.disconnect();
@@ -1937,12 +1831,12 @@ Hooks.Object3DPlayerHook = {
             try {
                 this.viewer.dispose();
             } catch (e) {
-                console.warn('[Object3DPlayer] Error disposing viewer:', e);
+                this.log('Error disposing viewer:', e);
             }
             this.viewer = null;
         }
 
-        this.viewerReady = false;
+        this.log('Destroyed');
     }
 };
 

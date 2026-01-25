@@ -459,15 +459,15 @@
         ctx.globalAlpha = 1;
     }
 
-    // Wrapper function that chooses the best face drawing method
+    // Wrapper function that draws face - only uses detailed face mesh (468 landmarks)
+    // No fallback to pose-based face drawing for consistent visualization style
     function drawFace(landmarks, faceLandmarks, blendshapes, tx, ty, scale) {
-        // Prefer detailed face mesh if available (468 landmarks)
+        // Only draw face if detailed face mesh is available (468 landmarks)
         if (faceLandmarks && faceLandmarks.length >= 468) {
             drawFaceMesh(faceLandmarks, tx, ty, scale, blendshapes);
-        } else {
-            // Fall back to pose-based face drawing (11 landmarks)
-            drawFaceFromPose(landmarks, tx, ty, scale);
         }
+        // If no face mesh data, skip face drawing entirely - pose landmarks
+        // will show basic face points but not the synthetic face overlay
     }
 
     // Landmark indices for body part detection

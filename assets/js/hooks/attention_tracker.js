@@ -13,6 +13,7 @@ const HOVER_DEBOUNCE_MAX_MS = 500;  // Maximum debounce when system is under loa
 const HOVER_BOOST_DURATION_MS = 2000;  // How long hover boost lasts after mouse leaves
 const BATTERY_LOW_THRESHOLD = 0.30;
 const BATTERY_CRITICAL_THRESHOLD = 0.15;
+const LATENCY_PING_INTERVAL_MS = 3000;  // Ping server every 3 seconds for latency measurement
 
 // Adaptive debouncing based on system responsiveness
 let lastEventTime = 0;
@@ -72,6 +73,9 @@ export const AttentionTracker = {
     this.handleEvent("attributes_updated", () => {
       this.observeAttributes();
     });
+
+    // Set up latency measurement ping/pong
+    this.setupLatencyMeasurement();
   },
 
   updated() {
@@ -84,6 +88,11 @@ export const AttentionTracker = {
     // Clean up observers
     if (this.intersectionObserver) {
       this.intersectionObserver.disconnect();
+    }
+
+    // Clear latency ping interval
+    if (this.latencyPingInterval) {
+      clearInterval(this.latencyPingInterval);
     }
 
     // Clear all debounce timers
@@ -508,6 +517,42 @@ export const AttentionTracker = {
     }, DEBOUNCE_MS);
 
     this.debounceTimers.set(key, timer);
+  },
+
+  setupLatencyMeasurement() {
+    this.pendingPingId = null;
+    this.pendingPingSentAt = null;
+    this.pingCounter = 0;
+
+    // Listen for pong responses from server
+    this.handleEvent("latency_pong", ({ ping_id }) => {
+      if (this.pendingPingId !== null && ping_id === this.pendingPingId) {
+        const latencyMs = Math.round(performance.now() - this.pendingPingSentAt);
+        this.pendingPingId = null;
+        this.pendingPingSentAt = null;
+
+        // Report latency back to server for display
+        this.pushEvent("latency_report", { latency_ms: latencyMs });
+      }
+    });
+
+    // Send initial ping immediately
+    this.sendLatencyPing();
+
+    // Then ping periodically
+    this.latencyPingInterval = setInterval(() => {
+      this.sendLatencyPing();
+    }, LATENCY_PING_INTERVAL_MS);
+  },
+
+  sendLatencyPing() {
+    // Only send if no pending ping (avoid overlapping measurements)
+    if (this.pendingPingId === null) {
+      this.pingCounter++;
+      this.pendingPingId = this.pingCounter;
+      this.pendingPingSentAt = performance.now();
+      this.pushEvent("latency_ping", { ping_id: this.pendingPingId });
+    }
   }
 };
 

@@ -29,6 +29,7 @@ defmodule Sensocto.Sensors.Room do
         :calls_enabled,
         :media_playback_enabled,
         :object_3d_enabled,
+        :whiteboard_enabled,
         :skeleton_composite_enabled
       ]
 
@@ -53,6 +54,7 @@ defmodule Sensocto.Sensors.Room do
         :calls_enabled,
         :media_playback_enabled,
         :object_3d_enabled,
+        :whiteboard_enabled,
         :skeleton_composite_enabled,
         :join_code,
         :owner_id
@@ -82,6 +84,7 @@ defmodule Sensocto.Sensors.Room do
         :calls_enabled,
         :media_playback_enabled,
         :object_3d_enabled,
+        :whiteboard_enabled,
         :skeleton_composite_enabled
       ]
     end
@@ -96,6 +99,7 @@ defmodule Sensocto.Sensors.Room do
         :calls_enabled,
         :media_playback_enabled,
         :object_3d_enabled,
+        :whiteboard_enabled,
         :skeleton_composite_enabled,
         :join_code
       ]
@@ -184,6 +188,12 @@ defmodule Sensocto.Sensors.Room do
       default false
       allow_nil? false
       description "Enable 3D object interaction (Gaussian splats, models)"
+    end
+
+    attribute :whiteboard_enabled, :boolean do
+      default false
+      allow_nil? false
+      description "Enable collaborative whiteboard drawing"
     end
 
     attribute :skeleton_composite_enabled, :boolean do

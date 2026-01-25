@@ -27,6 +27,8 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
      |> assign(:add_video_error, nil)
      |> assign(:collapsed, false)
      |> assign(:pending_request_user_id, nil)
+     |> assign(:pending_request_user_name, nil)
+     |> assign(:show_request_modal, false)
      |> assign(:sync_mode, :synced)}
   end
 
@@ -66,6 +68,8 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       |> maybe_assign(assigns, :controller_user_id)
       |> maybe_assign(assigns, :controller_user_name)
       |> maybe_assign(assigns, :pending_request_user_id)
+      |> maybe_assign(assigns, :pending_request_user_name)
+      |> maybe_assign(assigns, :show_request_modal)
       |> maybe_assign(assigns, :sync_mode)
 
     # On first update, load initial state from server and user preferences
@@ -101,7 +105,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
 
     socket =
       if !is_first_update and
-           (new_state != old_state or abs((new_position || 0) - (old_position || 0)) > 0.5) do
+           (new_state != old_state or abs((new_position || 0) - (old_position || 0)) > 0.3) do
         push_event(socket, "media_sync", %{
           state: new_state,
           position_seconds: new_position
@@ -168,7 +172,14 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   @impl true
+  def handle_event("test_hook_connection", params, socket) do
+    Logger.info("TEST_HOOK_CONNECTION received: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("play", _, socket) do
+    Logger.debug("MediaPlayerComponent received PLAY event")
     socket = maybe_auto_claim_control(socket)
     user_id = get_user_id(socket)
     MediaPlayerServer.play(socket.assigns.room_id, user_id)
@@ -301,6 +312,23 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("keep_control", _, socket) do
+    user = socket.assigns.current_user
+    room_id = socket.assigns.room_id
+
+    if user do
+      MediaPlayerServer.keep_control(room_id, user.id)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("dismiss_request_modal", _, socket) do
+    {:noreply, assign(socket, :show_request_modal, false)}
   end
 
   @impl true
@@ -898,6 +926,79 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               <% end %>
             </div>
           <% end %>
+        </div>
+      <% end %>
+
+      <%!-- Control Request Modal - Shows to controller when someone requests control --%>
+      <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>
+        <%!-- Audio notification when modal appears --%>
+        <div
+          id={"media-request-sound-#{@room_id}"}
+          phx-hook="NotificationSound"
+          class="hidden"
+        >
+        </div>
+        <div
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          phx-click="dismiss_request_modal"
+          phx-target={@myself}
+        >
+          <div
+            id={"media-control-request-modal-#{@room_id}"}
+            phx-hook="CountdownTimer"
+            data-seconds="30"
+            class="bg-gray-800 rounded-lg p-6 max-w-sm w-full shadow-xl border border-amber-500/50"
+            phx-click-away="dismiss_request_modal"
+            phx-target={@myself}
+          >
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <svg
+                  class="w-5 h-5 text-amber-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-white font-medium">Control Requested</h3>
+                <p class="text-amber-300 text-sm">
+                  {@pending_request_user_name || "Someone"} wants control
+                </p>
+              </div>
+            </div>
+
+            <p class="text-gray-300 text-sm mb-4">
+              Control will transfer in
+              <span class="countdown-display font-bold text-amber-400">30</span>
+              seconds
+              unless you keep it.
+            </p>
+
+            <div class="flex gap-3">
+              <button
+                phx-click="keep_control"
+                phx-target={@myself}
+                class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+              >
+                Keep Control
+              </button>
+              <button
+                phx-click="release_control"
+                phx-target={@myself}
+                class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg font-medium transition-colors"
+              >
+                Release
+              </button>
+            </div>
+          </div>
         </div>
       <% end %>
     </div>

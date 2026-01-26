@@ -26,10 +26,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Check if clients directory exists
+  check-clients-exist:
+    name: Check Clients Exist
+    runs-on: ubuntu-latest
+    outputs:
+      any_exist: ${{ steps.check.outputs.any_exist }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if any clients exist
+        id: check
+        run: |
+          if [ -d "clients" ]; then
+            echo "any_exist=true" >> $GITHUB_OUTPUT
+            echo "Clients directory found"
+          else
+            echo "any_exist=false" >> $GITHUB_OUTPUT
+            echo "::warning::No clients directory found - skipping CI"
+          fi
+
   # Detect which clients have changes
   changes:
     name: Detect Changes
     runs-on: ubuntu-latest
+    needs: check-clients-exist
+    if: needs.check-clients-exist.outputs.any_exist == 'true'
     outputs:
       unity: ${{ steps.filter.outputs.unity }}
       rust: ${{ steps.filter.outputs.rust }}
@@ -65,8 +88,8 @@ jobs:
   unity-check:
     name: Unity SDK
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.unity == 'true' || github.event.inputs.run_all == 'true'
+    needs: [check-clients-exist, changes]
+    if: (needs.changes.outputs.unity == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
     defaults:
       run:
         working-directory: clients/unity/SensoctoSDK
@@ -103,8 +126,8 @@ jobs:
   rust-check:
     name: Rust SDK
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' || github.event.inputs.run_all == 'true'
+    needs: [check-clients-exist, changes]
+    if: (needs.changes.outputs.rust == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
     defaults:
       run:
         working-directory: clients/rust
@@ -144,8 +167,8 @@ jobs:
   python-check:
     name: Python SDK
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.python == 'true' || github.event.inputs.run_all == 'true'
+    needs: [check-clients-exist, changes]
+    if: (needs.changes.outputs.python == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
     defaults:
       run:
         working-directory: clients/python
@@ -189,8 +212,8 @@ jobs:
   threejs-check:
     name: Three.js SDK
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.threejs == 'true' || github.event.inputs.run_all == 'true'
+    needs: [check-clients-exist, changes]
+    if: (needs.changes.outputs.threejs == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
     defaults:
       run:
         working-directory: clients/threejs
@@ -225,7 +248,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [changes, unity-check, rust-check, python-check, threejs-check]
+    needs: [check-clients-exist, changes, unity-check, rust-check, python-check, threejs-check]
     if: always()
     steps:
       - name: Generate summary

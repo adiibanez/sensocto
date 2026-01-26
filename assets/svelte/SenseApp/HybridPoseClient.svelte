@@ -198,10 +198,16 @@
             standaloneVideoEl.muted = true;
             standaloneVideoEl.width = videoWidth;
             standaloneVideoEl.height = videoHeight;
+            // Use opacity:0 instead of off-screen positioning
+            // Some browsers (Edge) don't render frames for off-screen videos
             standaloneVideoEl.style.position = "fixed";
-            standaloneVideoEl.style.top = "-9999px";
-            standaloneVideoEl.style.left = "-9999px";
+            standaloneVideoEl.style.bottom = "0";
+            standaloneVideoEl.style.left = "0";
+            standaloneVideoEl.style.width = "1px";
+            standaloneVideoEl.style.height = "1px";
+            standaloneVideoEl.style.opacity = "0.01"; // Nearly invisible but still renders
             standaloneVideoEl.style.pointerEvents = "none";
+            standaloneVideoEl.style.zIndex = "-1";
             standaloneVideoEl.srcObject = standaloneStream;
             document.body.appendChild(standaloneVideoEl);
 
@@ -278,6 +284,22 @@
             standaloneVideoEl = null;
         }
         usingStandalone = false;
+    }
+
+    // Clean up any orphaned video elements from previous instances
+    // This handles cases where hot-reload or LiveView reconnection leaves orphaned elements
+    function cleanupOrphanedVideos() {
+        const orphanedVideos = document.querySelectorAll('#hybrid-pose-standalone-video');
+        orphanedVideos.forEach(video => {
+            if (video !== standaloneVideoEl) {
+                logger.log(loggerCtxName, "Cleaning up orphaned video element");
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                video.srcObject = null;
+                video.remove();
+            }
+        });
     }
 
     async function getVideoSource() {
@@ -423,6 +445,11 @@
 
                 let faceMeshLandmarks = null;
                 let blendshapes = null;
+
+                // Debug: log every 60 frames (~2-4 seconds) to help diagnose detection issues
+                if (Math.floor(now / 2000) !== Math.floor(lastFrameTime / 2000)) {
+                    logger.log(loggerCtxName, `Detection status: landmarks=${poseResults.landmarks?.length || 0}, video=${videoEl.videoWidth}x${videoEl.videoHeight}, readyState=${videoEl.readyState}`);
+                }
 
                 if (poseResults.landmarks && poseResults.landmarks.length > 0) {
                     const landmarks = poseResults.landmarks[0];
@@ -651,6 +678,9 @@
     });
 
     onMount(() => {
+        // Clean up any orphaned video elements from previous instances
+        cleanupOrphanedVideos();
+
         unsubscribeSocket = sensorService.onSocketReady(() => {
             const poseEnabled = sensorSettings.isSensorEnabled('hybrid_pose');
             const poseConfigured = sensorSettings.isSensorConfigured('hybrid_pose');

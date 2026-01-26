@@ -106,40 +106,46 @@ defmodule SensoctoWeb.Plugs.RateLimiter do
 
   @impl true
   def call(conn, %{type: type, limit: limit, window_ms: window_ms}) do
-    # Skip rate limiting in test environment
-    if Application.get_env(:sensocto, :env) == :test and
-         not Application.get_env(:sensocto, :enable_rate_limiting_in_test, false) do
-      conn
-    else
-      client_ip = get_client_ip(conn)
-      bucket_key = "rate_limit:#{type}:#{client_ip}"
+    cond do
+      # Skip rate limiting in test environment
+      Application.get_env(:sensocto, :env) == :test and
+          not Application.get_env(:sensocto, :enable_rate_limiting_in_test, false) ->
+        conn
 
-      case check_rate_limit(bucket_key, limit, window_ms) do
-        {:allow, count} ->
-          conn
-          |> put_resp_header("x-ratelimit-limit", Integer.to_string(limit))
-          |> put_resp_header("x-ratelimit-remaining", Integer.to_string(max(0, limit - count)))
-          |> put_resp_header("x-ratelimit-reset", Integer.to_string(reset_timestamp(window_ms)))
+      # Only rate limit POST requests (actual auth attempts), not page views
+      conn.method != "POST" ->
+        conn
 
-        {:deny, retry_after_ms} ->
-          Logger.warning(
-            "Rate limit exceeded for #{type} from IP #{client_ip}",
-            ip: client_ip,
-            type: type,
-            limit: limit,
-            window_ms: window_ms
-          )
+      true ->
+        client_ip = get_client_ip(conn)
+        bucket_key = "rate_limit:#{type}:#{client_ip}"
 
-          retry_after_seconds = div(retry_after_ms, 1000) + 1
+        case check_rate_limit(bucket_key, limit, window_ms) do
+          {:allow, count} ->
+            conn
+            |> put_resp_header("x-ratelimit-limit", Integer.to_string(limit))
+            |> put_resp_header("x-ratelimit-remaining", Integer.to_string(max(0, limit - count)))
+            |> put_resp_header("x-ratelimit-reset", Integer.to_string(reset_timestamp(window_ms)))
 
-          conn
-          |> put_resp_header("retry-after", Integer.to_string(retry_after_seconds))
-          |> put_resp_header("x-ratelimit-limit", Integer.to_string(limit))
-          |> put_resp_header("x-ratelimit-remaining", "0")
-          |> put_resp_header("x-ratelimit-reset", Integer.to_string(reset_timestamp(window_ms)))
-          |> send_rate_limit_response(conn)
-          |> halt()
-      end
+          {:deny, retry_after_ms} ->
+            Logger.warning(
+              "Rate limit exceeded for #{type} from IP #{client_ip}",
+              ip: client_ip,
+              type: type,
+              limit: limit,
+              window_ms: window_ms
+            )
+
+            retry_after_seconds = div(retry_after_ms, 1000) + 1
+
+            conn
+            |> put_resp_header("retry-after", Integer.to_string(retry_after_seconds))
+            |> put_resp_header("x-ratelimit-limit", Integer.to_string(limit))
+            |> put_resp_header("x-ratelimit-remaining", "0")
+            |> put_resp_header("x-ratelimit-reset", Integer.to_string(reset_timestamp(window_ms)))
+            |> send_rate_limit_response(conn)
+            |> halt()
+        end
     end
   end
 

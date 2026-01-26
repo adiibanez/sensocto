@@ -1907,6 +1907,12 @@ Hooks.DraggableBallsHook = {
         document.removeEventListener('touchend', this.onTouchEnd);
     },
 
+    updated() {
+        // Re-render balls after LiveView patches the DOM
+        // This ensures balls remain visible when other parts of the page update
+        this.render();
+    },
+
     render() {
         // Clear existing balls
         this.el.innerHTML = '';

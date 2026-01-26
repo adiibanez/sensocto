@@ -59,12 +59,21 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
         socket
       end
 
-    # Push stroke sync event when strokes are added
+    # Push events to JavaScript hook for real-time sync
     socket =
-      if Map.has_key?(assigns, :new_stroke) and assigns[:new_stroke] do
-        push_event(socket, "whiteboard_stroke_added", %{stroke: assigns[:new_stroke]})
-      else
-        socket
+      cond do
+        Map.has_key?(assigns, :new_stroke) and assigns[:new_stroke] ->
+          push_event(socket, "whiteboard_stroke_added", %{stroke: assigns[:new_stroke]})
+
+        Map.has_key?(assigns, :undo_stroke) ->
+          push_event(socket, "whiteboard_undo", %{removed_stroke: assigns[:undo_stroke]})
+
+        Map.has_key?(assigns, :strokes) and assigns[:strokes] == [] ->
+          # Clear was triggered (strokes set to empty list)
+          push_event(socket, "whiteboard_cleared", %{})
+
+        true ->
+          socket
       end
 
     {:ok, socket}

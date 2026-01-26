@@ -14,7 +14,8 @@ defmodule SensoctoWeb.Endpoint do
     key: "_sensocto_key",
     signing_salt: "4mNzZysc",
     same_site: "Lax",
-    max_age: 2_592_000
+    max_age: 2_592_000,
+    http_only: true
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

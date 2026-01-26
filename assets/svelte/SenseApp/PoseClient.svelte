@@ -139,8 +139,8 @@
             });
 
             // Create a hidden video element for pose detection
-            // Note: Using position/visibility instead of display:none because
-            // MediaPipe requires the video to be rendering frames with actual dimensions
+            // Note: Using opacity instead of off-screen positioning because
+            // some browsers (Edge) don't render frames for off-screen videos
             standaloneVideoEl = document.createElement("video");
             standaloneVideoEl.id = "pose-standalone-video";
             standaloneVideoEl.autoplay = true;
@@ -149,9 +149,13 @@
             standaloneVideoEl.width = videoWidth;
             standaloneVideoEl.height = videoHeight;
             standaloneVideoEl.style.position = "fixed";
-            standaloneVideoEl.style.top = "-9999px";
-            standaloneVideoEl.style.left = "-9999px";
+            standaloneVideoEl.style.bottom = "0";
+            standaloneVideoEl.style.left = "0";
+            standaloneVideoEl.style.width = "1px";
+            standaloneVideoEl.style.height = "1px";
+            standaloneVideoEl.style.opacity = "0.01"; // Nearly invisible but still renders
             standaloneVideoEl.style.pointerEvents = "none";
+            standaloneVideoEl.style.zIndex = "-1";
             standaloneVideoEl.srcObject = standaloneStream;
             document.body.appendChild(standaloneVideoEl);
 
@@ -228,6 +232,22 @@
             standaloneVideoEl = null;
         }
         usingStandalone = false;
+    }
+
+    // Clean up any orphaned video elements from previous instances
+    // This handles cases where hot-reload or LiveView reconnection leaves orphaned elements
+    function cleanupOrphanedVideos() {
+        const orphanedVideos = document.querySelectorAll('#pose-standalone-video');
+        orphanedVideos.forEach(video => {
+            if (video !== standaloneVideoEl) {
+                logger.log(loggerCtxName, "Cleaning up orphaned video element");
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                video.srcObject = null;
+                video.remove();
+            }
+        });
     }
 
     async function getVideoSource() {
@@ -517,6 +537,9 @@
     });
 
     onMount(() => {
+        // Clean up any orphaned video elements from previous instances
+        cleanupOrphanedVideos();
+
         unsubscribeSocket = sensorService.onSocketReady(() => {
             // Check per-sensor settings first (takes precedence)
             const poseEnabled = sensorSettings.isSensorEnabled('pose');

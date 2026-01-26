@@ -51,8 +51,8 @@ const WhiteboardHook = {
         this.setupEventHandlers();
         this.setupLiveViewEvents();
 
-        // Request initial sync
-        this.pushEvent('request_whiteboard_sync', {});
+        // Request initial sync (use pushEventTo to target the LiveComponent)
+        this.pushEventTo(this.el, 'request_whiteboard_sync', {});
     },
 
     updated() {
@@ -238,7 +238,8 @@ const WhiteboardHook = {
 
         // Only send stroke if it has meaningful content
         if (this.currentStroke.points.length >= 1) {
-            this.pushEvent('stroke_complete', { stroke: this.currentStroke });
+            // Use pushEventTo to target the LiveComponent (phx-target on hook element)
+            this.pushEventTo(this.el, 'stroke_complete', { stroke: this.currentStroke });
         }
 
         this.isDrawing = false;

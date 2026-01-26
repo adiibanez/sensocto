@@ -1,5 +1,6 @@
 <script>
   import { getContext, onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import { logger } from "../logger_svelte.js";
   import { usersettings, autostart, sensorSettings } from "./stores.js";
 

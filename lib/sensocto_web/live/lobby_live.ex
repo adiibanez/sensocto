@@ -1371,8 +1371,12 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
-  def handle_info({:whiteboard_undo, _params}, socket) do
-    send_update(WhiteboardComponent, id: "lobby-whiteboard")
+  def handle_info({:whiteboard_undo, %{removed_stroke: removed_stroke}}, socket) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      undo_stroke: removed_stroke
+    )
+
     {:noreply, socket}
   end
 

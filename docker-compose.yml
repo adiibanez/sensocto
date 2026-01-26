@@ -12,24 +12,24 @@ services:
     volumes:
       - ./_pgdata:/var/lib/postgresql/data
 
-  neo4j:
-    image: neo4j:5-community
-    environment:
-      NEO4J_AUTH: neo4j/sensocto123
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_apoc_export_file_enabled: "true"
-      NEO4J_apoc_import_file_enabled: "true"
-      NEO4J_apoc_import_file_use__neo4j__config: "true"
-      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
-      NEO4J_dbms_memory_heap_initial__size: "512m"
-      NEO4J_dbms_memory_heap_max__size: "1G"
-      NEO4J_dbms_memory_pagecache_size: "512m"
-    restart: always
-    ports:
-      - "7474:7474"  # HTTP browser interface
-      - "7687:7687"  # Bolt protocol
-    volumes:
-      - ./_neo4j_data:/data
-      - ./_neo4j_logs:/logs
-      - ./_neo4j_import:/var/lib/neo4j/import
-      - ./_neo4j_plugins:/plugins
+  # neo4j:
+  #   image: neo4j:5-community
+  #   environment:
+  #     NEO4J_AUTH: neo4j/sensocto123
+  #     NEO4J_PLUGINS: '["apoc"]'
+  #     NEO4J_apoc_export_file_enabled: "true"
+  #     NEO4J_apoc_import_file_enabled: "true"
+  #     NEO4J_apoc_import_file_use__neo4j__config: "true"
+  #     NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+  #     NEO4J_dbms_memory_heap_initial__size: "512m"
+  #     NEO4J_dbms_memory_heap_max__size: "1G"
+  #     NEO4J_dbms_memory_pagecache_size: "512m"
+  #   restart: always
+  #   ports:
+  #     - "7474:7474"  # HTTP browser interface
+  #     - "7687:7687"  # Bolt protocol
+  #   volumes:
+  #     - ./_neo4j_data:/data
+  #     - ./_neo4j_logs:/logs
+  #     - ./_neo4j_import:/var/lib/neo4j/import
+  #     - ./_neo4j_plugins:/plugins

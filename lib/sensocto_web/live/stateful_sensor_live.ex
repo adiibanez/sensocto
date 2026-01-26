@@ -388,7 +388,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
 
       {:noreply, assign(socket, :sensor, new_sensor_state)}
     catch
-      :exit, {:noproc, _} ->
+      :exit, _ ->
         Logger.warning("Sensor #{socket.assigns.sensor_id} process not found during state update")
         {:noreply, socket}
     end
@@ -563,7 +563,13 @@ defmodule SensoctoWeb.StatefulSensorLive do
     Logger.debug("request-seed_data #{sensor_id}:#{attribute_id}")
 
     attribute_data =
-      Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
+      try do
+        Sensocto.SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
+      catch
+        :exit, _ ->
+          Logger.warning("Sensor #{sensor_id} process not found during request-seed-data")
+          []
+      end
 
     Logger.info("handle_event request-seed-data attribute_data: #{Enum.count(attribute_data)}")
 

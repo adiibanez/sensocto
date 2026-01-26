@@ -181,7 +181,7 @@ defmodule SensoctoWeb.SensorLive.Show do
       new_sensor_state = SimpleSensor.get_view_state(socket.assigns.sensor_id)
       {:noreply, assign(socket, :sensor, new_sensor_state)}
     catch
-      :exit, {:noproc, _} ->
+      :exit, _ ->
         {:noreply, socket}
     end
   end
@@ -233,7 +233,12 @@ defmodule SensoctoWeb.SensorLive.Show do
       "limit" => limit
     } = params
 
-    attribute_data = SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
+    attribute_data =
+      try do
+        SimpleSensor.get_attribute(sensor_id, attribute_id, from, to, limit)
+      catch
+        :exit, _ -> []
+      end
 
     new_socket =
       socket

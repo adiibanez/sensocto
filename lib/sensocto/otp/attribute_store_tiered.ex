@@ -36,6 +36,19 @@ defmodule Sensocto.AttributeStoreTiered do
   @default_warm_limit 10_000
   @default_query_limit 500
 
+  # Type-specific limits for large payload types that only need recent data
+  # These types store much less history to save memory
+  @realtime_only_types [
+    "skeleton",
+    "pose",
+    "body_pose",
+    "pose_skeleton",
+    "video_frame",
+    "depth_map"
+  ]
+  @realtime_hot_limit 1
+  @realtime_warm_limit 0
+
   # Single global ETS table for all warm storage (avoids atom table exhaustion)
   # Uses composite keys {sensor_id, attribute_id} instead of per-sensor tables
   @warm_table :attribute_store_warm
@@ -45,6 +58,17 @@ defmodule Sensocto.AttributeStoreTiered do
 
   defp warm_limit,
     do: Application.get_env(:sensocto, :attribute_store_warm_limit, @default_warm_limit)
+
+  # Get limits based on attribute type - realtime types only keep latest sample
+  defp hot_limit_for_type(attribute_type) when attribute_type in @realtime_only_types,
+    do: @realtime_hot_limit
+
+  defp hot_limit_for_type(_), do: hot_limit()
+
+  defp warm_limit_for_type(attribute_type) when attribute_type in @realtime_only_types,
+    do: @realtime_warm_limit
+
+  defp warm_limit_for_type(_), do: warm_limit()
 
   @doc """
   Ensures the global warm storage ETS table exists.
@@ -211,6 +235,9 @@ defmodule Sensocto.AttributeStoreTiered do
   defp srv_put_attribute_state(state, sensor_id, attribute_id, timestamp, payload) do
     new_entry = %{payload: payload, timestamp: timestamp}
 
+    # Infer attribute type from attribute_id for type-specific limits
+    attr_type = infer_attribute_type(attribute_id)
+
     current_attr =
       case Map.get(state, attribute_id) do
         nil -> %{payloads: []}
@@ -220,18 +247,32 @@ defmodule Sensocto.AttributeStoreTiered do
     # Prepend new entry to hot data
     new_payloads = [new_entry | current_attr.payloads]
 
-    # Check if we need to overflow to warm tier
-    {hot_payloads, overflow} = Enum.split(new_payloads, hot_limit())
+    # Check if we need to overflow to warm tier (using type-specific limit)
+    type_hot_limit = hot_limit_for_type(attr_type)
+    {hot_payloads, overflow} = Enum.split(new_payloads, type_hot_limit)
 
-    # Push overflow to warm tier
-    if overflow != [] do
-      push_to_warm_tier(sensor_id, attribute_id, overflow)
+    # Push overflow to warm tier (only if warm limit > 0 for this type)
+    type_warm_limit = warm_limit_for_type(attr_type)
+
+    if overflow != [] and type_warm_limit > 0 do
+      push_to_warm_tier(sensor_id, attribute_id, overflow, type_warm_limit)
     end
 
     Map.put(state, attribute_id, %{current_attr | payloads: hot_payloads})
   end
 
-  defp push_to_warm_tier(sensor_id, attribute_id, entries) do
+  # Infer attribute type from attribute_id for storage limits
+  defp infer_attribute_type(attribute_id) do
+    cond do
+      attribute_id in @realtime_only_types -> attribute_id
+      String.contains?(to_string(attribute_id), "skeleton") -> "skeleton"
+      String.contains?(to_string(attribute_id), "pose") -> "pose"
+      String.contains?(to_string(attribute_id), "depth") -> "depth_map"
+      true -> "default"
+    end
+  end
+
+  defp push_to_warm_tier(sensor_id, attribute_id, entries, type_warm_limit) do
     if :ets.whereis(@warm_table) != :undefined do
       # Composite key: {sensor_id, attribute_id}
       key = {sensor_id, attribute_id}
@@ -243,8 +284,8 @@ defmodule Sensocto.AttributeStoreTiered do
           [] -> []
         end
 
-      # Prepend new entries and limit
-      new_warm = Enum.take(entries ++ existing, warm_limit())
+      # Prepend new entries and limit (using type-specific warm limit)
+      new_warm = Enum.take(entries ++ existing, type_warm_limit)
       :ets.insert(@warm_table, {key, new_warm})
     end
   end

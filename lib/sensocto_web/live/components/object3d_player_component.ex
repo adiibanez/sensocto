@@ -544,30 +544,6 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 </a>
               <% end %>
             </div>
-
-            <%!-- Navigation Controls --%>
-            <div class="flex items-center justify-center gap-4 mb-3">
-              <button
-                phx-click="previous"
-                phx-target={@myself}
-                class="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-                title="Previous"
-              >
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                </svg>
-              </button>
-              <button
-                phx-click="next"
-                phx-target={@myself}
-                class="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-                title="Next"
-              >
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-                </svg>
-              </button>
-            </div>
           <% end %>
 
           <%!-- Controller Info & Take Control --%>

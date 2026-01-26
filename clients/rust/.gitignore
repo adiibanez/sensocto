@@ -1,0 +1,32 @@
+# Build output
+/target/
+debug/
+release/
+
+# Cargo
+Cargo.lock
+!Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor backup files
+*~
+\#*\#
+
+# Profiling
+perf.data
+perf.data.old
+
+# Test artifacts
+*.profraw
+
+# Documentation build
+/doc/

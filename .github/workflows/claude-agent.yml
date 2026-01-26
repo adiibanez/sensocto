@@ -113,6 +113,7 @@ jobs:
       - name: Run Claude Agent
         if: steps.tasks.outputs.has_task == 'true' || steps.specific_issue.outputs.has_task == 'true' || inputs.task_override
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
           TASK_OVERRIDE: ${{ inputs.task_override }}
           INPUT_ISSUE_NUM: ${{ inputs.issue_number }}

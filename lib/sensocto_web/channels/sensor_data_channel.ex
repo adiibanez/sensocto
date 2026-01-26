@@ -447,6 +447,26 @@ defmodule SensoctoWeb.SensorDataChannel do
     end
   end
 
+  # Handle memory protection changes - immediately push updated backpressure config
+  # This ensures low/medium attention sensors are paused quickly during memory pressure
+  def handle_info({:memory_protection_changed, %{active: active}}, socket) do
+    case Map.get(socket.assigns, :sensor_id) do
+      nil ->
+        {:noreply, socket}
+
+      sensor_id ->
+        config = get_backpressure_config(sensor_id)
+        push(socket, "backpressure_config", config)
+
+        Logger.info(
+          "Memory protection #{if active, do: "ACTIVATED", else: "deactivated"} for #{sensor_id}: " <>
+            "attention=#{config.attention_level}, paused=#{config.paused}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
   # Security: Validate bearer tokens against stored credentials
   # H-003 Fix: Previously only checked if bearer_token key existed, not its validity.
   # Now properly validates JWT tokens using AshAuthentication.
@@ -611,6 +631,10 @@ defmodule SensoctoWeb.SensorDataChannel do
 
   # Calculate backpressure configuration based on current attention level and system load
   # This is pushed to connectors so they can adjust their data transmission rates
+  #
+  # Memory protection mode: When memory pressure exceeds the configured threshold,
+  # the system asserts maximum backpressure on low/medium attention sensors to
+  # ensure the platform "stays alive no matter what".
   defp get_backpressure_config(sensor_id) do
     # Get attention level, defaulting to :none if tracker not available
     attention_level =
@@ -620,14 +644,15 @@ defmodule SensoctoWeb.SensorDataChannel do
         :exit, {:noproc, _} -> :none
       end
 
-    # Get system load level
-    {system_load, load_multiplier} =
+    # Get system load level and memory protection status
+    {system_load, load_multiplier, memory_protection_active} =
       try do
         level = Sensocto.SystemLoadMonitor.get_load_level()
         multiplier = Sensocto.SystemLoadMonitor.get_load_multiplier()
-        {level, multiplier}
+        mem_protection = Sensocto.SystemLoadMonitor.memory_protection_active?()
+        {level, multiplier, mem_protection}
       catch
-        :exit, {:noproc, _} -> {:normal, 1.0}
+        :exit, {:noproc, _} -> {:normal, 1.0, false}
       end
 
     # Base batch window and size recommendations based on attention level
@@ -646,16 +671,43 @@ defmodule SensoctoWeb.SensorDataChannel do
     # Apply system load multiplier to batch window
     adjusted_batch_window = trunc(base_batch_window * load_multiplier)
 
-    # Determine if client should pause transmission (critical load + low attention)
-    paused = system_load == :critical and attention_level in [:low, :none]
+    # Determine if client should pause transmission
+    # Pause conditions:
+    # 1. Critical system load + low/none attention (original behavior)
+    # 2. Memory protection active + low/medium/none attention (new: aggressive protection)
+    #    Only high attention sensors continue during memory protection
+    paused =
+      cond do
+        # Memory protection mode: pause all non-high attention sensors
+        memory_protection_active and attention_level in [:low, :medium, :none] ->
+          true
+
+        # Critical system load: pause low attention sensors (original behavior)
+        system_load == :critical and attention_level in [:low, :none] ->
+          true
+
+        true ->
+          false
+      end
+
+    # When memory protection is active, apply maximum backpressure multiplier
+    # to any sensors that aren't paused (high attention sensors)
+    {final_batch_window, final_multiplier} =
+      if memory_protection_active do
+        # Maximum throttling for surviving sensors during memory pressure
+        {adjusted_batch_window * 5, load_multiplier * 5.0}
+      else
+        {adjusted_batch_window, load_multiplier}
+      end
 
     %{
       attention_level: attention_level,
       system_load: system_load,
+      memory_protection_active: memory_protection_active,
       paused: paused,
-      recommended_batch_window: adjusted_batch_window,
+      recommended_batch_window: final_batch_window,
       recommended_batch_size: base_batch_size,
-      load_multiplier: load_multiplier,
+      load_multiplier: final_multiplier,
       timestamp: System.system_time(:millisecond)
     }
   end

@@ -36,12 +36,23 @@ defmodule Sensocto.SystemLoadMonitor do
     memory_weight: 0.10
   }
 
-  # Load thresholds (scheduler utilization 0.0 - 1.0)
-  @load_thresholds %{
+  # Default load thresholds (scheduler utilization 0.0 - 1.0)
+  # These can be overridden via config :sensocto, :load_thresholds
+  @default_load_thresholds %{
     normal: 0.5,
     elevated: 0.7,
     high: 0.85,
     critical: 0.95
+  }
+
+  # Default memory pressure thresholds - separate from overall load thresholds
+  # Memory pressure triggers aggressive backpressure on low/medium attention sensors
+  # These can be overridden via config :sensocto, :memory_pressure
+  @default_memory_thresholds %{
+    # Memory pressure level at which to start backpressure
+    protection_start: 0.70,
+    # Memory pressure level at which to enable maximum backpressure
+    critical: 0.90
   }
 
   # Batch window multipliers based on load level
@@ -60,7 +71,10 @@ defmodule Sensocto.SystemLoadMonitor do
     :memory_pressure,
     :last_scheduler_sample,
     :scheduler_history,
-    :weights
+    :weights,
+    :load_thresholds,
+    :memory_thresholds,
+    :memory_protection_active
   ]
 
   # ============================================================================
@@ -105,6 +119,29 @@ defmodule Sensocto.SystemLoadMonitor do
     Map.get(@load_config, level, @load_config.normal)
   end
 
+  @doc """
+  Check if memory protection mode is active.
+  When active, low/medium attention sensors should be maximally throttled.
+  Uses ETS for fast concurrent reads.
+  """
+  def memory_protection_active? do
+    case :ets.lookup(@load_state_table, :memory_protection_active) do
+      [{_, active}] -> active
+      [] -> false
+    end
+  end
+
+  @doc """
+  Get current memory pressure value (0.0 - 1.0).
+  Uses ETS for fast concurrent reads.
+  """
+  def get_memory_pressure do
+    case :ets.lookup(@load_state_table, :memory_pressure) do
+      [{_, pressure}] -> pressure
+      [] -> 0.0
+    end
+  end
+
   # ============================================================================
   # Server Callbacks
   # ============================================================================
@@ -115,12 +152,17 @@ defmodule Sensocto.SystemLoadMonitor do
     :ets.new(@load_state_table, [:named_table, :public, read_concurrency: true])
     :ets.insert(@load_state_table, {:load_level, :normal})
     :ets.insert(@load_state_table, {:load_multiplier, 1.0})
+    :ets.insert(@load_state_table, {:memory_protection_active, false})
 
     # Start scheduler utilization sampling
     :scheduler.sample()
 
     # Load weights from config, fall back to defaults
     weights = load_weights_from_config()
+
+    # Load thresholds from config, fall back to defaults
+    load_thresholds = load_thresholds_from_config()
+    memory_thresholds = load_memory_thresholds_from_config()
 
     state = %__MODULE__{
       current_load_level: :normal,
@@ -130,7 +172,10 @@ defmodule Sensocto.SystemLoadMonitor do
       memory_pressure: 0.0,
       last_scheduler_sample: nil,
       scheduler_history: [],
-      weights: weights
+      weights: weights,
+      load_thresholds: load_thresholds,
+      memory_thresholds: memory_thresholds,
+      memory_protection_active: false
     }
 
     # Schedule first sample
@@ -139,6 +184,10 @@ defmodule Sensocto.SystemLoadMonitor do
 
     Logger.info(
       "SystemLoadMonitor started with weights: cpu=#{weights.cpu}, pubsub=#{weights.pubsub}, queue=#{weights.queue}, mem=#{weights.memory}"
+    )
+
+    Logger.info(
+      "Memory protection thresholds: start=#{memory_thresholds.protection_start * 100}%, critical=#{memory_thresholds.critical * 100}%"
     )
 
     {:ok, state}
@@ -203,15 +252,41 @@ defmodule Sensocto.SystemLoadMonitor do
          msg_pressure * weights.queue +
          mem_pressure * weights.memory) / total_weight
 
-    new_level = determine_load_level(overall_pressure)
+    new_level = determine_load_level(overall_pressure, state.load_thresholds)
+
+    # Check if memory protection should be active based on memory thresholds
+    memory_protection = mem_pressure >= state.memory_thresholds.protection_start
+    memory_protection_changed = memory_protection != state.memory_protection_active
 
     new_state = %{
       state
       | pubsub_pressure: pubsub_pressure,
         message_queue_pressure: msg_pressure,
         memory_pressure: mem_pressure,
-        scheduler_utilization: smoothed_util
+        scheduler_utilization: smoothed_util,
+        memory_protection_active: memory_protection
     }
+
+    # Update ETS cache for memory values
+    :ets.insert(@load_state_table, {:memory_pressure, mem_pressure})
+    :ets.insert(@load_state_table, {:memory_protection_active, memory_protection})
+
+    # Log memory protection changes
+    if memory_protection_changed do
+      if memory_protection do
+        Logger.warning(
+          "Memory protection ACTIVATED: #{Float.round(mem_pressure * 100, 1)}% >= #{Float.round(state.memory_thresholds.protection_start * 100, 1)}% - " <>
+            "throttling low/medium attention sensors"
+        )
+      else
+        Logger.info(
+          "Memory protection DEACTIVATED: #{Float.round(mem_pressure * 100, 1)}% < #{Float.round(state.memory_thresholds.protection_start * 100, 1)}% - " <>
+            "resuming normal operation"
+        )
+      end
+
+      broadcast_memory_protection_change(memory_protection, new_state)
+    end
 
     # Broadcast if level changed
     if new_level != state.current_load_level do
@@ -240,7 +315,9 @@ defmodule Sensocto.SystemLoadMonitor do
       message_queue_pressure: state.message_queue_pressure,
       memory_pressure: state.memory_pressure,
       load_multiplier: get_load_multiplier(),
-      thresholds: @load_thresholds,
+      thresholds: state.load_thresholds,
+      memory_thresholds: state.memory_thresholds,
+      memory_protection_active: state.memory_protection_active,
       config: @load_config,
       weights: state.weights
     }
@@ -413,11 +490,11 @@ defmodule Sensocto.SystemLoadMonitor do
     _ -> 0.3
   end
 
-  defp determine_load_level(pressure) do
+  defp determine_load_level(pressure, thresholds) do
     cond do
-      pressure >= @load_thresholds.critical -> :critical
-      pressure >= @load_thresholds.high -> :high
-      pressure >= @load_thresholds.elevated -> :elevated
+      pressure >= thresholds.critical -> :critical
+      pressure >= thresholds.high -> :high
+      pressure >= thresholds.elevated -> :elevated
       true -> :normal
     end
   end
@@ -441,7 +518,21 @@ defmodule Sensocto.SystemLoadMonitor do
          scheduler_utilization: state.scheduler_utilization,
          pubsub_pressure: state.pubsub_pressure,
          message_queue_pressure: state.message_queue_pressure,
-         memory_pressure: state.memory_pressure
+         memory_pressure: state.memory_pressure,
+         memory_protection_active: state.memory_protection_active
+       }}
+    )
+  end
+
+  defp broadcast_memory_protection_change(active, state) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "system:load",
+      {:memory_protection_changed,
+       %{
+         active: active,
+         memory_pressure: state.memory_pressure,
+         threshold: state.memory_thresholds.protection_start
        }}
     )
   end
@@ -455,5 +546,26 @@ defmodule Sensocto.SystemLoadMonitor do
     memory = Keyword.get(config, :memory_weight, @default_weights.memory_weight)
 
     %{cpu: cpu, pubsub: pubsub, queue: queue, memory: memory}
+  end
+
+  defp load_thresholds_from_config do
+    config = Application.get_env(:sensocto, :load_thresholds, [])
+
+    %{
+      normal: Keyword.get(config, :normal, @default_load_thresholds.normal),
+      elevated: Keyword.get(config, :elevated, @default_load_thresholds.elevated),
+      high: Keyword.get(config, :high, @default_load_thresholds.high),
+      critical: Keyword.get(config, :critical, @default_load_thresholds.critical)
+    }
+  end
+
+  defp load_memory_thresholds_from_config do
+    config = Application.get_env(:sensocto, :memory_pressure, [])
+
+    %{
+      protection_start:
+        Keyword.get(config, :protection_start, @default_memory_thresholds.protection_start),
+      critical: Keyword.get(config, :critical, @default_memory_thresholds.critical)
+    }
   end
 end

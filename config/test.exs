@@ -23,12 +23,11 @@ config :sensocto, Sensocto.Repo.Replica,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# Server is enabled for Wallaby E2E tests
 config :sensocto, SensoctoWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "i/v92TEKlmVLlVKHZmMBmLqqiwUJKveGMVted/Nu77Ln0UDDKD6MLuaVxbnhpXVx",
-  server: false
+  server: true
 
 # In test we don't send emails.
 config :sensocto, Sensocto.Mailer, adapter: Swoosh.Adapters.Test
@@ -55,6 +54,7 @@ config :sensocto, enable_rate_limiting_in_test: false
 # Wallaby browser testing configuration
 config :wallaby,
   driver: Wallaby.Chrome,
+  base_url: "http://localhost:4002",
   screenshot_on_failure: true,
   screenshot_dir: "tmp/wallaby_screenshots",
   # Use headless Chrome for CI

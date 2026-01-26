@@ -199,6 +199,23 @@ config :sensocto, SensoctoWeb.Plugs.RateLimiter,
   guest_auth_limit: 10,
   guest_auth_window_ms: 60_000
 
+# Multi-backend room hydration configuration
+# Coordinates room state persistence across PostgreSQL, Iroh P2P, and client-side localStorage
+config :sensocto, Sensocto.Storage.HydrationManager,
+  # Backends are tried in priority order (lower = higher priority)
+  backends: [
+    {Sensocto.Storage.Backends.PostgresBackend, enabled: true},
+    {Sensocto.Storage.Backends.IrohBackend, enabled: true},
+    {Sensocto.Storage.Backends.LocalStorageBackend, enabled: false}
+  ],
+  # Hydration strategy:
+  # - :priority_fallback - Try backends in order, return first success
+  # - :latest - Query all backends, return highest version
+  # - :quorum - Require majority agreement (not implemented)
+  hydration_strategy: :priority_fallback,
+  # Interval for periodic snapshot batching (milliseconds)
+  snapshot_interval_ms: 5_000
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

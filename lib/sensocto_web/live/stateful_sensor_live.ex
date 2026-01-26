@@ -82,12 +82,15 @@ defmodule SensoctoWeb.StatefulSensorLive do
       |> assign(:staleness_text, staleness_text)
 
     # Determine latency color based on value
+    # Green: excellent (< 100ms), Yellow: moderate (100-300ms),
+    # Orange: high (300-500ms), Red: extreme (> 500ms)
     latency_color =
       case assigns[:latency_ms] do
         nil -> "text-gray-500"
-        ms when ms < 50 -> "text-green-400"
-        ms when ms < 150 -> "text-yellow-400"
-        _ -> "text-orange-400"
+        ms when ms < 100 -> "text-green-400"
+        ms when ms < 300 -> "text-yellow-400"
+        ms when ms < 500 -> "text-orange-400"
+        _ -> "text-red-400"
       end
 
     assigns = assign(assigns, :latency_color, latency_color)

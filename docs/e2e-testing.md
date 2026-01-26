@@ -10,10 +10,21 @@ E2E tests use [Wallaby](https://github.com/elixir-wallaby/wallaby) with ChromeDr
 
 | File | Description | Test Count |
 |------|-------------|------------|
-| `test/sensocto_web/features/whiteboard_feature_test.exs` | Whiteboard drawing, tools, collaboration | ~20 |
-| `test/sensocto_web/features/media_player_feature_test.exs` | YouTube sync, playlist, controls | ~18 |
-| `test/sensocto_web/features/object3d_player_feature_test.exs` | 3D viewer, camera sync, gestures | ~22 |
-| `test/sensocto_web/features/collab_demo_feature_test.exs` | Cross-component, multi-user, compatibility | ~22 |
+| `test/sensocto_web/features/collab_demo_feature_test.exs` | Lobby, tabs, whiteboard, multi-user, viewports | 13 |
+
+## UI Structure
+
+The lobby page uses a **tabbed interface** for collab demos:
+- **Media** tab (default)
+- **3D Object** tab
+- **Whiteboard** tab
+
+Only one component is visible at a time. Tests must click the appropriate tab before interacting with a specific component.
+
+## Known Limitations
+
+- **WebGL not available in headless Chrome**: The 3D Object Viewer requires WebGL which isn't available in headless mode. 3D viewer tests are limited to verifying tab switching works.
+- **Tab switching**: Tests must explicitly click tabs to switch between collab components.
 
 ## Running Tests
 
@@ -106,9 +117,9 @@ Approximate test durations:
 
 | Test Suite | Time |
 |------------|------|
-| Unit tests only | ~20-25 seconds |
-| E2E tests only | ~2-3 minutes |
-| All tests | ~3-4 minutes |
+| Unit tests only | ~2-3 seconds |
+| E2E tests only | ~30-45 seconds |
+| All tests | ~35-50 seconds |
 
 Multi-user tests (`@tag :multi_user`) are slower as they spawn additional browser sessions.
 
@@ -117,8 +128,13 @@ Multi-user tests (`@tag :multi_user`) are slower as they spawn additional browse
 The `SensoctoWeb.FeatureCase.Helpers` module provides:
 
 ### Navigation
-- `visit_lobby/1` - Navigate to lobby and wait for LiveView
+- `visit_lobby/1` - Sign in as guest and navigate to lobby
 - `sign_in_as_guest/1` - Sign in as guest user
+
+### Tab Switching
+- `switch_to_whiteboard_tab/1` - Click Whiteboard tab
+- `switch_to_media_tab/1` - Click Media tab
+- `switch_to_object3d_tab/1` - Click 3D Object tab
 
 ### Component Waits
 - `wait_for_whiteboard/1`

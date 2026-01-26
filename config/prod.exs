@@ -36,5 +36,14 @@ config :sensocto, SensoctoWeb.Endpoint,
     "https://" <> (System.get_env("PHX_HOST") || "localhost")
   ]
 
+# Memory pressure configuration for production
+# In production, the system should start protecting itself early (70%)
+# to ensure stability under high load - "stay alive no matter what"
+config :sensocto, :memory_pressure,
+  # Start protection at 70% memory pressure (conservative for production)
+  protection_start: 0.70,
+  # Critical memory level - maximum backpressure on all non-high attention sensors
+  critical: 0.85
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

@@ -224,3 +224,12 @@ config :sensocto, :simulator,
 
 # OpenAPI spec - disable caching in development for faster iteration
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
+
+# Memory pressure configuration for development
+# In dev, memory pressure should not trigger protection until very high (95%)
+# This allows more aggressive testing without constant throttling
+config :sensocto, :memory_pressure,
+  # Start protection at 95% memory pressure (very lenient for dev)
+  protection_start: 0.95,
+  # Critical memory level
+  critical: 0.98

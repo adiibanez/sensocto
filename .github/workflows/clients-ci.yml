@@ -6,53 +6,21 @@ on:
       - main
     paths:
       - 'clients/**'
-      - '.github/workflows/clients-ci.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'clients/**'
-      - '.github/workflows/clients-ci.yml'
-  workflow_dispatch:
-    inputs:
-      run_all:
-        description: 'Run all client tests regardless of changes'
-        required: false
-        default: 'false'
-        type: boolean
 
 concurrency:
   group: clients-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Check if clients directory exists
-  check-clients-exist:
-    name: Check Clients Exist
-    runs-on: ubuntu-latest
-    outputs:
-      any_exist: ${{ steps.check.outputs.any_exist }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check if any clients exist
-        id: check
-        run: |
-          if [ -d "clients" ]; then
-            echo "any_exist=true" >> $GITHUB_OUTPUT
-            echo "Clients directory found"
-          else
-            echo "any_exist=false" >> $GITHUB_OUTPUT
-            echo "::warning::No clients directory found - skipping CI"
-          fi
-
   # Detect which clients have changes
   changes:
     name: Detect Changes
     runs-on: ubuntu-latest
-    needs: check-clients-exist
-    if: needs.check-clients-exist.outputs.any_exist == 'true'
     outputs:
       unity: ${{ steps.filter.outputs.unity }}
       rust: ${{ steps.filter.outputs.rust }}
@@ -82,14 +50,13 @@ jobs:
           echo "Rust changes: ${{ steps.filter.outputs.rust }}"
           echo "Python changes: ${{ steps.filter.outputs.python }}"
           echo "Three.js changes: ${{ steps.filter.outputs.threejs }}"
-          echo "Run all: ${{ github.event.inputs.run_all }}"
 
   # Unity SDK Quick Check
   unity-check:
     name: Unity SDK
     runs-on: ubuntu-latest
-    needs: [check-clients-exist, changes]
-    if: (needs.changes.outputs.unity == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
+    needs: changes
+    if: needs.changes.outputs.unity == 'true'
     defaults:
       run:
         working-directory: clients/unity/SensoctoSDK
@@ -126,8 +93,8 @@ jobs:
   rust-check:
     name: Rust SDK
     runs-on: ubuntu-latest
-    needs: [check-clients-exist, changes]
-    if: (needs.changes.outputs.rust == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     defaults:
       run:
         working-directory: clients/rust
@@ -167,8 +134,8 @@ jobs:
   python-check:
     name: Python SDK
     runs-on: ubuntu-latest
-    needs: [check-clients-exist, changes]
-    if: (needs.changes.outputs.python == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     defaults:
       run:
         working-directory: clients/python
@@ -212,8 +179,8 @@ jobs:
   threejs-check:
     name: Three.js SDK
     runs-on: ubuntu-latest
-    needs: [check-clients-exist, changes]
-    if: (needs.changes.outputs.threejs == 'true' || github.event.inputs.run_all == 'true') && needs.check-clients-exist.outputs.any_exist == 'true'
+    needs: changes
+    if: needs.changes.outputs.threejs == 'true'
     defaults:
       run:
         working-directory: clients/threejs
@@ -248,7 +215,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [check-clients-exist, changes, unity-check, rust-check, python-check, threejs-check]
+    needs: [changes, unity-check, rust-check, python-check, threejs-check]
     if: always()
     steps:
       - name: Generate summary
@@ -261,7 +228,7 @@ jobs:
           # Unity
           unity_changes="${{ needs.changes.outputs.unity }}"
           unity_status="${{ needs.unity-check.result }}"
-          if [ "$unity_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+          if [ "$unity_changes" == "true" ]; then
             if [ "$unity_status" == "success" ]; then
               echo "| Unity | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
             elif [ "$unity_status" == "failure" ]; then
@@ -276,7 +243,7 @@ jobs:
           # Rust
           rust_changes="${{ needs.changes.outputs.rust }}"
           rust_status="${{ needs.rust-check.result }}"
-          if [ "$rust_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+          if [ "$rust_changes" == "true" ]; then
             if [ "$rust_status" == "success" ]; then
               echo "| Rust | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
             elif [ "$rust_status" == "failure" ]; then
@@ -291,7 +258,7 @@ jobs:
           # Python
           python_changes="${{ needs.changes.outputs.python }}"
           python_status="${{ needs.python-check.result }}"
-          if [ "$python_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+          if [ "$python_changes" == "true" ]; then
             if [ "$python_status" == "success" ]; then
               echo "| Python | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
             elif [ "$python_status" == "failure" ]; then
@@ -306,7 +273,7 @@ jobs:
           # Three.js
           threejs_changes="${{ needs.changes.outputs.threejs }}"
           threejs_status="${{ needs.threejs-check.result }}"
-          if [ "$threejs_changes" == "true" ] || [ "${{ github.event.inputs.run_all }}" == "true" ]; then
+          if [ "$threejs_changes" == "true" ]; then
             if [ "$threejs_status" == "success" ]; then
               echo "| Three.js | Yes | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
             elif [ "$threejs_status" == "failure" ]; then
@@ -328,7 +295,6 @@ jobs:
           rust_changes="${{ needs.changes.outputs.rust }}"
           python_changes="${{ needs.changes.outputs.python }}"
           threejs_changes="${{ needs.changes.outputs.threejs }}"
-          run_all="${{ github.event.inputs.run_all }}"
 
           unity_status="${{ needs.unity-check.result }}"
           rust_status="${{ needs.rust-check.result }}"
@@ -337,32 +303,24 @@ jobs:
 
           failed=false
 
-          if [ "$unity_changes" == "true" ] || [ "$run_all" == "true" ]; then
-            if [ "$unity_status" == "failure" ]; then
-              echo "::error::Unity SDK checks failed"
-              failed=true
-            fi
+          if [ "$unity_changes" == "true" ] && [ "$unity_status" == "failure" ]; then
+            echo "::error::Unity SDK checks failed"
+            failed=true
           fi
 
-          if [ "$rust_changes" == "true" ] || [ "$run_all" == "true" ]; then
-            if [ "$rust_status" == "failure" ]; then
-              echo "::error::Rust SDK checks failed"
-              failed=true
-            fi
+          if [ "$rust_changes" == "true" ] && [ "$rust_status" == "failure" ]; then
+            echo "::error::Rust SDK checks failed"
+            failed=true
           fi
 
-          if [ "$python_changes" == "true" ] || [ "$run_all" == "true" ]; then
-            if [ "$python_status" == "failure" ]; then
-              echo "::error::Python SDK checks failed"
-              failed=true
-            fi
+          if [ "$python_changes" == "true" ] && [ "$python_status" == "failure" ]; then
+            echo "::error::Python SDK checks failed"
+            failed=true
           fi
 
-          if [ "$threejs_changes" == "true" ] || [ "$run_all" == "true" ]; then
-            if [ "$threejs_status" == "failure" ]; then
-              echo "::error::Three.js SDK checks failed"
-              failed=true
-            fi
+          if [ "$threejs_changes" == "true" ] && [ "$threejs_status" == "failure" ]; then
+            echo "::error::Three.js SDK checks failed"
+            failed=true
           fi
 
           if [ "$failed" == "true" ]; then

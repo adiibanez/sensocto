@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'clients/python/**'
-      - '.github/workflows/python-sdk.yml'
     tags:
       - 'python-v*'
   pull_request:
@@ -14,8 +13,6 @@ on:
       - main
     paths:
       - 'clients/python/**'
-      - '.github/workflows/python-sdk.yml'
-  workflow_dispatch:
 
 concurrency:
   group: python-sdk-${{ github.ref }}
@@ -25,33 +22,10 @@ env:
   PYTHON_DEFAULT_VERSION: "3.11"
 
 jobs:
-  # Check if SDK directory exists
-  check-sdk-exists:
-    name: Check SDK Exists
-    runs-on: ubuntu-latest
-    outputs:
-      exists: ${{ steps.check.outputs.exists }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check if clients/python exists
-        id: check
-        run: |
-          if [ -d "clients/python" ] && [ -f "clients/python/pyproject.toml" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Python SDK found"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "::warning::Python SDK not found - skipping CI"
-          fi
-
   # Linting with Ruff
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    needs: check-sdk-exists
-    if: needs.check-sdk-exists.outputs.exists == 'true'
     defaults:
       run:
         working-directory: clients/python
@@ -77,8 +51,6 @@ jobs:
   format:
     name: Format Check
     runs-on: ubuntu-latest
-    needs: check-sdk-exists
-    if: needs.check-sdk-exists.outputs.exists == 'true'
     defaults:
       run:
         working-directory: clients/python
@@ -101,8 +73,6 @@ jobs:
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
-    needs: check-sdk-exists
-    if: needs.check-sdk-exists.outputs.exists == 'true'
     defaults:
       run:
         working-directory: clients/python
@@ -134,8 +104,7 @@ jobs:
   test:
     name: Test - Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    needs: [check-sdk-exists, lint, format]
-    if: needs.check-sdk-exists.outputs.exists == 'true'
+    needs: [lint, format]
     strategy:
       fail-fast: false
       matrix:
@@ -204,8 +173,7 @@ jobs:
   build:
     name: Build Package
     runs-on: ubuntu-latest
-    needs: [check-sdk-exists, lint, format, type-check]
-    if: needs.check-sdk-exists.outputs.exists == 'true'
+    needs: [lint, format, type-check]
     defaults:
       run:
         working-directory: clients/python
@@ -241,8 +209,7 @@ jobs:
   install-test:
     name: Install Test - Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    needs: [check-sdk-exists, build]
-    if: needs.check-sdk-exists.outputs.exists == 'true'
+    needs: build
     strategy:
       matrix:
         python-version:
@@ -279,8 +246,6 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: check-sdk-exists
-    if: needs.check-sdk-exists.outputs.exists == 'true'
     defaults:
       run:
         working-directory: clients/python
@@ -424,15 +389,11 @@ jobs:
   python-ci-complete:
     name: Python CI Complete
     runs-on: ubuntu-latest
-    needs: [check-sdk-exists, lint, format, type-check, test, build, install-test, security]
+    needs: [lint, format, type-check, test, build, install-test, security]
     if: always() && !startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.check-sdk-exists.outputs.exists }}" != "true" ]; then
-            echo "::warning::Python SDK not found - CI skipped"
-            exit 0
-          fi
           if [ "${{ needs.lint.result }}" == "failure" ] || \
              [ "${{ needs.format.result }}" == "failure" ] || \
              [ "${{ needs.type-check.result }}" == "failure" ] || \

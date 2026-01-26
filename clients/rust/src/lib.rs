@@ -16,16 +16,19 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use sensocto::{SensoctoClient, SensorConfig, Measurement};
+//! use sensocto::{SensoctoClient, SensorConfig};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     // Create client
-//!     let client = SensoctoClient::builder()
+//!     // Create configuration
+//!     let config = SensoctoClient::builder()
 //!         .server_url("https://your-server.com")
 //!         .connector_name("Rust Sensor")
 //!         .bearer_token("your-token")
 //!         .build()?;
+//!
+//!     // Create client
+//!     let client = SensoctoClient::new(config)?;
 //!
 //!     // Connect
 //!     client.connect().await?;
@@ -35,13 +38,13 @@
 //!         .with_sensor_type("temperature")
 //!         .with_attributes(vec!["celsius", "fahrenheit"]);
 //!
-//!     let sensor = client.register_sensor(sensor_config).await?;
+//!     let (sensor, _event_rx) = client.register_sensor(sensor_config).await?;
 //!
 //!     // Send measurements
 //!     sensor.send_measurement("celsius", serde_json::json!({"value": 23.5})).await?;
 //!
 //!     // Or use batch sending
-//!     sensor.add_to_batch("celsius", serde_json::json!({"value": 23.6}));
+//!     sensor.add_to_batch("celsius", serde_json::json!({"value": 23.6})).await;
 //!     sensor.flush_batch().await?;
 //!
 //!     Ok(())

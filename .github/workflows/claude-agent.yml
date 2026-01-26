@@ -170,11 +170,19 @@ jobs:
           # Run Claude Code with full permissions
           claude --print --dangerously-skip-permissions "$(cat /tmp/claude-prompt.txt)"
 
-          # Check if there are changes
-          if git diff --quiet && git diff --staged --quiet; then
-            echo "No changes made"
-            exit 0
+          # Check for changes - either uncommitted or already committed by Claude
+          UNCOMMITTED_CHANGES=false
+          COMMITS_AHEAD=0
+
+          if ! git diff --quiet || ! git diff --staged --quiet; then
+            UNCOMMITTED_CHANGES=true
           fi
+
+          # Check if there are commits ahead of origin/main (Claude may have already committed)
+          COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+
+          echo "Uncommitted changes: $UNCOMMITTED_CHANGES"
+          echo "Commits ahead of origin/main: $COMMITS_AHEAD"
 
           # Exit early if dry run
           if [ "$DRY_RUN" = "true" ]; then
@@ -183,18 +191,26 @@ jobs:
             exit 0
           fi
 
-          # Commit and push
-          git add -A
-          git commit -m "feat: ${TASK_TITLE}
+          # If there are uncommitted changes, commit them
+          if [ "$UNCOMMITTED_CHANGES" = "true" ]; then
+            git add -A
+            git commit -m "feat: ${TASK_TITLE}
 
           Closes #${ISSUE_NUM}
 
           Co-Authored-By: Claude Agent <claude-agent@users.noreply.github.com>"
+          fi
 
-          git push -u origin "$BRANCH"
+          # Re-check commits ahead after potential commit
+          COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
 
-          # Create PR
-          PR_BODY="## Summary
+          # If we have commits to push, create PR
+          if [ "$COMMITS_AHEAD" -gt "0" ]; then
+            echo "Pushing $COMMITS_AHEAD commit(s) to origin/$BRANCH"
+            git push -u origin "$BRANCH"
+
+            # Create PR
+            PR_BODY="## Summary
           Automated implementation from Claude Agent.
 
           ## Task
@@ -208,14 +224,17 @@ jobs:
           ---
           *This PR was created automatically by Claude Code Agent*"
 
-          gh pr create \
-            --title "feat: ${TASK_TITLE}" \
-            --body "$PR_BODY" \
-            --base main
+            gh pr create \
+              --title "feat: ${TASK_TITLE}" \
+              --body "$PR_BODY" \
+              --base main
 
-          # Remove ai-task label since it's now being worked on
-          if [ -n "$ISSUE_NUM" ]; then
-            gh issue edit "$ISSUE_NUM" --remove-label "ai-task" --add-label "in-progress"
+            # Remove ai-task label since it's now being worked on
+            if [ -n "$ISSUE_NUM" ]; then
+              gh issue edit "$ISSUE_NUM" --remove-label "ai-task" --add-label "in-progress"
+            fi
+          else
+            echo "No changes to push"
           fi
 
   # Handle @claude mentions in issues/PRs

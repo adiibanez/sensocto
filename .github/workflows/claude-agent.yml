@@ -349,15 +349,36 @@ jobs:
           # Run Claude with prompt from file
           claude --print --dangerously-skip-permissions "$(cat /tmp/claude-prompt.txt)"
 
-          # Check for changes and create PR
+          # Check for changes - either uncommitted or already committed by Claude
+          UNCOMMITTED_CHANGES=false
+          COMMITS_AHEAD=0
+
           if ! git diff --quiet || ! git diff --staged --quiet; then
+            UNCOMMITTED_CHANGES=true
+          fi
+
+          # Check if there are commits ahead of origin/main (Claude may have already committed)
+          COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+
+          echo "Uncommitted changes: $UNCOMMITTED_CHANGES"
+          echo "Commits ahead of origin/main: $COMMITS_AHEAD"
+
+          # If there are uncommitted changes, commit them
+          if [ "$UNCOMMITTED_CHANGES" = "true" ]; then
             git add -A
             git commit -m "feat: ${TASK_TITLE}
 
           Closes #${ISSUE_NUM}
 
           Co-Authored-By: Claude Agent <claude-agent@users.noreply.github.com>"
+          fi
 
+          # Re-check commits ahead after potential commit
+          COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+
+          # If we have commits to push, create PR
+          if [ "$COMMITS_AHEAD" -gt "0" ]; then
+            echo "Pushing $COMMITS_AHEAD commit(s) to origin/$BRANCH"
             git push -u origin "$BRANCH"
 
             gh pr create \
@@ -368,4 +389,6 @@ jobs:
               --base main
 
             gh issue edit "$ISSUE_NUM" --remove-label "ai-task" --add-label "in-progress"
+          else
+            echo "No changes to push"
           fi

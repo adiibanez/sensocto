@@ -114,20 +114,24 @@ jobs:
         if: steps.tasks.outputs.has_task == 'true' || steps.specific_issue.outputs.has_task == 'true' || inputs.task_override
         env:
           DRY_RUN: ${{ inputs.dry_run }}
+          TASK_OVERRIDE: ${{ inputs.task_override }}
+          INPUT_ISSUE_NUM: ${{ inputs.issue_number }}
+          SPECIFIC_ISSUE_JSON: ${{ steps.specific_issue.outputs.task }}
+          TASKS_JSON: ${{ steps.tasks.outputs.task }}
         run: |
           # Determine task source
-          if [ -n "${{ inputs.task_override }}" ]; then
-            TASK="${{ inputs.task_override }}"
+          if [ -n "$TASK_OVERRIDE" ]; then
+            TASK_BODY="$TASK_OVERRIDE"
             TASK_TITLE="Manual task"
             ISSUE_NUM=""
-          elif [ -n "${{ inputs.issue_number }}" ]; then
-            TASK=$(echo '${{ steps.specific_issue.outputs.task }}' | jq -r '.body')
-            TASK_TITLE=$(echo '${{ steps.specific_issue.outputs.task }}' | jq -r '.title')
-            ISSUE_NUM="${{ inputs.issue_number }}"
+          elif [ -n "$INPUT_ISSUE_NUM" ]; then
+            TASK_BODY=$(echo "$SPECIFIC_ISSUE_JSON" | jq -r '.body // empty')
+            TASK_TITLE=$(echo "$SPECIFIC_ISSUE_JSON" | jq -r '.title // empty')
+            ISSUE_NUM="$INPUT_ISSUE_NUM"
           else
-            TASK=$(echo '${{ steps.tasks.outputs.task }}' | jq -r '.body')
-            TASK_TITLE=$(echo '${{ steps.tasks.outputs.task }}' | jq -r '.title')
-            ISSUE_NUM=$(echo '${{ steps.tasks.outputs.task }}' | jq -r '.number')
+            TASK_BODY=$(echo "$TASKS_JSON" | jq -r '.body // empty')
+            TASK_TITLE=$(echo "$TASKS_JSON" | jq -r '.title // empty')
+            ISSUE_NUM=$(echo "$TASKS_JSON" | jq -r '.number // empty')
           fi
 
           # Configure git for commits
@@ -142,25 +146,29 @@ jobs:
           fi
           git checkout -b "$BRANCH"
 
-          # Build the prompt
-          PROMPT="Implement this task autonomously:
-
-          Title: ${TASK_TITLE}
-
-          ${TASK}
+          # Write prompt to a temp file to avoid shell escaping issues
+          cat > /tmp/claude-prompt.txt << 'PROMPT_EOF'
+          Implement this task autonomously:
 
           Instructions:
           1. Read CLAUDE.md for project conventions
           2. Explore relevant code to understand patterns
           3. Implement the solution
-          4. Run 'mix test' and 'mix format'
+          4. Run tests and format code appropriately
           5. Commit with descriptive message
 
           Only ask for clarification if requirements are truly ambiguous.
-          Work autonomously - the software should build itself."
+          Work autonomously - the software should build itself.
+          PROMPT_EOF
+
+          # Append task details safely
+          echo "" >> /tmp/claude-prompt.txt
+          echo "Title: ${TASK_TITLE}" >> /tmp/claude-prompt.txt
+          echo "" >> /tmp/claude-prompt.txt
+          echo "${TASK_BODY}" >> /tmp/claude-prompt.txt
 
           # Run Claude Code with full permissions
-          claude --print --dangerously-skip-permissions "$PROMPT"
+          claude --print --dangerously-skip-permissions "$(cat /tmp/claude-prompt.txt)"
 
           # Check if there are changes
           if git diff --quiet && git diff --staged --quiet; then
@@ -243,33 +251,33 @@ jobs:
           mix deps.get
           npm install -g @anthropic-ai/claude-code
 
-      - name: Extract task from comment
-        id: extract
-        run: |
-          COMMENT="${{ github.event.comment.body }}"
-          # Remove @claude mention and get the task
-          TASK=$(echo "$COMMENT" | sed 's/@claude//g' | xargs)
-          echo "task=$TASK" >> $GITHUB_OUTPUT
-
       - name: Run Claude Agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           git config user.name "Claude Agent"
           git config user.email "claude-agent@users.noreply.github.com"
 
-          TASK="${{ steps.extract.outputs.task }}"
+          # Remove @claude mention and write to temp file
+          echo "$COMMENT_BODY" | sed 's/@claude//g' > /tmp/claude-task.txt
 
-          # Run Claude with the extracted task
-          RESPONSE=$(claude --print --dangerously-skip-permissions "$TASK" 2>&1)
+          # Run Claude with the task from file
+          RESPONSE=$(claude --print --dangerously-skip-permissions "$(cat /tmp/claude-task.txt)" 2>&1)
 
-          # Post response as comment
-          gh issue comment ${{ github.event.issue.number }} --body "## Claude Response
+          # Write response to file with header
+          cat > /tmp/claude-response.txt << 'EOF'
+          ## Claude Response
 
-          $RESPONSE
+          EOF
+          echo "$RESPONSE" >> /tmp/claude-response.txt
+          echo "" >> /tmp/claude-response.txt
+          echo "---" >> /tmp/claude-response.txt
+          echo "*Response from Claude Code Agent*" >> /tmp/claude-response.txt
 
-          ---
-          *Response from Claude Code Agent*"
+          # Post response as comment using file
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/claude-response.txt
 
   # Handle new ai-task labeled issues
   handle-new-task:
@@ -307,34 +315,39 @@ jobs:
       - name: Run Claude Agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          TASK_TITLE: ${{ github.event.issue.title }}
+          TASK_BODY: ${{ github.event.issue.body }}
         run: |
           git config user.name "Claude Agent"
           git config user.email "claude-agent@users.noreply.github.com"
-
-          ISSUE_NUM="${{ github.event.issue.number }}"
-          TASK_TITLE="${{ github.event.issue.title }}"
-          TASK="${{ github.event.issue.body }}"
 
           # Create feature branch
           BRANCH="feature/issue-${ISSUE_NUM}"
           git checkout -b "$BRANCH"
 
-          PROMPT="Implement this GitHub issue autonomously:
-
-          Issue #${ISSUE_NUM}: ${TASK_TITLE}
-
-          ${TASK}
+          # Write prompt to a temp file to avoid shell escaping issues
+          cat > /tmp/claude-prompt.txt << 'PROMPT_EOF'
+          Implement this GitHub issue autonomously:
 
           Instructions:
           1. Read CLAUDE.md for project conventions
           2. Explore relevant code to understand patterns
           3. Implement the solution
-          4. Run 'mix test' and 'mix format'
+          4. Run tests and format code appropriately
           5. Commit with descriptive message
 
-          Only ask for clarification if requirements are truly ambiguous."
+          Only ask for clarification if requirements are truly ambiguous.
+          PROMPT_EOF
 
-          claude --print --dangerously-skip-permissions "$PROMPT"
+          # Append issue details safely
+          echo "" >> /tmp/claude-prompt.txt
+          echo "Issue #${ISSUE_NUM}: ${TASK_TITLE}" >> /tmp/claude-prompt.txt
+          echo "" >> /tmp/claude-prompt.txt
+          echo "${TASK_BODY}" >> /tmp/claude-prompt.txt
+
+          # Run Claude with prompt from file
+          claude --print --dangerously-skip-permissions "$(cat /tmp/claude-prompt.txt)"
 
           # Check for changes and create PR
           if ! git diff --quiet || ! git diff --staged --quiet; then

@@ -1,14 +1,13 @@
 """Call session implementation."""
 
-import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from sensocto.errors import DisconnectedError, SensoctoError
+from sensocto.errors import SensoctoError
 from sensocto.models import (
+    CallEndedEvent,
     CallEvent,
     CallParticipant,
-    CallEndedEvent,
     MediaEventReceived,
     ParticipantAudioChangedEvent,
     ParticipantJoinedEvent,
@@ -257,10 +256,12 @@ class CallSession:
 
     def _on_participant_left(self, payload: Dict[str, Any]) -> None:
         """Handles participant left event."""
-        self._dispatch_event(ParticipantLeftEvent(
-            user_id=payload.get("user_id", ""),
-            crashed=payload.get("crashed", False),
-        ))
+        self._dispatch_event(
+            ParticipantLeftEvent(
+                user_id=payload.get("user_id", ""),
+                crashed=payload.get("crashed", False),
+            )
+        )
 
     def _on_media_event(self, payload: Dict[str, Any]) -> None:
         """Handles media event."""
@@ -268,17 +269,21 @@ class CallSession:
 
     def _on_audio_changed(self, payload: Dict[str, Any]) -> None:
         """Handles audio changed event."""
-        self._dispatch_event(ParticipantAudioChangedEvent(
-            user_id=payload.get("user_id", ""),
-            enabled=payload.get("audio_enabled", False),
-        ))
+        self._dispatch_event(
+            ParticipantAudioChangedEvent(
+                user_id=payload.get("user_id", ""),
+                enabled=payload.get("audio_enabled", False),
+            )
+        )
 
     def _on_video_changed(self, payload: Dict[str, Any]) -> None:
         """Handles video changed event."""
-        self._dispatch_event(ParticipantVideoChangedEvent(
-            user_id=payload.get("user_id", ""),
-            enabled=payload.get("video_enabled", False),
-        ))
+        self._dispatch_event(
+            ParticipantVideoChangedEvent(
+                user_id=payload.get("user_id", ""),
+                enabled=payload.get("video_enabled", False),
+            )
+        )
 
     def _on_quality_changed(self, payload: Dict[str, Any]) -> None:
         """Handles quality changed event."""

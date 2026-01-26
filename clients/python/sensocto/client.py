@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from sensocto.call import CallSession
 from sensocto.config import SensoctoConfig, SensorConfig
-from sensocto.errors import DisconnectedError, InvalidConfigError
+from sensocto.errors import DisconnectedError
 from sensocto.models import ConnectionState
 from sensocto.sensor import SensorStream
 from sensocto.socket import PhoenixSocket
@@ -129,7 +129,7 @@ class SensoctoClient:
             if self._config.auto_join_connector:
                 await self._join_connector_channel()
 
-        except Exception as e:
+        except Exception:
             self._state = ConnectionState.ERROR
             raise
 

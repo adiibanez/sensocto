@@ -1,9 +1,9 @@
 """Configuration types for the Sensocto client."""
 
+import uuid
 from dataclasses import dataclass, field
 from typing import List, Optional
 from urllib.parse import urlparse
-import uuid
 
 from sensocto.errors import InvalidConfigError
 

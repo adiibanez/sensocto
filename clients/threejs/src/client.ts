@@ -369,9 +369,7 @@ export class SensoctoClient {
         }
 
         const delay = this.calculateBackoff(attempt);
-        console.warn(
-          `[Sensocto] Connection attempt ${attempt} failed. Retrying in ${delay}ms...`
-        );
+        console.warn(`[Sensocto] Connection attempt ${attempt} failed. Retrying in ${delay}ms...`);
         this.dispatchReconnecting({
           attempt,
           maxAttempts,

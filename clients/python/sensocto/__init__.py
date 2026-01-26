@@ -23,8 +23,17 @@ Example:
     >>> asyncio.run(main())
 """
 
+from sensocto.call import CallSession
 from sensocto.client import SensoctoClient
 from sensocto.config import SensoctoConfig, SensorConfig
+from sensocto.errors import (
+    AuthenticationError,
+    ChannelJoinError,
+    ConnectionError,
+    InvalidConfigError,
+    SensoctoError,
+    TimeoutError,
+)
 from sensocto.models import (
     AttentionLevel,
     BackpressureConfig,
@@ -37,16 +46,7 @@ from sensocto.models import (
     SensorEvent,
     User,
 )
-from sensocto.errors import (
-    SensoctoError,
-    ConnectionError,
-    ChannelJoinError,
-    AuthenticationError,
-    TimeoutError,
-    InvalidConfigError,
-)
 from sensocto.sensor import SensorStream
-from sensocto.call import CallSession
 
 __version__ = "0.1.0"
 __author__ = "Sensocto"

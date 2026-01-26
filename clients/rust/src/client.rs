@@ -395,8 +395,12 @@ impl SensoctoClient {
             .cloned()
             .unwrap_or_default();
 
-        let (session, event_rx) =
-            CallSession::new(channel, room_id.to_string(), user_id.to_string(), ice_servers);
+        let (session, event_rx) = CallSession::new(
+            channel,
+            room_id.to_string(),
+            user_id.to_string(),
+            ice_servers,
+        );
 
         // Set up event handlers
         let socket = self.socket.read().await;
@@ -428,9 +432,8 @@ impl SensoctoClient {
         info!("Joined call channel: {}", room_id);
 
         // Extract the session from Arc (we know there's only one reference)
-        let session = Arc::try_unwrap(session_arc).map_err(|_| {
-            SensoctoError::Other("Failed to unwrap session".into())
-        })?;
+        let session = Arc::try_unwrap(session_arc)
+            .map_err(|_| SensoctoError::Other("Failed to unwrap session".into()))?;
 
         Ok((session, event_rx))
     }

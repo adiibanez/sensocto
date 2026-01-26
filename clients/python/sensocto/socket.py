@@ -3,8 +3,8 @@
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
-from dataclasses import dataclass, field
 
 import websockets
 from websockets.client import WebSocketClientProtocol
@@ -25,12 +25,14 @@ class PhoenixMessage:
 
     def to_json(self) -> str:
         """Serializes the message to JSON."""
-        return json.dumps({
-            "topic": self.topic,
-            "event": self.event,
-            "payload": self.payload,
-            "ref": self.ref,
-        })
+        return json.dumps(
+            {
+                "topic": self.topic,
+                "event": self.event,
+                "payload": self.payload,
+                "ref": self.ref,
+            }
+        )
 
     @classmethod
     def from_json(cls, data: str) -> "PhoenixMessage":

@@ -9,9 +9,7 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::time::{timeout, Duration};
-use tokio_tungstenite::{
-    connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, warn};
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -113,7 +111,10 @@ impl PhoenixSocket {
         debug!("Sending: {}", json);
 
         let (tx, rx) = oneshot::channel();
-        self.pending_replies.write().await.insert(msg_ref.clone(), tx);
+        self.pending_replies
+            .write()
+            .await
+            .insert(msg_ref.clone(), tx);
 
         if let Some(write_tx) = &self.write_tx {
             write_tx

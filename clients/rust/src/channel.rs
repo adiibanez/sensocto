@@ -293,7 +293,9 @@ impl SensorStream {
             "metadata": metadata.unwrap_or_default()
         });
 
-        self.channel.push_no_reply("update_attributes", payload).await
+        self.channel
+            .push_no_reply("update_attributes", payload)
+            .await
     }
 
     /// Returns the current backpressure configuration.
@@ -310,7 +312,10 @@ impl SensorStream {
     /// Updates the backpressure configuration.
     pub(crate) async fn set_backpressure_config(&self, config: BackpressureConfig) {
         *self.backpressure.write().await = config.clone();
-        let _ = self.event_tx.send(SensorEvent::BackpressureConfig(config)).await;
+        let _ = self
+            .event_tx
+            .send(SensorEvent::BackpressureConfig(config))
+            .await;
     }
 
     /// Closes the sensor stream.
@@ -382,7 +387,10 @@ impl CallSession {
 
     /// Joins the call.
     pub async fn join_call(&self) -> Result<serde_json::Value> {
-        let response = self.channel.push("join_call", serde_json::json!({})).await?;
+        let response = self
+            .channel
+            .push("join_call", serde_json::json!({}))
+            .await?;
 
         *self.in_call.write().await = true;
 
@@ -399,7 +407,9 @@ impl CallSession {
             return Ok(());
         }
 
-        self.channel.push("leave_call", serde_json::json!({})).await?;
+        self.channel
+            .push("leave_call", serde_json::json!({}))
+            .await?;
         *self.in_call.write().await = false;
         *self.endpoint_id.write().await = None;
 
@@ -455,7 +465,10 @@ impl CallSession {
 
     /// Gets the current participants.
     pub async fn get_participants(&self) -> Result<HashMap<String, CallParticipant>> {
-        let response = self.channel.push("get_participants", serde_json::json!({})).await?;
+        let response = self
+            .channel
+            .push("get_participants", serde_json::json!({}))
+            .await?;
 
         if let Some(participants) = response.get("participants") {
             Ok(serde_json::from_value(participants.clone()).unwrap_or_default())
@@ -467,41 +480,56 @@ impl CallSession {
     /// Handles incoming events.
     pub(crate) async fn handle_event(&self, event: &str, payload: serde_json::Value) {
         let call_event = match event {
-            "participant_joined" => {
-                serde_json::from_value::<CallParticipant>(payload)
-                    .ok()
-                    .map(CallEvent::ParticipantJoined)
-            }
+            "participant_joined" => serde_json::from_value::<CallParticipant>(payload)
+                .ok()
+                .map(CallEvent::ParticipantJoined),
             "participant_left" => {
-                let user_id = payload.get("user_id").and_then(|v| v.as_str()).unwrap_or_default();
-                let crashed = payload.get("crashed").and_then(|v| v.as_bool()).unwrap_or(false);
+                let user_id = payload
+                    .get("user_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let crashed = payload
+                    .get("crashed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 Some(CallEvent::ParticipantLeft {
                     user_id: user_id.to_string(),
                     crashed,
                 })
             }
-            "media_event" => {
-                payload.get("data").cloned().map(CallEvent::MediaEvent)
-            }
+            "media_event" => payload.get("data").cloned().map(CallEvent::MediaEvent),
             "participant_audio_changed" => {
-                let user_id = payload.get("user_id").and_then(|v| v.as_str()).unwrap_or_default();
-                let enabled = payload.get("audio_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                let user_id = payload
+                    .get("user_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let enabled = payload
+                    .get("audio_enabled")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 Some(CallEvent::ParticipantAudioChanged {
                     user_id: user_id.to_string(),
                     enabled,
                 })
             }
             "participant_video_changed" => {
-                let user_id = payload.get("user_id").and_then(|v| v.as_str()).unwrap_or_default();
-                let enabled = payload.get("video_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                let user_id = payload
+                    .get("user_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let enabled = payload
+                    .get("video_enabled")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 Some(CallEvent::ParticipantVideoChanged {
                     user_id: user_id.to_string(),
                     enabled,
                 })
             }
-            "quality_changed" => {
-                payload.get("quality").and_then(|v| v.as_str()).map(|q| CallEvent::QualityChanged(q.to_string()))
-            }
+            "quality_changed" => payload
+                .get("quality")
+                .and_then(|v| v.as_str())
+                .map(|q| CallEvent::QualityChanged(q.to_string())),
             "call_ended" => Some(CallEvent::CallEnded),
             _ => None,
         };
@@ -527,9 +555,13 @@ fn validate_attribute_id(id: &str) -> Result<()> {
         ));
     }
 
-    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         return Err(SensoctoError::InvalidAttributeId(
-            "Attribute ID must contain only alphanumeric characters, underscores, or hyphens".into(),
+            "Attribute ID must contain only alphanumeric characters, underscores, or hyphens"
+                .into(),
         ));
     }
 

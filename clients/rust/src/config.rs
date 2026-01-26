@@ -68,7 +68,9 @@ impl SensoctoConfig {
     /// Validates the configuration.
     pub fn validate(&self) -> Result<()> {
         if self.server_url.is_empty() {
-            return Err(SensoctoError::InvalidConfig("Server URL is required".into()));
+            return Err(SensoctoError::InvalidConfig(
+                "Server URL is required".into(),
+            ));
         }
 
         url::Url::parse(&self.server_url)?;
@@ -85,10 +87,14 @@ impl SensoctoConfig {
     /// Returns the WebSocket URL for connecting.
     pub fn websocket_url(&self) -> Result<String> {
         let base = url::Url::parse(&self.server_url)?;
-        let protocol = if base.scheme() == "https" { "wss" } else { "ws" };
-        let host = base.host_str().ok_or_else(|| {
-            SensoctoError::InvalidConfig("Server URL must have a host".into())
-        })?;
+        let protocol = if base.scheme() == "https" {
+            "wss"
+        } else {
+            "ws"
+        };
+        let host = base
+            .host_str()
+            .ok_or_else(|| SensoctoError::InvalidConfig("Server URL must have a host".into()))?;
         let port = base.port().map(|p| format!(":{}", p)).unwrap_or_default();
 
         Ok(format!("{}://{}{}/socket/websocket", protocol, host, port))

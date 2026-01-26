@@ -44,8 +44,8 @@
 //! }
 //! ```
 
-pub mod client;
 pub mod channel;
+pub mod client;
 pub mod config;
 pub mod error;
 pub mod models;
@@ -54,5 +54,5 @@ pub mod socket;
 // Re-exports
 pub use client::SensoctoClient;
 pub use config::{SensoctoConfig, SensorConfig};
-pub use error::{SensoctoError, Result};
+pub use error::{Result, SensoctoError};
 pub use models::*;

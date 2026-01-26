@@ -252,7 +252,10 @@ pub enum SensorEvent {
     /// Backpressure configuration update.
     BackpressureConfig(BackpressureConfig),
     /// Generic event with payload.
-    Other { event: String, payload: serde_json::Value },
+    Other {
+        event: String,
+        payload: serde_json::Value,
+    },
 }
 
 /// Events that can be received from a call channel.

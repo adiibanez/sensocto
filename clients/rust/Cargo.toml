@@ -43,10 +43,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 default = []
 blocking = []
 
-[[example]]
-name = "basic_sensor"
-path = "examples/basic_sensor.rs"
-
-[[example]]
-name = "video_call"
-path = "examples/video_call.rs"
+# Examples will be added in future releases
+# [[example]]
+# name = "basic_sensor"
+# path = "examples/basic_sensor.rs"
+#
+# [[example]]
+# name = "video_call"
+# path = "examples/video_call.rs"

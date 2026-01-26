@@ -1,6 +1,6 @@
 {
   "name": "com.sensocto.sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "Sensocto SDK",
   "description": "Unity SDK for connecting to Sensocto sensor platform. Supports real-time sensor data streaming, WebRTC video calls, and room management.",
   "unity": "2020.3",

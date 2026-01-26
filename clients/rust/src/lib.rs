@@ -63,3 +63,20 @@ pub use client::SensoctoClient;
 pub use config::{SensoctoConfig, SensorConfig};
 pub use error::{Result, SensoctoError};
 pub use models::*;
+
+/// Returns the version of the Sensocto SDK.
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version() {
+        let v = version();
+        assert!(!v.is_empty());
+        assert!(v.contains('.'));
+    }
+}

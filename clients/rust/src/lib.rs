@@ -1,3 +1,7 @@
+// Allow certain clippy lints for SDK usability
+#![allow(clippy::result_large_err)]
+#![allow(dead_code)]
+
 //! # Sensocto Rust SDK
 //!
 //! Rust client library for connecting to the Sensocto sensor platform.

@@ -6,7 +6,8 @@
     <title>Sensocto | LiveView</title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <!-- Three.js from CDN - required by GaussianSplats3D for 3D object viewer -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.min.js">
+    <!-- Using v0.160.0 which has UMD build exposing global THREE (>=0.160.0 required) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js">
     </script>
     <script defer phx-track-static src={~p"/assets/sparkline_init.js"} type="module">
     </script>

@@ -248,8 +248,14 @@ jobs:
         run: |
           mkdir test-project
           cd test-project
-          npm init -y
-          echo '{"type": "module"}' > package.json
+          cat > package.json << 'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "type": "module",
+            "private": true
+          }
+          EOF
 
       - name: Install package locally
         run: |
@@ -259,13 +265,14 @@ jobs:
       - name: Verify import (ESM)
         run: |
           cd test-project
-          node -e "
-            import { SensoctoClient, ConnectionState, AttentionLevel } from '@sensocto/threejs';
-            console.log('SensoctoClient:', typeof SensoctoClient);
-            console.log('ConnectionState:', ConnectionState);
-            console.log('AttentionLevel:', AttentionLevel);
-            console.log('Import successful!');
-          "
+          cat > test.mjs << 'EOF'
+          import { SensoctoClient, ConnectionState, AttentionLevel } from '@sensocto/threejs';
+          console.log('SensoctoClient:', typeof SensoctoClient);
+          console.log('ConnectionState:', ConnectionState);
+          console.log('AttentionLevel:', AttentionLevel);
+          console.log('Import successful!');
+          EOF
+          node test.mjs
 
   # Security scan
   security:

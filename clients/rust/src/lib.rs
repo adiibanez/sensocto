@@ -51,6 +51,9 @@
 //! }
 //! ```
 
+/// The name of this SDK, useful for logging and user-agent strings.
+pub const SDK_NAME: &str = "sensocto-rust";
+
 pub mod channel;
 pub mod client;
 pub mod config;
@@ -63,3 +66,14 @@ pub use client::SensoctoClient;
 pub use config::{SensoctoConfig, SensorConfig};
 pub use error::{Result, SensoctoError};
 pub use models::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sdk_name() {
+        assert!(!SDK_NAME.is_empty());
+        assert!(SDK_NAME.contains("sensocto"));
+    }
+}

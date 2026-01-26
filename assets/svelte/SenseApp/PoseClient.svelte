@@ -139,8 +139,8 @@
             });
 
             // Create a hidden video element for pose detection
-            // Note: Using opacity instead of off-screen positioning because
-            // some browsers (Edge) don't render frames for off-screen videos
+            // Note: Using clip-path instead of opacity/off-screen because
+            // Edge browser needs the video at full dimensions for MediaPipe to work
             standaloneVideoEl = document.createElement("video");
             standaloneVideoEl.id = "pose-standalone-video";
             standaloneVideoEl.autoplay = true;
@@ -151,9 +151,9 @@
             standaloneVideoEl.style.position = "fixed";
             standaloneVideoEl.style.bottom = "0";
             standaloneVideoEl.style.left = "0";
-            standaloneVideoEl.style.width = "1px";
-            standaloneVideoEl.style.height = "1px";
-            standaloneVideoEl.style.opacity = "0.01"; // Nearly invisible but still renders
+            standaloneVideoEl.style.width = `${videoWidth}px`;
+            standaloneVideoEl.style.height = `${videoHeight}px`;
+            standaloneVideoEl.style.clipPath = "inset(100%)"; // Clips entire element, making it invisible
             standaloneVideoEl.style.pointerEvents = "none";
             standaloneVideoEl.style.zIndex = "-1";
             standaloneVideoEl.srcObject = standaloneStream;

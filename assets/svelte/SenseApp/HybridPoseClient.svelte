@@ -198,14 +198,15 @@
             standaloneVideoEl.muted = true;
             standaloneVideoEl.width = videoWidth;
             standaloneVideoEl.height = videoHeight;
-            // Use opacity:0 instead of off-screen positioning
-            // Some browsers (Edge) don't render frames for off-screen videos
+            // Hide video but keep it rendering at full size for MediaPipe detection
+            // Edge browser requires the video to be visible and at proper dimensions
+            // Using clip-path to make it invisible while maintaining dimensions
             standaloneVideoEl.style.position = "fixed";
             standaloneVideoEl.style.bottom = "0";
             standaloneVideoEl.style.left = "0";
-            standaloneVideoEl.style.width = "1px";
-            standaloneVideoEl.style.height = "1px";
-            standaloneVideoEl.style.opacity = "0.01"; // Nearly invisible but still renders
+            standaloneVideoEl.style.width = `${videoWidth}px`;
+            standaloneVideoEl.style.height = `${videoHeight}px`;
+            standaloneVideoEl.style.clipPath = "inset(100%)"; // Clips entire element, making it invisible
             standaloneVideoEl.style.pointerEvents = "none";
             standaloneVideoEl.style.zIndex = "-1";
             standaloneVideoEl.srcObject = standaloneStream;

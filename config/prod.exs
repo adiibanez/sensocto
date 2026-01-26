@@ -22,14 +22,9 @@ config :logger, level: :info
 
 # Production endpoint configuration
 # IMPORTANT: Set PHX_HOST environment variable to your domain
+# Note: HTTPS is NOT configured here because Fly.io handles TLS termination at the edge
 config :sensocto, SensoctoWeb.Endpoint,
   http: [ip: {0, 0, 0, 0}, port: 4000],
-  https: [
-    port: 4001,
-    cipher_suite: :strong,
-    certfile: "priv/cert/selfsigned.pem",
-    keyfile: "priv/cert/selfsigned_key.pem"
-  ],
   # Enable origin checking in production - set PHX_HOST to your domain
   check_origin: [
     "https://sensocto.ddns.net",

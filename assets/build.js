@@ -7,6 +7,23 @@ const importGlobPlugin = require("esbuild-plugin-import-glob").default;
 const fs = require('fs');
 const path = require('path');
 
+// Plugin to externalize Three.js and use global THREE from CDN
+const threeExternalPlugin = {
+    name: 'three-external',
+    setup(build) {
+        // Intercept imports of 'three' and return the global THREE object
+        build.onResolve({ filter: /^three$/ }, args => ({
+            path: args.path,
+            namespace: 'three-external'
+        }));
+
+        build.onLoad({ filter: /.*/, namespace: 'three-external' }, () => ({
+            contents: 'module.exports = window.THREE;',
+            loader: 'js'
+        }));
+    }
+};
+
 const args = process.argv.slice(2);
 const watch = args.includes("--watch");
 const deploy = args.includes("--deploy");
@@ -44,6 +61,9 @@ let optsClient = {
         "svelte/server"
     ],
     plugins: [
+        // Three.js external plugin - uses global THREE from CDN (~2MB bundle savings)
+        threeExternalPlugin,
+
         importGlobPlugin(),
 
         sveltePlugin({

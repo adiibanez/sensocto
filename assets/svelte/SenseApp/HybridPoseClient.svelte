@@ -35,7 +35,8 @@
     const isEdge = /Edg\//i.test(navigator.userAgent);
 
     // Base FPS settings (can be overridden by backpressure)
-    const BASE_FPS = (isMobile || isEdge) ? 8 : 15;
+    // Higher base FPS for smoother pose visualization
+    const BASE_FPS = (isMobile || isEdge) ? 15 : 30;
     let targetFps = BASE_FPS;
     let frameInterval = 1000 / targetFps;
     let lastFrameTime = 0;
@@ -56,6 +57,49 @@
     let lastModeSwitch = 0;
     const MODE_SWITCH_COOLDOWN = 1000; // 1 second
 
+    // Preload status
+    let preloadStarted = false;
+    let preloadPromise = null;
+
+    // Preload MediaPipe models in the background when component mounts
+    // This significantly speeds up "Start" time since models are already cached
+    async function preloadModels() {
+        if (preloadStarted) return preloadPromise;
+        preloadStarted = true;
+
+        logger.log(loggerCtxName, "Preloading MediaPipe models in background...");
+        const startTime = performance.now();
+
+        preloadPromise = (async () => {
+            try {
+                // Preload WASM files first (required by both models)
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+                );
+                logger.log(loggerCtxName, `WASM preloaded in ${(performance.now() - startTime).toFixed(0)}ms`);
+
+                // Preload both model files in parallel using fetch (they'll be cached by browser)
+                const modelUrls = [
+                    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+                ];
+
+                await Promise.all(modelUrls.map(url =>
+                    fetch(url).then(r => r.blob()).catch(() => null)
+                ));
+
+                logger.log(loggerCtxName, `Models preloaded in ${(performance.now() - startTime).toFixed(0)}ms`);
+                return vision;
+            } catch (error) {
+                logger.warn(loggerCtxName, "Preload failed (will retry on start):", error);
+                preloadStarted = false;
+                return null;
+            }
+        })();
+
+        return preloadPromise;
+    }
+
     // Handle backpressure configuration from server
     function handleBackpressureConfig(config) {
         logger.log(loggerCtxName, "Backpressure config received:", config);
@@ -63,17 +107,36 @@
         attentionLevel = config.attention_level || "none";
         backpressurePaused = config.paused || false;
 
-        // Adjust frame rate based on attention level
-        // Higher attention = more frequent updates
-        // recommended_batch_window is in ms, convert to FPS
-        if (config.recommended_batch_window) {
-            // Map batch window to FPS
-            // high attention: 100ms -> 10fps, medium: 500ms -> 2fps, low: 2000ms -> 0.5fps
-            const recommendedFps = Math.min(BASE_FPS, 1000 / config.recommended_batch_window);
-            targetFps = Math.max(1, recommendedFps); // At least 1 FPS
-            frameInterval = 1000 / targetFps;
-            logger.log(loggerCtxName, `Adjusted FPS to ${targetFps.toFixed(1)} based on attention level: ${attentionLevel}`);
+        // Adjust frame rate based on attention level directly
+        // Pose visualization needs higher framerates than generic sensor data
+        // Use attention level to set FPS targets appropriate for real-time pose
+        switch (attentionLevel) {
+            case "high":
+                // Full framerate for actively viewed pose
+                targetFps = BASE_FPS;
+                break;
+            case "medium":
+                // Still smooth but reduced (15fps desktop, 10fps mobile)
+                targetFps = (isMobile || isEdge) ? 10 : 15;
+                break;
+            case "low":
+                // Minimal but still usable (5fps)
+                targetFps = 5;
+                break;
+            case "none":
+            default:
+                // Very low when no one is watching (2fps)
+                targetFps = 2;
+                break;
         }
+
+        // Apply system load multiplier if provided (reduces FPS under load)
+        if (config.load_multiplier && config.load_multiplier > 1) {
+            targetFps = Math.max(2, targetFps / config.load_multiplier);
+        }
+
+        frameInterval = 1000 / targetFps;
+        logger.log(loggerCtxName, `Adjusted FPS to ${targetFps.toFixed(1)} based on attention level: ${attentionLevel}`);
 
         if (backpressurePaused) {
             logger.log(loggerCtxName, "Pose detection paused by backpressure (critical load + low attention)");
@@ -81,70 +144,98 @@
     }
 
     async function initLandmarkers() {
+        const startTime = performance.now();
+        logger.log(loggerCtxName, "Initializing landmarkers...");
+
         try {
-            const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
-            );
+            // Use preloaded vision instance if available, otherwise load fresh
+            let vision = preloadPromise ? await preloadPromise : null;
+            if (!vision) {
+                logger.log(loggerCtxName, "No preloaded vision, loading fresh...");
+                vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+                );
+            }
+            logger.log(loggerCtxName, `Vision ready in ${(performance.now() - startTime).toFixed(0)}ms`);
 
             // Initialize PoseLandmarker (33 landmarks for full body)
             // Always try GPU first, then fall back to CPU
-            try {
-                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                        delegate: "GPU"
-                    },
-                    runningMode: "VIDEO",
-                    numPoses: 1,
-                    minPoseDetectionConfidence: 0.5,
-                    minPosePresenceConfidence: 0.5,
-                    minTrackingConfidence: 0.5,
-                    outputSegmentationMasks: false
-                });
-                usingDelegate = "GPU";
-                logger.log(loggerCtxName, "PoseLandmarker initialized with GPU delegate");
-            } catch (gpuError) {
-                // GPU failed, fall back to CPU
-                logger.warn(loggerCtxName, `GPU delegate failed for Pose, falling back to CPU:`, gpuError);
-                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                        delegate: "CPU"
-                    },
-                    runningMode: "VIDEO",
-                    numPoses: 1,
-                    minPoseDetectionConfidence: 0.5,
-                    minPosePresenceConfidence: 0.5,
-                    minTrackingConfidence: 0.5,
-                    outputSegmentationMasks: false
-                });
-                usingDelegate = "CPU";
-                logger.log(loggerCtxName, "PoseLandmarker initialized with CPU delegate (fallback)");
-            }
+            const initPose = async () => {
+                try {
+                    const landmarker = await PoseLandmarker.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                            delegate: "GPU"
+                        },
+                        runningMode: "VIDEO",
+                        numPoses: 1,
+                        minPoseDetectionConfidence: 0.5,
+                        minPosePresenceConfidence: 0.5,
+                        minTrackingConfidence: 0.5,
+                        outputSegmentationMasks: false
+                    });
+                    usingDelegate = "GPU";
+                    logger.log(loggerCtxName, `PoseLandmarker initialized with GPU in ${(performance.now() - startTime).toFixed(0)}ms`);
+                    return landmarker;
+                } catch (gpuError) {
+                    // GPU failed, fall back to CPU
+                    logger.warn(loggerCtxName, `GPU delegate failed for Pose, falling back to CPU:`, gpuError);
+                    const landmarker = await PoseLandmarker.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                            delegate: "CPU"
+                        },
+                        runningMode: "VIDEO",
+                        numPoses: 1,
+                        minPoseDetectionConfidence: 0.5,
+                        minPosePresenceConfidence: 0.5,
+                        minTrackingConfidence: 0.5,
+                        outputSegmentationMasks: false
+                    });
+                    usingDelegate = "CPU";
+                    logger.log(loggerCtxName, `PoseLandmarker initialized with CPU in ${(performance.now() - startTime).toFixed(0)}ms`);
+                    return landmarker;
+                }
+            };
 
             // Initialize FaceLandmarker (468 landmarks for detailed face)
-            // Use same delegate as pose for consistency
-            try {
-                faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-                        delegate: usingDelegate
-                    },
-                    runningMode: "VIDEO",
-                    numFaces: 1,
-                    minFaceDetectionConfidence: 0.5,
-                    minFacePresenceConfidence: 0.5,
-                    minTrackingConfidence: 0.5,
-                    outputFaceBlendshapes: true,
-                    outputFacialTransformationMatrixes: false
-                });
-                logger.log(loggerCtxName, `FaceLandmarker initialized with ${usingDelegate} delegate`);
-            } catch (faceError) {
-                logger.warn(loggerCtxName, "Failed to initialize FaceLandmarker:", faceError);
-                // Face landmarker is optional - we can still work with pose only
-                faceLandmarker = null;
-            }
+            // Note: Face uses the same delegate as pose for consistency
+            const initFace = async (delegate) => {
+                try {
+                    const landmarker = await FaceLandmarker.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                            delegate: delegate
+                        },
+                        runningMode: "VIDEO",
+                        numFaces: 1,
+                        minFaceDetectionConfidence: 0.5,
+                        minFacePresenceConfidence: 0.5,
+                        minTrackingConfidence: 0.5,
+                        outputFaceBlendshapes: true,
+                        outputFacialTransformationMatrixes: false
+                    });
+                    logger.log(loggerCtxName, `FaceLandmarker initialized with ${delegate} in ${(performance.now() - startTime).toFixed(0)}ms`);
+                    return landmarker;
+                } catch (faceError) {
+                    logger.warn(loggerCtxName, "Failed to initialize FaceLandmarker:", faceError);
+                    return null;
+                }
+            };
 
+            // Initialize pose first (required), then face in parallel once we know the delegate
+            poseLandmarker = await initPose();
+
+            // Start face initialization (optional, can fail)
+            // Don't await - let it run in background while we start pose detection
+            initFace(usingDelegate).then(fl => {
+                faceLandmarker = fl;
+                if (fl) {
+                    logger.log(loggerCtxName, `FaceLandmarker ready, total init time: ${(performance.now() - startTime).toFixed(0)}ms`);
+                }
+            });
+
+            logger.log(loggerCtxName, `Pose ready, starting detection. Total pose init: ${(performance.now() - startTime).toFixed(0)}ms`);
             return true;
         } catch (error) {
             logger.error(loggerCtxName, "Failed to initialize landmarkers:", error);
@@ -681,6 +772,10 @@
     onMount(() => {
         // Clean up any orphaned video elements from previous instances
         cleanupOrphanedVideos();
+
+        // Start preloading MediaPipe models immediately in background
+        // This speeds up "Start" by having models already cached
+        preloadModels();
 
         unsubscribeSocket = sensorService.onSocketReady(() => {
             const poseEnabled = sensorSettings.isSensorEnabled('hybrid_pose');

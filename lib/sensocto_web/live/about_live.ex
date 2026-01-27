@@ -392,9 +392,15 @@ defmodule SensoctoWeb.AboutLive do
       </div>
       
     <!-- Content Sections -->
-      <div class="max-w-4xl mx-auto px-4 pb-24">
-        <!-- The Spark: Core Philosophy (Always Visible) -->
-        <div class="mb-12 text-center">
+      <div class="max-w-4xl mx-auto px-4 pb-24 flex flex-col">
+        <!-- THE SPARK section (order changes based on detail level) -->
+        <div class={
+          case @detail_level do
+            :spark -> "order-1 mb-12 text-center"
+            :story -> "order-2 mb-12 text-center border-t border-gray-800 pt-8 mt-8"
+            :deep -> "order-3 mb-12 text-center border-t border-gray-800 pt-8 mt-8"
+          end
+        }>
           <div class="inline-block px-3 py-1 bg-cyan-500/20 text-cyan-400 rounded-full text-xs font-medium mb-6">
             THE SPARK
           </div>
@@ -403,8 +409,7 @@ defmodule SensoctoWeb.AboutLive do
             Technology promised connection and delivered <span class="text-gray-500">performance</span>.
             We scroll, we perform, we feel more alone.
           </p>
-          
-    <!-- Lens Switcher -->
+          <!-- Lens Switcher -->
           <div class="flex justify-center items-center gap-2 mb-6">
             <%= for {lens_key, info} <- @lens_info do %>
               <button
@@ -470,7 +475,16 @@ defmodule SensoctoWeb.AboutLive do
         </div>
         
     <!-- The Story: Human Use Cases -->
-        <div class={"transition-all duration-500 overflow-hidden " <> if @detail_level in [:story, :deep], do: "opacity-100 max-h-[4000px]", else: "opacity-0 max-h-0"}>
+        <div class={
+          "transition-all duration-500 overflow-hidden " <>
+            (if @detail_level in [:story, :deep], do: "opacity-100 max-h-[4000px]", else: "opacity-0 max-h-0 pointer-events-none") <>
+            " " <>
+            (case @detail_level do
+              :story -> "order-1"
+              :deep -> "order-2"
+              _ -> ""
+            end)
+        }>
           <div class="border-t border-gray-800 pt-12 mb-12">
             <div class="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium mb-6">
               THE STORY
@@ -648,7 +662,10 @@ defmodule SensoctoWeb.AboutLive do
         </div>
         
     <!-- The Deep Dive: Architecture as Values -->
-        <div class={"transition-all duration-500 overflow-hidden " <> if @detail_level == :deep, do: "opacity-100 max-h-[3000px]", else: "opacity-0 max-h-0"}>
+        <div class={
+          "transition-all duration-500 overflow-hidden " <>
+            (if @detail_level == :deep, do: "opacity-100 max-h-[3000px] order-1", else: "opacity-0 max-h-0 pointer-events-none")
+        }>
           <div class="border-t border-gray-800 pt-12">
             <div class="inline-block px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs font-medium mb-6">
               THE DEEP DIVE
@@ -771,7 +788,7 @@ defmodule SensoctoWeb.AboutLive do
         </div>
         
     <!-- Footer CTA -->
-        <div class="mt-12 text-center">
+        <div class="mt-12 text-center order-last">
           <.link
             navigate={~p"/sign-in"}
             class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"

@@ -108,6 +108,9 @@ defmodule SensoctoWeb.RoomShowLive do
           # Room mode presence counts
           |> assign(:media_viewers, 0)
           |> assign(:object3d_viewers, 0)
+          # Minimum attention filter (0=none, 1=low, 2=medium, 3=high)
+          |> assign(:min_attention, 0)
+          |> assign(:all_sensors, room.sensors || [])
 
         # Track and subscribe to room mode presence
         # Generate a unique presence key for this connection (allows multiple tabs per user)
@@ -171,6 +174,9 @@ defmodule SensoctoWeb.RoomShowLive do
         "object3d" ->
           :object3d
 
+        "whiteboard" ->
+          :whiteboard
+
         "sensors" ->
           :sensors
 
@@ -226,6 +232,27 @@ defmodule SensoctoWeb.RoomShowLive do
       |> push_patch(to: ~p"/rooms/#{socket.assigns.room.id}")
     end
   end
+
+  # Filter sensors by minimum attention level
+  # Returns only sensors that meet or exceed the minimum attention threshold
+  defp filter_sensors_by_attention(sensors, min_attention) when min_attention == 0 do
+    # No filter - return all sensors
+    sensors
+  end
+
+  defp filter_sensors_by_attention(sensors, min_attention) do
+    Enum.filter(sensors, fn sensor ->
+      level = Sensocto.AttentionTracker.get_sensor_attention_level(sensor.sensor_id)
+      attention_level_to_int(level) >= min_attention
+    end)
+  end
+
+  # Convert attention level atom to integer for comparison
+  defp attention_level_to_int(:none), do: 0
+  defp attention_level_to_int(:low), do: 1
+  defp attention_level_to_int(:medium), do: 2
+  defp attention_level_to_int(:high), do: 3
+  defp attention_level_to_int(_), do: 0
 
   @impl true
   def handle_event("open_share_modal", _params, socket) do
@@ -436,10 +463,13 @@ defmodule SensoctoWeb.RoomShowLive do
 
         case Rooms.get_room_with_sensors(room.id) do
           {:ok, updated_room} ->
+            new_sensors = updated_room.sensors || []
+
             socket =
               socket
               |> assign(:room, updated_room)
-              |> assign(:sensors, updated_room.sensors || [])
+              |> assign(:sensors, new_sensors)
+              |> assign(:all_sensors, new_sensors)
               |> assign(:available_sensors, get_available_sensors(updated_room))
               |> assign(:show_add_sensor_modal, false)
               |> put_flash(:info, "Sensor added to room")
@@ -465,10 +495,13 @@ defmodule SensoctoWeb.RoomShowLive do
 
         case Rooms.get_room_with_sensors(room.id) do
           {:ok, updated_room} ->
+            new_sensors = updated_room.sensors || []
+
             socket =
               socket
               |> assign(:room, updated_room)
-              |> assign(:sensors, updated_room.sensors || [])
+              |> assign(:sensors, new_sensors)
+              |> assign(:all_sensors, new_sensors)
               |> assign(:available_sensors, get_available_sensors(updated_room))
               |> put_flash(:info, "Sensor removed from room")
 
@@ -576,6 +609,18 @@ defmodule SensoctoWeb.RoomShowLive do
      socket
      |> assign(:current_lens, nil)
      |> assign(:lens_data, [])}
+  end
+
+  @impl true
+  def handle_event("set_min_attention", %{"min_attention" => value}, socket) do
+    min_attention = String.to_integer(value)
+    all_sensors = socket.assigns[:all_sensors] || socket.assigns.sensors
+    filtered_sensors = filter_sensors_by_attention(all_sensors, min_attention)
+
+    {:noreply,
+     socket
+     |> assign(:min_attention, min_attention)
+     |> assign(:sensors, filtered_sensors)}
   end
 
   @impl true
@@ -1173,10 +1218,15 @@ defmodule SensoctoWeb.RoomShowLive do
         sensors_state = get_sensors_state(sensors)
         available_lenses = extract_available_lenses(sensors_state)
 
+        # Apply current attention filter if active
+        min_attention = socket.assigns[:min_attention] || 0
+        filtered_sensors = filter_sensors_by_attention(sensors, min_attention)
+
         socket =
           socket
           |> assign(:room, updated_room)
-          |> assign(:sensors, sensors)
+          |> assign(:sensors, filtered_sensors)
+          |> assign(:all_sensors, sensors)
           |> assign(:sensors_state, sensors_state)
           |> assign(:available_lenses, available_lenses)
 
@@ -1245,18 +1295,23 @@ defmodule SensoctoWeb.RoomShowLive do
 
         # Create a minimal sensor struct for the list
         new_sensor = %{sensor_id: sensor_id}
-        sensors = [new_sensor | socket.assigns.sensors]
+        all_sensors = [new_sensor | socket.assigns[:all_sensors] || socket.assigns.sensors]
 
         # Refresh sensor state and lenses
-        sensors_state = get_sensors_state(sensors)
+        sensors_state = get_sensors_state(all_sensors)
         available_lenses = extract_available_lenses(sensors_state)
+
+        # Apply current attention filter if active
+        min_attention = socket.assigns[:min_attention] || 0
+        filtered_sensors = filter_sensors_by_attention(all_sensors, min_attention)
 
         {:noreply,
          socket
-         |> assign(:sensors, sensors)
+         |> assign(:sensors, filtered_sensors)
+         |> assign(:all_sensors, all_sensors)
          |> assign(:sensors_state, sensors_state)
          |> assign(:available_lenses, available_lenses)
-         |> assign(:sensor_activity, build_activity_map(sensors))}
+         |> assign(:sensor_activity, build_activity_map(all_sensors))}
       else
         {:noreply, socket}
       end
@@ -1268,19 +1323,28 @@ defmodule SensoctoWeb.RoomShowLive do
   # Handle sensor offline events
   @impl true
   def handle_info({:sensor_offline, sensor_id}, socket) do
-    # Remove sensor from the room's list
-    sensors = Enum.reject(socket.assigns.sensors, &(&1.sensor_id == sensor_id))
+    # Remove sensor from the room's list (from all_sensors, then filter)
+    all_sensors =
+      Enum.reject(
+        socket.assigns[:all_sensors] || socket.assigns.sensors,
+        &(&1.sensor_id == sensor_id)
+      )
 
     # Refresh sensor state and lenses
-    sensors_state = get_sensors_state(sensors)
+    sensors_state = get_sensors_state(all_sensors)
     available_lenses = extract_available_lenses(sensors_state)
+
+    # Apply current attention filter if active
+    min_attention = socket.assigns[:min_attention] || 0
+    filtered_sensors = filter_sensors_by_attention(all_sensors, min_attention)
 
     {:noreply,
      socket
-     |> assign(:sensors, sensors)
+     |> assign(:sensors, filtered_sensors)
+     |> assign(:all_sensors, all_sensors)
      |> assign(:sensors_state, sensors_state)
      |> assign(:available_lenses, available_lenses)
-     |> assign(:sensor_activity, build_activity_map(sensors))}
+     |> assign(:sensor_activity, build_activity_map(all_sensors))}
   end
 
   # Handle call events from CallServer via PubSub
@@ -1927,6 +1991,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "gyroscope" -> "arrow-path"
       "spo2" -> "beaker"
       "steps" -> "arrow-trending-up"
+      "skeleton" -> "user"
       _ -> "signal"
     end
   end
@@ -2144,6 +2209,10 @@ defmodule SensoctoWeb.RoomShowLive do
       is_public: room.is_public,
       is_persisted: true,
       calls_enabled: room.calls_enabled,
+      media_playback_enabled: room.media_playback_enabled,
+      object_3d_enabled: room.object_3d_enabled,
+      whiteboard_enabled: room.whiteboard_enabled,
+      skeleton_composite_enabled: room.skeleton_composite_enabled,
       configuration: room.configuration
     }
   end
@@ -2516,98 +2585,131 @@ defmodule SensoctoWeb.RoomShowLive do
 
       <%!-- Sensors Panel - always visible --%>
       <div class={if @in_call and Map.get(@room, :calls_enabled, true), do: "order-2", else: ""}>
-        <%!-- Header with Lens Selector --%>
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-xl font-semibold">Sensors</h2>
-
-          <%!-- Lens Selector - only show if there are sensors with attributes --%>
-          <%= if length(@available_lenses) > 0 do %>
-            <div class="flex items-center gap-3">
-              <%!-- Quick lens chips for common types --%>
-              <div class="hidden sm:flex items-center gap-2">
-                <%= for lens <- Enum.take(@available_lenses, 4) do %>
-                  <button
-                    phx-click="select_lens"
-                    phx-value-lens={lens.type}
-                    class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-                        if(@current_lens == lens.type,
-                          do: "bg-orange text-white",
-                          else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                    title={"#{lens.sensor_count} sensor(s)"}
-                  >
-                    <Heroicons.icon name={lens.icon} type="outline" class="h-3 w-3" />
-                    {lens.label}
-                  </button>
-                <% end %>
-              </div>
-
-              <%!-- Lens Dropdown for all types --%>
-              <form phx-change="select_lens" class="flex items-center gap-2">
-                <select
-                  name="lens"
-                  class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
-                >
-                  <option value="">All Sensors</option>
-                  <optgroup label="Health">
-                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :health) do %>
-                      <option value={lens.type} selected={@current_lens == lens.type}>
-                        {lens.label} ({lens.sensor_count})
-                      </option>
-                    <% end %>
-                  </optgroup>
-                  <optgroup label="Location">
-                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :location) do %>
-                      <option value={lens.type} selected={@current_lens == lens.type}>
-                        {lens.label} ({lens.sensor_count})
-                      </option>
-                    <% end %>
-                  </optgroup>
-                  <optgroup label="Motion">
-                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :motion) do %>
-                      <option value={lens.type} selected={@current_lens == lens.type}>
-                        {lens.label} ({lens.sensor_count})
-                      </option>
-                    <% end %>
-                  </optgroup>
-                  <optgroup label="Environment">
-                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :environment) do %>
-                      <option value={lens.type} selected={@current_lens == lens.type}>
-                        {lens.label} ({lens.sensor_count})
-                      </option>
-                    <% end %>
-                  </optgroup>
-                  <optgroup label="Device">
-                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :device) do %>
-                      <option value={lens.type} selected={@current_lens == lens.type}>
-                        {lens.label} ({lens.sensor_count})
-                      </option>
-                    <% end %>
-                  </optgroup>
-                  <optgroup label="Activity">
-                    <%= for lens <- Enum.filter(@available_lenses, & &1.category == :activity) do %>
-                      <option value={lens.type} selected={@current_lens == lens.type}>
-                        {lens.label} ({lens.sensor_count})
-                      </option>
-                    <% end %>
-                  </optgroup>
-                </select>
-              </form>
-
-              <%!-- Clear lens button --%>
-              <%= if @current_lens do %>
+        <%!-- Lens Selector - styled like lobby --%>
+        <div class="flex items-center mb-4">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+            <%!-- Quick lens chips - aligned left like lobby --%>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                phx-click="clear_lens"
+                class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                    if(@current_lens == nil,
+                      do: "bg-orange text-white",
+                      else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+              >
+                <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
+              </button>
+              <%= for lens <- Enum.take(@available_lenses, 4) do %>
                 <button
-                  phx-click="clear_lens"
-                  class="text-gray-400 hover:text-white p-1"
-                  title="Show all sensors"
+                  phx-click="select_lens"
+                  phx-value-lens={lens.type}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                      if(@current_lens == lens.type,
+                        do: if(lens.type == "skeleton", do: "bg-purple-500 text-white", else: "bg-orange text-white"),
+                        else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                  title={"#{lens.sensor_count} sensor(s)"}
                 >
-                  <Heroicons.icon name="x-mark" type="outline" class="h-4 w-4" />
+                  <Heroicons.icon name={lens.icon} type="outline" class="h-3 w-3" />
+                  {lens.label}
                 </button>
               <% end %>
             </div>
-          <% end %>
+
+            <%!-- Lens Dropdown for all types --%>
+            <form phx-change="select_lens" class="hidden sm:block">
+              <select
+                name="lens"
+                class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="" selected={@current_lens == nil}>All Sensors</option>
+                <optgroup label="Health">
+                  <%= for lens <- Enum.filter(@available_lenses, & &1.category == :health) do %>
+                    <option value={lens.type} selected={@current_lens == lens.type}>
+                      {lens.label} ({lens.sensor_count})
+                    </option>
+                  <% end %>
+                </optgroup>
+                <optgroup label="Location">
+                  <%= for lens <- Enum.filter(@available_lenses, & &1.category == :location) do %>
+                    <option value={lens.type} selected={@current_lens == lens.type}>
+                      {lens.label} ({lens.sensor_count})
+                    </option>
+                  <% end %>
+                </optgroup>
+                <optgroup label="Motion">
+                  <%= for lens <- Enum.filter(@available_lenses, & &1.category == :motion) do %>
+                    <option value={lens.type} selected={@current_lens == lens.type}>
+                      {lens.label} ({lens.sensor_count})
+                    </option>
+                  <% end %>
+                </optgroup>
+                <optgroup label="Environment">
+                  <%= for lens <- Enum.filter(@available_lenses, & &1.category == :environment) do %>
+                    <option value={lens.type} selected={@current_lens == lens.type}>
+                      {lens.label} ({lens.sensor_count})
+                    </option>
+                  <% end %>
+                </optgroup>
+                <optgroup label="Device">
+                  <%= for lens <- Enum.filter(@available_lenses, & &1.category == :device) do %>
+                    <option value={lens.type} selected={@current_lens == lens.type}>
+                      {lens.label} ({lens.sensor_count})
+                    </option>
+                  <% end %>
+                </optgroup>
+                <optgroup label="Activity">
+                  <%= for lens <- Enum.filter(@available_lenses, & &1.category == :activity) do %>
+                    <option value={lens.type} selected={@current_lens == lens.type}>
+                      {lens.label} ({lens.sensor_count})
+                    </option>
+                  <% end %>
+                </optgroup>
+              </select>
+            </form>
+
+            <%!-- Minimum Attention Filter Slider --%>
+            <form phx-change="set_min_attention" class="flex items-center gap-2 ml-4">
+              <label class="text-xs text-gray-400 whitespace-nowrap">Min Attention:</label>
+              <input
+                type="range"
+                name="min_attention"
+                min="0"
+                max="3"
+                value={@min_attention}
+                class="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+              />
+              <span class="text-xs text-gray-300 w-14">
+                {case @min_attention do
+                  0 -> "None"
+                  1 -> "Low"
+                  2 -> "Medium"
+                  3 -> "High"
+                end}
+              </span>
+            </form>
+          </div>
         </div>
 
-        <%= if Enum.empty?(@sensors) do %>
+        <%!-- No sensors match attention filter --%>
+        <%= if Enum.empty?(@sensors) and @min_attention > 0 and length(@all_sensors) > 0 do %>
+          <div class="text-center py-12 text-gray-400">
+            <Heroicons.icon name="funnel" type="outline" class="h-12 w-12 mx-auto mb-4" />
+            <p class="text-lg">No sensors match attention filter</p>
+            <p class="text-sm mt-2">
+              {length(@all_sensors)} sensor(s) hidden by "Min Attention" filter.
+              <button
+                phx-click="set_min_attention"
+                phx-value-min_attention="0"
+                class="text-orange-400 hover:text-orange-300 underline"
+              >
+                Show all
+              </button>
+            </p>
+          </div>
+        <% end %>
+
+        <%!-- No sensors at all --%>
+        <%= if Enum.empty?(@sensors) and (@min_attention == 0 or length(@all_sensors) == 0) do %>
           <div class="bg-gray-800 rounded-lg p-8 text-center">
             <svg
               class="w-16 h-16 mx-auto text-gray-600 mb-4"
@@ -2632,7 +2734,9 @@ defmodule SensoctoWeb.RoomShowLive do
               </button>
             <% end %>
           </div>
-        <% else %>
+        <% end %>
+
+        <%= if not Enum.empty?(@sensors) do %>
           <%!-- Composite Lens View --%>
           <%= if @current_lens do %>
             <div class="mb-6">
@@ -3435,6 +3539,16 @@ defmodule SensoctoWeb.RoomShowLive do
                 class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
               />
               <span class="text-sm text-gray-300">Enable 3D objects</span>
+            </label>
+
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                name="whiteboard_enabled"
+                checked={@form[:whiteboard_enabled].value}
+                class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500"
+              />
+              <span class="text-sm text-gray-300">Enable whiteboard</span>
             </label>
           </div>
 

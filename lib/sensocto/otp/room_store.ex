@@ -402,6 +402,7 @@ defmodule Sensocto.RoomStore do
         calls_enabled: Map.get(attrs, :calls_enabled, true),
         media_playback_enabled: Map.get(attrs, :media_playback_enabled, true),
         object_3d_enabled: Map.get(attrs, :object_3d_enabled, false),
+        whiteboard_enabled: Map.get(attrs, :whiteboard_enabled, false),
         configuration: Map.get(attrs, :configuration, %{}),
         members: %{owner_id => :owner},
         sensor_ids: MapSet.new(),
@@ -470,6 +471,7 @@ defmodule Sensocto.RoomStore do
           |> maybe_update(:calls_enabled, attrs)
           |> maybe_update(:media_playback_enabled, attrs)
           |> maybe_update(:object_3d_enabled, attrs)
+          |> maybe_update(:whiteboard_enabled, attrs)
           |> maybe_update(:configuration, attrs)
           |> Map.put(:updated_at, DateTime.utc_now())
 
@@ -887,6 +889,8 @@ defmodule Sensocto.RoomStore do
           ),
         object_3d_enabled:
           Map.get(room_data, :object_3d_enabled, Map.get(room_data, "object_3d_enabled", false)),
+        whiteboard_enabled:
+          Map.get(room_data, :whiteboard_enabled, Map.get(room_data, "whiteboard_enabled", false)),
         configuration:
           Map.get(room_data, :configuration) || Map.get(room_data, "configuration") || %{},
         members:

@@ -2054,4 +2054,53 @@ Hooks.GuestCredentials = {
     }
 };
 
+// Countdown Timer Hook - displays a live countdown from data-seconds
+// Used for control request timeouts in Object3DPlayerComponent
+Hooks.CountdownTimer = {
+    mounted() {
+        this.startCountdown();
+    },
+
+    updated() {
+        // Restart countdown when the element is updated with new seconds
+        this.stopCountdown();
+        this.startCountdown();
+    },
+
+    destroyed() {
+        this.stopCountdown();
+    },
+
+    startCountdown() {
+        const seconds = parseInt(this.el.dataset.seconds, 10);
+        if (isNaN(seconds) || seconds <= 0) {
+            this.el.textContent = '0s';
+            return;
+        }
+
+        this.remaining = seconds;
+        this.updateDisplay();
+
+        this.interval = setInterval(() => {
+            this.remaining = Math.max(0, this.remaining - 1);
+            this.updateDisplay();
+
+            if (this.remaining <= 0) {
+                this.stopCountdown();
+            }
+        }, 1000);
+    },
+
+    stopCountdown() {
+        if (this.interval) {
+            clearInterval(this.interval);
+            this.interval = null;
+        }
+    },
+
+    updateDisplay() {
+        this.el.textContent = `${this.remaining}s`;
+    }
+};
+
 export default Hooks;

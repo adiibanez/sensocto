@@ -515,10 +515,52 @@
   // Wrist/hand indices for detecting full arm visibility
   const LOWER_ARM_INDICES = [15, 16, 17, 18, 19, 20, 21, 22];
 
-  // Detect visualization mode based on visible landmarks
-  // Switch to face mode when only upper body (shoulders + elbows) is visible
-  // Show full mode when hands/wrists, hips, or legs are visible
-  function detectVisualizationMode(landmarks: any[], minVisibility = 0.3): "full" | "face" {
+  // Mode stability: prevent flickering between modes (per-sensor)
+  // Uses hysteresis - harder to switch modes than to stay in current mode
+  const sensorModeState: Map<string, { currentMode: "full" | "face"; modeCounter: number }> = new Map();
+  const MODE_STABILITY_THRESHOLD_TO_FACE = 20;
+  const MODE_STABILITY_THRESHOLD_TO_FULL = 12;
+
+  // Face coverage thresholds with hysteresis
+  const FACE_COVERAGE_ENTER_THRESHOLD = 0.45;
+  const FACE_COVERAGE_EXIT_THRESHOLD = 0.25;
+
+  // Calculate bounding box area for a set of landmark indices
+  function calculateBoundingBoxArea(landmarks: any[], indices: number[], minVisibility = 0.3) {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let validCount = 0;
+
+    for (const idx of indices) {
+      const lm = landmarks[idx];
+      if (!lm || (lm.v ?? 1) < minVisibility) continue;
+
+      minX = Math.min(minX, lm.x);
+      maxX = Math.max(maxX, lm.x);
+      minY = Math.min(minY, lm.y);
+      maxY = Math.max(maxY, lm.y);
+      validCount++;
+    }
+
+    if (validCount < 2 || minX >= maxX || minY >= maxY) {
+      return { area: 0, width: 0, height: 0, validCount };
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    return { area: width * height, width, height, validCount };
+  }
+
+  // Detect visualization mode based on visible landmarks and face coverage
+  // Uses hysteresis to prevent jittery transitions
+  function detectVisualizationMode(landmarks: any[], sensorId: string, minVisibility = 0.3): "full" | "face" {
+    // Get or initialize mode state for this sensor
+    let state = sensorModeState.get(sensorId);
+    if (!state) {
+      state = { currentMode: "full", modeCounter: 0 };
+      sensorModeState.set(sensorId, state);
+    }
+
     const isVisible = (idx: number) => {
       const lm = landmarks[idx];
       return lm && (lm.v ?? 1) >= minVisibility;
@@ -528,25 +570,67 @@
 
     const faceVisible = countVisible(FACE_INDICES);
     const shouldersVisible = countVisible(SHOULDER_INDICES);
-    const upperArmsVisible = countVisible(UPPER_ARM_INDICES);
     const lowerArmsVisible = countVisible(LOWER_ARM_INDICES);
     const hipsVisible = countVisible(HIP_INDICES);
     const legsVisible = countVisible(LEG_INDICES);
 
     const hasFace = faceVisible >= 3;
 
-    // Show full mode if we have meaningful body parts beyond just shoulders/elbows:
-    // - Any wrists/hands visible (lower arms)
-    // - Any hips visible
-    // - Any legs visible
-    const hasSubstantialBody = lowerArmsVisible >= 1 || hipsVisible >= 1 || legsVisible >= 1;
+    // Require more substantial body evidence
+    const hasSubstantialBody = lowerArmsVisible >= 2 || hipsVisible >= 1 || legsVisible >= 2;
 
-    // Face mode: only face + maybe shoulders/elbows, but no hands/hips/legs
+    // Determine what mode the current frame suggests
+    let suggestedMode: "full" | "face" = "full";
+
+    // Clear case: only face + maybe shoulders/elbows, no hands/hips/legs
     if (hasFace && !hasSubstantialBody) {
-      return "face";
+      suggestedMode = "face";
+    } else if (!hasFace) {
+      suggestedMode = "full";
+    } else {
+      // Calculate face coverage for hysteresis-based decision
+      const allIndices: number[] = [];
+      for (let i = 0; i < landmarks.length; i++) {
+        if (isVisible(i)) allIndices.push(i);
+      }
+
+      const faceBbox = calculateBoundingBoxArea(landmarks, FACE_INDICES, minVisibility);
+      const totalBbox = calculateBoundingBoxArea(landmarks, allIndices, minVisibility);
+
+      if (totalBbox.area > 0 && faceBbox.area > 0) {
+        const faceCoverage = faceBbox.area / totalBbox.area;
+
+        if (state.currentMode === "full") {
+          if (faceCoverage > FACE_COVERAGE_ENTER_THRESHOLD && shouldersVisible >= 1) {
+            suggestedMode = "face";
+          }
+        } else {
+          if (faceCoverage < FACE_COVERAGE_EXIT_THRESHOLD && hasSubstantialBody) {
+            suggestedMode = "full";
+          } else {
+            suggestedMode = "face";
+          }
+        }
+      }
     }
 
-    return "full";
+    // Apply stability threshold (hysteresis)
+    if (suggestedMode === state.currentMode) {
+      state.modeCounter = 0;
+      return state.currentMode;
+    }
+
+    state.modeCounter++;
+    const threshold = suggestedMode === "face"
+      ? MODE_STABILITY_THRESHOLD_TO_FACE
+      : MODE_STABILITY_THRESHOLD_TO_FULL;
+
+    if (state.modeCounter >= threshold) {
+      state.currentMode = suggestedMode;
+      state.modeCounter = 0;
+    }
+
+    return state.currentMode;
   }
 
   // Colors for different body parts
@@ -652,7 +736,7 @@
 
     // Detect visualization mode (full skeleton or face-only)
     // Prefer the mode sent by the client if available
-    const mode = dataMode || detectVisualizationMode(landmarks);
+    const mode = dataMode || detectVisualizationMode(landmarks, sensorId);
 
     // Calculate actual bounding box based on mode
     const bounds = getLandmarkBounds(landmarks, mode);
@@ -693,11 +777,43 @@
     const toCanvasX = (x: number) => x * areaWidth * scale + offsetX;
     const toCanvasY = (y: number) => y * drawHeight * scale + offsetY;
 
-    // Full body mode: draw body skeleton connections (skip face connections)
+    // Full body mode: draw body skeleton with proper limb thickness
     if (mode === "full") {
-      const lineWidth = Math.max(2, Math.min(4, scale * 0.015));
-      ctx.lineWidth = lineWidth;
+      // Calculate body scale for proportional limb thickness
+      // Use shoulder width as reference for sizing
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
+      let bodyScale = 1;
+      if (leftShoulder && rightShoulder && (leftShoulder.v ?? 1) > 0.3 && (rightShoulder.v ?? 1) > 0.3) {
+        const shoulderWidth = Math.abs(toCanvasX(rightShoulder.x) - toCanvasX(leftShoulder.x));
+        bodyScale = Math.max(0.5, Math.min(2.0, shoulderWidth / 80));
+      }
 
+      // Limb thickness varies by body part (thicker for torso/thighs, thinner for forearms/calves)
+      const baseThickness = 4;
+      const getLimbThickness = (start: number, end: number) => {
+        // Torso connections (shoulders, hips) - thickest
+        if ([11, 12, 23, 24].includes(start) && [11, 12, 23, 24].includes(end)) {
+          return baseThickness * bodyScale * 1.4;
+        }
+        // Upper arms and thighs - thick
+        if ([11, 13].includes(start) && [11, 13].includes(end)) return baseThickness * bodyScale * 1.2;
+        if ([12, 14].includes(start) && [12, 14].includes(end)) return baseThickness * bodyScale * 1.2;
+        if ([23, 25].includes(start) && [23, 25].includes(end)) return baseThickness * bodyScale * 1.3;
+        if ([24, 26].includes(start) && [24, 26].includes(end)) return baseThickness * bodyScale * 1.3;
+        // Forearms and calves - medium
+        if ([13, 15].includes(start) && [13, 15].includes(end)) return baseThickness * bodyScale * 1.0;
+        if ([14, 16].includes(start) && [14, 16].includes(end)) return baseThickness * bodyScale * 1.0;
+        if ([25, 27].includes(start) && [25, 27].includes(end)) return baseThickness * bodyScale * 1.1;
+        if ([26, 28].includes(start) && [26, 28].includes(end)) return baseThickness * bodyScale * 1.1;
+        // Hands and feet - thinner
+        return baseThickness * bodyScale * 0.7;
+      };
+
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      // First pass: draw limb connections with proper thickness
       for (const [start, end] of POSE_CONNECTIONS) {
         // Skip face connections - we'll draw the face separately
         if (start <= 10 && end <= 10) continue;
@@ -715,6 +831,7 @@
         const x2 = toCanvasX(endLm.x);
         const y2 = toCanvasY(endLm.y);
 
+        ctx.lineWidth = getLimbThickness(start, end);
         ctx.strokeStyle = getConnectionColor(start, end);
         ctx.globalAlpha = Math.min(startLm.v ?? 1, endLm.v ?? 1) * 0.9;
         ctx.beginPath();
@@ -723,11 +840,18 @@
         ctx.stroke();
       }
 
-      // Draw body landmark points (skip face landmarks - indices 0-10)
+      // Second pass: draw joints at key body points for better definition
       ctx.globalAlpha = 1;
-      const pointRadius = Math.max(3, Math.min(6, scale * 0.01));
+      const jointRadius = 4;
+      const smallJointRadius = 2.5;
 
-      for (let i = 11; i < landmarks.length; i++) {
+      // Major joints: shoulders, elbows, wrists, hips, knees, ankles
+      const majorJoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+      // Minor joints: hands and feet details
+      const minorJoints = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32];
+
+      // Draw major joints with larger circles and highlight effect
+      for (const i of majorJoints) {
         const lm = landmarks[i];
         if (!lm || (lm.v ?? 1) < 0.3) continue;
 
@@ -735,15 +859,48 @@
         const y = toCanvasY(lm.y);
 
         let color = BODY_COLORS.torso;
-        if ([11, 13, 15, 17, 19, 21].includes(i)) color = BODY_COLORS.leftArm;
-        else if ([12, 14, 16, 18, 20, 22].includes(i)) color = BODY_COLORS.rightArm;
-        else if ([23, 25, 27, 29, 31].includes(i)) color = BODY_COLORS.leftLeg;
-        else if ([24, 26, 28, 30, 32].includes(i)) color = BODY_COLORS.rightLeg;
+        if ([11, 13, 15].includes(i)) color = BODY_COLORS.leftArm;
+        else if ([12, 14, 16].includes(i)) color = BODY_COLORS.rightArm;
+        else if ([23, 25, 27].includes(i)) color = BODY_COLORS.leftLeg;
+        else if ([24, 26, 28].includes(i)) color = BODY_COLORS.rightLeg;
+
+        // Draw joint with slight highlight effect
+        ctx.globalAlpha = lm.v ?? 1;
+
+        // Outer ring (main color)
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, jointRadius * bodyScale, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inner highlight
+        ctx.fillStyle = "#ffffff";
+        ctx.globalAlpha = (lm.v ?? 1) * 0.3;
+        ctx.beginPath();
+        ctx.arc(x - jointRadius * bodyScale * 0.2, y - jointRadius * bodyScale * 0.2,
+                jointRadius * bodyScale * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw minor joints (hands/feet) with smaller circles
+      ctx.globalAlpha = 1;
+      for (const i of minorJoints) {
+        const lm = landmarks[i];
+        if (!lm || (lm.v ?? 1) < 0.3) continue;
+
+        const x = toCanvasX(lm.x);
+        const y = toCanvasY(lm.y);
+
+        let color = BODY_COLORS.torso;
+        if ([17, 19, 21].includes(i)) color = BODY_COLORS.leftArm;
+        else if ([18, 20, 22].includes(i)) color = BODY_COLORS.rightArm;
+        else if ([29, 31].includes(i)) color = BODY_COLORS.leftLeg;
+        else if ([30, 32].includes(i)) color = BODY_COLORS.rightLeg;
 
         ctx.fillStyle = color;
         ctx.globalAlpha = lm.v ?? 1;
         ctx.beginPath();
-        ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
+        ctx.arc(x, y, smallJointRadius * bodyScale, 0, Math.PI * 2);
         ctx.fill();
       }
     }

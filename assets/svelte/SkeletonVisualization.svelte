@@ -14,9 +14,11 @@
     let rafId = null;
 
     // Mode stability: prevent flickering between modes
+    // Uses hysteresis - harder to switch modes than to stay in current mode
     let currentMode = "full";
     let modeCounter = 0;
-    const MODE_STABILITY_THRESHOLD = 5; // Need N consecutive frames to switch mode
+    const MODE_STABILITY_THRESHOLD_TO_FACE = 20; // Need N consecutive frames to switch TO face mode
+    const MODE_STABILITY_THRESHOLD_TO_FULL = 12; // Need N consecutive frames to switch TO full mode (slightly easier)
 
     // Transform smoothing for stable animation
     let smoothTransform = { scale: 1, offsetX: 0, offsetY: 0 };
@@ -459,15 +461,16 @@
         ctx.globalAlpha = 1;
     }
 
-    // Wrapper function that draws face - only uses detailed face mesh (468 landmarks)
-    // No fallback to pose-based face drawing for consistent visualization style
+    // Wrapper function that draws face - uses detailed face mesh when available,
+    // falls back to pose-based face drawing for consistent visualization
     function drawFace(landmarks, faceLandmarks, blendshapes, tx, ty, scale) {
-        // Only draw face if detailed face mesh is available (468 landmarks)
+        // Prefer detailed face mesh if available (468 landmarks)
         if (faceLandmarks && faceLandmarks.length >= 468) {
             drawFaceMesh(faceLandmarks, tx, ty, scale, blendshapes);
+        } else if (landmarks && landmarks.length >= 11) {
+            // Fall back to pose-based face drawing using the 33 pose landmarks
+            drawFaceFromPose(landmarks, tx, ty, scale);
         }
-        // If no face mesh data, skip face drawing entirely - pose landmarks
-        // will show basic face points but not the synthetic face overlay
     }
 
     // Landmark indices for body part detection
@@ -478,9 +481,44 @@
     const HIP_INDICES = [23, 24];
     const LEG_INDICES = [25, 26, 27, 28, 29, 30, 31, 32];
 
-    // Detect visualization mode based on visible landmarks
-    // Switch to face mode when only upper body (shoulders + elbows) is visible
-    // Show full mode when hands/wrists, hips, or legs are visible
+    // Threshold: if face bounding box covers more than this % of total visible area, show face-only
+    // Use hysteresis: higher threshold to enter face mode, lower to exit (stay in current mode longer)
+    const FACE_COVERAGE_ENTER_THRESHOLD = 0.45; // 45% to switch TO face mode
+    const FACE_COVERAGE_EXIT_THRESHOLD = 0.25;  // 25% to switch back TO full mode
+
+    // Calculate the bounding box area of a set of landmarks
+    function calculateBoundingBoxArea(landmarks, indices, minVisibility = 0.3) {
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let validCount = 0;
+
+        for (const idx of indices) {
+            const lm = landmarks[idx];
+            if (!lm || (lm.v ?? 1) < minVisibility) continue;
+
+            minX = Math.min(minX, lm.x);
+            maxX = Math.max(maxX, lm.x);
+            minY = Math.min(minY, lm.y);
+            maxY = Math.max(maxY, lm.y);
+            validCount++;
+        }
+
+        if (validCount < 2 || minX >= maxX || minY >= maxY) {
+            return { area: 0, width: 0, height: 0, validCount };
+        }
+
+        const width = maxX - minX;
+        const height = maxY - minY;
+        return { area: width * height, width, height, validCount };
+    }
+
+    // Detect visualization mode based on visible landmarks and face coverage
+    // Uses hysteresis to prevent jittery transitions - different thresholds depending on current mode
+    // Switch to face mode when:
+    // 1. Only upper body (shoulders + elbows) is visible (no hands/hips/legs), OR
+    // 2. Face covers more than FACE_COVERAGE_ENTER_THRESHOLD of the visible area
+    // Switch back to full mode when:
+    // 1. Substantial body parts become visible AND face coverage drops below EXIT threshold
     function detectVisualizationMode(landmarks, minVisibility = 0.3) {
         const isVisible = (idx) => {
             const lm = landmarks[idx];
@@ -490,21 +528,52 @@
         const countVisible = (indices) => indices.filter(isVisible).length;
 
         const faceVisible = countVisible(FACE_INDICES);
+        const shouldersVisible = countVisible(SHOULDER_INDICES);
         const lowerArmsVisible = countVisible(LOWER_ARM_INDICES);
         const hipsVisible = countVisible(HIP_INDICES);
         const legsVisible = countVisible(LEG_INDICES);
 
         const hasFace = faceVisible >= 3;
 
-        // Show full mode if we have meaningful body parts beyond just shoulders/elbows:
-        // - Any wrists/hands visible (lower arms)
-        // - Any hips visible
-        // - Any legs visible
-        const hasSubstantialBody = lowerArmsVisible >= 1 || hipsVisible >= 1 || legsVisible >= 1;
+        // Require more substantial body evidence - at least 2 lower arm points OR hips OR 2 leg points
+        const hasSubstantialBody = lowerArmsVisible >= 2 || hipsVisible >= 1 || legsVisible >= 2;
 
-        // Face mode: only face + maybe shoulders/elbows, but no hands/hips/legs
+        // Clear case: only face + maybe shoulders/elbows, no hands/hips/legs at all
         if (hasFace && !hasSubstantialBody) {
             return "face";
+        }
+
+        // If no face visible at all, always use full mode
+        if (!hasFace) {
+            return "full";
+        }
+
+        // Calculate face coverage for hysteresis-based decision
+        const allIndices = [];
+        for (let i = 0; i < landmarks.length; i++) {
+            if (isVisible(i)) allIndices.push(i);
+        }
+
+        const faceBbox = calculateBoundingBoxArea(landmarks, FACE_INDICES, minVisibility);
+        const totalBbox = calculateBoundingBoxArea(landmarks, allIndices, minVisibility);
+
+        if (totalBbox.area > 0 && faceBbox.area > 0) {
+            const faceCoverage = faceBbox.area / totalBbox.area;
+
+            // Use hysteresis: different thresholds based on current mode
+            if (currentMode === "full") {
+                // Currently in full mode - need high face coverage to switch to face mode
+                if (faceCoverage > FACE_COVERAGE_ENTER_THRESHOLD && shouldersVisible >= 1) {
+                    return "face";
+                }
+            } else {
+                // Currently in face mode - need low face coverage to switch back to full mode
+                if (faceCoverage < FACE_COVERAGE_EXIT_THRESHOLD && hasSubstantialBody) {
+                    return "full";
+                }
+                // Stay in face mode if coverage is still significant
+                return "face";
+            }
         }
 
         return "full";
@@ -583,14 +652,23 @@
     }
 
     // Stabilize mode to prevent flickering
+    // Uses different thresholds for switching to face vs full mode (hysteresis)
     function getStableMode(detectedMode) {
         if (detectedMode === currentMode) {
+            // Reset counter when detected mode matches current - we're stable
             modeCounter = 0;
             return currentMode;
         }
 
+        // Increment counter for potential mode switch
         modeCounter++;
-        if (modeCounter >= MODE_STABILITY_THRESHOLD) {
+
+        // Use different thresholds depending on which direction we're switching
+        const threshold = detectedMode === "face"
+            ? MODE_STABILITY_THRESHOLD_TO_FACE  // Harder to switch to face mode
+            : MODE_STABILITY_THRESHOLD_TO_FULL; // Slightly easier to switch back to full
+
+        if (modeCounter >= threshold) {
             currentMode = detectedMode;
             modeCounter = 0;
         }
@@ -644,10 +722,43 @@
         const tx = (x) => x * width * transform.scale + transform.offsetX;
         const ty = (y) => y * height * transform.scale + transform.offsetY;
 
-        // Full body mode: draw body skeleton connections (skip face connections)
+        // Full body mode: draw body skeleton with proper limb thickness
         if (mode === "full") {
-            ctx.lineWidth = size === "small" ? 1.5 : 2;
+            // Calculate body scale for proportional limb thickness
+            // Use shoulder width as reference for sizing
+            const leftShoulder = landmarks[11];
+            const rightShoulder = landmarks[12];
+            let bodyScale = 1;
+            if (leftShoulder && rightShoulder && (leftShoulder.v ?? 1) > 0.3 && (rightShoulder.v ?? 1) > 0.3) {
+                const shoulderWidth = Math.abs(tx(rightShoulder.x) - tx(leftShoulder.x));
+                bodyScale = Math.max(0.5, Math.min(2.0, shoulderWidth / 80));
+            }
 
+            // Limb thickness varies by body part (thicker for torso/thighs, thinner for forearms/calves)
+            const baseThickness = size === "small" ? 3 : 5;
+            const getLimbThickness = (start, end) => {
+                // Torso connections (shoulders, hips) - thickest
+                if ([11, 12, 23, 24].includes(start) && [11, 12, 23, 24].includes(end)) {
+                    return baseThickness * bodyScale * 1.4;
+                }
+                // Upper arms and thighs - thick
+                if ([11, 13].includes(start) && [11, 13].includes(end)) return baseThickness * bodyScale * 1.2;
+                if ([12, 14].includes(start) && [12, 14].includes(end)) return baseThickness * bodyScale * 1.2;
+                if ([23, 25].includes(start) && [23, 25].includes(end)) return baseThickness * bodyScale * 1.3;
+                if ([24, 26].includes(start) && [24, 26].includes(end)) return baseThickness * bodyScale * 1.3;
+                // Forearms and calves - medium
+                if ([13, 15].includes(start) && [13, 15].includes(end)) return baseThickness * bodyScale * 1.0;
+                if ([14, 16].includes(start) && [14, 16].includes(end)) return baseThickness * bodyScale * 1.0;
+                if ([25, 27].includes(start) && [25, 27].includes(end)) return baseThickness * bodyScale * 1.1;
+                if ([26, 28].includes(start) && [26, 28].includes(end)) return baseThickness * bodyScale * 1.1;
+                // Hands and feet - thinner
+                return baseThickness * bodyScale * 0.7;
+            };
+
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+
+            // First pass: draw limb connections with proper thickness
             for (const [start, end] of POSE_CONNECTIONS) {
                 // Skip face connections - we'll draw the face separately
                 if (start <= 10 && end <= 10) continue;
@@ -665,19 +776,27 @@
                 const x2 = tx(endLm.x);
                 const y2 = ty(endLm.y);
 
+                ctx.lineWidth = getLimbThickness(start, end);
                 ctx.strokeStyle = getConnectionColor(start, end);
-                ctx.globalAlpha = Math.min(startLm.v ?? 1, endLm.v ?? 1);
+                ctx.globalAlpha = Math.min(startLm.v ?? 1, endLm.v ?? 1) * 0.9;
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
                 ctx.lineTo(x2, y2);
                 ctx.stroke();
             }
 
-            // Draw body landmark points (skip face landmarks - indices 0-10)
+            // Second pass: draw joints at key body points for better definition
             ctx.globalAlpha = 1;
-            const pointRadius = size === "small" ? 2 : 3;
+            const jointRadius = size === "small" ? 3 : 5;
+            const smallJointRadius = size === "small" ? 2 : 3;
 
-            for (let i = 11; i < landmarks.length; i++) {
+            // Major joints: shoulders, elbows, wrists, hips, knees, ankles
+            const majorJoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+            // Minor joints: hands and feet details
+            const minorJoints = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32];
+
+            // Draw major joints with larger circles
+            for (const i of majorJoints) {
                 const lm = landmarks[i];
                 if (!lm || (lm.v ?? 1) < 0.3) continue;
 
@@ -685,15 +804,48 @@
                 const y = ty(lm.y);
 
                 let color = COLORS.torso;
-                if ([11, 13, 15, 17, 19, 21].includes(i)) color = COLORS.leftArm;
-                else if ([12, 14, 16, 18, 20, 22].includes(i)) color = COLORS.rightArm;
-                else if ([23, 25, 27, 29, 31].includes(i)) color = COLORS.leftLeg;
-                else if ([24, 26, 28, 30, 32].includes(i)) color = COLORS.rightLeg;
+                if ([11, 13, 15].includes(i)) color = COLORS.leftArm;
+                else if ([12, 14, 16].includes(i)) color = COLORS.rightArm;
+                else if ([23, 25, 27].includes(i)) color = COLORS.leftLeg;
+                else if ([24, 26, 28].includes(i)) color = COLORS.rightLeg;
+
+                // Draw joint with slight highlight effect
+                ctx.globalAlpha = lm.v ?? 1;
+
+                // Outer ring (darker)
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(x, y, jointRadius * bodyScale, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Inner highlight
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = (lm.v ?? 1) * 0.3;
+                ctx.beginPath();
+                ctx.arc(x - jointRadius * bodyScale * 0.2, y - jointRadius * bodyScale * 0.2,
+                        jointRadius * bodyScale * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw minor joints (hands/feet) with smaller circles
+            ctx.globalAlpha = 1;
+            for (const i of minorJoints) {
+                const lm = landmarks[i];
+                if (!lm || (lm.v ?? 1) < 0.3) continue;
+
+                const x = tx(lm.x);
+                const y = ty(lm.y);
+
+                let color = COLORS.torso;
+                if ([17, 19, 21].includes(i)) color = COLORS.leftArm;
+                else if ([18, 20, 22].includes(i)) color = COLORS.rightArm;
+                else if ([29, 31].includes(i)) color = COLORS.leftLeg;
+                else if ([30, 32].includes(i)) color = COLORS.rightLeg;
 
                 ctx.fillStyle = color;
                 ctx.globalAlpha = lm.v ?? 1;
                 ctx.beginPath();
-                ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
+                ctx.arc(x, y, smallJointRadius * bodyScale, 0, Math.PI * 2);
                 ctx.fill();
             }
         }

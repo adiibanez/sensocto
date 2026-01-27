@@ -11,6 +11,9 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   alias Sensocto.Object3D.Object3DPlayerSupervisor
 
   @impl true
+  # Timeout for control request countdown display (should match server)
+  @control_request_timeout_seconds 30
+
   def mount(socket) do
     {:ok,
      socket
@@ -20,6 +23,7 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
      |> assign(:controller_user_name, nil)
      |> assign(:pending_request_user_id, nil)
      |> assign(:pending_request_user_name, nil)
+     |> assign(:pending_request_started_at, nil)
      |> assign(:camera_position, %{x: 0, y: 0, z: 5})
      |> assign(:camera_target, %{x: 0, y: 0, z: 0})
      |> assign(:show_playlist, true)
@@ -52,11 +56,36 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
       |> maybe_assign(assigns, :playlist_items)
       |> maybe_assign(assigns, :controller_user_id)
       |> maybe_assign(assigns, :controller_user_name)
-      |> maybe_assign(assigns, :pending_request_user_id)
-      |> maybe_assign(assigns, :pending_request_user_name)
       |> maybe_assign(assigns, :camera_position)
       |> maybe_assign(assigns, :camera_target)
       |> maybe_assign(assigns, :sync_mode)
+
+    # Track when a pending request starts for countdown display
+    socket =
+      cond do
+        # New pending request - record start time
+        Map.has_key?(assigns, :pending_request_user_id) && assigns[:pending_request_user_id] &&
+            is_nil(socket.assigns[:pending_request_user_id]) ->
+          socket
+          |> assign(:pending_request_user_id, assigns[:pending_request_user_id])
+          |> maybe_assign(assigns, :pending_request_user_name)
+          |> assign(:pending_request_started_at, System.system_time(:second))
+
+        # Request cleared - clear timestamp
+        Map.has_key?(assigns, :pending_request_user_id) &&
+            is_nil(assigns[:pending_request_user_id]) ->
+          socket
+          |> assign(:pending_request_user_id, nil)
+          |> assign(:pending_request_user_name, nil)
+          |> assign(:pending_request_started_at, nil)
+
+        # Request user name update only
+        Map.has_key?(assigns, :pending_request_user_name) ->
+          maybe_assign(socket, assigns, :pending_request_user_name)
+
+        true ->
+          socket
+      end
 
     # On first update, load initial state from server
     socket =
@@ -415,6 +444,16 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
     end
   end
 
+  # Calculate remaining seconds for control request countdown
+  defp countdown_remaining_seconds(pending_request_started_at) do
+    if pending_request_started_at do
+      elapsed = System.system_time(:second) - pending_request_started_at
+      max(0, @control_request_timeout_seconds - elapsed)
+    else
+      @control_request_timeout_seconds
+    end
+  end
+
   # ============================================================================
   # Render
   # ============================================================================
@@ -578,8 +617,16 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 <% else %>
                   <%= if @current_user do %>
                     <%= if @pending_request_user_id && @pending_request_user_id == @current_user.id do %>
-                      <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded">
-                        Request pending...
+                      <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded flex items-center gap-1">
+                        <span>Pending</span>
+                        <span
+                          id={"countdown-requester-#{@room_id}"}
+                          phx-hook="CountdownTimer"
+                          data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
+                          class="font-mono font-bold tabular-nums"
+                        >
+                          {countdown_remaining_seconds(@pending_request_started_at)}s
+                        </span>
                       </span>
                     <% else %>
                       <button
@@ -610,10 +657,22 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             <%!-- Pending Request Alert for Controller --%>
             <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>
               <div class="mt-2 px-3 py-2 bg-amber-900/50 border border-amber-600 rounded text-xs text-amber-200 flex items-center gap-2">
-                <Heroicons.icon name="hand-raised" type="solid" class="w-4 h-4 text-amber-400" />
-                <span>
+                <Heroicons.icon
+                  name="hand-raised"
+                  type="solid"
+                  class="w-4 h-4 text-amber-400 flex-shrink-0"
+                />
+                <span class="flex-1">
                   <span class="font-medium">{@pending_request_user_name || "Someone"}</span>
-                  is requesting control (30s timeout)
+                  is requesting control
+                </span>
+                <span
+                  id={"countdown-controller-#{@room_id}"}
+                  phx-hook="CountdownTimer"
+                  data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
+                  class="font-mono text-amber-300 font-bold tabular-nums"
+                >
+                  {countdown_remaining_seconds(@pending_request_started_at)}s
                 </span>
               </div>
             <% end %>

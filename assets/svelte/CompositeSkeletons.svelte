@@ -12,21 +12,64 @@
   // Store skeleton data per sensor with activity tracking
   let skeletonData: Map<string, {
     landmarks: any[];
-    faceLandmarks?: any[];   // 468 face mesh landmarks (optional)
-    blendshapes?: any;       // Face blendshapes for expressions
-    mode?: string;           // "full" or "face" from hybrid client
+    smoothedLandmarks: any[];       // Jitter-filtered landmarks for rendering
+    faceLandmarks?: any[];          // 468 face mesh landmarks (optional)
+    smoothedFaceLandmarks?: any[];  // Jitter-filtered face landmarks
+    blendshapes?: any;              // Face blendshapes for expressions
+    mode?: string;                  // "full" or "face" from hybrid client
     lastUpdate: number;
     username?: string;
-    activity: number;        // 0-1 based on movement
-    attention: number;       // 0-3 from props
-    movementHistory: number[]; // Track recent movement for smoothing
-    bpm: number;             // Heart rate in beats per minute
-    lastHeartbeat: number;   // Timestamp of last heartbeat animation
-    heartScale: number;      // Current heart animation scale (1.0 = normal, 1.3 = peak)
+    activity: number;               // 0-1 based on movement
+    attention: number;              // 0-3 from props
+    movementHistory: number[];      // Track recent movement for smoothing
+    bpm: number;                    // Heart rate in beats per minute
+    lastHeartbeat: number;          // Timestamp of last heartbeat animation
+    heartScale: number;             // Current heart animation scale (1.0 = normal, 1.3 = peak)
   }> = new Map();
 
   // Activity calculation constants
   const ACTIVITY_HISTORY_LENGTH = 10;
+
+  // Jitter filtering constants - EMA (Exponential Moving Average)
+  // Lower alpha = more smoothing (0.0-1.0), higher = more responsive
+  const BODY_SMOOTHING_ALPHA = 0.4;    // Body landmarks: moderate smoothing
+  const FACE_SMOOTHING_ALPHA = 0.25;   // Face landmarks: stronger smoothing (more jittery)
+  const VISIBILITY_THRESHOLD = 0.3;    // Min visibility to include in smoothing
+
+  // Apply exponential moving average smoothing to landmarks
+  function smoothLandmarks(
+    newLandmarks: any[],
+    previousSmoothed: any[] | undefined,
+    alpha: number
+  ): any[] {
+    if (!previousSmoothed || previousSmoothed.length !== newLandmarks.length) {
+      // First frame or landmark count changed - no smoothing possible
+      return newLandmarks.map(lm => ({ ...lm }));
+    }
+
+    return newLandmarks.map((newLm, i) => {
+      const prevLm = previousSmoothed[i];
+      if (!newLm || !prevLm) return newLm;
+
+      // Only smooth if both points have sufficient visibility
+      const newVis = newLm.v ?? newLm.visibility ?? 1;
+      const prevVis = prevLm.v ?? prevLm.visibility ?? 1;
+
+      if (newVis < VISIBILITY_THRESHOLD || prevVis < VISIBILITY_THRESHOLD) {
+        // Low visibility - use new value directly (or skip)
+        return { ...newLm };
+      }
+
+      // Apply EMA: smoothed = alpha * new + (1 - alpha) * previous
+      return {
+        x: alpha * newLm.x + (1 - alpha) * prevLm.x,
+        y: alpha * newLm.y + (1 - alpha) * prevLm.y,
+        z: newLm.z !== undefined ? alpha * newLm.z + (1 - alpha) * (prevLm.z ?? newLm.z) : undefined,
+        v: newLm.v,
+        visibility: newLm.visibility
+      };
+    });
+  }
 
   // Build a map of sensor_id -> username/attention/bpm from props for fallback lookup
   $effect(() => {
@@ -1036,10 +1079,15 @@
     ctx.fillStyle = "#111827";
     ctx.fillRect(0, 0, width, height);
 
-    // Get active sensors (from props or from data)
+    // Only render sensors that have actual skeleton data
+    // (sensors prop is used for metadata like username/bpm, but doesn't determine rendering)
     const activeSensorIds = new Set<string>();
-    sensors.forEach(s => activeSensorIds.add(s.sensor_id));
-    skeletonData.forEach((_, id) => activeSensorIds.add(id));
+    skeletonData.forEach((data, id) => {
+      // Only include if they have valid smoothed landmarks for rendering
+      if (data.smoothedLandmarks && data.smoothedLandmarks.length > 0) {
+        activeSensorIds.add(id);
+      }
+    });
 
     const sensorList = Array.from(activeSensorIds);
     const numSensors = sensorList.length;
@@ -1080,12 +1128,13 @@
       const areaWidth = width;
       const areaHeight = height - titleHeight;
 
-      if (data && data.landmarks && data.landmarks.length > 0) {
-        drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.faceLandmarks, data.blendshapes, data.mode);
+      if (data && data.smoothedLandmarks && data.smoothedLandmarks.length > 0) {
+        // Use smoothed landmarks for jitter-free rendering
+        drawSkeleton(data.smoothedLandmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.smoothedFaceLandmarks, data.blendshapes, data.mode);
 
         // Draw heart if BPM available - position relative to skeleton bounds
         if (bpm > 0) {
-          const bounds = getLandmarkBounds(data.landmarks);
+          const bounds = getLandmarkBounds(data.smoothedLandmarks);
           if (bounds) {
             const heartScale = updateHeartAnimation(sensorId, now);
             // Position heart at top-right of the drawn skeleton
@@ -1122,8 +1171,9 @@
         const bpm = data?.bpm || sensorFromProps?.bpm || 0;
         const color = SENSOR_COLORS[index % SENSOR_COLORS.length];
 
-        if (data && data.landmarks && data.landmarks.length > 0) {
-          drawSkeleton(data.landmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.faceLandmarks, data.blendshapes, data.mode);
+        if (data && data.smoothedLandmarks && data.smoothedLandmarks.length > 0) {
+          // Use smoothed landmarks for jitter-free rendering
+          drawSkeleton(data.smoothedLandmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.smoothedFaceLandmarks, data.blendshapes, data.mode);
 
           // Draw heart if BPM available
           if (bpm > 0) {
@@ -1174,9 +1224,23 @@
         const activity = calculateActivity(sensor_id, data.landmarks);
         const sensorFromProps = sensors.find(s => s.sensor_id === sensor_id);
 
+        // Apply jitter filtering (EMA smoothing)
+        const smoothedLandmarks = smoothLandmarks(
+          data.landmarks,
+          existing?.smoothedLandmarks,
+          BODY_SMOOTHING_ALPHA
+        );
+
+        // Apply stronger smoothing to face landmarks (they're more jittery)
+        const smoothedFaceLandmarks = data.faceLandmarks
+          ? smoothLandmarks(data.faceLandmarks, existing?.smoothedFaceLandmarks, FACE_SMOOTHING_ALPHA)
+          : undefined;
+
         skeletonData.set(sensor_id, {
           landmarks: data.landmarks,
+          smoothedLandmarks: smoothedLandmarks,
           faceLandmarks: data.faceLandmarks,
+          smoothedFaceLandmarks: smoothedFaceLandmarks,
           blendshapes: data.blendshapes,
           mode: data.mode,
           lastUpdate: timestamp || Date.now(),
@@ -1257,9 +1321,23 @@
         const activity = calculateActivity(eventSensorId, data.landmarks);
         const sensorFromProps = sensors.find(s => s.sensor_id === eventSensorId);
 
+        // Apply jitter filtering (EMA smoothing)
+        const smoothedLandmarks = smoothLandmarks(
+          data.landmarks,
+          existing?.smoothedLandmarks,
+          BODY_SMOOTHING_ALPHA
+        );
+
+        // Apply stronger smoothing to face landmarks (they're more jittery)
+        const smoothedFaceLandmarks = data.faceLandmarks
+          ? smoothLandmarks(data.faceLandmarks, existing?.smoothedFaceLandmarks, FACE_SMOOTHING_ALPHA)
+          : undefined;
+
         skeletonData.set(eventSensorId, {
           landmarks: data.landmarks,
+          smoothedLandmarks: smoothedLandmarks,
           faceLandmarks: data.faceLandmarks,
+          smoothedFaceLandmarks: smoothedFaceLandmarks,
           blendshapes: data.blendshapes,
           mode: data.mode,
           lastUpdate: Date.now(),

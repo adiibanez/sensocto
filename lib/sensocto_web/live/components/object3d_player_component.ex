@@ -48,6 +48,8 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
       |> assign(:is_lobby, assigns[:is_lobby] || socket.assigns[:is_lobby] || false)
       |> assign(:current_user, assigns[:current_user] || socket.assigns[:current_user])
       |> assign(:can_manage, assigns[:can_manage] || socket.assigns[:can_manage] || false)
+      # Store socket_id for multi-tab sync identification
+      |> maybe_assign(assigns, :socket_id)
 
     # Handle incremental updates from send_update (PubSub events)
     socket =
@@ -235,7 +237,9 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   def handle_event("take_control", _, socket) do
     user = socket.assigns.current_user
     user_name = Map.get(user, :email) || Map.get(user, :display_name) || "Unknown"
-    Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name)
+    # Pass socket_id for multi-tab sync identification
+    socket_id = socket.assigns[:socket_id]
+    Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name, socket_id)
     {:noreply, socket}
   end
 
@@ -250,11 +254,17 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   def handle_event("request_control", _, socket) do
     user = socket.assigns.current_user
     controller_user_id = socket.assigns.controller_user_id
+    socket_id = socket.assigns[:socket_id]
 
     if user && controller_user_id && to_string(user.id) != to_string(controller_user_id) do
       requester_name = Map.get(user, :email) || Map.get(user, :display_name) || "Someone"
 
-      case Object3DPlayerServer.request_control(socket.assigns.room_id, user.id, requester_name) do
+      case Object3DPlayerServer.request_control(
+             socket.assigns.room_id,
+             user.id,
+             requester_name,
+             socket_id
+           ) do
         {:ok, :control_granted} ->
           {:noreply,
            socket
@@ -330,12 +340,13 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
     user = socket.assigns.current_user
     user_id = user && user.id
     controller_user_id = socket.assigns.controller_user_id
+    socket_id = socket.assigns[:socket_id]
 
     # Auto-take control if no one has control and user is logged in
     socket =
       if is_nil(controller_user_id) && user do
         user_name = Map.get(user, :email) || Map.get(user, :display_name) || "Unknown"
-        Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name)
+        Object3DPlayerServer.take_control(socket.assigns.room_id, user.id, user_name, socket_id)
         socket
       else
         socket

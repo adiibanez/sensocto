@@ -20,6 +20,8 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
     :current_item_id,
     :controller_user_id,
     :controller_user_name,
+    # Socket ID of the tab that has control (for multi-tab sync)
+    :controller_socket_id,
     # Pending control request
     :pending_request_user_id,
     :pending_request_user_name,
@@ -81,9 +83,10 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
 
   @doc """
   Takes control of the 3D viewer.
+  socket_id is optional - if provided, enables multi-tab sync filtering.
   """
-  def take_control(room_id, user_id, user_name) do
-    GenServer.call(via_tuple(room_id), {:take_control, user_id, user_name})
+  def take_control(room_id, user_id, user_name, socket_id \\ nil) do
+    GenServer.call(via_tuple(room_id), {:take_control, user_id, user_name, socket_id})
   catch
     :exit, _ -> {:error, :not_found}
   end
@@ -107,9 +110,10 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   @doc """
   Requests control from the current controller.
   Starts a 30-second timer after which control auto-transfers unless controller keeps control.
+  socket_id is optional - if provided, enables multi-tab sync filtering.
   """
-  def request_control(room_id, user_id, user_name) do
-    GenServer.call(via_tuple(room_id), {:request_control, user_id, user_name})
+  def request_control(room_id, user_id, user_name, socket_id \\ nil) do
+    GenServer.call(via_tuple(room_id), {:request_control, user_id, user_name, socket_id})
   catch
     :exit, _ -> {:error, :not_found}
   end
@@ -241,11 +245,12 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   end
 
   @impl true
-  def handle_call({:take_control, user_id, user_name}, _from, state) do
+  def handle_call({:take_control, user_id, user_name, socket_id}, _from, state) do
     new_state = %{
       state
       | controller_user_id: user_id,
-        controller_user_name: user_name
+        controller_user_name: user_name,
+        controller_socket_id: socket_id
     }
 
     broadcast_controller_change(new_state)
@@ -261,7 +266,8 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
       new_state = %{
         state
         | controller_user_id: nil,
-          controller_user_name: nil
+          controller_user_name: nil,
+          controller_socket_id: nil
       }
 
       broadcast_controller_change(new_state)
@@ -272,14 +278,15 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   end
 
   @impl true
-  def handle_call({:request_control, user_id, user_name}, _from, state) do
+  def handle_call({:request_control, user_id, user_name, socket_id}, _from, state) do
     cond do
       # No controller - just take control directly
       is_nil(state.controller_user_id) ->
         new_state = %{
           state
           | controller_user_id: user_id,
-            controller_user_name: user_name
+            controller_user_name: user_name,
+            controller_socket_id: socket_id
         }
 
         broadcast_controller_change(new_state)
@@ -294,11 +301,11 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
         # Cancel any existing pending request
         state = cancel_pending_request(state)
 
-        # Start timeout timer
+        # Start timeout timer - include socket_id for when control transfers
         timer_ref =
           Process.send_after(
             self(),
-            {:control_request_timeout, user_id},
+            {:control_request_timeout, user_id, socket_id},
             @control_request_timeout_ms
           )
 
@@ -481,18 +488,19 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   end
 
   @impl true
-  def handle_info({:control_request_timeout, requester_user_id}, state) do
+  def handle_info({:control_request_timeout, requester_user_id, requester_socket_id}, state) do
     # Check if this timeout is still valid (same requester pending)
     if state.pending_request_user_id == requester_user_id do
       Logger.info(
         "Control request timeout - transferring control to #{state.pending_request_user_name}"
       )
 
-      # Transfer control to requester
+      # Transfer control to requester (with their socket_id for multi-tab sync)
       new_state = %{
         state
         | controller_user_id: state.pending_request_user_id,
           controller_user_name: state.pending_request_user_name,
+          controller_socket_id: requester_socket_id,
           pending_request_user_id: nil,
           pending_request_user_name: nil,
           pending_request_timer_ref: nil
@@ -504,6 +512,12 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
       # Request was already handled, ignore
       {:noreply, state}
     end
+  end
+
+  # Legacy handler without socket_id for backward compatibility
+  @impl true
+  def handle_info({:control_request_timeout, requester_user_id}, state) do
+    handle_info({:control_request_timeout, requester_user_id, nil}, state)
   end
 
   # ============================================================================
@@ -536,6 +550,8 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
          camera_position: state.camera_position,
          camera_target: state.camera_target,
          user_id: user_id,
+         # Include socket_id for multi-tab filtering
+         controller_socket_id: state.controller_socket_id,
          is_active: is_active,
          timestamp: DateTime.utc_now()
        }}
@@ -550,6 +566,7 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
        %{
          controller_user_id: state.controller_user_id,
          controller_user_name: state.controller_user_name,
+         controller_socket_id: state.controller_socket_id,
          pending_request_user_id: state.pending_request_user_id,
          pending_request_user_name: state.pending_request_user_name
        }}

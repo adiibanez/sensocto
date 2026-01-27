@@ -65,6 +65,8 @@ defmodule SensoctoWeb.RoomShowLive do
 
         socket =
           socket
+          # Store socket.id for multi-tab sync identification
+          |> assign(:socket_id, socket.id)
           |> assign(:page_title, room.name)
           |> assign(:room, room)
           |> assign(:sensors, room.sensors || [])
@@ -162,6 +164,7 @@ defmodule SensoctoWeb.RoomShowLive do
     # Get mode from query param, user preference, or default
     user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
     room = socket.assigns.room
+    old_mode = socket.assigns[:room_mode]
 
     mode =
       case params["mode"] do
@@ -198,8 +201,14 @@ defmodule SensoctoWeb.RoomShowLive do
           get_default_mode(room)
       end
 
-    # Update presence to reflect new mode
+    # Release control when leaving a controlled mode (playback continues without controller)
     user = socket.assigns[:current_user]
+
+    if user && old_mode && old_mode != mode do
+      release_control_for_mode(room.id, old_mode, user.id)
+    end
+
+    # Update presence to reflect new mode
     presence_key = socket.assigns[:presence_key]
 
     if user && presence_key do
@@ -1488,15 +1497,19 @@ defmodule SensoctoWeb.RoomShowLive do
   @impl true
   def handle_info(
         {:object3d_camera_synced,
-         %{camera_position: camera_position, camera_target: camera_target, user_id: user_id} =
-           event},
+         %{camera_position: camera_position, camera_target: camera_target} = event},
         socket
       ) do
     room_id = socket.assigns.room.id
-    current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
 
-    # Don't forward camera sync to the controller themselves - they're the source
-    if user_id != current_user_id do
+    # Filter by socket_id instead of user_id to support multi-tab sync
+    # This allows same user in different tabs to receive camera syncs
+    controller_socket_id = Map.get(event, :controller_socket_id)
+
+    # Don't forward camera sync to the controller tab itself - it's the source
+    is_controller_tab = controller_socket_id && socket.id == controller_socket_id
+
+    unless is_controller_tab do
       send_update(Object3DPlayerComponent,
         id: "object3d-player-#{room_id}",
         synced_camera_position: camera_position,
@@ -2569,6 +2582,7 @@ defmodule SensoctoWeb.RoomShowLive do
           room_id={@room.id}
           current_user={@current_user}
           can_manage={@can_manage}
+          socket_id={@socket_id}
         />
       </div>
 
@@ -3746,4 +3760,29 @@ defmodule SensoctoWeb.RoomShowLive do
     </div>
     """
   end
+
+  # Release control for a specific mode when user navigates away
+  # Playback continues without a controller - anyone can then take control
+  defp release_control_for_mode(room_id, :media, user_id) do
+    alias Sensocto.Media.MediaPlayerServer
+    MediaPlayerServer.release_control(room_id, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp release_control_for_mode(room_id, :object3d, user_id) do
+    alias Sensocto.Object3D.Object3DPlayerServer
+    Object3DPlayerServer.release_control(room_id, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp release_control_for_mode(room_id, :whiteboard, user_id) do
+    alias Sensocto.Whiteboard.WhiteboardServer
+    WhiteboardServer.release_control(room_id, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp release_control_for_mode(_room_id, _mode, _user_id), do: :ok
 end

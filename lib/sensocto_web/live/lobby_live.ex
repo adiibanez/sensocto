@@ -105,6 +105,8 @@ defmodule SensoctoWeb.LobbyLive do
     new_socket =
       socket
       |> assign(
+        # Store socket.id for multi-tab sync identification
+        socket_id: socket.id,
         page_title: "Lobby",
         sensors_online_count: sensors_count,
         sensors_online: %{},
@@ -1006,18 +1008,21 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_info(
-        {:object3d_camera_synced,
-         %{camera_position: position, camera_target: target, user_id: user_id} = event},
+        {:object3d_camera_synced, %{camera_position: position, camera_target: target} = event},
         socket
       ) do
     # In solo mode, ignore camera syncs entirely
     if socket.assigns.sync_mode == :solo do
       {:noreply, socket}
     else
-      current_user_id = socket.assigns.current_user && socket.assigns.current_user.id
+      # Filter by socket_id instead of user_id to support multi-tab sync
+      # This allows same user in different tabs to receive camera syncs
+      controller_socket_id = Map.get(event, :controller_socket_id)
 
-      # Don't forward camera sync to the controller themselves - they're the source
-      if user_id != current_user_id do
+      # Don't forward camera sync to the controller tab itself - it's the source
+      is_controller_tab = controller_socket_id && socket.id == controller_socket_id
+
+      unless is_controller_tab do
         send_update(Object3DPlayerComponent,
           id: "lobby-object3d-player",
           synced_camera_position: position,
@@ -1616,9 +1621,15 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("switch_lobby_mode", %{"mode" => mode}, socket) do
     new_mode = String.to_existing_atom(mode)
+    old_mode = socket.assigns.lobby_mode
+    user = socket.assigns.current_user
+
+    # Release control when leaving a controlled mode (playback continues without controller)
+    if user && old_mode != new_mode do
+      release_control_for_mode(old_mode, user.id)
+    end
 
     # Update presence to reflect new mode
-    user = socket.assigns.current_user
     presence_key = socket.assigns[:presence_key]
 
     if user && presence_key do
@@ -1996,4 +2007,29 @@ defmodule SensoctoWeb.LobbyLive do
     Logger.debug("Lobby Unknown event: #{type} #{inspect(params)}")
     {:noreply, socket}
   end
+
+  # Release control for a specific mode when user navigates away
+  # Playback continues without a controller - anyone can then take control
+  defp release_control_for_mode(:media, user_id) do
+    alias Sensocto.Media.MediaPlayerServer
+    MediaPlayerServer.release_control(:lobby, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp release_control_for_mode(:object3d, user_id) do
+    alias Sensocto.Object3D.Object3DPlayerServer
+    Object3DPlayerServer.release_control(:lobby, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp release_control_for_mode(:whiteboard, user_id) do
+    alias Sensocto.Whiteboard.WhiteboardServer
+    WhiteboardServer.release_control(:lobby, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp release_control_for_mode(_mode, _user_id), do: :ok
 end

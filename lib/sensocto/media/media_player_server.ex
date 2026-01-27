@@ -10,8 +10,13 @@ defmodule Sensocto.Media.MediaPlayerServer do
   alias Sensocto.Media
 
   # Heartbeat interval for periodic sync broadcasts when playing
-  # 500ms is reliable - faster sync comes from client polling and PubSub pushes
-  @heartbeat_interval_ms 500
+  # Increased to 2000ms for scalability - clients interpolate position locally
+  # Only broadcasts if position drifted significantly from last broadcast
+  @heartbeat_interval_ms 2000
+
+  # Only broadcast heartbeat if position changed by more than this threshold
+  # This prevents unnecessary broadcasts for 50K+ user scenarios
+  @position_drift_threshold_seconds 1.0
 
   # Timeout for control request (30 seconds)
   @control_request_timeout_ms 30_000
@@ -29,6 +34,8 @@ defmodule Sensocto.Media.MediaPlayerServer do
     state: :stopped,
     position_seconds: 0.0,
     position_updated_at: nil,
+    # Track last broadcast position to avoid redundant heartbeat broadcasts
+    last_broadcast_position: 0.0,
     volume: 100,
     is_lobby: false
   ]
@@ -493,14 +500,23 @@ defmodule Sensocto.Media.MediaPlayerServer do
     # Reschedule next heartbeat
     schedule_heartbeat()
 
-    # Only broadcast if playing - this keeps clients in sync
-    # This is a passive sync, not active user interaction
+    # Only broadcast if playing AND position has drifted significantly
+    # This optimization reduces broadcasts from 2/sec to ~0.5/sec per room
+    # Critical for scaling to 50K+ users per room
     if state.state == :playing and state.current_item_id do
-      current_item = Media.get_item(state.current_item_id)
-      broadcast_state_change(state, current_item, false)
-    end
+      current_position = calculate_current_position(state)
+      position_drift = abs(current_position - state.last_broadcast_position)
 
-    {:noreply, state}
+      if position_drift >= @position_drift_threshold_seconds do
+        current_item = Media.get_item(state.current_item_id)
+        broadcast_state_change(state, current_item, false)
+        {:noreply, %{state | last_broadcast_position: current_position}}
+      else
+        {:noreply, state}
+      end
+    else
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -658,7 +674,8 @@ defmodule Sensocto.Media.MediaPlayerServer do
           | current_item_id: item.id,
             state: :playing,
             position_seconds: 0.0,
-            position_updated_at: DateTime.utc_now()
+            position_updated_at: DateTime.utc_now(),
+            last_broadcast_position: 0.0
         }
 
         broadcast_state_change(new_state, item)
@@ -673,10 +690,13 @@ defmodule Sensocto.Media.MediaPlayerServer do
       {:reply, :ok, state}
     else
       # Transitioning from paused/stopped to playing
+      current_position = state.position_seconds
+
       new_state = %{
         state
         | state: :playing,
-          position_updated_at: DateTime.utc_now()
+          position_updated_at: DateTime.utc_now(),
+          last_broadcast_position: current_position
       }
 
       current_item = Media.get_item(state.current_item_id)
@@ -698,7 +718,8 @@ defmodule Sensocto.Media.MediaPlayerServer do
         state
         | state: :paused,
           position_seconds: current_position,
-          position_updated_at: DateTime.utc_now()
+          position_updated_at: DateTime.utc_now(),
+          last_broadcast_position: current_position
       }
 
       current_item = Media.get_item(state.current_item_id)
@@ -712,7 +733,8 @@ defmodule Sensocto.Media.MediaPlayerServer do
     new_state = %{
       state
       | position_seconds: position_seconds,
-        position_updated_at: DateTime.utc_now()
+        position_updated_at: DateTime.utc_now(),
+        last_broadcast_position: position_seconds
     }
 
     current_item = Media.get_item(state.current_item_id)

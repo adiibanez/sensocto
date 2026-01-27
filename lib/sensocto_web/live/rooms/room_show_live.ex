@@ -1726,6 +1726,29 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   # Whiteboard PubSub handlers
+
+  # Batched strokes for scalability
+  @impl true
+  def handle_info({:whiteboard_strokes_batch, %{strokes: strokes}}, socket) do
+    room_id = socket.assigns.room.id
+
+    send_update(WhiteboardComponent,
+      id: "whiteboard-#{room_id}",
+      new_strokes: strokes
+    )
+
+    # Trigger bump animation
+    socket =
+      if not socket.assigns.whiteboard_bump do
+        Process.send_after(self(), :clear_whiteboard_bump, 300)
+        assign(socket, :whiteboard_bump, true)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:whiteboard_stroke_added, %{stroke: stroke}}, socket) do
     room_id = socket.assigns.room.id

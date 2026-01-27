@@ -285,6 +285,17 @@ const WhiteboardHook = {
             this.redrawCanvas();
         });
 
+        // Batched strokes (scalability optimization)
+        this.handleEvent('whiteboard_strokes_batch', ({ strokes }) => {
+            this.log('Received stroke batch', { count: strokes?.length });
+            if (strokes && strokes.length > 0) {
+                for (const stroke of strokes) {
+                    this.strokes.push(stroke);
+                    this.drawStroke(stroke);
+                }
+            }
+        });
+
         // Single stroke added
         this.handleEvent('whiteboard_stroke_added', ({ stroke }) => {
             this.log('Received stroke', stroke);

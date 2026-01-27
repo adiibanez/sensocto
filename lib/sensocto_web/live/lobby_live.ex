@@ -1351,6 +1351,26 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   # Whiteboard PubSub handlers
+
+  # Batched strokes for scalability
+  @impl true
+  def handle_info({:whiteboard_strokes_batch, %{strokes: strokes}}, socket) do
+    send_update(WhiteboardComponent,
+      id: "lobby-whiteboard",
+      new_strokes: strokes
+    )
+
+    socket =
+      if not socket.assigns.whiteboard_bump do
+        Process.send_after(self(), :clear_whiteboard_bump, 300)
+        assign(socket, :whiteboard_bump, true)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:whiteboard_stroke_added, %{stroke: stroke}}, socket) do
     send_update(WhiteboardComponent,

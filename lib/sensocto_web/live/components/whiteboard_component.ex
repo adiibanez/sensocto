@@ -62,6 +62,11 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
     # Push events to JavaScript hook for real-time sync
     socket =
       cond do
+        # Batched strokes (scalability optimization)
+        Map.has_key?(assigns, :new_strokes) and is_list(assigns[:new_strokes]) and
+            assigns[:new_strokes] != [] ->
+          push_event(socket, "whiteboard_strokes_batch", %{strokes: assigns[:new_strokes]})
+
         Map.has_key?(assigns, :new_stroke) and assigns[:new_stroke] ->
           push_event(socket, "whiteboard_stroke_added", %{stroke: assigns[:new_stroke]})
 

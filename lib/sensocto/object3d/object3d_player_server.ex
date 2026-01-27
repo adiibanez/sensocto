@@ -9,7 +9,9 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
   alias Sensocto.Object3D
 
   # Heartbeat interval for periodic sync broadcasts
-  @heartbeat_interval_ms 1_000
+  # Increased to 3000ms for scalability - camera state is less time-sensitive than media
+  # Only broadcasts if camera position has changed since last broadcast
+  @heartbeat_interval_ms 3_000
 
   # Timeout for control request (30 seconds)
   @control_request_timeout_ms 30_000
@@ -29,6 +31,8 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
     camera_position: %{x: 0, y: 0, z: 5},
     camera_target: %{x: 0, y: 0, z: 0},
     camera_updated_at: nil,
+    # Track if camera changed since last heartbeat to avoid redundant broadcasts
+    camera_changed_since_broadcast: false,
     is_lobby: false
   ]
 
@@ -437,7 +441,8 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
         state
         | camera_position: position,
           camera_target: target,
-          camera_updated_at: DateTime.utc_now()
+          camera_updated_at: DateTime.utc_now(),
+          camera_changed_since_broadcast: true
       }
 
       # Active camera movement from user interaction
@@ -478,13 +483,14 @@ defmodule Sensocto.Object3D.Object3DPlayerServer do
     # Reschedule next heartbeat
     schedule_heartbeat()
 
-    # Broadcast camera state if there's a controller (for followers to sync)
-    # This is a passive sync, not active movement
-    if state.controller_user_id && state.current_item_id do
+    # Only broadcast if camera has changed since last heartbeat
+    # This optimization eliminates redundant broadcasts for 50K+ user scenarios
+    if state.controller_user_id && state.current_item_id && state.camera_changed_since_broadcast do
       broadcast_camera_sync(state, state.controller_user_id, false)
+      {:noreply, %{state | camera_changed_since_broadcast: false}}
+    else
+      {:noreply, state}
     end
-
-    {:noreply, state}
   end
 
   @impl true

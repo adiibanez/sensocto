@@ -54,7 +54,9 @@ defmodule Sensocto.Infrastructure.Supervisor do
       {DNSCluster, query: Application.get_env(:sensocto, :dns_cluster_query) || :ignore},
 
       # PubSub for real-time messaging across the application
-      {Phoenix.PubSub, name: Sensocto.PubSub},
+      # pool_size: 8 for high-throughput scenarios (50K+ concurrent users)
+      # Note: pool_size must be the same across all cluster nodes
+      {Phoenix.PubSub, name: Sensocto.PubSub, pool_size: 8},
 
       # Presence tracking (depends on PubSub, hence after it)
       SensoctoWeb.Sensocto.Presence,

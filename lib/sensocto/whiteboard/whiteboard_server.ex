@@ -9,6 +9,10 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
   # Timeout for control request (30 seconds)
   @control_request_timeout_ms 30_000
 
+  # Stroke batching interval for scalability
+  # Batches strokes over 50ms before broadcasting to reduce message fan-out
+  @stroke_batch_interval_ms 50
+
   defstruct [
     :room_id,
     :controller_user_id,
@@ -16,7 +20,10 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
     :pending_request_user_id,
     :pending_request_user_name,
     :pending_request_timer_ref,
+    :stroke_batch_timer_ref,
     strokes: [],
+    # Pending strokes to batch before broadcasting
+    stroke_batch: [],
     background_color: "#1a1a1a",
     is_lobby: false
   ]
@@ -172,8 +179,22 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
         |> Map.put(:user_id, user_id)
         |> Map.put(:timestamp, DateTime.utc_now())
 
-      new_state = %{state | strokes: state.strokes ++ [stroke]}
-      broadcast_stroke_added(new_state, stroke)
+      # Add to permanent strokes and to batch
+      new_state = %{
+        state
+        | strokes: state.strokes ++ [stroke],
+          stroke_batch: state.stroke_batch ++ [stroke]
+      }
+
+      # Schedule batch flush if not already scheduled
+      new_state =
+        if is_nil(state.stroke_batch_timer_ref) do
+          timer_ref = Process.send_after(self(), :flush_stroke_batch, @stroke_batch_interval_ms)
+          %{new_state | stroke_batch_timer_ref: timer_ref}
+        else
+          new_state
+        end
+
       {:reply, {:ok, stroke}, new_state}
     else
       {:reply, {:error, :not_controller}, state}
@@ -340,6 +361,16 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
     end
   end
 
+  @impl true
+  def handle_info(:flush_stroke_batch, state) do
+    # Broadcast batched strokes if any
+    if state.stroke_batch != [] do
+      broadcast_strokes_batch(state, state.stroke_batch)
+    end
+
+    {:noreply, %{state | stroke_batch: [], stroke_batch_timer_ref: nil}}
+  end
+
   # ============================================================================
   # Private Functions
   # ============================================================================
@@ -369,14 +400,6 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
     else
       "whiteboard:#{state.room_id}"
     end
-  end
-
-  defp broadcast_stroke_added(state, stroke) do
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      pubsub_topic(state),
-      {:whiteboard_stroke_added, %{stroke: stroke}}
-    )
   end
 
   defp broadcast_cleared(state) do
@@ -440,6 +463,14 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
       Sensocto.PubSub,
       pubsub_topic(state),
       {:whiteboard_control_request_cancelled, %{}}
+    )
+  end
+
+  defp broadcast_strokes_batch(state, strokes) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:whiteboard_strokes_batch, %{strokes: strokes}}
     )
   end
 end

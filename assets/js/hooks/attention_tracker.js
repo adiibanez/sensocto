@@ -13,7 +13,10 @@ const HOVER_DEBOUNCE_MAX_MS = 500;  // Maximum debounce when system is under loa
 const HOVER_BOOST_DURATION_MS = 2000;  // How long hover boost lasts after mouse leaves
 const BATTERY_LOW_THRESHOLD = 0.30;
 const BATTERY_CRITICAL_THRESHOLD = 0.15;
-const LATENCY_PING_INTERVAL_MS = 3000;  // Ping server every 3 seconds for latency measurement
+// Default ping interval - server can adjust based on system load
+const DEFAULT_LATENCY_PING_INTERVAL_MS = 3000;
+const MIN_LATENCY_PING_INTERVAL_MS = 1000;   // Floor for high-priority sensors
+const MAX_LATENCY_PING_INTERVAL_MS = 30000;  // Cap for low-priority/many sensors
 
 // Adaptive debouncing based on system responsiveness
 let lastEventTime = 0;
@@ -91,8 +94,8 @@ export const AttentionTracker = {
     }
 
     // Clear latency ping interval
-    if (this.latencyPingInterval) {
-      clearInterval(this.latencyPingInterval);
+    if (this.latencyPingTimeout) {
+      clearTimeout(this.latencyPingTimeout);
     }
 
     // Clear all debounce timers
@@ -192,6 +195,9 @@ export const AttentionTracker = {
   },
 
   handleSensorMouseEnter(sensorId) {
+    // Guard: element may have been removed from DOM during fast scroll
+    if (!this.el || !this.el.isConnected) return;
+
     const key = `${sensorId}:_sensor`;
     const eventStart = performance.now();
 
@@ -207,6 +213,7 @@ export const AttentionTracker = {
       // Find all attribute elements and send hover_enter for each
       const elements = this.el.querySelectorAll('[data-sensor_id][data-attribute_id]');
       elements.forEach(el => {
+        if (!el || !el.dataset) return;
         const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
         if (!this.hoveredElements.has(attrKey)) {
           this.pushEvent("hover_enter", {
@@ -230,18 +237,22 @@ export const AttentionTracker = {
 
       const timer = setTimeout(() => {
         if (this.hoveredElements.has(key)) {
-          // Send hover_leave for all attributes
-          const elements = this.el.querySelectorAll('[data-sensor_id][data-attribute_id]');
-          elements.forEach(el => {
-            const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
-            if (this.hoveredElements.has(attrKey)) {
-              this.pushEvent("hover_leave", {
-                sensor_id: el.dataset.sensor_id,
-                attribute_id: el.dataset.attribute_id
-              });
-              this.hoveredElements.delete(attrKey);
-            }
-          });
+          // Guard: element may have been removed from DOM during fast scroll
+          if (this.el && this.el.isConnected) {
+            // Send hover_leave for all attributes
+            const elements = this.el.querySelectorAll('[data-sensor_id][data-attribute_id]');
+            elements.forEach(el => {
+              if (!el || !el.dataset) return;
+              const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
+              if (this.hoveredElements.has(attrKey)) {
+                this.pushEvent("hover_leave", {
+                  sensor_id: el.dataset.sensor_id,
+                  attribute_id: el.dataset.attribute_id
+                });
+                this.hoveredElements.delete(attrKey);
+              }
+            });
+          }
           this.hoveredElements.delete(key);
         }
         this.hoverBoostTimers.delete(key);
@@ -253,6 +264,9 @@ export const AttentionTracker = {
   handleIntersection(entries) {
     entries.forEach(entry => {
       const el = entry.target;
+      // Guard: element may have been removed from DOM during fast scroll
+      if (!el || !el.dataset) return;
+
       const sensorId = el.dataset.sensor_id;
       // For sensor container element (no attribute_id), use synthetic "_sensor"
       const attributeId = el.dataset.attribute_id || '_sensor';
@@ -523,9 +537,10 @@ export const AttentionTracker = {
     this.pendingPingId = null;
     this.pendingPingSentAt = null;
     this.pingCounter = 0;
+    this.currentPingInterval = DEFAULT_LATENCY_PING_INTERVAL_MS;
 
     // Listen for pong responses from server
-    this.handleEvent("latency_pong", ({ ping_id }) => {
+    this.handleEvent("latency_pong", ({ ping_id, next_interval_ms }) => {
       if (this.pendingPingId !== null && ping_id === this.pendingPingId) {
         const latencyMs = Math.round(performance.now() - this.pendingPingSentAt);
         this.pendingPingId = null;
@@ -533,6 +548,16 @@ export const AttentionTracker = {
 
         // Report latency back to server for display
         this.pushEvent("latency_report", { latency_ms: latencyMs });
+
+        // Update ping interval if server suggests a different one
+        if (next_interval_ms && next_interval_ms !== this.currentPingInterval) {
+          const newInterval = Math.max(MIN_LATENCY_PING_INTERVAL_MS,
+                                       Math.min(MAX_LATENCY_PING_INTERVAL_MS, next_interval_ms));
+          if (newInterval !== this.currentPingInterval) {
+            this.currentPingInterval = newInterval;
+            this.rescheduleLatencyPing();
+          }
+        }
       }
     });
 
@@ -540,9 +565,21 @@ export const AttentionTracker = {
     this.sendLatencyPing();
 
     // Then ping periodically
-    this.latencyPingInterval = setInterval(() => {
+    this.scheduleNextPing();
+  },
+
+  scheduleNextPing() {
+    this.latencyPingTimeout = setTimeout(() => {
       this.sendLatencyPing();
-    }, LATENCY_PING_INTERVAL_MS);
+      this.scheduleNextPing();
+    }, this.currentPingInterval);
+  },
+
+  rescheduleLatencyPing() {
+    if (this.latencyPingTimeout) {
+      clearTimeout(this.latencyPingTimeout);
+    }
+    this.scheduleNextPing();
   },
 
   sendLatencyPing() {
@@ -566,6 +603,9 @@ export const SensorPinControl = {
     const sensorId = this.el.dataset.sensor_id;
 
     this.updatePinVisual = () => {
+      // Guard: element may have been removed from DOM during fast scroll
+      if (!this.el || !this.el.isConnected) return;
+
       const isPinned = this.el.dataset.pinned === 'true';
       const icon = this.el.querySelector('svg, .heroicon');
 
@@ -573,12 +613,12 @@ export const SensorPinControl = {
         this.el.classList.add('text-orange-400');
         this.el.classList.remove('text-gray-400');
         this.el.title = 'Unpin sensor';
-        if (icon) icon.setAttribute('fill', 'currentColor');
+        if (icon && icon.setAttribute) icon.setAttribute('fill', 'currentColor');
       } else {
         this.el.classList.remove('text-orange-400');
         this.el.classList.add('text-gray-400');
         this.el.title = 'Pin sensor for high-frequency updates';
-        if (icon) icon.setAttribute('fill', 'none');
+        if (icon && icon.setAttribute) icon.setAttribute('fill', 'none');
       }
     };
 

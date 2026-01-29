@@ -20,6 +20,11 @@ defmodule SensoctoWeb.LobbyLive do
   @grid_cols_xl_default 4
   @grid_cols_2xl_default 5
 
+  # Virtual scroll configuration
+  @default_row_height 140
+  # Preload more sensors initially for smoother experience
+  @default_visible_count 72
+
   # Threshold for switching to summary mode (<=3 sensors = normal, >3 = summary)
   # Kept for future use when dynamic view mode switching is implemented
   @summary_mode_threshold 3
@@ -194,7 +199,11 @@ defmodule SensoctoWeb.LobbyLive do
         # Current quality level for UI display
         current_quality: :high,
         # Manual quality override (nil = automatic, or :high/:medium/:low/:minimal)
-        quality_override: nil
+        quality_override: nil,
+        # Virtual scroll state
+        visible_range: {0, min(@default_visible_count, sensors_count)},
+        row_height: @default_row_height,
+        cols: 4
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -346,6 +355,25 @@ defmodule SensoctoWeb.LobbyLive do
   defp attention_level_to_int(:medium), do: 2
   defp attention_level_to_int(:high), do: 3
   defp attention_level_to_int(_), do: 0
+
+  # Partition sensors for virtual scroll rendering
+  # Returns {rows_before, visible_ids, rows_after} for CSS spacer heights
+  defp partition_sensors_for_virtual_scroll(sensor_ids, {start_idx, end_idx}, cols) do
+    total = length(sensor_ids)
+    cols = max(1, cols)
+
+    # Clamp indices
+    start_idx = max(0, min(start_idx, total))
+    end_idx = max(start_idx, min(end_idx, total))
+
+    visible_ids = Enum.slice(sensor_ids, start_idx, end_idx - start_idx)
+
+    # Calculate spacer heights (in rows)
+    rows_before = div(start_idx, cols)
+    rows_after = div(max(0, total - end_idx), cols)
+
+    {rows_before, visible_ids, rows_after}
+  end
 
   defp count_room_mode_presence(room_id) do
     presences = Presence.list("room:#{room_id}:mode_presence")
@@ -1933,6 +1961,19 @@ defmodule SensoctoWeb.LobbyLive do
      socket
      |> assign(:min_attention, min_attention)
      |> assign(:sensor_ids, filtered_ids)}
+  end
+
+  # Virtual scroll: handle visible range changes from JS hook
+  @impl true
+  def handle_event(
+        "visible_range_changed",
+        %{"start_index" => start_idx, "end_index" => end_idx, "cols" => cols},
+        socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:visible_range, {start_idx, end_idx})
+     |> assign(:cols, max(1, cols))}
   end
 
   # Lens view selector (dropdown)

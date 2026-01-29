@@ -346,7 +346,7 @@
   </div>
 
   <%!-- Lens Selector - styled like rooms --%>
-  <div class="flex items-center mb-4">
+  <div class="flex items-center mb-2">
     <div class="flex flex-col sm:flex-row sm:items-center gap-3">
       <%!-- Quick lens chips - only show lenses with actual sensor data --%>
       <div class="flex flex-wrap items-center gap-2">
@@ -511,20 +511,40 @@
   </div>
 
   <div :if={@live_action == :sensors}>
+    <%!-- Virtual scroll sensor grid --%>
+    <% {rows_before, visible_sensor_ids, rows_after} =
+      partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
+
     <div
-      id="cnt"
-      phx-hook="ConnectionHandler"
+      id="sensor-virtual-scroll"
+      phx-hook="VirtualScrollHook"
+      data-total-sensors={length(@sensor_ids)}
+      data-row-height={@row_height}
       class={[
         "grid grid-cols-1",
         if(@global_view_mode == :summary,
           do:
-            "gap-2 sm:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
-          else:
-            "gap-4 sm:gap-6 md:gap-8 lg:gap-10 xl:gap-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+            "gap-1.5 sm:gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+          else: "gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
         )
       ]}
     >
-      <div :for={sensor_id <- @sensor_ids} id={"sensor_container_#{sensor_id}"}>
+      <%!-- Top spacer for sensors above viewport --%>
+      <div
+        :if={rows_before > 0}
+        id="virtual-scroll-top-spacer"
+        style={"height: #{rows_before * @row_height}px"}
+        class="col-span-full"
+        aria-hidden="true"
+      />
+
+      <%!-- Visible sensors - actually rendered as LiveViews --%>
+      <div
+        :for={sensor_id <- visible_sensor_ids}
+        id={"sensor_container_#{sensor_id}"}
+        phx-hook="AttentionTracker"
+        data-sensor_id={sensor_id}
+      >
         {live_render(@socket, StatefulSensorLive,
           id: "stateful_sensor_#{sensor_id}",
           session: %{
@@ -535,6 +555,15 @@
           }
         )}
       </div>
+
+      <%!-- Bottom spacer for sensors below viewport --%>
+      <div
+        :if={rows_after > 0}
+        id="virtual-scroll-bottom-spacer"
+        style={"height: #{rows_after * @row_height}px"}
+        class="col-span-full"
+        aria-hidden="true"
+      />
     </div>
 
     <div

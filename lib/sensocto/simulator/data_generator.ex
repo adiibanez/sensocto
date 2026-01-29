@@ -9,6 +9,7 @@ defmodule Sensocto.Simulator.DataGenerator do
 
   alias NimbleCSV.RFC4180, as: CSV
   alias Sensocto.Simulator.TrackPlayer
+  alias Sensocto.Simulator.MotionKeyframes
   require Logger
 
   @doc """
@@ -247,308 +248,96 @@ defmodule Sensocto.Simulator.DataGenerator do
     state
   end
 
-  # Generate 33 MediaPipe pose landmarks with realistic motion
+  # Generate 33 MediaPipe pose landmarks with realistic motion using keyframe interpolation
   # Landmarks: 0-10 face, 11-12 shoulders, 13-14 elbows, 15-16 wrists,
   # 17-22 hands, 23-24 hips, 25-26 knees, 27-28 ankles, 29-32 feet
   defp generate_skeleton_landmarks(state, time, motion_type) do
     phase = state.phase
     speed = state.speed_factor
 
-    # Base standing pose (normalized 0-1 coordinates, facing camera)
-    base_pose = get_base_pose()
+    # Get keyframes and cycle duration for this motion type
+    keyframes = MotionKeyframes.get_keyframes(motion_type)
+    cycle_duration = MotionKeyframes.cycle_duration(motion_type)
 
-    # Apply motion based on type
-    animated_pose =
-      case motion_type do
-        :idle -> apply_idle_motion(base_pose, time, phase, speed)
-        :walking -> apply_walking_motion(base_pose, time, phase, speed)
-        :waving -> apply_waving_motion(base_pose, time, phase, speed)
-        :jumping -> apply_jumping_motion(base_pose, time, phase, speed)
-        :dancing -> apply_dancing_motion(base_pose, time, phase, speed)
-        :exercise -> apply_exercise_motion(base_pose, time, phase, speed)
-        _ -> apply_idle_motion(base_pose, time, phase, speed)
-      end
+    # Calculate position in animation cycle (0.0 to 1.0)
+    # Phase offset provides variation between different sensors
+    cycle_time = time * speed + phase
+    normalized_time = :math.fmod(cycle_time, cycle_duration) / cycle_duration
+
+    # Ensure normalized_time is positive
+    normalized_time = if normalized_time < 0, do: normalized_time + 1.0, else: normalized_time
+
+    # Interpolate between keyframes
+    animated_pose = interpolate_keyframes(keyframes, normalized_time)
 
     # Add slight noise for realism
     add_tracking_noise(animated_pose)
   end
 
-  # Base standing T-pose (normalized coordinates)
-  defp get_base_pose do
-    [
-      # Face (0-10)
-      %{x: 0.5, y: 0.12, v: 0.99},
-      # 0: nose
-      %{x: 0.48, y: 0.10, v: 0.95},
-      # 1: left eye inner
-      %{x: 0.47, y: 0.10, v: 0.95},
-      # 2: left eye
-      %{x: 0.46, y: 0.10, v: 0.95},
-      # 3: left eye outer
-      %{x: 0.52, y: 0.10, v: 0.95},
-      # 4: right eye inner
-      %{x: 0.53, y: 0.10, v: 0.95},
-      # 5: right eye
-      %{x: 0.54, y: 0.10, v: 0.95},
-      # 6: right eye outer
-      %{x: 0.44, y: 0.11, v: 0.90},
-      # 7: left ear
-      %{x: 0.56, y: 0.11, v: 0.90},
-      # 8: right ear
-      %{x: 0.49, y: 0.14, v: 0.95},
-      # 9: mouth left
-      %{x: 0.51, y: 0.14, v: 0.95},
-      # 10: mouth right
-      # Upper body (11-16)
-      %{x: 0.40, y: 0.22, v: 0.99},
-      # 11: left shoulder
-      %{x: 0.60, y: 0.22, v: 0.99},
-      # 12: right shoulder
-      %{x: 0.35, y: 0.35, v: 0.95},
-      # 13: left elbow
-      %{x: 0.65, y: 0.35, v: 0.95},
-      # 14: right elbow
-      %{x: 0.32, y: 0.48, v: 0.90},
-      # 15: left wrist
-      %{x: 0.68, y: 0.48, v: 0.90},
-      # 16: right wrist
-      # Hands (17-22)
-      %{x: 0.30, y: 0.50, v: 0.85},
-      # 17: left pinky
-      %{x: 0.70, y: 0.50, v: 0.85},
-      # 18: right pinky
-      %{x: 0.31, y: 0.51, v: 0.85},
-      # 19: left index
-      %{x: 0.69, y: 0.51, v: 0.85},
-      # 20: right index
-      %{x: 0.30, y: 0.49, v: 0.85},
-      # 21: left thumb
-      %{x: 0.70, y: 0.49, v: 0.85},
-      # 22: right thumb
-      # Lower body (23-28)
-      %{x: 0.45, y: 0.52, v: 0.99},
-      # 23: left hip
-      %{x: 0.55, y: 0.52, v: 0.99},
-      # 24: right hip
-      %{x: 0.44, y: 0.72, v: 0.95},
-      # 25: left knee
-      %{x: 0.56, y: 0.72, v: 0.95},
-      # 26: right knee
-      %{x: 0.43, y: 0.92, v: 0.90},
-      # 27: left ankle
-      %{x: 0.57, y: 0.92, v: 0.90},
-      # 28: right ankle
-      # Feet (29-32)
-      %{x: 0.42, y: 0.95, v: 0.85},
-      # 29: left heel
-      %{x: 0.58, y: 0.95, v: 0.85},
-      # 30: right heel
-      %{x: 0.41, y: 0.97, v: 0.80},
-      # 31: left foot index
-      %{x: 0.59, y: 0.97, v: 0.80}
-      # 32: right foot index
-    ]
-  end
+  # Interpolate between keyframes based on normalized time (0.0 to 1.0)
+  defp interpolate_keyframes(keyframes, normalized_time) do
+    # Find the two keyframes to interpolate between
+    {prev_frame, next_frame, blend_factor} = find_keyframe_pair(keyframes, normalized_time)
 
-  # Idle breathing and subtle sway
-  defp apply_idle_motion(pose, time, phase, speed) do
-    breath = :math.sin(time * 0.5 * speed + phase) * 0.005
-    sway = :math.sin(time * 0.3 * speed + phase) * 0.008
-
-    Enum.with_index(pose)
-    |> Enum.map(fn {lm, idx} ->
-      cond do
-        # Upper body breathing
-        idx in [11, 12, 13, 14, 15, 16] ->
-          %{lm | y: lm.y + breath, x: lm.x + sway * 0.5}
-
-        # Head subtle movement
-        idx in 0..10 ->
-          %{lm | y: lm.y + breath * 0.5, x: lm.x + sway * 0.3}
-
-        true ->
-          lm
-      end
+    # Interpolate each landmark
+    Enum.zip(prev_frame.landmarks, next_frame.landmarks)
+    |> Enum.map(fn {prev_lm, next_lm} ->
+      %{
+        x: lerp(prev_lm.x, next_lm.x, blend_factor),
+        y: lerp(prev_lm.y, next_lm.y, blend_factor),
+        v: lerp(prev_lm.v, next_lm.v, blend_factor)
+      }
     end)
   end
 
-  # Walking cycle animation
-  defp apply_walking_motion(pose, time, phase, speed) do
-    cycle = time * 2.0 * speed + phase
-    step_phase = :math.sin(cycle)
-    arm_swing = :math.sin(cycle) * 0.08
-    leg_swing = :math.sin(cycle) * 0.06
-    bounce = abs(:math.sin(cycle)) * 0.015
+  # Find the two keyframes surrounding the current time and calculate blend factor
+  defp find_keyframe_pair(keyframes, normalized_time) do
+    # Find the keyframe just before or at normalized_time
+    prev_idx =
+      keyframes
+      |> Enum.with_index()
+      |> Enum.filter(fn {kf, _idx} -> kf.time <= normalized_time end)
+      |> Enum.max_by(fn {kf, _idx} -> kf.time end, fn -> {hd(keyframes), 0} end)
+      |> elem(1)
 
-    Enum.with_index(pose)
-    |> Enum.map(fn {lm, idx} ->
-      case idx do
-        # Left arm swings opposite to left leg
-        13 -> %{lm | y: lm.y + arm_swing * 0.5}
-        15 -> %{lm | y: lm.y + arm_swing}
-        # Right arm
-        14 -> %{lm | y: lm.y - arm_swing * 0.5}
-        16 -> %{lm | y: lm.y - arm_swing}
-        # Left leg
-        25 -> %{lm | y: lm.y + leg_swing * 0.5 - bounce, x: lm.x + step_phase * 0.02}
-        27 -> %{lm | y: lm.y + leg_swing - bounce * 2, x: lm.x + step_phase * 0.03}
-        # Right leg
-        26 -> %{lm | y: lm.y - leg_swing * 0.5 - bounce, x: lm.x - step_phase * 0.02}
-        28 -> %{lm | y: lm.y - leg_swing - bounce * 2, x: lm.x - step_phase * 0.03}
-        # Body bounce
-        _ when idx in 0..16 -> %{lm | y: lm.y - bounce}
-        _ -> lm
+    # Next keyframe (wraps around to first)
+    next_idx = rem(prev_idx + 1, length(keyframes))
+
+    prev_frame = Enum.at(keyframes, prev_idx)
+    next_frame = Enum.at(keyframes, next_idx)
+
+    # Calculate time span between keyframes (handling wrap-around)
+    time_span =
+      if next_idx == 0 do
+        # Wrapping from last keyframe to first
+        1.0 - prev_frame.time + next_frame.time
+      else
+        next_frame.time - prev_frame.time
       end
-    end)
+
+    # Calculate how far we are between the two keyframes
+    time_since_prev =
+      if next_idx == 0 and normalized_time < prev_frame.time do
+        normalized_time + (1.0 - prev_frame.time)
+      else
+        normalized_time - prev_frame.time
+      end
+
+    # Blend factor (0.0 = prev_frame, 1.0 = next_frame)
+    blend_factor = if time_span > 0, do: time_since_prev / time_span, else: 0.0
+    blend_factor = max(0.0, min(1.0, blend_factor))
+
+    # Apply smoothstep for smoother animation (ease in/out)
+    blend_factor = smoothstep(blend_factor)
+
+    {prev_frame, next_frame, blend_factor}
   end
 
-  # Waving hand animation
-  defp apply_waving_motion(pose, time, phase, speed) do
-    wave = :math.sin(time * 4.0 * speed + phase)
-    breath = :math.sin(time * 0.5 * speed + phase) * 0.005
+  # Linear interpolation
+  defp lerp(a, b, t), do: a + (b - a) * t
 
-    Enum.with_index(pose)
-    |> Enum.map(fn {lm, idx} ->
-      case idx do
-        # Right arm raised and waving
-        14 -> %{lm | x: lm.x + 0.05, y: 0.15 + wave * 0.03}
-        16 -> %{lm | x: lm.x + 0.10, y: 0.08 + wave * 0.05}
-        18 -> %{lm | x: lm.x + 0.12, y: 0.05 + wave * 0.06}
-        20 -> %{lm | x: lm.x + 0.12, y: 0.05 + wave * 0.06}
-        22 -> %{lm | x: lm.x + 0.11, y: 0.06 + wave * 0.05}
-        # Subtle body movement
-        _ when idx in 0..16 -> %{lm | y: lm.y + breath}
-        _ -> lm
-      end
-    end)
-  end
-
-  # Jumping animation
-  defp apply_jumping_motion(pose, time, phase, speed) do
-    cycle = time * 1.5 * speed + phase
-    jump_phase = rem(trunc(cycle), 4)
-    progress = cycle - trunc(cycle)
-
-    # Jump height based on phase
-    jump_height =
-      case jump_phase do
-        0 -> -progress * 0.02
-        1 -> -0.02 - :math.sin(progress * :math.pi()) * 0.15
-        2 -> -0.02 - (1 - progress) * 0.02
-        _ -> 0
-      end
-
-    # Arms up during jump
-    arms_up =
-      case jump_phase do
-        1 -> :math.sin(progress * :math.pi()) * 0.15
-        _ -> 0
-      end
-
-    Enum.with_index(pose)
-    |> Enum.map(fn {lm, idx} ->
-      base = %{lm | y: lm.y + jump_height}
-
-      case idx do
-        # Arms raise during jump
-        13 -> %{base | y: base.y - arms_up * 0.5}
-        14 -> %{base | y: base.y - arms_up * 0.5}
-        15 -> %{base | y: base.y - arms_up}
-        16 -> %{base | y: base.y - arms_up}
-        # Knees bend on landing
-        25 when jump_phase == 3 -> %{base | y: base.y + progress * 0.03}
-        26 when jump_phase == 3 -> %{base | y: base.y + progress * 0.03}
-        _ -> base
-      end
-    end)
-  end
-
-  # Dancing animation with more complex movement
-  defp apply_dancing_motion(pose, time, phase, speed) do
-    beat = time * 2.0 * speed + phase
-    bounce = abs(:math.sin(beat * 2)) * 0.02
-    hip_sway = :math.sin(beat) * 0.03
-    arm_groove = :math.sin(beat * 2) * 0.06
-
-    Enum.with_index(pose)
-    |> Enum.map(fn {lm, idx} ->
-      case idx do
-        # Hip sway
-        23 -> %{lm | x: lm.x + hip_sway, y: lm.y - bounce}
-        24 -> %{lm | x: lm.x + hip_sway, y: lm.y - bounce}
-        # Arms grooving
-        13 -> %{lm | x: lm.x - arm_groove * 0.5, y: lm.y - bounce + abs(arm_groove) * 0.3}
-        14 -> %{lm | x: lm.x + arm_groove * 0.5, y: lm.y - bounce + abs(arm_groove) * 0.3}
-        15 -> %{lm | x: lm.x - arm_groove, y: lm.y - bounce * 2 + abs(arm_groove) * 0.5}
-        16 -> %{lm | x: lm.x + arm_groove, y: lm.y - bounce * 2 + abs(arm_groove) * 0.5}
-        # Head bobbing
-        _ when idx in 0..10 -> %{lm | y: lm.y - bounce * 1.5, x: lm.x + hip_sway * 0.5}
-        # Body bounce
-        _ when idx in 11..22 -> %{lm | y: lm.y - bounce, x: lm.x + hip_sway * 0.3}
-        _ -> lm
-      end
-    end)
-  end
-
-  # Exercise/workout animation (squats, arm raises)
-  defp apply_exercise_motion(pose, time, phase, speed) do
-    cycle = time * 0.8 * speed + phase
-    exercise_phase = rem(trunc(cycle), 3)
-    progress = :math.sin((cycle - trunc(cycle)) * :math.pi())
-
-    case exercise_phase do
-      # Squat
-      0 ->
-        squat_depth = progress * 0.12
-
-        Enum.with_index(pose)
-        |> Enum.map(fn {lm, idx} ->
-          case idx do
-            # Knees bend
-            25 -> %{lm | y: lm.y + squat_depth * 0.6, x: lm.x - 0.02}
-            26 -> %{lm | y: lm.y + squat_depth * 0.6, x: lm.x + 0.02}
-            # Hips lower
-            23 -> %{lm | y: lm.y + squat_depth}
-            24 -> %{lm | y: lm.y + squat_depth}
-            # Upper body lowers
-            _ when idx in 0..22 -> %{lm | y: lm.y + squat_depth * 0.8}
-            _ -> lm
-          end
-        end)
-
-      # Arm raises
-      1 ->
-        arm_height = progress * 0.25
-
-        Enum.with_index(pose)
-        |> Enum.map(fn {lm, idx} ->
-          case idx do
-            13 -> %{lm | y: lm.y - arm_height * 0.5}
-            14 -> %{lm | y: lm.y - arm_height * 0.5}
-            15 -> %{lm | y: lm.y - arm_height, x: lm.x - 0.05}
-            16 -> %{lm | y: lm.y - arm_height, x: lm.x + 0.05}
-            _ -> lm
-          end
-        end)
-
-      # Side stretch
-      _ ->
-        stretch = progress * 0.08
-        side = if rem(trunc(cycle / 3), 2) == 0, do: 1, else: -1
-
-        Enum.with_index(pose)
-        |> Enum.map(fn {lm, idx} ->
-          case idx do
-            # Arm over head
-            15 when side > 0 -> %{lm | y: lm.y - 0.35, x: lm.x + stretch}
-            16 when side < 0 -> %{lm | y: lm.y - 0.35, x: lm.x - stretch}
-            # Body lean
-            _ when idx in 0..22 -> %{lm | x: lm.x + stretch * side * 0.3}
-            _ -> lm
-          end
-        end)
-    end
-  end
+  # Smoothstep function for easing
+  defp smoothstep(t), do: t * t * (3 - 2 * t)
 
   # Add slight tracking noise for realism
   defp add_tracking_noise(pose) do

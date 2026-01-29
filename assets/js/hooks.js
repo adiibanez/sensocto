@@ -2,8 +2,12 @@ import Sortable from 'sortablejs';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import WhiteboardHook from './hooks/whiteboard_hook';
 import ClientHealthHook from './hooks/client_health_hook';
+import { VirtualScrollHook } from './hooks/virtual_scroll';
 
 let Hooks = {};
+
+// Virtual Scroll Hook - platform-adaptive infinite scroll for sensor grid
+Hooks.VirtualScrollHook = VirtualScrollHook;
 
 // Whiteboard Hook
 Hooks.WhiteboardHook = WhiteboardHook;

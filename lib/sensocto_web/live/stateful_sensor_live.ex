@@ -511,8 +511,13 @@ defmodule SensoctoWeb.StatefulSensorLive do
   end
 
   # Latency ping/pong - client sends ping with ID, we echo it back for roundtrip measurement
+  # Include adaptive ping interval based on system load and sensor count
   def handle_event("latency_ping", %{"ping_id" => ping_id}, socket) do
-    {:noreply, push_event(socket, "latency_pong", %{ping_id: ping_id})}
+    # Calculate adaptive ping interval based on system state
+    next_interval_ms = calculate_adaptive_ping_interval(socket)
+
+    {:noreply,
+     push_event(socket, "latency_pong", %{ping_id: ping_id, next_interval_ms: next_interval_ms})}
   end
 
   # Client reports measured roundtrip latency
@@ -802,5 +807,57 @@ defmodule SensoctoWeb.StatefulSensorLive do
         {"ease-out duration-3000", "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
          "opacity-100 translate-y-0 sm:scale-100"}
     )
+  end
+
+  # Calculate ping interval based on attention level and system load
+  # High attention sensors ping more frequently, low attention less
+  @base_ping_interval_ms 3000
+  @min_ping_interval_ms 2000
+  @max_ping_interval_ms 30000
+
+  defp calculate_adaptive_ping_interval(socket) do
+    attention_level = socket.assigns[:attention_level] || :none
+
+    # Get system load multiplier (1.0 to 5.0)
+    load_multiplier =
+      try do
+        Sensocto.SystemLoadMonitor.get_load_multiplier()
+      catch
+        :exit, _ -> 1.0
+      end
+
+    # Base interval adjusted by attention level
+    # High attention: faster pings (0.5x), Medium: normal (1x), Low/None: slower (3-5x)
+    attention_multiplier =
+      case attention_level do
+        :high -> 0.5
+        :medium -> 1.0
+        :low -> 3.0
+        :none -> 5.0
+        _ -> 2.0
+      end
+
+    # Count sensors for additional scaling (many sensors = longer intervals for low-attention ones)
+    sensor_count =
+      try do
+        :ets.info(:sensor_attention_cache, :size) || 50
+      rescue
+        _ -> 50
+      end
+
+    # Scale up interval for low-attention sensors when many sensors present
+    count_factor =
+      if attention_level in [:low, :none] and sensor_count > 50 do
+        min(3.0, sensor_count / 50)
+      else
+        1.0
+      end
+
+    # Calculate final interval
+    interval =
+      trunc(@base_ping_interval_ms * attention_multiplier * load_multiplier * count_factor)
+
+    # Clamp to min/max
+    max(@min_ping_interval_ms, min(@max_ping_interval_ms, interval))
   end
 end

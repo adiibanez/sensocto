@@ -553,19 +553,19 @@ defmodule SensoctoWeb.AboutLive do
                 </div>
               </div>
               
-    <!-- Intimacy & Consent -->
+    <!-- Intimacy & Connection -->
               <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 hover:border-pink-500/30 transition-colors">
                 <div class="flex items-start gap-4">
                   <div class="p-3 bg-pink-500/20 rounded-lg shrink-0">
                     <.icon name="hero-sparkles" class="h-6 w-6 text-pink-400" />
                   </div>
                   <div>
-                    <h3 class="text-lg font-semibold text-white mb-2">Intimacy & Embodied Consent</h3>
+                    <h3 class="text-lg font-semibold text-white mb-2">Intimacy & Real Connection</h3>
                     <p class="text-gray-400 mb-3">
-                      Real arousal, real consent, real connection. Partners see each other's actual physiological state—no guessing, no performance. Marginalized communities finally served by technology that respects their needs.
+                      Real arousal, real connection. Digital lovers, musicians and audiences, actors and viewers, interviewers and guests, sensual caregivers—anyone sharing intimate moments across distance can finally feel each other's presence.
                     </p>
                     <p class="text-pink-400 text-sm">
-                      "Consent infrastructure for bodies, not just words."
+                      "Presence you can feel, not just see."
                     </p>
                   </div>
                 </div>
@@ -586,6 +586,26 @@ defmodule SensoctoWeb.AboutLive do
                     </p>
                     <p class="text-cyan-400 text-sm">
                       "Emergent collective intelligence through shared physiology."
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+    <!-- Environmental Monitoring -->
+              <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 hover:border-emerald-500/30 transition-colors">
+                <div class="flex items-start gap-4">
+                  <div class="p-3 bg-emerald-500/20 rounded-lg shrink-0">
+                    <.icon name="hero-globe-alt" class="h-6 w-6 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-semibold text-white mb-2">
+                      Environmental Monitoring
+                    </h3>
+                    <p class="text-gray-400 mb-3">
+                      Coral reef restoration with edge AI cameras detecting fish species and health metrics. Environmental sensors tracking water quality, temperature, and ecosystem vitals. Real-time telemetry from remote locations.
+                    </p>
+                    <p class="text-emerald-400 text-sm">
+                      "From coral reefs to urban gardens—sensing what matters."
                     </p>
                   </div>
                 </div>
@@ -749,31 +769,6 @@ defmodule SensoctoWeb.AboutLive do
                   <div class="text-pink-400 font-medium">Resource Arbitration</div>
                   <div class="text-gray-500">Competitive allocation</div>
                 </div>
-              </div>
-            </div>
-            
-    <!-- Tech Stack -->
-            <div class="mb-8">
-              <h3 class="text-xl font-semibold text-white mb-4">Built With</h3>
-              <div class="flex flex-wrap gap-2">
-                <span class="px-3 py-1 bg-purple-900/30 text-purple-300 rounded-full text-sm">
-                  Elixir/OTP
-                </span>
-                <span class="px-3 py-1 bg-orange-900/30 text-orange-300 rounded-full text-sm">
-                  Phoenix LiveView
-                </span>
-                <span class="px-3 py-1 bg-blue-900/30 text-blue-300 rounded-full text-sm">
-                  Ash Framework
-                </span>
-                <span class="px-3 py-1 bg-cyan-900/30 text-cyan-300 rounded-full text-sm">
-                  Iroh P2P
-                </span>
-                <span class="px-3 py-1 bg-green-900/30 text-green-300 rounded-full text-sm">
-                  WebRTC
-                </span>
-                <span class="px-3 py-1 bg-pink-900/30 text-pink-300 rounded-full text-sm">
-                  CRDT Sync
-                </span>
               </div>
             </div>
             

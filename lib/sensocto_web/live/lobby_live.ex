@@ -273,6 +273,26 @@ defmodule SensoctoWeb.LobbyLive do
     # Update PriorityLens focused sensor based on current view
     # ECG needs full data fidelity for waveform visualization
     socket = update_lens_focus_for_action(socket, socket.assigns.live_action)
+
+    # ECG view needs direct subscription to data:global for waveform data
+    # (PriorityLens only keeps latest value which breaks waveforms)
+    prev_action = socket.assigns[:prev_live_action]
+    curr_action = socket.assigns.live_action
+
+    socket =
+      cond do
+        curr_action == :ecg and prev_action != :ecg ->
+          Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:global")
+          assign(socket, :prev_live_action, curr_action)
+
+        curr_action != :ecg and prev_action == :ecg ->
+          Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:global")
+          assign(socket, :prev_live_action, curr_action)
+
+        true ->
+          assign(socket, :prev_live_action, curr_action)
+      end
+
     {:noreply, socket}
   end
 
@@ -819,11 +839,34 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
-  # Legacy: Handle batch measurements (now handled by lens_batch)
+  # Handle batch measurements directly for ECG view (PriorityLens only keeps latest value)
+  # ECG waveform visualization needs all samples in correct order
   @impl true
-  def handle_info({:measurements_batch, {_sensor_id, _measurements_list}}, socket) do
-    # Data now comes via PriorityLens - this handler is deprecated
-    {:noreply, socket}
+  def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
+      when is_list(measurements_list) do
+    case socket.assigns.live_action do
+      :ecg ->
+        # ECG needs all measurements for proper waveform visualization
+        ecg_measurements =
+          measurements_list
+          |> Enum.filter(&(&1.attribute_id == "ecg"))
+
+        socket =
+          Enum.reduce(ecg_measurements, socket, fn m, sock ->
+            push_event(sock, "composite_measurement", %{
+              sensor_id: sensor_id,
+              attribute_id: m.attribute_id,
+              payload: m.payload,
+              timestamp: m.timestamp
+            })
+          end)
+
+        {:noreply, socket}
+
+      _ ->
+        # Other views use PriorityLens
+        {:noreply, socket}
+    end
   end
 
   # Flush measurement buffer - sends batched measurements to clients

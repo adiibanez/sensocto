@@ -61,10 +61,10 @@
 
     pendingUpdates.forEach((points, sensorId) => {
       let data = sensorData.get(sensorId) || [];
-      // Append new points
+      // Append new points - data arrives in order from server, no sorting needed
+      // Sorting breaks ECG waveforms because samples with same/similar timestamps
+      // get reordered randomly, creating horizontal lines
       data.push(...points);
-      // Sort by timestamp to prevent random connecting lines
-      data.sort((a, b) => a.x - b.x);
       // Trim from start efficiently using slice instead of shift loop
       if (data.length > MAX_DATA_POINTS) {
         data = data.slice(data.length - MAX_DATA_POINTS);
@@ -222,18 +222,17 @@
   }
 
   function getFilteredData(data: Array<{ x: number; y: number }>, cutoff: number): Array<[number, number]> {
-    // Binary search for cutoff point since data is sorted by time
+    // Find first point after cutoff - scan from start since data is appended in order
+    // but might have small timestamp variations within batches
     let start = 0;
-    let end = data.length;
-    while (start < end) {
-      const mid = (start + end) >> 1;
-      if (data[mid].x < cutoff) {
-        start = mid + 1;
-      } else {
-        end = mid;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i].x >= cutoff) {
+        start = i;
+        break;
       }
+      start = i + 1;
     }
-    // Single pass: slice and transform
+    // Transform to array format for Highcharts
     const result: Array<[number, number]> = new Array(data.length - start);
     for (let i = start; i < data.length; i++) {
       result[i - start] = [data[i].x, data[i].y];

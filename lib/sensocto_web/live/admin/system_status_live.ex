@@ -29,6 +29,8 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   require Logger
 
   @refresh_interval 2000
+  # Debounce attention updates to avoid excessive ETS scans (100ms window)
+  @attention_debounce_ms 100
 
   @impl true
   def mount(_params, _session, socket) do
@@ -37,11 +39,13 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "bio:novelty:global")
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "bio:circadian")
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "bio:homeostasis")
+      # Subscribe to attention changes for real-time updates
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
 
       send(self(), :refresh_metrics)
     end
 
-    {:ok, assign_initial_state(socket)}
+    {:ok, assign_initial_state(socket) |> assign(:attention_update_timer, nil)}
   end
 
   @impl true
@@ -96,6 +100,51 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
       |> assign(:homeostatic_offsets, offsets)
 
     {:noreply, socket}
+  end
+
+  # Handle attention changes - debounce to avoid excessive ETS scans
+  @impl true
+  def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do
+    # Cancel any pending timer
+    if socket.assigns.attention_update_timer do
+      Process.cancel_timer(socket.assigns.attention_update_timer)
+    end
+
+    # Schedule debounced update
+    timer = Process.send_after(self(), :update_attention_counts, @attention_debounce_ms)
+    {:noreply, assign(socket, :attention_update_timer, timer)}
+  end
+
+  # Perform the actual attention counts update (debounced)
+  @impl true
+  def handle_info(:update_attention_counts, socket) do
+    # Update attention counts from ETS directly (fast, no GenServer blocking)
+    # This is the high-priority path for real-time attention updates
+    attention_counts =
+      try do
+        :ets.tab2list(:sensor_attention_cache)
+        |> Enum.reduce(%{high: 0, medium: 0, low: 0, none: 0}, fn {_sensor_id, level}, acc ->
+          Map.update(acc, level, 1, &(&1 + 1))
+        end)
+      rescue
+        ArgumentError -> socket.assigns.attention_summary.attention_counts
+      end
+
+    total_sensors =
+      try do
+        :ets.info(:sensor_attention_cache, :size) || 0
+      rescue
+        _ -> socket.assigns.attention_summary.total_sensors
+      end
+
+    # Update only the ETS-derived values (fast path)
+    # Pinned sensors and battery states are updated on the slower refresh cycle
+    updated_summary =
+      socket.assigns.attention_summary
+      |> Map.put(:attention_counts, attention_counts)
+      |> Map.put(:total_sensors, total_sensors)
+
+    {:noreply, assign(socket, attention_summary: updated_summary, attention_update_timer: nil)}
   end
 
   # Catch-all for other messages

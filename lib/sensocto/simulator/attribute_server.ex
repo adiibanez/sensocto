@@ -315,6 +315,15 @@ defmodule Sensocto.Simulator.AttributeServer do
   @impl true
   def handle_info({:attention_changed, _}, state), do: {:noreply, state}
 
+  # Handle memory protection changes from SystemLoadMonitor
+  # When memory pressure is high, the system activates memory protection mode
+  @impl true
+  def handle_info({:memory_protection_changed, %{active: _active}}, state) do
+    # Memory protection is handled at the system level via load multipliers
+    # AttributeServer doesn't need to take additional action
+    {:noreply, state}
+  end
+
   # Handle system load changes from SystemLoadMonitor
   @impl true
   def handle_info(

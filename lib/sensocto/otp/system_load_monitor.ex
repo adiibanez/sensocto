@@ -21,6 +21,8 @@ defmodule Sensocto.SystemLoadMonitor do
   use GenServer
   require Logger
 
+  alias Sensocto.Bio.HomeostaticTuner
+
   @sample_interval 2_000
   @scheduler_sample_interval 1_000
 
@@ -301,6 +303,9 @@ defmodule Sensocto.SystemLoadMonitor do
       update_ets_cache(new_level)
       broadcast_load_change(new_level, new_state)
     end
+
+    # Record sample for HomeostaticTuner (tracks load distribution over time)
+    HomeostaticTuner.record_sample(new_level)
 
     Process.send_after(self(), :calculate_load, @sample_interval)
     {:noreply, %{new_state | current_load_level: new_level}}

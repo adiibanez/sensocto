@@ -75,15 +75,19 @@
 
         <button
           id={"pin_#{@sensor_id}"}
-          class="text-gray-400 hover:text-orange-400 transition-colors"
-          title="Pin sensor for high-frequency updates"
+          class={
+            if @is_pinned,
+              do: "text-orange-400 hover:text-orange-300 transition-colors",
+              else: "text-gray-400 hover:text-orange-400 transition-colors"
+          }
+          title={if @is_pinned, do: "Unpin sensor", else: "Pin sensor for high-frequency updates"}
           phx-hook="SensorPinControl"
           data-sensor_id={@sensor_id}
-          data-pinned="false"
+          data-pinned={to_string(@is_pinned)}
         >
           <Heroicons.icon
             name="bolt"
-            type="outline"
+            type={if @is_pinned, do: "solid", else: "outline"}
             class="h-4 w-4"
           />
         </button>

@@ -166,6 +166,15 @@ defmodule SensoctoWeb.Router do
     end
   end
 
+  # Public system status page (no auth required)
+  scope "/", SensoctoWeb do
+    pipe_through [:browser]
+
+    live_session :public_status do
+      live "/system-status", Admin.SystemStatusLive, :index
+    end
+  end
+
   scope "/admin", SensoctoWeb do
     pipe_through [:browser, :admins_only]
 

@@ -182,6 +182,9 @@ defmodule SensoctoWeb.StatefulSensorLive do
     # Get initial attention level - now uses ETS lookup (fast, no GenServer call)
     initial_attention = AttentionTracker.get_sensor_attention_level(sensor_id)
 
+    # Check if sensor is pinned
+    is_pinned = sensor_pinned?(sensor_id)
+
     # Schedule the first throttle flush and re-fetch sensor state on connected mount
     # to ensure we have the latest attributes (battery, location, etc. may be registered
     # after the initial disconnected mount)
@@ -224,7 +227,9 @@ defmodule SensoctoWeb.StatefulSensorLive do
      |> assign(:latency_ms, nil)
      # Favorite tracking
      |> assign(:user_id, user_id)
-     |> assign(:is_favorite, is_favorite)}
+     |> assign(:is_favorite, is_favorite)
+     # Pin state
+     |> assign(:is_pinned, is_pinned)}
   end
 
   # def _render(assigns) do
@@ -737,6 +742,19 @@ defmodule SensoctoWeb.StatefulSensorLive do
   defp get_user_id(socket) do
     # Use socket id as user identifier, or current_user if available
     socket.id
+  end
+
+  defp sensor_pinned?(sensor_id) do
+    try do
+      state = AttentionTracker.get_state()
+
+      case Map.get(state.pinned_sensors, sensor_id) do
+        nil -> false
+        users -> MapSet.size(users) > 0
+      end
+    catch
+      :exit, _ -> false
+    end
   end
 
   # ============================================================================

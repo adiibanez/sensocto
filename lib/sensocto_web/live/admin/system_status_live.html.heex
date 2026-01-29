@@ -1,0 +1,410 @@
+<.breadcrumbs>
+  <:crumb navigate={~p"/admin/dashboard"}>Admin</:crumb>
+  <:crumb>System Status</:crumb>
+</.breadcrumbs>
+
+<div class="mb-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-white">System Status Dashboard</h1>
+      <p class="text-gray-400 text-sm mt-1">Real-time biomimetic system health</p>
+    </div>
+    <button
+      phx-click="force_refresh"
+      class="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors"
+    >
+      <Heroicons.icon name="arrow-path" type="outline" class="h-4 w-4" /> Refresh
+    </button>
+  </div>
+</div>
+
+<%!-- System Load Banner --%>
+<div class="bg-gray-800 rounded-lg p-4 mb-6 border border-gray-700">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+      <Heroicons.icon name="cpu-chip" type="outline" class="h-5 w-5 text-blue-400" /> System Load
+    </h2>
+    <.load_level_badge level={@system_metrics.load_level} />
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    <.metric_gauge
+      label="CPU"
+      value={@system_metrics.scheduler_utilization}
+      icon="cpu-chip"
+    />
+    <.metric_gauge
+      label="Memory"
+      value={@system_metrics.memory_pressure}
+      icon="server-stack"
+      warning={@system_metrics.memory_protection_active}
+    />
+    <.metric_gauge
+      label="PubSub"
+      value={@system_metrics.pubsub_pressure}
+      icon="signal"
+    />
+    <.metric_gauge
+      label="Queues"
+      value={@system_metrics.message_queue_pressure}
+      icon="queue-list"
+    />
+    <div class="col-span-2 flex flex-col justify-center">
+      <span class="text-xs text-gray-500 uppercase tracking-wide">Batch Multiplier</span>
+      <span class="text-2xl font-mono text-white">
+        {Float.round(@system_metrics.load_multiplier * 1.0, 2)}x
+      </span>
+      <span
+        :if={@system_metrics.memory_protection_active}
+        class="text-xs text-red-400 flex items-center gap-1 mt-1"
+      >
+        <Heroicons.icon name="shield-exclamation" type="solid" class="h-3 w-3" />
+        Memory Protection Active
+      </span>
+    </div>
+  </div>
+</div>
+
+<%!-- Bio Module Cards Grid --%>
+<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+  <%!-- Circadian Scheduler Card --%>
+  <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-md font-semibold text-white flex items-center gap-2">
+        <Heroicons.icon name="sun" type="outline" class="h-5 w-5 text-yellow-400" />
+        Circadian Scheduler
+      </h3>
+      <.phase_badge phase={@circadian_phase} />
+    </div>
+    <p class="text-xs text-gray-500 mb-3">SCN - Master clock for daily rhythms</p>
+
+    <div class="space-y-3">
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-400">Phase Adjustment</span>
+        <span class={"font-mono text-lg " <> if(@circadian_adjustment < 1.0, do: "text-green-400", else: if(@circadian_adjustment > 1.0, do: "text-orange-400", else: "text-gray-300"))}>
+          {Float.round(@circadian_adjustment * 1.0, 2)}x
+        </span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-400">Current Hour</span>
+        <span class="font-mono text-gray-300">{DateTime.utc_now().hour}:00 UTC</span>
+      </div>
+
+      <%!-- 24-hour timeline --%>
+      <div class="mt-3">
+        <span class="text-xs text-gray-500 mb-1 block">Learned Profile (24h)</span>
+        <div class="flex gap-px h-8">
+          <%= for hour <- 0..23 do %>
+            <% load = Map.get(@circadian_profile, hour, {0.5, 0.0}) %>
+            <% {score, _confidence} = if is_tuple(load), do: load, else: {load, 0.0} %>
+            <div
+              class={"flex-1 rounded-sm " <> profile_bar_color(score) <> if(hour == DateTime.utc_now().hour, do: " ring-2 ring-white", else: "")}
+              style={"height: #{max(10, score * 100)}%"}
+              title={"Hour #{hour}: #{Float.round(score * 100, 0)}%"}
+            />
+          <% end %>
+        </div>
+        <div class="flex justify-between text-xs text-gray-600 mt-1">
+          <span>0h</span>
+          <span>12h</span>
+          <span>23h</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%!-- Novelty Detector Card --%>
+  <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-md font-semibold text-white flex items-center gap-2">
+        <Heroicons.icon name="bolt" type="outline" class="h-5 w-5 text-purple-400" />
+        Novelty Detector
+      </h3>
+      <span class="text-xs text-gray-500">Threshold: {@novelty_threshold}σ</span>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">Locus Coeruleus - Anomaly detection</p>
+
+    <div class="space-y-2 max-h-48 overflow-y-auto">
+      <%= if Enum.empty?(@novelty_events) do %>
+        <p class="text-gray-500 text-sm text-center py-4">No recent novelty events</p>
+      <% else %>
+        <%= for event <- @novelty_events do %>
+          <div class="flex items-center justify-between text-sm bg-gray-700/50 rounded px-2 py-1">
+            <span class="text-gray-300 truncate max-w-[150px]" title={event.sensor_id}>
+              {event.sensor_id}
+            </span>
+            <span class="text-purple-400 font-mono">
+              {Float.round(event.z_score * 1.0, 1)}σ
+            </span>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <%!-- Predictive Load Balancer Card --%>
+  <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-md font-semibold text-white flex items-center gap-2">
+        <Heroicons.icon name="chart-bar" type="outline" class="h-5 w-5 text-cyan-400" />
+        Predictive Balancer
+      </h3>
+      <span class="text-xs text-gray-500">{map_size(@predictions)} predictions</span>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">Cerebellum - Temporal pattern learning</p>
+
+    <div class="space-y-2 max-h-48 overflow-y-auto">
+      <%= if Enum.empty?(@predictions) do %>
+        <p class="text-gray-500 text-sm text-center py-4">No active predictions</p>
+      <% else %>
+        <%= for {sensor_id, prediction} <- Enum.take(@predictions, 8) do %>
+          <div class="flex items-center justify-between text-sm bg-gray-700/50 rounded px-2 py-1">
+            <span class="text-gray-300 truncate max-w-[120px]" title={sensor_id}>
+              {sensor_id}
+            </span>
+            <.prediction_badge prediction={prediction} />
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <%!-- Resource Arbiter Card --%>
+  <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-md font-semibold text-white flex items-center gap-2">
+        <Heroicons.icon name="scale" type="outline" class="h-5 w-5 text-amber-400" />
+        Resource Arbiter
+      </h3>
+      <span class="text-xs text-gray-500">{map_size(@allocations)} sensors</span>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">Retina - Lateral inhibition (winner-take-more)</p>
+
+    <%= if Enum.empty?(@allocations) do %>
+      <p class="text-gray-500 text-sm text-center py-4">No allocations</p>
+    <% else %>
+      <%!-- Throttle multiplier spectrum --%>
+      <% all_sorted = @allocations |> Enum.sort_by(fn {_, mult} -> mult end)
+      total_count = length(all_sorted)
+      {_min_sensor, min_mult} = List.first(all_sorted)
+      {_max_sensor, max_mult} = List.last(all_sorted)
+      prioritized = Enum.count(all_sorted, fn {_, m} -> m < 1.0 end)
+      baseline = Enum.count(all_sorted, fn {_, m} -> m >= 1.0 and m <= 1.5 end)
+      throttled = Enum.count(all_sorted, fn {_, m} -> m > 1.5 end) %>
+
+      <%!-- Multiplier scale legend --%>
+      <div class="mb-3">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span class="text-green-400">Prioritized (&lt;1x)</span>
+          <span class="text-gray-400">Baseline (1x)</span>
+          <span class="text-red-400">Throttled (&gt;1x)</span>
+        </div>
+        <div class="h-2 rounded-full bg-gradient-to-r from-green-500 via-gray-500 to-red-500 opacity-50" />
+      </div>
+
+      <%!-- Distribution summary --%>
+      <div class="grid grid-cols-3 gap-2 mb-3 text-center">
+        <div class="bg-green-600/20 rounded px-2 py-1">
+          <div class="text-sm font-bold text-green-400">{prioritized}</div>
+          <div class="text-xs text-green-400/70">prioritized</div>
+        </div>
+        <div class="bg-gray-600/20 rounded px-2 py-1">
+          <div class="text-sm font-bold text-gray-400">{baseline}</div>
+          <div class="text-xs text-gray-400/70">baseline</div>
+        </div>
+        <div class="bg-red-600/20 rounded px-2 py-1">
+          <div class="text-sm font-bold text-red-400">{throttled}</div>
+          <div class="text-xs text-red-400/70">throttled</div>
+        </div>
+      </div>
+
+      <%!-- Multiplier range info --%>
+      <div class="text-xs text-gray-500 mb-3 flex justify-between">
+        <span>Range: {Float.round(min_mult, 2)}x - {Float.round(max_mult, 2)}x</span>
+        <span>{total_count} sensors</span>
+      </div>
+
+      <%!-- Show prioritized sensors if any exist --%>
+      <%= if prioritized > 0 do %>
+        <div class="text-xs text-gray-400 mb-1 flex items-center justify-between">
+          <span class="flex items-center gap-1">
+            <Heroicons.icon name="bolt" type="outline" class="h-3 w-3 text-green-400" />
+            Prioritized (faster updates)
+          </span>
+          <span class="text-green-400">{prioritized}</span>
+        </div>
+        <div class="space-y-1 mb-3">
+          <% prioritized_sensors =
+            Enum.filter(all_sorted, fn {_, m} -> m < 1.0 end) |> Enum.take(3) %>
+          <%= for {sensor_id, multiplier} <- prioritized_sensors do %>
+            <div class="flex items-center gap-2 text-sm bg-green-900/20 rounded px-2 py-1">
+              <span class="text-gray-300 truncate flex-1 text-xs" title={sensor_id}>
+                {String.slice(sensor_id, 0, 16)}
+              </span>
+              <span class="font-mono text-xs text-green-400">
+                {Float.round(multiplier * 1.0, 2)}x
+              </span>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <%!-- Least throttled (relative winners) --%>
+      <div class="text-xs text-gray-400 mb-1 flex items-center justify-between">
+        <span class="flex items-center gap-1">
+          <Heroicons.icon name="arrow-trending-up" type="outline" class="h-3 w-3 text-yellow-400" />
+          Least Throttled
+        </span>
+      </div>
+      <div class="space-y-1 mb-3">
+        <% least_throttled = all_sorted |> Enum.take(3) %>
+        <%= for {sensor_id, multiplier} <- least_throttled do %>
+          <div class="flex items-center gap-2 text-sm bg-yellow-900/20 rounded px-2 py-1">
+            <span class="text-gray-300 truncate flex-1 text-xs" title={sensor_id}>
+              {String.slice(sensor_id, 0, 16)}
+            </span>
+            <span class="font-mono text-xs text-yellow-400">
+              {Float.round(multiplier * 1.0, 2)}x
+            </span>
+          </div>
+        <% end %>
+      </div>
+
+      <%!-- Most throttled --%>
+      <div class="text-xs text-gray-400 mb-1 flex items-center justify-between">
+        <span class="flex items-center gap-1">
+          <Heroicons.icon name="arrow-trending-down" type="outline" class="h-3 w-3 text-red-400" />
+          Most Throttled
+        </span>
+      </div>
+      <div class="space-y-1">
+        <% most_throttled = all_sorted |> Enum.reverse() |> Enum.take(3) %>
+        <%= for {sensor_id, multiplier} <- most_throttled do %>
+          <div class="flex items-center gap-2 text-sm bg-red-900/20 rounded px-2 py-1">
+            <span class="text-gray-300 truncate flex-1 text-xs" title={sensor_id}>
+              {String.slice(sensor_id, 0, 16)}
+            </span>
+            <span class="font-mono text-xs text-red-400">
+              {Float.round(multiplier * 1.0, 2)}x
+            </span>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+  <%!-- Homeostatic Tuner Card --%>
+  <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-md font-semibold text-white flex items-center gap-2">
+        <Heroicons.icon
+          name="adjustments-vertical"
+          type="outline"
+          class="h-5 w-5 text-emerald-400"
+        /> Homeostatic Tuner
+      </h3>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">Synaptic Plasticity - Threshold adaptation</p>
+
+    <div class="space-y-3">
+      <div class="text-xs text-gray-400 mb-2">Target vs Actual Distribution</div>
+      <%= for level <- [:normal, :elevated, :high, :critical] do %>
+        <% target = Map.get(@homeostatic_target, level, 0.0) * 100 %>
+        <% actual = Map.get(@homeostatic_distribution, level, 0.0) * 100 %>
+        <% offset = Map.get(@homeostatic_offsets, level, 0.0) %>
+        <div class="flex items-center gap-2 text-xs">
+          <span class={"w-16 " <> level_color(level)}>{level}</span>
+          <div class="flex-1 h-3 bg-gray-700 rounded relative">
+            <div
+              class="absolute top-0 left-0 h-full bg-gray-500/50 rounded"
+              style={"width: #{target}%"}
+            />
+            <div
+              class={level_bar_color(level) <> " absolute top-0 left-0 h-full rounded"}
+              style={"width: #{actual}%"}
+            />
+          </div>
+          <span class="w-10 text-right text-gray-400">{Float.round(actual, 0)}%</span>
+          <span
+            :if={offset != 0.0}
+            class={"w-12 text-right font-mono " <> if(offset > 0, do: "text-red-400", else: "text-green-400")}
+          >
+            {if offset > 0, do: "+", else: ""}{Float.round(offset * 100, 1)}%
+          </span>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <%!-- Attention Summary Card --%>
+  <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-md font-semibold text-white flex items-center gap-2">
+        <Heroicons.icon name="eye" type="outline" class="h-5 w-5 text-blue-400" />
+        Attention Tracker
+      </h3>
+      <span class="text-xs text-gray-500">{@attention_summary.total_sensors} sensors</span>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">User attention coordination</p>
+
+    <div class="space-y-3">
+      <%!-- Attention level counts --%>
+      <div class="grid grid-cols-4 gap-2 text-center">
+        <div class="bg-green-600/20 rounded p-2">
+          <div class="text-lg font-bold text-green-400">
+            {@attention_summary.attention_counts.high}
+          </div>
+          <div class="text-xs text-green-400/70">High</div>
+        </div>
+        <div class="bg-yellow-600/20 rounded p-2">
+          <div class="text-lg font-bold text-yellow-400">
+            {@attention_summary.attention_counts.medium}
+          </div>
+          <div class="text-xs text-yellow-400/70">Medium</div>
+        </div>
+        <div class="bg-orange-600/20 rounded p-2">
+          <div class="text-lg font-bold text-orange-400">
+            {@attention_summary.attention_counts.low}
+          </div>
+          <div class="text-xs text-orange-400/70">Low</div>
+        </div>
+        <div class="bg-gray-600/20 rounded p-2">
+          <div class="text-lg font-bold text-gray-400">
+            {@attention_summary.attention_counts.none}
+          </div>
+          <div class="text-xs text-gray-400/70">None</div>
+        </div>
+      </div>
+
+      <%!-- Pinned sensors --%>
+      <%= if length(@attention_summary.pinned_sensors) > 0 do %>
+        <div class="text-xs text-gray-400 mt-3">
+          <span class="flex items-center gap-1">
+            <Heroicons.icon name="bolt" type="solid" class="h-3 w-3 text-orange-400" />
+            Pinned: {Enum.join(@attention_summary.pinned_sensors, ", ")}
+          </span>
+        </div>
+      <% end %>
+
+      <%!-- Battery summary --%>
+      <div class="text-xs text-gray-500 mt-3 pt-2 border-t border-gray-700">Battery States</div>
+      <div class="flex items-center gap-4 text-xs text-gray-400 mt-1">
+        <span class="flex items-center gap-1" title="Normal battery">
+          <Heroicons.icon name="battery-100" type="outline" class="h-3 w-3 text-green-400" />
+          <span class="text-green-400">{@attention_summary.battery_counts.normal}</span>
+          <span class="text-gray-500">ok</span>
+        </span>
+        <span class="flex items-center gap-1" title="Low battery">
+          <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3 text-yellow-400" />
+          <span class="text-yellow-400">{@attention_summary.battery_counts.low}</span>
+          <span class="text-gray-500">low</span>
+        </span>
+        <span class="flex items-center gap-1" title="Critical battery">
+          <Heroicons.icon name="battery-0" type="outline" class="h-3 w-3 text-red-400" />
+          <span class="text-red-400">{@attention_summary.battery_counts.critical}</span>
+          <span class="text-gray-500">crit</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>

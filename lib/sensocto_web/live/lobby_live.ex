@@ -66,10 +66,9 @@ defmodule SensoctoWeb.LobbyLive do
     # Extract stable list of sensor IDs - only changes when sensors are added/removed
     sensor_ids = sensors |> Map.keys() |> Enum.sort()
 
-    # Subscribe to data topics for all sensors (for composite views)
-    # Also subscribe to signal topics for attribute change notifications
+    # NOTE: Direct sensor subscriptions removed - now using PriorityLens for data delivery
+    # Signal subscriptions kept for attribute change notifications
     Enum.each(sensor_ids, fn sensor_id ->
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
     end)
 
@@ -191,7 +190,11 @@ defmodule SensoctoWeb.LobbyLive do
         priority_lens_registered: false,
         priority_lens_topic: nil,
         # Data mode: :realtime (batch) or :digest (low quality summary)
-        data_mode: :realtime
+        data_mode: :realtime,
+        # Current quality level for UI display
+        current_quality: :high,
+        # Manual quality override (nil = automatic, or :high/:medium/:low/:minimal)
+        quality_override: nil
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -670,11 +673,10 @@ defmodule SensoctoWeb.LobbyLive do
 
       # Only update if sensor list actually changed
       if new_sensor_ids != current_sensor_ids do
-        # Subscribe to data topics for any new sensors
+        # Subscribe to signal topics for any new sensors (data comes via PriorityLens)
         new_sensors = new_sensor_ids -- current_sensor_ids
 
         Enum.each(new_sensors, fn sensor_id ->
-          Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
           Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
         end)
 
@@ -803,148 +805,25 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
-  # Handle single measurement for composite views and individual sensors
+  # ==========================================================================
+  # Legacy Direct Measurement Handlers (DEPRECATED)
+  # These are kept for backwards compatibility but LobbyLive no longer
+  # subscribes to "data:#{sensor_id}" topics. Data now comes via PriorityLens.
+  # These handlers will only fire if messages come from other sources.
+  # ==========================================================================
+
+  # Legacy: Handle single measurement (now handled by lens_batch)
   @impl true
-  def handle_info(
-        {:measurement,
-         %{
-           :payload => payload,
-           :timestamp => timestamp,
-           :attribute_id => attribute_id,
-           :sensor_id => sensor_id
-         }},
-        socket
-      ) do
-    case socket.assigns.live_action do
-      # Composite views use composite_measurement event
-      action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
-        # Look up username from online sensors for display
-        username =
-          case Map.get(socket.assigns.sensors_online, sensor_id) do
-            %{username: name} when not is_nil(name) -> name
-            _ -> nil
-          end
-
-        {:noreply,
-         push_event(socket, "composite_measurement", %{
-           sensor_id: sensor_id,
-           username: username,
-           attribute_id: attribute_id,
-           payload: payload,
-           timestamp: timestamp
-         })}
-
-      # Sensors view uses measurement event for SensorDataAccumulator hook
-      :sensors ->
-        {:noreply,
-         push_event(socket, "measurement", %{
-           sensor_id: sensor_id,
-           attribute_id: attribute_id,
-           payload: payload,
-           timestamp: timestamp
-         })}
-
-      _ ->
-        {:noreply, socket}
-    end
+  def handle_info({:measurement, %{:sensor_id => _sensor_id}}, socket) do
+    # Data now comes via PriorityLens - this handler is deprecated
+    {:noreply, socket}
   end
 
-  # Handle batch measurements for composite views
+  # Legacy: Handle batch measurements (now handled by lens_batch)
   @impl true
-  def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
-      when is_list(measurements_list) do
-    case socket.assigns.live_action do
-      # ECG needs ALL measurements for proper waveform visualization (high-frequency data)
-      :ecg ->
-        # Group by attribute and send all ECG measurements
-        measurements_list
-        |> Enum.group_by(& &1.attribute_id)
-        |> Enum.reduce(socket, fn {attr_id, measurements}, acc ->
-          if attr_id == "ecg" do
-            # Send all measurements sorted by timestamp for proper waveform
-            sorted = Enum.sort_by(measurements, & &1.timestamp)
-
-            Enum.reduce(sorted, acc, fn m, sock ->
-              push_event(sock, "composite_measurement", %{
-                sensor_id: sensor_id,
-                attribute_id: attr_id,
-                payload: m.payload,
-                timestamp: m.timestamp
-              })
-            end)
-          else
-            # Non-ECG attributes: just send latest
-            latest = Enum.max_by(measurements, & &1.timestamp)
-
-            push_event(acc, "composite_measurement", %{
-              sensor_id: sensor_id,
-              attribute_id: attr_id,
-              payload: latest.payload,
-              timestamp: latest.timestamp
-            })
-          end
-        end)
-        |> then(&{:noreply, &1})
-
-      action when action in [:heartrate, :imu, :location, :battery, :skeleton] ->
-        # For other composite views, get latest measurement per attribute
-        latest_by_attr =
-          measurements_list
-          |> Enum.group_by(& &1.attribute_id)
-          |> Enum.map(fn {attr_id, measurements} ->
-            latest = Enum.max_by(measurements, & &1.timestamp)
-
-            %{
-              sensor_id: sensor_id,
-              attribute_id: attr_id,
-              payload: latest.payload,
-              timestamp: latest.timestamp
-            }
-          end)
-
-        new_socket =
-          Enum.reduce(latest_by_attr, socket, fn measurement, acc ->
-            push_event(acc, "composite_measurement", measurement)
-          end)
-
-        {:noreply, new_socket}
-
-      # Sensors view uses measurements_batch for SensorDataAccumulator hook
-      # Buffer measurements and flush periodically to reduce push_event calls
-      :sensors ->
-        attributes =
-          measurements_list
-          |> Enum.map(fn m ->
-            %{
-              attribute_id: m.attribute_id,
-              payload: m.payload,
-              timestamp: m.timestamp
-            }
-          end)
-
-        # Add to buffer (append to existing measurements for this sensor)
-        buffer = socket.assigns.measurement_buffer
-        existing = Map.get(buffer, sensor_id, [])
-        new_buffer = Map.put(buffer, sensor_id, existing ++ attributes)
-
-        # Schedule flush if not already scheduled
-        flush_timer = socket.assigns.measurement_flush_timer
-
-        new_timer =
-          if is_nil(flush_timer) do
-            Process.send_after(self(), :flush_measurement_buffer, @measurement_flush_interval_ms)
-          else
-            flush_timer
-          end
-
-        {:noreply,
-         socket
-         |> assign(:measurement_buffer, new_buffer)
-         |> assign(:measurement_flush_timer, new_timer)}
-
-      _ ->
-        {:noreply, socket}
-    end
+  def handle_info({:measurements_batch, {_sensor_id, _measurements_list}}, socket) do
+    # Data now comes via PriorityLens - this handler is deprecated
+    {:noreply, socket}
   end
 
   # Flush measurement buffer - sends batched measurements to clients
@@ -2193,28 +2072,65 @@ defmodule SensoctoWeb.LobbyLive do
   # Client health monitoring - adapts data stream quality based on client performance
   @impl true
   def handle_event("client_health", report, socket) do
-    client_health = socket.assigns[:client_health] || SensoctoWeb.ClientHealth.init()
+    # Skip automatic quality adjustment if manual override is set
+    if socket.assigns[:quality_override] do
+      {:noreply, socket}
+    else
+      client_health = socket.assigns[:client_health] || SensoctoWeb.ClientHealth.init()
 
-    {new_health, quality_changed, new_quality, reason} =
-      SensoctoWeb.ClientHealth.process_health_report(client_health, report)
+      {new_health, quality_changed, new_quality, reason} =
+        SensoctoWeb.ClientHealth.process_health_report(client_health, report)
 
-    socket = assign(socket, :client_health, new_health)
+      socket = assign(socket, :client_health, new_health)
 
-    socket =
-      if quality_changed do
-        Logger.info(
-          "Client quality changed for socket #{socket.id}: #{inspect(new_quality)}, reason: #{reason}"
-        )
+      socket =
+        if quality_changed do
+          Logger.info(
+            "Client quality changed for socket #{socket.id}: #{inspect(new_quality)}, reason: #{reason}"
+          )
 
-        # Update priority lens quality if registered
-        if socket.assigns[:priority_lens_registered] do
-          Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+          # Update priority lens quality if registered
+          if socket.assigns[:priority_lens_registered] do
+            Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+          end
+
+          socket
+          |> assign(:current_quality, new_quality)
+          |> push_event("quality_changed", %{level: new_quality, reason: reason})
+        else
+          socket
         end
 
-        push_event(socket, "quality_changed", %{level: new_quality, reason: reason})
-      else
-        socket
-      end
+      {:noreply, socket}
+    end
+  end
+
+  # Manual quality override - for testing/demo purposes
+  @impl true
+  def handle_event("set_quality_override", %{"quality" => "auto"}, socket) do
+    # Clear override, return to automatic mode
+    socket =
+      socket
+      |> assign(:quality_override, nil)
+      |> push_event("quality_changed", %{level: :auto, reason: "Switched to automatic mode"})
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("set_quality_override", %{"quality" => quality_str}, socket) do
+    quality = String.to_existing_atom(quality_str)
+
+    # Update PriorityLens with the override quality
+    if socket.assigns[:priority_lens_registered] do
+      Sensocto.Lenses.PriorityLens.set_quality(socket.id, quality)
+    end
+
+    socket =
+      socket
+      |> assign(:quality_override, quality)
+      |> assign(:current_quality, quality)
+      |> push_event("quality_changed", %{level: quality, reason: "Manual override"})
 
     {:noreply, socket}
   end

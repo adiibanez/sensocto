@@ -33,9 +33,12 @@ defmodule Sensocto.AttentionTracker do
   @sensor_attention_table :sensor_attention_cache
 
   # Batch window multipliers based on attention level
+  # Medium attention needs to be responsive enough for real-time visualizations
+  # like pose tracking, while still providing some back-pressure savings.
+  # The max_window of 500ms ensures at least 2 updates/second even with bio multipliers.
   @attention_config %{
     high: %{window_multiplier: 0.2, min_window: 100, max_window: 500},
-    medium: %{window_multiplier: 1.0, min_window: 500, max_window: 2000},
+    medium: %{window_multiplier: 0.4, min_window: 150, max_window: 500},
     low: %{window_multiplier: 4.0, min_window: 2000, max_window: 10000},
     none: %{window_multiplier: 10.0, min_window: 5000, max_window: 30000}
   }
@@ -209,9 +212,25 @@ defmodule Sensocto.AttentionTracker do
   Returns %{window_multiplier, min_window, max_window}
 
   Uses ETS for fast concurrent reads - no GenServer bottleneck.
+
+  Falls back to sensor-level attention if attribute-level attention is :none.
+  This ensures that when a user is viewing a sensor tile (which has medium/high
+  sensor-level attention), all attributes benefit from faster updates even if
+  the specific attribute hasn't been individually focused.
   """
   def get_attention_config(sensor_id, attribute_id) do
-    level = get_attention_level(sensor_id, attribute_id)
+    attr_level = get_attention_level(sensor_id, attribute_id)
+
+    # If attribute has no specific attention, use sensor-level attention as fallback
+    # This handles the case where a user views a sensor tile (which tracks sensor-level
+    # attention) but individual attributes haven't been hovered/focused
+    level =
+      if attr_level == :none do
+        sensor_level = get_sensor_attention_level(sensor_id)
+        if sensor_level != :none, do: sensor_level, else: attr_level
+      else
+        attr_level
+      end
 
     case :ets.lookup(@attention_config_table, level) do
       [{_, config}] -> config

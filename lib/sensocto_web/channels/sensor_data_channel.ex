@@ -674,12 +674,13 @@ defmodule SensoctoWeb.SensorDataChannel do
     # Determine if client should pause transmission
     # Pause conditions:
     # 1. Critical system load + low/none attention (original behavior)
-    # 2. Memory protection active + low/medium/none attention (new: aggressive protection)
-    #    Only high attention sensors continue during memory protection
+    # 2. Memory protection active + low/none attention (allows medium to continue with throttling)
+    #    High and medium attention sensors continue during memory protection
     paused =
       cond do
-        # Memory protection mode: pause all non-high attention sensors
-        memory_protection_active and attention_level in [:low, :medium, :none] ->
+        # Memory protection mode: pause low/none attention sensors
+        # Allow medium attention to continue (with heavy throttling below)
+        memory_protection_active and attention_level in [:low, :none] ->
           true
 
         # Critical system load: pause low attention sensors (original behavior)
@@ -691,7 +692,7 @@ defmodule SensoctoWeb.SensorDataChannel do
       end
 
     # When memory protection is active, apply maximum backpressure multiplier
-    # to any sensors that aren't paused (high attention sensors)
+    # to any sensors that aren't paused (high and medium attention sensors)
     {final_batch_window, final_multiplier} =
       if memory_protection_active do
         # Maximum throttling for surviving sensors during memory pressure

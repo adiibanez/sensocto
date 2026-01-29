@@ -319,15 +319,20 @@ defmodule Sensocto.SimpleSensor do
       end
 
     now = System.system_time(:millisecond)
+    enriched_attribute = Map.put(attribute, :sensor_id, sensor_id)
 
+    # Broadcast to per-sensor topic (legacy, for direct subscribers)
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "data:#{sensor_id}",
-      {
-        :measurement,
-        attribute
-        |> Map.put(:sensor_id, sensor_id)
-      }
+      {:measurement, enriched_attribute}
+    )
+
+    # Also broadcast to global topic for lens router
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "data:global",
+      {:measurement, enriched_attribute}
     )
 
     {:noreply,
@@ -342,8 +347,6 @@ defmodule Sensocto.SimpleSensor do
         %{sensor_id: sensor_id} = state
       ) do
     Logger.debug("Server: :put_batch_attributes #{length(attributes)} state: #{inspect(state)}")
-
-    # attributes |> dbg()
 
     broadcast_messages_list =
       Enum.map(attributes, fn attribute ->
@@ -360,13 +363,18 @@ defmodule Sensocto.SimpleSensor do
 
     now = System.system_time(:millisecond)
 
+    # Broadcast to per-sensor topic (legacy, for direct subscribers)
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "data:#{sensor_id}",
-      {
-        :measurements_batch,
-        {sensor_id, broadcast_messages_list}
-      }
+      {:measurements_batch, {sensor_id, broadcast_messages_list}}
+    )
+
+    # Also broadcast to global topic for lens router
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "data:global",
+      {:measurements_batch, {sensor_id, broadcast_messages_list}}
     )
 
     {:noreply,

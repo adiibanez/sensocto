@@ -160,8 +160,12 @@ defmodule SensoctoWeb.StatefulSensorLive do
   end
 
   @impl true
-  def mount(_params, %{"parent_pid" => parent_pid, "sensor_id" => sensor_id} = _session, socket) do
+  def mount(_params, %{"parent_pid" => parent_pid, "sensor_id" => sensor_id} = session, socket) do
     Logger.warning(">>> MOUNT StatefulSensorLive #{sensor_id} PID=#{inspect(self())}")
+
+    # Extract optional favorite info from session
+    user_id = Map.get(session, "user_id")
+    is_favorite = Map.get(session, "is_favorite", false)
 
     # Subscribe to PubSub topics for this sensor
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
@@ -173,17 +177,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
 
     # Fetch sensor state directly - session only contains sensor_id to avoid re-mounts
     # when sensor data changes (measurements, etc.)
-    sensor_state =
-      try do
-        # Use Task with short timeout to prevent blocking
-        task = Task.async(fn -> SimpleSensor.get_view_state(sensor_id) end)
-        Task.await(task, 1000)
-      catch
-        :exit, _ ->
-          # Sensor process no longer exists or timeout, create minimal state
-          Logger.warning("Could not fetch sensor state for #{sensor_id}")
-          %{sensor_id: sensor_id, sensor_name: sensor_id, sensor_type: "unknown", attributes: %{}}
-      end
+    sensor_state = fetch_sensor_state(sensor_id)
 
     # Get initial attention level - now uses ETS lookup (fast, no GenServer call)
     initial_attention = AttentionTracker.get_sensor_attention_level(sensor_id)
@@ -195,12 +189,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
       if connected?(socket) do
         Process.send_after(self(), :flush_throttled_measurements, @push_throttle_interval)
         # Re-fetch to get any attributes registered between disconnected and connected mount
-        try do
-          task = Task.async(fn -> SimpleSensor.get_view_state(sensor_id) end)
-          Task.await(task, 1000)
-        catch
-          :exit, _ -> sensor_state
-        end
+        fetch_sensor_state(sensor_id)
       else
         sensor_state
       end
@@ -232,7 +221,10 @@ defmodule SensoctoWeb.StatefulSensorLive do
      |> assign(:last_data_at, nil)
      |> assign(:batch_window, Map.get(sensor_state, :batch_size, 100))
      |> assign(:error_count, 0)
-     |> assign(:latency_ms, nil)}
+     |> assign(:latency_ms, nil)
+     # Favorite tracking
+     |> assign(:user_id, user_id)
+     |> assign(:is_favorite, is_favorite)}
   end
 
   # def _render(assigns) do
@@ -476,6 +468,25 @@ defmodule SensoctoWeb.StatefulSensorLive do
   def handle_event("toggle_view_mode", _params, socket) do
     new_mode = if socket.assigns.view_mode == :normal, do: :summary, else: :normal
     {:noreply, assign(socket, :view_mode, new_mode)}
+  end
+
+  def handle_event("toggle_favorite", _params, socket) do
+    user_id = socket.assigns.user_id
+    sensor_id = socket.assigns.sensor_id
+
+    if user_id do
+      # Broadcast to lobby to handle the actual persistence
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "lobby:favorites",
+        {:toggle_favorite, user_id, sensor_id}
+      )
+
+      # Optimistically toggle the local state
+      {:noreply, assign(socket, :is_favorite, !socket.assigns.is_favorite)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("show_map_modal", _params, socket) do
@@ -731,6 +742,23 @@ defmodule SensoctoWeb.StatefulSensorLive do
   # ============================================================================
   # Helper Functions
   # ============================================================================
+
+  # Fetch sensor state with proper error handling (no noisy Task crash logs)
+  defp fetch_sensor_state(sensor_id) do
+    case SimpleSensor.get_view_state(sensor_id) do
+      state when is_map(state) -> state
+      _ -> fallback_sensor_state(sensor_id)
+    end
+  catch
+    :exit, _ ->
+      # Sensor process no longer exists, return minimal state
+      fallback_sensor_state(sensor_id)
+  end
+
+  defp fallback_sensor_state(sensor_id) do
+    Logger.debug("Sensor process not found for #{sensor_id}, using fallback state")
+    %{sensor_id: sensor_id, sensor_name: sensor_id, sensor_type: "unknown", attributes: %{}}
+  end
 
   def cleanup(entry) do
     case entry do

@@ -80,26 +80,44 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end
   end
 
-  def get_all_sensors_state(mode \\ :default, values \\ 1) do
-    Enum.reduce(get_device_names(), %{}, fn sensor_id, acc ->
-      case acc do
-        %{} = __sensor_state ->
-          if is_map(acc) do
-            sensor_state = get_sensor_state(sensor_id, mode, values)
+  @doc """
+  Fetches state from all sensors in parallel using Task.async_stream.
 
-            if is_map(sensor_state) do
-              Map.merge(acc, sensor_state)
-            else
-              acc
-            end
-          end
+  This is significantly faster than the sequential version when there are many sensors,
+  as it fetches sensor states concurrently with a max concurrency of 10.
 
-        :ok ->
-          Logger.debug("get_all_sensors_state Got :ok for #{sensor_id}")
+  ## Options
+    - `mode` - :default or :view (default: :default)
+    - `values` - number of values to fetch (default: 1)
+    - `timeout` - timeout per sensor in ms (default: 5000)
+    - `max_concurrency` - max parallel tasks (default: 10)
+  """
+  def get_all_sensors_state(mode \\ :default, values \\ 1, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 5_000)
+    max_concurrency = Keyword.get(opts, :max_concurrency, 10)
 
-        :error ->
-          Logger.debug("Error while retrieving sensor_state #{sensor_id}, ignore")
-      end
+    get_device_names()
+    |> Task.async_stream(
+      fn sensor_id -> {sensor_id, get_sensor_state(sensor_id, mode, values)} end,
+      max_concurrency: max_concurrency,
+      timeout: timeout,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce(%{}, fn
+      {:ok, {_sensor_id, %{} = sensor_state}}, acc ->
+        Map.merge(acc, sensor_state)
+
+      {:ok, {sensor_id, :error}}, acc ->
+        Logger.debug("Error while retrieving sensor_state #{sensor_id}, skipping")
+        acc
+
+      {:ok, {sensor_id, :ok}}, acc ->
+        Logger.debug("get_all_sensors_state Got :ok for #{sensor_id}")
+        acc
+
+      {:exit, reason}, acc ->
+        Logger.debug("Task exited while fetching sensor state: #{inspect(reason)}")
+        acc
     end)
   end
 

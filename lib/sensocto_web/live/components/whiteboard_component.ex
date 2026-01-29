@@ -23,7 +23,8 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
      |> assign(:current_tool, "pen")
      |> assign(:stroke_color, "#22c55e")
      |> assign(:stroke_width, 3)
-     |> assign(:show_color_picker, false)}
+     |> assign(:show_color_picker, false)
+     |> assign(:sync_mode, :synced)}
   end
 
   @impl true
@@ -50,6 +51,7 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
       |> maybe_assign(assigns, :pending_request_user_id)
       |> maybe_assign(assigns, :pending_request_user_name)
       |> maybe_assign(assigns, :background_color)
+      |> maybe_assign(assigns, :sync_mode)
 
     # On first update, load initial state from server
     socket =
@@ -404,42 +406,76 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
             <%!-- Color Picker --%>
             <div class="relative">
               <button
+                id={"color-picker-btn-#{@room_id}"}
                 phx-click="toggle_color_picker"
                 phx-target={@myself}
-                class="w-8 h-8 rounded border-2 border-gray-600 hover:border-gray-500"
+                class="w-8 h-8 rounded border-2 border-gray-600 hover:border-gray-500 transition-all hover:scale-105"
                 style={"background-color: #{@stroke_color};"}
                 title="Color"
               >
               </button>
-              <%= if @show_color_picker do %>
-                <div class="absolute bottom-full left-0 mb-2 p-2 bg-gray-800 rounded-lg border border-gray-600 shadow-lg grid grid-cols-5 gap-1 z-10">
-                  <%= for color <- ["#22c55e", "#ef4444", "#3b82f6", "#eab308", "#a855f7", "#f97316", "#06b6d4", "#ec4899", "#ffffff", "#1a1a1a"] do %>
+            </div>
+            <%!-- Color Picker Portal (fixed position to escape overflow) --%>
+            <%= if @show_color_picker do %>
+              <div
+                id={"color-picker-portal-#{@room_id}"}
+                phx-hook="ColorPickerPortal"
+                data-anchor-id={"color-picker-btn-#{@room_id}"}
+                phx-click-away="toggle_color_picker"
+                phx-target={@myself}
+                class="fixed p-3 bg-gray-800 rounded-lg border border-gray-600 shadow-xl z-[9999]"
+              >
+                <div class="text-xs text-gray-400 mb-2 font-medium">Pick a color</div>
+                <%!-- Basic colors row --%>
+                <div class="flex gap-1.5 mb-2">
+                  <%= for color <- ["#ffffff", "#a3a3a3", "#525252", "#1a1a1a"] do %>
                     <button
                       phx-click="set_color"
                       phx-value-color={color}
                       phx-target={@myself}
-                      class={"w-6 h-6 rounded border #{if @stroke_color == color, do: "border-white", else: "border-gray-600"}"}
+                      class={"w-7 h-7 rounded-md transition-transform hover:scale-110 #{if @stroke_color == color, do: "ring-2 ring-white ring-offset-1 ring-offset-gray-800", else: "border border-gray-500"}"}
                       style={"background-color: #{color};"}
+                      title={color}
                     >
                     </button>
                   <% end %>
                 </div>
-              <% end %>
-            </div>
+                <%!-- Vibrant colors grid --%>
+                <div class="grid grid-cols-6 gap-1.5">
+                  <%= for color <- [
+                    "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6",
+                    "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb",
+                    "#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#60a5fa",
+                    "#fca5a5", "#fdba74", "#fde047", "#86efac", "#67e8f9", "#93c5fd",
+                    "#a855f7", "#ec4899", "#f43f5e", "#8b5cf6", "#d946ef", "#fb7185"
+                  ] do %>
+                    <button
+                      phx-click="set_color"
+                      phx-value-color={color}
+                      phx-target={@myself}
+                      class={"w-7 h-7 rounded-md transition-transform hover:scale-110 #{if @stroke_color == color, do: "ring-2 ring-white ring-offset-1 ring-offset-gray-800", else: ""}"}
+                      style={"background-color: #{color};"}
+                      title={color}
+                    >
+                    </button>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
 
             <%!-- Stroke Width --%>
-            <select
-              phx-change="set_width"
-              phx-target={@myself}
-              name="width"
-              class="bg-gray-700 text-white text-sm rounded px-2 py-1 border border-gray-600"
-            >
-              <option value="1" selected={@stroke_width == 1}>1px</option>
-              <option value="3" selected={@stroke_width == 3}>3px</option>
-              <option value="5" selected={@stroke_width == 5}>5px</option>
-              <option value="8" selected={@stroke_width == 8}>8px</option>
-              <option value="12" selected={@stroke_width == 12}>12px</option>
-            </select>
+            <form phx-change="set_width" phx-target={@myself} class="inline">
+              <select
+                name="width"
+                class="bg-gray-700 text-white text-sm rounded px-2 py-1 border border-gray-600"
+              >
+                <option value="1" selected={@stroke_width == 1}>1px</option>
+                <option value="3" selected={@stroke_width == 3}>3px</option>
+                <option value="5" selected={@stroke_width == 5}>5px</option>
+                <option value="8" selected={@stroke_width == 8}>8px</option>
+                <option value="12" selected={@stroke_width == 12}>12px</option>
+              </select>
+            </form>
 
             <%!-- Actions --%>
             <div class="ml-auto flex items-center gap-2">
@@ -534,6 +570,31 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
               </div>
             <% end %>
           </div>
+
+          <%!-- Sync Mode Toggle --%>
+          <%= if @current_user do %>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-sm">
+                <%= if @sync_mode == :solo do %>
+                  <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
+                  <span class="text-slate-400">Drawing Solo</span>
+                <% else %>
+                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span class="text-gray-300">Synced with group</span>
+                <% end %>
+              </div>
+              <button
+                phx-click="toggle_sync_mode"
+                class={"px-3 py-1 text-xs rounded transition-colors " <>
+                  if @sync_mode == :solo,
+                    do: "bg-green-600 hover:bg-green-500 text-white",
+                    else: "bg-slate-600 hover:bg-slate-500 text-white"}
+                title={if @sync_mode == :solo, do: "Join group sync", else: "Draw independently"}
+              >
+                {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
+              </button>
+            </div>
+          <% end %>
         </div>
 
         <%!-- Control Request Modal with Sound and Countdown --%>

@@ -2617,6 +2617,7 @@ defmodule SensoctoWeb.RoomShowLive do
           room_id={@room.id}
           current_user={@current_user}
           can_manage={@can_manage}
+          sync_mode={@sync_mode}
         />
       </div>
 

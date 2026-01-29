@@ -2,7 +2,13 @@
   Attempting to reconnect...
 </div>
 
-<div id="lobby-preferences" phx-hook="LobbyPreferences" class="pb-40 sm:pb-32">
+<div
+  id="lobby-preferences"
+  phx-hook="LobbyPreferences"
+  class="pb-40 sm:pb-32"
+>
+  <%!-- Client health monitoring for adaptive streaming --%>
+  <div id="client-health-monitor" phx-hook="ClientHealthHook" class="hidden"></div>
   <.breadcrumbs>
     <:crumb>Lobby</:crumb>
   </.breadcrumbs>
@@ -248,6 +254,7 @@
       is_lobby={true}
       current_user={@current_user}
       can_manage={true}
+      sync_mode={@sync_mode}
     />
   </div>
 
@@ -264,6 +271,16 @@
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
         >
           <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
+        </.link>
+        <.link
+          :if={@favorite_sensors != []}
+          patch={~p"/lobby/favorites"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :favorites,
+              do: "bg-yellow-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
         </.link>
         <.link
           :if={:heartrate in @available_lenses}
@@ -336,6 +353,13 @@
           <option value="sensors" selected={@live_action == :sensors}>All Sensors</option>
           <optgroup label="Views">
             <option value="users" selected={@live_action == :users}>By User</option>
+            <option
+              :if={@favorite_sensors != []}
+              value="favorites"
+              selected={@live_action == :favorites}
+            >
+              ⭐ Favorites
+            </option>
           </optgroup>
           <optgroup :if={@available_lenses != []} label="Lenses">
             <option
@@ -416,7 +440,12 @@
       <div :for={sensor_id <- @sensor_ids} id={"sensor_container_#{sensor_id}"}>
         {live_render(@socket, StatefulSensorLive,
           id: "stateful_sensor_#{sensor_id}",
-          session: %{"parent_pid" => self(), "sensor_id" => sensor_id}
+          session: %{
+            "parent_pid" => self(),
+            "sensor_id" => sensor_id,
+            "user_id" => @current_user && @current_user.id,
+            "is_favorite" => sensor_id in @favorite_sensors
+          }
         )}
       </div>
     </div>
@@ -547,6 +576,36 @@
       <Heroicons.icon name="user" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No skeleton/pose sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with pose detection enabled</p>
+    </div>
+  </div>
+
+  <%!-- Favorites View --%>
+  <div :if={@live_action == :favorites}>
+    <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="star" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No favorite sensors</p>
+      <p class="text-sm mt-2">Click the star icon on any sensor to add it to favorites</p>
+    </div>
+    <div
+      :if={@favorite_sensors != []}
+      id="favorites-grid"
+      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+    >
+      <div
+        :for={sensor_id <- @favorite_sensors}
+        :if={sensor_id in @sensor_ids}
+        id={"sensor_fav_container_#{sensor_id}"}
+      >
+        {live_render(@socket, StatefulSensorLive,
+          id: "stateful_sensor_fav_#{sensor_id}",
+          session: %{
+            "parent_pid" => self(),
+            "sensor_id" => sensor_id,
+            "user_id" => @current_user && @current_user.id,
+            "is_favorite" => true
+          }
+        )}
+      </div>
     </div>
   </div>
 

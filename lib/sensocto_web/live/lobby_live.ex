@@ -13,6 +13,7 @@ defmodule SensoctoWeb.LobbyLive do
   alias SensoctoWeb.Sensocto.Presence
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Calls
+  alias Sensocto.Accounts.UserPreferences
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -50,6 +51,8 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
     # Subscribe to global attention changes to re-filter sensor list in realtime
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:global")
+    # Subscribe to favorite toggle events from child sensor LiveViews
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
 
     # Subscribe to user-specific attention level updates for webcam backpressure
     user = socket.assigns[:current_user]
@@ -99,6 +102,14 @@ defmodule SensoctoWeb.LobbyLive do
     user = socket.assigns[:current_user]
     public_rooms = if user, do: Sensocto.Rooms.list_public_rooms(), else: []
 
+    # Load user's favorite sensors
+    favorite_sensors =
+      if user do
+        UserPreferences.get_ui_state(user.id, "favorite_sensors", [])
+      else
+        []
+      end
+
     # Check if there's an active call in the lobby
     call_active = Calls.call_exists?(:lobby)
 
@@ -126,6 +137,7 @@ defmodule SensoctoWeb.LobbyLive do
         skeleton_sensors: skeleton_sensors,
         available_lenses: available_lenses,
         sensors_by_user: sensors_by_user,
+        favorite_sensors: favorite_sensors,
         public_rooms: public_rooms,
         show_join_modal: false,
         join_code: "",
@@ -172,7 +184,14 @@ defmodule SensoctoWeb.LobbyLive do
         # Minimum attention filter (0=none, 1=low, 2=medium, 3=high)
         min_attention: 0,
         # Timer for debouncing attention filter updates
-        attention_filter_timer: nil
+        attention_filter_timer: nil,
+        # Client health monitoring for adaptive streaming
+        client_health: SensoctoWeb.ClientHealth.init(),
+        # PriorityLens integration for adaptive data delivery
+        priority_lens_registered: false,
+        priority_lens_topic: nil,
+        # Data mode: :realtime (batch) or :digest (low quality summary)
+        data_mode: :realtime
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -207,6 +226,23 @@ defmodule SensoctoWeb.LobbyLive do
         # Start performance logging timer
         Process.send_after(self(), :log_perf_stats, @perf_log_interval_ms)
 
+        # Register with PriorityLens for adaptive data streaming
+        # This enables client health-based quality adaptation
+        {priority_lens_registered, priority_lens_topic} =
+          case Sensocto.Lenses.PriorityLens.register_socket(
+                 new_socket.id,
+                 sensor_ids,
+                 quality: :high
+               ) do
+            {:ok, topic} ->
+              Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+              {true, topic}
+
+            {:error, reason} ->
+              Logger.warning("Failed to register with PriorityLens: #{inspect(reason)}")
+              {false, nil}
+          end
+
         new_socket
         |> assign(:presence_key, presence_key)
         |> assign(:media_viewers, media_count)
@@ -214,6 +250,8 @@ defmodule SensoctoWeb.LobbyLive do
         |> assign(:whiteboard_viewers, whiteboard_count)
         |> assign(:synced_users, synced_users)
         |> assign(:solo_users, solo_users)
+        |> assign(:priority_lens_registered, priority_lens_registered)
+        |> assign(:priority_lens_topic, priority_lens_topic)
       else
         assign(new_socket, :presence_key, presence_key)
       end
@@ -229,7 +267,34 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_params(_params, _uri, socket) do
+    # Update PriorityLens focused sensor based on current view
+    # ECG needs full data fidelity for waveform visualization
+    socket = update_lens_focus_for_action(socket, socket.assigns.live_action)
     {:noreply, socket}
+  end
+
+  # Set focused sensor for PriorityLens based on current live_action
+  # Focused sensors get priority even at lower quality levels
+  defp update_lens_focus_for_action(socket, live_action) do
+    if socket.assigns[:priority_lens_registered] do
+      case live_action do
+        :ecg ->
+          # ECG needs all data points - focus on first ECG sensor for priority
+          case socket.assigns.ecg_sensors do
+            [%{sensor_id: first} | _] ->
+              Sensocto.Lenses.PriorityLens.set_focused_sensor(socket.id, first)
+
+            _ ->
+              :ok
+          end
+
+        _ ->
+          # Clear focus for other views
+          Sensocto.Lenses.PriorityLens.set_focused_sensor(socket.id, nil)
+      end
+    end
+
+    socket
   end
 
   defp calculate_max_attributes(sensors) do
@@ -650,6 +715,11 @@ defmodule SensoctoWeb.LobbyLive do
           |> assign(:available_lenses, available_lenses)
           |> assign(:sensors_by_user, group_sensors_by_user(sensors))
 
+        # Update PriorityLens with new sensor list for adaptive streaming
+        if updated_socket.assigns[:priority_lens_registered] do
+          Sensocto.Lenses.PriorityLens.set_sensors(updated_socket.id, new_sensor_ids)
+        end
+
         # Only update sensors_offline if there are actual leaves
         updated_socket =
           if map_size(payload.leaves) > 0 do
@@ -680,6 +750,57 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_info({:trigger_parent_flash, message}, socket) do
     {:noreply, put_flash(socket, :info, message)}
+  end
+
+  # ==========================================================================
+  # PriorityLens Message Handlers (adaptive streaming)
+  # ==========================================================================
+
+  # Handle PriorityLens batch data (high/medium quality)
+  # batch_data structure: %{sensor_id => %{attribute_id => measurement}}
+  @impl true
+  def handle_info({:lens_batch, batch_data}, socket) do
+    socket = assign(socket, :data_mode, :realtime)
+
+    case socket.assigns.live_action do
+      :sensors ->
+        socket = process_lens_batch_for_sensors(socket, batch_data)
+        {:noreply, socket}
+
+      action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
+        socket = process_lens_batch_for_composite(socket, batch_data, action)
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Handle PriorityLens digest data (low/minimal quality)
+  # digests structure: %{sensor_id => %{attribute_id => %{count, avg, min, max, latest}}}
+  @impl true
+  def handle_info({:lens_digest, digests}, socket) do
+    socket = assign(socket, :data_mode, :digest)
+
+    case socket.assigns.live_action do
+      :sensors ->
+        # For sensors grid, push digest data for summary display
+        socket =
+          Enum.reduce(digests, socket, fn {sensor_id, attrs}, acc ->
+            push_event(acc, "sensor_digest", %{sensor_id: sensor_id, attributes: attrs})
+          end)
+
+        {:noreply, socket}
+
+      action when action in [:heartrate, :battery] ->
+        # These can work with digest mode - show latest values
+        socket = process_lens_digest_for_composite(socket, digests, action)
+        {:noreply, socket}
+
+      _action ->
+        # ECG, IMU, skeleton need real-time data - digest mode just shows placeholder
+        {:noreply, socket}
+    end
   end
 
   # Handle single measurement for composite views and individual sensors
@@ -1298,6 +1419,29 @@ defmodule SensoctoWeb.LobbyLive do
 
   # Refresh available lenses after mount to catch late-registered attributes
   @impl true
+  # Handle favorite toggle broadcasts from child sensor LiveViews
+  def handle_info({:toggle_favorite, user_id, sensor_id}, socket) do
+    user = socket.assigns.current_user
+
+    # Only handle if it's for the current user
+    if user && user.id == user_id do
+      current_favorites = socket.assigns.favorite_sensors
+
+      new_favorites =
+        if sensor_id in current_favorites do
+          List.delete(current_favorites, sensor_id)
+        else
+          [sensor_id | current_favorites]
+        end
+
+      UserPreferences.set_ui_state(user.id, "favorite_sensors", new_favorites)
+
+      {:noreply, assign(socket, :favorite_sensors, new_favorites)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(:refresh_available_lenses, socket) do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
@@ -1713,6 +1857,28 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
+  def handle_event("toggle_favorite", %{"sensor-id" => sensor_id}, socket) do
+    user = socket.assigns.current_user
+
+    if user do
+      current_favorites = socket.assigns.favorite_sensors
+
+      new_favorites =
+        if sensor_id in current_favorites do
+          List.delete(current_favorites, sensor_id)
+        else
+          [sensor_id | current_favorites]
+        end
+
+      UserPreferences.set_ui_state(user.id, "favorite_sensors", new_favorites)
+
+      {:noreply, assign(socket, :favorite_sensors, new_favorites)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("leave_call", _, socket) do
     {:noreply, push_event(socket, "leave_call", %{})}
   end
@@ -1854,11 +2020,13 @@ defmodule SensoctoWeb.LobbyLive do
       case view do
         "sensors" -> ~p"/lobby"
         "users" -> ~p"/lobby/users"
+        "favorites" -> ~p"/lobby/favorites"
         "heartrate" -> ~p"/lobby/heartrate"
         "imu" -> ~p"/lobby/imu"
         "location" -> ~p"/lobby/location"
         "ecg" -> ~p"/lobby/ecg"
         "battery" -> ~p"/lobby/battery"
+        "skeleton" -> ~p"/lobby/skeleton"
         _ -> ~p"/lobby"
       end
 
@@ -2022,10 +2190,123 @@ defmodule SensoctoWeb.LobbyLive do
   @impl true
   def handle_event("webrtc_stats", _params, socket), do: {:noreply, socket}
 
+  # Client health monitoring - adapts data stream quality based on client performance
+  @impl true
+  def handle_event("client_health", report, socket) do
+    client_health = socket.assigns[:client_health] || SensoctoWeb.ClientHealth.init()
+
+    {new_health, quality_changed, new_quality, reason} =
+      SensoctoWeb.ClientHealth.process_health_report(client_health, report)
+
+    socket = assign(socket, :client_health, new_health)
+
+    socket =
+      if quality_changed do
+        Logger.info(
+          "Client quality changed for socket #{socket.id}: #{inspect(new_quality)}, reason: #{reason}"
+        )
+
+        # Update priority lens quality if registered
+        if socket.assigns[:priority_lens_registered] do
+          Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+        end
+
+        push_event(socket, "quality_changed", %{level: new_quality, reason: reason})
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event(type, params, socket) do
     Logger.debug("Lobby Unknown event: #{type} #{inspect(params)}")
     {:noreply, socket}
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    # Unregister from PriorityLens to clean up per-socket state
+    if socket.assigns[:priority_lens_registered] do
+      Sensocto.Lenses.PriorityLens.unregister_socket(socket.id)
+    end
+
+    :ok
+  end
+
+  # ==========================================================================
+  # PriorityLens Helper Functions
+  # ==========================================================================
+
+  # Transform lens_batch to push_events for sensors view
+  defp process_lens_batch_for_sensors(socket, batch_data) do
+    Enum.reduce(batch_data, socket, fn {sensor_id, attributes}, acc ->
+      measurements =
+        Enum.map(attributes, fn {attr_id, m} ->
+          %{attribute_id: attr_id, payload: m.payload, timestamp: m.timestamp}
+        end)
+
+      push_event(acc, "measurements_batch", %{sensor_id: sensor_id, attributes: measurements})
+    end)
+  end
+
+  # Transform lens_batch to push_events for composite views
+  defp process_lens_batch_for_composite(socket, batch_data, action) do
+    # Map action to attribute type
+    attr_type =
+      case action do
+        :heartrate -> ["heartrate", "hr"]
+        :ecg -> ["ecg"]
+        :imu -> ["imu"]
+        :location -> ["geolocation"]
+        :battery -> ["battery"]
+        :skeleton -> ["skeleton"]
+      end
+
+    Enum.reduce(batch_data, socket, fn {sensor_id, attributes}, acc ->
+      # Filter to relevant attributes for this composite view
+      relevant =
+        Enum.filter(attributes, fn {attr_id, _m} ->
+          attr_id in attr_type or String.contains?(attr_id, attr_type)
+        end)
+
+      Enum.reduce(relevant, acc, fn {attr_id, m}, sock ->
+        push_event(sock, "composite_measurement", %{
+          sensor_id: sensor_id,
+          attribute_id: attr_id,
+          payload: m.payload,
+          timestamp: m.timestamp
+        })
+      end)
+    end)
+  end
+
+  # Transform lens_digest to push_events for composite views
+  defp process_lens_digest_for_composite(socket, digests, action) do
+    attr_type =
+      case action do
+        :heartrate -> ["heartrate", "hr"]
+        :battery -> ["battery"]
+        _ -> []
+      end
+
+    Enum.reduce(digests, socket, fn {sensor_id, attributes}, acc ->
+      relevant =
+        Enum.filter(attributes, fn {attr_id, _stats} ->
+          attr_id in attr_type or String.contains?(attr_id, attr_type)
+        end)
+
+      Enum.reduce(relevant, acc, fn {attr_id, stats}, sock ->
+        # For digest mode, push the latest value as if it were a measurement
+        push_event(sock, "composite_measurement", %{
+          sensor_id: sensor_id,
+          attribute_id: attr_id,
+          payload: stats.latest,
+          timestamp: System.system_time(:millisecond)
+        })
+      end)
+    end)
   end
 
   # Release control for a specific mode when user navigates away

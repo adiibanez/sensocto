@@ -68,6 +68,9 @@ defmodule Sensocto.Domain.Supervisor do
       # System load monitoring for back-pressure
       Sensocto.SystemLoadMonitor,
 
+      # Adaptive data lenses - must start before sensors so Router can receive data
+      Sensocto.Lenses.Supervisor,
+
       # Sensor domain - manages individual sensor processes
       Sensocto.SensorsDynamicSupervisor,
 

@@ -1,11 +1,15 @@
 import Sortable from 'sortablejs';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import WhiteboardHook from './hooks/whiteboard_hook';
+import ClientHealthHook from './hooks/client_health_hook';
 
 let Hooks = {};
 
 // Whiteboard Hook
 Hooks.WhiteboardHook = WhiteboardHook;
+
+// Client Health Hook - monitors client performance and reports to server
+Hooks.ClientHealthHook = ClientHealthHook;
 
 // Lobby Preferences Hook - persists lobby mode and min_attention to localStorage
 Hooks.LobbyPreferences = {
@@ -2100,6 +2104,53 @@ Hooks.CountdownTimer = {
 
     updateDisplay() {
         this.el.textContent = `${this.remaining}s`;
+    }
+};
+
+// Color Picker Portal Hook - positions color picker above its anchor button
+Hooks.ColorPickerPortal = {
+    mounted() {
+        this.position();
+        window.addEventListener('resize', this.position.bind(this));
+        window.addEventListener('scroll', this.position.bind(this), true);
+    },
+
+    updated() {
+        this.position();
+    },
+
+    destroyed() {
+        window.removeEventListener('resize', this.position.bind(this));
+        window.removeEventListener('scroll', this.position.bind(this), true);
+    },
+
+    position() {
+        const anchorId = this.el.dataset.anchorId;
+        const anchor = document.getElementById(anchorId);
+        if (!anchor) return;
+
+        const anchorRect = anchor.getBoundingClientRect();
+        const pickerRect = this.el.getBoundingClientRect();
+
+        // Position above the button, aligned to left edge
+        let top = anchorRect.top - pickerRect.height - 8;
+        let left = anchorRect.left;
+
+        // If it would go off the top, show below instead
+        if (top < 8) {
+            top = anchorRect.bottom + 8;
+        }
+
+        // Keep within viewport horizontally
+        if (left + pickerRect.width > window.innerWidth - 8) {
+            left = window.innerWidth - pickerRect.width - 8;
+        }
+        if (left < 8) {
+            left = 8;
+        }
+
+        this.el.style.top = `${top}px`;
+        this.el.style.left = `${left}px`;
     }
 };
 

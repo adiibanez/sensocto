@@ -82,8 +82,22 @@
           data-pinned="false"
         >
           <Heroicons.icon
-            name="star"
+            name="bolt"
             type="outline"
+            class="h-4 w-4"
+          />
+        </button>
+
+        <button
+          :if={@user_id}
+          id={"fav_#{@sensor_id}"}
+          class={"transition-colors " <> if(@is_favorite, do: "text-yellow-400 hover:text-yellow-300", else: "text-gray-400 hover:text-yellow-400")}
+          title={if @is_favorite, do: "Remove from favorites", else: "Add to favorites"}
+          phx-click="toggle_favorite"
+        >
+          <Heroicons.icon
+            name="star"
+            type={if @is_favorite, do: "solid", else: "outline"}
             class="h-4 w-4"
           />
         </button>

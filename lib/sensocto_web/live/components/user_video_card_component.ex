@@ -175,9 +175,12 @@ defmodule SensoctoWeb.Live.Components.UserVideoCardComponent do
         <p class="text-gray-500 text-xs uppercase tracking-wide mb-2">Sensors</p>
         <div class="flex flex-wrap gap-1.5">
           <%= for sensor <- @user.sensors do %>
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300">
+            <.link
+              navigate={~p"/lobby/sensors/#{sensor.sensor_id}"}
+              class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white transition-colors"
+            >
               {sensor.sensor_name}
-            </span>
+            </.link>
           <% end %>
         </div>
       </div>

@@ -8,7 +8,7 @@ defmodule SensoctoWeb.IndexLive do
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
-  alias SensoctoWeb.StatefulSensorLive
+  alias SensoctoWeb.Live.Components.StatefulSensorComponent
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias Sensocto.Rooms
   alias Sensocto.AttentionTracker

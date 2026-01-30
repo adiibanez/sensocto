@@ -92,11 +92,16 @@
       :if={@lobby_sensor_ids != []}
       class="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
     >
-      <div :for={sensor_id <- @lobby_sensor_ids}>
-        {live_render(@socket, StatefulSensorLive,
-          id: "stateful_sensor_#{sensor_id}",
-          session: %{"parent_pid" => self(), "sensor_id" => sensor_id}
-        )}
+      <div :for={sensor_id <- @lobby_sensor_ids} id={"sensor_container_#{sensor_id}"}>
+        <.live_component
+          module={StatefulSensorComponent}
+          id={"sensor_#{sensor_id}"}
+          sensor_id={sensor_id}
+          sensor={Map.get(@sensors, sensor_id, %{})}
+          view_mode={@global_view_mode}
+          user_id={@current_user && @current_user.id}
+          is_favorite={false}
+        />
       </div>
     </div>
 

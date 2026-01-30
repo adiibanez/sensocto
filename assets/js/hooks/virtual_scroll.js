@@ -12,8 +12,8 @@
 const DEFAULT_ROW_HEIGHT = 140;
 const BUFFER_ROWS = 8;  // Buffer rows for smooth scrolling
 const PRELOAD_THRESHOLD = 3;  // Preload when within N rows of edge
-const MIN_CHANGE_THRESHOLD = 6;  // Minimum sensors change to trigger update
-const MIN_UPDATE_INTERVAL_MS = 250;  // Minimum time between server updates to prevent crash
+const MIN_CHANGE_THRESHOLD = 12;  // Minimum sensors change to trigger update (increased for stability)
+const MIN_UPDATE_INTERVAL_MS = 500;  // Minimum time between server updates to prevent crash (increased for stability)
 
 export const VirtualScrollHook = {
   mounted() {

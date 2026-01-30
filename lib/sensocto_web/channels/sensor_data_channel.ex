@@ -596,7 +596,18 @@ defmodule SensoctoWeb.SensorDataChannel do
   # Async cleanup of sensor connection (runs in TaskSupervisor)
   defp cleanup_sensor_connection(sensor_id, channel_pid) do
     # First untrack this connection from presence
-    Presence.untrack(channel_pid, "presence:all", sensor_id)
+    # Wrap in try/catch to handle Presence shard timeouts gracefully under load
+    try do
+      Presence.untrack(channel_pid, "presence:all", sensor_id)
+    catch
+      :exit, {:timeout, _} ->
+        Logger.warning("Presence.untrack timed out for sensor #{sensor_id} - continuing cleanup")
+
+      :exit, reason ->
+        Logger.warning(
+          "Presence.untrack failed for sensor #{sensor_id}: #{inspect(reason)} - continuing cleanup"
+        )
+    end
 
     # Small delay to let presence state propagate
     Process.sleep(50)

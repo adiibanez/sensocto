@@ -7,6 +7,8 @@ defmodule SensoctoWeb.LobbyLive do
   require Logger
   use LiveSvelte.Components
   alias SensoctoWeb.StatefulSensorLive
+  # Used in template when @use_sensor_components is true
+  alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
   alias SensoctoWeb.Live.Components.WhiteboardComponent
@@ -14,6 +16,13 @@ defmodule SensoctoWeb.LobbyLive do
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Calls
   alias Sensocto.Accounts.UserPreferences
+
+  # Feature flag: use LiveComponent instead of live_render for sensor tiles
+  # This reduces process overhead during virtual scrolling
+  @use_sensor_components true
+
+  # Component flush interval - how often to flush measurement buffers to JS
+  @component_flush_interval_ms 100
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -40,6 +49,8 @@ defmodule SensoctoWeb.LobbyLive do
   # Suppress unused warnings - these are used in handle_info callbacks
   _ = @measurement_flush_interval_ms
   _ = @perf_log_interval_ms
+  _ = @use_sensor_components
+  _ = @component_flush_interval_ms
 
   @impl true
   def mount(_params, _session, socket) do
@@ -55,7 +66,7 @@ defmodule SensoctoWeb.LobbyLive do
     # Subscribe to whiteboard events
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
     # Subscribe to global attention changes to re-filter sensor list in realtime
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:global")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
     # Subscribe to favorite toggle events from child sensor LiveViews
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
 
@@ -123,6 +134,8 @@ defmodule SensoctoWeb.LobbyLive do
         # Store socket.id for multi-tab sync identification
         socket_id: socket.id,
         page_title: "Lobby",
+        # Store full sensors map for LiveComponent rendering
+        sensors: sensors,
         sensors_online_count: sensors_count,
         sensors_online: %{},
         sensors_offline: %{},
@@ -237,6 +250,9 @@ defmodule SensoctoWeb.LobbyLive do
 
         # Start performance logging timer
         Process.send_after(self(), :log_perf_stats, @perf_log_interval_ms)
+
+        # Start component flush timer (for LiveComponent measurement buffers)
+        Process.send_after(self(), :flush_component_measurements, @component_flush_interval_ms)
 
         # Register with PriorityLens for adaptive data streaming
         # This enables client health-based quality adaptation
@@ -1611,6 +1627,7 @@ defmodule SensoctoWeb.LobbyLive do
 
     {:noreply,
      socket
+     |> assign(:sensors, sensors)
      |> assign(:heartrate_sensors, heartrate_sensors)
      |> assign(:imu_sensors, imu_sensors)
      |> assign(:location_sensors, location_sensors)
@@ -1619,6 +1636,24 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:skeleton_sensors, skeleton_sensors)
      |> assign(:available_lenses, available_lenses)
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
+  end
+
+  # Flush measurement buffers in all visible sensor components
+  @impl true
+  def handle_info(:flush_component_measurements, socket) do
+    # Schedule next flush
+    Process.send_after(self(), :flush_component_measurements, @component_flush_interval_ms)
+
+    # Get visible sensor range
+    {start_idx, end_idx} = socket.assigns.visible_range
+    visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, end_idx - start_idx)
+
+    # Send flush to each visible component
+    Enum.each(visible_sensor_ids, fn sensor_id ->
+      send_update(StatefulSensorComponent, id: "sensor_#{sensor_id}", flush: true)
+    end)
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -2240,15 +2275,29 @@ defmodule SensoctoWeb.LobbyLive do
   # ==========================================================================
 
   # Transform lens_batch to push_events for sensors view
+  # With LiveComponents, we send updates directly to the component instead of push_event
   defp process_lens_batch_for_sensors(socket, batch_data) do
-    Enum.reduce(batch_data, socket, fn {sensor_id, attributes}, acc ->
-      measurements =
-        Enum.map(attributes, fn {attr_id, m} ->
-          %{attribute_id: attr_id, payload: m.payload, timestamp: m.timestamp}
-        end)
+    # Get visible sensor range to only update visible components
+    {start_idx, end_idx} = socket.assigns.visible_range
+    visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, end_idx - start_idx)
+    visible_set = MapSet.new(visible_sensor_ids)
 
-      push_event(acc, "measurements_batch", %{sensor_id: sensor_id, attributes: measurements})
+    Enum.each(batch_data, fn {sensor_id, attributes} ->
+      # Only send updates to visible components
+      if MapSet.member?(visible_set, sensor_id) do
+        measurements =
+          Enum.map(attributes, fn {attr_id, m} ->
+            %{attribute_id: attr_id, payload: m.payload, timestamp: m.timestamp}
+          end)
+
+        send_update(StatefulSensorComponent,
+          id: "sensor_#{sensor_id}",
+          measurements_batch: measurements
+        )
+      end
     end)
+
+    socket
   end
 
   # Transform lens_batch to push_events for composite views

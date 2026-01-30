@@ -1079,11 +1079,18 @@
     ctx.fillStyle = "#111827";
     ctx.fillRect(0, 0, width, height);
 
-    // Only render sensors that have actual skeleton data
-    // (sensors prop is used for metadata like username/bpm, but doesn't determine rendering)
+    // Build list of sensors to render - include all from props (for placeholders) plus any with data
     const activeSensorIds = new Set<string>();
+
+    // First, add all sensors from props (these will show placeholders if no data yet)
+    sensors.forEach(s => {
+      if (s.sensor_id) {
+        activeSensorIds.add(s.sensor_id);
+      }
+    });
+
+    // Also add any sensors that have received data (in case they're not in props)
     skeletonData.forEach((data, id) => {
-      // Only include if they have valid smoothed landmarks for rendering
       if (data.smoothedLandmarks && data.smoothedLandmarks.length > 0) {
         activeSensorIds.add(id);
       }
@@ -1097,7 +1104,7 @@
       ctx.fillStyle = "#6b7280";
       ctx.font = "14px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("No skeleton sensors connected", width / 2, height / 2);
+      ctx.fillText("Waiting for skeleton sensors...", width / 2, height / 2);
       return;
     }
 

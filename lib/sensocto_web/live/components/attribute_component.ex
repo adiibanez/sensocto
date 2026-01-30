@@ -129,6 +129,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:attribute_type => "geolocation", :view_mode => :summary} = assigns) do
     Logger.debug("AttributeComponent geolocation summary render")
+    gps_status = get_gps_status(assigns[:lastvalue])
+    assigns = assign(assigns, :gps_status, gps_status)
 
     ~H"""
     <div>
@@ -140,8 +142,17 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       >
         <div :if={is_nil(@lastvalue)} class="text-xs text-gray-400">No location</div>
 
-        <div :if={@lastvalue} class="flex items-center justify-between text-xs">
-          <span class="text-gray-400">
+        <div :if={@gps_status == "acquiring"} class="flex items-center gap-2 text-xs text-yellow-400">
+          <span class="animate-pulse">●</span>
+          <span>Acquiring GPS...</span>
+        </div>
+
+        <div
+          :if={@lastvalue && @gps_status != "acquiring"}
+          class="flex items-center justify-between text-xs"
+        >
+          <span class="text-gray-400 flex items-center gap-1">
+            <span class={gps_status_color(@gps_status)} title={gps_status_label(@gps_status)}>●</span>
             {Float.round(@lastvalue.payload.latitude / 1, 3)}, {Float.round(
               @lastvalue.payload.longitude / 1,
               3
@@ -173,6 +184,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   @impl true
   def render(%{:attribute_type => "geolocation"} = assigns) do
     Logger.debug("AttributeComponent geolocation render #{inspect(assigns)}")
+    gps_status = get_gps_status(assigns[:lastvalue])
+    assigns = assign(assigns, :gps_status, gps_status)
 
     ~H"""
     <div>
@@ -193,8 +206,19 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
         <div :if={is_nil(@lastvalue)} class="loading"></div>
 
-        <div :if={@lastvalue}>
-          <p class="text-xs">
+        <div :if={@gps_status == "acquiring"} class="py-4">
+          <div class="flex items-center justify-center gap-2 text-yellow-400">
+            <span class="animate-pulse text-xl">●</span>
+            <span class="text-sm">Acquiring GPS signal...</span>
+          </div>
+          <p class="text-xs text-gray-500 text-center mt-2">
+            Waiting for satellite fix
+          </p>
+        </div>
+
+        <div :if={@lastvalue && @gps_status != "acquiring"}>
+          <p class="text-xs flex items-center gap-2">
+            <span class={gps_status_color(@gps_status)} title={gps_status_label(@gps_status)}>●</span>
             Lat: {Float.round(@lastvalue.payload.latitude / 1, 3)}, Lon: {Float.round(
               @lastvalue.payload.longitude / 1,
               3
@@ -534,7 +558,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> -     {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]"> -       {@presence.artist}</span>
             <% end %>
           </div>
         <% else %>
@@ -2521,6 +2545,30 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     </div>
     """
   end
+
+  # GPS status helpers
+  defp get_gps_status(nil), do: nil
+
+  defp get_gps_status(%{payload: %{status: status}}) when is_binary(status), do: status
+
+  defp get_gps_status(%{payload: payload}) when is_map(payload) do
+    case Map.get(payload, :status) || Map.get(payload, "status") do
+      nil -> "high_accuracy"
+      status -> status
+    end
+  end
+
+  defp get_gps_status(_), do: nil
+
+  defp gps_status_color("acquiring"), do: "text-yellow-400 animate-pulse"
+  defp gps_status_color("low_accuracy"), do: "text-orange-400"
+  defp gps_status_color("high_accuracy"), do: "text-green-400"
+  defp gps_status_color(_), do: "text-gray-400"
+
+  defp gps_status_label("acquiring"), do: "Acquiring GPS signal..."
+  defp gps_status_label("low_accuracy"), do: "Low accuracy (cell/WiFi)"
+  defp gps_status_label("high_accuracy"), do: "High accuracy (GPS)"
+  defp gps_status_label(_), do: "Unknown"
 
   # Extract battery level and charging status from various payload formats
   defp extract_battery_info(nil), do: %{level: 0.0, charging: nil}

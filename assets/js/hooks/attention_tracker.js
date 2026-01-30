@@ -14,7 +14,9 @@ const HOVER_BOOST_DURATION_MS = 2000;  // How long hover boost lasts after mouse
 const BATTERY_LOW_THRESHOLD = 0.30;
 const BATTERY_CRITICAL_THRESHOLD = 0.15;
 // Default ping interval - server can adjust based on system load
+// Uses jitter to distribute load across clients (3-5 seconds range)
 const DEFAULT_LATENCY_PING_INTERVAL_MS = 3000;
+const LATENCY_PING_JITTER_MS = 2000;  // Random jitter added to interval (0 to this value)
 const MIN_LATENCY_PING_INTERVAL_MS = 1000;   // Floor for high-priority sensors
 const MAX_LATENCY_PING_INTERVAL_MS = 30000;  // Cap for low-priority/many sensors
 
@@ -43,25 +45,35 @@ function recordEventLatency(startTime) {
 }
 
 export const AttentionTracker = {
-  mounted() {
+  // Lazy initialization - ensure all state is set up
+  ensureInitialized() {
+    // ALWAYS update the hook instance reference on the element
+    // This ensures event listeners use the CURRENT hook instance (with valid __view)
+    if (this.el) {
+      this.el._attentionHookInstance = this;
+    }
+
+    if (this._initialized) return;
+    this._initialized = true;
+
     this.observers = new Map();
     this.debounceTimers = new Map();
     this.focusedElements = new Set();
     this.viewedElements = new Set();
-    this.hoveredElements = new Set();  // Track currently hovered elements
-    this.hoverBoostTimers = new Map();  // Timers to expire hover boost
-    this.hoverDebounceTimers = new Map();  // Debounce timers for hover events
-    this.batteryState = 'normal';  // 'normal', 'low', 'critical'
+    this.hoveredElements = new Set();
+    this.hoverBoostTimers = new Map();
+    this.hoverDebounceTimers = new Map();
+    this.batteryState = 'normal';
     this.battery = null;
+
+    // Determine target for pushEvent - find the closest LiveComponent container
+    this.pushTarget = this.el.closest('[data-phx-component]') || this.el;
 
     // Set up intersection observer for visibility tracking
     this.intersectionObserver = new IntersectionObserver(
       (entries) => this.handleIntersection(entries),
       { threshold: 0.1, rootMargin: '50px' }
     );
-
-    // Observe all attribute elements
-    this.observeAttributes();
 
     // Set up focus tracking
     this.setupFocusTracking();
@@ -81,9 +93,14 @@ export const AttentionTracker = {
     this.setupLatencyMeasurement();
   },
 
+  mounted() {
+    this._initialized = false;  // Force re-init on mount
+    this.ensureInitialized();
+    this.observeAttributes();
+  },
+
   updated() {
-    // Re-observe attributes after LiveView updates the DOM
-    // This ensures we track new/replaced elements
+    this.ensureInitialized();  // Ensure initialized even if mounted wasn't called
     this.observeAttributes();
   },
 
@@ -113,19 +130,19 @@ export const AttentionTracker = {
     // Unregister all hover boosts
     this.hoveredElements.forEach(key => {
       const [sensorId, attributeId] = key.split(':');
-      this.pushEvent("hover_leave", { sensor_id: sensorId, attribute_id: attributeId });
+      this.pushEventTo(this.pushTarget,"hover_leave", { sensor_id: sensorId, attribute_id: attributeId });
     });
 
     // Unregister all views
     this.viewedElements.forEach(key => {
       const [sensorId, attributeId] = key.split(':');
-      this.pushEvent("view_leave", { sensor_id: sensorId, attribute_id: attributeId });
+      this.pushEventTo(this.pushTarget,"view_leave", { sensor_id: sensorId, attribute_id: attributeId });
     });
 
     // Unregister all focus
     this.focusedElements.forEach(key => {
       const [sensorId, attributeId] = key.split(':');
-      this.pushEvent("unfocus", { sensor_id: sensorId, attribute_id: attributeId });
+      this.pushEventTo(this.pushTarget,"unfocus", { sensor_id: sensorId, attribute_id: attributeId });
     });
   },
 
@@ -154,11 +171,23 @@ export const AttentionTracker = {
       this.observers.set(key, el);
       this.intersectionObserver.observe(el);
 
-      // Add click and hover listeners (use named function to avoid duplicates)
+      // Add click and hover listeners (only once per element)
+      // Listeners look up current hook instance dynamically to handle Phoenix reconnects
       if (!el._attentionClickHandler) {
-        el._attentionClickHandler = () => this.handleClick(el);
-        el._attentionMouseEnterHandler = () => this.handleMouseEnter(el);
-        el._attentionMouseLeaveHandler = () => this.handleMouseLeave(el);
+        // Store reference to hook container element for lookups
+        const hookEl = this.el;
+        el._attentionClickHandler = () => {
+          const currentHook = hookEl._attentionHookInstance;
+          if (currentHook) currentHook.handleClick(el);
+        };
+        el._attentionMouseEnterHandler = () => {
+          const currentHook = hookEl._attentionHookInstance;
+          if (currentHook) currentHook.handleMouseEnter(el);
+        };
+        el._attentionMouseLeaveHandler = () => {
+          const currentHook = hookEl._attentionHookInstance;
+          if (currentHook) currentHook.handleMouseLeave(el);
+        };
         el.addEventListener('click', el._attentionClickHandler);
         el.addEventListener('mouseenter', el._attentionMouseEnterHandler);
         el.addEventListener('mouseleave', el._attentionMouseLeaveHandler);
@@ -175,23 +204,46 @@ export const AttentionTracker = {
     const sensorId = this.el.dataset.sensor_id;
     if (!sensorId) return;
 
-    // Only set up once
-    if (this._sensorLevelTrackingSetup) return;
-    this._sensorLevelTrackingSetup = true;
+    // Only set up listeners once PER ELEMENT (listeners are reused across hook instances)
+    if (this.el._attentionSensorListenerSetup) {
+      // Update the hook instance reference so existing listeners use the new instance
+      this.el._attentionHookInstance = this;
+      return;
+    }
+
+    this.el._attentionSensorListenerSetup = true;
+    this.el._attentionHookInstance = this;
+
+    const el = this.el;
 
     // Track sensor-level hover using a synthetic "_sensor" attribute id
     // This enables hover attention even when mouse is over header/empty areas
-    this.el.addEventListener('mouseenter', () => {
-      this.handleSensorMouseEnter(sensorId);
-    });
+    // IMPORTANT: Don't capture `this` in closure - look up current hook instance dynamically
+    const mouseEnterHandler = () => {
+      const currentHook = el._attentionHookInstance;
+      if (currentHook) {
+        currentHook.handleSensorMouseEnter(sensorId);
+      }
+    };
+    const mouseLeaveHandler = () => {
+      const currentHook = el._attentionHookInstance;
+      if (currentHook) {
+        currentHook.handleSensorMouseLeave(sensorId);
+      }
+    };
 
-    this.el.addEventListener('mouseleave', () => {
-      this.handleSensorMouseLeave(sensorId);
-    });
+    // Store handlers on element so we can remove them later if needed
+    el._sensorMouseEnterHandler = mouseEnterHandler;
+    el._sensorMouseLeaveHandler = mouseLeaveHandler;
+
+    el.addEventListener('mouseenter', mouseEnterHandler);
+    el.addEventListener('mouseleave', mouseLeaveHandler);
 
     // Also observe the container for intersection (sensor visibility)
-    this.intersectionObserver.observe(this.el);
-    this.observers.set(`${sensorId}:_sensor`, this.el);
+    if (this.intersectionObserver) {
+      this.intersectionObserver.observe(el);
+      this.observers.set(`${sensorId}:_sensor`, el);
+    }
   },
 
   handleSensorMouseEnter(sensorId) {
@@ -216,7 +268,7 @@ export const AttentionTracker = {
         if (!el || !el.dataset) return;
         const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
         if (!this.hoveredElements.has(attrKey)) {
-          this.pushEvent("hover_enter", {
+          this.pushEventTo(this.pushTarget,"hover_enter", {
             sensor_id: el.dataset.sensor_id,
             attribute_id: el.dataset.attribute_id
           });
@@ -245,7 +297,7 @@ export const AttentionTracker = {
               if (!el || !el.dataset) return;
               const attrKey = `${el.dataset.sensor_id}:${el.dataset.attribute_id}`;
               if (this.hoveredElements.has(attrKey)) {
-                this.pushEvent("hover_leave", {
+                this.pushEventTo(this.pushTarget,"hover_leave", {
                   sensor_id: el.dataset.sensor_id,
                   attribute_id: el.dataset.attribute_id
                 });
@@ -335,7 +387,7 @@ export const AttentionTracker = {
 
           // Also remove focus if was focused (only for real attributes)
           if (!isSensorContainer && this.focusedElements.has(key)) {
-            this.pushEvent("unfocus", { sensor_id: sensorId, attribute_id: attributeId });
+            this.pushEventTo(this.pushTarget,"unfocus", { sensor_id: sensorId, attribute_id: attributeId });
             this.focusedElements.delete(key);
           }
         }
@@ -360,13 +412,13 @@ export const AttentionTracker = {
       this.focusedElements.forEach(focusedKey => {
         if (focusedKey !== key) {
           const [prevSensorId, prevAttributeId] = focusedKey.split(':');
-          this.pushEvent("unfocus", { sensor_id: prevSensorId, attribute_id: prevAttributeId });
+          this.pushEventTo(this.pushTarget,"unfocus", { sensor_id: prevSensorId, attribute_id: prevAttributeId });
         }
       });
       this.focusedElements.clear();
 
       // Focus this element
-      this.pushEvent("focus", { sensor_id: sensorId, attribute_id: attributeId });
+      this.pushEventTo(this.pushTarget,"focus", { sensor_id: sensorId, attribute_id: attributeId });
       this.focusedElements.add(key);
     }
   },
@@ -379,7 +431,7 @@ export const AttentionTracker = {
 
     // Ensure it's registered as viewed first
     if (!this.viewedElements.has(key)) {
-      this.pushEvent("view_enter", { sensor_id: sensorId, attribute_id: attributeId });
+      this.pushEventTo(this.pushTarget,"view_enter", { sensor_id: sensorId, attribute_id: attributeId });
       this.viewedElements.add(key);
     }
 
@@ -400,7 +452,7 @@ export const AttentionTracker = {
     // Send hover event immediately if not already hovered
     // This makes the initial hover response instant
     if (!this.hoveredElements.has(key)) {
-      this.pushEvent("hover_enter", { sensor_id: sensorId, attribute_id: attributeId });
+      this.pushEventTo(this.pushTarget,"hover_enter", { sensor_id: sensorId, attribute_id: attributeId });
       this.hoveredElements.add(key);
       recordEventLatency(eventStart);
     }
@@ -426,7 +478,7 @@ export const AttentionTracker = {
 
       const timer = setTimeout(() => {
         if (this.hoveredElements.has(key)) {
-          this.pushEvent("hover_leave", { sensor_id: sensorId, attribute_id: attributeId });
+          this.pushEventTo(this.pushTarget,"hover_leave", { sensor_id: sensorId, attribute_id: attributeId });
           this.hoveredElements.delete(key);
         }
         this.hoverBoostTimers.delete(key);
@@ -444,7 +496,7 @@ export const AttentionTracker = {
         // Clicked outside any tracked element - unfocus all
         this.focusedElements.forEach(key => {
           const [sensorId, attributeId] = key.split(':');
-          this.pushEvent("unfocus", { sensor_id: sensorId, attribute_id: attributeId });
+          this.pushEventTo(this.pushTarget,"unfocus", { sensor_id: sensorId, attribute_id: attributeId });
         });
         this.focusedElements.clear();
       }
@@ -457,13 +509,13 @@ export const AttentionTracker = {
         // Page is hidden - notify server of reduced attention
         this.viewedElements.forEach(key => {
           const [sensorId, attributeId] = key.split(':');
-          this.pushEvent("page_hidden", { sensor_id: sensorId, attribute_id: attributeId });
+          this.pushEventTo(this.pushTarget,"page_hidden", { sensor_id: sensorId, attribute_id: attributeId });
         });
       } else {
         // Page is visible again - restore attention
         this.viewedElements.forEach(key => {
           const [sensorId, attributeId] = key.split(':');
-          this.pushEvent("page_visible", { sensor_id: sensorId, attribute_id: attributeId });
+          this.pushEventTo(this.pushTarget,"page_visible", { sensor_id: sensorId, attribute_id: attributeId });
         });
       }
     });
@@ -510,7 +562,7 @@ export const AttentionTracker = {
       console.debug(`Battery state changed: ${oldState} -> ${newState} (level: ${Math.round(level * 100)}%, charging: ${charging})`);
 
       // Notify server of battery state change
-      this.pushEvent("battery_state_changed", {
+      this.pushEventTo(this.pushTarget,"battery_state_changed", {
         state: newState,
         level: Math.round(level * 100),
         charging: charging
@@ -526,7 +578,7 @@ export const AttentionTracker = {
 
     // Set new debounced push
     const timer = setTimeout(() => {
-      this.pushEvent(event, payload);
+      this.pushEventTo(this.pushTarget,event, payload);
       this.debounceTimers.delete(key);
     }, DEBOUNCE_MS);
 
@@ -547,7 +599,7 @@ export const AttentionTracker = {
         this.pendingPingSentAt = null;
 
         // Report latency back to server for display
-        this.pushEvent("latency_report", { latency_ms: latencyMs });
+        this.pushEventTo(this.pushTarget,"latency_report", { latency_ms: latencyMs });
 
         // Update ping interval if server suggests a different one
         if (next_interval_ms && next_interval_ms !== this.currentPingInterval) {
@@ -561,18 +613,24 @@ export const AttentionTracker = {
       }
     });
 
-    // Send initial ping immediately
-    this.sendLatencyPing();
-
-    // Then ping periodically
-    this.scheduleNextPing();
+    // Send initial ping with random delay to stagger client requests
+    const initialDelay = Math.floor(Math.random() * LATENCY_PING_JITTER_MS);
+    setTimeout(() => {
+      this.sendLatencyPing();
+      // Then ping periodically with jitter
+      this.scheduleNextPing();
+    }, initialDelay);
   },
 
   scheduleNextPing() {
+    // Add random jitter to distribute load across clients
+    const jitter = Math.floor(Math.random() * LATENCY_PING_JITTER_MS);
+    const intervalWithJitter = this.currentPingInterval + jitter;
+
     this.latencyPingTimeout = setTimeout(() => {
       this.sendLatencyPing();
       this.scheduleNextPing();
-    }, this.currentPingInterval);
+    }, intervalWithJitter);
   },
 
   rescheduleLatencyPing() {
@@ -588,7 +646,7 @@ export const AttentionTracker = {
       this.pingCounter++;
       this.pendingPingId = this.pingCounter;
       this.pendingPingSentAt = performance.now();
-      this.pushEvent("latency_ping", { ping_id: this.pendingPingId });
+      this.pushEventTo(this.pushTarget,"latency_ping", { ping_id: this.pendingPingId });
     }
   }
 };
@@ -601,6 +659,8 @@ export const AttentionTracker = {
 export const SensorPinControl = {
   mounted() {
     const sensorId = this.el.dataset.sensor_id;
+    // Target the closest LiveComponent container for pushEventTo
+    this.pushTarget = this.el.closest('[data-phx-component]') || this.el;
 
     this.updatePinVisual = () => {
       // Guard: element may have been removed from DOM during fast scroll
@@ -626,10 +686,10 @@ export const SensorPinControl = {
       const isPinned = this.el.dataset.pinned === 'true';
 
       if (isPinned) {
-        this.pushEvent("unpin_sensor", { sensor_id: sensorId });
+        this.pushEventTo(this.pushTarget,"unpin_sensor", { sensor_id: sensorId });
         this.el.dataset.pinned = 'false';
       } else {
-        this.pushEvent("pin_sensor", { sensor_id: sensorId });
+        this.pushEventTo(this.pushTarget,"pin_sensor", { sensor_id: sensorId });
         this.el.dataset.pinned = 'true';
       }
 

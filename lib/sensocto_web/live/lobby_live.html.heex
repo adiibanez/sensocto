@@ -538,22 +538,27 @@
         aria-hidden="true"
       />
 
-      <%!-- Visible sensors - actually rendered as LiveViews --%>
+      <%!-- Visible sensors - rendered as LiveComponents for efficient virtual scrolling --%>
       <div
         :for={sensor_id <- visible_sensor_ids}
         id={"sensor_container_#{sensor_id}"}
-        phx-hook="AttentionTracker"
-        data-sensor_id={sensor_id}
       >
-        {live_render(@socket, StatefulSensorLive,
-          id: "stateful_sensor_#{sensor_id}",
-          session: %{
-            "parent_pid" => self(),
-            "sensor_id" => sensor_id,
-            "user_id" => @current_user && @current_user.id,
-            "is_favorite" => sensor_id in @favorite_sensors
+        <.live_component
+          module={StatefulSensorComponent}
+          id={"sensor_#{sensor_id}"}
+          sensor_id={sensor_id}
+          sensor={
+            Map.get(@sensors, sensor_id, %{
+              sensor_id: sensor_id,
+              sensor_name: sensor_id,
+              sensor_type: "unknown",
+              attributes: %{}
+            })
           }
-        )}
+          view_mode={@global_view_mode}
+          user_id={@current_user && @current_user.id}
+          is_favorite={sensor_id in @favorite_sensors}
+        />
       </div>
 
       <%!-- Bottom spacer for sensors below viewport --%>
@@ -564,6 +569,41 @@
         class="col-span-full"
         aria-hidden="true"
       />
+
+      <%!-- Loading indicator for infinite scroll - shows when scrolling near bottom --%>
+      <div
+        :if={rows_after > 0}
+        id="virtual-scroll-loading"
+        class="col-span-full flex items-center justify-center py-6 text-gray-400"
+      >
+        <div class="flex items-center gap-3">
+          <svg
+            class="animate-spin h-6 w-6 text-orange-400"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            >
+            </circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            >
+            </path>
+          </svg>
+          <span class="text-sm font-medium">
+            Loading more sensors ({rows_after * @cols} remaining)...
+          </span>
+        </div>
+      </div>
     </div>
 
     <div

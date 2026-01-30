@@ -15,6 +15,11 @@
   let geolocationData = null;
   let watchId = null; // To store the watchPosition ID
   let permissionState = null; // Track permission state
+  let gpsStatus = null; // Track GPS acquisition state: "acquiring" | "low_accuracy" | "high_accuracy"
+
+  // Accuracy thresholds (in meters)
+  const HIGH_ACCURACY_THRESHOLD = 50;
+  const LOW_ACCURACY_THRESHOLD = 100;
 
   let unsubscribeSocket;
 
@@ -124,6 +129,30 @@
     requestAndStartGeolocation();
   };
 
+  // Determine GPS status based on accuracy
+  const getGpsStatus = (accuracy) => {
+    if (accuracy <= HIGH_ACCURACY_THRESHOLD) return "high_accuracy";
+    if (accuracy <= LOW_ACCURACY_THRESHOLD) return "low_accuracy";
+    return "low_accuracy"; // Even very poor accuracy is still a fix
+  };
+
+  // Send acquiring state to server
+  const sendAcquiringState = () => {
+    gpsStatus = "acquiring";
+    const payload = {
+      payload: {
+        status: "acquiring",
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+      },
+      attribute_id: "geolocation",
+      timestamp: Math.round(new Date().getTime()),
+    };
+    logger.log(loggerCtxName, "Sending acquiring state", payload);
+    sensorService.sendChannelMessage(channelIdentifier, payload);
+  };
+
   const startGeolocationInternal = () => {
     if (navigator.geolocation) {
       sensorService.setupChannel(channelIdentifier);
@@ -133,17 +162,25 @@
         sampling_rate: 1,
       });
 
+      // Send acquiring state immediately
+      sendAcquiringState();
+
       watchId = navigator.geolocation.watchPosition(
         (position) => {
           permissionState = "granted";
+          const accuracy = position.coords.accuracy;
+          gpsStatus = getGpsStatus(accuracy);
+
           geolocationData = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
+            accuracy: accuracy,
             timestamp: position.timestamp,
+            status: gpsStatus,
           };
           let payload = {
             payload: {
+              status: gpsStatus,
               latitude: geolocationData.latitude,
               longitude: geolocationData.longitude,
               accuracy: Number(geolocationData.accuracy.toFixed(1)),
@@ -192,6 +229,7 @@
       navigator.geolocation.clearWatch(watchId);
       watchId = null;
       geolocationData = null; // Reset data
+      gpsStatus = null; // Reset GPS status
 
       sensorService.unregisterAttribute(
         sensorService.getDeviceId(),

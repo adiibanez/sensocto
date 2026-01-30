@@ -445,6 +445,18 @@
         // Cleanup standalone camera if we were using it
         cleanupStandaloneCamera();
 
+        // Close the pose landmarker to release any GPU/CPU resources
+        // This is important for freeing camera references that MediaPipe may hold
+        if (poseLandmarker) {
+            try {
+                poseLandmarker.close();
+                logger.log(loggerCtxName, "PoseLandmarker closed");
+            } catch (e) {
+                logger.warn(loggerCtxName, "Error closing PoseLandmarker:", e);
+            }
+            poseLandmarker = null;
+        }
+
         // THEN: Unregister the attribute after detection is fully stopped
         // Small delay ensures any in-flight sendSkeletonData calls see detecting=false
         setTimeout(() => {
@@ -581,10 +593,16 @@
         if (autostartUnsubscribe) {
             autostartUnsubscribe();
         }
+        // stopPose handles: stopping detection, cleanup camera, closing poseLandmarker
         stopPose();
+        // Extra cleanup in case stopPose wasn't running (detecting was false)
         cleanupStandaloneCamera();
         if (poseLandmarker) {
-            poseLandmarker.close();
+            try {
+                poseLandmarker.close();
+            } catch (e) {
+                // Ignore errors on destroy
+            }
             poseLandmarker = null;
         }
     });

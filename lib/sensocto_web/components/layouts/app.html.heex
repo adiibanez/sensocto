@@ -136,46 +136,46 @@
   phx-hook="BottomNav"
 >
   <div class="grid grid-cols-5 h-14">
-    <a
-      href="/"
+    <.link
+      navigate={~p"/"}
       class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
       data-path="/"
     >
       <Heroicons.icon name="home" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Home</span>
-    </a>
-    <a
-      href="/lobby"
+    </.link>
+    <.link
+      navigate={~p"/lobby"}
       class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
       data-path="/lobby"
     >
       <Heroicons.icon name="squares-2x2" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Lobby</span>
-    </a>
-    <a
-      href="/rooms"
+    </.link>
+    <.link
+      navigate={~p"/rooms"}
       class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
       data-path="/rooms"
     >
       <Heroicons.icon name="building-office" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Rooms</span>
-    </a>
-    <a
-      href="/sensors"
+    </.link>
+    <.link
+      navigate={~p"/sensors"}
       class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
       data-path="/sensors"
     >
       <Heroicons.icon name="signal" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Sensors</span>
-    </a>
-    <a
-      href="/simulator"
+    </.link>
+    <.link
+      navigate={~p"/simulator"}
       class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
       data-path="/simulator"
     >
       <Heroicons.icon name="cpu-chip" type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">Sim</span>
-    </a>
+    </.link>
   </div>
 </nav>
 

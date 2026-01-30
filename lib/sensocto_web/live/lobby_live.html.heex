@@ -570,15 +570,16 @@
         aria-hidden="true"
       />
 
-      <%!-- Loading indicator for infinite scroll - shows when scrolling near bottom --%>
+      <%!-- Scroll/loading indicator - shows loading spinner when fetching, "more below" when idle --%>
       <div
         :if={rows_after > 0}
-        id="virtual-scroll-loading"
-        class="col-span-full flex items-center justify-center py-6 text-gray-400"
+        id="virtual-scroll-indicator"
+        class="col-span-full flex items-center justify-center py-4 text-gray-400"
       >
-        <div class="flex items-center gap-3">
+        <%!-- Loading spinner (hidden by default, shown by JS when loading) --%>
+        <div class="loading-spinner hidden flex items-center gap-2">
           <svg
-            class="animate-spin h-6 w-6 text-orange-400"
+            class="animate-spin h-5 w-5 text-orange-400"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -599,8 +600,13 @@
             >
             </path>
           </svg>
-          <span class="text-sm font-medium">
-            Loading more sensors ({rows_after * @cols} remaining)...
+          <span class="text-sm">Loading sensors...</span>
+        </div>
+        <%!-- "More below" indicator (shown by default, hidden by JS when loading) --%>
+        <div class="more-text flex items-center gap-2 text-xs text-gray-500">
+          <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4 animate-bounce" />
+          <span>
+            {rows_after * @cols} more sensor{if rows_after * @cols > 1, do: "s", else: ""} below
           </span>
         </div>
       </div>

@@ -113,6 +113,7 @@
         lastvalue={attribute.lastvalue}
         sensor_id={@sensor_id}
         view_mode={@view_mode}
+        pressed_buttons={Map.get(@pressed_buttons, attribute_id, MapSet.new())}
       >
       </.live_component>
     </div>

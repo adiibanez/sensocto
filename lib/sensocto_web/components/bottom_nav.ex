@@ -21,31 +21,31 @@ defmodule SensoctoWeb.Components.BottomNav do
     >
       <div class="grid grid-cols-5 h-14">
         <.nav_item
-          href={~p"/"}
+          navigate={~p"/"}
           icon="home"
           label="Home"
           active={@current_path == "/"}
         />
         <.nav_item
-          href={~p"/lobby"}
+          navigate={~p"/lobby"}
           icon="squares-2x2"
           label="Lobby"
           active={String.starts_with?(@current_path, "/lobby")}
         />
         <.nav_item
-          href={~p"/rooms"}
+          navigate={~p"/rooms"}
           icon="building-office"
           label="Rooms"
           active={String.starts_with?(@current_path, "/rooms")}
         />
         <.nav_item
-          href={~p"/sensors"}
+          navigate={~p"/sensors"}
           icon="signal"
           label="Sensors"
           active={String.starts_with?(@current_path, "/sensors")}
         />
         <.nav_item
-          href={~p"/simulator"}
+          navigate={~p"/simulator"}
           icon="cpu-chip"
           label="Sim"
           active={String.starts_with?(@current_path, "/simulator")}
@@ -55,17 +55,15 @@ defmodule SensoctoWeb.Components.BottomNav do
     """
   end
 
-  attr :href, :string, required: true
+  attr :navigate, :string, required: true
   attr :icon, :string, required: true
   attr :label, :string, required: true
   attr :active, :boolean, default: false
 
   defp nav_item(assigns) do
     ~H"""
-    <a
-      href={@href}
-      data-phx-link="redirect"
-      data-phx-link-state="push"
+    <.link
+      navigate={@navigate}
       class={[
         "flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation",
         "min-h-[44px]",
@@ -75,7 +73,7 @@ defmodule SensoctoWeb.Components.BottomNav do
     >
       <Heroicons.icon name={@icon} type="outline" class="w-5 h-5" />
       <span class="text-[10px] font-medium">{@label}</span>
-    </a>
+    </.link>
     """
   end
 end

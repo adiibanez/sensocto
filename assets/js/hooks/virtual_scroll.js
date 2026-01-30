@@ -27,6 +27,7 @@ export const VirtualScrollHook = {
     this.lastPushTime = 0;  // Track last server update time
     this.pendingRange = null;  // Store pending range during throttle
     this.throttleTimer = null;  // Timer for delayed update
+    this.isLoading = false;  // Track loading state
 
     this.detectColumns();
 
@@ -47,6 +48,12 @@ export const VirtualScrollHook = {
       this.calculateVisibleRange();
     });
     this.resizeObserver.observe(this.el);
+
+    // Listen for server acknowledgment that loading is complete
+    this.handleEvent("virtual_scroll_loaded", () => {
+      this.isLoading = false;
+      this.updateLoadingIndicator();
+    });
 
     // Initial calculation with slight delay to ensure DOM is ready
     setTimeout(() => this.calculateVisibleRange(), 0);
@@ -122,6 +129,8 @@ export const VirtualScrollHook = {
         clearTimeout(this.throttleTimer);
         this.throttleTimer = null;
       }
+      this.isLoading = true;
+      this.updateLoadingIndicator();
       this.pushEvent("visible_range_changed", payload);
     } else {
       this.pendingRange = payload;
@@ -131,10 +140,28 @@ export const VirtualScrollHook = {
           this.throttleTimer = null;
           if (this.pendingRange) {
             this.lastPushTime = Date.now();
+            this.isLoading = true;
+            this.updateLoadingIndicator();
             this.pushEvent("visible_range_changed", this.pendingRange);
             this.pendingRange = null;
           }
         }, delay);
+      }
+    }
+  },
+
+  updateLoadingIndicator() {
+    const indicator = document.getElementById('virtual-scroll-indicator');
+    if (indicator) {
+      const spinner = indicator.querySelector('.loading-spinner');
+      const moreText = indicator.querySelector('.more-text');
+
+      if (this.isLoading) {
+        if (spinner) spinner.classList.remove('hidden');
+        if (moreText) moreText.classList.add('hidden');
+      } else {
+        if (spinner) spinner.classList.add('hidden');
+        if (moreText) moreText.classList.remove('hidden');
       }
     }
   }

@@ -558,7 +558,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> -       {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]"> -         {@presence.artist}</span>
             <% end %>
           </div>
         <% else %>
@@ -2293,6 +2293,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       render_hints = AttributeType.render_hints(attribute_type)
       view_mode = Map.get(assigns, :view_mode, :normal)
 
+      # Initialize pressed_buttons from assigns or keep existing state
+      pressed_buttons =
+        Map.get(assigns, :pressed_buttons) ||
+          Map.get(socket.assigns, :pressed_buttons, MapSet.new())
+
       {
         :ok,
         socket
@@ -2305,6 +2310,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         # Use lastvalue from attribute on full mount
         |> assign(:lastvalue, attribute.lastvalue)
         |> assign(:view_mode, view_mode)
+        |> assign(:pressed_buttons, pressed_buttons)
       }
     else
       # Partial update - only update lastvalue (and view_mode/pressed_buttons if present)
@@ -2625,6 +2631,21 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     else
       "background-color: #4b5563; color: #9ca3af;"
     end
+  end
+
+  # ============================================================================
+  # Event Handlers - Delegate attention tracking events to parent LiveView
+  # ============================================================================
+
+  @impl true
+  def handle_event("page_hidden", params, socket) do
+    send(self(), {:component_event, "page_hidden", params})
+    {:noreply, socket}
+  end
+
+  def handle_event("page_visible", params, socket) do
+    send(self(), {:component_event, "page_visible", params})
+    {:noreply, socket}
   end
 
   # def update_many(assigns_sockets) do

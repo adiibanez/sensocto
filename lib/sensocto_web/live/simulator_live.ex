@@ -260,40 +260,46 @@ defmodule SensoctoWeb.SimulatorLive do
         
     <!-- Scenario Selection -->
         <div class="bg-gray-800 rounded-lg p-6 mb-6">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-xl font-semibold text-orange-300">Available Scenarios</h2>
-              <p class="text-sm text-gray-400 mt-1">
-                Select a scenario and optionally assign sensors to a room. You can run multiple scenarios simultaneously.
-              </p>
-            </div>
-            <form phx-change="select_room" phx-submit="start_scenario" class="flex items-center gap-3">
-              <div class="flex items-center gap-2">
-                <label class="text-sm text-gray-400">Room:</label>
-                <select
-                  name="room_id"
-                  class="bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-orange-500 focus:border-orange-500"
-                >
-                  <option value="">No Room</option>
-                  <%= for room <- @rooms do %>
-                    <option value={room.id} selected={@selected_room_id == room.id}>
-                      {room.name}
-                    </option>
-                  <% end %>
-                </select>
+          <div class="flex flex-col gap-4 mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 class="text-xl font-semibold text-orange-300">Available Scenarios</h2>
+                <p class="text-sm text-gray-400 mt-1">
+                  Select a scenario and optionally assign sensors to a room. You can run multiple scenarios simultaneously.
+                </p>
               </div>
-              <button
-                type="submit"
-                disabled={is_nil(@selected_scenario)}
-                class={[
-                  "px-4 py-2 rounded-lg transition-colors font-medium",
-                  @selected_scenario && "bg-green-600 hover:bg-green-700 cursor-pointer",
-                  is_nil(@selected_scenario) && "bg-gray-600 cursor-not-allowed opacity-50"
-                ]}
+              <form
+                phx-change="select_room"
+                phx-submit="start_scenario"
+                class="flex flex-wrap items-center gap-3"
               >
-                Start Scenario
-              </button>
-            </form>
+                <div class="flex items-center gap-2">
+                  <label class="text-sm text-gray-400">Room:</label>
+                  <select
+                    name="room_id"
+                    class="bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-orange-500 focus:border-orange-500"
+                  >
+                    <option value="">No Room</option>
+                    <%= for room <- @rooms do %>
+                      <option value={room.id} selected={@selected_room_id == room.id}>
+                        {room.name}
+                      </option>
+                    <% end %>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={is_nil(@selected_scenario)}
+                  class={[
+                    "px-4 py-2 rounded-lg transition-colors font-medium whitespace-nowrap",
+                    @selected_scenario && "bg-green-600 hover:bg-green-700 cursor-pointer",
+                    is_nil(@selected_scenario) && "bg-gray-600 cursor-not-allowed opacity-50"
+                  ]}
+                >
+                  Start Scenario
+                </button>
+              </form>
+            </div>
           </div>
 
           <%= if length(@scenarios) > 0 do %>

@@ -151,7 +151,12 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
         >
           <%= case @active_tab do %>
             <% :overview -> %>
-              <.overview_tab sensor={@sensor} sensor_id={@sensor_id} view_mode={@view_mode} />
+              <.overview_tab
+                sensor={@sensor}
+                sensor_id={@sensor_id}
+                view_mode={@view_mode}
+                pressed_buttons={@pressed_buttons}
+              />
             <% :ecg -> %>
               <.ecg_tab sensor={@sensor} sensor_id={@sensor_id} />
             <% :map -> %>
@@ -163,7 +168,12 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
             <% :raw -> %>
               <.raw_tab sensor={@sensor} sensor_id={@sensor_id} />
             <% _ -> %>
-              <.overview_tab sensor={@sensor} sensor_id={@sensor_id} view_mode={@view_mode} />
+              <.overview_tab
+                sensor={@sensor}
+                sensor_id={@sensor_id}
+                view_mode={@view_mode}
+                pressed_buttons={@pressed_buttons}
+              />
           <% end %>
         </div>
       </main>
@@ -231,6 +241,7 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
   attr :sensor, :map, required: true
   attr :sensor_id, :string, required: true
   attr :view_mode, :atom, required: true
+  attr :pressed_buttons, :map, required: true
 
   defp overview_tab(assigns) do
     ~H"""
@@ -246,6 +257,7 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
           sensor_id={@sensor_id}
           attribute_type={attribute.attribute_type}
           view_mode={@view_mode}
+          pressed_buttons={Map.get(@pressed_buttons, attribute_id, MapSet.new())}
         />
       </div>
       <div :if={@sensor.attributes == %{}} class="col-span-full text-center py-12">
@@ -264,27 +276,23 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
     assigns = assign(assigns, :ecg_attribute, ecg_attribute)
 
     ~H"""
-    <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div class="h-[500px]">
       <%= if @ecg_attribute do %>
-        <h2 class="text-lg font-semibold mb-4">ECG Waveform</h2>
-        <div class="h-96">
-          <sensocto-ecg-visualization
-            id={"detail_ecg_#{@sensor_id}"}
-            sensor_id={@sensor_id}
-            attribute_id="ecg"
-            samplingrate={@ecg_attribute[:sampling_rate] || 100}
-            phx-update="ignore"
-            class="w-full h-full"
-            color="#22c55e"
-            backgroundColor="transparent"
-          />
-        </div>
-        <div :if={@ecg_attribute[:lastvalue]} class="mt-4 text-sm text-gray-400">
-          Latest value:
-          <span class="text-white font-mono">{inspect(@ecg_attribute.lastvalue.payload)}</span>
-        </div>
+        <.svelte
+          name="SingleECG"
+          props={
+            %{
+              sensor_id: @sensor_id,
+              attribute_id: "ecg",
+              color: "#00ff00",
+              title: "ECG Waveform",
+              showHeader: true,
+              minHeight: "480px"
+            }
+          }
+        />
       <% else %>
-        <div class="text-center py-12">
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 text-center py-12">
           <Heroicons.icon name="heart" type="outline" class="mx-auto h-12 w-12 text-gray-500" />
           <p class="mt-2 text-sm text-gray-400">No ECG data available for this sensor</p>
         </div>
@@ -648,6 +656,13 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
   end
 
   def handle_info({:attention_changed, _}, socket), do: {:noreply, socket}
+
+  # Handle events delegated from child components (e.g., AttributeComponent)
+  @impl true
+  def handle_info({:component_event, event_name, params}, socket) do
+    # Re-dispatch the event as if it came directly to the LiveView
+    handle_event(event_name, params, socket)
+  end
 
   @impl true
   def handle_info(:flush_throttled_measurements, socket) do

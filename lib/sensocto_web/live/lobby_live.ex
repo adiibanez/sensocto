@@ -2008,7 +2008,8 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply,
      socket
      |> assign(:visible_range, {start_idx, end_idx})
-     |> assign(:cols, max(1, cols))}
+     |> assign(:cols, max(1, cols))
+     |> push_event("virtual_scroll_loaded", %{})}
   end
 
   # Lens view selector (dropdown)

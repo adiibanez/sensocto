@@ -373,7 +373,7 @@ defmodule SensoctoWeb.LobbyLive do
   defp attention_level_to_int(_), do: 0
 
   # Partition sensors for virtual scroll rendering
-  # Returns {rows_before, visible_ids, rows_after} for CSS spacer heights
+  # Returns {rows_before, visible_ids, rows_after, sensors_remaining} for CSS spacer heights
   defp partition_sensors_for_virtual_scroll(sensor_ids, {start_idx, end_idx}, cols) do
     total = length(sensor_ids)
     cols = max(1, cols)
@@ -384,11 +384,13 @@ defmodule SensoctoWeb.LobbyLive do
 
     visible_ids = Enum.slice(sensor_ids, start_idx, end_idx - start_idx)
 
-    # Calculate spacer heights (in rows)
+    # Calculate spacer heights (in rows) - use ceiling to account for partial rows
     rows_before = div(start_idx, cols)
-    rows_after = div(max(0, total - end_idx), cols)
+    sensors_remaining = max(0, total - end_idx)
+    # Use ceiling for rows_after to ensure spacer covers partial rows
+    rows_after = if sensors_remaining > 0, do: div(sensors_remaining + cols - 1, cols), else: 0
 
-    {rows_before, visible_ids, rows_after}
+    {rows_before, visible_ids, rows_after, sensors_remaining}
   end
 
   defp count_room_mode_presence(room_id) do

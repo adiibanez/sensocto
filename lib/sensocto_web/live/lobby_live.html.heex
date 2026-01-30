@@ -512,7 +512,7 @@
 
   <div :if={@live_action == :sensors}>
     <%!-- Virtual scroll sensor grid --%>
-    <% {rows_before, visible_sensor_ids, rows_after} =
+    <% {rows_before, visible_sensor_ids, rows_after, sensors_remaining} =
       partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
 
     <div
@@ -572,7 +572,7 @@
 
       <%!-- Scroll/loading indicator - shows loading spinner when fetching, "more below" when idle --%>
       <div
-        :if={rows_after > 0}
+        :if={sensors_remaining > 0}
         id="virtual-scroll-indicator"
         class="col-span-full flex items-center justify-center py-4 text-gray-400"
       >
@@ -606,7 +606,7 @@
         <div class="more-text flex items-center gap-2 text-xs text-gray-500">
           <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4 animate-bounce" />
           <span>
-            {rows_after * @cols} more sensor{if rows_after * @cols > 1, do: "s", else: ""} below
+            {sensors_remaining} more sensor{if sensors_remaining > 1, do: "s", else: ""} below
           </span>
         </div>
       </div>

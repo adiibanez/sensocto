@@ -21,15 +21,27 @@ kill_signal = 'SIGTERM'
 [http_service]
   internal_port = 4000
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
   [http_service.concurrency]
     type = 'connections'
     hard_limit = 1000
     soft_limit = 1000
+
+  # Ensure Frankfurt (fra) always has 1 node running
+  [[http_service.machine]]
+    region = 'fra'
+    min = 1
+    max = 5
+
+  # Amsterdam can scale to zero when idle
+  [[http_service.machine]]
+    region = 'ams'
+    min = 0
+    max = 5
 
 [[vm]]
   memory = '2048mb'

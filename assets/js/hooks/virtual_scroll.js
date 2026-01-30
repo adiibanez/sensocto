@@ -99,13 +99,17 @@ export const VirtualScrollHook = {
     const startDelta = this.lastStart !== null ? Math.abs(startIndex - this.lastStart) : Infinity;
     const endDelta = this.lastEnd !== null ? Math.abs(endIndex - this.lastEnd) : Infinity;
 
-    // Update if: first render, OR approaching edge of buffer, OR significant change
+    // Update if: first render, OR approaching edge of buffer, OR significant change, OR reached start/end of list
     const isFirstRender = this.lastStart === null;
     const approachingEdge = (startIndex < this.lastStart && startDelta >= PRELOAD_THRESHOLD * this.cols) ||
                            (endIndex > this.lastEnd && endDelta >= PRELOAD_THRESHOLD * this.cols);
     const significantChange = startDelta >= MIN_CHANGE_THRESHOLD || endDelta >= MIN_CHANGE_THRESHOLD;
+    // Always update when we've scrolled to the very start (fixes top spacer bug)
+    const reachedStart = startIndex === 0 && this.lastStart !== 0;
+    // Always update when we've scrolled to include all items (fixes "1 more below" indicator bug)
+    const reachedEnd = endIndex === this.totalItems && this.lastEnd !== this.totalItems;
 
-    if (isFirstRender || approachingEdge || significantChange) {
+    if (isFirstRender || approachingEdge || significantChange || reachedStart || reachedEnd) {
       this.lastStart = startIndex;
       this.lastEnd = endIndex;
       this.throttledPushRange(startIndex, endIndex);

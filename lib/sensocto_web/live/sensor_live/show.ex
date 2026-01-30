@@ -7,6 +7,9 @@ defmodule SensoctoWeb.SensorLive.Show do
 
   require Logger
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   @push_throttle_interval 100
 
   @impl true

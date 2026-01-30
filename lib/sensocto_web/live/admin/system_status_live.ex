@@ -32,6 +32,8 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   # Debounce attention updates to avoid excessive ETS scans (100ms window)
   @attention_debounce_ms 100
 
+  @cluster_refresh_interval 5000
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -43,6 +45,7 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
 
       send(self(), :refresh_metrics)
+      send(self(), :refresh_cluster_metrics)
     end
 
     {:ok, assign_initial_state(socket) |> assign(:attention_update_timer, nil)}
@@ -52,6 +55,12 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   def handle_info(:refresh_metrics, socket) do
     Process.send_after(self(), :refresh_metrics, @refresh_interval)
     {:noreply, refresh_all_metrics(socket)}
+  end
+
+  @impl true
+  def handle_info(:refresh_cluster_metrics, socket) do
+    Process.send_after(self(), :refresh_cluster_metrics, @cluster_refresh_interval)
+    {:noreply, fetch_cluster_metrics(socket)}
   end
 
   # Handle system load changes
@@ -175,6 +184,9 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     |> assign(:homeostatic_offsets, %{elevated: 0.0, high: 0.0, critical: 0.0})
     |> assign(:homeostatic_target, HomeostaticTuner.get_target_distribution())
     |> assign(:attention_summary, default_attention_summary())
+    |> assign(:cluster_metrics, %{})
+    |> assign(:current_node, node())
+    |> assign(:connected_nodes, Node.list())
   end
 
   defp refresh_all_metrics(socket) do
@@ -196,6 +208,41 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     catch
       :exit, _ -> default_system_metrics()
     end
+  end
+
+  defp fetch_cluster_metrics(socket) do
+    # Get local node metrics with region
+    local_metrics = fetch_system_metrics()
+    local_region = System.get_env("FLY_REGION")
+    local_metrics_with_region = Map.put(local_metrics, :fly_region, local_region)
+
+    # Get metrics from connected nodes via RPC (including their FLY_REGION)
+    remote_metrics =
+      Node.list()
+      |> Enum.map(fn remote_node ->
+        case :rpc.call(remote_node, Sensocto.SystemLoadMonitor, :get_metrics, [], 2000) do
+          {:badrpc, _reason} ->
+            {remote_node, :unavailable}
+
+          metrics ->
+            # Also fetch the remote node's FLY_REGION
+            remote_region =
+              case :rpc.call(remote_node, System, :get_env, ["FLY_REGION"], 1000) do
+                {:badrpc, _} -> nil
+                region -> region
+              end
+
+            {remote_node, Map.put(metrics, :fly_region, remote_region)}
+        end
+      end)
+      |> Map.new()
+
+    all_metrics = Map.put(remote_metrics, node(), local_metrics_with_region)
+
+    assign(socket,
+      cluster_metrics: all_metrics,
+      connected_nodes: Node.list()
+    )
   end
 
   defp default_system_metrics do
@@ -532,4 +579,140 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   defp level_bar_color(:high), do: "bg-orange-500"
   defp level_bar_color(:critical), do: "bg-red-500"
   defp level_bar_color(_), do: "bg-gray-500"
+
+  # Fly.io regions mapped to country flags
+  @region_flags %{
+    # North America
+    "iad" => "🇺🇸",
+    "ewr" => "🇺🇸",
+    "ord" => "🇺🇸",
+    "lax" => "🇺🇸",
+    "sjc" => "🇺🇸",
+    "sea" => "🇺🇸",
+    "dfw" => "🇺🇸",
+    "den" => "🇺🇸",
+    "atl" => "🇺🇸",
+    "bos" => "🇺🇸",
+    "mia" => "🇺🇸",
+    "phx" => "🇺🇸",
+    "yul" => "🇨🇦",
+    "yyz" => "🇨🇦",
+    "gdl" => "🇲🇽",
+    "qro" => "🇲🇽",
+    # South America
+    "gru" => "🇧🇷",
+    "gig" => "🇧🇷",
+    "eze" => "🇦🇷",
+    "scl" => "🇨🇱",
+    "bog" => "🇨🇴",
+    # Europe
+    "ams" => "🇳🇱",
+    "cdg" => "🇫🇷",
+    "fra" => "🇩🇪",
+    "lhr" => "🇬🇧",
+    "mad" => "🇪🇸",
+    "waw" => "🇵🇱",
+    "arn" => "🇸🇪",
+    "otp" => "🇷🇴",
+    # Asia Pacific
+    "nrt" => "🇯🇵",
+    "hnd" => "🇯🇵",
+    "sin" => "🇸🇬",
+    "hkg" => "🇭🇰",
+    "syd" => "🇦🇺",
+    "mel" => "🇦🇺",
+    "bom" => "🇮🇳",
+    "del" => "🇮🇳",
+    "icn" => "🇰🇷",
+    # Africa & Middle East
+    "jnb" => "🇿🇦",
+    "dxb" => "🇦🇪"
+  }
+
+  @doc """
+  Returns a safe display info for a node: flag emoji and short unique ID.
+  Does not expose the full node name for security reasons.
+
+  The optional `metrics` parameter can include a `:fly_region` key which will be
+  used preferentially over extracting the region from the node name.
+  """
+  def node_display_info(node_name, metrics \\ nil) do
+    node_str = to_string(node_name)
+
+    # Try to get region from:
+    # 1. The fly_region from metrics (fetched via RPC for remote nodes)
+    # 2. For current node, FLY_REGION env var
+    # 3. Extract from node name as fallback
+    region =
+      cond do
+        is_map(metrics) and is_binary(metrics[:fly_region]) ->
+          metrics[:fly_region]
+
+        node_name == node() ->
+          System.get_env("FLY_REGION") || extract_region(node_str)
+
+        true ->
+          extract_region(node_str)
+      end
+
+    flag = Map.get(@region_flags, region, "🖥️")
+
+    # Generate a short, unique identifier from node name hash
+    # This is deterministic but doesn't reveal the actual node name
+    short_id =
+      :crypto.hash(:sha256, node_str)
+      |> Base.encode16(case: :lower)
+      |> String.slice(0, 6)
+
+    # If we found a region, include it in the display
+    label =
+      if region do
+        "#{String.upcase(region)}-#{short_id}"
+      else
+        short_id
+      end
+
+    %{flag: flag, label: label, region: region}
+  end
+
+  defp extract_region(node_str) do
+    # Lowercase for matching
+    node_lower = String.downcase(node_str)
+
+    # Try multiple patterns to extract region code
+    cond do
+      # Pattern 1: region in app name like "sensocto-iad@..." or "myapp-fra@..."
+      match = Regex.run(~r/([a-z]+)-([a-z]{3})@/, node_lower) ->
+        case match do
+          [_, _app, region] -> if known_region?(region), do: region, else: nil
+          _ -> nil
+        end
+
+      # Pattern 2: region in internal domain like "...fly-sensocto-iad.internal"
+      match = Regex.run(~r/-([a-z]{3})\.internal/, node_lower) ->
+        case match do
+          [_, region] -> if known_region?(region), do: region, else: nil
+          _ -> nil
+        end
+
+      # Pattern 3: region as subdomain like "@iad.fly-..." or ".iad.internal"
+      match = Regex.run(~r/[@\.]([a-z]{3})\./, node_lower) ->
+        case match do
+          [_, region] -> if known_region?(region), do: region, else: nil
+          _ -> nil
+        end
+
+      # Pattern 4: last 3-letter segment before @ that matches a known region
+      # This catches patterns like "sensocto-iad@fdaa:0:..."
+      true ->
+        # Extract everything before @ and split by common delimiters
+        before_at = node_lower |> String.split("@") |> List.first() || ""
+
+        before_at
+        |> String.split(~r/[-_.]/)
+        |> Enum.find(&known_region?/1)
+    end
+  end
+
+  defp known_region?(region), do: Map.has_key?(@region_flags, region)
 end

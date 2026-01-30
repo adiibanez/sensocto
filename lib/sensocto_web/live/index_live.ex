@@ -13,6 +13,9 @@ defmodule SensoctoWeb.IndexLive do
   alias Sensocto.Rooms
   alias Sensocto.AttentionTracker
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   @lobby_preview_options [10, 20, 30]
   @default_lobby_limit 10
 

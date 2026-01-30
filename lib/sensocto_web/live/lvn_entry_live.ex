@@ -6,6 +6,9 @@ defmodule SensoctoWeb.Live.LvnEntryLive do
   alias Sensocto.Otp.BleConnectorGenServer
   alias Sensocto.Types.SafeKeys
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   @retrieve_values 5
 
   @impl true

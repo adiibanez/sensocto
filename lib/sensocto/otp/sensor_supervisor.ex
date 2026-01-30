@@ -20,18 +20,21 @@ defmodule Sensocto.SensorSupervisor do
   def init(configuration) do
     Logger.debug("SensorSupervisor started #{inspect(configuration)}")
 
+    # IMPORTANT: Start AttributeStoreTiered BEFORE SimpleSensor
+    # SimpleSensor.handle_call({:get_state, _}) calls AttributeStore.get_attributes()
+    # which will fail if the Agent isn't registered yet. Starting the attribute store
+    # first prevents this race condition.
     children = [
       %{
-        id: :sensor,
-        start: {SimpleSensor, :start_link, [configuration]},
-        # start: {SimpleSensor, :start_link, [{:via, Registry, {SimpleSensorRegistry, configuration.sensor_id}}]},
+        id: :attribute_store,
+        start: {AttributeStoreTiered, :start_link, [configuration]},
         shutdown: 5000,
         restart: :permanent,
         type: :worker
       },
       %{
-        id: :attribute_store,
-        start: {AttributeStoreTiered, :start_link, [configuration]},
+        id: :sensor,
+        start: {SimpleSensor, :start_link, [configuration]},
         shutdown: 5000,
         restart: :permanent,
         type: :worker

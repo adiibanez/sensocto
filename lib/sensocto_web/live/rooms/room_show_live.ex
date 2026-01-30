@@ -18,6 +18,9 @@ defmodule SensoctoWeb.RoomShowLive do
   alias SensoctoWeb.Live.Components.MediaPlayerComponent
   alias SensoctoWeb.Live.Components.Object3DPlayerComponent
   alias SensoctoWeb.Live.Components.WhiteboardComponent
+
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
   alias SensoctoWeb.Live.Calls.MiniCallIndicatorComponent
   alias SensoctoWeb.Sensocto.Presence
 

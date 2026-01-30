@@ -10,6 +10,9 @@ defmodule SensoctoWeb.SimulatorLive do
   alias Sensocto.Simulator.Manager
   alias Sensocto.Simulator.Supervisor, as: SimSupervisor
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do

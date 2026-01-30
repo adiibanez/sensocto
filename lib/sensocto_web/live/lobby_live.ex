@@ -17,6 +17,9 @@ defmodule SensoctoWeb.LobbyLive do
   alias Sensocto.Calls
   alias Sensocto.Accounts.UserPreferences
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   # Feature flag: use LiveComponent instead of live_render for sensor tiles
   # This reduces process overhead during virtual scrolling
   @use_sensor_components true
@@ -2282,15 +2285,27 @@ defmodule SensoctoWeb.LobbyLive do
   defp process_lens_batch_for_sensors(socket, batch_data) do
     # Get visible sensor range to only update visible components
     {start_idx, end_idx} = socket.assigns.visible_range
-    visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, end_idx - start_idx)
+
+    # Guard against invalid range (start > end can happen during rapid scrolling)
+    count = max(0, end_idx - start_idx)
+    visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, count)
     visible_set = MapSet.new(visible_sensor_ids)
 
     Enum.each(batch_data, fn {sensor_id, attributes} ->
       # Only send updates to visible components
       if MapSet.member?(visible_set, sensor_id) do
         measurements =
-          Enum.map(attributes, fn {attr_id, m} ->
-            %{attribute_id: attr_id, payload: m.payload, timestamp: m.timestamp}
+          Enum.flat_map(attributes, fn {attr_id, m} ->
+            # Handle both single measurements and lists (for high-frequency data like ECG)
+            case m do
+              list when is_list(list) ->
+                Enum.map(list, fn item ->
+                  %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
+                end)
+
+              single ->
+                [%{attribute_id: attr_id, payload: single.payload, timestamp: single.timestamp}]
+            end
           end)
 
         send_update(StatefulSensorComponent,
@@ -2324,12 +2339,27 @@ defmodule SensoctoWeb.LobbyLive do
         end)
 
       Enum.reduce(relevant, acc, fn {attr_id, m}, sock ->
-        push_event(sock, "composite_measurement", %{
-          sensor_id: sensor_id,
-          attribute_id: attr_id,
-          payload: m.payload,
-          timestamp: m.timestamp
-        })
+        # Handle both single measurements and lists (for high-frequency data like ECG)
+        case m do
+          list when is_list(list) ->
+            # Push each measurement in the list
+            Enum.reduce(list, sock, fn item, inner_sock ->
+              push_event(inner_sock, "composite_measurement", %{
+                sensor_id: sensor_id,
+                attribute_id: attr_id,
+                payload: item.payload,
+                timestamp: item.timestamp
+              })
+            end)
+
+          single ->
+            push_event(sock, "composite_measurement", %{
+              sensor_id: sensor_id,
+              attribute_id: attr_id,
+              payload: single.payload,
+              timestamp: single.timestamp
+            })
+        end
       end)
     end)
   end

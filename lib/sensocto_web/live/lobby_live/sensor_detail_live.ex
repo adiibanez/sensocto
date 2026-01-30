@@ -19,6 +19,9 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
   alias Sensocto.AttentionTracker
   alias SensoctoWeb.Live.Components.AttributeComponent
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   require Logger
 
   # Throttle push_events to prevent WebSocket message queue buildup
@@ -278,19 +281,27 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
     ~H"""
     <div class="h-[500px]">
       <%= if @ecg_attribute do %>
-        <.svelte
-          name="SingleECG"
-          props={
-            %{
-              sensor_id: @sensor_id,
-              attribute_id: "ecg",
-              color: "#00ff00",
-              title: "ECG Waveform",
-              showHeader: true,
-              minHeight: "480px"
+        <div
+          id={"ecg-accumulator-#{@sensor_id}"}
+          phx-hook="SensorDataAccumulator"
+          data-sensor_id={@sensor_id}
+          data-attribute_id="ecg"
+          class="h-full"
+        >
+          <.svelte
+            name="SingleECG"
+            props={
+              %{
+                sensor_id: @sensor_id,
+                attribute_id: "ecg",
+                color: "#00ff00",
+                title: "ECG Waveform",
+                showHeader: true,
+                minHeight: "480px"
+              }
             }
-          }
-        />
+          />
+        </div>
       <% else %>
         <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 text-center py-12">
           <Heroicons.icon name="heart" type="outline" class="mx-auto h-12 w-12 text-gray-500" />

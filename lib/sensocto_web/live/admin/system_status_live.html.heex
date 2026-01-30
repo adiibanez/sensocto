@@ -7,7 +7,19 @@
   <div class="flex items-center justify-between">
     <div>
       <h1 class="text-2xl font-bold text-white">System Status Dashboard</h1>
-      <p class="text-gray-400 text-sm mt-1">Real-time biomimetic system health</p>
+      <% current_info = node_display_info(@current_node, @cluster_metrics[@current_node]) %>
+      <div class="flex items-center gap-2 text-sm text-gray-400 mt-1">
+        <span>
+          <span class="mr-1">{current_info.flag}</span>
+          Node: <code class="text-blue-400">{current_info.label}</code>
+        </span>
+        <span :if={length(@connected_nodes) > 0}>
+          | Cluster: {length(@connected_nodes) + 1} nodes
+        </span>
+        <span :if={@connected_nodes == []}>
+          | (Standalone mode)
+        </span>
+      </div>
     </div>
     <button
       phx-click="force_refresh"
@@ -18,11 +30,69 @@
   </div>
 </div>
 
-<%!-- System Load Banner --%>
+<%!-- Cluster Overview (when multiple nodes) --%>
+<div
+  :if={map_size(@cluster_metrics) > 1}
+  class="bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700"
+>
+  <h2 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+    <Heroicons.icon name="server-stack" type="outline" class="h-5 w-5 text-purple-400" />
+    Cluster Overview
+  </h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+    <%= for {node_name, metrics} <- @cluster_metrics do %>
+      <div class={"p-3 rounded-lg border " <> if(node_name == @current_node, do: "border-blue-500 bg-blue-900/20", else: "border-gray-600 bg-gray-700/50")}>
+        <% info = node_display_info(node_name, metrics) %>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium text-gray-300 truncate">
+            <span class="mr-1">{info.flag}</span>
+            {info.label}
+            <span :if={node_name == @current_node} class="text-xs text-blue-400 ml-1">
+              (this)
+            </span>
+          </span>
+          <%= case metrics do %>
+            <% :unavailable -> %>
+              <span class="px-2 py-0.5 rounded text-xs bg-red-600/20 text-red-400">
+                Unavailable
+              </span>
+            <% m when is_map(m) -> %>
+              <.load_level_badge level={m.load_level} />
+          <% end %>
+        </div>
+
+        <%= if is_map(metrics) do %>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span class="text-gray-500">CPU</span>
+              <span class="float-right font-mono">
+                {Float.round(metrics.scheduler_utilization * 100, 1)}%
+              </span>
+            </div>
+            <div>
+              <span class="text-gray-500">Memory</span>
+              <span class="float-right font-mono">
+                {Float.round(metrics.memory_pressure * 100, 1)}%
+              </span>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<%!-- System Load Banner (Local Node Details) --%>
 <div class="bg-gray-800 rounded-lg p-4 mb-6 border border-gray-700">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-white flex items-center gap-2">
-      <Heroicons.icon name="cpu-chip" type="outline" class="h-5 w-5 text-blue-400" /> System Load
+      <Heroicons.icon name="cpu-chip" type="outline" class="h-5 w-5 text-blue-400" />
+      <%= if map_size(@cluster_metrics) > 1 do %>
+        Local Node: {node() |> to_string() |> String.split("@") |> List.first()}
+      <% else %>
+        System Load
+      <% end %>
     </h2>
     <.load_level_badge level={@system_metrics.load_level} />
   </div>

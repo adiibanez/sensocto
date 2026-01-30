@@ -8,6 +8,9 @@ defmodule SensoctoWeb.MobileLinkLive do
   use SensoctoWeb, :live_view
   require Logger
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   # Token valid for 5 minutes (short-lived for security)
   @token_lifetime_seconds 5 * 60
 

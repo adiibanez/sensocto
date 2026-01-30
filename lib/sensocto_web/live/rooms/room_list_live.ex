@@ -8,6 +8,9 @@ defmodule SensoctoWeb.RoomListLive do
 
   alias Sensocto.Rooms
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user

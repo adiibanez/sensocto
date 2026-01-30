@@ -2,6 +2,9 @@ defmodule SensoctoWeb.Live.PlaygroundLive do
   use SensoctoWeb, :live_view
   require Logger
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   import SensoctoWeb.Components.RangeField
   import SensoctoWeb.Components.RadioField
   # import SensoctoWeb.Components.RadioGroup

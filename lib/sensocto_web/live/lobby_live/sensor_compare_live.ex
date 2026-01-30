@@ -18,6 +18,9 @@ defmodule SensoctoWeb.LobbyLive.SensorCompareLive do
 
   require Logger
 
+  # Require authentication for this LiveView
+  on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok,

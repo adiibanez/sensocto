@@ -68,6 +68,10 @@ defmodule Sensocto.Lenses.PriorityLens do
     }
   }
 
+  # High-frequency attributes that need all samples preserved (not just latest)
+  # These are waveform data types that require continuous sampling for proper visualization
+  @high_frequency_attributes ~w(ecg)
+
   defstruct [
     :sockets,
     :buffers,
@@ -370,13 +374,26 @@ defmodule Sensocto.Lenses.PriorityLens do
     case config.mode do
       :batch ->
         buffer = Map.get(state.buffers, socket_id, %{})
+        sensor_buffer = Map.get(buffer, sensor_id, %{})
 
-        sensor_buffer =
-          buffer
-          |> Map.get(sensor_id, %{})
-          |> Map.put(attribute_id, measurement)
+        # For high-frequency attributes (like ECG), accumulate all samples in a list
+        # For other attributes, just keep the latest value
+        updated_sensor_buffer =
+          if attribute_id in @high_frequency_attributes do
+            existing = Map.get(sensor_buffer, attribute_id, [])
+            # Store as list of measurements
+            measurements_list =
+              case existing do
+                list when is_list(list) -> list ++ [measurement]
+                single_measurement -> [single_measurement, measurement]
+              end
 
-        new_buffer = Map.put(buffer, sensor_id, sensor_buffer)
+            Map.put(sensor_buffer, attribute_id, measurements_list)
+          else
+            Map.put(sensor_buffer, attribute_id, measurement)
+          end
+
+        new_buffer = Map.put(buffer, sensor_id, updated_sensor_buffer)
         %{state | buffers: Map.put(state.buffers, socket_id, new_buffer)}
 
       :digest ->

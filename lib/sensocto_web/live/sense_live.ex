@@ -2,6 +2,10 @@ defmodule SensoctoWeb.SenseLive do
   use SensoctoWeb, :live_view
   require Logger
 
+  # NOTE: This LiveView is rendered in the layout footer via live_render with sticky: true
+  # It should NOT require authentication since it needs to work on all pages including public ones
+  # and requiring auth would cause a redirect loop on the sign-in page
+
   @impl true
   def mount(_params, session, socket) do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")

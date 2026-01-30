@@ -60,22 +60,8 @@ defmodule SensoctoWeb.Router do
   scope "/", SensoctoWeb do
     pipe_through [:browser]
 
-    live "/realitykit", RealitykitLive
-
-    # Public about page (also integrated into sign-in page)
-    live "/about", AboutLive, :index
-
     post "/lvn-auth", LvnController, :authenticate
     get "/lvn-auth", LvnController, :authenticate
-    live "/lvn-signin", Live.LvnSigninLive, :index
-    live "/iroh-gossip", Live.IrohGossipLive, :index
-
-    # live "/users/:id", UserLive.Show, :show
-    # live "/users/:id/show/edit", UserLive.Show, :edit
-
-    # live "/sensors", SensorLive.Index, :index
-    # live "/sensors/:id/edit", SensorLive.Index, :edit
-    # live "/sensors/:id", SensorLive.Index, :show
 
     # Sign out route (no rate limiting needed)
     sign_out_route(Controllers.AuthController)
@@ -116,15 +102,26 @@ defmodule SensoctoWeb.Router do
     )
   end
 
-  # Authenticated routes (no rate limiting needed - already authenticated)
+  # All main app routes in a single live_session to prevent full page reloads
+  # Authentication is handled by on_mount hooks - :live_user_required for protected routes,
+  # :live_user_optional for public routes
   scope "/", SensoctoWeb do
     pipe_through [:browser]
 
-    ash_authentication_live_session :authentication_required,
+    ash_authentication_live_session :main_app,
       on_mount: [
-        {LiveUserAuth, :live_user_required},
+        {LiveUserAuth, :live_user_optional},
         {SensoctoWeb.Live.Hooks.TrackVisitedPath, :default}
       ] do
+      # ===== Public pages (no auth required) =====
+      live "/about", AboutLive, :index
+      live "/system-status", Admin.SystemStatusLive, :index
+      live "/realitykit", RealitykitLive
+      live "/lvn-signin", Live.LvnSigninLive, :index
+      live "/iroh-gossip", Live.IrohGossipLive, :index
+      live "/rooms/join/:code", RoomJoinLive, :join
+
+      # ===== Protected pages (auth required - handled in LiveView mount) =====
       live "/playground", Live.PlaygroundLive, :index
       live "/lvn", Live.LvnEntryLive, :index
       live "/", IndexLive, :index
@@ -161,22 +158,6 @@ defmodule SensoctoWeb.Router do
 
       # User settings
       live "/settings", UserSettingsLive, :index
-    end
-
-    # Room join can be accessed without authentication (shows preview)
-    # but requires auth to actually join
-    ash_authentication_live_session :authentication_optional,
-      on_mount: {LiveUserAuth, :live_user_optional} do
-      live "/rooms/join/:code", RoomJoinLive, :join
-    end
-  end
-
-  # Public system status page (no auth required)
-  scope "/", SensoctoWeb do
-    pipe_through [:browser]
-
-    live_session :public_status do
-      live "/system-status", Admin.SystemStatusLive, :index
     end
   end
 

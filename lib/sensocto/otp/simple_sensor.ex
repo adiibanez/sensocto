@@ -189,23 +189,46 @@ defmodule Sensocto.SimpleSensor do
   # server
   @impl true
   def handle_call({:get_state, values}, _from, %{sensor_id: sensor_id} = state) do
+    # Fetch attributes with defensive error handling
+    # The AttributeStoreTiered should be started before SimpleSensor (see SensorSupervisor),
+    # but we handle edge cases where it may have crashed or restarted
+    attributes =
+      try do
+        AttributeStore.get_attributes(sensor_id, values)
+        |> Enum.into(%{})
+      catch
+        :exit, reason ->
+          Logger.warning(
+            "SimpleSensor #{sensor_id}: AttributeStore unavailable (#{inspect(reason)}), returning empty attributes"
+          )
+
+          %{}
+      end
+
     sensor_state = %{
       metadata: state |> Map.delete(:message_timestamps) |> Map.delete(:mps_interval),
-      attributes:
-        AttributeStore.get_attributes(sensor_id, values)
-        # |> Enum.map(fn x -> cleanup(x) end)
-        |> Enum.into(%{})
-      #        |> dbg()
+      attributes: attributes
     }
-
-    # Logger.debug("Sensor state: #{inspect(sensor_state)}")
 
     {:reply, sensor_state, state}
   end
 
   @impl true
   def handle_call({:get_attribute, attribute_id, limit}, _from, %{sensor_id: sensor_id} = state) do
-    {:ok, attributes} = AttributeStore.get_attribute(sensor_id, attribute_id, limit)
+    attributes =
+      try do
+        case AttributeStore.get_attribute(sensor_id, attribute_id, limit) do
+          {:ok, attrs} -> attrs
+          _ -> []
+        end
+      catch
+        :exit, reason ->
+          Logger.warning(
+            "SimpleSensor #{sensor_id}: AttributeStore unavailable for get_attribute (#{inspect(reason)})"
+          )
+
+          []
+      end
 
     Logger.debug(
       "Server: :get_attribute (attribute_id, limit)  #{attribute_id}  with limit #{limit}  from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
@@ -220,8 +243,20 @@ defmodule Sensocto.SimpleSensor do
         _from,
         %{sensor_id: sensor_id} = state
       ) do
-    {:ok, attributes} =
-      AttributeStore.get_attribute(sensor_id, attribute_id, from, to, limit)
+    attributes =
+      try do
+        case AttributeStore.get_attribute(sensor_id, attribute_id, from, to, limit) do
+          {:ok, attrs} -> attrs
+          _ -> []
+        end
+      catch
+        :exit, reason ->
+          Logger.warning(
+            "SimpleSensor #{sensor_id}: AttributeStore unavailable for get_attribute (#{inspect(reason)})"
+          )
+
+          []
+      end
 
     Logger.debug(
       "Server: :get_attribute (attribute_id, from, to, limit)  #{attribute_id} from: #{from} to: #{to} limit: #{limit} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"

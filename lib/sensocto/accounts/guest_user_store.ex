@@ -1,16 +1,27 @@
 defmodule Sensocto.Accounts.GuestUserStore do
   @moduledoc """
-  In-memory storage for guest users.
-  Guest users are temporary, session-only users that don't persist to the database.
-  They are automatically cleaned up after inactivity.
+  Storage for guest users with database persistence.
+
+  Guest users are temporary, session-only users that persist across server restarts
+  but are automatically cleaned up after extended inactivity.
+
+  ## Architecture
+
+  Uses a hybrid approach:
+  - In-memory ETS for fast reads (loaded from DB on init)
+  - Database writes for persistence
+  - Background sync to handle any drift
   """
   use GenServer
   require Logger
 
-  @cleanup_interval :timer.minutes(5)
-  @guest_ttl :timer.hours(2)
+  alias Sensocto.Accounts.GuestSession
 
-  defstruct guests: %{}, last_cleanup: nil
+  # Cleanup runs every hour to check for inactive guests
+  @cleanup_interval :timer.hours(1)
+  # Guests remain active for 30 days of inactivity before cleanup
+  @guest_ttl_days 30
+  @ets_table :guest_users
 
   # Client API
 
@@ -28,9 +39,13 @@ defmodule Sensocto.Accounts.GuestUserStore do
 
   @doc """
   Get a guest user by their ID.
+  Fast read from ETS cache.
   """
   def get_guest(guest_id) do
-    GenServer.call(__MODULE__, {:get_guest, guest_id})
+    case :ets.lookup(@ets_table, guest_id) do
+      [{^guest_id, guest}] -> {:ok, guest}
+      [] -> {:error, :not_found}
+    end
   end
 
   @doc """
@@ -51,104 +66,111 @@ defmodule Sensocto.Accounts.GuestUserStore do
   Get all currently active guest users.
   """
   def list_guests do
-    GenServer.call(__MODULE__, :list_guests)
+    guests = :ets.tab2list(@ets_table) |> Enum.map(fn {_id, guest} -> guest end)
+    {:ok, guests}
   end
 
   # Server Callbacks
 
   @impl true
   def init(_opts) do
+    # Create ETS table for fast reads
+    :ets.new(@ets_table, [:named_table, :public, :set, read_concurrency: true])
+
+    # Load existing guests from database
+    load_guests_from_db()
+
+    # Schedule periodic cleanup
     schedule_cleanup()
 
-    {:ok,
-     %__MODULE__{
-       guests: %{},
-       last_cleanup: System.system_time(:millisecond)
-     }}
+    Logger.info("[GuestUserStore] Started with database persistence")
+
+    {:ok, %{last_cleanup: System.system_time(:millisecond)}}
   end
 
   @impl true
   def handle_call({:create_guest, display_name}, _from, state) do
     guest_id = generate_guest_id()
     token = generate_token()
+    now = DateTime.utc_now()
 
-    now = System.system_time(:millisecond)
+    display_name = display_name || "Guest #{String.slice(guest_id, 0..5)}"
 
-    guest = %{
-      id: guest_id,
-      display_name: display_name || "Guest #{String.slice(guest_id, 0..5)}",
-      token: token,
-      is_guest: true,
-      created_at: now,
-      last_active: now
-    }
+    # Persist to database first
+    case create_guest_session(guest_id, display_name, token) do
+      {:ok, _session} ->
+        guest = %{
+          id: guest_id,
+          display_name: display_name,
+          token: token,
+          is_guest: true,
+          created_at: DateTime.to_unix(now, :millisecond),
+          last_active: DateTime.to_unix(now, :millisecond)
+        }
 
-    new_state = %{state | guests: Map.put(state.guests, guest_id, guest)}
+        # Cache in ETS
+        :ets.insert(@ets_table, {guest_id, guest})
 
-    Logger.info("Created guest user: #{guest_id}")
-
-    {:reply, {:ok, guest}, new_state}
-  end
-
-  @impl true
-  def handle_call({:get_guest, guest_id}, _from, state) do
-    case Map.get(state.guests, guest_id) do
-      nil ->
-        {:reply, {:error, :not_found}, state}
-
-      guest ->
+        Logger.info("[GuestUserStore] Created guest user: #{guest_id}")
         {:reply, {:ok, guest}, state}
+
+      {:error, reason} ->
+        Logger.error("[GuestUserStore] Failed to create guest: #{inspect(reason)}")
+        {:reply, {:error, :creation_failed}, state}
     end
   end
 
   @impl true
-  def handle_call(:list_guests, _from, state) do
-    guests = Map.values(state.guests)
-    {:reply, {:ok, guests}, state}
-  end
-
-  @impl true
   def handle_cast({:touch_guest, guest_id}, state) do
-    case Map.get(state.guests, guest_id) do
-      nil ->
+    case :ets.lookup(@ets_table, guest_id) do
+      [{^guest_id, guest}] ->
+        now = System.system_time(:millisecond)
+        updated_guest = %{guest | last_active: now}
+        :ets.insert(@ets_table, {guest_id, updated_guest})
+
+        # Async update to database (non-blocking)
+        spawn(fn -> touch_guest_session(guest_id) end)
+
         {:noreply, state}
 
-      guest ->
-        updated_guest = %{guest | last_active: System.system_time(:millisecond)}
-        new_guests = Map.put(state.guests, guest_id, updated_guest)
-        {:noreply, %{state | guests: new_guests}}
+      [] ->
+        {:noreply, state}
     end
   end
 
   @impl true
   def handle_cast({:remove_guest, guest_id}, state) do
-    Logger.info("Removing guest user: #{guest_id}")
-    new_guests = Map.delete(state.guests, guest_id)
-    {:noreply, %{state | guests: new_guests}}
+    Logger.info("[GuestUserStore] Removing guest user: #{guest_id}")
+
+    # Remove from ETS
+    :ets.delete(@ets_table, guest_id)
+
+    # Remove from database
+    spawn(fn -> delete_guest_session(guest_id) end)
+
+    {:noreply, state}
   end
 
   @impl true
   def handle_info(:cleanup_inactive_guests, state) do
-    now = System.system_time(:millisecond)
-    cutoff = now - @guest_ttl
+    now = DateTime.utc_now()
+    cutoff = DateTime.add(now, -@guest_ttl_days, :day)
 
-    {active_guests, inactive_count} =
-      Enum.reduce(state.guests, {%{}, 0}, fn {id, guest}, {acc, count} ->
-        if guest.last_active >= cutoff do
-          {Map.put(acc, id, guest), count}
-        else
-          Logger.info("Cleaning up inactive guest: #{id}")
-          {acc, count + 1}
-        end
-      end)
+    # Cleanup from database
+    case cleanup_expired_sessions(cutoff) do
+      {:ok, count} when count > 0 ->
+        Logger.info("[GuestUserStore] Cleaned up #{count} expired guest session(s)")
 
-    if inactive_count > 0 do
-      Logger.info("Cleaned up #{inactive_count} inactive guest user(s)")
+      _ ->
+        :ok
     end
+
+    # Reload from database to sync ETS
+    load_guests_from_db()
 
     schedule_cleanup()
 
-    {:noreply, %{state | guests: active_guests, last_cleanup: now}}
+    {:noreply, %{state | last_cleanup: System.system_time(:millisecond)}}
   end
 
   # Private Functions
@@ -163,5 +185,81 @@ defmodule Sensocto.Accounts.GuestUserStore do
 
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup_inactive_guests, @cleanup_interval)
+  end
+
+  # Database operations
+
+  defp load_guests_from_db do
+    case Ash.read(GuestSession) do
+      {:ok, sessions} ->
+        # Clear ETS and reload
+        :ets.delete_all_objects(@ets_table)
+
+        Enum.each(sessions, fn session ->
+          guest = %{
+            id: session.id,
+            display_name: session.display_name,
+            token: session.token,
+            is_guest: true,
+            created_at: DateTime.to_unix(session.inserted_at, :millisecond),
+            last_active: DateTime.to_unix(session.last_active_at, :millisecond)
+          }
+
+          :ets.insert(@ets_table, {session.id, guest})
+        end)
+
+        Logger.info("[GuestUserStore] Loaded #{length(sessions)} guest(s) from database")
+
+      {:error, reason} ->
+        Logger.error("[GuestUserStore] Failed to load guests from DB: #{inspect(reason)}")
+    end
+  end
+
+  defp create_guest_session(guest_id, display_name, token) do
+    GuestSession
+    |> Ash.Changeset.for_create(:create, %{
+      id: guest_id,
+      display_name: display_name,
+      token: token
+    })
+    |> Ash.create()
+  end
+
+  defp touch_guest_session(guest_id) do
+    case Ash.get(GuestSession, guest_id) do
+      {:ok, session} ->
+        session
+        |> Ash.Changeset.for_update(:touch, %{})
+        |> Ash.update()
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp delete_guest_session(guest_id) do
+    case Ash.get(GuestSession, guest_id) do
+      {:ok, session} ->
+        Ash.destroy(session)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp cleanup_expired_sessions(cutoff) do
+    case Ash.read(GuestSession, action: :expired, arguments: %{before: cutoff}) do
+      {:ok, expired_sessions} ->
+        Enum.each(expired_sessions, fn session ->
+          :ets.delete(@ets_table, session.id)
+          Ash.destroy(session)
+        end)
+
+        {:ok, length(expired_sessions)}
+
+      {:error, reason} ->
+        Logger.error("[GuestUserStore] Failed to cleanup expired sessions: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 end

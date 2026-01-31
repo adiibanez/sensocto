@@ -3,6 +3,8 @@ defmodule SensoctoWeb.Controllers.AuthController do
   use AshAuthentication.Phoenix.Controller
   require Logger
 
+  alias Sensocto.Accounts.GuestUserStore
+
   def success(conn, activity, user, token) do
     session_return_to = get_session(conn, :return_to)
     return_to = session_return_to || get_root_return_to_from_params(conn)
@@ -57,11 +59,20 @@ defmodule SensoctoWeb.Controllers.AuthController do
 
   def sign_out(conn, params) do
     Logger.debug("authcontroller sign_out #{inspect(params)}")
-    return_to = get_session(conn, :return_to) || ~p"/"
+
+    # If this is a guest user, remove their persisted session from database
+    case get_session(conn, :guest_id) do
+      nil ->
+        :ok
+
+      guest_id ->
+        Logger.info("Removing guest session on logout: #{guest_id}")
+        GuestUserStore.remove_guest(guest_id)
+    end
 
     conn
     |> clear_session(:sensocto)
-    |> redirect(to: return_to)
+    |> redirect(to: ~p"/sign-in")
   end
 
   # @impl

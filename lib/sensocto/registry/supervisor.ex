@@ -63,7 +63,14 @@ defmodule Sensocto.Registry.Supervisor do
       {Registry, keys: :unique, name: Sensocto.Sensors.Registry},
       {Registry, keys: :unique, name: Sensocto.Sensors.SensorRegistry},
       {Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
-      {Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
+      # Distributed sensor registry for cluster-wide sensor lookup
+      {Horde.Registry,
+       [
+         name: Sensocto.DistributedSensorRegistry,
+         keys: :unique,
+         members: :auto,
+         delta_crdt_options: [sync_interval: 100]
+       ]},
       {Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
 
       # Room domain - local registries (backward compatibility)

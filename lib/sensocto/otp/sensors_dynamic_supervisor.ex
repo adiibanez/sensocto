@@ -157,12 +157,14 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     end
   end
 
-  # Registry.lookup(Registry.ViaTest, "agent")
-  # Use SimpleSensorRegistry to get device names, not SensorPairRegistry.
-  # This avoids a race condition where SensorSupervisor is registered in SensorPairRegistry
-  # but SimpleSensor child hasn't started yet in SimpleSensorRegistry.
+  @doc """
+  Gets all sensor IDs from the distributed sensor registry.
+
+  Uses Horde.Registry for cluster-wide sensor discovery - returns sensors
+  from all nodes in the cluster.
+  """
   def get_device_names do
-    Registry.select(Sensocto.SimpleSensorRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    Horde.Registry.select(Sensocto.DistributedSensorRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
   # Function to extract device names (IDs) from the children list

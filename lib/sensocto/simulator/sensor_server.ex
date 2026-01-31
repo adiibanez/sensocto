@@ -143,12 +143,36 @@ defmodule Sensocto.Simulator.SensorServer do
         }
       end)
 
-    if state.real_sensor_started do
-      SimpleSensor.put_batch_attributes(state.sensor_id, formatted_messages)
-    else
-      Logger.warning("Real sensor not started yet for #{state.sensor_id}")
-    end
+    cond do
+      not state.real_sensor_started ->
+        Logger.warning("Real sensor not started yet for #{state.sensor_id}")
+        {:noreply, state}
 
+      not SimpleSensor.alive?(state.sensor_id) ->
+        # SimpleSensor is dead - log warning and attempt to re-create it
+        Logger.warning(
+          "SensorServer #{state.sensor_id}: SimpleSensor is not alive, scheduling restart"
+        )
+
+        # Mark as not started and schedule recreation
+        Process.send_after(self(), :recreate_simple_sensor, 1_000)
+        {:noreply, %{state | real_sensor_started: false}}
+
+      true ->
+        SimpleSensor.put_batch_attributes(state.sensor_id, formatted_messages)
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(:recreate_simple_sensor, %{real_sensor_started: false} = state) do
+    Logger.info("SensorServer #{state.sensor_id}: Attempting to recreate SimpleSensor")
+    {:noreply, state, {:continue, :create_real_sensor}}
+  end
+
+  @impl true
+  def handle_info(:recreate_simple_sensor, state) do
+    # Already recreated
     {:noreply, state}
   end
 

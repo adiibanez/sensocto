@@ -8,5 +8,6 @@ defmodule Sensocto.Accounts do
   resources do
     resource Sensocto.Accounts.Token
     resource Sensocto.Accounts.User
+    resource Sensocto.Accounts.GuestSession
   end
 end

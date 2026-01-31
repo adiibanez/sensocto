@@ -256,6 +256,75 @@ defmodule SensoctoWeb.AboutLive do
     wearables: %{name: "Wearables & Monitoring", color: "blue", icon: "hero-device-phone-mobile"}
   }
 
+  # Research summaries at three detail levels
+  @research_summaries %{
+    spark: """
+    Human connection has a measurable heartbeat. When two people truly connect—in therapy, in love, in crisis support—their autonomic nervous systems begin to synchronize. Heart rate variability aligns. Breathing patterns match. This isn't metaphor; it's physiology.
+
+    The research behind Sensocto spans four domains: interpersonal synchronization studies showing how bodies co-regulate during meaningful interactions; therapy research demonstrating that physiological attunement predicts therapeutic outcomes; care network studies proving that social ties directly impact mental health; and wearable technology research enabling real-time monitoring of these vital signs.
+
+    What emerges is a scientific foundation for what humans have always intuited: presence is physical. Connection is measurable. And technology can amplify empathy rather than replace it. Sensocto builds on this research to create a platform where you don't just see someone's status update—you feel their actual state.
+    """,
+    story: """
+    The science of human connection has revealed something profound: our bodies are constantly communicating beneath conscious awareness. When we sit with someone we trust, our heart rate variability begins to synchronize. When a therapist truly attunes to a client, their autonomic nervous systems enter a coordinated dance. This interpersonal physiology—documented across hundreds of peer-reviewed studies—forms the scientific foundation for everything Sensocto does.
+
+    Palumbo and colleagues' systematic review of interpersonal autonomic physiology established that physiological synchronization reliably emerges during social interactions. This isn't random noise or coincidence. When humans engage meaningfully, their bodies begin to mirror each other. Reed's research on romantic couples showed this co-regulation extends to health discussions and emotional conversations—partners literally influence each other's nervous systems. Páez's work on collective rituals demonstrated that group synchronization produces the experience of "collective effervescence"—that feeling of being part of something larger than yourself.
+
+    In therapeutic contexts, this synchronization becomes even more significant. Kleinbub's systematic review found that physiological attunement between therapist and client serves as a marker of therapeutic alliance—the single strongest predictor of positive outcomes in psychotherapy. Tan's research showed that HRV biofeedback can effectively treat anxiety and PTSD by helping individuals regulate their own nervous systems. The body remembers what the mind suppresses, and healing often happens through somatic pathways.
+
+    The care network research adds another dimension. Kawachi and Berkman's foundational work demonstrated that social ties directly influence mental health outcomes. People embedded in supportive networks experience better outcomes across nearly every health measure. Repper and Carter's systematic review of peer support showed that mutual aid and lived experience create therapeutic value that professional intervention alone cannot replicate. Chen and Schultz explored how technology can enhance rather than diminish compassionate care.
+
+    Finally, the wearable technology research makes all of this actionable. Sano's work showed that stress and mental health states can be classified in real-time using wearable biosensors. Valenza's research on autonomic nervous system dynamics demonstrated that emotional states can be detected through continuous monitoring. The hardware exists. The science is validated. What's been missing is a platform built on human values rather than attention extraction.
+
+    Sensocto synthesizes these research streams into a coherent vision: a platform where presence is physiological, where support is proactive rather than reactive, where intimacy transcends distance, and where technology serves connection rather than performance. We're not building another social network. We're building the infrastructure for genuine human attunement.
+    """,
+    deep: """
+    The research foundation for Sensocto represents a convergence of four scientific domains that together reveal an extraordinary opportunity: to use technology not as a replacement for human connection, but as an amplifier of our innate capacity for empathy and co-regulation. This body of research challenges fundamental assumptions about what technology can do for human relationships.
+
+    INTERPERSONAL AUTONOMIC PHYSIOLOGY: THE SCIENCE OF SYNCHRONIZATION
+
+    Palumbo and colleagues' 2017 systematic review in Personality and Social Psychology Review established interpersonal autonomic physiology as a rigorous field of study. Their comprehensive analysis of the literature defined the phenomenon: when humans engage in meaningful social interactions, their autonomic nervous systems—the unconscious regulatory systems controlling heart rate, breathing, and arousal—begin to synchronize. This synchronization isn't metaphorical. It's measurable in heart rate variability patterns, skin conductance responses, and respiratory rhythms.
+
+    What makes this research particularly significant is its demonstration that synchronization varies with relationship quality. Strangers show minimal synchronization. Couples, therapists and clients, parents and children—these dyads show pronounced coupling that increases with trust and emotional connection. Reed and colleagues' 2013 research in the International Journal of Psychophysiology examined romantic partners specifically, finding that physiological linkage during emotional conversations reflects and reinforces the quality of the relationship. Partners don't just influence each other's moods; they literally shape each other's nervous system regulation.
+
+    The group dimension adds further richness. Páez and colleagues' 2015 study of collective rituals in Frontiers in Psychology demonstrated that synchronized activities produce the experience Durkheim called "collective effervescence"—the profound sense of belonging and transcendence that occurs when groups move, breathe, or experience together. This research explains why meditation circles, dance parties, and protest marches feel so different from solitary activities. Our bodies are designed for collective experience, and synchronization is the physiological substrate.
+
+    THERAPEUTIC APPLICATIONS: WHEN ATTUNEMENT HEALS
+
+    The therapy research stream provides perhaps the most compelling case for Sensocto's approach. Kleinbub's 2017 systematic review in Frontiers in Psychology synthesized evidence on interpersonal physiology in psychotherapy, finding that therapist-client physiological synchrony serves as a reliable marker of therapeutic alliance. This matters enormously because therapeutic alliance—the quality of the working relationship between therapist and client—is the single strongest predictor of positive outcomes across all forms of psychotherapy, accounting for more variance than specific techniques or theoretical orientations.
+
+    What this means practically is that effective therapy involves bodies, not just minds. When a therapist attunes to a client's nervous system state, co-regulation becomes possible. The therapist's calm can literally help regulate a dysregulated client. This somatic dimension of healing is often invisible in traditional therapy, but physiological monitoring makes it tangible and teachable.
+
+    Tan and colleagues' 2011 research on biofeedback for anxiety and PTSD in Applied Psychophysiology and Biofeedback extended this insight to self-regulation. Their evidence showed that HRV biofeedback—learning to consciously influence heart rate variability—produces significant improvements in anxiety symptoms and trauma recovery. The body isn't just a site of symptoms; it's an active participant in healing. Teaching individuals to recognize and regulate their physiological states creates lasting change that top-down cognitive approaches often cannot achieve alone.
+
+    CARE NETWORKS: SOCIAL TIES AS HEALTH INFRASTRUCTURE
+
+    The care network research establishes the epidemiological significance of human connection. Kawachi and Berkman's 2001 paper in the Journal of Urban Health documented what subsequent research has repeatedly confirmed: social ties directly influence mental health outcomes. People with strong social networks experience lower rates of depression, better recovery from illness, reduced mortality risk, and improved quality of life across virtually every measure. Isolation is not just uncomfortable; it's a significant health risk factor comparable to smoking.
+
+    Repper and Carter's 2011 systematic review of peer support in the Journal of Mental Health demonstrated that mutual aid creates therapeutic value that professional intervention alone cannot replicate. Peer supporters—individuals with lived experience of mental health challenges—provide a form of understanding and validation that differs qualitatively from professional care. This isn't about replacing clinicians; it's about recognizing that healing happens in community, not just in clinical settings.
+
+    The challenge that current technology fails to address is the reactive nature of support. By the time someone posts about a crisis, the crisis is often well advanced. By the time friends notice withdrawal, isolation has already taken hold. What the research suggests is needed is proactive support—the ability to notice someone struggling before they can articulate it, to reach out before being asked.
+
+    Chen and Schultz's 2016 research in JMIR Mental Health explored how technology might enhance rather than diminish compassionate care. Their work suggests that technology-mediated support can extend the reach of care networks without replacing their human core. The key is designing technology that facilitates genuine connection rather than substituting for it.
+
+    WEARABLE TECHNOLOGY: FROM RESEARCH TO PRACTICE
+
+    The final research stream makes the vision actionable. Sano and colleagues' 2018 paper in the Journal of Medical Internet Research demonstrated that wearable biosensors combined with machine learning can classify stress levels and mental health states with clinically useful accuracy. The data that matters—heart rate, HRV, skin conductance, sleep patterns, activity levels—can now be captured continuously in daily life, not just in laboratory settings.
+
+    Valenza and colleagues' 2014 research in IEEE Transactions on Affective Computing developed methods for detecting emotional states through autonomic nervous system monitoring. Their work established that the information content in physiological signals is sufficient to distinguish between emotional states with meaningful reliability. Combined with advances in wearable hardware—medical-grade sensors now available in consumer devices—this research establishes that continuous physiological monitoring is technically feasible.
+
+    WHY THIS MATTERS FOR SENSOCTO
+
+    The synthesis of these four research streams points to a specific opportunity that current technology entirely misses. Social media platforms harvest attention for advertising revenue, creating incentive structures that favor outrage over calm, performance over authenticity, isolation disguised as connection. Healthcare systems remain reactive, responding to crises rather than preventing them. Therapy often treats the mind as separate from the body. Support networks rely on explicit communication that stigma and shame often prevent.
+
+    Sensocto proposes something different: a platform where connection is physiological, not performative. Where a trusted friend can sense you're struggling before you post about it. Where a therapist can see nervous system dysregulation in real-time during sessions. Where romantic partners separated by distance can feel each other's presence through their actual heartbeats. Where groups can verify their synchronization in meditation, dance, or collective action.
+
+    This isn't technological utopianism. The research is clear about what's possible and what's not. Physiological synchronization is real but doesn't replace verbal communication. Biofeedback is effective but requires practice and intention. Care networks matter but don't substitute for professional treatment when needed. What the research supports is a both/and approach: technology that enhances human capacity for connection rather than replacing it, that makes visible what was previously invisible, that creates the conditions for empathy without attempting to automate it.
+
+    The scientific foundation is solid. The hardware exists. The research is validated. What's been missing is a platform designed from the ground up to serve human flourishing rather than extract human attention. That's what Sensocto aims to build—and why understanding this research matters for everyone who uses it.
+    """
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     # Start with empathy lens and shuffle its use cases
@@ -273,13 +342,32 @@ defmodule SensoctoWeb.AboutLive do
       |> assign(:current_offset, 0)
       |> assign(:research_papers, @research_papers)
       |> assign(:paper_categories, @paper_categories)
+      |> assign(:research_summaries, @research_summaries)
+      |> assign(:research_summary_level, :spark)
 
     {:ok, socket}
   end
 
   @impl true
+  def handle_params(%{"tab" => "research"}, _uri, socket) do
+    {:noreply, assign(socket, :detail_level, :research)}
+  end
+
+  def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("set_level", %{"level" => "research"}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/about?tab=research")}
+  end
+
+  @impl true
   def handle_event("set_level", %{"level" => level}, socket) do
-    {:noreply, assign(socket, detail_level: String.to_existing_atom(level))}
+    {:noreply,
+     socket
+     |> assign(detail_level: String.to_existing_atom(level))
+     |> push_patch(to: ~p"/about")}
   end
 
   @impl true
@@ -320,6 +408,11 @@ defmodule SensoctoWeb.AboutLive do
   def handle_event("set_visible_count", %{"count" => count}, socket) do
     count = String.to_integer(count)
     {:noreply, assign(socket, visible_count: count, current_offset: 0)}
+  end
+
+  @impl true
+  def handle_event("set_summary_level", %{"level" => level}, socket) do
+    {:noreply, assign(socket, research_summary_level: String.to_existing_atom(level))}
   end
 
   # Helper to get visible use cases from the current offset
@@ -387,20 +480,36 @@ defmodule SensoctoWeb.AboutLive do
             >
               The Deep Dive
             </button>
+            <button
+              phx-click="set_level"
+              phx-value-level="research"
+              class={"px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 " <>
+                if @detail_level == :research do
+                  "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
+                else
+                  "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+                end}
+            >
+              Research
+            </button>
           </div>
         </div>
       </div>
       
     <!-- Content Sections -->
       <div class="max-w-4xl mx-auto px-4 pb-24 flex flex-col">
-        <!-- THE SPARK section (order changes based on detail level) -->
-        <div class={
-          case @detail_level do
-            :spark -> "order-1 mb-12 text-center"
-            :story -> "order-2 mb-12 text-center border-t border-gray-800 pt-8 mt-8"
-            :deep -> "order-3 mb-12 text-center border-t border-gray-800 pt-8 mt-8"
-          end
-        }>
+        <!-- THE SPARK section (order changes based on detail level, hidden on research) -->
+        <div
+          :if={@detail_level != :research}
+          class={
+            case @detail_level do
+              :spark -> "order-1 mb-12 text-center"
+              :story -> "order-2 mb-12 text-center border-t border-gray-800 pt-8 mt-8"
+              :deep -> "order-3 mb-12 text-center border-t border-gray-800 pt-8 mt-8"
+              _ -> "hidden"
+            end
+          }
+        >
           <div class="inline-block px-3 py-1 bg-cyan-500/20 text-cyan-400 rounded-full text-xs font-medium mb-6">
             THE SPARK
           </div>
@@ -474,7 +583,7 @@ defmodule SensoctoWeb.AboutLive do
           </div>
         </div>
         
-    <!-- The Story: Human Use Cases -->
+    <!-- The Story: Human Use Cases (hidden on research tab) -->
         <div class={
           "transition-all duration-500 overflow-hidden " <>
             (if @detail_level in [:story, :deep], do: "opacity-100 max-h-[4000px]", else: "opacity-0 max-h-0 pointer-events-none") <>
@@ -622,62 +731,6 @@ defmodule SensoctoWeb.AboutLive do
                 No harvesting. No surveillance. No algorithms deciding who sees what.
               </p>
             </div>
-            
-    <!-- Research Papers Section (visible when research lens is active) -->
-            <div :if={@current_lens == :research} class="mt-10">
-              <h3 class="text-xl font-semibold text-white mb-6">
-                <.icon name="hero-academic-cap" class="h-6 w-6 inline-block mr-2 text-purple-400" />
-                Research Foundations
-              </h3>
-              <p class="text-gray-400 mb-6">
-                Our approach is grounded in peer-reviewed research on physiological synchronization, care networks, and wearable technology for mental health.
-              </p>
-              
-    <!-- Category filters -->
-              <div class="flex flex-wrap gap-2 mb-6">
-                <%= for {key, cat} <- @paper_categories do %>
-                  <span class={"inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-#{cat.color}-500/20 text-#{cat.color}-400"}>
-                    <.icon name={cat.icon} class="h-3.5 w-3.5" />
-                    {cat.name}
-                  </span>
-                <% end %>
-              </div>
-              
-    <!-- Papers list -->
-              <div class="space-y-4">
-                <%= for paper <- @research_papers do %>
-                  <% cat = @paper_categories[paper.category] %>
-                  <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 hover:border-purple-500/30 transition-colors">
-                    <div class="flex items-start gap-3">
-                      <div class={"p-2 rounded-lg shrink-0 bg-#{cat.color}-500/20"}>
-                        <.icon name={cat.icon} class={"h-4 w-4 text-#{cat.color}-400"} />
-                      </div>
-                      <div class="flex-1 min-w-0">
-                        <h4 class="text-white font-medium text-sm leading-tight mb-1">
-                          {paper.title}
-                        </h4>
-                        <p class="text-gray-500 text-xs mb-2">
-                          {paper.authors} ({paper.year}) ·
-                          <span class="text-gray-600">{paper.journal}</span>
-                        </p>
-                        <p class="text-gray-400 text-sm">
-                          {paper.description}
-                        </p>
-                        <a
-                          href={"https://doi.org/#{paper.doi}"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="inline-flex items-center gap-1 mt-2 text-xs text-purple-400 hover:text-purple-300 transition-colors"
-                        >
-                          <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" />
-                          DOI: {paper.doi}
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                <% end %>
-              </div>
-            </div>
           </div>
         </div>
         
@@ -779,6 +832,123 @@ defmodule SensoctoWeb.AboutLive do
                 for humans who believe technology should serve connection, not extraction.
               </p>
             </div>
+          </div>
+        </div>
+        
+    <!-- Research Tab Section -->
+        <div :if={@detail_level == :research} class="order-1">
+          <div class="inline-block px-3 py-1 bg-amber-500/20 text-amber-400 rounded-full text-xs font-medium mb-6">
+            RESEARCH
+          </div>
+
+          <h2 class="text-2xl font-semibold text-white mb-4 text-center">
+            Scientific <span class="text-amber-400">foundations</span> for human connection
+          </h2>
+
+          <p class="text-gray-400 text-center mb-8 max-w-2xl mx-auto">
+            Our approach is grounded in peer-reviewed research on physiological synchronization, care networks, and wearable technology for mental health.
+          </p>
+          
+    <!-- Research Summary with depth levels -->
+          <div class="mb-8 bg-gradient-to-br from-amber-900/20 via-gray-800/50 to-purple-900/20 rounded-xl p-6 border border-amber-500/20">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+              <h4 class="text-lg font-medium text-white">
+                <.icon name="hero-document-text" class="h-5 w-5 inline-block mr-2 text-amber-400" />
+                Research Synthesis
+              </h4>
+              <div class="flex gap-2">
+                <button
+                  phx-click="set_summary_level"
+                  phx-value-level="spark"
+                  class={"px-3 py-1.5 rounded-full text-xs font-medium transition-all " <>
+                    if @research_summary_level == :spark do
+                      "bg-amber-500 text-white"
+                    else
+                      "bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600"
+                    end}
+                >
+                  Brief (~300 words)
+                </button>
+                <button
+                  phx-click="set_summary_level"
+                  phx-value-level="story"
+                  class={"px-3 py-1.5 rounded-full text-xs font-medium transition-all " <>
+                    if @research_summary_level == :story do
+                      "bg-amber-500 text-white"
+                    else
+                      "bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600"
+                    end}
+                >
+                  Standard (~900 words)
+                </button>
+                <button
+                  phx-click="set_summary_level"
+                  phx-value-level="deep"
+                  class={"px-3 py-1.5 rounded-full text-xs font-medium transition-all " <>
+                    if @research_summary_level == :deep do
+                      "bg-amber-500 text-white"
+                    else
+                      "bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600"
+                    end}
+                >
+                  Deep Dive (~1800 words)
+                </button>
+              </div>
+            </div>
+            <div class={"prose prose-invert prose-sm max-w-none " <>
+              if @research_summary_level == :deep do
+                "max-h-[600px] overflow-y-auto pr-2"
+              else
+                ""
+              end}>
+              <div class="text-gray-300 leading-relaxed whitespace-pre-line">
+                {@research_summaries[@research_summary_level]}
+              </div>
+            </div>
+          </div>
+          
+    <!-- Category filters -->
+          <div class="flex flex-wrap gap-2 mb-6">
+            <%= for {_key, cat} <- @paper_categories do %>
+              <span class={"inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-#{cat.color}-500/20 text-#{cat.color}-400"}>
+                <.icon name={cat.icon} class="h-3.5 w-3.5" />
+                {cat.name}
+              </span>
+            <% end %>
+          </div>
+          
+    <!-- Papers list -->
+          <div class="space-y-4">
+            <%= for paper <- @research_papers do %>
+              <% cat = @paper_categories[paper.category] %>
+              <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 hover:border-amber-500/30 transition-colors">
+                <div class="flex items-start gap-3">
+                  <div class={"p-2 rounded-lg shrink-0 bg-#{cat.color}-500/20"}>
+                    <.icon name={cat.icon} class={"h-4 w-4 text-#{cat.color}-400"} />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <h4 class="text-white font-medium text-sm leading-tight mb-1">
+                      {paper.title}
+                    </h4>
+                    <p class="text-gray-500 text-xs mb-2">
+                      {paper.authors} ({paper.year}) ·
+                      <span class="text-gray-600">{paper.journal}</span>
+                    </p>
+                    <p class="text-gray-400 text-sm">
+                      {paper.description}
+                    </p>
+                    <a
+                      href={"https://doi.org/#{paper.doi}"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="inline-flex items-center gap-1 mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                    >
+                      <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" /> DOI: {paper.doi}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            <% end %>
           </div>
         </div>
         

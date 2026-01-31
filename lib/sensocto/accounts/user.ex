@@ -19,11 +19,14 @@ defmodule Sensocto.Accounts.User do
       signing_secret Sensocto.Secrets
       store_all_tokens? true
       require_token_presence_for_authentication? true
-      # M-001 Security Fix: Reduced token lifetime from 365 days to 14 days.
-      # Long-lived tokens increase the risk window if tokens are compromised.
-      # 14 days balances security with user convenience for typical usage patterns.
-      # Consider implementing refresh tokens for longer sessions if needed.
-      token_lifetime {14, :days}
+      # Extended token lifetime for persistent "remember me" sessions.
+      # Users should stay logged in until they manually log out or tokens are invalidated.
+      # 10 years provides practical "infinite" session for most use cases.
+      # Security is maintained through:
+      # - Manual logout invalidates tokens
+      # - Admin can revoke tokens if needed
+      # - Token presence required for authentication
+      token_lifetime {3650, :days}
     end
 
     strategies do

@@ -20,6 +20,7 @@ defmodule Sensocto.Simulator.AttributeServer do
   defstruct @enforce_keys ++
               [
                 :sensor_pid,
+                :sensor_pid_ref,
                 :sensor_id,
                 :connector_id,
                 :paused,
@@ -37,7 +38,8 @@ defmodule Sensocto.Simulator.AttributeServer do
   @type t :: %__MODULE__{
           attribute_id: String.t() | atom(),
           attribute_id_str: String.t(),
-          sensor_pid: pid(),
+          sensor_pid: pid() | nil,
+          sensor_pid_ref: reference() | nil,
           sensor_id: String.t(),
           connector_id: String.t(),
           paused: boolean(),
@@ -109,10 +111,25 @@ defmodule Sensocto.Simulator.AttributeServer do
         :exit, {:noproc, _} -> :normal
       end
 
+    # Monitor the sensor PID so we know when it dies
+    sensor_pid = Map.get(config, :sensor_pid)
+
+    sensor_pid_ref =
+      if is_pid(sensor_pid) and Process.alive?(sensor_pid) do
+        Process.monitor(sensor_pid)
+      else
+        Logger.warning(
+          "AttributeServer #{sensor_id}/#{attribute_id}: sensor_pid is not alive, will terminate"
+        )
+
+        nil
+      end
+
     state = %__MODULE__{
       attribute_id: attribute_id,
       attribute_id_str: attribute_id_str,
-      sensor_pid: Map.get(config, :sensor_pid),
+      sensor_pid: sensor_pid,
+      sensor_pid_ref: sensor_pid_ref,
       sensor_id: sensor_id,
       connector_id: Map.get(config, :connector_id),
       paused: false,
@@ -197,20 +214,39 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Note: Uses attribute_id_str (string) for consistency with SimpleSensor/AttributeStore
   @impl true
   def handle_cast({:push_batch, messages}, state) when length(messages) > 0 do
-    unless state.paused do
-      push_messages =
-        Enum.map(messages, fn msg ->
-          %{
-            "payload" => msg.payload,
-            "timestamp" => msg.timestamp,
-            "attribute_id" => state.attribute_id_str
-          }
-        end)
+    cond do
+      state.paused ->
+        {:noreply, state}
 
-      send(state.sensor_pid, {:push_batch, state.attribute_id_str, push_messages})
+      not is_pid(state.sensor_pid) ->
+        Logger.warning(
+          "AttributeServer #{state.sensor_id}/#{state.attribute_id_str}: " <>
+            "no sensor_pid, terminating"
+        )
+
+        {:stop, :no_sensor_pid, state}
+
+      not Process.alive?(state.sensor_pid) ->
+        Logger.warning(
+          "AttributeServer #{state.sensor_id}/#{state.attribute_id_str}: " <>
+            "sensor_pid is dead, terminating"
+        )
+
+        {:stop, :sensor_dead, state}
+
+      true ->
+        push_messages =
+          Enum.map(messages, fn msg ->
+            %{
+              "payload" => msg.payload,
+              "timestamp" => msg.timestamp,
+              "attribute_id" => state.attribute_id_str
+            }
+          end)
+
+        send(state.sensor_pid, {:push_batch, state.attribute_id_str, push_messages})
+        {:noreply, state}
     end
-
-    {:noreply, state}
   end
 
   @impl true
@@ -314,6 +350,26 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Ignore attention changes for other sensors/attributes
   @impl true
   def handle_info({:attention_changed, _}, state), do: {:noreply, state}
+
+  # Handle sensor PID death - terminate this AttributeServer
+  # This fixes the "silent disconnect" bug where AttributeServer keeps running
+  # but sends data to a dead PID
+  @impl true
+  def handle_info(
+        {:DOWN, ref, :process, pid, reason},
+        %{sensor_pid_ref: ref, sensor_pid: pid} = state
+      ) do
+    Logger.warning(
+      "AttributeServer #{state.sensor_id}/#{state.attribute_id_str}: " <>
+        "SensorServer (#{inspect(pid)}) died with reason: #{inspect(reason)}, terminating"
+    )
+
+    {:stop, {:sensor_died, reason}, state}
+  end
+
+  # Ignore DOWN messages for other processes
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
 
   # Handle memory protection changes from SystemLoadMonitor
   # When memory pressure is high, the system activates memory protection mode

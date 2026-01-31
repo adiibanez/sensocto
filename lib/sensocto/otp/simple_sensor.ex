@@ -2,7 +2,7 @@ defmodule Sensocto.SimpleSensor do
   use GenServer
   require Logger
   alias Sensocto.AttributeStoreTiered, as: AttributeStore
-  alias Sensocto.SimpleSensorRegistry
+  # SimpleSensorRegistry replaced by Sensocto.DistributedSensorRegistry (Horde-based)
   alias Sensocto.Sensors.Sensor
   alias Sensocto.Otp.RepoReplicatorPool
 
@@ -40,17 +40,25 @@ defmodule Sensocto.SimpleSensor do
 
     RepoReplicatorPool.sensor_up(sensor_id)
 
-    {:ok,
-     state
-     |> Map.put(:attributes, state.attributes || %{})
-     |> Map.merge(%{message_timestamps: []})
-     |> Map.put(:mps_interval, 5000)
-     |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))
-     |> Map.put(:attention_level, :none)}
+    final_state =
+      state
+      |> Map.put(:attributes, state.attributes || %{})
+      |> Map.merge(%{message_timestamps: []})
+      |> Map.put(:mps_interval, 5000)
+      |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))
+      |> Map.put(:attention_level, :none)
+
+    # Broadcast sensor registration for cluster-wide discovery
+    broadcast_sensor_registered(final_state)
+
+    {:ok, final_state}
   end
 
   @impl true
   def terminate(_reason, %{:sensor_id => sensor_id} = _state) do
+    # Broadcast sensor unregistration for cluster-wide discovery
+    broadcast_sensor_unregistered(sensor_id)
+
     # Notify repo replicator pool (using correct pool API)
     RepoReplicatorPool.sensor_down(sensor_id)
 
@@ -592,7 +600,59 @@ defmodule Sensocto.SimpleSensor do
   end
 
   def via_tuple(sensor_id) do
-    {:via, Registry, {SimpleSensorRegistry, sensor_id}}
-    # {:via, Horde.Registry, {SimpleSensorRegistry, sensor_id}}
+    # Use Horde.Registry for cluster-wide sensor lookup
+    {:via, Horde.Registry, {Sensocto.DistributedSensorRegistry, sensor_id}}
+  end
+
+  @doc """
+  Checks if a SimpleSensor process is alive for the given sensor_id.
+  """
+  @spec alive?(String.t()) :: boolean()
+  def alive?(sensor_id) do
+    case Horde.Registry.lookup(Sensocto.DistributedSensorRegistry, sensor_id) do
+      [{pid, _}] ->
+        # Process.alive? only works for local PIDs
+        # For remote PIDs, assume alive (Horde handles cleanup on node down)
+        if node(pid) == node() do
+          Process.alive?(pid)
+        else
+          true
+        end
+
+      [] ->
+        false
+    end
+  end
+
+  # Discovery broadcasts for cluster-wide sensor visibility
+
+  defp broadcast_sensor_registered(state) do
+    view_state = build_discovery_view(state)
+
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "discovery:sensors",
+      {:sensor_registered, state.sensor_id, view_state, node()}
+    )
+  end
+
+  defp broadcast_sensor_unregistered(sensor_id) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "discovery:sensors",
+      {:sensor_unregistered, sensor_id, node()}
+    )
+  end
+
+  defp build_discovery_view(state) do
+    %{
+      sensor_id: state.sensor_id,
+      sensor_name: state.sensor_name,
+      sensor_type: Map.get(state, :sensor_type),
+      connector_id: Map.get(state, :connector_id),
+      connector_name: Map.get(state, :connector_name),
+      node: node(),
+      registered_at: DateTime.utc_now()
+    }
   end
 end

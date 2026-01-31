@@ -74,6 +74,11 @@ defmodule Sensocto.Domain.Supervisor do
       # Sensor domain - manages individual sensor processes
       Sensocto.SensorsDynamicSupervisor,
 
+      # Discovery domain - cluster-wide entity discovery cache and sync
+      # Must start after SensorsDynamicSupervisor to sync existing sensors
+      Sensocto.Discovery.DiscoveryCache,
+      Sensocto.Discovery.SyncWorker,
+
       # Connector domain - distributed connector coordination
       # Uses :pg for cluster-wide connector discovery and ETS for local storage
       Sensocto.Sensors.ConnectorManager,

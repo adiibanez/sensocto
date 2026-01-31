@@ -1906,6 +1906,7 @@ Hooks.DraggableBallsHook = {
         document.addEventListener('mouseup', this.onMouseUp);
         document.addEventListener('touchmove', this.onTouchMove, { passive: false });
         document.addEventListener('touchend', this.onTouchEnd);
+        document.addEventListener('touchcancel', this.onTouchEnd);
     },
 
     destroyed() {
@@ -1913,6 +1914,7 @@ Hooks.DraggableBallsHook = {
         document.removeEventListener('mouseup', this.onMouseUp);
         document.removeEventListener('touchmove', this.onTouchMove);
         document.removeEventListener('touchend', this.onTouchEnd);
+        document.removeEventListener('touchcancel', this.onTouchEnd);
     },
 
     updated() {
@@ -1925,14 +1927,19 @@ Hooks.DraggableBallsHook = {
         // Clear existing balls
         this.el.innerHTML = '';
 
+        // Detect mobile for larger touch targets
+        const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        const ballSize = isMobile ? 48 : 32;
+        const halfSize = ballSize / 2;
+
         this.balls.forEach((ball, id) => {
             const div = document.createElement('div');
             div.className = 'absolute rounded-full cursor-grab active:cursor-grabbing';
-            div.style.width = '32px';
-            div.style.height = '32px';
+            div.style.width = `${ballSize}px`;
+            div.style.height = `${ballSize}px`;
             div.style.backgroundColor = ball.color;
-            div.style.left = `calc(${ball.x}% - 16px)`;
-            div.style.top = `calc(${ball.y}% - 16px)`;
+            div.style.left = `calc(${ball.x}% - ${halfSize}px)`;
+            div.style.top = `calc(${ball.y}% - ${halfSize}px)`;
             div.style.pointerEvents = 'auto';
             div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
             div.style.transition = 'box-shadow 0.2s ease, opacity 0.2s ease';
@@ -1946,10 +1953,15 @@ Hooks.DraggableBallsHook = {
                 div.style.display = 'flex';
                 div.style.alignItems = 'center';
                 div.style.justifyContent = 'center';
-                div.style.fontSize = '16px';
+                div.style.fontSize = isMobile ? '20px' : '16px';
                 div.style.fontWeight = 'bold';
                 div.style.color = 'white';
                 div.style.textShadow = '0 1px 2px rgba(0,0,0,0.8)';
+                // Prevent browser from handling touch as scroll/zoom
+                div.style.touchAction = 'none';
+                // Prevent text selection on long press
+                div.style.userSelect = 'none';
+                div.style.webkitUserSelect = 'none';
                 div.innerHTML = '✋';
                 div.title = 'Drag me!';
 
@@ -1972,8 +1984,14 @@ Hooks.DraggableBallsHook = {
 
     handleTouchStart(e) {
         e.preventDefault();
+        e.stopPropagation();
         this.isDragging = true;
         this.userActionUntil = Date.now() + this.GRACE_PERIOD_MS;
+        // Store initial touch position for immediate feedback
+        if (e.touches && e.touches[0]) {
+            const touch = e.touches[0];
+            this.updatePosition(touch.clientX, touch.clientY);
+        }
         // Broadcast drag start to all tabs for synchronized vibration
         this.pushEvent('ball_drag_start', {});
     },
@@ -1985,9 +2003,13 @@ Hooks.DraggableBallsHook = {
 
     handleTouchMove(e) {
         if (!this.isDragging) return;
+        // Always prevent default when dragging to stop page scroll
         e.preventDefault();
-        const touch = e.touches[0];
-        this.updatePosition(touch.clientX, touch.clientY);
+        e.stopPropagation();
+        if (e.touches && e.touches[0]) {
+            const touch = e.touches[0];
+            this.updatePosition(touch.clientX, touch.clientY);
+        }
     },
 
     updatePosition(clientX, clientY) {
@@ -2032,15 +2054,21 @@ Hooks.GuestCredentials = {
             localStorage.setItem('guest_stored_at', Date.now().toString());
         });
 
+        // Listen for clear-guest-credentials event (triggered on logout)
+        this.handleEvent('clear-guest-credentials', () => {
+            console.log('[GuestCredentials] Clearing guest credentials from localStorage (logout)');
+            this.clearStoredCredentials();
+        });
+
         // On mount, check if we have stored guest credentials
         const guestId = localStorage.getItem('guest_id');
         const guestToken = localStorage.getItem('guest_token');
         const storedAt = localStorage.getItem('guest_stored_at');
 
         if (guestId && guestToken && storedAt) {
-            // Check if credentials are not too old (7 days)
+            // Check if credentials are not too old (30 days to match server-side TTL)
             const age = Date.now() - parseInt(storedAt);
-            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+            const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
 
             if (age < maxAge) {
                 console.log('[GuestCredentials] Found stored guest credentials, pushing to LiveView');

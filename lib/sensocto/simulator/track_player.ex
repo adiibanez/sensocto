@@ -19,7 +19,8 @@ defmodule Sensocto.Simulator.TrackPlayer do
   alias Sensocto.Simulator.GpsTracks
   alias Sensocto.Sensors.SimulatorTrackPosition
 
-  @hydration_delay_ms 200
+  # Delay hydration to allow HTTP server to start first (improves Fly.io routing)
+  @hydration_delay_ms 6_000
   @sync_interval_ms 30_000
 
   @type player_state :: %{
@@ -266,20 +267,35 @@ defmodule Sensocto.Simulator.TrackPlayer do
   def handle_info(:hydrate_from_postgres, state) do
     Logger.debug("[TrackPlayer] Hydrating track positions from PostgreSQL...")
 
-    case load_positions_from_db() do
-      {:ok, positions} when positions != [] ->
-        Logger.info("[TrackPlayer] Found #{length(positions)} track positions to restore")
-        new_state = restore_positions(state, positions)
-        {:noreply, new_state}
+    # Run database query in a task to avoid blocking GenServer
+    Task.Supervisor.start_child(
+      Sensocto.Simulator.DbTaskSupervisor,
+      fn ->
+        result = load_positions_from_db()
+        send(__MODULE__, {:hydration_result, result})
+      end
+    )
 
-      {:ok, []} ->
-        Logger.debug("[TrackPlayer] No track positions to restore")
-        {:noreply, state}
+    {:noreply, state}
+  end
 
-      {:error, reason} ->
-        Logger.warning("[TrackPlayer] Failed to hydrate: #{inspect(reason)}")
-        {:noreply, state}
-    end
+  @impl true
+  def handle_info({:hydration_result, {:ok, positions}}, state) when positions != [] do
+    Logger.info("[TrackPlayer] Found #{length(positions)} track positions to restore")
+    new_state = restore_positions(state, positions)
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_info({:hydration_result, {:ok, []}}, state) do
+    Logger.debug("[TrackPlayer] No track positions to restore")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:hydration_result, {:error, reason}}, state) do
+    Logger.warning("[TrackPlayer] Failed to hydrate: #{inspect(reason)}")
+    {:noreply, state}
   end
 
   @impl true

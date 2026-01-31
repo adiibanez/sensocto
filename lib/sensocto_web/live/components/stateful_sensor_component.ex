@@ -239,10 +239,10 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     sensor_id = socket_assigns.sensor_id
     attribute_id = measurement.attribute_id
 
-    # Handle button press/release
+    # Handle button press/release events
     socket =
-      if measurement[:event] in ["press", "release"] and attribute_id == "button" do
-        button_id = measurement.payload
+      if attribute_id == "button" and measurement[:event] in ["press", "release"] do
+        button_id = parse_button_id(measurement.payload)
         current_pressed = Map.get(socket_assigns.pressed_buttons, attribute_id, MapSet.new())
 
         new_pressed =
@@ -298,13 +298,46 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
         Enum.max_by(measurements, & &1.timestamp)
       end)
 
-    # Update LiveComponents immediately
+    # Process button press/release events using event field
+    socket =
+      measurements_list
+      |> Enum.filter(fn m ->
+        m[:attribute_id] == "button" and m[:event] in ["press", "release"]
+      end)
+      |> Enum.sort_by(& &1.timestamp)
+      |> Enum.reduce(socket, fn measurement, acc ->
+        button_id = parse_button_id(measurement.payload)
+        current_pressed = Map.get(acc.assigns.pressed_buttons, "button", MapSet.new())
+
+        new_pressed =
+          case measurement[:event] do
+            "press" -> MapSet.put(current_pressed, button_id)
+            "release" -> MapSet.delete(current_pressed, button_id)
+          end
+
+        pressed_buttons = Map.put(acc.assigns.pressed_buttons, "button", new_pressed)
+        assign(acc, :pressed_buttons, pressed_buttons)
+      end)
+
+    # Update LiveComponents with latest measurement and button state if applicable
     Enum.each(latest_measurements, fn measurement ->
-      send_update(
-        AttributeComponent,
-        id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
-        lastvalue: measurement
-      )
+      update_params =
+        if measurement.attribute_id == "button" do
+          button_pressed = Map.get(socket.assigns.pressed_buttons, "button", MapSet.new())
+
+          [
+            id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
+            lastvalue: measurement,
+            pressed_buttons: button_pressed
+          ]
+        else
+          [
+            id: "attribute_#{sensor_id}_#{measurement.attribute_id}",
+            lastvalue: measurement
+          ]
+        end
+
+      send_update(AttributeComponent, update_params)
     end)
 
     # Buffer all measurements
@@ -726,4 +759,16 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
 
     max(@min_ping_interval_ms, min(@max_ping_interval_ms, interval))
   end
+
+  # Parse button ID from payload - handles both string and integer formats
+  defp parse_button_id(payload) when is_integer(payload), do: payload
+
+  defp parse_button_id(payload) when is_binary(payload) do
+    case Integer.parse(payload) do
+      {id, _} -> id
+      :error -> payload
+    end
+  end
+
+  defp parse_button_id(payload), do: payload
 end

@@ -11,7 +11,8 @@ defmodule Sensocto.Simulator.Manager do
   alias Sensocto.Sensors.{SimulatorScenario, SimulatorConnector}
 
   @scenarios_dir "config/simulator_scenarios"
-  @hydration_delay_ms 100
+  # Delay hydration to allow HTTP server to start first (improves Fly.io routing)
+  @hydration_delay_ms 5_000
   @sync_debounce_ms 500
 
   defstruct [:connectors, :config_path, :running_scenarios, :available_scenarios]
@@ -153,16 +154,18 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def init(config_path) do
-    available_scenarios = discover_scenarios()
-
+    # Defer scenario discovery to avoid blocking startup with filesystem I/O
     state = %__MODULE__{
       connectors: %{},
       config_path: config_path,
       running_scenarios: %{},
-      available_scenarios: available_scenarios
+      available_scenarios: []
     }
 
-    # Schedule hydration from PostgreSQL after init
+    # Schedule scenario discovery (filesystem I/O) after init
+    Process.send_after(self(), :discover_scenarios, 1_000)
+
+    # Schedule hydration from PostgreSQL after discovery completes
     Process.send_after(self(), :hydrate_from_postgres, @hydration_delay_ms)
 
     {:ok, state, {:continue, :load_config}}
@@ -177,8 +180,8 @@ defmodule Sensocto.Simulator.Manager do
   @impl true
   def handle_call(:reload_config, _from, state) do
     Logger.info("Reloading simulator config and rediscovering scenarios")
-    # Rediscover scenarios in case new files were added
-    available_scenarios = discover_scenarios()
+    # Rediscover scenarios synchronously for reload (explicit user action)
+    available_scenarios = do_discover_scenarios()
     new_state = load_config(%{state | available_scenarios: available_scenarios})
     {:reply, :ok, new_state}
   end
@@ -400,24 +403,62 @@ defmodule Sensocto.Simulator.Manager do
     end
   end
 
+  # Handle async scenario discovery
+  @impl true
+  def handle_info(:discover_scenarios, state) do
+    Logger.info("Discovering available simulator scenarios...")
+
+    # Run filesystem I/O in a task to avoid blocking GenServer
+    Task.Supervisor.start_child(
+      Sensocto.Simulator.DbTaskSupervisor,
+      fn ->
+        scenarios = do_discover_scenarios()
+        send(__MODULE__, {:scenarios_discovered, scenarios})
+      end
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:scenarios_discovered, scenarios}, state) do
+    Logger.info("Discovered #{length(scenarios)} available scenarios")
+    {:noreply, %{state | available_scenarios: scenarios}}
+  end
+
   @impl true
   def handle_info(:hydrate_from_postgres, state) do
     Logger.info("Hydrating simulator state from PostgreSQL...")
 
-    case load_running_scenarios_from_db() do
-      {:ok, scenarios} when scenarios != [] ->
-        Logger.info("Found #{length(scenarios)} running scenarios to restore")
-        new_state = restore_scenarios(state, scenarios)
-        {:noreply, new_state}
+    # Run database query in a task to avoid blocking GenServer
+    Task.Supervisor.start_child(
+      Sensocto.Simulator.DbTaskSupervisor,
+      fn ->
+        result = load_running_scenarios_from_db()
+        send(__MODULE__, {:hydration_result, result})
+      end
+    )
 
-      {:ok, []} ->
-        Logger.debug("No running scenarios to restore from PostgreSQL")
-        {:noreply, state}
+    {:noreply, state}
+  end
 
-      {:error, reason} ->
-        Logger.warning("Failed to hydrate from PostgreSQL: #{inspect(reason)}")
-        {:noreply, state}
-    end
+  @impl true
+  def handle_info({:hydration_result, {:ok, scenarios}}, state) when scenarios != [] do
+    Logger.info("Found #{length(scenarios)} running scenarios to restore")
+    new_state = restore_scenarios(state, scenarios)
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_info({:hydration_result, {:ok, []}}, state) do
+    Logger.debug("No running scenarios to restore from PostgreSQL")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:hydration_result, {:error, reason}}, state) do
+    Logger.warning("Failed to hydrate from PostgreSQL: #{inspect(reason)}")
+    {:noreply, state}
   end
 
   @impl true
@@ -616,7 +657,7 @@ defmodule Sensocto.Simulator.Manager do
     }
   end
 
-  defp discover_scenarios do
+  defp do_discover_scenarios do
     # Try multiple paths for scenarios directory (release vs dev)
     scenarios_path = find_scenarios_dir()
 

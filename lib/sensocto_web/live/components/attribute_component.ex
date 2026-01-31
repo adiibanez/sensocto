@@ -558,7 +558,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> -          {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]"> -           {@presence.artist}</span>
             <% end %>
           </div>
         <% else %>
@@ -2625,11 +2625,14 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     do: %{title: nil, artist: nil, album: nil, artwork_url: nil, state: "none"}
 
   # Button style for multi-press support using MapSet
+  # Pressed buttons get their color + glow effect; unpressed are gray
   defp button_style_multi(pressed_buttons, button_id) do
     if MapSet.member?(pressed_buttons, button_id) do
-      "background-color: #{@button_colors[button_id]}; color: white;"
+      color = @button_colors[button_id]
+
+      "background-color: #{color}; color: white; box-shadow: 0 0 12px 2px #{color}, 0 0 4px 1px #{color}; transform: scale(0.9);"
     else
-      "background-color: #4b5563; color: #9ca3af;"
+      "background-color: #4b5563; color: #9ca3af; box-shadow: none; transform: scale(1);"
     end
   end
 

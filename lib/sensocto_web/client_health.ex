@@ -2,12 +2,18 @@ defmodule SensoctoWeb.ClientHealth do
   @moduledoc """
   Tracks client health metrics and manages adaptive quality levels for LiveViews.
 
+  ## Philosophy
+
+  Default to maximum throughput (raw/realtime data). Throttling is a last
+  resort when server load or client performance becomes a problem. The system
+  should keep trying to send as much realtime data as possible.
+
   ## Quality Levels
 
-  - `:high` - Full fidelity (health score > 70)
-  - `:medium` - Throttled updates (health score 40-70)
-  - `:low` - Digest only (health score 20-40)
-  - `:minimal` - Alerts only (health score < 20)
+  - `:high` - Maximum throughput, raw data (~60fps)
+  - `:medium` - Still realtime, slight batching (~20fps)
+  - `:low` - First level of throttling (only on real pressure)
+  - `:minimal` - Emergency mode (significant throttling)
 
   ## Client Metrics Tracked
 
@@ -65,10 +71,12 @@ defmodule SensoctoWeb.ClientHealth do
         }
 
   # Quality thresholds with hysteresis (different enter/exit to prevent flapping)
+  # Conservative thresholds: only downgrade when there's significant pressure
+  # Throttling is a last resort - stay at high quality as long as possible
   @quality_thresholds %{
-    high: %{enter: 75, exit: 65},
-    medium: %{enter: 50, exit: 40},
-    low: %{enter: 25, exit: 15}
+    high: %{enter: 60, exit: 40},
+    medium: %{enter: 35, exit: 20},
+    low: %{enter: 15, exit: 5}
     # Below low exit = minimal
   }
 
@@ -140,40 +148,47 @@ defmodule SensoctoWeb.ClientHealth do
 
   @doc """
   Returns the appropriate lens configuration for a quality level.
+
+  Philosophy: Default to maximum throughput (raw/realtime data).
+  Throttling is a last resort when server load becomes a problem.
   """
   @spec lens_config_for_quality(quality_level()) :: map()
   def lens_config_for_quality(quality) do
     case quality do
       :high ->
+        # Maximum throughput - send everything as fast as possible
         %{
-          default_lens: "lens:throttled:20",
+          default_lens: "lens:raw",
+          focused_lens: "lens:raw",
+          batch_window_ms: 16,
+          max_sensors_realtime: :unlimited
+        }
+
+      :medium ->
+        # Still realtime, slightly batched to reduce message count
+        %{
+          default_lens: "lens:raw",
           focused_lens: "lens:raw",
           batch_window_ms: 50,
           max_sensors_realtime: :unlimited
         }
 
-      :medium ->
-        %{
-          default_lens: "lens:throttled:10",
-          focused_lens: "lens:throttled:20",
-          batch_window_ms: 100,
-          max_sensors_realtime: 10
-        }
-
       :low ->
+        # First level of actual throttling - only when there's real pressure
         %{
-          default_lens: "lens:throttled:5",
-          focused_lens: "lens:throttled:10",
-          batch_window_ms: 200,
-          max_sensors_realtime: 5
+          default_lens: "lens:throttled:20",
+          focused_lens: "lens:raw",
+          batch_window_ms: 100,
+          max_sensors_realtime: 20
         }
 
       :minimal ->
+        # Emergency mode - significant throttling
         %{
-          default_lens: "lens:throttled:5",
-          focused_lens: "lens:throttled:5",
-          batch_window_ms: 500,
-          max_sensors_realtime: 1
+          default_lens: "lens:throttled:10",
+          focused_lens: "lens:throttled:20",
+          batch_window_ms: 200,
+          max_sensors_realtime: 5
         }
     end
   end

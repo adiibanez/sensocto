@@ -2345,10 +2345,14 @@ defmodule SensoctoWeb.LobbyLive do
             list when is_list(list) ->
               Enum.map(list, fn item ->
                 %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
+                |> maybe_add_event(item)
               end)
 
             single ->
-              [%{attribute_id: attr_id, payload: single.payload, timestamp: single.timestamp}]
+              [
+                %{attribute_id: attr_id, payload: single.payload, timestamp: single.timestamp}
+                |> maybe_add_event(single)
+              ]
           end
         end)
 
@@ -2359,6 +2363,14 @@ defmodule SensoctoWeb.LobbyLive do
     end)
 
     socket
+  end
+
+  # Add event field to measurement if present (for button press/release)
+  defp maybe_add_event(measurement, source) do
+    case Map.get(source, :event) do
+      nil -> measurement
+      event -> Map.put(measurement, :event, event)
+    end
   end
 
   # Transform lens_batch to push_events for composite views

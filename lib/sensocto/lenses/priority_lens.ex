@@ -6,12 +6,18 @@ defmodule Sensocto.Lenses.PriorityLens do
   sensors it cares about and its current quality level. Uses ETS tables
   for efficient buffering without copying data on every message.
 
+  ## Philosophy
+
+  Default to maximum throughput (raw/realtime data). Throttling is a last
+  resort when server load becomes a problem - the system should keep trying
+  to send as much realtime data as possible.
+
   ## Quality Levels
 
-  - `:high` - 20Hz, full sensor set
-  - `:medium` - 10Hz, limited sensors
-  - `:low` - 1s digests (summary stats)
-  - `:minimal` - 2s digests, single focused sensor
+  - `:high` - ~60fps, full sensor set, maximum throughput
+  - `:medium` - ~20fps, full sensor set, slight batching
+  - `:low` - ~10fps, limited sensors (first level of throttling)
+  - `:minimal` - ~5fps, few sensors (emergency mode)
 
   ## Topics
 
@@ -48,11 +54,16 @@ defmodule Sensocto.Lenses.PriorityLens do
   @digest_table :priority_lens_digests
 
   # Quality level configurations
+  # Philosophy: Default to maximum throughput. Throttling is a last resort.
   @quality_configs %{
-    high: %{flush_interval_ms: 50, max_sensors: :unlimited, mode: :batch},
-    medium: %{flush_interval_ms: 100, max_sensors: 10, mode: :batch},
-    low: %{flush_interval_ms: 1000, max_sensors: 5, mode: :digest},
-    minimal: %{flush_interval_ms: 2000, max_sensors: 1, mode: :digest}
+    # Maximum throughput - flush as fast as possible (~60fps)
+    high: %{flush_interval_ms: 16, max_sensors: :unlimited, mode: :batch},
+    # Still realtime, slightly batched (~20fps)
+    medium: %{flush_interval_ms: 50, max_sensors: :unlimited, mode: :batch},
+    # First level of throttling - only when there's real backpressure
+    low: %{flush_interval_ms: 100, max_sensors: 20, mode: :batch},
+    # Emergency mode - significant throttling
+    minimal: %{flush_interval_ms: 200, max_sensors: 5, mode: :batch}
   }
 
   # High-frequency attributes that need all samples preserved

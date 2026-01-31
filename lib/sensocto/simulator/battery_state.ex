@@ -16,7 +16,8 @@ defmodule Sensocto.Simulator.BatteryState do
   alias Sensocto.Sensors.SimulatorBatteryState
 
   @table_name :battery_state
-  @hydration_delay_ms 200
+  # Delay hydration to allow HTTP server to start first (improves Fly.io routing)
+  @hydration_delay_ms 5_500
   @sync_interval_ms 60_000
   # Check every 10 seconds for state flip (faster for demo)
   @state_check_interval :timer.seconds(10)
@@ -115,20 +116,35 @@ defmodule Sensocto.Simulator.BatteryState do
   def handle_info(:hydrate_from_postgres, state) do
     Logger.debug("[BatteryState] Hydrating battery states from PostgreSQL...")
 
-    case load_battery_states_from_db() do
-      {:ok, battery_states} when battery_states != [] ->
-        Logger.info("[BatteryState] Found #{length(battery_states)} battery states to restore")
-        restore_battery_states(battery_states)
-        {:noreply, state}
+    # Run database query in a task to avoid blocking GenServer
+    Task.Supervisor.start_child(
+      Sensocto.Simulator.DbTaskSupervisor,
+      fn ->
+        result = load_battery_states_from_db()
+        send(__MODULE__, {:hydration_result, result})
+      end
+    )
 
-      {:ok, []} ->
-        Logger.debug("[BatteryState] No battery states to restore")
-        {:noreply, state}
+    {:noreply, state}
+  end
 
-      {:error, reason} ->
-        Logger.warning("[BatteryState] Failed to hydrate: #{inspect(reason)}")
-        {:noreply, state}
-    end
+  @impl true
+  def handle_info({:hydration_result, {:ok, battery_states}}, state) when battery_states != [] do
+    Logger.info("[BatteryState] Found #{length(battery_states)} battery states to restore")
+    restore_battery_states(battery_states)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:hydration_result, {:ok, []}}, state) do
+    Logger.debug("[BatteryState] No battery states to restore")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:hydration_result, {:error, reason}}, state) do
+    Logger.warning("[BatteryState] Failed to hydrate: #{inspect(reason)}")
+    {:noreply, state}
   end
 
   @impl true

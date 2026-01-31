@@ -558,7 +558,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> -         {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]"> -          {@presence.artist}</span>
             <% end %>
           </div>
         <% else %>
@@ -2645,6 +2645,14 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   def handle_event("page_visible", params, socket) do
     send(self(), {:component_event, "page_visible", params})
+    {:noreply, socket}
+  end
+
+  # Catch-all for events not handled by this component (e.g., latency_ping from hooks)
+  # These events may be broadcast to components but are only meant for specific handlers
+  def handle_event(event, _params, socket) do
+    require Logger
+    Logger.debug("AttributeComponent ignoring unhandled event: #{event}")
     {:noreply, socket}
   end
 

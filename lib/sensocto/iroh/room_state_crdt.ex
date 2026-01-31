@@ -55,8 +55,13 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defstruct [
     :node_ref,
     :docs,
-    initialized: false
+    initialized: false,
+    init_attempts: 0,
+    nif_unavailable: false
   ]
+
+  # Max initialization retry attempts before giving up
+  @max_init_attempts 3
 
   # ============================================================================
   # Client API
@@ -230,16 +235,42 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   end
 
   @impl true
-  def handle_info(:initialize, state) do
-    case initialize_node() do
-      {:ok, node_ref} ->
-        Logger.info("[RoomStateCRDT] Initialized iroh node")
-        {:noreply, %{state | node_ref: node_ref, initialized: true}}
+  def handle_info(:initialize, %{nif_unavailable: true} = state) do
+    # NIF is not available, don't retry
+    {:noreply, state}
+  end
 
-      {:error, reason} ->
-        Logger.error("[RoomStateCRDT] Failed to initialize: #{inspect(reason)}")
-        Process.send_after(self(), :initialize, 5000)
-        {:noreply, state}
+  def handle_info(:initialize, %{init_attempts: attempts} = state)
+      when attempts >= @max_init_attempts do
+    Logger.warning(
+      "[RoomStateCRDT] Max initialization attempts (#{@max_init_attempts}) reached. " <>
+        "IrohEx NIF may not be available. CRDT features disabled."
+    )
+
+    {:noreply, %{state | nif_unavailable: true}}
+  end
+
+  def handle_info(:initialize, state) do
+    # First check if the NIF is even loaded
+    unless function_exported?(Native, :create_node, 2) do
+      Logger.warning("[RoomStateCRDT] IrohEx.Native NIF not loaded. CRDT features disabled.")
+      {:noreply, %{state | nif_unavailable: true}}
+    else
+      case initialize_node() do
+        {:ok, node_ref} ->
+          Logger.info("[RoomStateCRDT] Initialized iroh node")
+          {:noreply, %{state | node_ref: node_ref, initialized: true}}
+
+        {:error, reason} ->
+          new_attempts = state.init_attempts + 1
+
+          Logger.error(
+            "[RoomStateCRDT] Failed to initialize (attempt #{new_attempts}/#{@max_init_attempts}): #{inspect(reason)}"
+          )
+
+          Process.send_after(self(), :initialize, 5000)
+          {:noreply, %{state | init_attempts: new_attempts}}
+      end
     end
   end
 

@@ -431,6 +431,14 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     end
   end
 
+  # Catch-all for events not handled by this component (e.g., page_hidden from AttentionTracker)
+  # These events may be broadcast to all components but are only meant for specific ones
+  @impl true
+  def handle_event(event, _params, socket) do
+    Logger.debug("MediaPlayerComponent ignoring unhandled event: #{event}")
+    {:noreply, socket}
+  end
+
   defp get_user_id(socket) do
     case socket.assigns do
       %{current_user: %{id: id}} -> id

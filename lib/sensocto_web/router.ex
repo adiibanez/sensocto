@@ -134,6 +134,7 @@ defmodule SensoctoWeb.Router do
       live "/lobby/skeleton", LobbyLive, :skeleton
       live "/lobby/favorites", LobbyLive, :favorites
       live "/lobby/users", LobbyLive, :users
+      live "/lobby/graph", LobbyLive, :graph
       # Single sensor detail view (full-page, from lobby context)
       live "/lobby/sensors/:sensor_id", LobbyLive.SensorDetailLive, :show
       live "/lobby/sensors/:sensor_id/:lens", LobbyLive.SensorDetailLive, :lens

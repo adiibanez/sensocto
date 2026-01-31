@@ -390,6 +390,14 @@ Hooks.CompositeMeasurementHandler = {
       });
       window.dispatchEvent(customEvent);
     });
+
+    // Handle graph activity events for node pulsation
+    this.handleEvent("graph_activity", (event) => {
+      const customEvent = new CustomEvent('graph-activity-event', {
+        detail: event
+      });
+      window.dispatchEvent(customEvent);
+    });
   },
 
   destroyed() {

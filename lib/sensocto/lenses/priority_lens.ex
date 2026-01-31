@@ -1,29 +1,28 @@
 defmodule Sensocto.Lenses.PriorityLens do
   @moduledoc """
-  Adaptive data lens that adjusts fidelity based on sensor attention level
-  and per-socket client health.
+  Adaptive data lens using ETS for zero-copy buffering per socket.
 
   Each connected socket registers with the PriorityLens, specifying which
-  sensors it cares about and its current quality level. The lens then
-  delivers appropriately throttled data to each socket.
+  sensors it cares about and its current quality level. Uses ETS tables
+  for efficient buffering without copying data on every message.
 
   ## Quality Levels
 
-  - `:high` - 20Hz throttled, full sensor set
-  - `:medium` - 10Hz throttled, limited sensors
-  - `:low` - 1s digests (summary stats), few sensors
-  - `:minimal` - Alerts only, single focused sensor
+  - `:high` - 20Hz, full sensor set
+  - `:medium` - 10Hz, limited sensors
+  - `:low` - 1s digests (summary stats)
+  - `:minimal` - 2s digests, single focused sensor
 
   ## Topics
 
   Per-socket: `"lens:priority:{socket_id}"` - personalized stream
 
-  ## Message Format
+  ## Design (KISS with ETS)
 
-  Quality-dependent:
-  - `:high/:medium` - `{:lens_batch, batch_data}`
-  - `:low` - `{:lens_digest, sensor_id, stats}`
-  - `:minimal` - `{:lens_alert, sensor_id, alert}` (not yet implemented)
+  - Single ETS table for all socket buffers
+  - Key: `{socket_id, sensor_id, attribute_id}`
+  - Socket registration stored in separate ETS table
+  - Flush reads relevant entries, broadcasts, clears per-socket
 
   ## Usage
 
@@ -44,52 +43,23 @@ defmodule Sensocto.Lenses.PriorityLens do
   use GenServer
   require Logger
 
+  @buffer_table :priority_lens_buffers
+  @sockets_table :priority_lens_sockets
+  @digest_table :priority_lens_digests
+
   # Quality level configurations
   @quality_configs %{
-    high: %{
-      flush_interval_ms: 50,
-      max_sensors: :unlimited,
-      mode: :batch
-    },
-    medium: %{
-      flush_interval_ms: 100,
-      max_sensors: 10,
-      mode: :batch
-    },
-    low: %{
-      flush_interval_ms: 1000,
-      max_sensors: 5,
-      mode: :digest
-    },
-    minimal: %{
-      flush_interval_ms: 2000,
-      max_sensors: 1,
-      mode: :digest
-    }
+    high: %{flush_interval_ms: 50, max_sensors: :unlimited, mode: :batch},
+    medium: %{flush_interval_ms: 100, max_sensors: 10, mode: :batch},
+    low: %{flush_interval_ms: 1000, max_sensors: 5, mode: :digest},
+    minimal: %{flush_interval_ms: 2000, max_sensors: 1, mode: :digest}
   }
 
-  # High-frequency attributes that need all samples preserved (not just latest)
-  # These are waveform data types that require continuous sampling for proper visualization
+  # High-frequency attributes that need all samples preserved
   @high_frequency_attributes ~w(ecg)
 
-  defstruct [
-    :sockets,
-    :buffers,
-    :digest_accumulators
-  ]
-
-  # Socket registration state
-  defmodule SocketState do
-    @moduledoc false
-    defstruct [
-      :socket_id,
-      :sensor_ids,
-      :quality,
-      :focused_sensor,
-      :flush_timer,
-      :topic
-    ]
-  end
+  # Dead socket cleanup interval (1 minute)
+  @gc_interval_ms :timer.minutes(1)
 
   # ============================================================================
   # Client API
@@ -102,19 +72,11 @@ defmodule Sensocto.Lenses.PriorityLens do
 
   @doc """
   Register a socket to receive priority-filtered data.
-
-  - `socket_id` - Unique identifier for this socket (typically socket.id)
-  - `sensor_ids` - List of sensor IDs this socket is interested in
-  - `opts` - Options:
-    - `:quality` - Initial quality level (default: :high)
-    - `:focused_sensor` - Sensor to prioritize (optional)
-
   Returns the topic to subscribe to.
   """
   def register_socket(socket_id, sensor_ids, opts \\ []) do
     quality = Keyword.get(opts, :quality, :high)
     focused_sensor = Keyword.get(opts, :focused_sensor)
-
     GenServer.call(__MODULE__, {:register_socket, socket_id, sensor_ids, quality, focused_sensor})
   end
 
@@ -150,7 +112,10 @@ defmodule Sensocto.Lenses.PriorityLens do
   Get current state for a socket (for debugging).
   """
   def get_socket_state(socket_id) do
-    GenServer.call(__MODULE__, {:get_socket_state, socket_id})
+    case :ets.lookup(@sockets_table, socket_id) do
+      [{^socket_id, state}] -> state
+      [] -> nil
+    end
   end
 
   @doc """
@@ -166,184 +131,208 @@ defmodule Sensocto.Lenses.PriorityLens do
 
   @impl true
   def init(_opts) do
+    # Create ETS tables
+    # Buffer: {socket_id, sensor_id, attribute_id} => measurement or [measurements] for ECG
+    :ets.new(@buffer_table, [:set, :public, :named_table, read_concurrency: true])
+
+    # Sockets: socket_id => %{sensor_ids: MapSet, quality: atom, focused_sensor: string, timer_ref: ref}
+    :ets.new(@sockets_table, [:set, :public, :named_table, read_concurrency: true])
+
+    # Digests: {socket_id, sensor_id, attribute_id} => %{count, sum, min, max, latest, latest_timestamp}
+    :ets.new(@digest_table, [:set, :public, :named_table, read_concurrency: true])
+
     # Register with router
     Sensocto.Lenses.Router.register_lens(self())
 
-    Logger.info("PriorityLens started")
+    # Schedule periodic dead socket cleanup
+    schedule_gc()
 
-    {:ok,
-     %__MODULE__{
-       sockets: %{},
-       buffers: %{},
-       digest_accumulators: %{}
-     }}
+    Logger.info("PriorityLens started with ETS buffering")
+
+    {:ok, %{}}
   end
 
   @impl true
   def handle_call(
         {:register_socket, socket_id, sensor_ids, quality, focused_sensor},
-        _from,
+        {caller_pid, _},
         state
       ) do
     topic = topic_for_socket(socket_id)
     config = @quality_configs[quality]
 
-    socket_state = %SocketState{
-      socket_id: socket_id,
+    # Schedule flush timer
+    timer_ref = schedule_flush(socket_id, config.flush_interval_ms)
+
+    # Monitor the caller (LiveView process) to auto-cleanup on crash
+    monitor_ref = Process.monitor(caller_pid)
+
+    socket_state = %{
       sensor_ids: MapSet.new(sensor_ids),
       quality: quality,
       focused_sensor: focused_sensor,
-      flush_timer: schedule_flush(socket_id, config.flush_interval_ms),
-      topic: topic
+      timer_ref: timer_ref,
+      topic: topic,
+      owner_pid: caller_pid,
+      monitor_ref: monitor_ref
     }
 
-    new_sockets = Map.put(state.sockets, socket_id, socket_state)
-    new_buffers = Map.put(state.buffers, socket_id, %{})
-    new_accumulators = Map.put(state.digest_accumulators, socket_id, %{})
+    :ets.insert(@sockets_table, {socket_id, socket_state})
 
     Logger.debug("PriorityLens: registered socket #{socket_id} with quality #{quality}")
 
-    {:reply, {:ok, topic},
-     %{state | sockets: new_sockets, buffers: new_buffers, digest_accumulators: new_accumulators}}
-  end
-
-  @impl true
-  def handle_call({:get_socket_state, socket_id}, _from, state) do
-    {:reply, Map.get(state.sockets, socket_id), state}
+    {:reply, {:ok, topic}, state}
   end
 
   @impl true
   def handle_cast({:unregister_socket, socket_id}, state) do
-    case Map.get(state.sockets, socket_id) do
-      nil ->
-        {:noreply, state}
+    case :ets.lookup(@sockets_table, socket_id) do
+      [{^socket_id, socket_state}] ->
+        # Cancel timer
+        if socket_state.timer_ref, do: Process.cancel_timer(socket_state.timer_ref)
 
-      socket_state ->
-        # Cancel flush timer
-        if socket_state.flush_timer do
-          Process.cancel_timer(socket_state.flush_timer)
-        end
-
-        new_sockets = Map.delete(state.sockets, socket_id)
-        new_buffers = Map.delete(state.buffers, socket_id)
-        new_accumulators = Map.delete(state.digest_accumulators, socket_id)
+        # Clean up all ETS entries for this socket
+        :ets.match_delete(@buffer_table, {{socket_id, :_, :_}, :_})
+        :ets.match_delete(@digest_table, {{socket_id, :_, :_}, :_})
+        :ets.delete(@sockets_table, socket_id)
 
         Logger.debug("PriorityLens: unregistered socket #{socket_id}")
 
-        {:noreply,
-         %{
-           state
-           | sockets: new_sockets,
-             buffers: new_buffers,
-             digest_accumulators: new_accumulators
-         }}
+      [] ->
+        :ok
     end
+
+    {:noreply, state}
   end
 
   @impl true
   def handle_cast({:set_quality, socket_id, quality}, state) do
-    case Map.get(state.sockets, socket_id) do
-      nil ->
-        {:noreply, state}
-
-      socket_state ->
+    case :ets.lookup(@sockets_table, socket_id) do
+      [{^socket_id, socket_state}] ->
         # Cancel old timer
-        if socket_state.flush_timer do
-          Process.cancel_timer(socket_state.flush_timer)
-        end
+        if socket_state.timer_ref, do: Process.cancel_timer(socket_state.timer_ref)
 
         config = @quality_configs[quality]
         new_timer = schedule_flush(socket_id, config.flush_interval_ms)
 
-        updated_socket = %{socket_state | quality: quality, flush_timer: new_timer}
-        new_sockets = Map.put(state.sockets, socket_id, updated_socket)
+        updated = %{socket_state | quality: quality, timer_ref: new_timer}
+        :ets.insert(@sockets_table, {socket_id, updated})
 
         Logger.debug("PriorityLens: socket #{socket_id} quality changed to #{quality}")
 
-        {:noreply, %{state | sockets: new_sockets}}
+      [] ->
+        :ok
     end
+
+    {:noreply, state}
   end
 
   @impl true
   def handle_cast({:set_sensors, socket_id, sensor_ids}, state) do
-    case Map.get(state.sockets, socket_id) do
-      nil ->
-        {:noreply, state}
+    case :ets.lookup(@sockets_table, socket_id) do
+      [{^socket_id, socket_state}] ->
+        updated = %{socket_state | sensor_ids: MapSet.new(sensor_ids)}
+        :ets.insert(@sockets_table, {socket_id, updated})
 
-      socket_state ->
-        updated_socket = %{socket_state | sensor_ids: MapSet.new(sensor_ids)}
-        new_sockets = Map.put(state.sockets, socket_id, updated_socket)
-
-        {:noreply, %{state | sockets: new_sockets}}
+      [] ->
+        :ok
     end
+
+    {:noreply, state}
   end
 
   @impl true
   def handle_cast({:set_focused_sensor, socket_id, sensor_id}, state) do
-    case Map.get(state.sockets, socket_id) do
-      nil ->
-        {:noreply, state}
+    case :ets.lookup(@sockets_table, socket_id) do
+      [{^socket_id, socket_state}] ->
+        updated = %{socket_state | focused_sensor: sensor_id}
+        :ets.insert(@sockets_table, {socket_id, updated})
 
-      socket_state ->
-        updated_socket = %{socket_state | focused_sensor: sensor_id}
-        new_sockets = Map.put(state.sockets, socket_id, updated_socket)
-
-        {:noreply, %{state | sockets: new_sockets}}
+      [] ->
+        :ok
     end
+
+    {:noreply, state}
   end
 
-  # Single measurement from router
+  # Single measurement from router - write to ETS for interested sockets
   @impl true
   def handle_info({:router_measurement, sensor_id, measurement}, state) do
     attribute_id = Map.get(measurement, :attribute_id)
 
-    # Buffer for each interested socket
-    new_state =
-      Enum.reduce(state.sockets, state, fn {socket_id, socket_state}, acc_state ->
-        if should_receive?(socket_state, sensor_id) do
-          buffer_measurement(acc_state, socket_id, sensor_id, attribute_id, measurement)
-        else
-          acc_state
-        end
-      end)
+    # Get all registered sockets and buffer for interested ones
+    :ets.tab2list(@sockets_table)
+    |> Enum.each(fn {socket_id, socket_state} ->
+      if should_receive?(socket_state, sensor_id) do
+        buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement)
+      end
+    end)
 
-    {:noreply, new_state}
+    {:noreply, state}
   end
 
   # Batch measurements from router
   @impl true
   def handle_info({:router_measurements_batch, sensor_id, measurements}, state) do
-    # Buffer for each interested socket
-    new_state =
-      Enum.reduce(state.sockets, state, fn {socket_id, socket_state}, acc_state ->
-        if should_receive?(socket_state, sensor_id) do
-          buffer_batch(acc_state, socket_id, sensor_id, measurements)
-        else
-          acc_state
-        end
-      end)
+    :ets.tab2list(@sockets_table)
+    |> Enum.each(fn {socket_id, socket_state} ->
+      if should_receive?(socket_state, sensor_id) do
+        Enum.each(measurements, fn measurement ->
+          attribute_id = Map.get(measurement, :attribute_id)
+          buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement)
+        end)
+      end
+    end)
 
-    {:noreply, new_state}
+    {:noreply, state}
   end
 
   # Flush timer for a specific socket
   @impl true
   def handle_info({:flush, socket_id}, state) do
-    case Map.get(state.sockets, socket_id) do
-      nil ->
-        {:noreply, state}
-
-      socket_state ->
+    case :ets.lookup(@sockets_table, socket_id) do
+      [{^socket_id, socket_state}] ->
         config = @quality_configs[socket_state.quality]
-        new_state = flush_for_socket(state, socket_id, socket_state, config)
+        flush_for_socket(socket_id, socket_state, config)
 
         # Reschedule
         new_timer = schedule_flush(socket_id, config.flush_interval_ms)
-        updated_socket = %{socket_state | flush_timer: new_timer}
-        new_sockets = Map.put(new_state.sockets, socket_id, updated_socket)
+        updated = %{socket_state | timer_ref: new_timer}
+        :ets.insert(@sockets_table, {socket_id, updated})
 
-        {:noreply, %{new_state | sockets: new_sockets}}
+      [] ->
+        :ok
     end
+
+    {:noreply, state}
+  end
+
+  # Handle LiveView process death - auto-cleanup socket state
+  @impl true
+  def handle_info({:DOWN, _ref, :process, dead_pid, _reason}, state) do
+    # Find and clean up any sockets owned by the dead process
+    dead_count = cleanup_sockets_for_pid(dead_pid)
+
+    if dead_count > 0 do
+      Logger.debug(
+        "PriorityLens: cleaned up #{dead_count} socket(s) for dead process #{inspect(dead_pid)}"
+      )
+    end
+
+    {:noreply, state}
+  end
+
+  # Periodic cleanup of orphaned sockets (fallback for edge cases)
+  @impl true
+  def handle_info(:gc_dead_sockets, state) do
+    dead_count = gc_dead_sockets()
+
+    if dead_count > 0 do
+      Logger.info("PriorityLens: GC cleaned up #{dead_count} orphaned socket(s)")
+    end
+
+    schedule_gc()
+    {:noreply, state}
   end
 
   @impl true
@@ -362,70 +351,48 @@ defmodule Sensocto.Lenses.PriorityLens do
   # ============================================================================
 
   defp should_receive?(socket_state, sensor_id) do
-    # Always receive focused sensor
     socket_state.focused_sensor == sensor_id or
       MapSet.member?(socket_state.sensor_ids, sensor_id)
   end
 
-  defp buffer_measurement(state, socket_id, sensor_id, attribute_id, measurement) do
-    socket_state = Map.get(state.sockets, socket_id)
+  defp buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement) do
     config = @quality_configs[socket_state.quality]
+    key = {socket_id, sensor_id, attribute_id}
 
     case config.mode do
       :batch ->
-        buffer = Map.get(state.buffers, socket_id, %{})
-        sensor_buffer = Map.get(buffer, sensor_id, %{})
+        # For high-frequency attributes, accumulate in a list
+        if attribute_id in @high_frequency_attributes do
+          case :ets.lookup(@buffer_table, key) do
+            [{^key, existing}] when is_list(existing) ->
+              :ets.insert(@buffer_table, {key, existing ++ [measurement]})
 
-        # For high-frequency attributes (like ECG), accumulate all samples in a list
-        # For other attributes, just keep the latest value
-        updated_sensor_buffer =
-          if attribute_id in @high_frequency_attributes do
-            existing = Map.get(sensor_buffer, attribute_id, [])
-            # Store as list of measurements
-            measurements_list =
-              case existing do
-                list when is_list(list) -> list ++ [measurement]
-                single_measurement -> [single_measurement, measurement]
-              end
+            [{^key, existing}] ->
+              :ets.insert(@buffer_table, {key, [existing, measurement]})
 
-            Map.put(sensor_buffer, attribute_id, measurements_list)
-          else
-            Map.put(sensor_buffer, attribute_id, measurement)
+            [] ->
+              :ets.insert(@buffer_table, {key, [measurement]})
           end
-
-        new_buffer = Map.put(buffer, sensor_id, updated_sensor_buffer)
-        %{state | buffers: Map.put(state.buffers, socket_id, new_buffer)}
+        else
+          # Keep latest only
+          :ets.insert(@buffer_table, {key, measurement})
+        end
 
       :digest ->
-        accumulate_for_digest(state, socket_id, sensor_id, attribute_id, measurement)
+        accumulate_for_digest(key, measurement)
     end
   end
 
-  defp buffer_batch(state, socket_id, sensor_id, measurements) do
-    Enum.reduce(measurements, state, fn measurement, acc_state ->
-      attribute_id = Map.get(measurement, :attribute_id)
-      buffer_measurement(acc_state, socket_id, sensor_id, attribute_id, measurement)
-    end)
-  end
-
-  defp accumulate_for_digest(state, socket_id, sensor_id, attribute_id, measurement) do
-    accumulators = Map.get(state.digest_accumulators, socket_id, %{})
-    key = {sensor_id, attribute_id}
-
-    current =
-      Map.get(accumulators, key, %{
-        count: 0,
-        sum: 0,
-        min: nil,
-        max: nil,
-        latest: nil,
-        latest_timestamp: 0
-      })
-
+  defp accumulate_for_digest(key, measurement) do
     payload = measurement.payload
     timestamp = measurement.timestamp || 0
 
-    # Only accumulate numeric payloads
+    current =
+      case :ets.lookup(@digest_table, key) do
+        [{^key, acc}] -> acc
+        [] -> %{count: 0, sum: 0, min: nil, max: nil, latest: nil, latest_timestamp: 0}
+      end
+
     {new_sum, new_min, new_max} =
       if is_number(payload) do
         {
@@ -451,76 +418,122 @@ defmodule Sensocto.Lenses.PriorityLens do
         %{current | count: current.count + 1, sum: new_sum, min: new_min, max: new_max}
       end
 
-    new_accumulators = Map.put(accumulators, key, updated)
-
-    %{
-      state
-      | digest_accumulators: Map.put(state.digest_accumulators, socket_id, new_accumulators)
-    }
+    :ets.insert(@digest_table, {key, updated})
   end
 
-  defp flush_for_socket(state, socket_id, socket_state, config) do
+  defp flush_for_socket(socket_id, socket_state, config) do
     case config.mode do
-      :batch ->
-        flush_batch(state, socket_id, socket_state)
-
-      :digest ->
-        flush_digest(state, socket_id, socket_state)
+      :batch -> flush_batch(socket_id, socket_state)
+      :digest -> flush_digest(socket_id, socket_state)
     end
   end
 
-  defp flush_batch(state, socket_id, socket_state) do
-    buffer = Map.get(state.buffers, socket_id, %{})
+  defp flush_batch(socket_id, socket_state) do
+    # Use match to get all entries for this socket
+    pattern = {{socket_id, :_, :_}, :_}
+    entries = :ets.match_object(@buffer_table, pattern)
 
-    if map_size(buffer) > 0 do
+    if length(entries) > 0 do
+      batch =
+        entries
+        |> Enum.reduce(%{}, fn {{_sid, sensor_id, attribute_id}, measurement}, acc ->
+          sensor_data = Map.get(acc, sensor_id, %{})
+          updated_sensor = Map.put(sensor_data, attribute_id, measurement)
+          Map.put(acc, sensor_id, updated_sensor)
+        end)
+
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
         socket_state.topic,
-        {:lens_batch, buffer}
+        {:lens_batch, batch}
       )
-    end
 
-    %{state | buffers: Map.put(state.buffers, socket_id, %{})}
+      # Clear buffer entries for this socket
+      :ets.match_delete(@buffer_table, pattern)
+    end
   end
 
-  defp flush_digest(state, socket_id, socket_state) do
-    accumulators = Map.get(state.digest_accumulators, socket_id, %{})
+  defp flush_digest(socket_id, socket_state) do
+    pattern = {{socket_id, :_, :_}, :_}
+    entries = :ets.match_object(@digest_table, pattern)
 
-    if map_size(accumulators) > 0 do
-      # Group by sensor_id
+    if length(entries) > 0 do
       digests =
-        accumulators
-        |> Enum.group_by(fn {{sensor_id, _attr_id}, _acc} -> sensor_id end)
-        |> Enum.map(fn {sensor_id, entries} ->
-          attrs =
-            Enum.into(entries, %{}, fn {{_sid, attr_id}, acc} ->
-              avg = if acc.count > 0 and is_number(acc.sum), do: acc.sum / acc.count, else: nil
+        entries
+        |> Enum.reduce(%{}, fn {{_sid, sensor_id, attribute_id}, acc}, result ->
+          avg = if acc.count > 0 and is_number(acc.sum), do: acc.sum / acc.count, else: nil
 
-              {attr_id,
-               %{
-                 count: acc.count,
-                 avg: avg,
-                 min: acc.min,
-                 max: acc.max,
-                 latest: acc.latest
-               }}
-            end)
+          attr_digest = %{
+            count: acc.count,
+            avg: avg,
+            min: acc.min,
+            max: acc.max,
+            latest: acc.latest
+          }
 
-          {sensor_id, attrs}
+          sensor_data = Map.get(result, sensor_id, %{})
+          updated_sensor = Map.put(sensor_data, attribute_id, attr_digest)
+          Map.put(result, sensor_id, updated_sensor)
         end)
-        |> Enum.into(%{})
 
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
         socket_state.topic,
         {:lens_digest, digests}
       )
-    end
 
-    %{state | digest_accumulators: Map.put(state.digest_accumulators, socket_id, %{})}
+      # Clear digest entries for this socket
+      :ets.match_delete(@digest_table, pattern)
+    end
   end
 
   defp schedule_flush(socket_id, interval_ms) do
     Process.send_after(self(), {:flush, socket_id}, interval_ms)
+  end
+
+  defp schedule_gc do
+    Process.send_after(self(), :gc_dead_sockets, @gc_interval_ms)
+  end
+
+  # Clean up all sockets owned by a specific PID (called on :DOWN)
+  defp cleanup_sockets_for_pid(dead_pid) do
+    :ets.tab2list(@sockets_table)
+    |> Enum.reduce(0, fn {socket_id, socket_state}, count ->
+      if Map.get(socket_state, :owner_pid) == dead_pid do
+        cleanup_socket(socket_id, socket_state)
+        count + 1
+      else
+        count
+      end
+    end)
+  end
+
+  # Periodic GC: clean up sockets whose owner process is no longer alive
+  # This is a fallback for edge cases where :DOWN message might be missed
+  defp gc_dead_sockets do
+    :ets.tab2list(@sockets_table)
+    |> Enum.reduce(0, fn {socket_id, socket_state}, count ->
+      owner_pid = Map.get(socket_state, :owner_pid)
+
+      # Check if owner process is still alive
+      if owner_pid && not Process.alive?(owner_pid) do
+        cleanup_socket(socket_id, socket_state)
+        count + 1
+      else
+        count
+      end
+    end)
+  end
+
+  # Helper to clean up a single socket's state
+  defp cleanup_socket(socket_id, socket_state) do
+    if socket_state.timer_ref, do: Process.cancel_timer(socket_state.timer_ref)
+
+    if Map.get(socket_state, :monitor_ref),
+      do: Process.demonitor(socket_state.monitor_ref, [:flush])
+
+    :ets.match_delete(@buffer_table, {{socket_id, :_, :_}, :_})
+    :ets.match_delete(@digest_table, {{socket_id, :_, :_}, :_})
+    :ets.delete(@sockets_table, socket_id)
   end
 end

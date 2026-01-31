@@ -429,6 +429,15 @@
         >
           <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
         </.link>
+        <.link
+          patch={~p"/lobby/graph"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :graph,
+              do: "bg-cyan-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
+        </.link>
       </div>
 
       <%!-- Lens Dropdown for all types - only shows available lenses --%>
@@ -440,6 +449,7 @@
           <option value="sensors" selected={@live_action == :sensors}>All Sensors</option>
           <optgroup label="Views">
             <option value="users" selected={@live_action == :users}>By User</option>
+            <option value="graph" selected={@live_action == :graph}>Graph View</option>
             <option
               :if={@favorite_sensors != []}
               value="favorites"
@@ -791,6 +801,22 @@
         />
       <% end %>
     </div>
+  </div>
+
+  <%!-- Graph Visualization --%>
+  <div :if={@live_action == :graph} id="lobby-graph-view" phx-hook="CompositeMeasurementHandler">
+    <.svelte
+      name="LobbyGraph"
+      props={
+        %{
+          rooms: [],
+          users: @sensors_by_user,
+          sensors: @sensors
+        }
+      }
+      socket={@socket}
+      class="w-full h-[calc(100vh-200px)] min-h-[500px]"
+    />
   </div>
 </div>
 

@@ -302,24 +302,9 @@ defmodule SensoctoWeb.LobbyLive do
     # ECG needs full data fidelity for waveform visualization
     socket = update_lens_focus_for_action(socket, socket.assigns.live_action)
 
-    # ECG view needs direct subscription to data:global for waveform data
-    # (PriorityLens only keeps latest value which breaks waveforms)
-    prev_action = socket.assigns[:prev_live_action]
-    curr_action = socket.assigns.live_action
-
-    socket =
-      cond do
-        curr_action == :ecg and prev_action != :ecg ->
-          Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:global")
-          assign(socket, :prev_live_action, curr_action)
-
-        curr_action != :ecg and prev_action == :ecg ->
-          Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:global")
-          assign(socket, :prev_live_action, curr_action)
-
-        true ->
-          assign(socket, :prev_live_action, curr_action)
-      end
+    # ECG data now flows through PriorityLens with high-frequency attribute support
+    # (ECG is in @high_frequency_attributes, so all samples are preserved in order)
+    # No need for direct data:global subscription - that caused duplicate data
 
     {:noreply, socket}
   end
@@ -827,23 +812,64 @@ defmodule SensoctoWeb.LobbyLive do
   # PriorityLens Message Handlers (adaptive streaming)
   # ==========================================================================
 
+  # Mailbox backpressure threshold - drop batches if queue exceeds this
+  @mailbox_backpressure_threshold 100
+
   # Handle PriorityLens batch data (high/medium quality)
   # batch_data structure: %{sensor_id => %{attribute_id => measurement}}
   @impl true
   def handle_info({:lens_batch, batch_data}, socket) do
-    socket = assign(socket, :data_mode, :realtime)
+    # Check mailbox depth - apply backpressure if overwhelmed
+    {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
 
-    case socket.assigns.live_action do
-      :sensors ->
-        socket = process_lens_batch_for_sensors(socket, batch_data)
-        {:noreply, socket}
+    if queue_len > @mailbox_backpressure_threshold do
+      # Drop this batch, client can't keep up - trigger quality downgrade
+      Logger.warning(
+        "LobbyLive #{socket.id}: mailbox backpressure (#{queue_len} msgs), dropping batch"
+      )
 
-      action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
-        socket = process_lens_batch_for_composite(socket, batch_data, action)
-        {:noreply, socket}
+      # Auto-downgrade quality if we have a registered lens
+      socket =
+        if socket.assigns[:priority_lens_registered] do
+          current = socket.assigns[:current_quality] || :high
+          new_quality = downgrade_quality(current)
 
-      _ ->
-        {:noreply, socket}
+          if new_quality != current do
+            Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+
+            socket
+            |> assign(:current_quality, new_quality)
+            |> push_event("quality_changed", %{
+              level: new_quality,
+              reason: "Backpressure: mailbox queue depth #{queue_len}"
+            })
+          else
+            socket
+          end
+        else
+          socket
+        end
+
+      {:noreply, socket}
+    else
+      socket = assign(socket, :data_mode, :realtime)
+
+      case socket.assigns.live_action do
+        :sensors ->
+          socket = process_lens_batch_for_sensors(socket, batch_data)
+          {:noreply, socket}
+
+        action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
+          socket = process_lens_batch_for_composite(socket, batch_data, action)
+          {:noreply, socket}
+
+        :graph ->
+          socket = process_lens_batch_for_graph(socket, batch_data)
+          {:noreply, socket}
+
+        _ ->
+          {:noreply, socket}
+      end
     end
   end
 
@@ -888,34 +914,12 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
-  # Handle batch measurements directly for ECG view (PriorityLens only keeps latest value)
-  # ECG waveform visualization needs all samples in correct order
+  # Legacy: Handle batch measurements (now handled by lens_batch)
+  # ECG data now properly flows through PriorityLens with high-frequency support
   @impl true
-  def handle_info({:measurements_batch, {sensor_id, measurements_list}}, socket)
-      when is_list(measurements_list) do
-    case socket.assigns.live_action do
-      :ecg ->
-        # ECG needs all measurements for proper waveform visualization
-        ecg_measurements =
-          measurements_list
-          |> Enum.filter(&(&1.attribute_id == "ecg"))
-
-        socket =
-          Enum.reduce(ecg_measurements, socket, fn m, sock ->
-            push_event(sock, "composite_measurement", %{
-              sensor_id: sensor_id,
-              attribute_id: m.attribute_id,
-              payload: m.payload,
-              timestamp: m.timestamp
-            })
-          end)
-
-        {:noreply, socket}
-
-      _ ->
-        # Other views use PriorityLens
-        {:noreply, socket}
-    end
+  def handle_info({:measurements_batch, {_sensor_id, _measurements_list}}, socket) do
+    # Data now comes via PriorityLens - this handler is deprecated
+    {:noreply, socket}
   end
 
   # Flush measurement buffer - sends batched measurements to clients
@@ -2280,8 +2284,39 @@ defmodule SensoctoWeb.LobbyLive do
   # PriorityLens Helper Functions
   # ==========================================================================
 
+  # Downgrade quality one level for backpressure handling
+  defp downgrade_quality(:high), do: :medium
+  defp downgrade_quality(:medium), do: :low
+  defp downgrade_quality(:low), do: :minimal
+  defp downgrade_quality(:minimal), do: :minimal
+
+  # Maximum send_update calls per batch cycle to prevent overwhelming the system
+  @max_updates_per_batch 20
+
+  # Transform lens_batch to push_events for graph view
+  # Pushes sensor activity events to trigger node pulsation in the graph
+  defp process_lens_batch_for_graph(socket, batch_data) do
+    # Rate limit: only push updates for a subset of sensors per batch
+    sensors_to_update =
+      batch_data
+      |> Map.keys()
+      |> Enum.take(@max_updates_per_batch)
+
+    Enum.reduce(sensors_to_update, socket, fn sensor_id, acc ->
+      attributes = Map.get(batch_data, sensor_id, %{})
+
+      # Push a graph_activity event for the sensor with its updated attributes
+      push_event(acc, "graph_activity", %{
+        sensor_id: sensor_id,
+        attribute_ids: Map.keys(attributes),
+        timestamp: System.system_time(:millisecond)
+      })
+    end)
+  end
+
   # Transform lens_batch to push_events for sensors view
   # With LiveComponents, we send updates directly to the component instead of push_event
+  # Rate-limited to @max_updates_per_batch to prevent overwhelming slow clients
   defp process_lens_batch_for_sensors(socket, batch_data) do
     # Get visible sensor range to only update visible components
     {start_idx, end_idx} = socket.assigns.visible_range
@@ -2289,30 +2324,38 @@ defmodule SensoctoWeb.LobbyLive do
     # Guard against invalid range (start > end can happen during rapid scrolling)
     count = max(0, end_idx - start_idx)
     visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, count)
-    visible_set = MapSet.new(visible_sensor_ids)
 
-    Enum.each(batch_data, fn {sensor_id, attributes} ->
-      # Only send updates to visible components
-      if MapSet.member?(visible_set, sensor_id) do
-        measurements =
-          Enum.flat_map(attributes, fn {attr_id, m} ->
-            # Handle both single measurements and lists (for high-frequency data like ECG)
-            case m do
-              list when is_list(list) ->
-                Enum.map(list, fn item ->
-                  %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
-                end)
+    # Only process sensors that appear in this batch AND are visible
+    # This reduces unnecessary work when batch_data is sparse
+    sensors_with_data = Map.keys(batch_data) |> MapSet.new()
 
-              single ->
-                [%{attribute_id: attr_id, payload: single.payload, timestamp: single.timestamp}]
-            end
-          end)
+    # Filter to visible sensors with data, then rate-limit
+    sensors_to_update =
+      visible_sensor_ids
+      |> Enum.filter(&MapSet.member?(sensors_with_data, &1))
+      |> Enum.take(@max_updates_per_batch)
 
-        send_update(StatefulSensorComponent,
-          id: "sensor_#{sensor_id}",
-          measurements_batch: measurements
-        )
-      end
+    Enum.each(sensors_to_update, fn sensor_id ->
+      attributes = Map.get(batch_data, sensor_id, %{})
+
+      measurements =
+        Enum.flat_map(attributes, fn {attr_id, m} ->
+          # Handle both single measurements and lists (for high-frequency data like ECG)
+          case m do
+            list when is_list(list) ->
+              Enum.map(list, fn item ->
+                %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
+              end)
+
+            single ->
+              [%{attribute_id: attr_id, payload: single.payload, timestamp: single.timestamp}]
+          end
+        end)
+
+      send_update(StatefulSensorComponent,
+        id: "sensor_#{sensor_id}",
+        measurements_batch: measurements
+      )
     end)
 
     socket

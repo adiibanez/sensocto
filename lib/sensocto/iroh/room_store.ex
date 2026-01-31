@@ -24,8 +24,13 @@ defmodule Sensocto.Iroh.RoomStore do
     :author_id,
     :rooms_namespace,
     :memberships_namespace,
-    initialized: false
+    initialized: false,
+    init_attempts: 0,
+    nif_unavailable: false
   ]
+
+  # Max initialization retry attempts before giving up
+  @max_init_attempts 3
 
   # ============================================================================
   # Client API
@@ -118,17 +123,43 @@ defmodule Sensocto.Iroh.RoomStore do
   end
 
   @impl true
-  def handle_info(:initialize_iroh, state) do
-    case initialize_iroh_node() do
-      {:ok, new_state} ->
-        Logger.info("[Iroh.RoomStore] Initialized iroh node successfully")
-        {:noreply, new_state}
+  def handle_info(:initialize_iroh, %{nif_unavailable: true} = state) do
+    # NIF is not available, don't retry
+    {:noreply, state}
+  end
 
-      {:error, reason} ->
-        Logger.error("[Iroh.RoomStore] Failed to initialize iroh node: #{inspect(reason)}")
-        # Retry after delay
-        Process.send_after(self(), :initialize_iroh, 5000)
-        {:noreply, state}
+  def handle_info(:initialize_iroh, %{init_attempts: attempts} = state)
+      when attempts >= @max_init_attempts do
+    Logger.warning(
+      "[Iroh.RoomStore] Max initialization attempts (#{@max_init_attempts}) reached. " <>
+        "IrohEx NIF may not be available. Iroh storage disabled."
+    )
+
+    {:noreply, %{state | nif_unavailable: true}}
+  end
+
+  def handle_info(:initialize_iroh, state) do
+    # First check if the NIF is even loaded
+    unless function_exported?(Native, :create_node, 2) do
+      Logger.warning("[Iroh.RoomStore] IrohEx.Native NIF not loaded. Iroh storage disabled.")
+      {:noreply, %{state | nif_unavailable: true}}
+    else
+      case initialize_iroh_node() do
+        {:ok, new_state} ->
+          Logger.info("[Iroh.RoomStore] Initialized iroh node successfully")
+          {:noreply, new_state}
+
+        {:error, reason} ->
+          new_attempts = state.init_attempts + 1
+
+          Logger.error(
+            "[Iroh.RoomStore] Failed to initialize iroh node (attempt #{new_attempts}/#{@max_init_attempts}): #{inspect(reason)}"
+          )
+
+          # Retry after delay
+          Process.send_after(self(), :initialize_iroh, 5000)
+          {:noreply, %{state | init_attempts: new_attempts}}
+      end
     end
   end
 

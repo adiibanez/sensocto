@@ -202,9 +202,18 @@ defmodule SensoctoWeb.ClientHealth do
 
   defp determine_quality(avg_health, current_quality, report) do
     reason = identify_degradation_reason(report)
+    network_type = Map.get(report, "networkEffectiveType")
+
+    # Force immediate downgrade for slow networks (bypass normal scoring)
+    # This prevents mailbox accumulation on 3G/2G connections
+    forced_quality = force_quality_for_network(network_type)
 
     new_quality =
       cond do
+        # Network-forced quality takes precedence (immediate downgrade)
+        forced_quality != nil ->
+          forced_quality
+
         # Upgrading (need to exceed enter threshold)
         current_quality == :minimal && avg_health >= @quality_thresholds.low.enter ->
           :low
@@ -233,6 +242,13 @@ defmodule SensoctoWeb.ClientHealth do
     {new_quality, reason}
   end
 
+  # Force quality level based on network type to prevent backpressure
+  # Returns nil if no force is needed (let normal scoring decide)
+  defp force_quality_for_network("slow-2g"), do: :minimal
+  defp force_quality_for_network("2g"), do: :minimal
+  defp force_quality_for_network("3g"), do: :low
+  defp force_quality_for_network(_), do: nil
+
   defp identify_degradation_reason(report) do
     cond do
       Map.get(report, "cpuPressure") in ["serious", "critical"] ->
@@ -248,8 +264,8 @@ defmodule SensoctoWeb.ClientHealth do
           !Map.get(report, "batteryCharging", true) ->
         "Low battery"
 
-      Map.get(report, "networkEffectiveType") in ["slow-2g", "2g"] ->
-        "Poor network connection"
+      Map.get(report, "networkEffectiveType") in ["slow-2g", "2g", "3g"] ->
+        "Slow network connection (#{Map.get(report, "networkEffectiveType")})"
 
       Map.get(report, "thermalState") == "throttled" ->
         "Device thermal throttling"

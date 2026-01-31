@@ -1,29 +1,20 @@
 defmodule Sensocto.Lenses.ThrottledLens do
   @moduledoc """
-  Rate-limits sensor measurements to configurable frequencies.
+  Rate-limits sensor measurements using ETS for zero-copy buffering.
 
-  Broadcasts batched measurements at fixed intervals, keeping only the latest
-  value per sensor/attribute when data arrives faster than the target rate.
+  Uses a single ETS table shared across all rate tiers. Each measurement is
+  written once to ETS (not copied). Flush operations read and clear atomically.
 
   ## Topics
 
   Broadcasts to: `"lens:throttled:{rate_hz}"` where rate_hz is 5, 10, or 20
 
-  ## Message Format
+  ## Design (KISS)
 
-  Broadcasts `{:lens_batch, batch_data}` where batch_data is:
-  ```
-  %{
-    sensor_id => %{
-      attribute_id => %{
-        payload: value,
-        timestamp: unix_ms,
-        sensor_id: sensor_id,
-        attribute_id: attribute_id
-      }
-    }
-  }
-  ```
+  - Single ETS table: `{sensor_id, attribute_id}` => measurement
+  - Each rate tier has its own flush timer
+  - On flush: read all, broadcast, clear - no per-rate buffering
+  - Measurements overwrite previous (keeps latest only)
 
   ## Example Usage
 
@@ -33,7 +24,6 @@ defmodule Sensocto.Lenses.ThrottledLens do
 
   # Receive batched measurements every 100ms
   def handle_info({:lens_batch, batch}, socket) do
-    # batch contains latest measurements grouped by sensor_id => attribute_id
     {:noreply, push_event(socket, "measurements_batch", %{data: batch})}
   end
   ```
@@ -42,17 +32,14 @@ defmodule Sensocto.Lenses.ThrottledLens do
   use GenServer
   require Logger
 
+  @table_name :throttled_lens_buffer
+
   # Supported throttle rates and their flush intervals
   @throttle_configs %{
     5 => %{interval_ms: 200, topic: "lens:throttled:5"},
     10 => %{interval_ms: 100, topic: "lens:throttled:10"},
     20 => %{interval_ms: 50, topic: "lens:throttled:20"}
   }
-
-  defstruct [
-    :buffers,
-    :flush_timers
-  ]
 
   # ============================================================================
   # Client API
@@ -81,94 +68,84 @@ defmodule Sensocto.Lenses.ThrottledLens do
 
   @impl true
   def init(_opts) do
+    # Create ETS table for buffering - :set ensures one entry per key
+    :ets.new(@table_name, [:set, :public, :named_table, read_concurrency: true])
+
     # Register with the router to receive measurements
     Sensocto.Lenses.Router.register_lens(self())
 
-    # Initialize buffers for each rate
-    buffers =
-      @throttle_configs
-      |> Map.keys()
-      |> Enum.into(%{}, fn rate -> {rate, %{}} end)
-
     # Schedule flush timers for each rate
-    flush_timers =
-      for {rate, config} <- @throttle_configs, into: %{} do
-        timer_ref = schedule_flush(rate, config.interval_ms)
-        {rate, timer_ref}
-      end
+    for {rate, config} <- @throttle_configs do
+      schedule_flush(rate, config.interval_ms)
+    end
 
     Logger.info("ThrottledLens started with rates: #{inspect(Map.keys(@throttle_configs))}")
 
-    {:ok, %__MODULE__{buffers: buffers, flush_timers: flush_timers}}
+    {:ok, %{}}
   end
 
-  # Single measurement from router
+  # Single measurement from router - write directly to ETS (no state mutation)
   @impl true
   def handle_info({:router_measurement, sensor_id, measurement}, state) do
     attribute_id = Map.get(measurement, :attribute_id)
+    key = {sensor_id, attribute_id}
 
-    # Buffer to all rate tiers (each tier keeps latest)
-    new_buffers =
-      Enum.reduce(@throttle_configs, state.buffers, fn {rate, _config}, buffers ->
-        buffer = Map.get(buffers, rate, %{})
+    # Single write to ETS - overwrites previous (keeps latest)
+    :ets.insert(@table_name, {key, sensor_id, attribute_id, measurement})
 
-        sensor_buffer =
-          buffer
-          |> Map.get(sensor_id, %{})
-          |> Map.put(attribute_id, measurement)
-
-        Map.put(buffers, rate, Map.put(buffer, sensor_id, sensor_buffer))
-      end)
-
-    {:noreply, %{state | buffers: new_buffers}}
+    {:noreply, state}
   end
 
   # Batch measurements from router
   @impl true
   def handle_info({:router_measurements_batch, sensor_id, measurements}, state) do
-    # Group by attribute_id and keep latest
-    latest_by_attr =
-      measurements
-      |> Enum.group_by(& &1.attribute_id)
-      |> Enum.into(%{}, fn {attr_id, msgs} ->
-        # Keep the one with highest timestamp
-        latest = Enum.max_by(msgs, &(&1.timestamp || 0))
-        {attr_id, latest}
-      end)
+    # Group by attribute, keep latest timestamp
+    measurements
+    |> Enum.group_by(& &1.attribute_id)
+    |> Enum.each(fn {attribute_id, msgs} ->
+      latest = Enum.max_by(msgs, &(&1.timestamp || 0))
+      key = {sensor_id, attribute_id}
+      :ets.insert(@table_name, {key, sensor_id, attribute_id, latest})
+    end)
 
-    # Buffer to all rate tiers
-    new_buffers =
-      Enum.reduce(@throttle_configs, state.buffers, fn {rate, _config}, buffers ->
-        buffer = Map.get(buffers, rate, %{})
-        existing_sensor = Map.get(buffer, sensor_id, %{})
-        merged_sensor = Map.merge(existing_sensor, latest_by_attr)
-        Map.put(buffers, rate, Map.put(buffer, sensor_id, merged_sensor))
-      end)
-
-    {:noreply, %{state | buffers: new_buffers}}
+    {:noreply, state}
   end
 
-  # Flush timer for a specific rate
+  # Flush timer - read all from ETS, broadcast, then clear
   @impl true
   def handle_info({:flush, rate}, state) do
     config = @throttle_configs[rate]
-    buffer = Map.get(state.buffers, rate, %{})
 
-    # Only broadcast if there's data
-    if map_size(buffer) > 0 do
+    # Read all entries from ETS
+    entries = :ets.tab2list(@table_name)
+
+    if length(entries) > 0 do
+      # Build batch grouped by sensor_id
+      batch =
+        entries
+        |> Enum.reduce(%{}, fn {_key, sensor_id, attribute_id, measurement}, acc ->
+          sensor_data = Map.get(acc, sensor_id, %{})
+          updated_sensor = Map.put(sensor_data, attribute_id, measurement)
+          Map.put(acc, sensor_id, updated_sensor)
+        end)
+
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
         config.topic,
-        {:lens_batch, buffer}
+        {:lens_batch, batch}
       )
+
+      # Clear the table after the FASTEST rate (20Hz) flushes
+      # This ensures slower rates still see data accumulated between their flushes
+      if rate == 20 do
+        :ets.delete_all_objects(@table_name)
+      end
     end
 
-    # Clear buffer and reschedule
-    new_buffers = Map.put(state.buffers, rate, %{})
-    new_timer = schedule_flush(rate, config.interval_ms)
-    new_flush_timers = Map.put(state.flush_timers, rate, new_timer)
+    # Reschedule
+    schedule_flush(rate, config.interval_ms)
 
-    {:noreply, %{state | buffers: new_buffers, flush_timers: new_flush_timers}}
+    {:noreply, state}
   end
 
   @impl true
@@ -178,8 +155,8 @@ defmodule Sensocto.Lenses.ThrottledLens do
 
   @impl true
   def terminate(_reason, _state) do
-    # Unregister from router
     Sensocto.Lenses.Router.unregister_lens(self())
+    # ETS table is automatically cleaned up when process dies
     :ok
   end
 

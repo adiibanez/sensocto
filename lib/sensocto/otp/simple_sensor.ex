@@ -606,17 +606,24 @@ defmodule Sensocto.SimpleSensor do
 
   @doc """
   Checks if a SimpleSensor process is alive for the given sensor_id.
+  Uses :rpc for remote PIDs to verify actual process state.
   """
   @spec alive?(String.t()) :: boolean()
   def alive?(sensor_id) do
     case Horde.Registry.lookup(Sensocto.DistributedSensorRegistry, sensor_id) do
       [{pid, _}] ->
-        # Process.alive? only works for local PIDs
-        # For remote PIDs, assume alive (Horde handles cleanup on node down)
-        if node(pid) == node() do
+        pid_node = node(pid)
+
+        if pid_node == node() do
+          # Local PID - can check directly
           Process.alive?(pid)
         else
-          true
+          # Remote PID - use :rpc with short timeout to check
+          # Returns true if check fails (network issue) to avoid false negatives
+          case :rpc.call(pid_node, Process, :alive?, [pid], 2_000) do
+            {:badrpc, _} -> true
+            result -> result
+          end
         end
 
       [] ->

@@ -758,6 +758,7 @@ defmodule SensoctoWeb.LobbyLive do
 
         updated_socket =
           socket
+          |> assign(:sensors, sensors)
           |> assign(:sensors_online_count, sensors_count)
           |> assign(:sensors_online, sensors_online)
           |> assign(:all_sensor_ids, new_sensor_ids)
@@ -1442,6 +1443,7 @@ defmodule SensoctoWeb.LobbyLive do
 
     {:noreply,
      socket
+     |> assign(:sensors, sensors)
      |> assign(:heartrate_sensors, heartrate_sensors)
      |> assign(:imu_sensors, imu_sensors)
      |> assign(:location_sensors, location_sensors)

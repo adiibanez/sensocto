@@ -93,7 +93,8 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     - `max_concurrency` - max parallel tasks (default: 10)
   """
   def get_all_sensors_state(mode \\ :default, values \\ 1, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, 5_000)
+    # Increased timeout from 5s to 10s for cross-node calls in distributed setup
+    timeout = Keyword.get(opts, :timeout, 10_000)
     max_concurrency = Keyword.get(opts, :max_concurrency, 10)
 
     get_device_names()
@@ -108,17 +109,38 @@ defmodule Sensocto.SensorsDynamicSupervisor do
         Map.merge(acc, sensor_state)
 
       {:ok, {sensor_id, :error}}, acc ->
-        Logger.debug("Error while retrieving sensor_state #{sensor_id}, skipping")
-        acc
+        # Return a minimal placeholder state so sensor remains in list
+        # This prevents UI flicker when sensor state fetch times out temporarily
+        Logger.debug("Error while retrieving sensor_state #{sensor_id}, using placeholder")
+        Map.put(acc, sensor_id, placeholder_sensor_state(sensor_id))
 
       {:ok, {sensor_id, :ok}}, acc ->
         Logger.debug("get_all_sensors_state Got :ok for #{sensor_id}")
-        acc
+        Map.put(acc, sensor_id, placeholder_sensor_state(sensor_id))
+
+      {:exit, {sensor_id, _reason}}, acc when is_binary(sensor_id) ->
+        # Task timed out - return placeholder to keep sensor in list
+        Logger.debug("Task timed out for sensor #{sensor_id}, using placeholder")
+        Map.put(acc, sensor_id, placeholder_sensor_state(sensor_id))
 
       {:exit, reason}, acc ->
         Logger.debug("Task exited while fetching sensor state: #{inspect(reason)}")
         acc
     end)
+  end
+
+  # Minimal placeholder state for sensors that fail to respond
+  # Keeps sensor in the list to avoid UI flicker
+  defp placeholder_sensor_state(sensor_id) do
+    %{
+      sensor_id: sensor_id,
+      sensor_name: sensor_id,
+      sensor_type: nil,
+      connector_id: nil,
+      connector_name: "Loading...",
+      attributes: %{},
+      status: :unavailable
+    }
   end
 
   def get_sensor_state(sensor_id, mode, values) do

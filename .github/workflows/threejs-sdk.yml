@@ -39,7 +39,7 @@ jobs:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: clients/threejs/node_modules
           key: ${{ runner.os }}-node-${{ env.NODE_DEFAULT_VERSION }}-${{ hashFiles('clients/threejs/package-lock.json') }}
@@ -69,7 +69,7 @@ jobs:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: clients/threejs/node_modules
           key: ${{ runner.os }}-node-${{ env.NODE_DEFAULT_VERSION }}-${{ hashFiles('clients/threejs/package-lock.json') }}
@@ -99,7 +99,7 @@ jobs:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: clients/threejs/node_modules
           key: ${{ runner.os }}-node-${{ env.NODE_DEFAULT_VERSION }}-${{ hashFiles('clients/threejs/package-lock.json') }}
@@ -147,7 +147,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: clients/threejs/node_modules
           key: ${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('clients/threejs/package-lock.json') }}
@@ -190,7 +190,7 @@ jobs:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: clients/threejs/node_modules
           key: ${{ runner.os }}-node-${{ env.NODE_DEFAULT_VERSION }}-${{ hashFiles('clients/threejs/package-lock.json') }}
@@ -291,7 +291,7 @@ jobs:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: clients/threejs/node_modules
           key: ${{ runner.os }}-node-${{ env.NODE_DEFAULT_VERSION }}-${{ hashFiles('clients/threejs/package-lock.json') }}

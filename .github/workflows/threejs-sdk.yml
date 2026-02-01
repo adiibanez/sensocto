@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.node-version == '20' && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: clients/threejs/coverage/
@@ -212,7 +212,7 @@ jobs:
           node -e "const m = require('./dist/index.cjs'); console.log('CJS require OK:', Object.keys(m).slice(0, 5).join(', '))"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: threejs-package
           path: |

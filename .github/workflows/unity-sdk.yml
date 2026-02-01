@@ -200,7 +200,7 @@ jobs:
           checkName: Unity Test Results - ${{ matrix.unity-version }}
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: unity-test-results-${{ matrix.unity-version }}

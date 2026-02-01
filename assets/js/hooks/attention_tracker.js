@@ -101,11 +101,109 @@ export const AttentionTracker = {
     this._initialized = false;  // Force re-init on mount
     this.ensureInitialized();
     this.observeAttributes();
+    // Check for elements already in viewport (IntersectionObserver doesn't fire for these)
+    this.checkInitialVisibility();
   },
 
   updated() {
     this.ensureInitialized();  // Ensure initialized even if mounted wasn't called
     this.observeAttributes();
+  },
+
+  // IntersectionObserver doesn't fire for elements already in viewport when observing starts.
+  // This method manually checks and triggers view_enter for initially visible elements.
+  checkInitialVisibility() {
+    // Run multiple passes to catch elements as they render
+    // First pass immediately, then at 50ms, 150ms, and 300ms
+    const passes = [0, 50, 150, 300];
+    passes.forEach(delay => {
+      setTimeout(() => this.scanForVisibleElements(), delay);
+    });
+
+    // Also set up a one-time scroll listener as fallback
+    this.setupScrollFallback();
+  },
+
+  scanForVisibleElements() {
+    if (!this.observers) return;
+
+    this.observers.forEach((el, key) => {
+      // Skip if already viewed
+      if (this.viewedElements.has(key)) return;
+      // Skip synthetic sensor container keys
+      if (key.endsWith(':_sensor')) return;
+
+      const rect = el.getBoundingClientRect();
+      const inViewport = rect.top < window.innerHeight && rect.bottom > 0 &&
+                        rect.left < window.innerWidth && rect.right > 0 &&
+                        rect.width > 0 && rect.height > 0;
+
+      if (inViewport && el.dataset.sensor_id && el.dataset.attribute_id) {
+        const sensorId = el.dataset.sensor_id;
+        const attributeId = el.dataset.attribute_id;
+
+        // Directly push view_enter (bypassing debounce for initial visibility)
+        this.pushEventTo(this.pushTarget, "view_enter", {
+          sensor_id: sensorId,
+          attribute_id: attributeId
+        });
+        this.viewedElements.add(key);
+        el._confirmedVisible = true;
+      }
+    });
+  },
+
+  // Check if a single element is visible and register it
+  checkElementVisibility(el, key) {
+    // Skip if already viewed
+    if (this.viewedElements.has(key)) return;
+    // Skip synthetic sensor container keys
+    if (key.endsWith(':_sensor')) return;
+
+    // Use requestAnimationFrame to ensure layout is computed
+    requestAnimationFrame(() => {
+      // Check again in case it was registered while waiting
+      if (this.viewedElements.has(key)) return;
+
+      const rect = el.getBoundingClientRect();
+      const inViewport = rect.top < window.innerHeight && rect.bottom > 0 &&
+                        rect.left < window.innerWidth && rect.right > 0 &&
+                        rect.width > 0 && rect.height > 0;
+
+      if (inViewport && el.dataset.sensor_id && el.dataset.attribute_id) {
+        const sensorId = el.dataset.sensor_id;
+        const attributeId = el.dataset.attribute_id;
+
+        // Directly push view_enter
+        this.pushEventTo(this.pushTarget, "view_enter", {
+          sensor_id: sensorId,
+          attribute_id: attributeId
+        });
+        this.viewedElements.add(key);
+        el._confirmedVisible = true;
+      }
+    });
+  },
+
+  setupScrollFallback() {
+    // If scroll listener already set up, skip
+    if (this._scrollFallbackSetup) return;
+    this._scrollFallbackSetup = true;
+
+    // One-time scroll listener that rescans for visible elements
+    // This catches any elements that became visible due to layout shifts
+    const scrollHandler = () => {
+      this.scanForVisibleElements();
+    };
+
+    // Use passive listener for performance
+    window.addEventListener('scroll', scrollHandler, { passive: true });
+
+    // Clean up after 5 seconds - by then everything should be initialized
+    setTimeout(() => {
+      window.removeEventListener('scroll', scrollHandler);
+      this._scrollFallbackSetup = false;
+    }, 5000);
   },
 
   destroyed() {
@@ -179,6 +277,9 @@ export const AttentionTracker = {
 
       this.observers.set(key, el);
       this.intersectionObserver.observe(el);
+
+      // Immediately check if this element is visible (IntersectionObserver may not fire for already-visible elements)
+      this.checkElementVisibility(el, key);
 
       // Add click and hover listeners (only once per element)
       // Listeners look up current hook instance dynamically to handle Phoenix reconnects

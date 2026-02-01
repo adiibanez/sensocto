@@ -22,9 +22,14 @@ defmodule Sensocto.Simulator.SensorServer do
       :attributes_config,
       :attribute_pids,
       :supervisor,
-      :real_sensor_started
+      :real_sensor_started,
+      # Tracks if sensor is currently in the room (for auto-reconnect)
+      :room_connected
     ]
   end
+
+  # Check room connection every 5 seconds
+  @room_check_interval 5_000
 
   def start_link(%{sensor_id: sensor_id, connector_id: connector_id} = config) do
     Logger.info("SensorServer start_link: #{connector_id}/#{sensor_id}")
@@ -48,8 +53,14 @@ defmodule Sensocto.Simulator.SensorServer do
       attributes_config: config[:attributes] || %{},
       attribute_pids: %{},
       supervisor: supervisor,
-      real_sensor_started: false
+      real_sensor_started: false,
+      room_connected: false
     }
+
+    # Subscribe to room events if room_id is specified
+    if config[:room_id] do
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "room:#{config[:room_id]}")
+    end
 
     {:ok, state, {:continue, :create_real_sensor}}
   end
@@ -92,19 +103,29 @@ defmodule Sensocto.Simulator.SensorServer do
         })
 
         # Add sensor to room if room_id is specified
-        if state.room_id do
-          case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
-            :ok ->
-              Logger.info("Added sensor #{state.sensor_id} to room #{state.room_id}")
+        room_connected =
+          if state.room_id do
+            case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
+              :ok ->
+                Logger.info("Added sensor #{state.sensor_id} to room #{state.room_id}")
+                # Schedule periodic room connection check
+                Process.send_after(self(), :check_room_connection, @room_check_interval)
+                true
 
-            {:error, reason} ->
-              Logger.warning(
-                "Failed to add sensor #{state.sensor_id} to room #{state.room_id}: #{inspect(reason)}"
-              )
+              {:error, reason} ->
+                Logger.warning(
+                  "Failed to add sensor #{state.sensor_id} to room #{state.room_id}: #{inspect(reason)}"
+                )
+
+                # Still schedule checks to retry connection
+                Process.send_after(self(), :check_room_connection, @room_check_interval)
+                false
+            end
+          else
+            false
           end
-        end
 
-        new_state = %{state | real_sensor_started: true}
+        new_state = %{state | real_sensor_started: true, room_connected: room_connected}
         {:noreply, new_state, {:continue, :setup_attributes}}
 
       {:error, reason} ->
@@ -176,6 +197,116 @@ defmodule Sensocto.Simulator.SensorServer do
     {:noreply, state}
   end
 
+  # Periodic room connection check - reconnects if sensor was removed from room
+  @impl true
+  def handle_info(:check_room_connection, %{room_id: nil} = state) do
+    # No room assigned, nothing to check
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:check_room_connection, %{real_sensor_started: false} = state) do
+    # Sensor not started yet, check again later
+    Process.send_after(self(), :check_room_connection, @room_check_interval)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:check_room_connection, state) do
+    # Check if sensor is still in the room
+    in_room = sensor_in_room?(state.room_id, state.sensor_id)
+
+    new_state =
+      cond do
+        in_room and state.room_connected ->
+          # Still connected, all good
+          state
+
+        in_room and not state.room_connected ->
+          # Just reconnected (maybe room was recreated)
+          Logger.info("SensorServer #{state.sensor_id}: Reconnected to room #{state.room_id}")
+
+          %{state | room_connected: true}
+
+        not in_room and state.room_connected ->
+          # Disconnected from room, try to reconnect
+          Logger.warning(
+            "SensorServer #{state.sensor_id}: Disconnected from room #{state.room_id}, attempting reconnect"
+          )
+
+          case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
+            :ok ->
+              Logger.info(
+                "SensorServer #{state.sensor_id}: Successfully reconnected to room #{state.room_id}"
+              )
+
+              %{state | room_connected: true}
+
+            {:error, reason} ->
+              Logger.warning(
+                "SensorServer #{state.sensor_id}: Failed to reconnect to room #{state.room_id}: #{inspect(reason)}"
+              )
+
+              %{state | room_connected: false}
+          end
+
+        not in_room and not state.room_connected ->
+          # Not connected, try to connect
+          case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
+            :ok ->
+              Logger.info("SensorServer #{state.sensor_id}: Connected to room #{state.room_id}")
+
+              %{state | room_connected: true}
+
+            {:error, _reason} ->
+              # Still not connected, will retry
+              state
+          end
+      end
+
+    # Schedule next check
+    Process.send_after(self(), :check_room_connection, @room_check_interval)
+    {:noreply, new_state}
+  end
+
+  # Handle room sensor removal events (from PubSub)
+  @impl true
+  def handle_info({:sensor_removed, sensor_id}, %{sensor_id: sensor_id} = state) do
+    Logger.warning(
+      "SensorServer #{state.sensor_id}: Received sensor_removed event, will reconnect on next check"
+    )
+
+    {:noreply, %{state | room_connected: false}}
+  end
+
+  @impl true
+  def handle_info({:sensor_removed, _other_sensor_id}, state) do
+    # Ignore removal of other sensors
+    {:noreply, state}
+  end
+
+  # Handle room deletion - sensor can no longer reconnect to this room
+  @impl true
+  def handle_info({:room_deleted, room_id}, %{room_id: room_id} = state) do
+    Logger.warning(
+      "SensorServer #{state.sensor_id}: Room #{room_id} was deleted, clearing room assignment"
+    )
+
+    {:noreply, %{state | room_connected: false}}
+  end
+
+  @impl true
+  def handle_info({:room_deleted, _other_room_id}, state) do
+    {:noreply, state}
+  end
+
+  # Catch-all for other PubSub messages from room topic
+  @impl true
+  def handle_info({room_event, _data}, state)
+      when room_event in [:room_updated, :sensor_added, :presence_changed] do
+    {:noreply, state}
+  end
+
   @impl true
   def terminate(reason, state) do
     Logger.info("SensorServer terminating: #{state.sensor_id}, reason: #{inspect(reason)}")
@@ -233,6 +364,17 @@ defmodule Sensocto.Simulator.SensorServer do
 
   defp via_tuple(identifier) do
     {:via, Registry, {Sensocto.Simulator.Registry, "sensor_#{identifier}"}}
+  end
+
+  # Check if sensor is currently in the room
+  defp sensor_in_room?(room_id, sensor_id) do
+    case Sensocto.RoomStore.get_room(room_id) do
+      {:ok, room} ->
+        MapSet.member?(room.sensor_ids || MapSet.new(), sensor_id)
+
+      {:error, _} ->
+        false
+    end
   end
 
   # Safe conversion using SafeKeys whitelist to prevent atom exhaustion

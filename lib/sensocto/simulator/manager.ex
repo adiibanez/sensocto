@@ -618,31 +618,16 @@ defmodule Sensocto.Simulator.Manager do
 
   defp apply_scenario_config(state, scenario_name, room_id, config) do
     new_connectors_config = config["connectors"] || %{}
-
-    # Check if we should autostart connectors
-    simulator_config = Application.get_env(:sensocto, :simulator, [])
-    autostart = Keyword.get(simulator_config, :autostart, true)
-
     connector_ids = Map.keys(new_connectors_config)
 
+    # Always auto-start connectors when a scenario is explicitly started
+    # The global autostart setting only applies to initial config load (simulators.yaml),
+    # not to explicit scenario starts via the UI
     new_state =
-      if autostart do
-        # Start/Update connectors
-        Enum.reduce(new_connectors_config, state, fn {connector_id, connector_config}, acc ->
-          connector_config = Map.put(connector_config, "connector_id", connector_id)
-          start_or_update_connector(acc, connector_id, connector_config)
-        end)
-      else
-        # Just store config without starting
-        Logger.info("Autostart disabled - connectors loaded but not started")
-
-        new_connectors =
-          Map.new(new_connectors_config, fn {connector_id, connector_config} ->
-            {connector_id, Map.put(connector_config, "connector_id", connector_id)}
-          end)
-
-        %{state | connectors: Map.merge(state.connectors, new_connectors)}
-      end
+      Enum.reduce(new_connectors_config, state, fn {connector_id, connector_config}, acc ->
+        connector_config = Map.put(connector_config, "connector_id", connector_id)
+        start_or_update_connector(acc, connector_id, connector_config)
+      end)
 
     # Track the running scenario
     scenario_info = %{

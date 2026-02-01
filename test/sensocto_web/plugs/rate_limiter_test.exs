@@ -76,7 +76,13 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
   end
 
   describe "call/2" do
+    # Helper to create a POST connection (rate limiter only applies to POST requests)
+    defp post_conn(conn) do
+      %{conn | method: "POST"}
+    end
+
     test "allows requests under the limit", %{conn: conn} do
+      conn = post_conn(conn)
       opts = RateLimiter.init(type: :auth)
 
       # Make 5 requests (under the limit of 10)
@@ -89,6 +95,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "blocks requests over the limit", %{conn: conn} do
+      conn = post_conn(conn)
       # Use a very low limit for testing
       opts = %{type: :auth, limit: 3, window_ms: 60_000}
 
@@ -107,6 +114,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "returns JSON response for API requests", %{conn: conn} do
+      conn = post_conn(conn)
       opts = %{type: :api_auth, limit: 1, window_ms: 60_000}
 
       # First request succeeds
@@ -127,6 +135,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "returns HTML response for browser requests", %{conn: conn} do
+      conn = post_conn(conn)
       opts = %{type: :auth, limit: 1, window_ms: 60_000}
 
       # First request succeeds
@@ -142,6 +151,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "tracks different IPs separately", %{conn: conn} do
+      conn = post_conn(conn)
       opts = %{type: :auth, limit: 2, window_ms: 60_000}
 
       # Requests from IP 1
@@ -165,6 +175,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "respects X-Forwarded-For header", %{conn: conn} do
+      conn = post_conn(conn)
       opts = %{type: :auth, limit: 2, window_ms: 60_000}
 
       # Requests with X-Forwarded-For
@@ -192,6 +203,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "different rate limit types have separate buckets", %{conn: conn} do
+      conn = post_conn(conn)
       auth_opts = %{type: :auth, limit: 2, window_ms: 60_000}
       api_opts = %{type: :api_auth, limit: 2, window_ms: 60_000}
 
@@ -221,6 +233,7 @@ defmodule SensoctoWeb.Plugs.RateLimiterTest do
     end
 
     test "does not rate limit when disabled", %{conn: conn} do
+      conn = %{conn | method: "POST"}
       opts = %{type: :auth, limit: 1, window_ms: 60_000}
 
       # Even though limit is 1, multiple requests should succeed

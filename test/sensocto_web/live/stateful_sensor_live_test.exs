@@ -79,9 +79,10 @@ defmodule SensoctoWeb.StatefulSensorLiveTest do
         )
 
       # Send view_enter event (simulating user scrolling sensor into view)
+      # The AttentionTracker hook is on #sensor_content_#{sensor_id}
       result =
         view
-        |> element("#sensor-container-#{sensor_id}", "")
+        |> element("#sensor_content_#{sensor_id}")
         |> render_hook("view_enter", %{
           "sensor_id" => sensor_id,
           "attribute_id" => "temperature"

@@ -10,7 +10,7 @@ defmodule Sensocto.Simulator.DataServer do
 
   def start_link(worker_id) do
     worker_name = :"sim_data_server_#{worker_id}"
-    Logger.info("Starting DataServer: #{worker_name}")
+    Logger.debug("Starting DataServer: #{worker_name}")
     GenServer.start_link(__MODULE__, worker_id, name: worker_name)
   end
 

@@ -406,7 +406,7 @@ defmodule Sensocto.Simulator.Manager do
   # Handle async scenario discovery
   @impl true
   def handle_info(:discover_scenarios, state) do
-    Logger.info("Discovering available simulator scenarios...")
+    Logger.debug("Discovering available simulator scenarios...")
 
     # Run filesystem I/O in a task to avoid blocking GenServer
     Task.Supervisor.start_child(
@@ -422,13 +422,13 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_info({:scenarios_discovered, scenarios}, state) do
-    Logger.info("Discovered #{length(scenarios)} available scenarios")
+    Logger.debug("Discovered #{length(scenarios)} available scenarios")
     {:noreply, %{state | available_scenarios: scenarios}}
   end
 
   @impl true
   def handle_info(:hydrate_from_postgres, state) do
-    Logger.info("Hydrating simulator state from PostgreSQL...")
+    Logger.debug("Hydrating simulator state from PostgreSQL...")
 
     # Run database query in a task to avoid blocking GenServer
     Task.Supervisor.start_child(
@@ -444,7 +444,7 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_info({:hydration_result, {:ok, scenarios}}, state) when scenarios != [] do
-    Logger.info("Found #{length(scenarios)} running scenarios to restore")
+    Logger.debug("Found #{length(scenarios)} running scenarios to restore")
     new_state = restore_scenarios(state, scenarios)
     {:noreply, new_state}
   end
@@ -503,7 +503,7 @@ defmodule Sensocto.Simulator.Manager do
           path
       end
 
-    Logger.info("Loading simulator config from #{full_path}")
+    Logger.debug("Loading simulator config from #{full_path}")
 
     case YamlElixir.read_from_file(full_path) do
       {:ok, config} ->
@@ -536,7 +536,7 @@ defmodule Sensocto.Simulator.Manager do
       end)
     else
       # Just store config without starting - connectors can be started manually
-      Logger.info("Autostart disabled - connectors loaded but not started")
+      Logger.debug("Autostart disabled - connectors loaded but not started")
 
       new_connectors =
         Map.new(new_connectors_config, fn {connector_id, connector_config} ->
@@ -553,7 +553,7 @@ defmodule Sensocto.Simulator.Manager do
            {Sensocto.Simulator.ConnectorServer, connector_config}
          ) do
       {:ok, _pid} ->
-        Logger.info("Started simulator connector: #{connector_id}")
+        Logger.debug("Started simulator connector: #{connector_id}")
         %{state | connectors: Map.put(state.connectors, connector_id, connector_config)}
 
       {:error, {:already_started, _}} ->
@@ -574,7 +574,7 @@ defmodule Sensocto.Simulator.Manager do
     case Registry.lookup(Sensocto.Simulator.Registry, "connector_#{connector_id}") do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(Sensocto.Simulator.ConnectorSupervisor, pid)
-        Logger.info("Stopped simulator connector: #{connector_id}")
+        Logger.debug("Stopped simulator connector: #{connector_id}")
 
       [] ->
         Logger.debug("Connector #{connector_id} not found in registry")
@@ -755,7 +755,7 @@ defmodule Sensocto.Simulator.Manager do
 
   defp restore_scenarios(state, scenarios) do
     Enum.reduce(scenarios, state, fn scenario, acc ->
-      Logger.info("Restoring scenario: #{scenario.name}")
+      Logger.debug("Restoring scenario: #{scenario.name}")
 
       # Find matching available scenario to get the path
       available = Enum.find(acc.available_scenarios, fn s -> s.name == scenario.name end)

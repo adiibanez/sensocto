@@ -281,7 +281,7 @@ defmodule Sensocto.Simulator.TrackPlayer do
 
   @impl true
   def handle_info({:hydration_result, {:ok, positions}}, state) when positions != [] do
-    Logger.info("[TrackPlayer] Found #{length(positions)} track positions to restore")
+    Logger.debug("[TrackPlayer] Found #{length(positions)} track positions to restore")
     new_state = restore_positions(state, positions)
     {:noreply, new_state}
   end

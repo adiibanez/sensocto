@@ -389,10 +389,16 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
   defp maybe_handle_new_state(socket, _assigns), do: socket
 
   defp assign_sensor_state(socket, %{sensor: sensor}) when is_map(sensor) do
+    # Check if attributes have changed (new attributes added)
+    old_attrs = get_in(socket.assigns, [:sensor, :attributes]) || %{}
+    new_attrs = sensor[:attributes] || %{}
+    attrs_changed = Map.keys(new_attrs) != Map.keys(old_attrs)
+
     socket
     |> assign(:sensor, sensor)
     |> assign(:sensor_name, sensor[:sensor_name] || sensor[:sensor_id])
     |> assign(:sensor_type, sensor[:sensor_type] || "unknown")
+    |> maybe_push_attributes_updated(attrs_changed)
   end
 
   defp assign_sensor_state(socket, %{sensor_id: sensor_id}) do
@@ -406,10 +412,19 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
       |> assign(:sensor, sensor)
       |> assign(:sensor_name, sensor[:sensor_name] || sensor[:sensor_id])
       |> assign(:sensor_type, sensor[:sensor_type] || "unknown")
+      # Always push for initial load since attributes are new
+      |> push_event("attributes_updated", %{})
     end
   end
 
   defp assign_sensor_state(socket, _assigns), do: socket
+
+  # Push attributes_updated event to trigger JS hook to re-observe attribute elements
+  defp maybe_push_attributes_updated(socket, true = _attrs_changed) do
+    push_event(socket, "attributes_updated", %{})
+  end
+
+  defp maybe_push_attributes_updated(socket, false = _attrs_changed), do: socket
 
   defp assign_if_present(socket, assigns, key) do
     if Map.has_key?(assigns, key) do

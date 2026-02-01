@@ -32,7 +32,7 @@ defmodule Sensocto.Simulator.SensorServer do
   @room_check_interval 5_000
 
   def start_link(%{sensor_id: sensor_id, connector_id: connector_id} = config) do
-    Logger.info("SensorServer start_link: #{connector_id}/#{sensor_id}")
+    Logger.debug("SensorServer start_link: #{connector_id}/#{sensor_id}")
     GenServer.start_link(__MODULE__, config, name: via_tuple("#{connector_id}_#{sensor_id}"))
   end
 
@@ -93,7 +93,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
     case SensorsDynamicSupervisor.add_sensor(state.sensor_id, sensor_config) do
       {:ok, _} ->
-        Logger.info("Created real sensor for simulator: #{state.sensor_id}")
+        Logger.debug("Created real sensor for simulator: #{state.sensor_id}")
 
         # Track presence so LiveViews see the new sensor immediately
         Presence.track(self(), "presence:all", state.sensor_id, %{
@@ -107,7 +107,7 @@ defmodule Sensocto.Simulator.SensorServer do
           if state.room_id do
             case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
               :ok ->
-                Logger.info("Added sensor #{state.sensor_id} to room #{state.room_id}")
+                Logger.debug("Added sensor #{state.sensor_id} to room #{state.room_id}")
                 # Schedule periodic room connection check
                 Process.send_after(self(), :check_room_connection, @room_check_interval)
                 true
@@ -136,7 +136,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
   @impl true
   def handle_continue(:setup_attributes, state) do
-    Logger.info(
+    Logger.debug(
       "Setting up #{map_size(state.attributes_config)} attributes for sensor #{state.sensor_id}"
     )
 
@@ -187,7 +187,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
   @impl true
   def handle_info(:recreate_simple_sensor, %{real_sensor_started: false} = state) do
-    Logger.info("SensorServer #{state.sensor_id}: Attempting to recreate SimpleSensor")
+    Logger.debug("SensorServer #{state.sensor_id}: Attempting to recreate SimpleSensor")
     {:noreply, state, {:continue, :create_real_sensor}}
   end
 
@@ -224,7 +224,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
         in_room and not state.room_connected ->
           # Just reconnected (maybe room was recreated)
-          Logger.info("SensorServer #{state.sensor_id}: Reconnected to room #{state.room_id}")
+          Logger.debug("SensorServer #{state.sensor_id}: Reconnected to room #{state.room_id}")
 
           %{state | room_connected: true}
 
@@ -236,7 +236,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
           case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
             :ok ->
-              Logger.info(
+              Logger.debug(
                 "SensorServer #{state.sensor_id}: Successfully reconnected to room #{state.room_id}"
               )
 
@@ -254,7 +254,7 @@ defmodule Sensocto.Simulator.SensorServer do
           # Not connected, try to connect
           case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
             :ok ->
-              Logger.info("SensorServer #{state.sensor_id}: Connected to room #{state.room_id}")
+              Logger.debug("SensorServer #{state.sensor_id}: Connected to room #{state.room_id}")
 
               %{state | room_connected: true}
 
@@ -309,7 +309,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
   @impl true
   def terminate(reason, state) do
-    Logger.info("SensorServer terminating: #{state.sensor_id}, reason: #{inspect(reason)}")
+    Logger.debug("SensorServer terminating: #{state.sensor_id}, reason: #{inspect(reason)}")
 
     # Untrack presence so LiveViews see the sensor leave immediately
     if state.real_sensor_started do
@@ -353,7 +353,7 @@ defmodule Sensocto.Simulator.SensorServer do
            {Sensocto.Simulator.AttributeServer, attr_config}
          ) do
       {:ok, pid} ->
-        Logger.info("Started attribute #{attribute_id} for sensor #{state.sensor_id}")
+        Logger.debug("Started attribute #{attribute_id} for sensor #{state.sensor_id}")
         %{state | attribute_pids: Map.put(state.attribute_pids, attribute_id, pid)}
 
       {:error, reason} ->

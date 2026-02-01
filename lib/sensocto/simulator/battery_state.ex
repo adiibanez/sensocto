@@ -130,7 +130,7 @@ defmodule Sensocto.Simulator.BatteryState do
 
   @impl true
   def handle_info({:hydration_result, {:ok, battery_states}}, state) when battery_states != [] do
-    Logger.info("[BatteryState] Found #{length(battery_states)} battery states to restore")
+    Logger.debug("[BatteryState] Found #{length(battery_states)} battery states to restore")
     restore_battery_states(battery_states)
     {:noreply, state}
   end

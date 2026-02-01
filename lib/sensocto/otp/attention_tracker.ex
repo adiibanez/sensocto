@@ -547,7 +547,7 @@ defmodule Sensocto.AttentionTracker do
       source_info = if metadata.source != :unknown, do: " (source: #{metadata.source})", else: ""
       level_info = if metadata.level, do: ", level: #{metadata.level}%", else: ""
 
-      Logger.info(
+      Logger.debug(
         "Battery state changed for user #{inspect(user_id)}: #{old_state} -> #{battery_state}#{source_info}#{level_info}"
       )
 

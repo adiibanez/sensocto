@@ -26,7 +26,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
       sensors: config["sensors"] || %{}
     }
 
-    Logger.info(
+    Logger.debug(
       "ConnectorServer start_link: #{config.connector_id}" <>
         if(config.room_id, do: " (room: #{config.room_id})", else: "")
     )
@@ -55,7 +55,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
 
   @impl true
   def handle_continue(:setup_sensors, %{sensors_config: sensors} = state) do
-    Logger.info("Setting up #{map_size(sensors)} sensors for connector #{state.connector_id}")
+    Logger.debug("Setting up #{map_size(sensors)} sensors for connector #{state.connector_id}")
 
     new_state =
       Enum.reduce(sensors, state, fn {sensor_id, sensor_config}, acc ->
@@ -67,21 +67,21 @@ defmodule Sensocto.Simulator.ConnectorServer do
 
   @impl true
   def handle_cast({:update_config, _new_config}, state) do
-    Logger.info("Updating connector config: #{state.connector_id}")
+    Logger.debug("Updating connector config: #{state.connector_id}")
     # TODO: Implement config update logic (stop/start changed sensors)
     {:noreply, state}
   end
 
   @impl true
   def handle_info({:sensor_stopped, sensor_id}, state) do
-    Logger.info("Sensor stopped: #{sensor_id}")
+    Logger.debug("Sensor stopped: #{sensor_id}")
     new_pids = Map.delete(state.sensor_pids, sensor_id)
     {:noreply, %{state | sensor_pids: new_pids}}
   end
 
   @impl true
   def terminate(reason, state) do
-    Logger.info("ConnectorServer terminating: #{state.connector_id}, reason: #{inspect(reason)}")
+    Logger.debug("ConnectorServer terminating: #{state.connector_id}, reason: #{inspect(reason)}")
 
     # Explicitly terminate all sensor children to ensure their terminate callbacks run
     if state.supervisor do
@@ -113,14 +113,14 @@ defmodule Sensocto.Simulator.ConnectorServer do
         room_id: state.room_id
       })
 
-    Logger.info("Starting simulator sensor: #{sensor_id} (#{prefixed_sensor_name})")
+    Logger.debug("Starting simulator sensor: #{sensor_id} (#{prefixed_sensor_name})")
 
     case DynamicSupervisor.start_child(
            state.supervisor,
            {Sensocto.Simulator.SensorServer, config}
          ) do
       {:ok, pid} ->
-        Logger.info("Started simulator sensor #{sensor_id}")
+        Logger.debug("Started simulator sensor #{sensor_id}")
         %{state | sensor_pids: Map.put(state.sensor_pids, sensor_id, pid)}
 
       {:error, reason} ->

@@ -54,7 +54,7 @@ defmodule Sensocto.Simulator.AttributeServer do
   def start_link(
         %{connector_id: connector_id, sensor_id: sensor_id, attribute_id: attribute_id} = config
       ) do
-    Logger.info("Starting AttributeServer: #{connector_id}/#{sensor_id}/#{attribute_id}")
+    Logger.debug("Starting AttributeServer: #{connector_id}/#{sensor_id}/#{attribute_id}")
 
     GenServer.start_link(__MODULE__, config,
       name: via_tuple("#{connector_id}_#{sensor_id}_#{attribute_id}")
@@ -67,7 +67,7 @@ defmodule Sensocto.Simulator.AttributeServer do
 
   @impl true
   def init(%{attribute_id: attribute_id} = config) do
-    Logger.info(
+    Logger.debug(
       "AttributeServer init: #{config.connector_id}/#{config.sensor_id}/#{attribute_id}"
     )
 
@@ -314,7 +314,7 @@ defmodule Sensocto.Simulator.AttributeServer do
       AttentionTracker.calculate_batch_window(state.base_batch_window, sensor_id, attr_id)
 
     if new_level != state.attention_level do
-      Logger.info(
+      Logger.debug(
         "AttributeServer #{sensor_id}/#{attr_id} attention changed: #{state.attention_level} -> #{new_level}, batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms"
       )
     end
@@ -395,7 +395,7 @@ defmodule Sensocto.Simulator.AttributeServer do
       )
 
     if new_level != state.system_load_level do
-      Logger.info(
+      Logger.debug(
         "AttributeServer #{state.sensor_id}/#{state.attribute_id_str} system load changed: " <>
           "#{state.system_load_level} -> #{new_level}, " <>
           "batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms " <>

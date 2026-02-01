@@ -89,6 +89,10 @@ export const AttentionTracker = {
       this.observeAttributes();
     });
 
+    // Set up MutationObserver as backup to catch new attribute elements
+    // This handles cases where elements are added without triggering updated()
+    this.setupMutationObserver();
+
     // Set up latency measurement ping/pong
     this.setupLatencyMeasurement();
   },
@@ -108,6 +112,11 @@ export const AttentionTracker = {
     // Clean up observers
     if (this.intersectionObserver) {
       this.intersectionObserver.disconnect();
+    }
+
+    // Clean up mutation observer
+    if (this.mutationObserver) {
+      this.mutationObserver.disconnect();
     }
 
     // Clear latency ping interval
@@ -536,6 +545,43 @@ export const AttentionTracker = {
         console.debug('Battery API not available:', err);
       });
     }
+  },
+
+  setupMutationObserver() {
+    // Watch for new attribute elements being added to the DOM
+    // This is a backup mechanism for cases where elements are added
+    // after mounted() but the hook's updated() callback isn't triggered
+    this.mutationObserver = new MutationObserver((mutations) => {
+      let hasNewAttributes = false;
+
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Check if the added node or its children have attribute data
+              if (node.dataset?.sensor_id && node.dataset?.attribute_id) {
+                hasNewAttributes = true;
+                break;
+              }
+              if (node.querySelector?.('[data-sensor_id][data-attribute_id]')) {
+                hasNewAttributes = true;
+                break;
+              }
+            }
+          }
+        }
+        if (hasNewAttributes) break;
+      }
+
+      if (hasNewAttributes) {
+        this.observeAttributes();
+      }
+    });
+
+    this.mutationObserver.observe(this.el, {
+      childList: true,
+      subtree: true
+    });
   },
 
   updateBatteryState() {

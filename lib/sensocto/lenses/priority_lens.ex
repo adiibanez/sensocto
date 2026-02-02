@@ -471,6 +471,10 @@ defmodule Sensocto.Lenses.PriorityLens do
     key = {socket_id, sensor_id, attribute_id}
 
     case config.mode do
+      :paused ->
+        # Don't buffer anything when paused - save CPU and memory
+        :ok
+
       :batch ->
         # For high-frequency attributes, accumulate in a list
         if attribute_id in @high_frequency_attributes do

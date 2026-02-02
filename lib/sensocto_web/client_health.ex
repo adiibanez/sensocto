@@ -71,20 +71,23 @@ defmodule SensoctoWeb.ClientHealth do
         }
 
   # Quality thresholds with hysteresis (different enter/exit to prevent flapping)
-  # Conservative thresholds: only downgrade when there's significant pressure
-  # Throttling is a last resort - stay at high quality as long as possible
+  # VERY liberal thresholds: only downgrade when browser is about to crash
+  # Full steam ahead - degradation is absolute last resort
   @quality_thresholds %{
-    high: %{enter: 60, exit: 40},
-    medium: %{enter: 35, exit: 20},
-    low: %{enter: 15, exit: 5}
-    # Below low exit = minimal
+    # Stay at high quality unless health is critically low
+    high: %{enter: 25, exit: 12},
+    # Medium is a brief transition state
+    medium: %{enter: 12, exit: 6},
+    # Low only when things are really bad
+    low: %{enter: 6, exit: 2}
+    # Below low exit (health < 2) = minimal (browser emergency)
   }
 
-  # Minimum time between quality changes (prevent flapping)
-  @quality_change_cooldown_ms 5_000
+  # Longer cooldown to prevent rapid quality changes
+  @quality_change_cooldown_ms 10_000
 
-  # Number of health reports to average
-  @history_window 5
+  # Larger history window for more stability (average over more reports)
+  @history_window 8
 
   # ============================================================================
   # Public API
@@ -257,39 +260,43 @@ defmodule SensoctoWeb.ClientHealth do
     {new_quality, reason}
   end
 
-  # Force quality level based on network type to prevent backpressure
-  # Returns nil if no force is needed (let normal scoring decide)
-  defp force_quality_for_network("slow-2g"), do: :minimal
-  defp force_quality_for_network("2g"), do: :minimal
-  defp force_quality_for_network("3g"), do: :low
-  defp force_quality_for_network(_), do: nil
+  # Network type no longer forces quality degradation.
+  # Reactive backpressure handling in LobbyLive/PriorityLens is sufficient.
+  # Let the client health scoring decide based on actual performance metrics.
+  defp force_quality_for_network(_network_type), do: nil
 
   defp identify_degradation_reason(report) do
     cond do
-      Map.get(report, "cpuPressure") in ["serious", "critical"] ->
-        "High CPU load"
+      # Only flag CPU if it's truly critical (serious is often transient)
+      Map.get(report, "cpuPressure") == "critical" ->
+        "Critical CPU load"
 
-      (fps = Map.get(report, "fps")) && fps < 30 ->
-        "Low frame rate (#{fps} fps)"
+      # 15fps is bad, 30fps is fine for a dashboard
+      (fps = Map.get(report, "fps")) && fps < 15 ->
+        "Very low frame rate (#{fps} fps)"
 
-      (mem = Map.get(report, "memoryPressure")) && mem > 0.85 ->
-        "High memory usage"
+      # 95% memory is actually problematic
+      (mem = Map.get(report, "memoryPressure")) && mem > 0.95 ->
+        "Critical memory usage"
 
-      (battery = Map.get(report, "batteryLevel")) && battery < 15 &&
+      # Low battery on discharge
+      (battery = Map.get(report, "batteryLevel")) && battery < 10 &&
           !Map.get(report, "batteryCharging", true) ->
-        "Low battery"
+        "Very low battery"
 
-      Map.get(report, "networkEffectiveType") in ["slow-2g", "2g", "3g"] ->
-        "Slow network connection (#{Map.get(report, "networkEffectiveType")})"
+      # Only slowest networks
+      Map.get(report, "networkEffectiveType") in ["slow-2g", "2g"] ->
+        "Very slow network (#{Map.get(report, "networkEffectiveType")})"
 
       Map.get(report, "thermalState") == "throttled" ->
         "Device thermal throttling"
 
-      (dropped = Map.get(report, "droppedFrames")) && dropped > 5 ->
-        "Frame drops detected"
+      # Many dropped frames indicates real trouble
+      (dropped = Map.get(report, "droppedFrames")) && dropped > 20 ->
+        "Significant frame drops (#{dropped})"
 
       true ->
-        "General performance degradation"
+        "Performance pressure"
     end
   end
 

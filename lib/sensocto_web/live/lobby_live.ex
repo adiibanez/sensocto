@@ -822,6 +822,10 @@ defmodule SensoctoWeb.LobbyLive do
   @mailbox_recovery_threshold 20
   # Delay before checking if we can recover from paused state
   @recovery_check_delay_ms 3_000
+  # Delay between progressive quality upgrade attempts (when mailbox is healthy)
+  @upgrade_check_delay_ms 5_000
+  # Threshold for considering mailbox healthy enough to upgrade
+  @mailbox_healthy_threshold 10
 
   # Handle PriorityLens batch data (high/medium quality)
   # batch_data structure: %{sensor_id => %{attribute_id => measurement}}
@@ -884,6 +888,9 @@ defmodule SensoctoWeb.LobbyLive do
 
             if new_quality != current do
               Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+
+              # Schedule upgrade check to eventually recover to :high
+              Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
 
               socket
               |> assign(:current_quality, new_quality)
@@ -965,6 +972,9 @@ defmodule SensoctoWeb.LobbyLive do
 
         Sensocto.Lenses.PriorityLens.set_quality(socket.id, :minimal)
 
+        # Schedule progressive upgrade check to eventually get back to :high
+        Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
+
         socket
         |> assign(:current_quality, :minimal)
         |> push_event("quality_changed", %{
@@ -978,6 +988,77 @@ defmodule SensoctoWeb.LobbyLive do
         end
 
         socket
+      end
+
+    {:noreply, socket}
+  end
+
+  # Progressive quality upgrade check
+  # When mailbox is healthy, gradually restore quality back to :high
+  #
+  # HYBRID QUALITY CONTROL:
+  # - Mailbox depth is AUTHORITATIVE (controls capacity)
+  # - ClientHealth is ADVISORY (can cap maximum quality but not force higher)
+  #
+  # The effective quality is: min(mailbox_allows, client_health_allows)
+  @impl true
+  def handle_info(:check_quality_upgrade, socket) do
+    {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
+    current_quality = socket.assigns[:current_quality] || :high
+    quality_override = socket.assigns[:quality_override]
+
+    # Get client health recommended quality (advisory ceiling)
+    client_health = socket.assigns[:client_health]
+    client_recommended = if client_health, do: client_health.current_quality, else: :high
+
+    socket =
+      cond do
+        # Don't upgrade if user has set a manual override
+        quality_override != nil ->
+          socket
+
+        # Already at high quality - nothing to do
+        current_quality == :high ->
+          socket
+
+        # Mailbox is healthy - upgrade one level (respecting client health ceiling)
+        queue_len < @mailbox_healthy_threshold ->
+          mailbox_target = upgrade_quality(current_quality)
+
+          # Hybrid: Don't upgrade past what client health recommends
+          new_quality =
+            Sensocto.Lenses.PriorityLens.min_quality(mailbox_target, client_recommended)
+
+          if new_quality != current_quality do
+            Logger.info(
+              "LobbyLive #{socket.id}: Upgrading quality #{current_quality} -> #{new_quality} (queue: #{queue_len}, client_ceiling: #{client_recommended})"
+            )
+
+            if socket.assigns[:priority_lens_registered] do
+              Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+            end
+
+            # Schedule another upgrade check if not yet at target
+            if new_quality != :high and new_quality != client_recommended do
+              Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
+            end
+
+            socket
+            |> assign(:current_quality, new_quality)
+            |> push_event("quality_changed", %{
+              level: new_quality,
+              reason: "Progressive recovery (queue: #{queue_len})"
+            })
+          else
+            # Can't upgrade due to client health ceiling, but keep checking
+            Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
+            socket
+          end
+
+        # Mailbox still has some pressure - stay at current level, check again later
+        true ->
+          Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
+          socket
       end
 
     {:noreply, socket}
@@ -2298,6 +2379,12 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_event("webrtc_stats", _params, socket), do: {:noreply, socket}
 
   # Client health monitoring - adapts data stream quality based on client performance
+  #
+  # HYBRID QUALITY CONTROL:
+  # - ClientHealth is ADVISORY: it sets a "ceiling" for quality
+  # - ClientHealth CAN trigger immediate DOWNGRADE (client struggling = fast response)
+  # - ClientHealth should NOT trigger UPGRADE (let mailbox-based recovery handle that)
+  # - Mailbox-based recovery respects client health ceiling via :check_quality_upgrade
   @impl true
   def handle_event("client_health", report, socket) do
     # Skip automatic quality adjustment if manual override is set
@@ -2309,18 +2396,28 @@ defmodule SensoctoWeb.LobbyLive do
       {new_health, quality_changed, new_quality, reason} =
         SensoctoWeb.ClientHealth.process_health_report(client_health, report)
 
+      # Always update client_health state (advisory for upgrade path)
       socket = assign(socket, :client_health, new_health)
 
+      current_quality = socket.assigns[:current_quality] || :high
+
+      # Only apply DOWNGRADES immediately. Upgrades happen via :check_quality_upgrade
+      # which respects client health ceiling
+      is_downgrade = quality_changed && quality_worse?(new_quality, current_quality)
+
       socket =
-        if quality_changed do
+        if is_downgrade do
           Logger.info(
-            "Client quality changed for socket #{socket.id}: #{inspect(new_quality)}, reason: #{reason}"
+            "ClientHealth downgrade for socket #{socket.id}: #{current_quality} -> #{new_quality}, reason: #{reason}"
           )
 
-          # Update priority lens quality if registered
+          # Immediate downgrade - client is struggling
           if socket.assigns[:priority_lens_registered] do
             Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
           end
+
+          # Schedule upgrade check to eventually recover
+          Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
 
           socket
           |> assign(:current_quality, new_quality)
@@ -2389,6 +2486,23 @@ defmodule SensoctoWeb.LobbyLive do
   defp downgrade_quality(:low), do: :minimal
   defp downgrade_quality(:minimal), do: :minimal
   defp downgrade_quality(:paused), do: :paused
+
+  # Upgrade quality one level during recovery (inverse of downgrade)
+  defp upgrade_quality(:paused), do: :minimal
+  defp upgrade_quality(:minimal), do: :low
+  defp upgrade_quality(:low), do: :medium
+  defp upgrade_quality(:medium), do: :high
+  defp upgrade_quality(:high), do: :high
+
+  # Quality ordering for comparison (lower index = better quality)
+  @quality_order [:high, :medium, :low, :minimal, :paused]
+
+  # Returns true if q1 is worse (lower throughput) than q2
+  defp quality_worse?(q1, q2) do
+    idx1 = Enum.find_index(@quality_order, &(&1 == q1)) || 0
+    idx2 = Enum.find_index(@quality_order, &(&1 == q2)) || 0
+    idx1 > idx2
+  end
 
   # Maximum send_update calls per batch cycle to prevent overwhelming the system
   @max_updates_per_batch 20

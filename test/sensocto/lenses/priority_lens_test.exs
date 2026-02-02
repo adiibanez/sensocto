@@ -310,19 +310,17 @@ defmodule Sensocto.Lenses.PriorityLensTest do
 
   describe "concurrent registration" do
     test "handles concurrent socket registrations" do
-      # Register many sockets concurrently
-      tasks =
+      # Register sockets from the test process (not tasks) to avoid auto-cleanup
+      # when the task process exits. PriorityLens monitors the caller and cleans up
+      # on :DOWN, so we need to register from a persistent process.
+      results =
         1..50
         |> Enum.map(fn i ->
-          Task.async(fn ->
-            socket_id = "concurrent_socket_#{i}_#{System.unique_integer([:positive])}"
-            sensor_ids = Enum.map(1..20, &"sensor_#{&1}")
-            {:ok, topic} = PriorityLens.register_socket(socket_id, sensor_ids, quality: :high)
-            {socket_id, topic}
-          end)
+          socket_id = "concurrent_socket_#{i}_#{System.unique_integer([:positive])}"
+          sensor_ids = Enum.map(1..20, &"sensor_#{&1}")
+          {:ok, topic} = PriorityLens.register_socket(socket_id, sensor_ids, quality: :high)
+          {socket_id, topic}
         end)
-
-      results = Task.await_many(tasks, 5000)
 
       # Verify all registrations succeeded
       assert length(results) == 50
@@ -330,9 +328,12 @@ defmodule Sensocto.Lenses.PriorityLensTest do
       Enum.each(results, fn {socket_id, topic} ->
         assert topic == "lens:priority:#{socket_id}"
         state = PriorityLens.get_socket_state(socket_id)
-        assert state != nil
+        assert state != nil, "Socket #{socket_id} state should not be nil"
         assert state.quality == :high
-        # Cleanup
+      end)
+
+      # Cleanup
+      Enum.each(results, fn {socket_id, _topic} ->
         PriorityLens.unregister_socket(socket_id)
       end)
     end

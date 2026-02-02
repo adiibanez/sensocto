@@ -9,12 +9,18 @@
 >
   <%!-- Client health monitoring for adaptive streaming --%>
   <div id="client-health-monitor" phx-hook="ClientHealthHook" class="hidden"></div>
+
   <.breadcrumbs>
     <:crumb>Lobby</:crumb>
   </.breadcrumbs>
 
   <div class="flex items-center justify-between mb-4">
-    <h1 class="text-xl font-bold text-white">Lobby</h1>
+    <div class="flex items-center gap-3 text-xs text-gray-500">
+      <span>{@sensors_online_count} sensors online</span>
+      <span :if={@current_quality != :high}>
+        | Quality: {@current_quality |> to_string() |> String.capitalize()}
+      </span>
+    </div>
     <div class="flex items-center gap-4">
       <button
         phx-click="open_join_modal"
@@ -42,7 +48,6 @@
           class="h-4 w-4"
         />
       </button>
-      <span class="text-sm text-gray-400">{@sensors_online_count} sensors online</span>
 
       <%!-- Quality Indicator & Override --%>
       <div class="flex items-center gap-2">

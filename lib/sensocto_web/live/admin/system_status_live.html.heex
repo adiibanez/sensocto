@@ -2,31 +2,23 @@
   <:crumb>System Status</:crumb>
 </.breadcrumbs>
 
-<div class="mb-6">
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-white">System Status Dashboard</h1>
-      <% current_info = node_display_info(@current_node, @cluster_metrics[@current_node]) %>
-      <div class="flex items-center gap-2 text-sm text-gray-400 mt-1">
-        <span>
-          <span class="mr-1">{current_info.flag}</span>
-          Node: <code class="text-blue-400">{current_info.label}</code>
-        </span>
-        <span :if={length(@connected_nodes) > 0}>
-          | Cluster: {length(@connected_nodes) + 1} nodes
-        </span>
-        <span :if={@connected_nodes == []}>
-          | (Standalone mode)
-        </span>
-      </div>
-    </div>
-    <button
-      phx-click="force_refresh"
-      class="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors"
-    >
-      <Heroicons.icon name="arrow-path" type="outline" class="h-4 w-4" /> Refresh
-    </button>
+<div class="flex items-center justify-between mb-4">
+  <% current_info = node_display_info(@current_node, @cluster_metrics[@current_node]) %>
+  <div class="flex items-center gap-3 text-xs text-gray-500">
+    <span>
+      <span class="mr-1">{current_info.flag}</span>
+      <code class="text-blue-400">{current_info.label}</code>
+    </span>
+    <span :if={length(@connected_nodes) > 0}>
+      | {length(@connected_nodes) + 1} nodes
+    </span>
   </div>
+  <button
+    phx-click="force_refresh"
+    class="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 text-sm transition-colors"
+  >
+    <Heroicons.icon name="arrow-path" type="outline" class="h-4 w-4" /> Refresh
+  </button>
 </div>
 
 <%!-- Cluster Overview (when multiple nodes) --%>
@@ -252,7 +244,6 @@
         </span>
       </div>
     <% end %>
-
   </div>
 </div>
 
@@ -264,7 +255,8 @@
       Sensor Fleet Status
     </h3>
     <span class="text-xs text-gray-500">
-      {@attention_summary.battery_counts.normal + @attention_summary.battery_counts.low + @attention_summary.battery_counts.critical} devices reporting
+      {@attention_summary.battery_counts.normal + @attention_summary.battery_counts.low +
+        @attention_summary.battery_counts.critical} devices reporting
     </span>
   </div>
 
@@ -307,12 +299,16 @@
   </div>
 
   <%!-- Fleet health bar --%>
-  <% total_devices = @attention_summary.battery_counts.normal + @attention_summary.battery_counts.low + @attention_summary.battery_counts.critical %>
+  <% total_devices =
+    @attention_summary.battery_counts.normal + @attention_summary.battery_counts.low +
+      @attention_summary.battery_counts.critical %>
   <%= if total_devices > 0 do %>
     <div class="mt-4">
       <div class="flex justify-between text-xs text-gray-500 mb-1">
         <span>Fleet Battery Health</span>
-        <span>{Float.round(@attention_summary.battery_counts.normal / total_devices * 100, 0)}% healthy</span>
+        <span>
+          {Float.round(@attention_summary.battery_counts.normal / total_devices * 100, 0)}% healthy
+        </span>
       </div>
       <div class="h-2 bg-gray-700 rounded-full overflow-hidden flex">
         <div
@@ -330,13 +326,4 @@
       </div>
     </div>
   <% end %>
-
-  <%!-- Warning if critical devices exist --%>
-  <div
-    :if={@attention_summary.battery_counts.critical > 0}
-    class="mt-3 text-xs text-red-400 flex items-center gap-1"
-  >
-    <Heroicons.icon name="exclamation-triangle" type="solid" class="h-4 w-4" />
-    {@attention_summary.battery_counts.critical} sensor(s) have critical battery levels
-  </div>
 </div>

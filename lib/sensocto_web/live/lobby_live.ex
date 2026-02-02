@@ -216,6 +216,8 @@ defmodule SensoctoWeb.LobbyLive do
         current_quality: :high,
         # Manual quality override (nil = automatic, or :high/:medium/:low/:minimal)
         quality_override: nil,
+        # Track consecutive healthy checks for upgrade hysteresis
+        consecutive_healthy_checks: 0,
         # Virtual scroll state
         visible_range: {0, min(@default_visible_count, sensors_count)},
         row_height: @default_row_height,
@@ -823,9 +825,13 @@ defmodule SensoctoWeb.LobbyLive do
   # Delay before checking if we can recover from paused state
   @recovery_check_delay_ms 3_000
   # Delay between progressive quality upgrade attempts (when mailbox is healthy)
-  @upgrade_check_delay_ms 5_000
+  # Increased from 5s to 15s to prevent rapid oscillation
+  @upgrade_check_delay_ms 15_000
   # Threshold for considering mailbox healthy enough to upgrade
   @mailbox_healthy_threshold 10
+  # Number of consecutive healthy checks required before upgrading
+  # This adds hysteresis to prevent upgrade-downgrade oscillation
+  @consecutive_healthy_checks_required 2
 
   # Handle PriorityLens batch data (high/medium quality)
   # batch_data structure: %{sensor_id => %{attribute_id => measurement}}
@@ -999,6 +1005,7 @@ defmodule SensoctoWeb.LobbyLive do
   # HYBRID QUALITY CONTROL:
   # - Mailbox depth is AUTHORITATIVE (controls capacity)
   # - ClientHealth is ADVISORY (can cap maximum quality but not force higher)
+  # - Requires consecutive healthy checks before upgrading (hysteresis)
   #
   # The effective quality is: min(mailbox_allows, client_health_allows)
   @impl true
@@ -1006,6 +1013,7 @@ defmodule SensoctoWeb.LobbyLive do
     {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
     current_quality = socket.assigns[:current_quality] || :high
     quality_override = socket.assigns[:quality_override]
+    consecutive_healthy = socket.assigns[:consecutive_healthy_checks] || 0
 
     # Get client health recommended quality (advisory ceiling)
     client_health = socket.assigns[:client_health]
@@ -1017,48 +1025,63 @@ defmodule SensoctoWeb.LobbyLive do
         quality_override != nil ->
           socket
 
-        # Already at high quality - nothing to do
+        # Already at high quality - nothing to do, reset counter
         current_quality == :high ->
-          socket
+          assign(socket, :consecutive_healthy_checks, 0)
 
-        # Mailbox is healthy - upgrade one level (respecting client health ceiling)
+        # Mailbox is healthy - track consecutive healthy checks
         queue_len < @mailbox_healthy_threshold ->
-          mailbox_target = upgrade_quality(current_quality)
+          new_consecutive = consecutive_healthy + 1
 
-          # Hybrid: Don't upgrade past what client health recommends
-          new_quality =
-            Sensocto.Lenses.PriorityLens.min_quality(mailbox_target, client_recommended)
+          # Only upgrade after consecutive healthy checks (hysteresis)
+          if new_consecutive >= @consecutive_healthy_checks_required do
+            mailbox_target = upgrade_quality(current_quality)
 
-          if new_quality != current_quality do
-            Logger.info(
-              "LobbyLive #{socket.id}: Upgrading quality #{current_quality} -> #{new_quality} (queue: #{queue_len}, client_ceiling: #{client_recommended})"
+            # Hybrid: Don't upgrade past what client health recommends
+            new_quality =
+              Sensocto.Lenses.PriorityLens.min_quality(mailbox_target, client_recommended)
+
+            if new_quality != current_quality do
+              Logger.info(
+                "LobbyLive #{socket.id}: Upgrading quality #{current_quality} -> #{new_quality} (queue: #{queue_len}, consecutive_healthy: #{new_consecutive}, client_ceiling: #{client_recommended})"
+              )
+
+              if socket.assigns[:priority_lens_registered] do
+                Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+              end
+
+              # Schedule another upgrade check if not yet at target
+              if new_quality != :high and new_quality != client_recommended do
+                Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
+              end
+
+              socket
+              |> assign(:current_quality, new_quality)
+              |> assign(:consecutive_healthy_checks, 0)
+              |> push_event("quality_changed", %{
+                level: new_quality,
+                reason:
+                  "Progressive recovery (queue: #{queue_len}, stable for #{new_consecutive} checks)"
+              })
+            else
+              # Can't upgrade due to client health ceiling, but keep checking
+              Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
+              assign(socket, :consecutive_healthy_checks, new_consecutive)
+            end
+          else
+            # Not enough consecutive healthy checks yet, keep counting
+            Logger.debug(
+              "LobbyLive #{socket.id}: Mailbox healthy (#{queue_len}), consecutive: #{new_consecutive}/#{@consecutive_healthy_checks_required}"
             )
 
-            if socket.assigns[:priority_lens_registered] do
-              Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
-            end
-
-            # Schedule another upgrade check if not yet at target
-            if new_quality != :high and new_quality != client_recommended do
-              Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
-            end
-
-            socket
-            |> assign(:current_quality, new_quality)
-            |> push_event("quality_changed", %{
-              level: new_quality,
-              reason: "Progressive recovery (queue: #{queue_len})"
-            })
-          else
-            # Can't upgrade due to client health ceiling, but keep checking
             Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
-            socket
+            assign(socket, :consecutive_healthy_checks, new_consecutive)
           end
 
-        # Mailbox still has some pressure - stay at current level, check again later
+        # Mailbox still has some pressure - reset counter, check again later
         true ->
           Process.send_after(self(), :check_quality_upgrade, @upgrade_check_delay_ms)
-          socket
+          assign(socket, :consecutive_healthy_checks, 0)
       end
 
     {:noreply, socket}

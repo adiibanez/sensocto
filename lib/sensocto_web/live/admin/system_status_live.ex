@@ -1,46 +1,35 @@
 defmodule SensoctoWeb.Admin.SystemStatusLive do
   @moduledoc """
-  System status dashboard for visualizing biomimetic system health.
+  System status dashboard for monitoring system health.
 
   Displays real-time metrics from:
   - SystemLoadMonitor (CPU, memory, PubSub pressure)
-  - CircadianScheduler (time-based patterns)
-  - NoveltyDetector (anomaly detection)
-  - PredictiveLoadBalancer (learned predictions)
-  - ResourceArbiter (sensor resource allocation)
-  - HomeostaticTuner (threshold adaptation)
-  - AttentionTracker (user attention levels)
+  - PriorityLens (backpressure and quality distribution)
+  - AttentionTracker (user attention levels and battery states)
   """
 
   use SensoctoWeb, :live_view
 
   alias Sensocto.SystemLoadMonitor
-
-  alias Sensocto.Bio.{
-    CircadianScheduler,
-    NoveltyDetector,
-    PredictiveLoadBalancer,
-    ResourceArbiter,
-    HomeostaticTuner
-  }
-
+  alias Sensocto.Lenses.PriorityLens
   alias Sensocto.AttentionTracker
+  alias Sensocto.AttributeStoreTiered
 
   require Logger
 
-  @refresh_interval 2000
+  # Adaptive refresh: faster when healthy, slower under load
+  @refresh_interval_normal 2000
+  @refresh_interval_elevated 4000
+  @refresh_interval_high 8000
   # Debounce attention updates to avoid excessive ETS scans (100ms window)
   @attention_debounce_ms 100
 
-  @cluster_refresh_interval 5000
+  @cluster_refresh_interval 10_000
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "system:load")
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "bio:novelty:global")
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "bio:circadian")
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "bio:homeostasis")
       # Subscribe to attention changes for real-time updates
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
 
@@ -53,7 +42,9 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
 
   @impl true
   def handle_info(:refresh_metrics, socket) do
-    Process.send_after(self(), :refresh_metrics, @refresh_interval)
+    # Adaptive refresh: slower when under load to reduce monitoring overhead
+    interval = adaptive_refresh_interval(socket.assigns.system_metrics.load_level)
+    Process.send_after(self(), :refresh_metrics, interval)
     {:noreply, refresh_all_metrics(socket)}
   end
 
@@ -73,42 +64,6 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   def handle_info({:memory_protection_changed, %{active: active}}, socket) do
     system_metrics = Map.put(socket.assigns.system_metrics, :memory_protection_active, active)
     {:noreply, assign(socket, :system_metrics, system_metrics)}
-  end
-
-  # Handle novelty events
-  @impl true
-  def handle_info({:novelty_detected, sensor_id, attribute_id, z_score}, socket) do
-    event = %{
-      sensor_id: sensor_id,
-      attribute_id: attribute_id,
-      z_score: z_score,
-      timestamp: DateTime.utc_now()
-    }
-
-    events = [event | Enum.take(socket.assigns.novelty_events, 9)]
-    {:noreply, assign(socket, :novelty_events, events)}
-  end
-
-  # Handle circadian phase changes
-  @impl true
-  def handle_info({:phase_change, %{phase: phase, adjustment: adjustment}}, socket) do
-    socket =
-      socket
-      |> assign(:circadian_phase, phase)
-      |> assign(:circadian_adjustment, adjustment)
-
-    {:noreply, socket}
-  end
-
-  # Handle homeostatic adaptations
-  @impl true
-  def handle_info({:adaptation, %{actual: distribution, offsets: offsets}}, socket) do
-    socket =
-      socket
-      |> assign(:homeostatic_distribution, distribution)
-      |> assign(:homeostatic_offsets, offsets)
-
-    {:noreply, socket}
   end
 
   # Handle attention changes - debounce to avoid excessive ETS scans
@@ -173,16 +128,7 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     socket
     |> assign(:page_title, "System Status")
     |> assign(:system_metrics, default_system_metrics())
-    |> assign(:circadian_phase, :unknown)
-    |> assign(:circadian_adjustment, 1.0)
-    |> assign(:circadian_profile, %{})
-    |> assign(:novelty_events, [])
-    |> assign(:novelty_threshold, 3.0)
-    |> assign(:predictions, %{})
-    |> assign(:allocations, %{})
-    |> assign(:homeostatic_distribution, default_distribution())
-    |> assign(:homeostatic_offsets, %{elevated: 0.0, high: 0.0, critical: 0.0})
-    |> assign(:homeostatic_target, HomeostaticTuner.get_target_distribution())
+    |> assign(:backpressure_stats, default_backpressure_stats())
     |> assign(:attention_summary, default_attention_summary())
     |> assign(:cluster_metrics, %{})
     |> assign(:current_node, node())
@@ -192,13 +138,7 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   defp refresh_all_metrics(socket) do
     socket
     |> assign(:system_metrics, fetch_system_metrics())
-    |> assign(:circadian_phase, fetch_circadian_phase())
-    |> assign(:circadian_adjustment, fetch_circadian_adjustment())
-    |> assign(:circadian_profile, fetch_circadian_profile())
-    |> assign(:novelty_events, fetch_novelty_events())
-    |> assign(:predictions, fetch_predictions())
-    |> assign(:allocations, fetch_allocations())
-    |> assign_homeostatic_state()
+    |> assign(:backpressure_stats, fetch_backpressure_stats())
     |> assign(:attention_summary, build_attention_summary())
   end
 
@@ -208,6 +148,22 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     catch
       :exit, _ -> default_system_metrics()
     end
+  end
+
+  defp fetch_backpressure_stats do
+    # Direct ETS read from PriorityLens - no GenServer call
+    PriorityLens.get_stats()
+  end
+
+  defp default_backpressure_stats do
+    %{
+      socket_count: 0,
+      quality_distribution: %{high: 0, medium: 0, low: 0, minimal: 0, paused: 0},
+      total_sensor_subscriptions: 0,
+      paused_count: 0,
+      degraded_count: 0,
+      healthy: true
+    }
   end
 
   defp fetch_cluster_metrics(socket) do
@@ -257,95 +213,6 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     }
   end
 
-  defp fetch_circadian_phase do
-    try do
-      CircadianScheduler.get_phase()
-    catch
-      :exit, _ -> :unknown
-    end
-  end
-
-  defp fetch_circadian_adjustment do
-    try do
-      CircadianScheduler.get_phase_adjustment()
-    catch
-      :exit, _ -> 1.0
-    end
-  end
-
-  defp fetch_circadian_profile do
-    try do
-      CircadianScheduler.get_profile()
-    catch
-      :exit, _ -> %{}
-    end
-  end
-
-  defp fetch_novelty_events do
-    try do
-      NoveltyDetector.get_recent_events(10)
-    catch
-      :exit, _ -> []
-    end
-  end
-
-  defp fetch_predictions do
-    try do
-      PredictiveLoadBalancer.get_predictions()
-    catch
-      :exit, _ -> %{}
-    end
-  end
-
-  defp fetch_allocations do
-    try do
-      ResourceArbiter.get_allocations()
-    catch
-      :exit, _ -> %{}
-    end
-  end
-
-  defp assign_homeostatic_state(socket) do
-    try do
-      state = HomeostaticTuner.get_state()
-
-      # Calculate distribution from samples if actual_distribution is empty
-      distribution =
-        case Map.get(state, :actual_distribution, %{}) do
-          dist when dist == %{} or dist == nil ->
-            calculate_distribution_from_samples(Map.get(state, :load_samples, []))
-
-          dist ->
-            dist
-        end
-
-      socket
-      |> assign(:homeostatic_distribution, distribution)
-      |> assign(
-        :homeostatic_offsets,
-        Map.get(state, :threshold_offsets, %{elevated: 0.0, high: 0.0, critical: 0.0})
-      )
-    catch
-      :exit, _ -> socket
-    end
-  end
-
-  defp calculate_distribution_from_samples([]), do: default_distribution()
-
-  defp calculate_distribution_from_samples(samples) do
-    total = length(samples)
-
-    Enum.reduce(samples, %{normal: 0, elevated: 0, high: 0, critical: 0}, fn level, acc ->
-      Map.update(acc, level, 1, &(&1 + 1))
-    end)
-    |> Enum.map(fn {level, count} -> {level, count / total} end)
-    |> Map.new()
-  end
-
-  defp default_distribution do
-    %{normal: 0.0, elevated: 0.0, high: 0.0, critical: 0.0}
-  end
-
   defp build_attention_summary do
     try do
       state = AttentionTracker.get_state()
@@ -375,12 +242,26 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
           if MapSet.size(users) > 0, do: [sensor_id], else: []
         end)
 
-      # Count battery states
+      # Count battery states from actual sensor battery attributes
+      sensor_ids =
+        try do
+          :ets.tab2list(:sensor_attention_cache)
+          |> Enum.map(fn {sensor_id, _} -> sensor_id end)
+        rescue
+          _ -> []
+        end
+
       battery_counts =
-        state.battery_states
-        |> Enum.reduce(%{normal: 0, low: 0, critical: 0}, fn {_user_id, {state_atom, _meta}},
-                                                             acc ->
-          Map.update(acc, state_atom, 1, &(&1 + 1))
+        sensor_ids
+        |> Enum.reduce(%{normal: 0, low: 0, critical: 0}, fn sensor_id, acc ->
+          battery_level = get_sensor_battery_level(sensor_id)
+
+          cond do
+            is_nil(battery_level) -> acc
+            battery_level < 15 -> Map.update!(acc, :critical, &(&1 + 1))
+            battery_level < 30 -> Map.update!(acc, :low, &(&1 + 1))
+            true -> Map.update!(acc, :normal, &(&1 + 1))
+          end
         end)
 
       %{
@@ -401,6 +282,23 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
       battery_counts: %{normal: 0, low: 0, critical: 0},
       total_sensors: 0
     }
+  end
+
+  # Get the latest battery level for a sensor from AttributeStoreTiered
+  defp get_sensor_battery_level(sensor_id) do
+    try do
+      case AttributeStoreTiered.get_attributes(sensor_id, 1) do
+        %{"battery" => [%{payload: %{level: level}} | _]} when is_number(level) ->
+          level
+
+        _ ->
+          nil
+      end
+    rescue
+      _ -> nil
+    catch
+      :exit, _ -> nil
+    end
   end
 
   # ============================================================================
@@ -468,74 +366,6 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   end
 
   @doc """
-  Renders a badge showing the circadian phase.
-  """
-  attr :phase, :atom, required: true
-
-  def phase_badge(assigns) do
-    {bg, text} =
-      case assigns.phase do
-        :off_peak -> {"bg-green-600/20", "text-green-400"}
-        :approaching_off_peak -> {"bg-green-600/10", "text-green-300"}
-        :normal -> {"bg-gray-600/20", "text-gray-400"}
-        :approaching_peak -> {"bg-orange-600/20", "text-orange-400"}
-        :peak -> {"bg-red-600/20", "text-red-400"}
-        _ -> {"bg-gray-600/20", "text-gray-400"}
-      end
-
-    label =
-      assigns.phase
-      |> to_string()
-      |> String.replace("_", " ")
-      |> String.split()
-      |> Enum.map(&String.capitalize/1)
-      |> Enum.join(" ")
-
-    assigns = assign(assigns, bg: bg, text: text, label: label)
-
-    ~H"""
-    <span class={"px-2 py-1 rounded-full text-xs #{@bg} #{@text}"}>
-      {@label}
-    </span>
-    """
-  end
-
-  @doc """
-  Renders a badge showing prediction status.
-  """
-  attr :prediction, :map, required: true
-
-  def prediction_badge(assigns) do
-    {bg, text, label} =
-      case assigns.prediction do
-        %{state: :pre_boost} ->
-          {"bg-cyan-600/20", "text-cyan-400", "Pre-boost"}
-
-        %{state: :post_peak} ->
-          {"bg-purple-600/20", "text-purple-400", "Post-peak"}
-
-        %{factor: factor} when factor < 1.0 ->
-          {"bg-green-600/20", "text-green-400", "Boosted"}
-
-        %{factor: factor} when factor > 1.0 ->
-          {"bg-orange-600/20", "text-orange-400", "Throttled"}
-
-        _ ->
-          {"bg-gray-600/20", "text-gray-400", "Normal"}
-      end
-
-    factor = Map.get(assigns.prediction, :factor, 1.0)
-    assigns = assign(assigns, bg: bg, text: text, label: label, factor: factor)
-
-    ~H"""
-    <div class="flex items-center gap-2">
-      <span class={"px-2 py-0.5 rounded text-xs #{@bg} #{@text}"}>{@label}</span>
-      <span class="text-xs font-mono text-gray-400">{Float.round(@factor * 1.0, 2)}x</span>
-    </div>
-    """
-  end
-
-  @doc """
   Renders an attention level badge.
   """
   attr :level, :atom, required: true
@@ -563,22 +393,11 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   # Helper Functions for Colors
   # ============================================================================
 
-  defp profile_bar_color(score) when score >= 0.7, do: "bg-red-500"
-  defp profile_bar_color(score) when score >= 0.5, do: "bg-orange-500"
-  defp profile_bar_color(score) when score >= 0.3, do: "bg-yellow-500"
-  defp profile_bar_color(_score), do: "bg-green-500"
-
-  defp level_color(:normal), do: "text-green-400"
-  defp level_color(:elevated), do: "text-yellow-400"
-  defp level_color(:high), do: "text-orange-400"
-  defp level_color(:critical), do: "text-red-400"
-  defp level_color(_), do: "text-gray-400"
-
-  defp level_bar_color(:normal), do: "bg-green-500"
-  defp level_bar_color(:elevated), do: "bg-yellow-500"
-  defp level_bar_color(:high), do: "bg-orange-500"
-  defp level_bar_color(:critical), do: "bg-red-500"
-  defp level_bar_color(_), do: "bg-gray-500"
+  # Adaptive refresh intervals based on system load
+  # Slower refresh under load to reduce monitoring overhead
+  defp adaptive_refresh_interval(:normal), do: @refresh_interval_normal
+  defp adaptive_refresh_interval(:elevated), do: @refresh_interval_elevated
+  defp adaptive_refresh_interval(_high_or_critical), do: @refresh_interval_high
 
   # Fly.io regions mapped to country flags
   @region_flags %{

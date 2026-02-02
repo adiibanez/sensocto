@@ -22,16 +22,19 @@ defmodule Sensocto.Simulator.BatteryState do
   # Check every 10 seconds for state flip (faster for demo)
   @state_check_interval :timer.seconds(10)
 
-  # Realistic rates (% per minute) - slightly accelerated for demo visibility
-  @drain_rate_active 0.5
+  # Demo rates (% per minute) - accelerated for visible diversity
+  # Drain faster than charge to create low battery sensors over time
+  @drain_rate_active 1.5
   # @drain_rate_standby 0.025  # Reserved for future standby mode
-  @charge_rate_normal 0.8
+  @charge_rate_normal 0.6
   # @charge_rate_fast 1.5  # Reserved for future fast charging mode
 
-  # Charging flip parameters (in minutes) - short for demo visibility
-  # Each sensor gets its own random flip time within this range
-  @min_flip_duration 1
-  @max_flip_duration 5
+  # Charging flip parameters (in minutes) - asymmetric for more diversity
+  # Longer drain cycles create more low battery sensors
+  @min_flip_duration_drain 5
+  @max_flip_duration_drain 15
+  @min_flip_duration_charge 2
+  @max_flip_duration_charge 8
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -252,11 +255,17 @@ defmodule Sensocto.Simulator.BatteryState do
     }
   end
 
-  defp calculate_next_flip(now, _charging) do
-    # Each sensor gets a random flip duration between 1-5 minutes
-    # This is per-sensor, so different sensors flip at different times
-    duration_minutes = @min_flip_duration + :rand.uniform(@max_flip_duration - @min_flip_duration)
+  defp calculate_next_flip(now, charging) do
+    # Asymmetric flip durations: longer drain cycles create more low battery sensors
+    # Charging sensors flip sooner (2-8 min), draining sensors stay longer (5-15 min)
+    {min_duration, max_duration} =
+      if charging do
+        {@min_flip_duration_charge, @max_flip_duration_charge}
+      else
+        {@min_flip_duration_drain, @max_flip_duration_drain}
+      end
 
+    duration_minutes = min_duration + :rand.uniform(max_duration - min_duration)
     now + :timer.minutes(duration_minutes)
   end
 

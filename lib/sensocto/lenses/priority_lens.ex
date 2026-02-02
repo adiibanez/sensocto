@@ -168,6 +168,50 @@ defmodule Sensocto.Lenses.PriorityLens do
     Enum.at(@quality_order, max(idx1, idx2))
   end
 
+  @doc """
+  Get aggregate stats for monitoring. Direct ETS reads, no GenServer call.
+  Returns quality distribution, socket count, and sensor subscription counts.
+  """
+  def get_stats do
+    try do
+      socket_data = :ets.tab2list(@sockets_table)
+
+      quality_distribution =
+        Enum.reduce(socket_data, %{high: 0, medium: 0, low: 0, minimal: 0, paused: 0}, fn {_id,
+                                                                                           state},
+                                                                                          acc ->
+          Map.update(acc, state.quality, 1, &(&1 + 1))
+        end)
+
+      total_sensor_subscriptions =
+        Enum.reduce(socket_data, 0, fn {_id, state}, acc ->
+          acc + MapSet.size(state.sensor_ids)
+        end)
+
+      paused_count = quality_distribution[:paused] || 0
+      degraded_count = (quality_distribution[:low] || 0) + (quality_distribution[:minimal] || 0)
+
+      %{
+        socket_count: length(socket_data),
+        quality_distribution: quality_distribution,
+        total_sensor_subscriptions: total_sensor_subscriptions,
+        paused_count: paused_count,
+        degraded_count: degraded_count,
+        healthy: paused_count == 0 and degraded_count == 0
+      }
+    rescue
+      ArgumentError ->
+        %{
+          socket_count: 0,
+          quality_distribution: %{high: 0, medium: 0, low: 0, minimal: 0, paused: 0},
+          total_sensor_subscriptions: 0,
+          paused_count: 0,
+          degraded_count: 0,
+          healthy: true
+        }
+    end
+  end
+
   # ============================================================================
   # Server Callbacks
   # ============================================================================

@@ -11,15 +11,9 @@
     // Track currently pressed buttons (for visual feedback and simultaneous presses)
     let pressedButtons = new Set();
 
-    // Check if we're on desktop (requires Space key for buttons)
-    let isDesktop = false;
-
-    // Track if Space key is currently held down (for desktop modifier)
-    let spaceKeyHeld = false;
-
-    onMount(() => {
-        isDesktop = !isMobile();
-    });
+    // Detect mobile/tablet - these get direct tap behavior
+    // Desktop gets keyboard shortcuts (number keys work without modifiers)
+    let mobile = false;
 
     const buttons = [
         { id: 1, style: "background-color: #ef4444;", hoverStyle: "background-color: #dc2626;", label: "1", key: "1" },
@@ -70,16 +64,14 @@
         sensorService.sendChannelMessage(channelIdentifier, payload);
     };
 
+    // Keyboard handling - number keys work directly (no Space modifier needed)
     const handleKeyDown = (event) => {
+        // Don't capture when typing in inputs
         if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
             return;
         }
+        // Ignore key repeat
         if (event.repeat) return;
-
-        // On desktop, require Space key to be held down
-        if (isDesktop && !spaceKeyHeld) {
-            return;
-        }
 
         const buttonId = keyToButtonId[event.key];
         if (buttonId && !pressedButtons.has(buttonId)) {
@@ -98,12 +90,8 @@
         }
     };
 
-    const handleMouseDown = (event, buttonId) => {
-        // On desktop, require Space key to be held down
-        if (isDesktop && !spaceKeyHeld) {
-            return;
-        }
-
+    // Unified press/release
+    const pressButton = (buttonId) => {
         if (!pressedButtons.has(buttonId)) {
             pressedButtons.add(buttonId);
             pressedButtons = pressedButtons;
@@ -111,7 +99,7 @@
         }
     };
 
-    const handleMouseUp = (buttonId) => {
+    const releaseButton = (buttonId) => {
         if (pressedButtons.has(buttonId)) {
             pressedButtons.delete(buttonId);
             pressedButtons = pressedButtons;
@@ -119,44 +107,103 @@
         }
     };
 
-    const handleMouseLeave = (buttonId) => {
-        if (pressedButtons.has(buttonId)) {
-            pressedButtons.delete(buttonId);
-            pressedButtons = pressedButtons;
+    // Release all buttons (safety for edge cases)
+    const releaseAllButtons = () => {
+        pressedButtons.forEach(buttonId => {
             sendButtonRelease(buttonId);
+        });
+        pressedButtons.clear();
+        pressedButtons = pressedButtons;
+    };
+
+    // Handle visibility change (tab switching) - more reliable than blur
+    const handleVisibilityChange = () => {
+        if (document.hidden) {
+            releaseAllButtons();
         }
     };
 
-    const handleSpaceDown = (event) => {
-        if (event.code === 'Space' && !event.repeat) {
-            event.preventDefault();
-            spaceKeyHeld = true;
+    // Clear any stuck buttons from previous sessions (server might have stale state)
+    const resetAllButtons = () => {
+        for (let i = 1; i <= 8; i++) {
+            sendButtonRelease(i);
         }
     };
 
-    const handleSpaceUp = (event) => {
-        if (event.code === 'Space') {
-            spaceKeyHeld = false;
-            // Release all pressed buttons when space is released
-            pressedButtons.forEach(buttonId => {
-                sendButtonRelease(buttonId);
-            });
-            pressedButtons.clear();
-            pressedButtons = pressedButtons;
-        }
-    };
+    // Svelte action to add non-passive touch listeners (required for Safari iPad)
+    function buttonAction(node, buttonId) {
+        const onTouchStart = (e) => {
+            e.preventDefault();
+            pressButton(buttonId);
+        };
+
+        const onTouchEnd = (e) => {
+            e.preventDefault();
+            releaseButton(buttonId);
+        };
+
+        const onTouchCancel = () => {
+            releaseButton(buttonId);
+        };
+
+        const onMouseDown = (e) => {
+            e.preventDefault();
+            pressButton(buttonId);
+        };
+
+        const onMouseUp = () => {
+            releaseButton(buttonId);
+        };
+
+        const onMouseLeave = () => {
+            releaseButton(buttonId);
+        };
+
+        // Add touch listeners with { passive: false } to allow preventDefault on Safari
+        node.addEventListener('touchstart', onTouchStart, { passive: false });
+        node.addEventListener('touchend', onTouchEnd, { passive: false });
+        node.addEventListener('touchcancel', onTouchCancel, { passive: false });
+
+        // Mouse events for desktop
+        node.addEventListener('mousedown', onMouseDown);
+        node.addEventListener('mouseup', onMouseUp);
+        node.addEventListener('mouseleave', onMouseLeave);
+
+        return {
+            update(newButtonId) {
+                buttonId = newButtonId;
+            },
+            destroy() {
+                node.removeEventListener('touchstart', onTouchStart);
+                node.removeEventListener('touchend', onTouchEnd);
+                node.removeEventListener('touchcancel', onTouchCancel);
+                node.removeEventListener('mousedown', onMouseDown);
+                node.removeEventListener('mouseup', onMouseUp);
+                node.removeEventListener('mouseleave', onMouseLeave);
+            }
+        };
+    }
 
     onMount(() => {
+        mobile = isMobile();
+
         // Wait for socket to be ready before registering the button attribute
-        // This ensures the channel is established and the attribute shows up in the UI
         unsubscribeSocket = sensorService.onSocketReady(() => {
             ensureChannel();
+            // Clear any stuck state from previous sessions after channel is ready
+            setTimeout(resetAllButtons, 100);
         });
 
+        // Keyboard listeners for number key shortcuts
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
-        window.addEventListener('keydown', handleSpaceDown);
-        window.addEventListener('keyup', handleSpaceUp);
+
+        // Safety: release all buttons on focus loss
+        window.addEventListener('blur', releaseAllButtons);
+        // More reliable for tab switches
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        // Handles navigation away
+        window.addEventListener('pagehide', releaseAllButtons);
     });
 
     onDestroy(() => {
@@ -165,8 +212,13 @@
         }
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
-        window.removeEventListener('keydown', handleSpaceDown);
-        window.removeEventListener('keyup', handleSpaceUp);
+        window.removeEventListener('blur', releaseAllButtons);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('pagehide', releaseAllButtons);
+
+        // Clean up any pressed buttons
+        releaseAllButtons();
+
         sensorService.unregisterAttribute(sensorService.getDeviceId(), "button");
         sensorService.leaveChannelIfUnused(channelIdentifier);
     });
@@ -177,20 +229,12 @@
 </script>
 
 <div class="flex gap-1 flex-wrap items-center">
-    {#if isDesktop}
-        <span class="text-xs text-gray-400 font-mono mr-1" class:space-active={spaceKeyHeld}>Space +</span>
-    {/if}
     {#each buttons as button}
         <button
-            class="push-button w-6 h-6 rounded text-white text-xs font-bold flex items-center justify-center"
+            class="push-button w-8 h-8 rounded text-white text-sm font-bold flex items-center justify-center"
             class:pressed={pressedButtons.has(button.id)}
             style={getButtonStyle(button, pressedButtons.has(button.id))}
-            on:mousedown={(e) => handleMouseDown(e, button.id)}
-            on:mouseup={() => handleMouseUp(button.id)}
-            on:mouseleave={() => handleMouseLeave(button.id)}
-            on:touchstart|preventDefault={(e) => handleMouseDown(e, button.id)}
-            on:touchend|preventDefault={() => handleMouseUp(button.id)}
-            title={isDesktop ? `Hold Space + click or press '${button.key}'` : `Tap button ${button.key}`}
+            use:buttonAction={button.id}
         >
             {button.label}
         </button>
@@ -203,12 +247,14 @@
         transition: background-color 0.15s ease, transform 0.1s ease;
         user-select: none;
         -webkit-user-select: none;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .push-button:active {
+        transform: scale(0.92);
     }
     .push-button.pressed {
-        transform: scale(0.9);
-    }
-    .space-active {
-        color: #22c55e;
-        font-weight: bold;
+        transform: scale(0.92);
+        filter: brightness(0.85);
     }
 </style>

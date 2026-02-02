@@ -36,8 +36,27 @@ function setSessionValue(name, value) {
 }
 
 function isMobile() {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    return isMobile;
+    const ua = navigator.userAgent;
+
+    // Classic mobile detection (phones and older tablets)
+    const isMobileUA = /iPhone|iPad|iPod|Android/i.test(ua);
+
+    // iPadOS 13+ reports as Mac, but has touch support
+    // Detect by checking for touch capability on Mac platform
+    const isIPadOS = (
+        navigator.platform === 'MacIntel' &&
+        navigator.maxTouchPoints > 0
+    ) || (
+        // Alternative: Mac with touch in user agent platform
+        /Mac/.test(navigator.platform) &&
+        'ontouchend' in document
+    );
+
+    // Android tablets: Check for Android + touch but no "Mobile" in UA
+    // (Android phones have "Mobile" in UA, tablets don't)
+    const isAndroidTablet = /Android/i.test(ua) && !/Mobile/i.test(ua);
+
+    return isMobileUA || isIPadOS || isAndroidTablet;
 }
 
 

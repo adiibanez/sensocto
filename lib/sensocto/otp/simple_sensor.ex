@@ -364,19 +364,22 @@ defmodule Sensocto.SimpleSensor do
     now = System.system_time(:millisecond)
     enriched_attribute = Map.put(attribute, :sensor_id, sensor_id)
 
-    # Broadcast to per-sensor topic (legacy, for direct subscribers)
+    # Broadcast to per-sensor topic (always - for direct subscribers)
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "data:#{sensor_id}",
       {:measurement, enriched_attribute}
     )
 
-    # Also broadcast to global topic for lens router
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      "data:global",
-      {:measurement, enriched_attribute}
-    )
+    # Only broadcast to global topic when there are viewers (attention-aware routing)
+    # Data is already stored in AttributeStore, so viewers can retrieve it on demand
+    if state.attention_level != :none do
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "data:global",
+        {:measurement, enriched_attribute}
+      )
+    end
 
     {:noreply,
      state
@@ -406,19 +409,22 @@ defmodule Sensocto.SimpleSensor do
 
     now = System.system_time(:millisecond)
 
-    # Broadcast to per-sensor topic (legacy, for direct subscribers)
+    # Broadcast to per-sensor topic (always - for direct subscribers)
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "data:#{sensor_id}",
       {:measurements_batch, {sensor_id, broadcast_messages_list}}
     )
 
-    # Also broadcast to global topic for lens router
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      "data:global",
-      {:measurements_batch, {sensor_id, broadcast_messages_list}}
-    )
+    # Only broadcast to global topic when there are viewers (attention-aware routing)
+    # Data is already stored in AttributeStore, so viewers can retrieve it on demand
+    if state.attention_level != :none do
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "data:global",
+        {:measurements_batch, {sensor_id, broadcast_messages_list}}
+      )
+    end
 
     {:noreply,
      state

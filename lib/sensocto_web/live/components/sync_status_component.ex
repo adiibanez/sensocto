@@ -50,7 +50,7 @@ defmodule SensoctoWeb.Live.Components.SyncStatusComponent do
         <%!-- Synced Users (Pack) --%>
         <div class="flex items-center gap-1.5">
           <div class="flex -space-x-1">
-            <%= for i <- 0..min(3, length(@synced_users) - 1) do %>
+            <%= for {_user, i} <- Enum.take(@synced_users, 4) |> Enum.with_index() do %>
               <span
                 class="w-2 h-2 bg-green-400 rounded-full border border-gray-800 sync-dot"
                 style={"animation-delay: #{i * 150}ms"}
@@ -73,7 +73,7 @@ defmodule SensoctoWeb.Live.Components.SyncStatusComponent do
           <%!-- Solo Users (Lone Wolves) --%>
           <div class="flex items-center gap-1.5">
             <div class="flex -space-x-1">
-              <%= for _i <- 0..min(2, length(@solo_users) - 1) do %>
+              <%= for _user <- Enum.take(@solo_users, 3) do %>
                 <span class="w-2 h-2 bg-slate-400 rounded-full border border-gray-800"></span>
               <% end %>
               <%= if length(@solo_users) > 3 do %>

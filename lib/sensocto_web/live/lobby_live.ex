@@ -813,64 +813,113 @@ defmodule SensoctoWeb.LobbyLive do
   # PriorityLens Message Handlers (adaptive streaming)
   # ==========================================================================
 
-  # Mailbox backpressure threshold - drop batches if queue exceeds this
-  @mailbox_backpressure_threshold 100
+  # Mailbox backpressure thresholds
+  # Start throttling early to prevent runaway queue growth
+  @mailbox_backpressure_threshold 50
+  # Critical threshold - pause data delivery entirely
+  @mailbox_critical_threshold 150
+  # Recovery threshold - resume from paused when queue drops below this
+  @mailbox_recovery_threshold 20
+  # Delay before checking if we can recover from paused state
+  @recovery_check_delay_ms 3_000
 
   # Handle PriorityLens batch data (high/medium quality)
   # batch_data structure: %{sensor_id => %{attribute_id => measurement}}
   @impl true
   def handle_info({:lens_batch, batch_data}, socket) do
+    # Debug: trace lens_batch handling
+    if Map.has_key?(batch_data, "46991438cf49") do
+      Logger.debug(
+        "LobbyLive: lens_batch received with web connector data, live_action=#{socket.assigns.live_action}"
+      )
+    end
+
     # Check mailbox depth - apply backpressure if overwhelmed
     {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
 
-    if queue_len > @mailbox_backpressure_threshold do
-      # Drop this batch, client can't keep up - trigger quality downgrade
-      Logger.warning(
-        "LobbyLive #{socket.id}: mailbox backpressure (#{queue_len} msgs), dropping batch"
-      )
+    cond do
+      # CRITICAL: Queue is severely backed up - pause entirely
+      queue_len > @mailbox_critical_threshold ->
+        Logger.warning(
+          "LobbyLive #{socket.id}: CRITICAL backpressure (#{queue_len} msgs), pausing data"
+        )
 
-      # Auto-downgrade quality if we have a registered lens
-      socket =
-        if socket.assigns[:priority_lens_registered] do
-          current = socket.assigns[:current_quality] || :high
-          new_quality = downgrade_quality(current)
+        socket =
+          if socket.assigns[:priority_lens_registered] do
+            # Jump straight to paused - stop all data delivery
+            Sensocto.Lenses.PriorityLens.set_quality(socket.id, :paused)
 
-          if new_quality != current do
-            Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+            # Schedule a recovery check
+            Process.send_after(self(), :check_backpressure_recovery, @recovery_check_delay_ms)
 
             socket
-            |> assign(:current_quality, new_quality)
+            |> assign(:current_quality, :paused)
             |> push_event("quality_changed", %{
-              level: new_quality,
-              reason: "Backpressure: mailbox queue depth #{queue_len}"
+              level: :paused,
+              reason: "Critical backpressure: mailbox queue depth #{queue_len}"
             })
           else
             socket
           end
-        else
-          socket
+
+        {:noreply, socket}
+
+      # WARNING: Queue is growing - aggressive downgrade
+      queue_len > @mailbox_backpressure_threshold ->
+        Logger.warning(
+          "LobbyLive #{socket.id}: mailbox backpressure (#{queue_len} msgs), dropping batch"
+        )
+
+        # Auto-downgrade quality aggressively if we have a registered lens
+        socket =
+          if socket.assigns[:priority_lens_registered] do
+            current = socket.assigns[:current_quality] || :high
+            # Skip intermediate levels when queue is high
+            new_quality =
+              cond do
+                queue_len > 100 -> :minimal
+                queue_len > 75 -> :low
+                true -> downgrade_quality(current)
+              end
+
+            if new_quality != current do
+              Sensocto.Lenses.PriorityLens.set_quality(socket.id, new_quality)
+
+              socket
+              |> assign(:current_quality, new_quality)
+              |> push_event("quality_changed", %{
+                level: new_quality,
+                reason: "Backpressure: mailbox queue depth #{queue_len}"
+              })
+            else
+              socket
+            end
+          else
+            socket
+          end
+
+        {:noreply, socket}
+
+      # Normal processing
+      true ->
+        socket = assign(socket, :data_mode, :realtime)
+
+        case socket.assigns.live_action do
+          :sensors ->
+            socket = process_lens_batch_for_sensors(socket, batch_data)
+            {:noreply, socket}
+
+          action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
+            socket = process_lens_batch_for_composite(socket, batch_data, action)
+            {:noreply, socket}
+
+          :graph ->
+            socket = process_lens_batch_for_graph(socket, batch_data)
+            {:noreply, socket}
+
+          _ ->
+            {:noreply, socket}
         end
-
-      {:noreply, socket}
-    else
-      socket = assign(socket, :data_mode, :realtime)
-
-      case socket.assigns.live_action do
-        :sensors ->
-          socket = process_lens_batch_for_sensors(socket, batch_data)
-          {:noreply, socket}
-
-        action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
-          socket = process_lens_batch_for_composite(socket, batch_data, action)
-          {:noreply, socket}
-
-        :graph ->
-          socket = process_lens_batch_for_graph(socket, batch_data)
-          {:noreply, socket}
-
-        _ ->
-          {:noreply, socket}
-      end
     end
   end
 
@@ -899,6 +948,39 @@ defmodule SensoctoWeb.LobbyLive do
         # ECG, IMU, skeleton need real-time data - digest mode just shows placeholder
         {:noreply, socket}
     end
+  end
+
+  # Recovery check for paused quality mode
+  # When mailbox has drained, recover to minimal quality to resume data flow
+  @impl true
+  def handle_info(:check_backpressure_recovery, socket) do
+    {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
+    current_quality = socket.assigns[:current_quality]
+
+    socket =
+      if current_quality == :paused and queue_len < @mailbox_recovery_threshold do
+        Logger.info(
+          "LobbyLive #{socket.id}: Recovering from paused (queue: #{queue_len}), resuming at minimal"
+        )
+
+        Sensocto.Lenses.PriorityLens.set_quality(socket.id, :minimal)
+
+        socket
+        |> assign(:current_quality, :minimal)
+        |> push_event("quality_changed", %{
+          level: :minimal,
+          reason: "Recovered from backpressure (queue: #{queue_len})"
+        })
+      else
+        # Still under pressure or not paused, schedule another check if paused
+        if current_quality == :paused do
+          Process.send_after(self(), :check_backpressure_recovery, @recovery_check_delay_ms)
+        end
+
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   # ==========================================================================
@@ -1472,6 +1554,21 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   # Whiteboard PubSub handlers
+
+  # Real-time stroke progress for live drawing preview
+  @impl true
+  def handle_info({:whiteboard_stroke_progress, %{stroke: stroke, user_id: user_id}}, socket) do
+    # Don't echo back to the user who is drawing
+    if socket.assigns.current_user &&
+         to_string(socket.assigns.current_user.id) != to_string(user_id) do
+      send_update(WhiteboardComponent,
+        id: "lobby-whiteboard",
+        stroke_progress: %{stroke: stroke, user_id: user_id}
+      )
+    end
+
+    {:noreply, socket}
+  end
 
   # Batched strokes for scalability
   @impl true
@@ -2291,6 +2388,7 @@ defmodule SensoctoWeb.LobbyLive do
   defp downgrade_quality(:medium), do: :low
   defp downgrade_quality(:low), do: :minimal
   defp downgrade_quality(:minimal), do: :minimal
+  defp downgrade_quality(:paused), do: :paused
 
   # Maximum send_update calls per batch cycle to prevent overwhelming the system
   @max_updates_per_batch 20
@@ -2331,13 +2429,46 @@ defmodule SensoctoWeb.LobbyLive do
     # This reduces unnecessary work when batch_data is sparse
     sensors_with_data = Map.keys(batch_data) |> MapSet.new()
 
+    # Debug: Check if web connector sensor has button data in this batch
+    web_connector_id = "46991438cf49"
+
+    if Map.has_key?(batch_data, web_connector_id) do
+      sensor_attrs = Map.get(batch_data, web_connector_id, %{})
+      attr_keys = Map.keys(sensor_attrs)
+      Logger.debug("LobbyLive: Web connector attrs in batch: #{inspect(attr_keys)}")
+
+      button_data = Map.get(sensor_attrs, "button")
+
+      if button_data do
+        Logger.debug("LobbyLive: Web connector button data: #{inspect(button_data)}")
+        is_visible = web_connector_id in visible_sensor_ids
+
+        Logger.debug(
+          "LobbyLive: visible_range=#{inspect({start_idx, end_idx})}, sensor in visible=#{is_visible}"
+        )
+      end
+    end
+
     # Filter to visible sensors with data, then rate-limit
     sensors_to_update =
       visible_sensor_ids
       |> Enum.filter(&MapSet.member?(sensors_with_data, &1))
       |> Enum.take(@max_updates_per_batch)
 
-    Enum.each(sensors_to_update, fn sensor_id ->
+    # Also find non-visible sensors that have button data - buttons need instant feedback
+    # even when the sensor card isn't visible (summary bar shows button state)
+    non_visible_sensors_with_buttons =
+      batch_data
+      |> Enum.filter(fn {sensor_id, attrs} ->
+        not MapSet.member?(MapSet.new(visible_sensor_ids), sensor_id) and
+          Map.has_key?(attrs, "button")
+      end)
+      |> Enum.map(fn {sensor_id, _} -> sensor_id end)
+
+    # Combine visible sensors + non-visible sensors with button data
+    all_sensors_to_update = sensors_to_update ++ non_visible_sensors_with_buttons
+
+    Enum.each(all_sensors_to_update, fn sensor_id ->
       attributes = Map.get(batch_data, sensor_id, %{})
 
       measurements =
@@ -2368,10 +2499,13 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   # Add event field to measurement if present (for button press/release)
+  # Handles both atom and string keys for robustness
   defp maybe_add_event(measurement, source) do
-    case Map.get(source, :event) do
+    event = Map.get(source, :event) || Map.get(source, "event")
+
+    case event do
       nil -> measurement
-      event -> Map.put(measurement, :event, event)
+      e -> Map.put(measurement, :event, e)
     end
   end
 

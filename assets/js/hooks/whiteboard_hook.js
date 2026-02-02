@@ -215,6 +215,10 @@ const WhiteboardHook = {
             if (dist >= CONFIG.MIN_DISTANCE) {
                 this.currentStroke.points.push(point);
                 this.drawLine(this.lastPoint, point, this.currentStroke.color, this.currentStroke.width);
+
+                // Broadcast progress for real-time sync with others
+                this.sendStrokeProgress();
+
                 this.lastPoint = point;
             }
         } else if (this.currentTool === 'line' || this.currentTool === 'rect') {
@@ -222,6 +226,20 @@ const WhiteboardHook = {
             this.redrawCanvas();
             this.drawShapePreview(this.currentStroke.points[0], point);
         }
+    },
+
+    // Send stroke progress for real-time sync (throttled)
+    sendStrokeProgress() {
+        if (!this.currentStroke) return;
+
+        // Throttle to avoid flooding the server (send every ~50ms)
+        const now = Date.now();
+        if (this._lastProgressSent && (now - this._lastProgressSent) < 50) {
+            return;
+        }
+        this._lastProgressSent = now;
+
+        this.pushEventTo(this.el, 'stroke_progress', { stroke: this.currentStroke });
     },
 
     handlePointerUp(e) {
@@ -322,6 +340,16 @@ const WhiteboardHook = {
             this.log('Background changed to', color);
             this.backgroundColor = color;
             this.redrawCanvas();
+        });
+
+        // Real-time stroke progress from other users
+        this.handleEvent('whiteboard_stroke_progress', ({ stroke, user_id }) => {
+            // Only draw if it's from another user (server already filters, but double-check)
+            if (user_id !== this.currentUserId) {
+                // Redraw canvas and then draw the in-progress stroke on top
+                this.redrawCanvas();
+                this.drawStroke(stroke);
+            }
         });
     },
 

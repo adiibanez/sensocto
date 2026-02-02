@@ -93,8 +93,10 @@ export const AttentionTracker = {
     // This handles cases where elements are added without triggering updated()
     this.setupMutationObserver();
 
-    // Set up latency measurement ping/pong
-    this.setupLatencyMeasurement();
+    // DISABLED: Latency measurement should be done at connector level, not per-sensor
+    // This was causing massive overhead with 50+ sensors (50+ ping/pong every 3-5 seconds)
+    // See: https://github.com/sensocto/sensocto/issues/xxx
+    // this.setupLatencyMeasurement();
   },
 
   mounted() {

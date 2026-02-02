@@ -52,6 +52,7 @@
             :medium -> "bg-yellow-600/20 text-yellow-400 border border-yellow-600/30"
             :low -> "bg-orange-600/20 text-orange-400 border border-orange-600/30"
             :minimal -> "bg-red-600/20 text-red-400 border border-red-600/30"
+            :paused -> "bg-gray-600/20 text-gray-400 border border-gray-600/30 animate-pulse"
           end}>
           <span class={"w-2 h-2 rounded-full " <>
             case @current_quality do
@@ -59,6 +60,7 @@
               :medium -> "bg-yellow-400"
               :low -> "bg-orange-400"
               :minimal -> "bg-red-400 animate-pulse"
+              :paused -> "bg-gray-400 animate-pulse"
             end}>
           </span>
           <span>{@current_quality |> to_string() |> String.capitalize()}</span>

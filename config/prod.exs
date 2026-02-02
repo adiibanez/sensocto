@@ -32,13 +32,13 @@ config :sensocto, SensoctoWeb.Endpoint,
   ]
 
 # Memory pressure configuration for production
-# In production, the system should start protecting itself early (70%)
-# to ensure stability under high load - "stay alive no matter what"
+# Protection starts at 85% to allow more headroom for normal operations
+# Critical at 92% triggers maximum backpressure
 config :sensocto, :memory_pressure,
-  # Start protection at 70% memory pressure (conservative for production)
-  protection_start: 0.70,
+  # Start protection at 85% memory pressure
+  protection_start: 0.85,
   # Critical memory level - maximum backpressure on all non-high attention sensors
-  critical: 0.85
+  critical: 0.92
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

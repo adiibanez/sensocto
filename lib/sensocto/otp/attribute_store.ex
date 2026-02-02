@@ -11,7 +11,9 @@ defmodule Sensocto.AttributeStore do
   end
 
   def put_attribute(sensor_id, attribute_id, timestamp, payload) do
-    Agent.update(via_tuple(sensor_id), fn state ->
+    # Use cast instead of update to avoid blocking under high load
+    # This prevents timeout cascades when many sensors write concurrently
+    Agent.cast(via_tuple(sensor_id), fn state ->
       srv_put_attribute_state(state, attribute_id, timestamp, payload)
     end)
   end

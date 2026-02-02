@@ -24,8 +24,9 @@ config :sensocto, Sensocto.Repo.Replica,
   pool_size: System.schedulers_online() * 2
 
 # Server is enabled for Wallaby E2E tests
+# Port 4003 to avoid conflict with other local services
 config :sensocto, SensoctoWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: 4003],
   secret_key_base: "i/v92TEKlmVLlVKHZmMBmLqqiwUJKveGMVted/Nu77Ln0UDDKD6MLuaVxbnhpXVx",
   server: true
 
@@ -54,7 +55,7 @@ config :sensocto, enable_rate_limiting_in_test: false
 # Wallaby browser testing configuration
 config :wallaby,
   driver: Wallaby.Chrome,
-  base_url: "http://localhost:4002",
+  base_url: "http://localhost:4003",
   screenshot_on_failure: true,
   screenshot_dir: "tmp/wallaby_screenshots",
   # Use headless Chrome for CI

@@ -240,13 +240,15 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     attribute_id = measurement.attribute_id
 
     # Handle button press/release events
+    event = get_event(measurement)
+
     socket =
-      if attribute_id == "button" and measurement[:event] in ["press", "release"] do
+      if attribute_id == "button" and event in ["press", "release"] do
         button_id = parse_button_id(measurement.payload)
         current_pressed = Map.get(socket_assigns.pressed_buttons, attribute_id, MapSet.new())
 
         new_pressed =
-          case measurement[:event] do
+          case event do
             "press" -> MapSet.put(current_pressed, button_id)
             "release" -> MapSet.delete(current_pressed, button_id)
           end
@@ -299,10 +301,19 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
       end)
 
     # Process button press/release events using event field
+    # Debug: log button measurements to trace event field
+    button_measurements = Enum.filter(measurements_list, &(&1[:attribute_id] == "button"))
+
+    if button_measurements != [] do
+      Logger.debug(
+        "StatefulSensorComponent #{sensor_id} received button measurements: #{inspect(button_measurements, limit: :infinity)}"
+      )
+    end
+
     socket =
       measurements_list
       |> Enum.filter(fn m ->
-        m[:attribute_id] == "button" and m[:event] in ["press", "release"]
+        m[:attribute_id] == "button" and get_event(m) in ["press", "release"]
       end)
       |> Enum.sort_by(& &1.timestamp)
       |> Enum.reduce(socket, fn measurement, acc ->
@@ -310,7 +321,7 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
         current_pressed = Map.get(acc.assigns.pressed_buttons, "button", MapSet.new())
 
         new_pressed =
-          case measurement[:event] do
+          case get_event(measurement) do
             "press" -> MapSet.put(current_pressed, button_id)
             "release" -> MapSet.delete(current_pressed, button_id)
           end
@@ -625,11 +636,23 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     {:noreply, update_attention_level(socket, sensor_id)}
   end
 
+  # Fallback for hover_enter with missing params
+  @impl true
+  def handle_event("hover_enter", _params, socket) do
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("hover_leave", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
     user_id = get_user_id(socket)
     AttentionTracker.unregister_hover(sensor_id, attr_id, user_id)
     {:noreply, update_attention_level(socket, sensor_id)}
+  end
+
+  # Fallback for hover_leave with missing params (can happen during rapid mouse movement)
+  @impl true
+  def handle_event("hover_leave", _params, socket) do
+    {:noreply, socket}
   end
 
   @impl true
@@ -786,4 +809,9 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
   end
 
   defp parse_button_id(payload), do: payload
+
+  # Get event field from measurement - handles both atom and string keys
+  defp get_event(measurement) do
+    Map.get(measurement, :event) || Map.get(measurement, "event")
+  end
 end

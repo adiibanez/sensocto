@@ -64,6 +64,10 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
     # Push events to JavaScript hook for real-time sync
     socket =
       cond do
+        # Real-time stroke progress (live drawing preview)
+        Map.has_key?(assigns, :stroke_progress) and assigns[:stroke_progress] ->
+          push_event(socket, "whiteboard_stroke_progress", assigns[:stroke_progress])
+
         # Batched strokes (scalability optimization)
         Map.has_key?(assigns, :new_strokes) and is_list(assigns[:new_strokes]) and
             assigns[:new_strokes] != [] ->
@@ -151,6 +155,17 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
   @impl true
   def handle_event("toggle_color_picker", _, socket) do
     {:noreply, assign(socket, :show_color_picker, !socket.assigns.show_color_picker)}
+  end
+
+  @impl true
+  def handle_event("stroke_progress", %{"stroke" => stroke_data}, socket) do
+    user = socket.assigns.current_user
+    user_id = user && user.id
+
+    # Broadcast progress for real-time preview (fire-and-forget)
+    WhiteboardServer.broadcast_stroke_progress(socket.assigns.room_id, stroke_data, user_id)
+
+    {:noreply, socket}
   end
 
   @impl true

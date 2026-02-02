@@ -1,15 +1,17 @@
 defmodule Sensocto.Discovery.SyncWorker do
   @moduledoc """
-  Background worker that syncs discovery cache with cluster state.
+  Event-driven worker that syncs discovery cache with cluster state.
 
-  Uses PubSub for real-time updates and periodic full sync as safety net.
+  Relies entirely on PubSub events for real-time updates. Only performs
+  full sync on startup or when manually triggered (for debugging/recovery).
 
   ## Design Principles
 
-  1. **Non-blocking**: Never blocks on slow nodes
-  2. **Debouncing**: Coalesces rapid updates to reduce load
-  3. **Priority**: Deletes processed immediately, updates debounced
-  4. **Resilience**: Handles node failures gracefully
+  1. **Event-driven**: No periodic polling - reacts to sensor lifecycle events
+  2. **Non-blocking**: Never blocks on slow nodes
+  3. **Debouncing**: Coalesces rapid updates to reduce load
+  4. **Priority**: Deletes processed immediately, updates debounced
+  5. **Resilience**: Monitors cluster membership for node failures
   """
   use GenServer
   require Logger
@@ -17,7 +19,6 @@ defmodule Sensocto.Discovery.SyncWorker do
   alias Sensocto.Discovery.DiscoveryCache
 
   @pubsub Sensocto.PubSub
-  @sync_interval_ms 30_000
   @debounce_ms 100
 
   # Client API
@@ -28,6 +29,7 @@ defmodule Sensocto.Discovery.SyncWorker do
 
   @doc """
   Triggers an immediate full sync of all sensors.
+  Use sparingly - only for debugging or recovery scenarios.
   """
   def force_sync do
     GenServer.cast(__MODULE__, :force_sync)
@@ -37,16 +39,16 @@ defmodule Sensocto.Discovery.SyncWorker do
 
   @impl true
   def init(_opts) do
-    # Subscribe to discovery events
+    # Subscribe to discovery events (sensor lifecycle)
     Phoenix.PubSub.subscribe(@pubsub, "discovery:sensors")
 
-    # Schedule periodic full sync
-    schedule_full_sync()
+    # Monitor cluster membership for node up/down events
+    :net_kernel.monitor_nodes(true)
 
-    # Perform initial sync
+    # Perform initial sync only on startup
     send(self(), :initial_sync)
 
-    Logger.info("[SyncWorker] Started, subscribed to discovery:sensors")
+    Logger.info("[SyncWorker] Started (event-driven mode), subscribed to discovery:sensors")
 
     {:ok, %{pending_updates: [], debounce_timer: nil}}
   end
@@ -91,18 +93,29 @@ defmodule Sensocto.Discovery.SyncWorker do
     {:noreply, state}
   end
 
-  # Periodic full sync
+  # Handle node up - reconcile sensors from that node
   @impl true
-  def handle_info(:full_sync, state) do
-    Logger.debug("[SyncWorker] Running periodic full sync")
-    sync_sensors()
-    schedule_full_sync()
+  def handle_info({:nodeup, node}, state) do
+    Logger.info(
+      "[SyncWorker] Node joined cluster: #{node}, will receive sensor events via PubSub"
+    )
+
+    # No action needed - sensors on the new node will broadcast their registration
+    {:noreply, state}
+  end
+
+  # Handle node down - clean up sensors from that node
+  @impl true
+  def handle_info({:nodedown, node}, state) do
+    Logger.info("[SyncWorker] Node left cluster: #{node}, cleaning up its sensors")
+    # Clean up sensors that were on the departed node
+    cleanup_sensors_from_node(node)
     {:noreply, state}
   end
 
   @impl true
   def handle_cast(:force_sync, state) do
-    Logger.info("[SyncWorker] Force sync requested")
+    Logger.info("[SyncWorker] Force sync requested (manual recovery)")
     sync_sensors()
     {:noreply, state}
   end
@@ -143,6 +156,11 @@ defmodule Sensocto.Discovery.SyncWorker do
       {:ok, {id, {:ok, state}}} ->
         DiscoveryCache.put_sensor(id, state)
 
+      {:ok, {id, {:error, {:noproc, _}}}} ->
+        # Sensor process no longer exists - clean up stale cache entry
+        Logger.debug("[SyncWorker] Sensor #{id} process gone, removing from cache")
+        DiscoveryCache.delete_sensor(id)
+
       {:ok, {id, {:error, reason}}} ->
         Logger.warning("[SyncWorker] Failed to sync sensor #{id}: #{inspect(reason)}")
 
@@ -173,7 +191,19 @@ defmodule Sensocto.Discovery.SyncWorker do
     end
   end
 
-  defp schedule_full_sync do
-    Process.send_after(self(), :full_sync, @sync_interval_ms)
+  # Clean up sensors that were registered from a departed node
+  defp cleanup_sensors_from_node(departed_node) do
+    # Get all cached sensors and remove those from the departed node
+    DiscoveryCache.list_sensors()
+    |> Enum.filter(fn {_sensor_id, sensor_data} ->
+      Map.get(sensor_data, :node) == departed_node
+    end)
+    |> Enum.each(fn {sensor_id, _} ->
+      Logger.debug(
+        "[SyncWorker] Removing sensor #{sensor_id} from departed node #{departed_node}"
+      )
+
+      DiscoveryCache.delete_sensor(sensor_id)
+    end)
   end
 end

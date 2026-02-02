@@ -71,6 +71,9 @@ defmodule Sensocto.Domain.Supervisor do
       # Adaptive data lenses - must start before sensors so Router can receive data
       Sensocto.Lenses.Supervisor,
 
+      # Attribute storage ETS tables - must exist before any sensors start
+      Sensocto.AttributeStoreTiered.TableOwner,
+
       # Sensor domain - manages individual sensor processes
       Sensocto.SensorsDynamicSupervisor,
 

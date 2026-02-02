@@ -132,6 +132,16 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
     :exit, _ -> {:error, :not_found}
   end
 
+  @doc """
+  Broadcasts stroke progress for real-time drawing preview.
+  This is fire-and-forget (cast) for low latency - doesn't add to permanent strokes.
+  """
+  def broadcast_stroke_progress(room_id, stroke_data, user_id) do
+    GenServer.cast(via_tuple(room_id), {:stroke_progress, stroke_data, user_id})
+  catch
+    :exit, _ -> :ok
+  end
+
   # ============================================================================
   # Server Callbacks
   # ============================================================================
@@ -371,6 +381,16 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
     {:noreply, %{state | stroke_batch: [], stroke_batch_timer_ref: nil}}
   end
 
+  @impl true
+  def handle_cast({:stroke_progress, stroke_data, user_id}, state) do
+    # Broadcast stroke progress for real-time preview (only if user can control)
+    if can_control?(state, user_id) do
+      do_broadcast_stroke_progress(state, stroke_data, user_id)
+    end
+
+    {:noreply, state}
+  end
+
   # ============================================================================
   # Private Functions
   # ============================================================================
@@ -471,6 +491,14 @@ defmodule Sensocto.Whiteboard.WhiteboardServer do
       Sensocto.PubSub,
       pubsub_topic(state),
       {:whiteboard_strokes_batch, %{strokes: strokes}}
+    )
+  end
+
+  defp do_broadcast_stroke_progress(state, stroke_data, user_id) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      pubsub_topic(state),
+      {:whiteboard_stroke_progress, %{stroke: stroke_data, user_id: user_id}}
     )
   end
 end

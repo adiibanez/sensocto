@@ -4,7 +4,8 @@
 #
 
 app = 'sensocto'
-primary_region = 'ams'
+# Frankfurt is the primary region - min_machines_running only applies here
+primary_region = 'fra'
 kill_signal = 'SIGTERM'
 
 [build]
@@ -23,6 +24,8 @@ kill_signal = 'SIGTERM'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
+  # This only keeps 1 machine running in the PRIMARY REGION (fra)
+  # Other regions will auto-stop when idle and auto-start on traffic
   min_machines_running = 1
   processes = ['app']
 
@@ -31,17 +34,13 @@ kill_signal = 'SIGTERM'
     hard_limit = 1000
     soft_limit = 1000
 
-  # Ensure Frankfurt (fra) always has 1 node running
-  [[http_service.machine]]
-    region = 'fra'
-    min = 1
-    max = 5
-
-  # Amsterdam can scale to zero when idle
-  [[http_service.machine]]
-    region = 'ams'
-    min = 0
-    max = 5
+# HTTP health checks - Fly Proxy uses these to determine machine health
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "15s"
+  method = "GET"
+  path = "/health/live"
+  timeout = "5s"
 
 [[vm]]
   memory = '2048mb'

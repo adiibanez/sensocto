@@ -1730,6 +1730,23 @@ defmodule SensoctoWeb.RoomShowLive do
 
   # Whiteboard PubSub handlers
 
+  # Real-time stroke progress for live drawing preview
+  @impl true
+  def handle_info({:whiteboard_stroke_progress, %{stroke: stroke, user_id: user_id}}, socket) do
+    room_id = socket.assigns.room.id
+
+    # Don't echo back to the user who is drawing
+    if socket.assigns.current_user &&
+         to_string(socket.assigns.current_user.id) != to_string(user_id) do
+      send_update(WhiteboardComponent,
+        id: "whiteboard-#{room_id}",
+        stroke_progress: %{stroke: stroke, user_id: user_id}
+      )
+    end
+
+    {:noreply, socket}
+  end
+
   # Batched strokes for scalability
   @impl true
   def handle_info({:whiteboard_strokes_batch, %{strokes: strokes}}, socket) do

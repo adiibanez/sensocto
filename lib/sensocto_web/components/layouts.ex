@@ -13,6 +13,14 @@ defmodule SensoctoWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
+  Returns whether the chat feature is enabled.
+  Controlled by ENABLE_CHAT environment variable (disabled by default).
+  """
+  def chat_enabled? do
+    Application.get_env(:sensocto, :enable_chat, false)
+  end
+
+  @doc """
   Generates session data for the SenseLive component.
   Extracts bearer token from current_user in socket assigns.
   """
@@ -66,6 +74,36 @@ defmodule SensoctoWeb.Layouts do
     case AshAuthentication.Jwt.token_for_user(user) do
       {:ok, token, _claims} -> {:ok, token}
       error -> error
+    end
+  end
+
+  @doc """
+  Generates session data for the ChatSidebarLive and TabbedFooterLive components.
+  Extracts current_user and room_id from socket assigns.
+  """
+  def chat_session(socket, opts \\ []) do
+    current_user = get_current_user(socket)
+    current_path = get_current_path(socket)
+
+    # Get room_id from socket assigns if present, otherwise default to "global"
+    room_id =
+      case socket.assigns do
+        %{chat_room_id: room_id} when is_binary(room_id) -> room_id
+        _ -> Keyword.get(opts, :room_id, "global")
+      end
+
+    %{
+      "current_user" => current_user,
+      "room_id" => room_id,
+      "current_path" => current_path,
+      "chat_enabled" => chat_enabled?()
+    }
+  end
+
+  defp get_current_path(socket) do
+    case socket.assigns do
+      %{current_path: path} when is_binary(path) -> path
+      _ -> "/"
     end
   end
 end

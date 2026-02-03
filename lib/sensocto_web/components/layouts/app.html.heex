@@ -121,7 +121,7 @@
 </header>
 <main
   id="main"
-  class="px-2 py-2 pb-40 md:pb-32 flex-grow"
+  class="px-2 py-2 pb-32 md:pb-20 flex-grow"
   phx-hook="ResizeDetection"
 >
   {@inner_content}
@@ -129,56 +129,23 @@
   <SensoctoWeb.CoreComponents.flash_group flash={@flash} />
 </main>
 
-<%!-- Mobile Bottom Navigation --%>
-<nav
-  id="bottom-nav"
-  class="md:hidden fixed left-0 right-0 bg-gray-800 border-t border-gray-700 z-40 bottom-[60px]"
-  phx-hook="BottomNav"
->
-  <div class="grid grid-cols-5 h-14">
-    <.link
-      navigate={~p"/"}
-      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
-      data-path="/"
-    >
-      <Heroicons.icon name="home" type="outline" class="w-5 h-5" />
-      <span class="text-[10px] font-medium">Home</span>
-    </.link>
-    <.link
-      navigate={~p"/lobby"}
-      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
-      data-path="/lobby"
-    >
-      <Heroicons.icon name="squares-2x2" type="outline" class="w-5 h-5" />
-      <span class="text-[10px] font-medium">Lobby</span>
-    </.link>
-    <.link
-      navigate={~p"/rooms"}
-      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
-      data-path="/rooms"
-    >
-      <Heroicons.icon name="building-office" type="outline" class="w-5 h-5" />
-      <span class="text-[10px] font-medium">Rooms</span>
-    </.link>
-    <.link
-      navigate={~p"/sensors"}
-      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
-      data-path="/sensors"
-    >
-      <Heroicons.icon name="signal" type="outline" class="w-5 h-5" />
-      <span class="text-[10px] font-medium">Sensors</span>
-    </.link>
-    <.link
-      navigate={~p"/simulator"}
-      class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation min-h-[44px] text-gray-400 hover:text-gray-200 active:text-blue-400"
-      data-path="/simulator"
-    >
-      <Heroicons.icon name="cpu-chip" type="outline" class="w-5 h-5" />
-      <span class="text-[10px] font-medium">Sim</span>
-    </.link>
-  </div>
-</nav>
+<%= if SensoctoWeb.Layouts.chat_enabled?() do %>
+  <%!-- Desktop Chat Sidebar --%>
+  {live_render(@socket, SensoctoWeb.ChatSidebarLive,
+    id: "chat-sidebar-live",
+    sticky: true,
+    session: SensoctoWeb.Layouts.chat_session(@socket)
+  )}
+<% end %>
 
+<%!-- Mobile Tabbed Footer (replaces old bottom nav) --%>
+{live_render(@socket, SensoctoWeb.TabbedFooterLive,
+  id: "tabbed-footer-live",
+  sticky: true,
+  session: SensoctoWeb.Layouts.chat_session(@socket)
+)}
+
+<%!-- Speed dial positioned above footer: mobile 24 (96px), desktop 36 (144px) --%>
 <SensoctoWeb.Components.SpeedDial.speed_dial
   id="quick-actions"
   icon="hero-plus"
@@ -187,7 +154,7 @@
   color="primary"
   variant="default"
   action_position="bottom-end"
-  position_size="bottom-[140px] md:bottom-20 end-4 z-[60]"
+  position_size="bottom-24 md:bottom-36 end-4 z-[60]"
   wrapper_position="top"
   clickable
 >
@@ -201,37 +168,20 @@
   </:item>
 </SensoctoWeb.Components.SpeedDial.speed_dial>
 
+<%!-- Desktop Footer Toolbar (hidden on mobile - TabbedFooterLive handles mobile) --%>
 <div
   id="footer-toolbar"
-  class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 z-50"
+  class="hidden md:block fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 z-50"
   phx-hook="FooterToolbar"
 >
-  <%!-- Mobile layout: buttons always visible --%>
-  <div class="sm:hidden">
-    <div class="px-3 py-2">
-      {live_render(@socket, SensoctoWeb.SenseLive,
-        id: "bluetooth-mobile",
-        sticky: true,
-        session: SensoctoWeb.Layouts.sense_session(@socket, mobile: true)
-      )}
-    </div>
-  </div>
-
-  <%!-- Desktop layout --%>
-  <div class="hidden sm:block">
-    <div class="max-w-7xl mx-auto px-4 py-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2 text-sm text-gray-400">
-          <Heroicons.icon name="signal" type="outline" class="h-4 w-4" />
-          <span>Web Connector</span>
-        </div>
-        <div class="flex-1 mx-4 overflow-x-auto">
-          {live_render(@socket, SensoctoWeb.SenseLive,
-            id: "bluetooth",
-            sticky: true,
-            session: SensoctoWeb.Layouts.sense_session(@socket)
-          )}
-        </div>
+  <div class="max-w-7xl mx-auto px-4 py-2">
+    <div class="flex items-center justify-center">
+      <div class="overflow-x-auto">
+        {live_render(@socket, SensoctoWeb.SenseLive,
+          id: "bluetooth",
+          sticky: true,
+          session: SensoctoWeb.Layouts.sense_session(@socket)
+        )}
       </div>
     </div>
   </div>

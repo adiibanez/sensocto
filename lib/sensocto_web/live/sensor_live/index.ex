@@ -21,6 +21,7 @@ defmodule SensoctoWeb.SensorLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Sensors")
+     |> assign(:current_path, "/sensors")
      |> assign(:sensors, sensors)
      |> assign(:loading, false)}
   end

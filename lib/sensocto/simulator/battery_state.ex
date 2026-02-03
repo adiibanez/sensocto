@@ -22,19 +22,18 @@ defmodule Sensocto.Simulator.BatteryState do
   # Check every 10 seconds for state flip (faster for demo)
   @state_check_interval :timer.seconds(10)
 
-  # Demo rates (% per minute) - accelerated for visible diversity
-  # Drain faster than charge to create low battery sensors over time
-  @drain_rate_active 1.5
+  # Demo rates (% per minute) - balanced for stable distribution
+  # Slightly faster charge than drain to prevent all sensors going critical
+  @drain_rate_active 0.8
   # @drain_rate_standby 0.025  # Reserved for future standby mode
-  @charge_rate_normal 0.6
+  @charge_rate_normal 1.0
   # @charge_rate_fast 1.5  # Reserved for future fast charging mode
 
-  # Charging flip parameters (in minutes) - asymmetric for more diversity
-  # Longer drain cycles create more low battery sensors
-  @min_flip_duration_drain 5
-  @max_flip_duration_drain 15
-  @min_flip_duration_charge 2
-  @max_flip_duration_charge 8
+  # Charging flip parameters (in minutes) - symmetric for balanced distribution
+  @min_flip_duration_drain 4
+  @max_flip_duration_drain 12
+  @min_flip_duration_charge 4
+  @max_flip_duration_charge 12
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -185,8 +184,8 @@ defmodule Sensocto.Simulator.BatteryState do
           20.0 + :rand.uniform() * 70.0
       end
 
-    # Random initial charging state (30% chance of charging)
-    charging = :rand.uniform() < 0.3
+    # Random initial charging state (40% chance of charging for balanced distribution)
+    charging = :rand.uniform() < 0.4
 
     # Calculate when to flip state (random duration)
     flip_at = calculate_next_flip(now, charging)
@@ -256,8 +255,7 @@ defmodule Sensocto.Simulator.BatteryState do
   end
 
   defp calculate_next_flip(now, charging) do
-    # Asymmetric flip durations: longer drain cycles create more low battery sensors
-    # Charging sensors flip sooner (2-8 min), draining sensors stay longer (5-15 min)
+    # Symmetric flip durations for balanced battery distribution
     {min_duration, max_duration} =
       if charging do
         {@min_flip_duration_charge, @max_flip_duration_charge}

@@ -222,6 +222,9 @@ config :sensocto, :simulator,
   autostart: true,
   config_path: "config/simulators.yaml"
 
+# Enable chat feature in development
+config :sensocto, :enable_chat, true
+
 # OpenAPI spec - disable caching in development for faster iteration
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 

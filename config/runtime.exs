@@ -33,6 +33,13 @@ if System.get_env("ENABLE_TIDEWAVE") in ~w(true 1) do
     root: System.get_env("RELEASE_ROOT") || File.cwd!()
 end
 
+# Chat feature - disabled by default in production, enable via environment variable
+# Set ENABLE_CHAT=true to enable the chat sidebar (desktop) and chat tab (mobile)
+# In dev, this is set in config/dev.exs
+if env = System.get_env("ENABLE_CHAT") do
+  config :sensocto, :enable_chat, env in ~w(true 1)
+end
+
 # Simulator configuration - can be enabled via environment variable
 if System.get_env("SIMULATOR_ENABLED") in ~w(true 1) do
   config :sensocto, :simulator,

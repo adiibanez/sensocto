@@ -5,6 +5,7 @@ defmodule SensoctoWeb.RoomShowLive do
   """
   use SensoctoWeb, :live_view
   use LiveSvelte.Components
+  use Sensocto.Chat.AIChatHandler
   require Logger
 
   alias Sensocto.Rooms
@@ -54,6 +55,9 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to global sensor events to auto-join web connector sensors
           PubSub.subscribe(Sensocto.PubSub, "sensors:global")
 
+          # Subscribe to chat messages for this room
+          Sensocto.Chat.ChatStore.subscribe("room:#{room_id}")
+
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end
 
@@ -71,6 +75,9 @@ defmodule SensoctoWeb.RoomShowLive do
           # Store socket.id for multi-tab sync identification
           |> assign(:socket_id, socket.id)
           |> assign(:page_title, room.name)
+          # Chat context for layout-level chat components
+          |> assign(:chat_room_id, "room:#{room_id}")
+          |> assign(:current_path, "/rooms/#{room_id}")
           |> assign(:room, room)
           |> assign(:sensors, room.sensors || [])
           |> assign(:sensors_state, sensors_state)
@@ -3802,6 +3809,14 @@ defmodule SensoctoWeb.RoomShowLive do
         </div>
       </div>
     </div>
+
+    <%!-- Chat Component --%>
+    <.live_component
+      module={SensoctoWeb.Components.ChatComponent}
+      id={"room-chat-#{@room.id}"}
+      room_id={"room:#{@room.id}"}
+      current_user={@current_user}
+    />
     """
   end
 

@@ -248,7 +248,9 @@ defmodule Sensocto.Accounts.GuestUserStore do
   end
 
   defp cleanup_expired_sessions(cutoff) do
-    case Ash.read(GuestSession, action: :expired, arguments: %{before: cutoff}) do
+    query = Ash.Query.for_read(GuestSession, :expired, %{before: cutoff})
+
+    case Ash.read(query) do
       {:ok, expired_sessions} ->
         Enum.each(expired_sessions, fn session ->
           :ets.delete(@ets_table, session.id)

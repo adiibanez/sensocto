@@ -123,6 +123,7 @@ defmodule SensoctoWeb.Router do
 
       # ===== Protected pages (auth required - handled in LiveView mount) =====
       live "/playground", Live.PlaygroundLive, :index
+      live "/ai-chat", AIChatLive, :index
       live "/lvn", Live.LvnEntryLive, :index
       live "/", IndexLive, :index
       live "/lobby", LobbyLive, :sensors

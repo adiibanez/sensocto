@@ -18,6 +18,7 @@ defmodule SensoctoWeb.RoomListLive do
     socket =
       socket
       |> assign(:page_title, "Rooms")
+      |> assign(:current_path, "/rooms")
       |> assign(:user_rooms, Rooms.list_user_rooms(user))
       |> assign(:public_rooms, Rooms.list_public_rooms())
       |> assign(:show_create_modal, false)

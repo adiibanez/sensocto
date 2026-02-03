@@ -2186,4 +2186,55 @@ Hooks.ColorPickerPortal = {
     }
 };
 
+// Chat Sidebar Hook - persists sidebar open/close state
+Hooks.ChatSidebarHook = {
+    mounted() {
+        // Restore state from localStorage
+        const isOpen = localStorage.getItem('chat_sidebar_open') === 'true';
+        if (isOpen) {
+            this.pushEvent('open_sidebar', {});
+        }
+
+        // Handle escape key to close
+        this.handleKeydown = (e) => {
+            if (e.key === 'Escape') {
+                const sidebar = document.getElementById('chat-sidebar');
+                if (sidebar) {
+                    this.pushEvent('close_sidebar', {});
+                }
+            }
+        };
+        document.addEventListener('keydown', this.handleKeydown);
+
+        // Listen for state change events from server
+        this.handleEvent('sidebar_opened', () => {
+            localStorage.setItem('chat_sidebar_open', 'true');
+        });
+
+        this.handleEvent('sidebar_closed', () => {
+            localStorage.setItem('chat_sidebar_open', 'false');
+        });
+    },
+
+    destroyed() {
+        document.removeEventListener('keydown', this.handleKeydown);
+    }
+};
+
+// Tabbed Footer Hook - persists active tab state
+Hooks.TabbedFooterHook = {
+    mounted() {
+        // Restore active tab from localStorage
+        const savedTab = localStorage.getItem('mobile_active_tab');
+        if (savedTab && savedTab !== 'nav') {
+            this.pushEvent('switch_tab', { tab: savedTab });
+        }
+
+        // Listen for save events from server
+        this.handleEvent('save_active_tab', ({ tab }) => {
+            localStorage.setItem('mobile_active_tab', tab);
+        });
+    }
+};
+
 export default Hooks;

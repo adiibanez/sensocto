@@ -15,12 +15,7 @@
   </.breadcrumbs>
 
   <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center gap-3 text-xs text-gray-500">
-      <span>{@sensors_online_count} sensors online</span>
-      <span :if={@current_quality != :high}>
-        | Quality: {@current_quality |> to_string() |> String.capitalize()}
-      </span>
-    </div>
+    <div class="flex items-center gap-3 text-xs text-gray-500"></div>
     <div class="flex items-center gap-4">
       <button
         phx-click="open_join_modal"

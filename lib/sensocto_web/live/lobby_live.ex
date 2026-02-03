@@ -6,6 +6,7 @@ defmodule SensoctoWeb.LobbyLive do
   use SensoctoWeb, :live_view
   require Logger
   use LiveSvelte.Components
+  use Sensocto.Chat.AIChatHandler
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
@@ -72,6 +73,8 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
     # Subscribe to favorite toggle events from child sensor LiveViews
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
+    # Subscribe to chat messages for the lobby
+    Sensocto.Chat.ChatStore.subscribe("lobby")
 
     # Subscribe to user-specific attention level updates for webcam backpressure
     user = socket.assigns[:current_user]
@@ -137,6 +140,9 @@ defmodule SensoctoWeb.LobbyLive do
         # Store socket.id for multi-tab sync identification
         socket_id: socket.id,
         page_title: "Lobby",
+        # Chat context for layout-level chat components
+        chat_room_id: "lobby",
+        current_path: "/lobby",
         # Store full sensors map for LiveComponent rendering
         sensors: sensors,
         sensors_online_count: sensors_count,

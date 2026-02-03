@@ -65,6 +65,12 @@ defmodule Sensocto.SensorsDynamicSupervisor do
         DynamicSupervisor.terminate_child(__MODULE__, pid)
         Logger.debug("Stopped sensor #{sensor_id}")
 
+        # Clean up attention tracker records for this sensor
+        Sensocto.AttentionTracker.clear_sensor(sensor_id)
+
+        # Clean up attribute store records for this sensor
+        Sensocto.AttributeStoreTiered.cleanup(sensor_id)
+
         # Broadcast sensor offline event
         Phoenix.PubSub.broadcast(
           Sensocto.PubSub,

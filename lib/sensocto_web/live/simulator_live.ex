@@ -21,6 +21,7 @@ defmodule SensoctoWeb.SimulatorLive do
 
     {:ok,
      socket
+     |> assign(:current_path, "/simulator")
      |> assign(:selected_scenario, nil)
      |> assign(:selected_room_id, nil)
      |> assign_status()

@@ -90,6 +90,10 @@ defmodule Sensocto.Application do
       # Independent of domain logic, used for temporary guest sessions
       Sensocto.Accounts.GuestUserStore,
 
+      # Layer 5.6: Chat store (ETS-based, in-memory)
+      # Stores chat messages for rooms and lobbies
+      Sensocto.Chat.ChatStore,
+
       # Layer 6: Web interface (serves HTTP/WebSocket requests)
       # Must be last - depends on all business logic being available
       SensoctoWeb.Endpoint,

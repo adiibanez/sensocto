@@ -53,6 +53,7 @@ defmodule SensoctoWeb.IndexLive do
     new_socket =
       socket
       |> assign(
+        current_path: "/",
         sensors_online_count: sensors_count,
         sensors_online: %{},
         sensors_offline: %{},

@@ -156,7 +156,10 @@ defmodule Sensocto.MixProject do
       {:open_api_spex, "~> 3.21"},
 
       # Hot code upgrades for Fly.io deployments
-      {:fly_deploy, "~> 0.1.15"}
+      {:fly_deploy, "~> 0.1.15"},
+
+      # AI/LLM Integration
+      {:ollama, "~> 0.9"}
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

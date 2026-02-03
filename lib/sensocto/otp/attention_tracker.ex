@@ -124,6 +124,22 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @doc """
+  Clear all attention records for a sensor (called when sensor disconnects).
+  Removes all state from GenServer and ETS caches.
+  """
+  def clear_sensor(sensor_id) do
+    GenServer.cast(__MODULE__, {:clear_sensor, sensor_id})
+  end
+
+  @doc """
+  Clear all attention records (useful when all sensors are stopped).
+  Resets all ETS caches and internal state.
+  """
+  def clear_all do
+    GenServer.cast(__MODULE__, :clear_all)
+  end
+
+  @doc """
   Report battery/energy state for a user.
 
   Battery states: :normal, :low, :critical
@@ -540,6 +556,38 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @impl true
+  def handle_cast({:clear_sensor, sensor_id}, state) do
+    # Remove from attention_state
+    new_attention_state = Map.delete(state.attention_state, sensor_id)
+
+    # Remove from pinned_sensors
+    new_pinned_sensors = Map.delete(state.pinned_sensors, sensor_id)
+
+    # Clear ETS caches for this sensor
+    :ets.delete(@sensor_attention_table, sensor_id)
+
+    # Clear all attribute-level entries for this sensor
+    :ets.match_delete(@attention_levels_table, {{sensor_id, :_}, :_})
+
+    Logger.debug("Cleared attention records for sensor #{sensor_id}")
+
+    {:noreply,
+     %{state | attention_state: new_attention_state, pinned_sensors: new_pinned_sensors}}
+  end
+
+  @impl true
+  def handle_cast(:clear_all, state) do
+    # Clear all ETS caches
+    :ets.delete_all_objects(@sensor_attention_table)
+    :ets.delete_all_objects(@attention_levels_table)
+
+    Logger.info("Cleared all attention records")
+
+    {:noreply,
+     %{state | attention_state: %{}, pinned_sensors: %{}, battery_states: %{}, boost_timers: %{}}}
+  end
+
+  @impl true
   def handle_cast({:battery_state, user_id, battery_state, metadata}, state) do
     {old_state, _old_metadata} = Map.get(state.battery_states, user_id, {:normal, nil})
 
@@ -630,6 +678,15 @@ defmodule Sensocto.AttentionTracker do
     # Clean up ETS entries for removed records
     for {sensor_id, attr_id} <- removed_entries do
       delete_ets_cache(sensor_id, attr_id)
+    end
+
+    # Find sensors that were completely removed and clean up their sensor-level ETS entries
+    old_sensors = Map.keys(state.attention_state)
+    new_sensors = Map.keys(new_attention_state)
+    removed_sensors = old_sensors -- new_sensors
+
+    for sensor_id <- removed_sensors do
+      :ets.delete(@sensor_attention_table, sensor_id)
     end
 
     schedule_cleanup()

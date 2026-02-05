@@ -4,17 +4,32 @@ defmodule SensoctoWeb.UserSettingsLive do
 
   Provides access to:
   - Profile information
+  - Language preferences
   - Mobile device linking (QR code)
   - Account settings
   """
   use SensoctoWeb, :live_view
   require Logger
 
+  alias Sensocto.Accounts.UserPreferences
+
   # Require authentication for this LiveView
   on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
 
   # Token valid for 5 minutes (short-lived for security)
   @token_lifetime_seconds 5 * 60
+
+  # Available locales with native language names
+  @locales [
+    {"English", "en"},
+    {"Deutsch", "de"},
+    {"Schwiizerdütsch", "gsw"},
+    {"Français", "fr"},
+    {"Español", "es"},
+    {"Português (Brasil)", "pt_BR"},
+    {"中文", "zh"},
+    {"日本語", "ja"}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -27,6 +42,11 @@ defmodule SensoctoWeb.UserSettingsLive do
 
     # Calculate time remaining
     time_remaining = DateTime.diff(expires_at, DateTime.utc_now())
+
+    # Get current locale from socket or user preferences
+    current_locale =
+      socket.assigns[:locale] ||
+        UserPreferences.get_ui_state(user.id, "locale", "en")
 
     # Schedule token refresh countdown
     if connected?(socket) do
@@ -42,6 +62,8 @@ defmodule SensoctoWeb.UserSettingsLive do
       |> assign(:time_remaining, time_remaining)
       |> assign(:copied, false)
       |> assign(:show_qr, false)
+      |> assign(:current_locale, current_locale)
+      |> assign(:locales, @locales)
 
     {:ok, socket}
   end
@@ -100,6 +122,29 @@ defmodule SensoctoWeb.UserSettingsLive do
     {:noreply, assign(socket, :show_qr, !socket.assigns.show_qr)}
   end
 
+  @impl true
+  def handle_event("change_locale", %{"locale" => locale}, socket) do
+    user = socket.assigns.current_user
+
+    # Save preference to database
+    UserPreferences.set_ui_state(user.id, "locale", locale)
+
+    # Update Gettext locale for current process
+    Gettext.put_locale(SensoctoWeb.Gettext, locale)
+
+    {:noreply,
+     socket
+     |> assign(:current_locale, locale)
+     |> assign(:locale, locale)
+     |> put_flash(:info, gettext("Language updated"))}
+  end
+
+  defp generate_mobile_token(%{is_guest: true} = user) do
+    # Guest users can't use AshAuthentication JWT - use fallback token
+    expires_at = DateTime.add(DateTime.utc_now(), @token_lifetime_seconds, :second)
+    generate_fallback_token(user, expires_at)
+  end
+
   defp generate_mobile_token(user) do
     expires_at = DateTime.add(DateTime.utc_now(), @token_lifetime_seconds, :second)
 
@@ -114,9 +159,17 @@ defmodule SensoctoWeb.UserSettingsLive do
   end
 
   defp generate_fallback_token(user, expires_at) do
+    # Handle both Ash structs (with .email) and guest maps (with .display_name)
+    email_or_name =
+      case user do
+        %{email: email} when is_binary(email) -> email
+        %{display_name: name} when is_binary(name) -> name
+        _ -> "unknown"
+      end
+
     data = %{
       user_id: user.id,
-      email: user.email,
+      email: email_or_name,
       exp: DateTime.to_unix(expires_at),
       iat: DateTime.to_unix(DateTime.utc_now())
     }
@@ -156,12 +209,41 @@ defmodule SensoctoWeb.UserSettingsLive do
           </h2>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm text-gray-400 mb-1">Email</label>
-              <div class="text-white">{@current_user.email}</div>
+              <label class="block text-sm text-gray-400 mb-1">
+                {if Map.get(@current_user, :is_guest), do: "Name", else: "Email"}
+              </label>
+              <div class="text-white">
+                {Map.get(@current_user, :email) || Map.get(@current_user, :display_name, "Guest")}
+              </div>
             </div>
             <div>
               <label class="block text-sm text-gray-400 mb-1">Account ID</label>
               <div class="text-gray-300 font-mono text-sm">{@current_user.id}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-xl p-6">
+          <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Heroicons.icon name="language" type="outline" class="h-5 w-5 text-gray-400" /> Language
+          </h2>
+          <div class="space-y-4">
+            <p class="text-gray-400 text-sm">
+              Choose your preferred language for the application interface.
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                :for={{name, code} <- @locales}
+                phx-click="change_locale"
+                phx-value-locale={code}
+                class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors " <>
+                  if(@current_locale == code,
+                    do: "bg-indigo-600 text-white",
+                    else: "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                  )}
+              >
+                {name}
+              </button>
             </div>
           </div>
         </div>

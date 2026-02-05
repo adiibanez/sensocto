@@ -48,6 +48,11 @@ config :sensocto,
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
 
+# Internationalization (i18n) configuration
+config :sensocto, SensoctoWeb.Gettext,
+  default_locale: "en",
+  locales: ~w(en de gsw fr es pt_BR zh ja)
+
 # AttributeStore tiered storage limits (all in-memory)
 # Hot tier: fastest access, in Agent process memory
 # Warm tier: fast concurrent reads via ETS

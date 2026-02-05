@@ -27,6 +27,7 @@ defmodule SensoctoWeb.Router do
     plug :load_from_session
 
     plug SensoctoWeb.Plugs.RequestLogger
+    plug SensoctoWeb.Plugs.Locale
   end
 
   pipeline :api do
@@ -111,7 +112,8 @@ defmodule SensoctoWeb.Router do
     ash_authentication_live_session :main_app,
       on_mount: [
         {LiveUserAuth, :live_user_optional},
-        {SensoctoWeb.Live.Hooks.TrackVisitedPath, :default}
+        {SensoctoWeb.Live.Hooks.TrackVisitedPath, :default},
+        {SensoctoWeb.Live.Hooks.SetLocale, :default}
       ] do
       # ===== Public pages (no auth required) =====
       live "/about", AboutLive, :index

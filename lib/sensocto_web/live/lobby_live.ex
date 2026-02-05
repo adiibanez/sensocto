@@ -227,7 +227,9 @@ defmodule SensoctoWeb.LobbyLive do
         # Virtual scroll state
         visible_range: {0, min(@default_visible_count, sensors_count)},
         row_height: @default_row_height,
-        cols: 4
+        cols: 4,
+        # Show loading indicator during initial sensor population
+        virtual_scroll_loading: true
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -2227,6 +2229,7 @@ defmodule SensoctoWeb.LobbyLive do
      socket
      |> assign(:visible_range, {start_idx, end_idx})
      |> assign(:cols, max(1, cols))
+     |> assign(:virtual_scroll_loading, false)
      |> push_event("virtual_scroll_loaded", %{})}
   end
 

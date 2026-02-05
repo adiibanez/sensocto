@@ -210,4 +210,119 @@ defmodule Sensocto.AttentionTrackerTest do
       assert AttentionTracker.get_attention_level(sensor_id, attr2) == :none
     end
   end
+
+  describe "clear_sensor/1" do
+    test "removes all attention records for a sensor", %{user_id: user_id} do
+      sensor = "clear_sensor_test_#{System.unique_integer([:positive])}"
+      attr1 = "attr1_#{System.unique_integer([:positive])}"
+      attr2 = "attr2_#{System.unique_integer([:positive])}"
+
+      # Register attention on multiple attributes
+      AttentionTracker.register_view(sensor, attr1, user_id)
+      AttentionTracker.register_focus(sensor, attr2, user_id)
+      Process.sleep(50)
+
+      assert AttentionTracker.get_attention_level(sensor, attr1) == :medium
+      assert AttentionTracker.get_attention_level(sensor, attr2) == :high
+      assert AttentionTracker.get_sensor_attention_level(sensor) == :high
+
+      # Clear the sensor
+      AttentionTracker.clear_sensor(sensor)
+      Process.sleep(50)
+
+      # All attention should be gone
+      assert AttentionTracker.get_attention_level(sensor, attr1) == :none
+      assert AttentionTracker.get_attention_level(sensor, attr2) == :none
+      assert AttentionTracker.get_sensor_attention_level(sensor) == :none
+    end
+
+    test "removes pinned status for a sensor", %{user_id: user_id} do
+      sensor = "clear_pinned_test_#{System.unique_integer([:positive])}"
+
+      # Pin the sensor
+      AttentionTracker.pin_sensor(sensor, user_id)
+      Process.sleep(50)
+
+      assert AttentionTracker.get_sensor_attention_level(sensor) == :high
+
+      # Clear the sensor
+      AttentionTracker.clear_sensor(sensor)
+      Process.sleep(50)
+
+      # Pin should be gone
+      assert AttentionTracker.get_sensor_attention_level(sensor) == :none
+    end
+
+    test "does not affect other sensors", %{user_id: user_id} do
+      sensor1 = "clear_other_sensor1_#{System.unique_integer([:positive])}"
+      sensor2 = "clear_other_sensor2_#{System.unique_integer([:positive])}"
+      attr = "attr_#{System.unique_integer([:positive])}"
+
+      # Register attention on both sensors
+      AttentionTracker.register_view(sensor1, attr, user_id)
+      AttentionTracker.register_view(sensor2, attr, user_id)
+      Process.sleep(50)
+
+      assert AttentionTracker.get_attention_level(sensor1, attr) == :medium
+      assert AttentionTracker.get_attention_level(sensor2, attr) == :medium
+
+      # Clear only sensor1
+      AttentionTracker.clear_sensor(sensor1)
+      Process.sleep(50)
+
+      # sensor1 should be cleared, sensor2 should remain
+      assert AttentionTracker.get_attention_level(sensor1, attr) == :none
+      assert AttentionTracker.get_attention_level(sensor2, attr) == :medium
+    end
+  end
+
+  describe "clear_all/0" do
+    test "removes all attention records" do
+      sensor1 = "clear_all_sensor1_#{System.unique_integer([:positive])}"
+      sensor2 = "clear_all_sensor2_#{System.unique_integer([:positive])}"
+      attr = "attr_#{System.unique_integer([:positive])}"
+      user1 = "user1_#{System.unique_integer([:positive])}"
+      user2 = "user2_#{System.unique_integer([:positive])}"
+
+      # Register attention on multiple sensors
+      AttentionTracker.register_view(sensor1, attr, user1)
+      AttentionTracker.register_focus(sensor2, attr, user2)
+      AttentionTracker.pin_sensor(sensor1, user1)
+      Process.sleep(50)
+
+      # Verify attention is registered
+      assert AttentionTracker.get_attention_level(sensor1, attr) == :high
+      assert AttentionTracker.get_attention_level(sensor2, attr) == :high
+      assert AttentionTracker.get_sensor_attention_level(sensor1) == :high
+
+      # Clear all
+      AttentionTracker.clear_all()
+      Process.sleep(50)
+
+      # All attention should be gone
+      assert AttentionTracker.get_attention_level(sensor1, attr) == :none
+      assert AttentionTracker.get_attention_level(sensor2, attr) == :none
+      assert AttentionTracker.get_sensor_attention_level(sensor1) == :none
+      assert AttentionTracker.get_sensor_attention_level(sensor2) == :none
+    end
+
+    test "clears battery states" do
+      user = "battery_clear_user_#{System.unique_integer([:positive])}"
+
+      # Set battery state
+      AttentionTracker.report_battery_state(user, :low, source: :test, level: 20)
+      Process.sleep(50)
+
+      {state, _metadata} = AttentionTracker.get_battery_state(user)
+      assert state == :low
+
+      # Clear all
+      AttentionTracker.clear_all()
+      Process.sleep(50)
+
+      # Battery state should be cleared (defaults to :normal)
+      {state, _metadata} = AttentionTracker.get_battery_state(user)
+      assert state == :normal
+    end
+  end
 end

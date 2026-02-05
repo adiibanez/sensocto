@@ -582,14 +582,16 @@
         aria-hidden="true"
       />
 
-      <%!-- Scroll/loading indicator - shows loading spinner when fetching, "more below" when idle --%>
+      <%!-- Scroll/loading indicator - always present so JS can control it --%>
       <div
-        :if={sensors_remaining > 0}
         id="virtual-scroll-indicator"
         class="col-span-full flex items-center justify-center py-4 text-gray-400"
       >
-        <%!-- Loading spinner (hidden by default, shown by JS when loading) --%>
-        <div class="loading-spinner hidden flex items-center gap-2">
+        <%!-- Loading spinner (shown by JS when loading, or server-rendered during initial load) --%>
+        <div class={[
+          "loading-spinner flex items-center gap-2",
+          if(@virtual_scroll_loading, do: "", else: "hidden")
+        ]}>
           <svg
             class="animate-spin h-5 w-5 text-orange-400"
             xmlns="http://www.w3.org/2000/svg"
@@ -614,8 +616,14 @@
           </svg>
           <span class="text-sm">Loading sensors...</span>
         </div>
-        <%!-- "More below" indicator (shown by default, hidden by JS when loading) --%>
-        <div class="more-text flex items-center gap-2 text-xs text-gray-500">
+        <%!-- "More below" indicator (shown when there are sensors remaining and not loading) --%>
+        <div
+          :if={sensors_remaining > 0}
+          class={[
+            "more-text flex items-center gap-2 text-xs text-gray-500",
+            if(@virtual_scroll_loading, do: "hidden", else: "")
+          ]}
+        >
           <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4 animate-bounce" />
           <span>
             {sensors_remaining} more sensor{if sensors_remaining > 1, do: "s", else: ""} below

@@ -196,7 +196,7 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
      |> assign(:show_detail_modal, false)
      |> assign(:pending_measurements, [])
      |> assign(:pressed_buttons, %{})
-     |> assign(:connection_status, :connected)
+     |> assign(:connection_status, :connecting)
      |> assign(:last_data_at, nil)
      |> assign(:batch_window, 100)
      |> assign(:error_count, 0)
@@ -291,6 +291,38 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
        })
        when is_list(measurements_list) do
     sensor_id = socket_assigns.sensor_id
+    current_attributes = get_in(socket_assigns, [:sensor, :attributes]) || %{}
+
+    # Check if any measurements are for attributes not currently rendered
+    # If so, we need to refresh sensor state to render the new attribute components
+    incoming_attr_ids = measurements_list |> Enum.map(& &1.attribute_id) |> MapSet.new()
+    current_attr_ids = current_attributes |> Map.keys() |> MapSet.new()
+    new_attr_ids = MapSet.difference(incoming_attr_ids, current_attr_ids)
+
+    socket =
+      if MapSet.size(new_attr_ids) > 0 do
+        Logger.debug(
+          "StatefulSensorComponent #{sensor_id} detected new attributes: #{inspect(MapSet.to_list(new_attr_ids))} - refreshing sensor state"
+        )
+
+        # Fetch fresh sensor state to include new attributes
+        try do
+          new_sensor_state = SimpleSensor.get_view_state(sensor_id)
+
+          socket
+          |> assign(:sensor, new_sensor_state)
+          |> push_event("attributes_updated", %{})
+        catch
+          :exit, _ ->
+            Logger.warning(
+              "Sensor #{sensor_id} process not found during attribute refresh in component"
+            )
+
+            socket
+        end
+      else
+        socket
+      end
 
     # Get latest measurement per attribute for LiveComponent updates
     latest_measurements =
@@ -405,6 +437,20 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     new_attrs = sensor[:attributes] || %{}
     attrs_changed = Map.keys(new_attrs) != Map.keys(old_attrs)
 
+    # Check if sensor has any data (lastvalue in any attribute)
+    has_data =
+      new_attrs
+      |> Map.values()
+      |> Enum.any?(fn attr -> attr[:lastvalue] != nil end)
+
+    # Update connection status if currently connecting and sensor has data
+    socket =
+      if socket.assigns[:connection_status] == :connecting and has_data do
+        assign(socket, :connection_status, :connected)
+      else
+        socket
+      end
+
     socket
     |> assign(:sensor, sensor)
     |> assign(:sensor_name, sensor[:sensor_name] || sensor[:sensor_id])
@@ -418,6 +464,22 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     else
       # Fetch sensor state if not provided
       sensor = fetch_sensor_state(sensor_id)
+
+      # Check if sensor has any data (lastvalue in any attribute)
+      attrs = sensor[:attributes] || %{}
+
+      has_data =
+        attrs
+        |> Map.values()
+        |> Enum.any?(fn attr -> attr[:lastvalue] != nil end)
+
+      # Update connection status if sensor has data
+      socket =
+        if socket.assigns[:connection_status] == :connecting and has_data do
+          assign(socket, :connection_status, :connected)
+        else
+          socket
+        end
 
       socket
       |> assign(:sensor, sensor)
@@ -588,7 +650,18 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     )
 
     AttentionTracker.register_view(sensor_id, attr_id, user_id)
-    {:noreply, update_attention_level(socket, sensor_id)}
+    # Optimistically set attention to at least :medium (viewing gives medium attention)
+    # Don't downgrade if already higher (e.g., :high from hover/focus)
+    current_level = socket.assigns[:attention_level] || :none
+    new_level = highest_attention_level(current_level, :medium)
+    {:noreply, assign(socket, :attention_level, new_level)}
+  end
+
+  # Fallback for view_enter with missing params (can happen from hooks)
+  @impl true
+  def handle_event("view_enter", _params, socket) do
+    Logger.debug("[StatefulSensorComponent] view_enter with missing params, ignoring")
+    {:noreply, socket}
   end
 
   @impl true
@@ -598,11 +671,19 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     {:noreply, update_attention_level(socket, sensor_id)}
   end
 
+  # Fallback for view_leave with missing params
+  @impl true
+  def handle_event("view_leave", _params, socket) do
+    Logger.debug("[StatefulSensorComponent] view_leave with missing params, ignoring")
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("focus", %{"sensor_id" => sensor_id, "attribute_id" => attr_id}, socket) do
     user_id = get_user_id(socket)
     AttentionTracker.register_focus(sensor_id, attr_id, user_id)
-    {:noreply, update_attention_level(socket, sensor_id)}
+    # Optimistically set attention to :high since focus always results in high attention
+    {:noreply, assign(socket, :attention_level, :high)}
   end
 
   @impl true
@@ -633,7 +714,9 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     )
 
     AttentionTracker.register_hover(sensor_id, attr_id, user_id)
-    {:noreply, update_attention_level(socket, sensor_id)}
+    # Optimistically set attention to :high since hover always results in high attention
+    # This avoids a race condition where the async cast hasn't updated ETS yet
+    {:noreply, assign(socket, :attention_level, :high)}
   end
 
   # Fallback for hover_enter with missing params
@@ -733,6 +816,12 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
 
   defp get_user_id(socket) do
     socket.assigns[:user_id] || socket.id || "anonymous"
+  end
+
+  # Return the higher of two attention levels
+  defp highest_attention_level(a, b) do
+    priority = %{high: 3, medium: 2, low: 1, none: 0}
+    if priority[a] >= priority[b], do: a, else: b
   end
 
   # Update attention_level assign by reading from AttentionTracker ETS cache

@@ -21,11 +21,19 @@
         <span class="mr-0.5">&#8984;</span>K
       </kbd>
     </button>
-    <.link navigate={~p"/"} class="text-gray-300 hover:text-white mr-4">Home</.link>
-    <.link navigate={~p"/lobby"} class="text-gray-300 hover:text-white mr-4">Lobby</.link>
-    <.link navigate={~p"/rooms"} class="text-gray-300 hover:text-white mr-4">Rooms</.link>
-    <.link navigate={~p"/simulator"} class="text-gray-300 hover:text-white mr-4">Sim</.link>
-    <.link navigate={~p"/about"} class="text-gray-300 hover:text-white mr-4">About</.link>
+    <.link navigate={~p"/"} class="text-gray-300 hover:text-white mr-4">{gettext("Home")}</.link>
+    <.link navigate={~p"/lobby"} class="text-gray-300 hover:text-white mr-4">
+      {gettext("Lobby")}
+    </.link>
+    <.link navigate={~p"/rooms"} class="text-gray-300 hover:text-white mr-4">
+      {gettext("Rooms")}
+    </.link>
+    <.link navigate={~p"/simulator"} class="text-gray-300 hover:text-white mr-4">
+      {gettext("Sim")}
+    </.link>
+    <.link navigate={~p"/about"} class="text-gray-300 hover:text-white mr-4">
+      {gettext("About")}
+    </.link>
     <%!-- User menu dropdown --%>
     <div class="relative" id="user-menu" phx-hook="UserMenu" phx-update="ignore">
       <button
@@ -45,7 +53,9 @@
           navigate={~p"/settings"}
           class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
         >
-          <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" /> Settings
+          <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" /> {gettext(
+            "Settings"
+          )}
         </.link>
         <hr class="my-2 border-gray-600" />
         <a
@@ -53,7 +63,7 @@
           class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
         >
           <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" />
-          Sign Out
+          {gettext("Sign Out")}
         </a>
       </div>
     </div>
@@ -77,44 +87,45 @@
         navigate={~p"/"}
         class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        Home
+        {gettext("Home")}
       </.link>
       <.link
         navigate={~p"/lobby"}
         class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        Lobby
+        {gettext("Lobby")}
       </.link>
       <.link
         navigate={~p"/rooms"}
         class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        Rooms
+        {gettext("Rooms")}
       </.link>
       <.link
         navigate={~p"/simulator"}
         class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        Sim
+        {gettext("Sim")}
       </.link>
       <.link
         navigate={~p"/about"}
         class="block px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        About
+        {gettext("About")}
       </.link>
       <hr class="my-2 border-gray-600" />
       <.link
         navigate={~p"/settings"}
         class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" /> Settings
+        <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" /> {gettext("Settings")}
       </.link>
       <a
         href="/sign-out"
         class="flex items-center gap-2 px-4 py-2 text-gray-300 hover:bg-gray-600 hover:text-white"
       >
-        <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" /> Sign Out
+        <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" />
+        {gettext("Sign Out")}
       </a>
     </div>
   </div>

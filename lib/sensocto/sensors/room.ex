@@ -96,6 +96,7 @@ defmodule Sensocto.Sensors.Room do
         :description,
         :configuration,
         :is_public,
+        :is_persisted,
         :calls_enabled,
         :media_playback_enabled,
         :object_3d_enabled,

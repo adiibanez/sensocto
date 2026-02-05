@@ -307,6 +307,13 @@ defmodule Sensocto.Simulator.SensorServer do
     {:noreply, state}
   end
 
+  # Catch-all for any unexpected messages
+  @impl true
+  def handle_info(msg, state) do
+    Logger.debug("SensorServer #{state.sensor_id}: Ignoring unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
   @impl true
   def terminate(reason, state) do
     Logger.debug("SensorServer terminating: #{state.sensor_id}, reason: #{inspect(reason)}")

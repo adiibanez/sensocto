@@ -432,6 +432,16 @@
           <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
         </.link>
         <.link
+          :if={:respiration in @available_lenses}
+          patch={~p"/lobby/breathing"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :respiration,
+              do: "bg-cyan-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
+        </.link>
+        <.link
           patch={~p"/lobby/graph"}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph,
@@ -494,6 +504,13 @@
               selected={@live_action == :skeleton}
             >
               Skeleton
+            </option>
+            <option
+              :if={:respiration in @available_lenses}
+              value="breathing"
+              selected={@live_action == :respiration}
+            >
+              Breathing
             </option>
           </optgroup>
         </select>
@@ -758,6 +775,26 @@
       <Heroicons.icon name="user" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No skeleton/pose sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with pose detection enabled</p>
+    </div>
+  </div>
+
+  <%!-- Breathing/Respiration Composite View --%>
+  <div
+    :if={@live_action == :respiration}
+    id="composite-breathing"
+    phx-hook="CompositeMeasurementHandler"
+    class="h-[min(70vh,600px)] min-h-[250px]"
+  >
+    <.svelte
+      name="CompositeBreathing"
+      props={%{sensors: @respiration_sensors}}
+      socket={@socket}
+      class="w-full h-full"
+    />
+    <div :if={@respiration_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="signal" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No breathing sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with respiration/breathing data</p>
     </div>
   </div>
 

@@ -2055,13 +2055,24 @@ defmodule SensoctoWeb.RoomShowLive do
       "spo2" -> "beaker"
       "steps" -> "arrow-trending-up"
       "skeleton" -> "user"
+      "respiration" -> "signal"
       _ -> "signal"
     end
   end
 
   defp has_composite_view?(attr_type) do
     # These attribute types have dedicated composite Svelte components
-    attr_type in ["heartrate", "hr", "imu", "geolocation", "ecg", "battery", "spo2", "skeleton"]
+    attr_type in [
+      "heartrate",
+      "hr",
+      "imu",
+      "geolocation",
+      "ecg",
+      "battery",
+      "spo2",
+      "skeleton",
+      "respiration"
+    ]
   end
 
   defp category_order(category) do
@@ -2086,6 +2097,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "battery" -> extract_battery_data(sensors_state)
       "spo2" -> extract_spo2_data(sensors_state)
       "skeleton" -> extract_skeleton_data(sensors_state)
+      "respiration" -> extract_respiration_data(sensors_state)
       _ -> extract_generic_data(sensors_state, lens_type)
     end
   end
@@ -2245,6 +2257,30 @@ defmodule SensoctoWeb.RoomShowLive do
     end)
     |> Enum.map(fn {sensor_id, sensor} ->
       %{sensor_id: sensor_id, username: sensor.username}
+    end)
+  end
+
+  defp extract_respiration_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type == "respiration"
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      resp_attr =
+        Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+          attr.attribute_type == "respiration"
+        end)
+
+      value =
+        case resp_attr do
+          {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+          nil -> 0
+        end
+
+      %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, value: value}
     end)
   end
 
@@ -3159,6 +3195,13 @@ defmodule SensoctoWeb.RoomShowLive do
               class="w-full h-full"
             />
           </div>
+        <% "respiration" -> %>
+          <.svelte
+            name="CompositeBreathing"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
         <% _ -> %>
           <%!-- Generic lens view - show list of matching sensors --%>
           <div class="text-gray-400">

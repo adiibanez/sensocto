@@ -105,7 +105,13 @@ defmodule Sensocto.Domain.Supervisor do
       {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
 
       # Search index for global search (must be after dynamic supervisors)
-      Sensocto.Search.SearchIndex
+      Sensocto.Search.SearchIndex,
+
+      # Guest user store (in-memory, for temporary guest sessions)
+      Sensocto.Accounts.GuestUserStore,
+
+      # Chat store (ETS-based, for room/lobby chat messages)
+      Sensocto.Chat.ChatStore
     ]
 
     # one_for_one: each domain is independent

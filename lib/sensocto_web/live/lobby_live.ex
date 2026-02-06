@@ -102,7 +102,7 @@ defmodule SensoctoWeb.LobbyLive do
 
     # Extract composite visualization data
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors} =
+     skeleton_sensors, respiration_sensors} =
       extract_composite_data(sensors)
 
     # Compute available lenses based on actual sensor attributes
@@ -113,7 +113,8 @@ defmodule SensoctoWeb.LobbyLive do
         location_sensors,
         ecg_sensors,
         battery_sensors,
-        skeleton_sensors
+        skeleton_sensors,
+        respiration_sensors
       )
 
     # Group sensors by connector (user)
@@ -161,6 +162,7 @@ defmodule SensoctoWeb.LobbyLive do
         ecg_sensors: ecg_sensors,
         battery_sensors: battery_sensors,
         skeleton_sensors: skeleton_sensors,
+        respiration_sensors: respiration_sensors,
         available_lenses: available_lenses,
         sensors_by_user: sensors_by_user,
         favorite_sensors: favorite_sensors,
@@ -312,15 +314,15 @@ defmodule SensoctoWeb.LobbyLive do
     # ECG needs full data fidelity for waveform visualization
     socket = update_lens_focus_for_action(socket, socket.assigns.live_action)
 
-    # ECG data now flows through PriorityLens with high-frequency attribute support
-    # (ECG is in @high_frequency_attributes, so all samples are preserved in order)
-    # No need for direct data:global subscription - that caused duplicate data
+    # Push historical data so composite charts are pre-populated on navigation
+    socket = seed_composite_historical_data(socket, socket.assigns.live_action)
 
     {:noreply, socket}
   end
 
   # Set focused sensor for PriorityLens based on current live_action
   # Focused sensors get priority even at lower quality levels
+  # Also registers attention for composite lens sensors so data flows via data:global
   defp update_lens_focus_for_action(socket, live_action) do
     if socket.assigns[:priority_lens_registered] do
       case live_action do
@@ -340,8 +342,76 @@ defmodule SensoctoWeb.LobbyLive do
       end
     end
 
+    # Register attention for sensors in composite views so data flows to data:global
+    # Without this, freshly started sensors with attention_level :none won't broadcast
+    ensure_attention_for_composite_sensors(socket, live_action)
+
     socket
   end
+
+  # Composite lens views need sensors to broadcast to data:global.
+  # Registers a lightweight "view" for all relevant sensors.
+  defp ensure_attention_for_composite_sensors(socket, action)
+       when action in [:heartrate, :ecg, :imu, :location, :battery, :skeleton, :respiration] do
+    viewer_id = socket.id
+
+    sensor_ids =
+      case action do
+        :heartrate -> Enum.map(socket.assigns.heartrate_sensors, & &1.sensor_id)
+        :ecg -> Enum.map(socket.assigns.ecg_sensors, & &1.sensor_id)
+        :imu -> Enum.map(socket.assigns.imu_sensors, & &1.sensor_id)
+        :location -> Enum.map(socket.assigns.location_sensors, & &1.sensor_id)
+        :battery -> Enum.map(socket.assigns.battery_sensors, & &1.sensor_id)
+        :skeleton -> Enum.map(socket.assigns.skeleton_sensors, & &1.sensor_id)
+        :respiration -> Enum.map(socket.assigns.respiration_sensors, & &1.sensor_id)
+      end
+
+    attr_key = "composite_#{action}"
+
+    Enum.each(sensor_ids, fn sensor_id ->
+      Sensocto.AttentionTracker.register_view(sensor_id, attr_key, viewer_id)
+    end)
+  end
+
+  defp ensure_attention_for_composite_sensors(_socket, _action), do: :ok
+
+  # Push historical data from AttributeStoreTiered when entering a composite lens view
+  # so the chart is pre-populated instead of starting from zero
+  defp seed_composite_historical_data(socket, action)
+       when action in [:heartrate, :ecg, :respiration, :battery] do
+    {sensor_ids, attr_ids} =
+      case action do
+        :heartrate ->
+          {Enum.map(socket.assigns.heartrate_sensors, & &1.sensor_id), ["heartrate", "hr"]}
+
+        :ecg ->
+          {Enum.map(socket.assigns.ecg_sensors, & &1.sensor_id), ["ecg"]}
+
+        :respiration ->
+          {Enum.map(socket.assigns.respiration_sensors, & &1.sensor_id), ["respiration"]}
+
+        :battery ->
+          {Enum.map(socket.assigns.battery_sensors, & &1.sensor_id), ["battery"]}
+      end
+
+    Enum.reduce(sensor_ids, socket, fn sensor_id, acc ->
+      Enum.reduce(attr_ids, acc, fn attr_id, inner_acc ->
+        case Sensocto.AttributeStoreTiered.get_attribute(sensor_id, attr_id, 0, :infinity, 500) do
+          {:ok, data} when data != [] ->
+            push_event(inner_acc, "composite_seed_data", %{
+              sensor_id: sensor_id,
+              attribute_id: attr_id,
+              data: Enum.map(data, &%{payload: &1.payload, timestamp: &1.timestamp})
+            })
+
+          _ ->
+            inner_acc
+        end
+      end)
+    end)
+  end
+
+  defp seed_composite_historical_data(socket, _action), do: socket
 
   defp calculate_max_attributes(sensors) do
     sensors
@@ -595,8 +665,32 @@ defmodule SensoctoWeb.LobbyLive do
         %{sensor_id: sensor_id, username: sensor.username, bpm: bpm}
       end)
 
+    respiration_sensors =
+      sensors
+      |> Enum.filter(fn {_id, sensor} ->
+        attrs = sensor.attributes || %{}
+
+        Enum.any?(attrs, fn {_attr_id, attr} ->
+          attr.attribute_type == "respiration"
+        end)
+      end)
+      |> Enum.map(fn {sensor_id, sensor} ->
+        resp_attr =
+          Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
+            attr.attribute_type == "respiration"
+          end)
+
+        value =
+          case resp_attr do
+            {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || 0
+            nil -> 0
+          end
+
+        %{sensor_id: sensor_id, value: value}
+      end)
+
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors}
+     skeleton_sensors, respiration_sensors}
   end
 
   # Compute which lens types are available based on actual sensor attributes
@@ -606,7 +700,8 @@ defmodule SensoctoWeb.LobbyLive do
          location_sensors,
          ecg_sensors,
          battery_sensors,
-         skeleton_sensors
+         skeleton_sensors,
+         respiration_sensors
        ) do
     lenses = []
     lenses = if length(heartrate_sensors) > 0, do: [:heartrate | lenses], else: lenses
@@ -615,6 +710,7 @@ defmodule SensoctoWeb.LobbyLive do
     lenses = if length(ecg_sensors) > 0, do: [:ecg | lenses], else: lenses
     lenses = if length(battery_sensors) > 0, do: [:battery | lenses], else: lenses
     lenses = if length(skeleton_sensors) > 0, do: [:skeleton | lenses], else: lenses
+    lenses = if length(respiration_sensors) > 0, do: [:respiration | lenses], else: lenses
     Enum.reverse(lenses)
   end
 
@@ -748,7 +844,7 @@ defmodule SensoctoWeb.LobbyLive do
 
         # Update composite visualization data
         {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-         skeleton_sensors} =
+         skeleton_sensors, respiration_sensors} =
           extract_composite_data(sensors)
 
         # Recompute available lenses when sensors change
@@ -759,7 +855,8 @@ defmodule SensoctoWeb.LobbyLive do
             location_sensors,
             ecg_sensors,
             battery_sensors,
-            skeleton_sensors
+            skeleton_sensors,
+            respiration_sensors
           )
 
         # Filter sensor IDs based on current min_attention setting
@@ -779,6 +876,7 @@ defmodule SensoctoWeb.LobbyLive do
           |> assign(:ecg_sensors, ecg_sensors)
           |> assign(:battery_sensors, battery_sensors)
           |> assign(:skeleton_sensors, skeleton_sensors)
+          |> assign(:respiration_sensors, respiration_sensors)
           |> assign(:available_lenses, available_lenses)
           |> assign(:sensors_by_user, group_sensors_by_user(sensors))
 
@@ -930,7 +1028,8 @@ defmodule SensoctoWeb.LobbyLive do
             socket = process_lens_batch_for_sensors(socket, batch_data)
             {:noreply, socket}
 
-          action when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton] ->
+          action
+          when action in [:heartrate, :imu, :location, :ecg, :battery, :skeleton, :respiration] ->
             socket = process_lens_batch_for_composite(socket, batch_data, action)
             {:noreply, socket}
 
@@ -960,7 +1059,7 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      action when action in [:heartrate, :battery] ->
+      action when action in [:heartrate, :battery, :respiration] ->
         # These can work with digest mode - show latest values
         socket = process_lens_digest_for_composite(socket, digests, action)
         {:noreply, socket}
@@ -1616,7 +1715,7 @@ defmodule SensoctoWeb.LobbyLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors} =
+     skeleton_sensors, respiration_sensors} =
       extract_composite_data(sensors)
 
     available_lenses =
@@ -1626,7 +1725,8 @@ defmodule SensoctoWeb.LobbyLive do
         location_sensors,
         ecg_sensors,
         battery_sensors,
-        skeleton_sensors
+        skeleton_sensors,
+        respiration_sensors
       )
 
     # Re-filter sensors based on current min_attention setting
@@ -1644,6 +1744,7 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:ecg_sensors, ecg_sensors)
      |> assign(:battery_sensors, battery_sensors)
      |> assign(:skeleton_sensors, skeleton_sensors)
+     |> assign(:respiration_sensors, respiration_sensors)
      |> assign(:available_lenses, available_lenses)
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))
      |> assign(:sensor_ids, filtered_sensor_ids)}
@@ -1832,7 +1933,7 @@ defmodule SensoctoWeb.LobbyLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors} =
+     skeleton_sensors, respiration_sensors} =
       extract_composite_data(sensors)
 
     available_lenses =
@@ -1842,7 +1943,8 @@ defmodule SensoctoWeb.LobbyLive do
         location_sensors,
         ecg_sensors,
         battery_sensors,
-        skeleton_sensors
+        skeleton_sensors,
+        respiration_sensors
       )
 
     {:noreply,
@@ -1854,6 +1956,7 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:ecg_sensors, ecg_sensors)
      |> assign(:battery_sensors, battery_sensors)
      |> assign(:skeleton_sensors, skeleton_sensors)
+     |> assign(:respiration_sensors, respiration_sensors)
      |> assign(:available_lenses, available_lenses)
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
   end
@@ -2500,12 +2603,40 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def terminate(_reason, socket) do
+    # Unregister composite attention views
+    cleanup_composite_attention(socket)
+
     # Unregister from PriorityLens to clean up per-socket state
     if socket.assigns[:priority_lens_registered] do
       Sensocto.Lenses.PriorityLens.unregister_socket(socket.id)
     end
 
     :ok
+  end
+
+  defp cleanup_composite_attention(socket) do
+    action = socket.assigns[:live_action]
+    viewer_id = socket.id
+
+    sensor_ids =
+      case action do
+        :heartrate -> Enum.map(socket.assigns[:heartrate_sensors] || [], & &1.sensor_id)
+        :ecg -> Enum.map(socket.assigns[:ecg_sensors] || [], & &1.sensor_id)
+        :imu -> Enum.map(socket.assigns[:imu_sensors] || [], & &1.sensor_id)
+        :location -> Enum.map(socket.assigns[:location_sensors] || [], & &1.sensor_id)
+        :battery -> Enum.map(socket.assigns[:battery_sensors] || [], & &1.sensor_id)
+        :skeleton -> Enum.map(socket.assigns[:skeleton_sensors] || [], & &1.sensor_id)
+        :respiration -> Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
+        _ -> []
+      end
+
+    if sensor_ids != [] do
+      attr_key = "composite_#{action}"
+
+      Enum.each(sensor_ids, fn sensor_id ->
+        Sensocto.AttentionTracker.unregister_view(sensor_id, attr_key, viewer_id)
+      end)
+    end
   end
 
   # ==========================================================================
@@ -2666,6 +2797,7 @@ defmodule SensoctoWeb.LobbyLive do
         :location -> ["geolocation"]
         :battery -> ["battery"]
         :skeleton -> ["skeleton"]
+        :respiration -> ["respiration"]
       end
 
     Enum.reduce(batch_data, socket, fn {sensor_id, attributes}, acc ->
@@ -2707,6 +2839,7 @@ defmodule SensoctoWeb.LobbyLive do
       case action do
         :heartrate -> ["heartrate", "hr"]
         :battery -> ["battery"]
+        :respiration -> ["respiration"]
         _ -> []
       end
 

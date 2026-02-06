@@ -63,7 +63,10 @@ defmodule Sensocto.Infrastructure.Supervisor do
       SensoctoWeb.Sensocto.Presence,
 
       # HTTP client for external API calls
-      {Finch, name: Sensocto.Finch}
+      {Finch, name: Sensocto.Finch},
+
+      # Circuit breaker ETS table for resilient external calls
+      Sensocto.Resilience.CircuitBreaker.TableOwner
     ]
 
     # one_for_one: each child is independent

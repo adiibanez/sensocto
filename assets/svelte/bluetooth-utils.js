@@ -171,11 +171,11 @@ class BluetoothUtils {
         "breathingPressure": "pressure",
         "altitude": "altitude",
 
-        // Motion/IMU - Thingy:52 specific
-        "quaternionCharacteristic": "imu",
-        "rawDataCharacteristic": "imu",
-        "eulerAngleCharacteristic": "imu",
-        "rotationMatrixCharacteristic": "imu",
+        // Motion/IMU - Thingy:52 specific (separated for debugging)
+        "quaternionCharacteristic": "quaternion",
+        "rawDataCharacteristic": "raw_motion",
+        "eulerAngleCharacteristic": "euler",
+        "rotationMatrixCharacteristic": "rotation_matrix",
         "headingCharacteristic": "heading",
         "gravityVectorCharacteristic": "gravity",
         "stepCounterCharacteristic": "steps",

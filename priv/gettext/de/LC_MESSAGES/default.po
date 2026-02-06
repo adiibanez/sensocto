@@ -14,53 +14,53 @@ msgstr ""
 #: lib/sensocto_web/components/core_components.ex:528
 #, elixir-autogen, elixir-format
 msgid "Actions"
-msgstr ""
+msgstr "Aktionen"
 
 #: lib/sensocto_web/components/core_components.ex:199
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
-msgstr ""
+msgstr "Verbindung wird wiederhergestellt"
 
 #: lib/sensocto_web/components/sidebar.ex:95
 #, elixir-autogen, elixir-format
 msgid "Close menu"
-msgstr ""
+msgstr "Menü schliessen"
 
 #: lib/sensocto_web/components/core_components.ex:190
 #, elixir-autogen, elixir-format
 msgid "Error!"
-msgstr ""
+msgstr "Fehler!"
 
 #: lib/sensocto_web/components/core_components.ex:211
 #, elixir-autogen, elixir-format
 msgid "Hang in there while we get back on track"
-msgstr ""
+msgstr "Bitte warten, wir sind gleich wieder da"
 
 #: lib/sensocto_web/components/speed_dial.ex:182
 #, elixir-autogen, elixir-format
 msgid "Open actions menu"
-msgstr ""
+msgstr "Aktionsmenü öffnen"
 
 #: lib/sensocto_web/components/core_components.ex:206
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
-msgstr ""
+msgstr "Etwas ist schiefgelaufen!"
 
 #: lib/sensocto_web/components/core_components.ex:189
 #, elixir-autogen, elixir-format
 msgid "Success!"
-msgstr ""
+msgstr "Erfolg!"
 
 #: lib/sensocto_web/components/core_components.ex:194
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
-msgstr ""
+msgstr "Keine Internetverbindung"
 
 #: lib/sensocto_web/components/core_components.ex:115
 #: lib/sensocto_web/components/core_components.ex:169
 #, elixir-autogen, elixir-format
 msgid "close"
-msgstr ""
+msgstr "schliessen"
 
 msgid "If this user exists in our database you will contacted with a sign-in link shortly."
 msgstr "Pls check your inbox and click on the magic link."
@@ -77,7 +77,7 @@ msgstr "Über"
 msgid "Home"
 msgstr "Startseite"
 
-#: lib/sensocto_web/live/user_settings_live.ex:139
+#: lib/sensocto_web/live/user_settings_live.ex:138
 #, elixir-autogen, elixir-format
 msgid "Language updated"
 msgstr "Sprache aktualisiert"
@@ -96,12 +96,14 @@ msgstr "Räume"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:56
 #: lib/sensocto_web/components/layouts/app.html.heex:121
+#: lib/sensocto_web/live/user_settings_live.ex:203
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Einstellungen"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:66
 #: lib/sensocto_web/components/layouts/app.html.heex:128
+#: lib/sensocto_web/live/user_settings_live.ex:351
 #, elixir-autogen, elixir-format
 msgid "Sign Out"
 msgstr "Abmelden"
@@ -111,3 +113,108 @@ msgstr "Abmelden"
 #, elixir-autogen, elixir-format
 msgid "Sim"
 msgstr "Sim"
+
+#: lib/sensocto_web/live/user_settings_live.ex:341
+#, elixir-autogen, elixir-format
+msgid "Account"
+msgstr "Konto"
+
+#: lib/sensocto_web/live/user_settings_live.ex:222
+#, elixir-autogen, elixir-format
+msgid "Account ID"
+msgstr "Konto-ID"
+
+#: lib/sensocto_web/live/user_settings_live.ex:236
+#, elixir-autogen, elixir-format
+msgid "Choose your preferred language for the application interface."
+msgstr "Wähle deine bevorzugte Sprache für die Benutzeroberfläche."
+
+#: lib/sensocto_web/live/user_settings_live.ex:320
+#, elixir-autogen, elixir-format
+msgid "Copied!"
+msgstr "Kopiert!"
+
+#: lib/sensocto_web/live/user_settings_live.ex:320
+#, elixir-autogen, elixir-format
+msgid "Copy"
+msgstr "Kopieren"
+
+#: lib/sensocto_web/live/user_settings_live.ex:215
+#, elixir-autogen, elixir-format
+msgid "Email"
+msgstr "E-Mail"
+
+#: lib/sensocto_web/live/user_settings_live.ex:288
+#, elixir-autogen, elixir-format
+msgid "Expires in"
+msgstr "Läuft ab in"
+
+#: lib/sensocto_web/live/user_settings_live.ex:297
+#, elixir-autogen, elixir-format
+msgid "Generate new code"
+msgstr "Neuen Code generieren"
+
+#: lib/sensocto_web/live/user_settings_live.ex:331
+#, elixir-autogen, elixir-format
+msgid "Go to Settings and tap \"Scan QR Code\""
+msgstr "Gehe zu Einstellungen und tippe auf \"QR-Code scannen\""
+
+#: lib/sensocto_web/live/user_settings_live.ex:275
+#, elixir-autogen, elixir-format
+msgid "Hide QR Code"
+msgstr "QR-Code ausblenden"
+
+#: lib/sensocto_web/live/user_settings_live.ex:328
+#, elixir-autogen, elixir-format
+msgid "How to link your device:"
+msgstr "So verbindest du dein Gerät:"
+
+#: lib/sensocto_web/live/user_settings_live.ex:230
+#, elixir-autogen, elixir-format
+msgid "Language"
+msgstr "Sprache"
+
+#: lib/sensocto_web/live/user_settings_live.ex:258
+#, elixir-autogen, elixir-format
+msgid "Link Mobile Device"
+msgstr "Mobilgerät verbinden"
+
+#: lib/sensocto_web/live/user_settings_live.ex:215
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr "Name"
+
+#: lib/sensocto_web/live/user_settings_live.ex:330
+#, elixir-autogen, elixir-format
+msgid "Open the SensOcto mobile app"
+msgstr "Öffne die SensOcto Mobile-App"
+
+#: lib/sensocto_web/live/user_settings_live.ex:302
+#, elixir-autogen, elixir-format
+msgid "Or copy the link:"
+msgstr "Oder Link kopieren:"
+
+#: lib/sensocto_web/live/user_settings_live.ex:332
+#, elixir-autogen, elixir-format
+msgid "Point your camera at the QR code above"
+msgstr "Richte deine Kamera auf den QR-Code oben"
+
+#: lib/sensocto_web/live/user_settings_live.ex:208
+#, elixir-autogen, elixir-format
+msgid "Profile"
+msgstr "Profil"
+
+#: lib/sensocto_web/live/user_settings_live.ex:261
+#, elixir-autogen, elixir-format
+msgid "Scan the QR code with the SensOcto mobile app to sign in on your mobile device."
+msgstr "Scanne den QR-Code mit der SensOcto Mobile-App, um dich auf deinem Mobilgerät anzumelden."
+
+#: lib/sensocto_web/live/user_settings_live.ex:275
+#, elixir-autogen, elixir-format
+msgid "Show QR Code"
+msgstr "QR-Code anzeigen"
+
+#: lib/sensocto_web/live/user_settings_live.ex:333
+#, elixir-autogen, elixir-format
+msgid "You'll be automatically signed in"
+msgstr "Du wirst automatisch angemeldet"

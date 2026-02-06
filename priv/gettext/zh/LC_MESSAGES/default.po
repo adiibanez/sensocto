@@ -14,100 +14,207 @@ msgstr ""
 #: lib/sensocto_web/components/core_components.ex:528
 #, elixir-autogen, elixir-format
 msgid "Actions"
-msgstr ""
+msgstr "操作"
 
 #: lib/sensocto_web/components/core_components.ex:199
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
-msgstr ""
+msgstr "正在尝试重新连接"
 
 #: lib/sensocto_web/components/sidebar.ex:95
 #, elixir-autogen, elixir-format
 msgid "Close menu"
-msgstr ""
+msgstr "关闭菜单"
 
 #: lib/sensocto_web/components/core_components.ex:190
 #, elixir-autogen, elixir-format
 msgid "Error!"
-msgstr ""
+msgstr "错误！"
 
 #: lib/sensocto_web/components/core_components.ex:211
 #, elixir-autogen, elixir-format
 msgid "Hang in there while we get back on track"
-msgstr ""
+msgstr "请稍候，我们正在恢复连接"
 
 #: lib/sensocto_web/components/speed_dial.ex:182
 #, elixir-autogen, elixir-format
 msgid "Open actions menu"
-msgstr ""
+msgstr "打开操作菜单"
 
 #: lib/sensocto_web/components/core_components.ex:206
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
-msgstr ""
+msgstr "出了点问题！"
 
 #: lib/sensocto_web/components/core_components.ex:189
 #, elixir-autogen, elixir-format
 msgid "Success!"
-msgstr ""
+msgstr "成功！"
 
 #: lib/sensocto_web/components/core_components.ex:194
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
-msgstr ""
+msgstr "无法连接到互联网"
 
 #: lib/sensocto_web/components/core_components.ex:115
 #: lib/sensocto_web/components/core_components.ex:169
 #, elixir-autogen, elixir-format
 msgid "close"
-msgstr ""
+msgstr "关闭"
 
 msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgstr "请检查您的收件箱并点击登录链接。"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:114
 #, elixir-autogen, elixir-format
 msgid "About"
-msgstr ""
+msgstr "关于"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:24
 #: lib/sensocto_web/components/layouts/app.html.heex:90
 #, elixir-autogen, elixir-format
 msgid "Home"
-msgstr ""
+msgstr "首页"
 
-#: lib/sensocto_web/live/user_settings_live.ex:139
+#: lib/sensocto_web/live/user_settings_live.ex:138
 #, elixir-autogen, elixir-format
 msgid "Language updated"
-msgstr ""
+msgstr "语言已更新"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:26
 #: lib/sensocto_web/components/layouts/app.html.heex:96
 #, elixir-autogen, elixir-format
 msgid "Lobby"
-msgstr ""
+msgstr "大厅"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:29
 #: lib/sensocto_web/components/layouts/app.html.heex:102
 #, elixir-autogen, elixir-format
 msgid "Rooms"
-msgstr ""
+msgstr "房间"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:56
 #: lib/sensocto_web/components/layouts/app.html.heex:121
+#: lib/sensocto_web/live/user_settings_live.ex:203
 #, elixir-autogen, elixir-format
 msgid "Settings"
-msgstr ""
+msgstr "设置"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:66
 #: lib/sensocto_web/components/layouts/app.html.heex:128
+#: lib/sensocto_web/live/user_settings_live.ex:351
 #, elixir-autogen, elixir-format
 msgid "Sign Out"
-msgstr ""
+msgstr "退出登录"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:32
 #: lib/sensocto_web/components/layouts/app.html.heex:108
 #, elixir-autogen, elixir-format
 msgid "Sim"
-msgstr ""
+msgstr "模拟"
+
+#: lib/sensocto_web/live/user_settings_live.ex:341
+#, elixir-autogen, elixir-format
+msgid "Account"
+msgstr "账户"
+
+#: lib/sensocto_web/live/user_settings_live.ex:222
+#, elixir-autogen, elixir-format
+msgid "Account ID"
+msgstr "账户 ID"
+
+#: lib/sensocto_web/live/user_settings_live.ex:236
+#, elixir-autogen, elixir-format
+msgid "Choose your preferred language for the application interface."
+msgstr "选择您偏好的应用界面语言。"
+
+#: lib/sensocto_web/live/user_settings_live.ex:320
+#, elixir-autogen, elixir-format
+msgid "Copied!"
+msgstr "已复制！"
+
+#: lib/sensocto_web/live/user_settings_live.ex:320
+#, elixir-autogen, elixir-format
+msgid "Copy"
+msgstr "复制"
+
+#: lib/sensocto_web/live/user_settings_live.ex:215
+#, elixir-autogen, elixir-format
+msgid "Email"
+msgstr "电子邮件"
+
+#: lib/sensocto_web/live/user_settings_live.ex:288
+#, elixir-autogen, elixir-format
+msgid "Expires in"
+msgstr "过期时间"
+
+#: lib/sensocto_web/live/user_settings_live.ex:297
+#, elixir-autogen, elixir-format
+msgid "Generate new code"
+msgstr "生成新代码"
+
+#: lib/sensocto_web/live/user_settings_live.ex:331
+#, elixir-autogen, elixir-format
+msgid "Go to Settings and tap \"Scan QR Code\""
+msgstr "前往设置并点击\"扫描二维码\""
+
+#: lib/sensocto_web/live/user_settings_live.ex:275
+#, elixir-autogen, elixir-format
+msgid "Hide QR Code"
+msgstr "隐藏二维码"
+
+#: lib/sensocto_web/live/user_settings_live.ex:328
+#, elixir-autogen, elixir-format
+msgid "How to link your device:"
+msgstr "如何关联您的设备："
+
+#: lib/sensocto_web/live/user_settings_live.ex:230
+#, elixir-autogen, elixir-format
+msgid "Language"
+msgstr "语言"
+
+#: lib/sensocto_web/live/user_settings_live.ex:258
+#, elixir-autogen, elixir-format
+msgid "Link Mobile Device"
+msgstr "关联移动设备"
+
+#: lib/sensocto_web/live/user_settings_live.ex:215
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr "姓名"
+
+#: lib/sensocto_web/live/user_settings_live.ex:330
+#, elixir-autogen, elixir-format
+msgid "Open the SensOcto mobile app"
+msgstr "打开 SensOcto 移动应用"
+
+#: lib/sensocto_web/live/user_settings_live.ex:302
+#, elixir-autogen, elixir-format
+msgid "Or copy the link:"
+msgstr "或复制链接："
+
+#: lib/sensocto_web/live/user_settings_live.ex:332
+#, elixir-autogen, elixir-format
+msgid "Point your camera at the QR code above"
+msgstr "将摄像头对准上方的二维码"
+
+#: lib/sensocto_web/live/user_settings_live.ex:208
+#, elixir-autogen, elixir-format
+msgid "Profile"
+msgstr "个人资料"
+
+#: lib/sensocto_web/live/user_settings_live.ex:261
+#, elixir-autogen, elixir-format
+msgid "Scan the QR code with the SensOcto mobile app to sign in on your mobile device."
+msgstr "使用 SensOcto 移动应用扫描二维码，在您的移动设备上登录。"
+
+#: lib/sensocto_web/live/user_settings_live.ex:275
+#, elixir-autogen, elixir-format
+msgid "Show QR Code"
+msgstr "显示二维码"
+
+#: lib/sensocto_web/live/user_settings_live.ex:333
+#, elixir-autogen, elixir-format
+msgid "You'll be automatically signed in"
+msgstr "您将自动登录"

@@ -384,12 +384,40 @@ Hooks.CompositeMeasurementHandler = {
     console.log("[CompositeMeasurementHandler] mounted on element:", this.el.id);
 
     this.handleEvent("composite_measurement", (event) => {
-      console.log("[CompositeMeasurementHandler] composite_measurement received:", event);
       const customEvent = new CustomEvent('composite-measurement-event', {
         detail: event
       });
       window.dispatchEvent(customEvent);
     });
+
+    // Handle seed data for composite views - pushes historical data on view entry
+    // Buffer seed events for Svelte components that may not have mounted yet
+    window.__compositeSeedBuffer = [];
+    window.__compositeSeedReady = false;
+    this.handleEvent("composite_seed_data", (event) => {
+      const { sensor_id, attribute_id, data } = event;
+      if (Array.isArray(data) && data.length > 0) {
+        if (window.__compositeSeedReady) {
+          window.dispatchEvent(new CustomEvent('accumulator-data-event', {
+            detail: { sensor_id, attribute_id, data }
+          }));
+        } else {
+          window.__compositeSeedBuffer.push({ sensor_id, attribute_id, data });
+        }
+      }
+    });
+
+    this._onComponentReady = () => {
+      const buf = window.__compositeSeedBuffer || [];
+      window.__compositeSeedReady = true;
+      window.__compositeSeedBuffer = [];
+      buf.forEach(event => {
+        window.dispatchEvent(new CustomEvent('accumulator-data-event', {
+          detail: event
+        }));
+      });
+    };
+    window.addEventListener('composite-component-ready', this._onComponentReady);
 
     // Handle graph activity events for node pulsation
     this.handleEvent("graph_activity", (event) => {
@@ -402,6 +430,11 @@ Hooks.CompositeMeasurementHandler = {
 
   destroyed() {
     console.log("[CompositeMeasurementHandler] destroyed");
+    if (this._onComponentReady) {
+      window.removeEventListener('composite-component-ready', this._onComponentReady);
+    }
+    window.__compositeSeedReady = false;
+    window.__compositeSeedBuffer = [];
   }
 }
 

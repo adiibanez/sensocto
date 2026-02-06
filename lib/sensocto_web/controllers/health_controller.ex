@@ -33,7 +33,9 @@ defmodule SensoctoWeb.HealthController do
       database: check_database(),
       pubsub: check_pubsub(),
       supervisors: check_supervisors(),
-      system_load: get_system_load()
+      system_load: get_system_load(),
+      iroh: check_iroh(),
+      ets_tables: check_ets_tables()
     }
 
     all_healthy = Enum.all?(checks, fn {_k, v} -> v.healthy end)
@@ -120,6 +122,39 @@ defmodule SensoctoWeb.HealthController do
       |> Map.new()
 
     %{healthy: all_alive, details: details}
+  end
+
+  defp check_iroh do
+    crdt_ready =
+      try do
+        Sensocto.Iroh.RoomStateCRDT.ready?()
+      catch
+        :exit, _ -> false
+      end
+
+    store_ready =
+      try do
+        Sensocto.Iroh.RoomStore.ready?()
+      catch
+        :exit, _ -> false
+      end
+
+    # Iroh is optional/secondary - mark healthy even when not ready
+    %{healthy: true, crdt_ready: crdt_ready, store_ready: store_ready}
+  end
+
+  defp check_ets_tables do
+    critical_tables = [:attribute_store_hot, :attribute_store_warm, :attribute_store_sensors]
+
+    results =
+      Enum.map(critical_tables, fn table ->
+        {table, :ets.whereis(table) != :undefined}
+      end)
+
+    all_exist = Enum.all?(results, fn {_table, exists} -> exists end)
+    details = Map.new(results)
+
+    %{healthy: all_exist, details: details}
   end
 
   defp get_system_load do

@@ -1,0 +1,362 @@
+# Breathing Study - 10 persons with heartrate + respiration (torso expansion) sensors
+# Use case: Respiratory monitoring study, breathing pattern analysis
+#
+# Realistic Sampling Rates:
+# - Heartrate: 0.2Hz (every 5 seconds)
+# - Respiration (torso expansion): 0.5Hz (every 2 seconds)
+# - Battery: 0.1Hz (every 10 seconds)
+
+connectors:
+  scenario_breathing_study:
+    connector_id: "scenario_breathing_study"
+    connector_name: "Breathing_Study"
+    sensors:
+      # Person 1: Resting, normal breathing
+      bs_person_1:
+        sensor_id: "bs_person_1"
+        sensor_name: "Person1"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 68
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 15
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 80
+            max_value: 95
+            dummy_data: true
+
+      # Person 2: Slightly elevated heart rate, normal breathing
+      bs_person_2:
+        sensor_id: "bs_person_2"
+        sensor_name: "Person2"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 75
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 16
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 70
+            max_value: 90
+            dummy_data: true
+
+      # Person 3: Calm, slow breathing
+      bs_person_3:
+        sensor_id: "bs_person_3"
+        sensor_name: "Person3"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 62
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 12
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 75
+            dummy_data: true
+
+      # Person 4: Active, faster breathing
+      bs_person_4:
+        sensor_id: "bs_person_4"
+        sensor_name: "Person4"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 88
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 20
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 65
+            dummy_data: true
+
+      # Person 5: Normal resting
+      bs_person_5:
+        sensor_id: "bs_person_5"
+        sensor_name: "Person5"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 72
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 14
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 85
+            max_value: 100
+            dummy_data: true
+
+      # Person 6: Slightly fast breathing
+      bs_person_6:
+        sensor_id: "bs_person_6"
+        sensor_name: "Person6"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 80
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 18
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 80
+            dummy_data: true
+
+      # Person 7: Deep slow breather
+      bs_person_7:
+        sensor_id: "bs_person_7"
+        sensor_name: "Person7"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 60
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 13
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 75
+            max_value: 95
+            dummy_data: true
+
+      # Person 8: Normal, average values
+      bs_person_8:
+        sensor_id: "bs_person_8"
+        sensor_name: "Person8"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 70
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 15
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 70
+            dummy_data: true
+
+      # Person 9: Elevated heart rate, moderate breathing
+      bs_person_9:
+        sensor_id: "bs_person_9"
+        sensor_name: "Person9"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 85
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 17
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 30
+            max_value: 55
+            dummy_data: true
+
+      # Person 10: Relaxed, slow breathing
+      bs_person_10:
+        sensor_id: "bs_person_10"
+        sensor_name: "Person10"
+        attributes:
+          heartrate:
+            attribute_id: "heartrate"
+            sensor_type: "heartrate"
+            batch_size: 1
+            batch_window: 5000
+            duration: 0
+            sampling_rate: 0.2
+            heart_rate: 65
+            dummy_data: true
+          respiration:
+            attribute_id: "respiration"
+            sensor_type: "respiration"
+            batch_size: 1
+            batch_window: 100
+            duration: 0
+            sampling_rate: 10
+            min_value: 0
+            max_value: 100
+            breaths_per_minute: 14
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 65
+            max_value: 85
+            dummy_data: true

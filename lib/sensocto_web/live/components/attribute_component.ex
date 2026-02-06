@@ -558,7 +558,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="truncate text-right">
             <span class="text-white text-[10px]">{@presence.title}</span>
             <%= if @presence.artist do %>
-              <span class="text-gray-400 text-[10px]"> -           {@presence.artist}</span>
+              <span class="text-gray-400 text-[10px]">
+                - {@presence.artist}
+              </span>
             <% end %>
           </div>
         <% else %>
@@ -1647,7 +1649,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         />
         <span class="text-gray-400">{get_in(@lastvalue, [:payload, :mode]) || "off"}</span>
       </div>
-      <.loading_spinner :if={is_nil(@lastvalue)} />
+      <span :if={is_nil(@lastvalue)} class="text-gray-500 italic text-[10px]">Ready</span>
     </div>
     """
   end
@@ -1725,7 +1727,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       <span :if={@lastvalue} class="text-violet-400">
         {format_speaker_status(@lastvalue.payload)}
       </span>
-      <.loading_spinner :if={is_nil(@lastvalue)} />
+      <span :if={is_nil(@lastvalue)} class="text-gray-500 italic text-[10px]">Idle</span>
     </div>
     """
   end
@@ -1768,33 +1770,64 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   @impl true
   def render(%{:attribute_type => "microphone", :view_mode => :summary} = assigns) do
+    assigns = assign_new(assigns, :mic_muted, fn -> false end)
+
     ~H"""
     <div
       class="flex items-center justify-between text-xs py-0.5"
       data-sensor_id={@sensor_id}
       data-attribute_id={@attribute_id}
     >
-      <span class="text-gray-400 flex items-center gap-1">
-        <Heroicons.icon name="microphone" type="outline" class="h-3 w-3 text-rose-400" /> Mic
+      <span class={["text-gray-400 flex items-center gap-1", @mic_muted && "opacity-50"]}>
+        <Heroicons.icon
+          name={if @mic_muted, do: "speaker-x-mark", else: "microphone"}
+          type="outline"
+          class="h-3 w-3 text-rose-400"
+        /> Mic
       </span>
-      <div :if={@lastvalue} class="flex items-center gap-1">
-        <meter
-          min="0"
-          max="100"
-          value={mic_level_normalized(@lastvalue.payload)}
-          class="h-2 w-12"
-        />
-        <span class="text-gray-400 font-mono text-[10px]">
-          {format_mic_level(@lastvalue.payload)}
+      <div class="flex items-center gap-1">
+        <div :if={@lastvalue && !@mic_muted} class="flex items-center gap-1">
+          <meter
+            min="0"
+            max="100"
+            value={mic_level_normalized(@lastvalue.payload)}
+            class="h-2 w-12"
+          />
+          <span class="text-gray-400 font-mono text-[10px]">
+            {format_mic_level(@lastvalue.payload)}
+          </span>
+        </div>
+        <span :if={@mic_muted} class="text-gray-500 italic text-[10px]">Muted</span>
+        <span :if={is_nil(@lastvalue) && !@mic_muted} class="text-gray-500 italic text-[10px]">
+          Ready
         </span>
+        <button
+          phx-click="toggle_mic_mute"
+          phx-target={@myself}
+          class={[
+            "p-0.5 rounded transition-colors",
+            if(@mic_muted,
+              do: "text-rose-500 hover:text-rose-400",
+              else: "text-gray-500 hover:text-rose-400"
+            )
+          ]}
+          title={if @mic_muted, do: "Unmute", else: "Mute"}
+        >
+          <Heroicons.icon
+            name={if @mic_muted, do: "speaker-wave", else: "speaker-x-mark"}
+            type="outline"
+            class="h-3 w-3"
+          />
+        </button>
       </div>
-      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
 
   @impl true
   def render(%{:attribute_type => "microphone"} = assigns) do
+    assigns = assign_new(assigns, :mic_muted, fn -> false end)
+
     ~H"""
     <div>
       <.container
@@ -1803,17 +1836,43 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         attribute_id={@attribute_id}
         phx_hook="SensorDataAccumulator"
       >
-        <.render_attribute_header
-          sensor_id={@sensor_id}
-          attribute_id={@attribute_id}
-          attribute_name="Microphone"
-          lastvalue={@lastvalue}
-          socket={@socket}
-        />
+        <div class="flex items-center justify-between">
+          <.render_attribute_header
+            sensor_id={@sensor_id}
+            attribute_id={@attribute_id}
+            attribute_name="Microphone"
+            lastvalue={@lastvalue}
+            socket={@socket}
+          />
+          <button
+            phx-click="toggle_mic_mute"
+            phx-target={@myself}
+            class={[
+              "flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors",
+              if(@mic_muted,
+                do: "bg-rose-600 text-white hover:bg-rose-500",
+                else: "bg-gray-700 text-gray-300 hover:bg-gray-600"
+              )
+            ]}
+            title={if @mic_muted, do: "Unmute microphone", else: "Mute microphone"}
+          >
+            <Heroicons.icon
+              name={if @mic_muted, do: "speaker-wave", else: "speaker-x-mark"}
+              type="outline"
+              class="h-4 w-4"
+            />
+            {if @mic_muted, do: "Unmute", else: "Mute"}
+          </button>
+        </div>
 
-        <div :if={is_nil(@lastvalue)} class="loading"></div>
+        <div :if={is_nil(@lastvalue) && !@mic_muted} class="loading"></div>
 
-        <div :if={@lastvalue} class="py-2">
+        <div :if={@mic_muted} class="py-4 flex flex-col items-center justify-center text-gray-500">
+          <Heroicons.icon name="speaker-x-mark" type="outline" class="h-12 w-12 mb-2" />
+          <span class="text-sm">Microphone muted</span>
+        </div>
+
+        <div :if={@lastvalue && !@mic_muted} class="py-2">
           <div class="flex items-center gap-4">
             <Heroicons.icon name="microphone" type="outline" class="h-8 w-8 text-rose-400" />
             <div class="flex-1">
@@ -1918,6 +1977,82 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  # Summary mode for respiration / breathing - show expansion percentage
+  @impl true
+  def render(%{:attribute_type => "respiration", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-cyan-400 flex items-center gap-1">
+        <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> breathing
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {safe_round(@lastvalue.payload)} <span class="text-gray-400 text-[10px]">%</span>
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  # Normal/detailed mode for respiration / breathing - waveform + percentage display
+  @impl true
+  def render(%{:attribute_type => "respiration"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+        attribute={@attribute}
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="Breathing"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue}>
+          <.svelte
+            name="SparklineWasm"
+            props={
+              %{
+                height: 20,
+                id: "cnt_#{@sensor_id}_#{@attribute_id}",
+                sensor_id: @sensor_id,
+                attribute_id: @attribute.attribute_id,
+                samplingrate: @attribute.sampling_rate,
+                timewindow: 10000,
+                minvalue: 0,
+                maxvalue: 100
+              }
+            }
+            socket={@socket}
+            class="w-full m-0 p-0"
+          />
+          <div class="flex items-center justify-center py-4">
+            <div class="flex flex-col items-center gap-1">
+              <div class="text-center">
+                <span class="text-3xl font-bold text-cyan-400">{safe_round(@lastvalue.payload)}</span>
+                <span class="text-sm text-gray-400 ml-1">%</span>
+              </div>
+              <span class="text-xs text-gray-500">torso expansion</span>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:view_mode => :summary} = assigns) do
     ~H"""
@@ -2003,19 +2138,34 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   # TEMPERATURE - Thermometer gauge with color gradient
   # ============================================================================
 
-  defp format_temperature(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
-  defp format_temperature(value) when is_number(value), do: Float.round(value * 1.0, 1)
+  # Smart unit detection: If value > 50, likely Fahrenheit, convert to Celsius
+  defp format_temperature(%{value: value}) when is_number(value),
+    do: Float.round(normalize_temperature(value), 1)
+
+  defp format_temperature(value) when is_number(value),
+    do: Float.round(normalize_temperature(value), 1)
+
   defp format_temperature(_), do: "--"
 
+  # Normalize temperature to Celsius - values > 50 are likely Fahrenheit
+  defp normalize_temperature(value) when value > 50 and value < 150 do
+    # Convert Fahrenheit to Celsius
+    (value - 32) * 5 / 9
+  end
+
+  defp normalize_temperature(value), do: value * 1.0
+
   defp temperature_gradient_class(%{value: value}) when is_number(value),
-    do: temperature_gradient_class(value)
+    do: temperature_gradient_class(normalize_temperature(value))
 
   defp temperature_gradient_class(value) when is_number(value) do
+    temp = normalize_temperature(value)
+
     cond do
-      value < 10 -> "bg-gradient-to-t from-blue-600 to-blue-400"
-      value < 18 -> "bg-gradient-to-t from-cyan-500 to-cyan-300"
-      value < 24 -> "bg-gradient-to-t from-green-500 to-green-300"
-      value < 30 -> "bg-gradient-to-t from-yellow-500 to-orange-400"
+      temp < 10 -> "bg-gradient-to-t from-blue-600 to-blue-400"
+      temp < 18 -> "bg-gradient-to-t from-cyan-500 to-cyan-300"
+      temp < 24 -> "bg-gradient-to-t from-green-500 to-green-300"
+      temp < 30 -> "bg-gradient-to-t from-yellow-500 to-orange-400"
       true -> "bg-gradient-to-t from-red-600 to-red-400"
     end
   end
@@ -2023,14 +2173,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp temperature_gradient_class(_), do: "bg-gray-600"
 
   defp temperature_comfort_label(%{value: value}) when is_number(value),
-    do: temperature_comfort_label(value)
+    do: temperature_comfort_label(normalize_temperature(value))
 
   defp temperature_comfort_label(value) when is_number(value) do
+    temp = normalize_temperature(value)
+
     cond do
-      value < 10 -> "Cold"
-      value < 18 -> "Cool"
-      value < 24 -> "Comfortable"
-      value < 30 -> "Warm"
+      temp < 10 -> "Cold"
+      temp < 18 -> "Cool"
+      temp < 24 -> "Comfortable"
+      temp < 30 -> "Warm"
       true -> "Hot"
     end
   end
@@ -2067,18 +2219,33 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   # PRESSURE - Barometric pressure gauge
   # ============================================================================
 
-  defp format_pressure(%{value: value}) when is_number(value), do: Float.round(value * 1.0, 1)
-  defp format_pressure(value) when is_number(value), do: Float.round(value * 1.0, 1)
+  # Smart unit detection: If value < 200, likely kPa, convert to hPa (multiply by 10)
+  defp format_pressure(%{value: value}) when is_number(value),
+    do: Float.round(normalize_pressure(value), 1)
+
+  defp format_pressure(value) when is_number(value),
+    do: Float.round(normalize_pressure(value), 1)
+
   defp format_pressure(_), do: "--"
 
+  # Normalize pressure to hPa - values < 200 are likely kPa
+  defp normalize_pressure(value) when value > 0 and value < 200 do
+    # Convert kPa to hPa (multiply by 10)
+    value * 10.0
+  end
+
+  defp normalize_pressure(value), do: value * 1.0
+
   defp pressure_weather_indicator(%{value: value}) when is_number(value),
-    do: pressure_weather_indicator(value)
+    do: pressure_weather_indicator(normalize_pressure(value))
 
   defp pressure_weather_indicator(value) when is_number(value) do
+    pressure = normalize_pressure(value)
+
     cond do
-      value < 1000 -> "Low pressure - stormy"
-      value < 1013 -> "Below average"
-      value < 1020 -> "Normal"
+      pressure < 1000 -> "Low pressure - stormy"
+      pressure < 1013 -> "Below average"
+      pressure < 1020 -> "Normal"
       true -> "High pressure - fair"
     end
   end
@@ -2086,12 +2253,13 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp pressure_weather_indicator(_), do: ""
 
   defp pressure_to_altitude(%{value: value}) when is_number(value),
-    do: pressure_to_altitude(value)
+    do: pressure_to_altitude(normalize_pressure(value))
 
   defp pressure_to_altitude(value) when is_number(value) do
+    pressure = normalize_pressure(value)
     # Simplified barometric formula: h ≈ 44330 * (1 - (P/P0)^0.1903)
     # P0 = 1013.25 hPa (sea level)
-    round(44330 * (1 - :math.pow(value / 1013.25, 0.1903)))
+    round(44330 * (1 - :math.pow(pressure / 1013.25, 0.1903)))
   end
 
   defp pressure_to_altitude(_), do: 0
@@ -2168,6 +2336,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   # QUATERNION / EULER - 3D orientation visualization
   # ============================================================================
 
+  # Handle non-map payloads (e.g., when decoder failed and returned 0)
+  defp format_quat_component(payload, _key) when not is_map(payload), do: "--"
+
   defp format_quat_component(payload, key) do
     case Map.get(payload, key) do
       nil -> "--"
@@ -2175,6 +2346,9 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
       _ -> "--"
     end
   end
+
+  # Handle non-map payloads (e.g., when decoder failed and returned 0)
+  defp format_euler(payload, _key) when not is_map(payload), do: "--"
 
   defp format_euler(payload, key) do
     case Map.get(payload, key) do
@@ -2234,6 +2408,14 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   # ORIENTATION - Device orientation (portrait/landscape/face up/down)
   # ============================================================================
 
+  # Thingy:52 orientation values (uint8)
+  defp orientation_label(0), do: "Portrait"
+  defp orientation_label(1), do: "Landscape"
+  defp orientation_label(2), do: "Reverse Portrait"
+  defp orientation_label(3), do: "Reverse Landscape"
+  defp orientation_label(4), do: "Face Up"
+  defp orientation_label(5), do: "Face Down"
+
   defp orientation_label(%{orientation: orient}) when is_binary(orient) do
     orient
     |> String.replace("_", " ")
@@ -2243,6 +2425,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   defp orientation_label(_), do: "Unknown"
+
+  # Thingy:52 orientation rotation (uint8 values)
+  defp orientation_rotation(%{payload: 1}), do: "rotate-90"
+  defp orientation_rotation(%{payload: 3}), do: "-rotate-90"
+  defp orientation_rotation(%{payload: 2}), do: "rotate-180"
 
   defp orientation_rotation(%{payload: %{orientation: orient}}) do
     case orient do
@@ -2307,6 +2494,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         |> assign_new(:sensor_id, fn _ -> assigns.sensor_id end)
         |> assign_new(:attribute, fn _ -> attribute end)
         |> assign_new(:render_hints, fn _ -> render_hints end)
+        |> assign_new(:mic_muted, fn -> false end)
         # Use lastvalue from attribute on full mount
         |> assign(:lastvalue, attribute.lastvalue)
         |> assign(:view_mode, view_mode)
@@ -2471,7 +2659,116 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     end
   end
 
+  # Handle Thingy:52 quaternion format: %{w: _, x: _, y: _, z: _}
+  defp parse_imu_payload(%{payload: %{w: qw, x: qx, y: qy, z: qz}}) do
+    {pitch, roll, yaw} = quaternion_to_euler(qw, qx, qy, qz)
+    heading = normalize_heading(yaw)
+
+    %{
+      @default_imu_data
+      | qw: qw,
+        qx: qx,
+        qy: qy,
+        qz: qz,
+        pitch: pitch,
+        roll: roll,
+        yaw: yaw,
+        heading: heading,
+        pitch_display: clamp(pitch / 90 * 100, -100, 100),
+        roll_display: clamp(roll / 90 * 100, -100, 100),
+        tilt_display: clamp(roll / 2, -45, 45)
+    }
+  end
+
+  # Handle Thingy:52 raw motion format: %{accelerometer: %{x,y,z}, gyroscope: %{x,y,z}, compass: %{x,y,z}}
+  defp parse_imu_payload(%{payload: %{accelerometer: accel, gyroscope: gyro}}) do
+    ax = get_coord(accel, :x)
+    ay = get_coord(accel, :y)
+    az = get_coord(accel, :z)
+    rx = get_coord(gyro, :x)
+    ry = get_coord(gyro, :y)
+    rz = get_coord(gyro, :z)
+
+    accel_magnitude = :math.sqrt(ax * ax + ay * ay + az * az)
+
+    # Estimate pitch/roll from accelerometer (gravity vector)
+    pitch = :math.atan2(ax, :math.sqrt(ay * ay + az * az)) * 180.0 / :math.pi()
+    roll = :math.atan2(ay, az) * 180.0 / :math.pi()
+
+    %{
+      @default_imu_data
+      | ax: ax,
+        ay: ay,
+        az: az,
+        rx: rx,
+        ry: ry,
+        rz: rz,
+        accel_magnitude: accel_magnitude,
+        pitch: pitch,
+        roll: roll,
+        pitch_display: clamp(pitch / 90 * 100, -100, 100),
+        roll_display: clamp(roll / 90 * 100, -100, 100),
+        tilt_display: clamp(roll / 2, -45, 45)
+    }
+  end
+
+  # Handle Thingy:52 euler angles format: %{roll: _, pitch: _, yaw: _}
+  defp parse_imu_payload(%{payload: %{roll: roll, pitch: pitch, yaw: yaw}}) do
+    heading = normalize_heading(yaw)
+
+    %{
+      @default_imu_data
+      | pitch: pitch,
+        roll: roll,
+        yaw: yaw,
+        heading: heading,
+        pitch_display: clamp(pitch / 90 * 100, -100, 100),
+        roll_display: clamp(roll / 90 * 100, -100, 100),
+        tilt_display: clamp(roll / 2, -45, 45)
+    }
+  end
+
+  # Handle Puffer IMU format: %{acc: %{x,y,z}, gyro: %{x,y,z}}
+  defp parse_imu_payload(%{payload: %{acc: accel, gyro: gyro}}) do
+    ax = get_coord(accel, :x)
+    ay = get_coord(accel, :y)
+    az = get_coord(accel, :z)
+    rx = get_coord(gyro, :x)
+    ry = get_coord(gyro, :y)
+    rz = get_coord(gyro, :z)
+
+    accel_magnitude = :math.sqrt(ax * ax + ay * ay + az * az)
+
+    # Estimate pitch/roll from accelerometer
+    pitch = :math.atan2(ax, :math.sqrt(ay * ay + az * az)) * 180.0 / :math.pi()
+    roll = :math.atan2(ay, az) * 180.0 / :math.pi()
+
+    %{
+      @default_imu_data
+      | ax: ax,
+        ay: ay,
+        az: az,
+        rx: rx,
+        ry: ry,
+        rz: rz,
+        accel_magnitude: accel_magnitude,
+        pitch: pitch,
+        roll: roll,
+        pitch_display: clamp(pitch / 90 * 100, -100, 100),
+        roll_display: clamp(roll / 90 * 100, -100, 100),
+        tilt_display: clamp(roll / 2, -45, 45)
+    }
+  end
+
   defp parse_imu_payload(_), do: @default_imu_data
+
+  # Helper to safely get coordinate from map (handles both atom and string keys)
+  defp get_coord(map, key) when is_map(map) do
+    val = Map.get(map, key) || Map.get(map, to_string(key)) || 0.0
+    if is_number(val), do: val * 1.0, else: 0.0
+  end
+
+  defp get_coord(_, _), do: 0.0
 
   defp parse_float_at(parts, index) do
     case Enum.at(parts, index) do
@@ -2649,6 +2946,11 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   def handle_event("page_visible", params, socket) do
     send(self(), {:component_event, "page_visible", params})
     {:noreply, socket}
+  end
+
+  def handle_event("toggle_mic_mute", _params, socket) do
+    current_muted = socket.assigns[:mic_muted] || false
+    {:noreply, assign(socket, :mic_muted, !current_muted)}
   end
 
   # Catch-all for events not handled by this component (e.g., latency_ping from hooks)

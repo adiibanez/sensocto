@@ -221,6 +221,19 @@ config :sensocto, Sensocto.Storage.HydrationManager,
   # Interval for periodic snapshot batching (milliseconds)
   snapshot_interval_ms: 5_000
 
+# Pythonx - Python integration via uv for realistic biosignal simulation
+config :pythonx, :uv_init,
+  pyproject_toml: """
+  [project]
+  name = "sensocto-simulator"
+  version = "0.0.0"
+  requires-python = "==3.13.*"
+  dependencies = [
+    "neurokit2>=0.2.0",
+    "numpy>=1.24.0"
+  ]
+  """
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

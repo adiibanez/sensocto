@@ -14,100 +14,207 @@ msgstr ""
 #: lib/sensocto_web/components/core_components.ex:528
 #, elixir-autogen, elixir-format
 msgid "Actions"
-msgstr ""
+msgstr "アクション"
 
 #: lib/sensocto_web/components/core_components.ex:199
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
-msgstr ""
+msgstr "再接続を試みています"
 
 #: lib/sensocto_web/components/sidebar.ex:95
 #, elixir-autogen, elixir-format
 msgid "Close menu"
-msgstr ""
+msgstr "メニューを閉じる"
 
 #: lib/sensocto_web/components/core_components.ex:190
 #, elixir-autogen, elixir-format
 msgid "Error!"
-msgstr ""
+msgstr "エラー！"
 
 #: lib/sensocto_web/components/core_components.ex:211
 #, elixir-autogen, elixir-format
 msgid "Hang in there while we get back on track"
-msgstr ""
+msgstr "接続を復旧中です。しばらくお待ちください"
 
 #: lib/sensocto_web/components/speed_dial.ex:182
 #, elixir-autogen, elixir-format
 msgid "Open actions menu"
-msgstr ""
+msgstr "アクションメニューを開く"
 
 #: lib/sensocto_web/components/core_components.ex:206
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
-msgstr ""
+msgstr "問題が発生しました！"
 
 #: lib/sensocto_web/components/core_components.ex:189
 #, elixir-autogen, elixir-format
 msgid "Success!"
-msgstr ""
+msgstr "成功！"
 
 #: lib/sensocto_web/components/core_components.ex:194
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
-msgstr ""
+msgstr "インターネットに接続できません"
 
 #: lib/sensocto_web/components/core_components.ex:115
 #: lib/sensocto_web/components/core_components.ex:169
 #, elixir-autogen, elixir-format
 msgid "close"
-msgstr ""
+msgstr "閉じる"
 
 msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgstr "受信トレイを確認し、ログインリンクをクリックしてください。"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:114
 #, elixir-autogen, elixir-format
 msgid "About"
-msgstr ""
+msgstr "概要"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:24
 #: lib/sensocto_web/components/layouts/app.html.heex:90
 #, elixir-autogen, elixir-format
 msgid "Home"
-msgstr ""
+msgstr "ホーム"
 
-#: lib/sensocto_web/live/user_settings_live.ex:139
+#: lib/sensocto_web/live/user_settings_live.ex:138
 #, elixir-autogen, elixir-format
 msgid "Language updated"
-msgstr ""
+msgstr "言語が更新されました"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:26
 #: lib/sensocto_web/components/layouts/app.html.heex:96
 #, elixir-autogen, elixir-format
 msgid "Lobby"
-msgstr ""
+msgstr "ロビー"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:29
 #: lib/sensocto_web/components/layouts/app.html.heex:102
 #, elixir-autogen, elixir-format
 msgid "Rooms"
-msgstr ""
+msgstr "ルーム"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:56
 #: lib/sensocto_web/components/layouts/app.html.heex:121
+#: lib/sensocto_web/live/user_settings_live.ex:203
 #, elixir-autogen, elixir-format
 msgid "Settings"
-msgstr ""
+msgstr "設定"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:66
 #: lib/sensocto_web/components/layouts/app.html.heex:128
+#: lib/sensocto_web/live/user_settings_live.ex:351
 #, elixir-autogen, elixir-format
 msgid "Sign Out"
-msgstr ""
+msgstr "ログアウト"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:32
 #: lib/sensocto_web/components/layouts/app.html.heex:108
 #, elixir-autogen, elixir-format
 msgid "Sim"
-msgstr ""
+msgstr "シミュレーション"
+
+#: lib/sensocto_web/live/user_settings_live.ex:341
+#, elixir-autogen, elixir-format
+msgid "Account"
+msgstr "アカウント"
+
+#: lib/sensocto_web/live/user_settings_live.ex:222
+#, elixir-autogen, elixir-format
+msgid "Account ID"
+msgstr "アカウント ID"
+
+#: lib/sensocto_web/live/user_settings_live.ex:236
+#, elixir-autogen, elixir-format
+msgid "Choose your preferred language for the application interface."
+msgstr "アプリケーションのインターフェース言語を選択してください。"
+
+#: lib/sensocto_web/live/user_settings_live.ex:320
+#, elixir-autogen, elixir-format
+msgid "Copied!"
+msgstr "コピーしました！"
+
+#: lib/sensocto_web/live/user_settings_live.ex:320
+#, elixir-autogen, elixir-format
+msgid "Copy"
+msgstr "コピー"
+
+#: lib/sensocto_web/live/user_settings_live.ex:215
+#, elixir-autogen, elixir-format
+msgid "Email"
+msgstr "メールアドレス"
+
+#: lib/sensocto_web/live/user_settings_live.ex:288
+#, elixir-autogen, elixir-format
+msgid "Expires in"
+msgstr "有効期限"
+
+#: lib/sensocto_web/live/user_settings_live.ex:297
+#, elixir-autogen, elixir-format
+msgid "Generate new code"
+msgstr "新しいコードを生成"
+
+#: lib/sensocto_web/live/user_settings_live.ex:331
+#, elixir-autogen, elixir-format
+msgid "Go to Settings and tap \"Scan QR Code\""
+msgstr "設定に移動して「QRコードをスキャン」をタップ"
+
+#: lib/sensocto_web/live/user_settings_live.ex:275
+#, elixir-autogen, elixir-format
+msgid "Hide QR Code"
+msgstr "QRコードを非表示"
+
+#: lib/sensocto_web/live/user_settings_live.ex:328
+#, elixir-autogen, elixir-format
+msgid "How to link your device:"
+msgstr "デバイスの連携方法："
+
+#: lib/sensocto_web/live/user_settings_live.ex:230
+#, elixir-autogen, elixir-format
+msgid "Language"
+msgstr "言語"
+
+#: lib/sensocto_web/live/user_settings_live.ex:258
+#, elixir-autogen, elixir-format
+msgid "Link Mobile Device"
+msgstr "モバイルデバイスを連携"
+
+#: lib/sensocto_web/live/user_settings_live.ex:215
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr "名前"
+
+#: lib/sensocto_web/live/user_settings_live.ex:330
+#, elixir-autogen, elixir-format
+msgid "Open the SensOcto mobile app"
+msgstr "SensOcto モバイルアプリを開く"
+
+#: lib/sensocto_web/live/user_settings_live.ex:302
+#, elixir-autogen, elixir-format
+msgid "Or copy the link:"
+msgstr "またはリンクをコピー："
+
+#: lib/sensocto_web/live/user_settings_live.ex:332
+#, elixir-autogen, elixir-format
+msgid "Point your camera at the QR code above"
+msgstr "上のQRコードにカメラを向けてください"
+
+#: lib/sensocto_web/live/user_settings_live.ex:208
+#, elixir-autogen, elixir-format
+msgid "Profile"
+msgstr "プロフィール"
+
+#: lib/sensocto_web/live/user_settings_live.ex:261
+#, elixir-autogen, elixir-format
+msgid "Scan the QR code with the SensOcto mobile app to sign in on your mobile device."
+msgstr "SensOcto モバイルアプリでQRコードをスキャンして、モバイルデバイスにログインします。"
+
+#: lib/sensocto_web/live/user_settings_live.ex:275
+#, elixir-autogen, elixir-format
+msgid "Show QR Code"
+msgstr "QRコードを表示"
+
+#: lib/sensocto_web/live/user_settings_live.ex:333
+#, elixir-autogen, elixir-format
+msgid "You'll be automatically signed in"
+msgstr "自動的にログインされます"

@@ -33,6 +33,9 @@ defmodule Sensocto.Simulator.DataGenerator do
         sensor_type in ["skeleton", "pose", "pose_skeleton"] ->
           {:ok, fetch_skeleton_data(config)}
 
+        sensor_type == "respiration" ->
+          {:ok, fetch_respiration_data(config)}
+
         true ->
           result =
             case config[:dummy_data] do
@@ -223,6 +226,7 @@ defmodule Sensocto.Simulator.DataGenerator do
 
   # Store skeleton state per sensor for continuity
   @skeleton_states_table :skeleton_sim_states
+  @respiration_buffers_table :respiration_sim_buffers
 
   defp get_skeleton_state(sensor_id, motion_type) do
     try do
@@ -352,6 +356,119 @@ defmodule Sensocto.Simulator.DataGenerator do
         y: Float.round(lm.y + noise_y, 4),
         v: Float.round(min(1.0, max(0.5, lm.v + noise_v)), 2)
       }
+    end)
+  end
+
+  # Respiration data using pre-generated NeuroKit2 buffers via Pythonx
+  # Each sensor gets a unique 120s waveform cached in ETS for zero per-tick Python overhead
+  defp fetch_respiration_data(config) do
+    sensor_id = config[:sensor_id] || "unknown"
+    batch_size = config[:batch_size] || 1
+    sampling_rate = max(config[:sampling_rate] || 10, 0.1)
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+
+    buffer = get_respiration_buffer(sensor_id, config)
+
+    results =
+      Enum.map(0..(batch_size - 1), fn i ->
+        timestamp = now + i * interval_ms
+        delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
+
+        index = rem(buffer.index + i, buffer.total)
+        value = elem(buffer.data, index)
+
+        %{
+          timestamp: timestamp,
+          delay: delay,
+          payload: Float.round(value * 1.0, 2)
+        }
+      end)
+
+    # Advance buffer index
+    new_index = rem(buffer.index + batch_size, buffer.total)
+    :ets.insert(@respiration_buffers_table, {sensor_id, %{buffer | index: new_index}})
+
+    results
+  end
+
+  defp get_respiration_buffer(sensor_id, config) do
+    try do
+      case :ets.lookup(@respiration_buffers_table, sensor_id) do
+        [{^sensor_id, buffer}] -> buffer
+        [] -> init_respiration_buffer(sensor_id, config)
+      end
+    rescue
+      ArgumentError ->
+        :ets.new(@respiration_buffers_table, [:named_table, :public, :set])
+        init_respiration_buffer(sensor_id, config)
+    end
+  end
+
+  defp init_respiration_buffer(sensor_id, config) do
+    sampling_rate = max(config[:sampling_rate] || 10, 0.1)
+    brpm = config[:breaths_per_minute] || 15
+    duration = 120
+
+    samples = generate_neurokit2_buffer(sampling_rate, brpm, duration)
+
+    buffer = %{
+      data: List.to_tuple(samples),
+      index: 0,
+      total: length(samples)
+    }
+
+    :ets.insert(@respiration_buffers_table, {sensor_id, buffer})
+
+    Logger.info(
+      "Initialized respiration buffer for #{sensor_id}: #{buffer.total} samples (#{duration}s at #{sampling_rate}Hz, #{brpm} brpm)"
+    )
+
+    buffer
+  end
+
+  defp generate_neurokit2_buffer(sampling_rate, brpm, duration) do
+    sr = round(sampling_rate)
+
+    python_code = """
+    import neurokit2 as nk
+    import numpy as np
+
+    rsp = nk.rsp_simulate(
+        duration=#{duration},
+        sampling_rate=#{sr},
+        respiratory_rate=#{brpm},
+        method="breathmetrics"
+    )
+    rsp_arr = np.array(rsp).flatten()
+    rsp_min = float(np.min(rsp_arr))
+    rsp_max = float(np.max(rsp_arr))
+    if rsp_max > rsp_min:
+        rsp_normalized = (rsp_arr - rsp_min) / (rsp_max - rsp_min)
+    else:
+        rsp_normalized = np.zeros_like(rsp_arr)
+    rsp_scaled = 50.0 + 50.0 * rsp_normalized
+    rsp_scaled.tolist()
+    """
+
+    {result, _globals} = Pythonx.eval(python_code, %{})
+    Pythonx.decode(result)
+  rescue
+    e ->
+      Logger.warning("NeuroKit2 buffer generation failed: #{inspect(e)}, using sine fallback")
+      generate_fallback_respiration_buffer(sampling_rate, brpm, duration)
+  end
+
+  defp generate_fallback_respiration_buffer(sampling_rate, brpm, duration) do
+    total_samples = trunc(duration * sampling_rate)
+    freq = brpm / 60.0
+    phase_offset = :rand.uniform() * 2 * :math.pi()
+
+    Enum.map(0..(total_samples - 1), fn i ->
+      t = i / sampling_rate
+      value = 75.0 + 25.0 * :math.sin(2 * :math.pi() * freq * t + phase_offset)
+      Float.round(value, 2)
     end)
   end
 
@@ -811,6 +928,20 @@ defmodule Sensocto.Simulator.DataGenerator do
     visibility_effect = :math.sin(i * 0.002) * range * 0.3
     noise = (:rand.uniform() - 0.5) * 0.05
     min(1.0, max(0.5, Float.round(base + visibility_effect + noise, 3)))
+  end
+
+  # Respiration fallback for dummy_data path (simple sine wave)
+  # Primary respiration uses NeuroKit2 via fetch_respiration_data/1
+  defp generate_value("respiration", config, i, sampling_rate) do
+    brpm = config[:breaths_per_minute] || 15
+    rate = max(sampling_rate, 0.1)
+    freq = brpm / 60.0
+    t = i / rate
+    sensor_id = config[:sensor_id] || "default"
+    phase_offset = :erlang.phash2(sensor_id, 10000) / 10000.0 * 2 * :math.pi()
+    value = 75.0 + 25.0 * :math.sin(2 * :math.pi() * freq * t + phase_offset)
+    noise = (:rand.uniform() - 0.5) * 1.5
+    Float.round(value + noise, 1)
   end
 
   # Generic sensor with min/max range

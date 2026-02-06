@@ -34,12 +34,6 @@ defmodule Sensocto.SimpleSensor do
     # Schedule periodic idle check for hibernation
     schedule_idle_check()
 
-    Sensor
-    |> Ash.Changeset.for_create(:create, %{name: sensor_id})
-    |> Ash.create()
-
-    RepoReplicatorPool.sensor_up(sensor_id)
-
     final_state =
       state
       |> Map.put(:attributes, state.attributes || %{})
@@ -47,11 +41,29 @@ defmodule Sensocto.SimpleSensor do
       |> Map.put(:mps_interval, 5000)
       |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))
       |> Map.put(:attention_level, :none)
+      |> Map.put(:initialized, false)
 
-    # Broadcast sensor registration for cluster-wide discovery
-    broadcast_sensor_registered(final_state)
+    # Defer blocking operations (DB write, replicator, broadcast) to handle_continue
+    {:ok, final_state, {:continue, :post_init}}
+  end
 
-    {:ok, final_state}
+  @impl true
+  def handle_continue(:post_init, %{sensor_id: sensor_id} = state) do
+    try do
+      Sensor
+      |> Ash.Changeset.for_create(:create, %{name: sensor_id})
+      |> Ash.create()
+    rescue
+      e ->
+        Logger.warning(
+          "[SimpleSensor] Failed to create DB record for #{sensor_id}: #{inspect(e)}"
+        )
+    end
+
+    RepoReplicatorPool.sensor_up(sensor_id)
+    broadcast_sensor_registered(state)
+
+    {:noreply, %{state | initialized: true}}
   end
 
   @impl true

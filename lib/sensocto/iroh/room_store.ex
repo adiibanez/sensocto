@@ -18,6 +18,7 @@ defmodule Sensocto.Iroh.RoomStore do
   use GenServer
   require Logger
   alias IrohEx.Native
+  alias Sensocto.Resilience.CircuitBreaker
 
   defstruct [
     :node_ref,
@@ -31,6 +32,7 @@ defmodule Sensocto.Iroh.RoomStore do
 
   # Max initialization retry attempts before giving up
   @max_init_attempts 3
+  @call_timeout 5_000
 
   # ============================================================================
   # Client API
@@ -44,42 +46,42 @@ defmodule Sensocto.Iroh.RoomStore do
   Stores a room in iroh docs.
   """
   def store_room(room_data) do
-    GenServer.call(__MODULE__, {:store_room, room_data})
+    GenServer.call(__MODULE__, {:store_room, room_data}, @call_timeout)
   end
 
   @doc """
   Retrieves a room from iroh docs by ID.
   """
   def get_room(room_id) do
-    GenServer.call(__MODULE__, {:get_room, room_id})
+    GenServer.call(__MODULE__, {:get_room, room_id}, @call_timeout)
   end
 
   @doc """
   Deletes a room from iroh docs.
   """
   def delete_room(room_id) do
-    GenServer.call(__MODULE__, {:delete_room, room_id})
+    GenServer.call(__MODULE__, {:delete_room, room_id}, @call_timeout)
   end
 
   @doc """
   Stores a membership in iroh docs.
   """
   def store_membership(room_id, user_id, role) do
-    GenServer.call(__MODULE__, {:store_membership, room_id, user_id, role})
+    GenServer.call(__MODULE__, {:store_membership, room_id, user_id, role}, @call_timeout)
   end
 
   @doc """
   Retrieves a membership from iroh docs.
   """
   def get_membership(room_id, user_id) do
-    GenServer.call(__MODULE__, {:get_membership, room_id, user_id})
+    GenServer.call(__MODULE__, {:get_membership, room_id, user_id}, @call_timeout)
   end
 
   @doc """
   Deletes a membership from iroh docs.
   """
   def delete_membership(room_id, user_id) do
-    GenServer.call(__MODULE__, {:delete_membership, room_id, user_id})
+    GenServer.call(__MODULE__, {:delete_membership, room_id, user_id}, @call_timeout)
   end
 
   @doc """
@@ -87,28 +89,30 @@ defmodule Sensocto.Iroh.RoomStore do
   Returns a list of room data maps.
   """
   def list_all_rooms do
-    GenServer.call(__MODULE__, :list_all_rooms)
+    GenServer.call(__MODULE__, :list_all_rooms, @call_timeout)
   end
 
   @doc """
   Lists all memberships for a room.
   """
   def list_room_memberships(room_id) do
-    GenServer.call(__MODULE__, {:list_room_memberships, room_id})
+    GenServer.call(__MODULE__, {:list_room_memberships, room_id}, @call_timeout)
   end
 
   @doc """
   Checks if the iroh store is initialized and ready.
   """
   def ready? do
-    GenServer.call(__MODULE__, :ready?)
+    GenServer.call(__MODULE__, :ready?, 2_000)
+  catch
+    :exit, _ -> false
   end
 
   @doc """
   Gets the iroh node reference for advanced operations.
   """
   def get_node_ref do
-    GenServer.call(__MODULE__, :get_node_ref)
+    GenServer.call(__MODULE__, :get_node_ref, @call_timeout)
   end
 
   # ============================================================================
@@ -355,19 +359,28 @@ defmodule Sensocto.Iroh.RoomStore do
       key = "room:#{room_id}"
       value = Jason.encode!(room_data)
 
-      case Native.docs_set_entry(
-             state.node_ref,
-             state.rooms_namespace,
-             state.author_id,
-             key,
-             value
-           ) do
-        content_hash when is_binary(content_hash) ->
+      case CircuitBreaker.call(:iroh_docs, fn ->
+             Native.docs_set_entry(
+               state.node_ref,
+               state.rooms_namespace,
+               state.author_id,
+               key,
+               value
+             )
+           end) do
+        {:ok, content_hash} when is_binary(content_hash) ->
           {:ok, content_hash}
 
-        error ->
+        {:error, :circuit_open} ->
+          {:error, :circuit_open}
+
+        {:ok, error} ->
           Logger.error("[Iroh.RoomStore] Failed to store room: #{inspect(error)}")
           {:error, error}
+
+        {:error, reason} ->
+          Logger.error("[Iroh.RoomStore] Failed to store room: #{inspect(reason)}")
+          {:error, reason}
       end
     end
   end
@@ -375,26 +388,34 @@ defmodule Sensocto.Iroh.RoomStore do
   defp do_get_room(state, room_id) do
     key = "room:#{room_id}"
 
-    case Native.docs_get_entry_value(
-           state.node_ref,
-           state.rooms_namespace,
-           state.author_id,
-           key
-         ) do
-      value when is_binary(value) and byte_size(value) > 0 ->
+    case CircuitBreaker.call(:iroh_docs, fn ->
+           Native.docs_get_entry_value(
+             state.node_ref,
+             state.rooms_namespace,
+             state.author_id,
+             key
+           )
+         end) do
+      {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
         case Jason.decode(value) do
           {:ok, data} -> {:ok, atomize_keys(data)}
           {:error, reason} -> {:error, {:json_decode, reason}}
         end
 
-      "" ->
+      {:ok, ""} ->
         {:error, :not_found}
 
-      nil ->
+      {:ok, nil} ->
         {:error, :not_found}
 
-      error ->
+      {:error, :circuit_open} ->
+        {:error, :circuit_open}
+
+      {:ok, error} ->
         {:error, error}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -403,18 +424,23 @@ defmodule Sensocto.Iroh.RoomStore do
     key = "room:#{room_id}"
     tombstone = Jason.encode!(%{deleted: true, deleted_at: DateTime.utc_now()})
 
-    case Native.docs_set_entry(
-           state.node_ref,
-           state.rooms_namespace,
-           state.author_id,
-           key,
-           tombstone
-         ) do
-      content_hash when is_binary(content_hash) ->
+    case CircuitBreaker.call(:iroh_docs, fn ->
+           Native.docs_set_entry(
+             state.node_ref,
+             state.rooms_namespace,
+             state.author_id,
+             key,
+             tombstone
+           )
+         end) do
+      {:ok, content_hash} when is_binary(content_hash) ->
         :ok
 
-      error ->
-        {:error, error}
+      {:error, :circuit_open} ->
+        {:error, :circuit_open}
+
+      other ->
+        {:error, other}
     end
   end
 
@@ -441,44 +467,54 @@ defmodule Sensocto.Iroh.RoomStore do
 
     value = Jason.encode!(membership_data)
 
-    case Native.docs_set_entry(
-           state.node_ref,
-           state.memberships_namespace,
-           state.author_id,
-           key,
-           value
-         ) do
-      content_hash when is_binary(content_hash) ->
+    case CircuitBreaker.call(:iroh_docs, fn ->
+           Native.docs_set_entry(
+             state.node_ref,
+             state.memberships_namespace,
+             state.author_id,
+             key,
+             value
+           )
+         end) do
+      {:ok, content_hash} when is_binary(content_hash) ->
         {:ok, content_hash}
 
-      error ->
-        {:error, error}
+      {:error, :circuit_open} ->
+        {:error, :circuit_open}
+
+      other ->
+        {:error, other}
     end
   end
 
   defp do_get_membership(state, room_id, user_id) do
     key = "membership:#{room_id}:#{user_id}"
 
-    case Native.docs_get_entry_value(
-           state.node_ref,
-           state.memberships_namespace,
-           state.author_id,
-           key
-         ) do
-      value when is_binary(value) and byte_size(value) > 0 ->
+    case CircuitBreaker.call(:iroh_docs, fn ->
+           Native.docs_get_entry_value(
+             state.node_ref,
+             state.memberships_namespace,
+             state.author_id,
+             key
+           )
+         end) do
+      {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
         case Jason.decode(value) do
           {:ok, data} -> {:ok, atomize_keys(data)}
           {:error, reason} -> {:error, {:json_decode, reason}}
         end
 
-      "" ->
+      {:ok, ""} ->
         {:error, :not_found}
 
-      nil ->
+      {:ok, nil} ->
         {:error, :not_found}
 
-      error ->
-        {:error, error}
+      {:error, :circuit_open} ->
+        {:error, :circuit_open}
+
+      other ->
+        {:error, other}
     end
   end
 
@@ -486,18 +522,23 @@ defmodule Sensocto.Iroh.RoomStore do
     key = "membership:#{room_id}:#{user_id}"
     tombstone = Jason.encode!(%{deleted: true})
 
-    case Native.docs_set_entry(
-           state.node_ref,
-           state.memberships_namespace,
-           state.author_id,
-           key,
-           tombstone
-         ) do
-      content_hash when is_binary(content_hash) ->
+    case CircuitBreaker.call(:iroh_docs, fn ->
+           Native.docs_set_entry(
+             state.node_ref,
+             state.memberships_namespace,
+             state.author_id,
+             key,
+             tombstone
+           )
+         end) do
+      {:ok, content_hash} when is_binary(content_hash) ->
         :ok
 
-      error ->
-        {:error, error}
+      {:error, :circuit_open} ->
+        {:error, :circuit_open}
+
+      other ->
+        {:error, other}
     end
   end
 

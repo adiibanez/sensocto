@@ -462,7 +462,7 @@ defmodule Sensocto.AttributeStoreTiered do
   defp maybe_take(payloads, :infinity), do: payloads
 
   defp maybe_take(payloads, limit) when is_integer(limit) and limit > 0,
-    do: Enum.take(payloads, limit)
+    do: Enum.take(payloads, -limit)
 
   defp maybe_take(payloads, _), do: payloads
 end

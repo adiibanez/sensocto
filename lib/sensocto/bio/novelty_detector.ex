@@ -25,6 +25,7 @@ defmodule Sensocto.Bio.NoveltyDetector do
   @novelty_threshold 3.0
   @min_samples 10
   @debounce_ms 10_000
+  @cleanup_interval :timer.minutes(5)
 
   defstruct sensor_stats: %{},
             novelty_events: [],
@@ -90,6 +91,12 @@ defmodule Sensocto.Bio.NoveltyDetector do
 
     threshold = Keyword.get(opts, :threshold, @novelty_threshold)
 
+    # Subscribe to sensor lifecycle events for cleanup
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "discovery:sensors")
+
+    # Schedule periodic cleanup of stale stats
+    Process.send_after(self(), :cleanup_stale_stats, @cleanup_interval)
+
     Logger.info("Bio.NoveltyDetector started (threshold: #{threshold}σ)")
 
     {:ok, %__MODULE__{threshold: threshold}}
@@ -138,6 +145,66 @@ defmodule Sensocto.Bio.NoveltyDetector do
   def handle_call({:get_recent_events, limit}, _from, state) do
     events = Enum.take(state.novelty_events, limit)
     {:reply, events, state}
+  end
+
+  @impl true
+  def handle_info({:sensor_unregistered, sensor_id, _node}, state) do
+    # Remove all stats entries for this sensor
+    new_stats =
+      state.sensor_stats
+      |> Enum.reject(fn {{sid, _attr_id}, _stats} -> sid == sensor_id end)
+      |> Map.new()
+
+    # Remove ETS entries for this sensor
+    :ets.match_delete(:bio_novelty_scores, {{sensor_id, :_}, :_, :_})
+
+    {:noreply, %{state | sensor_stats: new_stats}}
+  end
+
+  @impl true
+  def handle_info({:sensor_registered, _sensor_id, _view_state, _node}, state) do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:sensor_updated, _sensor_id, _view_state, _node}, state) do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:cleanup_stale_stats, state) do
+    # Sweep entries where the sensor is no longer alive
+    new_stats =
+      state.sensor_stats
+      |> Enum.filter(fn {{sensor_id, _attr_id}, _stats} ->
+        Sensocto.SimpleSensor.alive?(sensor_id)
+      end)
+      |> Map.new()
+
+    removed = map_size(state.sensor_stats) - map_size(new_stats)
+
+    if removed > 0 do
+      # Also clean ETS entries for removed sensors
+      removed_sensor_ids =
+        MapSet.difference(
+          state.sensor_stats |> Map.keys() |> Enum.map(&elem(&1, 0)) |> MapSet.new(),
+          new_stats |> Map.keys() |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+        )
+
+      Enum.each(removed_sensor_ids, fn sensor_id ->
+        :ets.match_delete(:bio_novelty_scores, {{sensor_id, :_}, :_, :_})
+      end)
+
+      Logger.debug("[Bio.NoveltyDetector] Cleaned up #{removed} stale stat entries")
+    end
+
+    Process.send_after(self(), :cleanup_stale_stats, @cleanup_interval)
+    {:noreply, %{state | sensor_stats: new_stats}}
+  end
+
+  @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
   end
 
   # ============================================================================

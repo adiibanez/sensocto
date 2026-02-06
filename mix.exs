@@ -159,7 +159,10 @@ defmodule Sensocto.MixProject do
       {:fly_deploy, "~> 0.1.15"},
 
       # AI/LLM Integration
-      {:ollama, "~> 0.9"}
+      {:ollama, "~> 0.9"},
+
+      # Python integration (neurokit2 for realistic biosignal simulation)
+      {:pythonx, "~> 0.4.0"}
       # {:remove_unused, github: "KristerV/remove_unused_ex"}
 
       # https://github.com/georgeguimaraes/soothsayer

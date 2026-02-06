@@ -126,17 +126,11 @@ defmodule SensoctoWeb.UserSettingsLive do
   def handle_event("change_locale", %{"locale" => locale}, socket) do
     user = socket.assigns.current_user
 
-    # Save preference to database
+    # Save preference to database (no-op for guest users)
     UserPreferences.set_ui_state(user.id, "locale", locale)
 
-    # Update Gettext locale for current process
-    Gettext.put_locale(SensoctoWeb.Gettext, locale)
-
-    {:noreply,
-     socket
-     |> assign(:current_locale, locale)
-     |> assign(:locale, locale)
-     |> put_flash(:info, gettext("Language updated"))}
+    # Redirect with locale query param so the Locale plug updates session/cookie
+    {:noreply, redirect(socket, to: "/settings?locale=#{locale}")}
   end
 
   defp generate_mobile_token(%{is_guest: true} = user) do
@@ -200,24 +194,26 @@ defmodule SensoctoWeb.UserSettingsLive do
   def render(assigns) do
     ~H"""
     <div class="max-w-4xl mx-auto">
-      <h1 class="text-2xl font-bold text-white mb-6">Settings</h1>
+      <h1 class="text-2xl font-bold text-white mb-6">{gettext("Settings")}</h1>
 
       <div class="space-y-6">
         <div class="bg-gray-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Heroicons.icon name="user-circle" type="outline" class="h-5 w-5 text-gray-400" /> Profile
+            <Heroicons.icon name="user-circle" type="outline" class="h-5 w-5 text-gray-400" /> {gettext(
+              "Profile"
+            )}
           </h2>
           <div class="space-y-4">
             <div>
               <label class="block text-sm text-gray-400 mb-1">
-                {if Map.get(@current_user, :is_guest), do: "Name", else: "Email"}
+                {if Map.get(@current_user, :is_guest), do: gettext("Name"), else: gettext("Email")}
               </label>
               <div class="text-white">
                 {Map.get(@current_user, :email) || Map.get(@current_user, :display_name, "Guest")}
               </div>
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-1">Account ID</label>
+              <label class="block text-sm text-gray-400 mb-1">{gettext("Account ID")}</label>
               <div class="text-gray-300 font-mono text-sm">{@current_user.id}</div>
             </div>
           </div>
@@ -225,11 +221,13 @@ defmodule SensoctoWeb.UserSettingsLive do
 
         <div class="bg-gray-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Heroicons.icon name="language" type="outline" class="h-5 w-5 text-gray-400" /> Language
+            <Heroicons.icon name="language" type="outline" class="h-5 w-5 text-gray-400" /> {gettext(
+              "Language"
+            )}
           </h2>
           <div class="space-y-4">
             <p class="text-gray-400 text-sm">
-              Choose your preferred language for the application interface.
+              {gettext("Choose your preferred language for the application interface.")}
             </p>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
@@ -251,10 +249,12 @@ defmodule SensoctoWeb.UserSettingsLive do
         <div class="bg-gray-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Heroicons.icon name="device-phone-mobile" type="outline" class="h-5 w-5 text-gray-400" />
-            Link Mobile Device
+            {gettext("Link Mobile Device")}
           </h2>
           <p class="text-gray-400 text-sm mb-4">
-            Scan the QR code with the SensOcto mobile app to sign in on your mobile device.
+            {gettext(
+              "Scan the QR code with the SensOcto mobile app to sign in on your mobile device."
+            )}
           </p>
 
           <button
@@ -266,7 +266,7 @@ defmodule SensoctoWeb.UserSettingsLive do
               type="outline"
               class="h-5 w-5"
             />
-            {if @show_qr, do: "Hide QR Code", else: "Show QR Code"}
+            {if @show_qr, do: gettext("Hide QR Code"), else: gettext("Show QR Code")}
           </button>
 
           <div :if={@show_qr} class="space-y-4">
@@ -279,7 +279,7 @@ defmodule SensoctoWeb.UserSettingsLive do
                 <div class="flex items-center gap-2 text-gray-400 text-sm">
                   <Heroicons.icon name="clock" type="outline" class="h-4 w-4" />
                   <span>
-                    Expires in
+                    {gettext("Expires in")}
                     <span class="font-mono font-bold text-white">{format_time(@time_remaining)}</span>
                   </span>
                 </div>
@@ -288,11 +288,13 @@ defmodule SensoctoWeb.UserSettingsLive do
                   phx-click="regenerate"
                   class="text-sm text-indigo-400 hover:text-indigo-300 underline"
                 >
-                  Generate new code
+                  {gettext("Generate new code")}
                 </button>
 
                 <div>
-                  <label class="block text-sm text-gray-400 mb-2">Or copy the link:</label>
+                  <label class="block text-sm text-gray-400 mb-2">
+                    {gettext("Or copy the link:")}
+                  </label>
                   <div class="flex gap-2">
                     <input
                       type="text"
@@ -309,7 +311,7 @@ defmodule SensoctoWeb.UserSettingsLive do
                       class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors " <>
                         if(@copied, do: "bg-green-600 text-white", else: "bg-gray-700 hover:bg-gray-600 text-white")}
                     >
-                      {if @copied, do: "Copied!", else: "Copy"}
+                      {if @copied, do: gettext("Copied!"), else: gettext("Copy")}
                     </button>
                   </div>
                 </div>
@@ -317,12 +319,12 @@ defmodule SensoctoWeb.UserSettingsLive do
             </div>
 
             <div class="bg-gray-900 rounded-lg p-4 text-sm text-gray-400">
-              <h4 class="font-semibold text-gray-300 mb-2">How to link your device:</h4>
+              <h4 class="font-semibold text-gray-300 mb-2">{gettext("How to link your device:")}</h4>
               <ol class="space-y-1 list-decimal list-inside">
-                <li>Open the SensOcto mobile app</li>
-                <li>Go to Settings and tap "Scan QR Code"</li>
-                <li>Point your camera at the QR code above</li>
-                <li>You'll be automatically signed in</li>
+                <li>{gettext("Open the SensOcto mobile app")}</li>
+                <li>{gettext("Go to Settings and tap \"Scan QR Code\"")}</li>
+                <li>{gettext("Point your camera at the QR code above")}</li>
+                <li>{gettext("You'll be automatically signed in")}</li>
               </ol>
             </div>
           </div>
@@ -330,7 +332,9 @@ defmodule SensoctoWeb.UserSettingsLive do
 
         <div class="bg-gray-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Heroicons.icon name="cog-6-tooth" type="outline" class="h-5 w-5 text-gray-400" /> Account
+            <Heroicons.icon name="cog-6-tooth" type="outline" class="h-5 w-5 text-gray-400" /> {gettext(
+              "Account"
+            )}
           </h2>
           <div class="space-y-4">
             <a
@@ -338,7 +342,7 @@ defmodule SensoctoWeb.UserSettingsLive do
               class="inline-flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors"
             >
               <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-5 w-5" />
-              Sign Out
+              {gettext("Sign Out")}
             </a>
           </div>
         </div>

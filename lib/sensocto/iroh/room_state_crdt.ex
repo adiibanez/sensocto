@@ -48,6 +48,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   require Logger
   alias IrohEx.Native
   alias IrohEx.NodeConfig
+  alias Sensocto.Resilience.CircuitBreaker
 
   @type room_id :: String.t()
   @type user_id :: String.t()
@@ -62,6 +63,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
 
   # Max initialization retry attempts before giving up
   @max_init_attempts 3
+  @call_timeout 5_000
 
   # ============================================================================
   # Client API
@@ -77,7 +79,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec get_or_create_room_doc(room_id()) :: {:ok, String.t()} | {:error, term()}
   def get_or_create_room_doc(room_id) do
-    GenServer.call(__MODULE__, {:get_or_create_doc, room_id})
+    GenServer.call(__MODULE__, {:get_or_create_doc, room_id}, @call_timeout)
   end
 
   @doc """
@@ -85,7 +87,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec delete_room_doc(room_id()) :: :ok | {:error, term()}
   def delete_room_doc(room_id) do
-    GenServer.call(__MODULE__, {:delete_doc, room_id})
+    GenServer.call(__MODULE__, {:delete_doc, room_id}, @call_timeout)
   end
 
   @doc """
@@ -93,7 +95,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec get_room_state(room_id()) :: {:ok, map()} | {:error, term()}
   def get_room_state(room_id) do
-    GenServer.call(__MODULE__, {:get_state, room_id})
+    GenServer.call(__MODULE__, {:get_state, room_id}, @call_timeout)
   end
 
   # ============================================================================
@@ -105,7 +107,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec set_media_url(room_id(), String.t(), user_id()) :: :ok | {:error, term()}
   def set_media_url(room_id, url, user_id) do
-    GenServer.call(__MODULE__, {:set_media_url, room_id, url, user_id})
+    GenServer.call(__MODULE__, {:set_media_url, room_id, url, user_id}, @call_timeout)
   end
 
   @doc """
@@ -113,7 +115,11 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec set_media_position(room_id(), non_neg_integer(), user_id()) :: :ok | {:error, term()}
   def set_media_position(room_id, position_ms, user_id) do
-    GenServer.call(__MODULE__, {:set_media_position, room_id, position_ms, user_id})
+    GenServer.call(
+      __MODULE__,
+      {:set_media_position, room_id, position_ms, user_id},
+      @call_timeout
+    )
   end
 
   @doc """
@@ -121,7 +127,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec set_media_playing(room_id(), boolean(), user_id()) :: :ok | {:error, term()}
   def set_media_playing(room_id, is_playing, user_id) do
-    GenServer.call(__MODULE__, {:set_media_playing, room_id, is_playing, user_id})
+    GenServer.call(__MODULE__, {:set_media_playing, room_id, is_playing, user_id}, @call_timeout)
   end
 
   @doc """
@@ -129,7 +135,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec get_media_state(room_id()) :: {:ok, map()} | {:error, term()}
   def get_media_state(room_id) do
-    GenServer.call(__MODULE__, {:get_media_state, room_id})
+    GenServer.call(__MODULE__, {:get_media_state, room_id}, @call_timeout)
   end
 
   # ============================================================================
@@ -141,7 +147,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec set_object3d_url(room_id(), String.t(), user_id()) :: :ok | {:error, term()}
   def set_object3d_url(room_id, splat_url, user_id) do
-    GenServer.call(__MODULE__, {:set_object3d_url, room_id, splat_url, user_id})
+    GenServer.call(__MODULE__, {:set_object3d_url, room_id, splat_url, user_id}, @call_timeout)
   end
 
   @doc """
@@ -149,7 +155,11 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec set_object3d_camera(room_id(), map(), map(), user_id()) :: :ok | {:error, term()}
   def set_object3d_camera(room_id, position, target, user_id) do
-    GenServer.call(__MODULE__, {:set_object3d_camera, room_id, position, target, user_id})
+    GenServer.call(
+      __MODULE__,
+      {:set_object3d_camera, room_id, position, target, user_id},
+      @call_timeout
+    )
   end
 
   @doc """
@@ -157,7 +167,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec get_object3d_state(room_id()) :: {:ok, map()} | {:error, term()}
   def get_object3d_state(room_id) do
-    GenServer.call(__MODULE__, {:get_object3d_state, room_id})
+    GenServer.call(__MODULE__, {:get_object3d_state, room_id}, @call_timeout)
   end
 
   # ============================================================================
@@ -169,7 +179,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec update_participant_presence(room_id(), user_id(), map()) :: :ok | {:error, term()}
   def update_participant_presence(room_id, user_id, presence_data) do
-    GenServer.call(__MODULE__, {:update_presence, room_id, user_id, presence_data})
+    GenServer.call(__MODULE__, {:update_presence, room_id, user_id, presence_data}, @call_timeout)
   end
 
   @doc """
@@ -177,7 +187,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec remove_participant(room_id(), user_id()) :: :ok | {:error, term()}
   def remove_participant(room_id, user_id) do
-    GenServer.call(__MODULE__, {:remove_participant, room_id, user_id})
+    GenServer.call(__MODULE__, {:remove_participant, room_id, user_id}, @call_timeout)
   end
 
   @doc """
@@ -185,7 +195,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec get_participants(room_id()) :: {:ok, map()} | {:error, term()}
   def get_participants(room_id) do
-    GenServer.call(__MODULE__, {:get_participants, room_id})
+    GenServer.call(__MODULE__, {:get_participants, room_id}, @call_timeout)
   end
 
   # ============================================================================
@@ -197,7 +207,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec sync_room(room_id()) :: :ok | {:error, term()}
   def sync_room(room_id) do
-    GenServer.call(__MODULE__, {:sync_room, room_id})
+    GenServer.call(__MODULE__, {:sync_room, room_id}, @call_timeout)
   end
 
   @doc """
@@ -205,7 +215,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec merge_remote_changes(room_id(), binary()) :: :ok | {:error, term()}
   def merge_remote_changes(room_id, doc_bytes) do
-    GenServer.call(__MODULE__, {:merge_changes, room_id, doc_bytes})
+    GenServer.call(__MODULE__, {:merge_changes, room_id, doc_bytes}, @call_timeout)
   end
 
   @doc """
@@ -213,7 +223,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec export_room_doc(room_id()) :: {:ok, binary()} | {:error, term()}
   def export_room_doc(room_id) do
-    GenServer.call(__MODULE__, {:export_doc, room_id})
+    GenServer.call(__MODULE__, {:export_doc, room_id}, @call_timeout)
   end
 
   @doc """
@@ -221,7 +231,9 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   """
   @spec ready?() :: boolean()
   def ready? do
-    GenServer.call(__MODULE__, :ready?)
+    GenServer.call(__MODULE__, :ready?, 2_000)
+  catch
+    :exit, _ -> false
   end
 
   # ============================================================================
@@ -622,8 +634,13 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defp do_get_state(state, room_id) do
     case get_doc_id(state, room_id) do
       {:ok, doc_id} ->
-        json_str = Native.automerge_to_json(state.node_ref, doc_id)
-        Jason.decode(json_str)
+        case CircuitBreaker.call(:iroh_nif, fn ->
+               Native.automerge_to_json(state.node_ref, doc_id)
+             end) do
+          {:ok, json_str} -> Jason.decode(json_str)
+          {:error, :circuit_open} -> {:error, :circuit_open}
+          {:error, reason} -> {:error, reason}
+        end
 
       error ->
         error
@@ -651,18 +668,22 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defp do_set_media_field(state, room_id, field, value, user_id) do
     case get_doc_id(state, room_id) do
       {:ok, doc_id} ->
-        Native.automerge_map_put(state.node_ref, doc_id, ["media"], field, value)
-        Native.automerge_map_put(state.node_ref, doc_id, ["media"], "updated_by", user_id)
+        case CircuitBreaker.call(:iroh_nif, fn ->
+               Native.automerge_map_put(state.node_ref, doc_id, ["media"], field, value)
+               Native.automerge_map_put(state.node_ref, doc_id, ["media"], "updated_by", user_id)
 
-        Native.automerge_map_put(
-          state.node_ref,
-          doc_id,
-          ["media"],
-          "updated_at",
-          DateTime.utc_now() |> DateTime.to_iso8601()
-        )
-
-        :ok
+               Native.automerge_map_put(
+                 state.node_ref,
+                 doc_id,
+                 ["media"],
+                 "updated_at",
+                 DateTime.utc_now() |> DateTime.to_iso8601()
+               )
+             end) do
+          {:ok, _} -> :ok
+          {:error, :circuit_open} -> {:error, :circuit_open}
+          {:error, reason} -> {:error, reason}
+        end
 
       error ->
         error
@@ -672,18 +693,29 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defp do_set_object3d_field(state, room_id, field, value, user_id) do
     case get_doc_id(state, room_id) do
       {:ok, doc_id} ->
-        Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], field, value)
-        Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], "updated_by", user_id)
+        case CircuitBreaker.call(:iroh_nif, fn ->
+               Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], field, value)
 
-        Native.automerge_map_put(
-          state.node_ref,
-          doc_id,
-          ["object_3d"],
-          "updated_at",
-          DateTime.utc_now() |> DateTime.to_iso8601()
-        )
+               Native.automerge_map_put(
+                 state.node_ref,
+                 doc_id,
+                 ["object_3d"],
+                 "updated_by",
+                 user_id
+               )
 
-        :ok
+               Native.automerge_map_put(
+                 state.node_ref,
+                 doc_id,
+                 ["object_3d"],
+                 "updated_at",
+                 DateTime.utc_now() |> DateTime.to_iso8601()
+               )
+             end) do
+          {:ok, _} -> :ok
+          {:error, :circuit_open} -> {:error, :circuit_open}
+          {:error, reason} -> {:error, reason}
+        end
 
       error ->
         error

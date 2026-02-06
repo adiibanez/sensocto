@@ -11,6 +11,7 @@ defmodule Sensocto.RoomServer do
   @default_expiry_ms 24 * 60 * 60 * 1000
   @activity_timeout_ms 5000
   @idle_timeout_ms 60_000
+  @call_timeout 5_000
 
   defstruct [
     :id,
@@ -44,37 +45,37 @@ defmodule Sensocto.RoomServer do
   end
 
   def get_state(room_id) do
-    GenServer.call(via_tuple(room_id), :get_state)
+    GenServer.call(via_tuple(room_id), :get_state, @call_timeout)
   catch
     :exit, _ -> {:error, :not_found}
   end
 
   def get_view_state(room_id) do
-    GenServer.call(via_tuple(room_id), :get_view_state)
+    GenServer.call(via_tuple(room_id), :get_view_state, @call_timeout)
   catch
     :exit, _ -> {:error, :not_found}
   end
 
   def add_member(room_id, user_id, role \\ :member) do
-    GenServer.call(via_tuple(room_id), {:add_member, user_id, role})
+    GenServer.call(via_tuple(room_id), {:add_member, user_id, role}, @call_timeout)
   catch
     :exit, _ -> {:error, :not_found}
   end
 
   def remove_member(room_id, user_id) do
-    GenServer.call(via_tuple(room_id), {:remove_member, user_id})
+    GenServer.call(via_tuple(room_id), {:remove_member, user_id}, @call_timeout)
   catch
     :exit, _ -> {:error, :not_found}
   end
 
   def add_sensor(room_id, sensor_id) do
-    GenServer.call(via_tuple(room_id), {:add_sensor, sensor_id})
+    GenServer.call(via_tuple(room_id), {:add_sensor, sensor_id}, @call_timeout)
   catch
     :exit, _ -> {:error, :not_found}
   end
 
   def remove_sensor(room_id, sensor_id) do
-    GenServer.call(via_tuple(room_id), {:remove_sensor, sensor_id})
+    GenServer.call(via_tuple(room_id), {:remove_sensor, sensor_id}, @call_timeout)
   catch
     :exit, _ -> {:error, :not_found}
   end

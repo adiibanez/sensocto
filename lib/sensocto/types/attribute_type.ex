@@ -205,6 +205,9 @@ defmodule Sensocto.Types.AttributeType do
       t when t in ~w(hr heartrate hrv) ->
         %{chart_type: :sparkline, color: "#ff4444", component: "SparklineWasm"}
 
+      "respiration" ->
+        %{chart_type: :waveform, color: "#06b6d4", unit: "%", component: "SparklineWasm"}
+
       t when t in ~w(accelerometer gyroscope magnetometer imu gravity) ->
         %{chart_type: :multi_axis, component: "IMU"}
 

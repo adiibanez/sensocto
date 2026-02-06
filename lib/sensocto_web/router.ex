@@ -135,6 +135,7 @@ defmodule SensoctoWeb.Router do
       live "/lobby/ecg", LobbyLive, :ecg
       live "/lobby/battery", LobbyLive, :battery
       live "/lobby/skeleton", LobbyLive, :skeleton
+      live "/lobby/breathing", LobbyLive, :respiration
       live "/lobby/favorites", LobbyLive, :favorites
       live "/lobby/users", LobbyLive, :users
       live "/lobby/graph", LobbyLive, :graph

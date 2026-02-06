@@ -16,6 +16,16 @@
   let sensorService = getContext("sensorService");
   let loggerCtxName = "BluetoothClient";
 
+  // Thingy:52 motion characteristic UUIDs - defined early for use in scanDevices
+  const MOTION_CONFIG_UUID = "ef68030a-9b35-4933-9b10-52ffa9740042";
+  const QUATERNION_UUID = "ef680303-9b35-4933-9b10-52ffa9740042";
+  const EULER_UUID = "ef680306-9b35-4933-9b10-52ffa9740042";
+  const RAW_MOTION_UUID = "ef680305-9b35-4933-9b10-52ffa9740042";
+
+  // Polling intervals for read-only characteristics (like some Thingy IMU chars)
+  const pollingIntervals = new Map();
+  const IMU_POLL_INTERVAL_MS = 100; // 10Hz polling for IMU
+
   // Use stores for persistent state across LiveView navigations
   // Local reactive variables that sync with stores
   let devices = [];
@@ -161,28 +171,29 @@
           logger.log(loggerCtxName, "service", service);
 
           queue = queue.then((_) =>
-            service.getCharacteristics().then((characteristics) => {
+            service.getCharacteristics().then(async (characteristics) => {
               logger.log(loggerCtxName, "characteristics", characteristics);
 
-              characteristics.forEach((characteristic) => {
-                logger.log(
-                  loggerCtxName,
-                  "discovered characteristic",
-                  characteristic
-                );
+              // IMPORTANT: First, find and configure motion config before other characteristics
+              // This ensures motion processing is enabled before we subscribe to IMU notifications
+              const motionConfigChar = characteristics.find(
+                c => c.uuid.toLowerCase() === MOTION_CONFIG_UUID
+              );
+              if (motionConfigChar) {
+                logger.log(loggerCtxName, "Found motion config, configuring FIRST...");
+                await configureThingyMotion(motionConfigChar);
+                logger.log(loggerCtxName, "Motion config done, now processing other characteristics");
+              }
 
-                if (undefined == characteristic.startNotifications) {
-                  logger.log(
-                    loggerCtxName,
-                    "startNotifications not supported, requires polling fallback"
-                  );
+              // Now process all other characteristics
+              for (const characteristic of characteristics) {
+                // Skip motion config since we already handled it
+                if (characteristic.uuid.toLowerCase() === MOTION_CONFIG_UUID) {
+                  continue;
                 }
 
-                /*log('>> Characteristic: ' + characteristic.uuid + ' ' +
-                            getSupportedProperties(characteristic));
-                          */
-                queue.then((_) => handleCharacteristic(characteristic));
-              });
+                await handleCharacteristic(characteristic);
+              }
             })
           );
         });
@@ -193,8 +204,67 @@
       });
   }
 
+  // Configure Thingy:52 motion service to enable IMU data
+  async function configureThingyMotion(characteristic) {
+    if (characteristic.uuid.toLowerCase() !== MOTION_CONFIG_UUID) return;
+
+    logger.log(loggerCtxName, "Motion config characteristic found!", {
+      uuid: characteristic.uuid,
+      read: characteristic.properties.read,
+      write: characteristic.properties.write,
+      writeWithoutResponse: characteristic.properties.writeWithoutResponse,
+      notify: characteristic.properties.notify
+    });
+
+    if (!characteristic.properties.write && !characteristic.properties.writeWithoutResponse) {
+      logger.log(loggerCtxName, "Motion config characteristic not writable");
+      return;
+    }
+
+    try {
+      // Motion config format (9 bytes):
+      // - Step counter interval: 100ms (uint16 LE)
+      // - Temp compensation interval: 5000ms (uint16 LE)
+      // - Mag compensation interval: 5000ms (uint16 LE)
+      // - Motion processing freq: 20Hz (uint16 LE) - enables quaternion/euler output
+      // - Wake on motion: 0 (uint8)
+      const config = new Uint8Array([
+        0x64, 0x00,  // Step interval: 100ms
+        0x88, 0x13,  // Temp comp: 5000ms
+        0x88, 0x13,  // Mag comp: 5000ms
+        0x14, 0x00,  // Motion freq: 20Hz (enables motion processing!)
+        0x00         // Wake on motion: off
+      ]);
+
+      logger.log(loggerCtxName, "Configuring Thingy motion at 20Hz...");
+      await characteristic.writeValue(config);
+      logger.log(loggerCtxName, "Thingy motion configured successfully!");
+    } catch (error) {
+      logger.log(loggerCtxName, "Failed to configure Thingy motion:", error);
+    }
+  }
+
   function handleCharacteristic(characteristic) {
-    // Skip config-only characteristics that never produce readable data
+    // Handle motion configuration characteristic - write to enable motion
+    if (characteristic.uuid.toLowerCase() === MOTION_CONFIG_UUID) {
+      configureThingyMotion(characteristic);
+      return;  // Don't register as a sensor attribute
+    }
+
+    // Log IMU characteristic properties for debugging
+    const uuid = characteristic.uuid.toLowerCase();
+    if (uuid === QUATERNION_UUID || uuid === EULER_UUID || uuid === RAW_MOTION_UUID) {
+      logger.log(loggerCtxName, "IMU characteristic found!", {
+        name: BluetoothUtils.name(characteristic.uuid),
+        uuid: characteristic.uuid,
+        read: characteristic.properties.read,
+        write: characteristic.properties.write,
+        notify: characteristic.properties.notify,
+        indicate: characteristic.properties.indicate
+      });
+    }
+
+    // Skip other config-only characteristics that never produce readable data
     if (BluetoothUtils.isConfigOnly(characteristic.uuid)) {
       logger.log(
         loggerCtxName,
@@ -217,60 +287,20 @@
       }
     );
 
-    logger.log(loggerCtxName, "> Service UUID:", characteristic.service.uuid);
-    logger.log(
-      loggerCtxName,
-      "> Characteristic Name:  " + BluetoothUtils.name(characteristic.uuid)
-    );
-    logger.log(loggerCtxName, "> Characteristic UUID:  " + characteristic.uuid);
-    logger.log(
-      loggerCtxName,
-      "> Broadcast:            " + characteristic.properties.broadcast
-    );
-    logger.log(
-      loggerCtxName,
-      "> Read:                 " + characteristic.properties.read
-    );
-    logger.log(
-      loggerCtxName,
-      "> Write w/o response:   " +
-        characteristic.properties.writeWithoutResponse
-    );
-    logger.log(
-      loggerCtxName,
-      "> Write:                " + characteristic.properties.write
-    );
-    logger.log(
-      loggerCtxName,
-      "> Notify:               " + characteristic.properties.notify
-    );
-    logger.log(
-      loggerCtxName,
-      "> Indicate:             " + characteristic.properties.indicate
-    );
-    logger.log(
-      loggerCtxName,
-      "> Signed Write:         " +
-        characteristic.properties.authenticatedSignedWrites
-    );
-    logger.log(
-      loggerCtxName,
-      "> Queued Write:         " + characteristic.properties.reliableWrite
-    );
-    logger.log(
-      loggerCtxName,
-      "> Writable Auxiliaries: " + characteristic.properties.writableAuxiliaries
-    );
+    // Handle both notify and indicate - startNotifications() works for both
+    if (characteristic.properties.notify == true || characteristic.properties.indicate == true) {
+      const charUuid = characteristic.uuid.toLowerCase();
+      const isIMU = charUuid === QUATERNION_UUID || charUuid === EULER_UUID || charUuid === RAW_MOTION_UUID;
+      if (isIMU) {
+        logger.log(loggerCtxName, "IMU starting notifications...", BluetoothUtils.name(characteristic.uuid));
+      }
 
-    if (characteristic.properties.notify == true) {
-      logger.log(
-        loggerCtxName,
-        "Characteristic supports notifications: " + characteristic.uuid,
-        characteristic
-      );
       return characteristic
         .startNotifications()
         .then((_) => {
+          if (isIMU) {
+            logger.log(loggerCtxName, "IMU notifications STARTED!", BluetoothUtils.name(characteristic.uuid));
+          }
           characteristic.addEventListener(
             "characteristicvaluechanged",
             handleCharacteristicChanged
@@ -283,25 +313,9 @@
             return { ...current, [deviceId]: [...existing, characteristic] };
           });
 
-          logger.log(
-            loggerCtxName,
-            "deviceCharacteristics",
-            deviceCharacteristics[deviceId]
-          );
-          logger.log(
-            loggerCtxName,
-            "Subscribed to" + characteristic.uuid,
-            characteristic
-          );
-
           return characteristic;
         })
         .then((characteristic) => {
-          logger.log(
-            loggerCtxName,
-            "Waiting for notfications" + characteristic.uuid,
-            characteristic
-          );
           // if (characteristic.properties.read == true) {
           //     logger.log(
           //         loggerCtxName,
@@ -350,56 +364,124 @@
           // }
         })
         .catch((error) => {
-          logger.log(
-            loggerCtxName,
-            "Argh! " + characteristic.name + " error: " + error
-          );
+          if (isIMU) {
+            logger.log(loggerCtxName, "IMU notification FAILED!", BluetoothUtils.name(characteristic.uuid), error);
+          } else {
+            logger.log(
+              loggerCtxName,
+              "Argh! " + characteristic.name + " error: " + error
+            );
+          }
         });
     } else if (characteristic.properties.read == true) {
-      logger.log(
-        loggerCtxName,
-        "Reading single " + characteristic.uuid + "..."
-      );
+      const charUuid = characteristic.uuid.toLowerCase();
+      const isIMU = charUuid === QUATERNION_UUID || charUuid === EULER_UUID || charUuid === RAW_MOTION_UUID;
+
+      if (isIMU) {
+        logger.log(loggerCtxName, "IMU using POLLING (no notify)", BluetoothUtils.name(characteristic.uuid));
+        startPollingCharacteristic(characteristic);
+        return;
+      }
+
       return characteristic
         .readValue()
         .then((valueObj) => {
-          logger.log(
-            loggerCtxName,
-            "Characteristic value:",
-            characteristic.uuid,
-            valueObj,
-            valueObj.getInt8(0)
-          );
-          characteristicValue = valueObj.getInt8(0);
+          let decodedValue = BluetoothUtils.decodeValue(characteristic.uuid, valueObj);
+          if (decodedValue === null) {
+            decodedValue = valueObj.getInt8(0);
+          }
+          characteristicValue = decodedValue;
           bleValues.setValue(characteristic.uuid, characteristicValue);
-
-          // Use normalized type for attribute_id to match what was registered
           const normalizedAttrId = BluetoothUtils.normalizedType(characteristic.uuid);
-
           var payLoad = {
             payload: characteristicValue,
             attribute_id: normalizedAttrId,
             timestamp: Math.round(new Date().getTime()),
           };
-
-          logger.log(
-            loggerCtxName,
-            "Sending single read value",
-            getUniqueDeviceId(characteristic.service.device),
-            payLoad
-          );
-
           sensorService.sendChannelMessage(
             getUniqueDeviceId(characteristic.service.device),
             payLoad
           );
         })
         .catch((error) => {
-          logger.log(
-            loggerCtxName,
-            "Argh! " + characteristic.name + " error: " + error
-          );
+          logger.log(loggerCtxName, "Argh! " + characteristic.name + " error: " + error);
         });
+    } else {
+      const charUuid = characteristic.uuid.toLowerCase();
+      if (charUuid === QUATERNION_UUID || charUuid === EULER_UUID || charUuid === RAW_MOTION_UUID) {
+        logger.log(loggerCtxName, "WARNING: IMU has NO notify, indicate, or read!", {
+          name: BluetoothUtils.name(characteristic.uuid),
+          properties: characteristic.properties
+        });
+      }
+    }
+  }
+
+  // Start polling a read-only characteristic (used for IMU when notify not available)
+  function startPollingCharacteristic(characteristic) {
+    const deviceId = getUniqueDeviceId(characteristic.service.device);
+    const charKey = `${deviceId}:${characteristic.uuid}`;
+
+    if (pollingIntervals.has(charKey)) {
+      logger.log(loggerCtxName, "Polling already active for", charKey);
+      return;
+    }
+
+    const pollFn = async () => {
+      try {
+        if (!characteristic.service.device.gatt?.connected) {
+          stopPollingCharacteristic(charKey);
+          return;
+        }
+
+        const valueObj = await characteristic.readValue();
+        let decodedValue = BluetoothUtils.decodeValue(characteristic.uuid, valueObj);
+
+        if (decodedValue === null && valueObj.byteLength > 0) {
+          decodedValue = valueObj.getInt8(0);
+        }
+
+        if (decodedValue !== null) {
+          bleValues.setValue(characteristic.uuid, decodedValue);
+          const normalizedAttrId = BluetoothUtils.normalizedType(characteristic.uuid);
+          const payLoad = {
+            payload: decodedValue,
+            attribute_id: normalizedAttrId,
+            timestamp: Math.round(new Date().getTime()),
+          };
+          sensorService.sendChannelMessage(deviceId, payLoad);
+        }
+      } catch (error) {
+        logger.log(loggerCtxName, "Poll error for", BluetoothUtils.name(characteristic.uuid), error.message);
+        if (error.message?.includes('disconnected') || error.message?.includes('not connected')) {
+          stopPollingCharacteristic(charKey);
+        }
+      }
+    };
+
+    const intervalId = setInterval(pollFn, IMU_POLL_INTERVAL_MS);
+    pollingIntervals.set(charKey, intervalId);
+    logger.log(loggerCtxName, "Started polling", BluetoothUtils.name(characteristic.uuid), "at", IMU_POLL_INTERVAL_MS, "ms");
+
+    pollFn();
+  }
+
+  function stopPollingCharacteristic(charKey) {
+    const intervalId = pollingIntervals.get(charKey);
+    if (intervalId) {
+      clearInterval(intervalId);
+      pollingIntervals.delete(charKey);
+      logger.log(loggerCtxName, "Stopped polling", charKey);
+    }
+  }
+
+  function stopAllPollingForDevice(deviceId) {
+    for (const [key, intervalId] of pollingIntervals.entries()) {
+      if (key.startsWith(deviceId + ':')) {
+        clearInterval(intervalId);
+        pollingIntervals.delete(key);
+        logger.log(loggerCtxName, "Stopped polling", key);
+      }
     }
   }
 
@@ -409,40 +491,24 @@
     let sensorValue = null;
     let debounce = false;
 
+    // Debug logging for IMU characteristics only
+    const uuid = event.target.uuid.toLowerCase();
+    if (uuid === QUATERNION_UUID || uuid === EULER_UUID || uuid === RAW_MOTION_UUID) {
+      logger.log(loggerCtxName, "IMU notification!", BluetoothUtils.name(event.target.uuid), "bytes:", v?.byteLength);
+    }
+
     sensorValue = BluetoothUtils.decodeValue(event.target.uuid, v);
 
     sensorType = "unknown";
 
-    switch (event.target.uuid) {
-      case "61d20a90-71a1-11ea-ab12-0800200c9a66":
-        // pressure sensor
-        break;
-      case "00002a37-0000-1000-8000-00805f9b34fb":
-        // Movesense heartrate
-        break;
-      case "00002a38-0000-1000-8000-00805f9b34fb":
-        // Movesense body sensor location
-        break;
-      case "00002a19-0000-1000-8000-00805f9b34fb":
-        // Movesense battery, ignore
-        //sensorValue = v.getInt8(0);
-        break;
-      case "feb7cb83-e359-4b57-abc6-628286b7a79b":
-        // flexsense
-        sensorValue = Math.round(v.getFloat32(0, true) * 100) / 100; //v.getFloat32(0, true);//
-        debounce = true;
-        break;
-      default:
-        logger.log(
-          loggerCtxName,
-          "unknown characteristic",
-          event.target.uuid,
-          v
-        );
+    // Handle special cases
+    if (event.target.uuid === "feb7cb83-e359-4b57-abc6-628286b7a79b") {
+      // flexsense
+      sensorValue = Math.round(v.getFloat32(0, true) * 100) / 100;
+      debounce = true;
     }
 
     if (sensorValue !== null) {
-      logger.log(loggerCtxName, "sensorValue", event.target.uuid, sensorValue);
 
       // Use normalized type for attribute_id to match what was registered
       const normalizedAttrId = BluetoothUtils.normalizedType(event.target.uuid);
@@ -489,6 +555,11 @@
       deviceId,
       Array.isArray(deviceCharacteristics[deviceId])
     );
+
+    // Stop any polling intervals for this device
+    if (deviceId) {
+      stopAllPollingForDevice(deviceId);
+    }
 
     try {
       if (deviceId && Array.isArray(deviceCharacteristics[deviceId])) {

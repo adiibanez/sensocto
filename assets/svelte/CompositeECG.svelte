@@ -11,16 +11,26 @@
 
   // ECG-appropriate colors - medical monitor style
   const COLORS = [
-    '#00ff00', // Classic ECG green
-    '#00ffff', // Cyan
-    '#ffff00', // Yellow
-    '#ff6600', // Orange
-    '#ff00ff', // Magenta
-    '#00ff99', // Teal green
-    '#66ccff', // Light blue
-    '#ff9999', // Light red
-    '#99ff99', // Light green
-    '#ffcc00'  // Gold
+    '#ef4444', // Red
+    '#f97316', // Orange
+    '#eab308', // Yellow
+    '#22c55e', // Green
+    '#06b6d4', // Cyan
+    '#3b82f6', // Blue
+    '#8b5cf6', // Violet
+    '#ec4899', // Pink
+    '#14b8a6', // Teal
+    '#f59e0b', // Amber
+    '#6366f1', // Indigo
+    '#10b981', // Emerald
+    '#f43f5e', // Rose
+    '#0ea5e9', // Sky
+    '#a855f7', // Purple
+    '#84cc16', // Lime
+    '#e879f9', // Fuchsia
+    '#fb923c', // Light orange
+    '#2dd4bf', // Light teal
+    '#818cf8'  // Light indigo
   ];
 
   const MAX_DATA_POINTS = 5000;
@@ -76,11 +86,15 @@
   }
 
   function rafLoop(timestamp: number) {
-    // Throttle updates to UPDATE_INTERVAL_MS
-    if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
-      processPendingUpdates();
-      updateChart();
-      lastUpdateTime = timestamp;
+    try {
+      if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
+        processPendingUpdates();
+        updateChart();
+        lastUpdateTime = timestamp;
+      }
+    } catch (e) {
+      console.warn("[CompositeECG] RAF error, recovering:", e);
+      if (!chart && chartContainer) createChart();
     }
     rafId = requestAnimationFrame(rafLoop);
   }
@@ -241,7 +255,15 @@
   }
 
   function updateChart() {
-    if (!chart) return;
+    if (!chart) {
+      if (chartContainer && sensorData.size > 0) createChart();
+      return;
+    }
+
+    if (!chart.container || !chartContainer?.isConnected) {
+      chart = null;
+      return;
+    }
 
     const now = Date.now();
     const cutoff = now - selectedWindowMs;

@@ -442,6 +442,16 @@
           <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
         </.link>
         <.link
+          :if={:hrv in @available_lenses}
+          patch={~p"/lobby/hrv"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :hrv,
+              do: "bg-cyan-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
+        </.link>
+        <.link
           patch={~p"/lobby/graph"}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph,
@@ -511,6 +521,13 @@
               selected={@live_action == :respiration}
             >
               Breathing
+            </option>
+            <option
+              :if={:hrv in @available_lenses}
+              value="hrv"
+              selected={@live_action == :hrv}
+            >
+              HRV
             </option>
           </optgroup>
         </select>
@@ -795,6 +812,26 @@
       <Heroicons.icon name="signal" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No breathing sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with respiration/breathing data</p>
+    </div>
+  </div>
+
+  <%!-- HRV Composite View --%>
+  <div
+    :if={@live_action == :hrv}
+    id="composite-hrv"
+    phx-hook="CompositeMeasurementHandler"
+    class="h-[min(70vh,600px)] min-h-[250px]"
+  >
+    <.svelte
+      name="CompositeHRV"
+      props={%{sensors: @hrv_sensors}}
+      socket={@socket}
+      class="w-full h-full"
+    />
+    <div :if={@hrv_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="chart-bar-square" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No HRV sensors connected</p>
+      <p class="text-sm mt-2">Connect a sensor with HRV data</p>
     </div>
   </div>
 

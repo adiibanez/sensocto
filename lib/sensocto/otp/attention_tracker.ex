@@ -202,8 +202,14 @@ defmodule Sensocto.AttentionTracker do
   """
   def get_attention_level(sensor_id, attribute_id) do
     case :ets.lookup(@attention_levels_table, {sensor_id, attribute_id}) do
-      [{_, level}] -> level
-      [] -> :none
+      [{_, level}] ->
+        level
+
+      [] ->
+        # Fall back to sensor-level attention so that composite views
+        # (which register under "composite_<type>" keys) still benefit
+        # all AttributeServers for that sensor
+        get_sensor_attention_level(sensor_id)
     end
   end
 

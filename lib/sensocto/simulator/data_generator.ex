@@ -36,6 +36,9 @@ defmodule Sensocto.Simulator.DataGenerator do
         sensor_type == "respiration" ->
           {:ok, fetch_respiration_data(config)}
 
+        sensor_type == "hrv" ->
+          {:ok, fetch_hrv_data(config)}
+
         true ->
           result =
             case config[:dummy_data] do
@@ -227,6 +230,7 @@ defmodule Sensocto.Simulator.DataGenerator do
   # Store skeleton state per sensor for continuity
   @skeleton_states_table :skeleton_sim_states
   @respiration_buffers_table :respiration_sim_buffers
+  @hrv_buffers_table :hrv_sim_buffers
 
   defp get_skeleton_state(sensor_id, motion_type) do
     try do
@@ -469,6 +473,113 @@ defmodule Sensocto.Simulator.DataGenerator do
       t = i / sampling_rate
       value = 75.0 + 25.0 * :math.sin(2 * :math.pi() * freq * t + phase_offset)
       Float.round(value, 2)
+    end)
+  end
+
+  # HRV data using pre-generated NeuroKit2 ECG → RR intervals → windowed RMSSD
+  # Each sensor gets a unique 120s HRV waveform cached in ETS
+  defp fetch_hrv_data(config) do
+    sensor_id = config[:sensor_id] || "unknown"
+    batch_size = config[:batch_size] || 1
+    sampling_rate = max(config[:sampling_rate] || 0.2, 0.01)
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+
+    buffer = get_hrv_buffer(sensor_id, config)
+
+    results =
+      Enum.map(0..(batch_size - 1), fn i ->
+        timestamp = now + i * interval_ms
+        delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
+
+        index = rem(buffer.index + i, buffer.total)
+        value = elem(buffer.data, index)
+
+        %{
+          timestamp: timestamp,
+          delay: delay,
+          payload: Float.round(value * 1.0, 2)
+        }
+      end)
+
+    new_index = rem(buffer.index + batch_size, buffer.total)
+    :ets.insert(@hrv_buffers_table, {sensor_id, %{buffer | index: new_index}})
+
+    results
+  end
+
+  defp get_hrv_buffer(sensor_id, config) do
+    try do
+      case :ets.lookup(@hrv_buffers_table, sensor_id) do
+        [{^sensor_id, buffer}] -> buffer
+        [] -> init_hrv_buffer(sensor_id, config)
+      end
+    rescue
+      ArgumentError ->
+        :ets.new(@hrv_buffers_table, [:named_table, :public, :set])
+        init_hrv_buffer(sensor_id, config)
+    end
+  end
+
+  defp init_hrv_buffer(sensor_id, config) do
+    heart_rate = config[:heart_rate] || 70
+    duration = 120
+
+    samples = generate_neurokit2_hrv_buffer(heart_rate, duration)
+
+    buffer = %{
+      data: List.to_tuple(samples),
+      index: 0,
+      total: length(samples)
+    }
+
+    :ets.insert(@hrv_buffers_table, {sensor_id, buffer})
+
+    Logger.info(
+      "Initialized HRV buffer for #{sensor_id}: #{buffer.total} RMSSD samples (#{duration}s ECG at #{heart_rate} bpm)"
+    )
+
+    buffer
+  end
+
+  defp generate_neurokit2_hrv_buffer(heart_rate, duration) do
+    python_code = """
+    import neurokit2 as nk
+    import numpy as np
+
+    ecg = nk.ecg_simulate(duration=#{duration}, sampling_rate=250, heart_rate=#{heart_rate}, noise=0.05)
+    processed, info = nk.ecg_process(ecg, sampling_rate=250)
+    rr = np.array(info['RRI'])
+    window = 30
+    rmssd = []
+    for i in range(len(rr) - window):
+        w = rr[i:i+window]
+        diffs = np.diff(w)
+        rmssd.append(float(np.sqrt(np.mean(diffs**2))))
+    rmssd
+    """
+
+    {result, _globals} = Pythonx.eval(python_code, %{})
+    Pythonx.decode(result)
+  rescue
+    e ->
+      Logger.warning("NeuroKit2 HRV buffer generation failed: #{inspect(e)}, using sine fallback")
+      generate_fallback_hrv_buffer(heart_rate, duration)
+  end
+
+  defp generate_fallback_hrv_buffer(heart_rate, duration) do
+    # Approximate number of heartbeats minus window
+    total_beats = trunc(duration * heart_rate / 60) - 30
+    total_samples = max(total_beats, 10)
+    phase_offset = :rand.uniform() * 2 * :math.pi()
+    base_rmssd = 30.0 + :rand.uniform() * 20.0
+
+    Enum.map(0..(total_samples - 1), fn i ->
+      t = i / total_samples * duration
+      value = base_rmssd + 15.0 * :math.sin(2 * :math.pi() * 0.1 * t + phase_offset)
+      noise = (:rand.uniform() - 0.5) * 5.0
+      Float.round(max(5.0, value + noise), 2)
     end)
   end
 

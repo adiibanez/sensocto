@@ -34,10 +34,9 @@
 
   const MAX_DATA_POINTS = 5000;
   const UPDATE_INTERVAL_MS = 100;
-  const PHASE_BUFFER_SIZE = 50; // ~5 seconds at 10Hz
+  const PHASE_BUFFER_SIZE = 20; // HRV data at ~0.2Hz, 20 samples = ~100s of context
 
   const TIME_WINDOWS = [
-    { label: '10s', ms: 10 * 1000 },
     { label: '2min', ms: 2 * 60 * 1000 },
     { label: '10min', ms: 10 * 60 * 1000 }
   ];
@@ -49,35 +48,34 @@
   let rafId: number | null = null;
   let lastUpdateTime = 0;
 
-  // Breathing state counts - updated imperatively in the RAF loop
+  // HRV stress state counts - updated imperatively in the RAF loop
   let latestValues: Map<string, number> = new Map();
-  let inhalingCount = $state(0);
-  let exhalingCount = $state(0);
-  let holdingCount = $state(0);
+  let stressedCount = $state(0);
+  let moderateCount = $state(0);
+  let relaxedCount = $state(0);
+  let groupMeanRmssd = $state(0);
 
   // Phase synchronization (Kuramoto order parameter)
   let phaseBuffers: Map<string, number[]> = new Map();
   let phaseSync = $state(0);
   let smoothedSync = 0;
 
-  function updateBreathingStates() {
-    let inhaling = 0, exhaling = 0, holding = 0;
+  function updateHrvStates() {
+    let stressed = 0, moderate = 0, relaxed = 0;
+    let sum = 0, count = 0;
 
-    phaseBuffers.forEach((buffer) => {
-      if (buffer.length < 10) return;
-      const n = buffer.length;
-      const lookback = Math.min(5, n - 1);
-      const derivative = buffer[n - 1] - buffer[n - 1 - lookback];
-      const threshold = 1.5;
-
-      if (derivative > threshold) inhaling++;
-      else if (derivative < -threshold) exhaling++;
-      else holding++;
+    latestValues.forEach((value) => {
+      if (value < 20) stressed++;
+      else if (value <= 50) moderate++;
+      else relaxed++;
+      sum += value;
+      count++;
     });
 
-    inhalingCount = inhaling;
-    exhalingCount = exhaling;
-    holdingCount = holding;
+    stressedCount = stressed;
+    moderateCount = moderate;
+    relaxedCount = relaxed;
+    groupMeanRmssd = count > 0 ? Math.round(sum / count) : 0;
   }
 
   function addToPhaseBuffer(sensorId: string, value: number) {
@@ -92,7 +90,7 @@
     }
   }
 
-  // Estimate instantaneous breathing phase for each sensor,
+  // Estimate instantaneous HRV phase for each sensor,
   // then compute the Kuramoto order parameter R = |mean(e^(i*theta))|.
   // R ranges from 0 (random phases) to 1 (perfect synchrony).
   // Being a circular mean, a few outliers only moderately reduce R.
@@ -100,7 +98,7 @@
     const phases: number[] = [];
 
     phaseBuffers.forEach((buffer) => {
-      if (buffer.length < 15) return;
+      if (buffer.length < 8) return;
 
       const n = buffer.length;
       let min = buffer[0], max = buffer[0];
@@ -120,8 +118,8 @@
       const rising = derivative >= 0;
 
       // Map normalized value + direction to phase angle [0, 2pi]
-      // Rising (inhale):  min→max maps to 0→pi
-      // Falling (exhale): max→min maps to pi→2pi
+      // Rising:  min->max maps to 0->pi
+      // Falling: max->min maps to pi->2pi
       const baseAngle = Math.acos(1 - 2 * norm);
       const phase = rising ? baseAngle : (2 * Math.PI - baseAngle);
       phases.push(phase);
@@ -198,12 +196,12 @@
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
         processPendingUpdates();
         updateChart();
-        updateBreathingStates();
+        updateHrvStates();
         computePhaseSync();
         lastUpdateTime = timestamp;
       }
     } catch (e) {
-      console.warn("[CompositeBreathing] RAF error, recovering:", e);
+      console.warn("[CompositeHRV] RAF error, recovering:", e);
       if (!chart && chartContainer) createChart();
     }
     rafId = requestAnimationFrame(rafLoop);
@@ -219,7 +217,7 @@
       type: 'line' as const,
       name: sensorId.length > 12 ? sensorId.slice(-8) : sensorId,
       data: data.map(d => [d.x, d.y]),
-      color: sensorColors.get(sensorId) || '#06b6d4',
+      color: sensorColors.get(sensorId) || '#f97316',
       lineWidth: 1.5,
       marker: { enabled: false },
       animation: false,
@@ -259,45 +257,45 @@
         },
         labels: {
           style: {
-            color: '#22d3ee',
+            color: '#f97316',
             fontSize: '9px'
           },
           format: '{value:%H:%M:%S}'
         },
         gridLineWidth: 1,
-        gridLineColor: 'rgba(34, 211, 238, 0.15)',
+        gridLineColor: 'rgba(249, 115, 22, 0.15)',
         minorGridLineWidth: 0,
-        lineColor: 'rgba(34, 211, 238, 0.3)',
-        tickColor: 'rgba(34, 211, 238, 0.3)'
+        lineColor: 'rgba(249, 115, 22, 0.3)',
+        tickColor: 'rgba(249, 115, 22, 0.3)'
       },
       yAxis: {
         title: {
-          text: '%',
+          text: 'ms',
           style: {
-            color: '#22d3ee',
+            color: '#f97316',
             fontSize: '10px'
           },
           margin: 5
         },
-        min: 40,
-        max: 105,
+        min: 0,
+        max: 120,
         labels: {
           style: {
-            color: '#22d3ee',
+            color: '#f97316',
             fontSize: '9px'
           },
           format: '{value:.0f}'
         },
         gridLineWidth: 1,
-        gridLineColor: 'rgba(34, 211, 238, 0.15)',
+        gridLineColor: 'rgba(249, 115, 22, 0.15)',
         minorGridLineWidth: 0,
         plotBands: [{
-          from: 50,
-          to: 100,
-          color: 'rgba(6, 182, 212, 0.03)',
+          from: 20,
+          to: 80,
+          color: 'rgba(249, 115, 22, 0.03)',
           label: {
             text: 'Normal range',
-            style: { color: 'rgba(34, 211, 238, 0.3)', fontSize: '9px' },
+            style: { color: 'rgba(249, 115, 22, 0.3)', fontSize: '9px' },
             align: 'right'
           }
         }]
@@ -324,15 +322,15 @@
       },
       tooltip: {
         backgroundColor: 'rgba(10, 15, 20, 0.95)',
-        borderColor: 'rgba(34, 211, 238, 0.5)',
+        borderColor: 'rgba(249, 115, 22, 0.5)',
         borderWidth: 1,
         style: {
-          color: '#22d3ee',
+          color: '#f97316',
           fontSize: '11px'
         },
         xDateFormat: '%H:%M:%S.%L',
         valueDecimals: 1,
-        valueSuffix: '%',
+        valueSuffix: 'ms',
         shared: true
       },
       plotOptions: {
@@ -377,6 +375,7 @@
       return;
     }
 
+    // Guard against destroyed/detached chart
     if (!chart.container || !chartContainer?.isConnected) {
       chart = null;
       return;
@@ -425,7 +424,7 @@
 
     let consumed = 0;
     seedBuffer.forEach((event: any) => {
-      if (event.attribute_id === "respiration" && Array.isArray(event.data)) {
+      if (event.attribute_id === "hrv" && Array.isArray(event.data)) {
         const sid = event.sensor_id;
         if (!sensorData.has(sid)) {
           const index = sensorData.size;
@@ -453,7 +452,7 @@
     const handleCompositeMeasurement = (e: CustomEvent) => {
       const { sensor_id, attribute_id, payload, timestamp } = e.detail;
 
-      if (attribute_id === "respiration") {
+      if (attribute_id === "hrv") {
         const value = typeof payload === "number" ? payload : null;
 
         if (value !== null) {
@@ -470,7 +469,7 @@
     const handleAccumulatorEvent = (e: CustomEvent) => {
       const eventSensorId = e?.detail?.sensor_id;
       const attributeId = e?.detail?.attribute_id;
-      if (attributeId === "respiration") {
+      if (attributeId === "hrv") {
         const data = e?.detail?.data;
 
         if (Array.isArray(data) && data.length > 0) {
@@ -539,33 +538,32 @@
 <div class="composite-chart-container">
   <div class="chart-header">
     <div class="header-left">
-      <h2>Breathing Overview</h2>
+      <h2>HRV Overview</h2>
       <span class="sensor-count">{sensors.length} sensors</span>
     </div>
     <div class="stats-bar">
-      <span class="breath-state has-tooltip" data-tooltip="Inhaling — participants currently breathing in (rising torso expansion)">
-        <svg class="breath-svg inhale" viewBox="0 0 16 16" width="12" height="12">
-          <path d="M8 2 C5 2 3 5 3 8 C3 11 5 14 8 14 C11 14 13 11 13 8 C13 5 11 2 8 2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M5 8 L8 4 L11 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <span class="hrv-state has-tooltip" data-tooltip="Stressed — RMSSD below 20ms. High sympathetic (fight-or-flight) activity">
+        <svg class="hrv-svg stressed" viewBox="0 0 16 16" width="12" height="12">
+          <path d="M3 4 L8 12 L13 4 Z" fill="currentColor" opacity="0.8"/>
         </svg>
-        {inhalingCount}
+        {stressedCount}
       </span>
-      <span class="breath-state has-tooltip" data-tooltip="Exhaling — participants currently breathing out (falling torso expansion)">
-        <svg class="breath-svg exhale" viewBox="0 0 16 16" width="12" height="12">
-          <path d="M8 2 C5 2 3 5 3 8 C3 11 5 14 8 14 C11 14 13 11 13 8 C13 5 11 2 8 2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M5 8 L8 12 L11 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <span class="hrv-state has-tooltip" data-tooltip="Moderate — RMSSD 20-50ms. Balanced autonomic nervous system activity">
+        <svg class="hrv-svg moderate" viewBox="0 0 16 16" width="12" height="12">
+          <rect x="2" y="6" width="12" height="4" rx="1" fill="currentColor" opacity="0.8"/>
         </svg>
-        {exhalingCount}
+        {moderateCount}
       </span>
-      <span class="breath-state has-tooltip" data-tooltip="Holding — participants in a breath hold (neither inhaling nor exhaling)">
-        <svg class="breath-svg hold" viewBox="0 0 16 16" width="12" height="12">
-          <path d="M8 2 C5 2 3 5 3 8 C3 11 5 14 8 14 C11 14 13 11 13 8 C13 5 11 2 8 2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <line x1="5" y1="8" x2="11" y2="8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <span class="hrv-state has-tooltip" data-tooltip="Relaxed — RMSSD above 50ms. High parasympathetic (rest-and-digest) activity">
+        <svg class="hrv-svg relaxed" viewBox="0 0 16 16" width="12" height="12">
+          <path d="M3 12 L8 4 L13 12 Z" fill="currentColor" opacity="0.8"/>
         </svg>
-        {holdingCount}
+        {relaxedCount}
       </span>
       <span class="stat-divider"></span>
-      <span class="sync-value has-tooltip" data-tooltip="Phase Sync (Kuramoto) — how synchronized breathing is across participants. 0% = random, 100% = perfectly in sync" style="color: {getSyncColor(phaseSync)}">{phaseSync}%</span>
+      <span class="hrv-mean has-tooltip" data-tooltip="Group Mean RMSSD — average of successive RR-interval differences across all participants. Higher = greater vagal tone / relaxation">x&#x0304; {groupMeanRmssd}<span class="hrv-unit">ms</span></span>
+      <span class="stat-divider"></span>
+      <span class="sync-value has-tooltip" data-tooltip="Phase Sync (Kuramoto) — how synchronized HRV oscillations are across participants. 0% = random, 100% = perfectly in sync" style="color: {getSyncColor(phaseSync)}">{phaseSync}%</span>
     </div>
     <div class="time-window-selector">
       {#each TIME_WINDOWS as window}
@@ -592,14 +590,14 @@
   .composite-chart-container {
     background: #0a0f14;
     border-radius: 0.5rem;
-    border: 1px solid rgba(34, 211, 238, 0.3);
+    border: 1px solid rgba(249, 115, 22, 0.3);
     padding: 0.5rem;
     height: 100%;
     min-height: 260px;
     display: flex;
     flex-direction: column;
     box-shadow:
-      0 0 20px rgba(6, 182, 212, 0.05),
+      0 0 20px rgba(249, 115, 22, 0.05),
       inset 0 0 60px rgba(0, 0, 0, 0.5);
   }
 
@@ -609,9 +607,9 @@
     align-items: center;
     margin-bottom: 0.25rem;
     padding: 0.2rem 0.5rem;
-    background: rgba(34, 211, 238, 0.05);
+    background: rgba(249, 115, 22, 0.05);
     border-radius: 0.25rem;
-    border: 1px solid rgba(34, 211, 238, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     gap: 0.5rem;
   }
 
@@ -625,7 +623,7 @@
   .chart-header h2 {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #22d3ee;
+    color: #f97316;
     margin: 0;
     font-family: monospace;
     text-transform: uppercase;
@@ -635,7 +633,7 @@
 
   .sensor-count {
     font-size: 0.65rem;
-    color: #22d3ee;
+    color: #f97316;
     font-family: monospace;
     opacity: 0.7;
     white-space: nowrap;
@@ -647,29 +645,43 @@
     gap: 0.4rem;
   }
 
-  .breath-state {
+  .hrv-state {
     display: flex;
     align-items: center;
     gap: 0.15rem;
     font-size: 0.7rem;
     font-weight: 600;
     font-family: monospace;
-    color: #22d3ee;
+    color: #f97316;
     font-variant-numeric: tabular-nums;
   }
 
-  .breath-svg {
+  .hrv-svg {
     flex-shrink: 0;
   }
 
-  .breath-svg.inhale { color: #22c55e; }
-  .breath-svg.exhale { color: #f97316; }
-  .breath-svg.hold { color: #9ca3af; }
+  .hrv-svg.stressed { color: #ef4444; }
+  .hrv-svg.moderate { color: #eab308; }
+  .hrv-svg.relaxed { color: #22c55e; }
+
+  .hrv-mean {
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: monospace;
+    color: #f97316;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hrv-unit {
+    font-size: 0.55rem;
+    opacity: 0.6;
+    margin-left: 1px;
+  }
 
   .stat-divider {
     width: 1px;
     height: 0.8rem;
-    background: rgba(34, 211, 238, 0.2);
+    background: rgba(249, 115, 22, 0.2);
   }
 
   .sync-value {
@@ -698,7 +710,7 @@
     line-height: 1.4;
     padding: 0.35rem 0.5rem;
     border-radius: 0.25rem;
-    border: 1px solid rgba(34, 211, 238, 0.3);
+    border: 1px solid rgba(249, 115, 22, 0.3);
     white-space: normal;
     width: max-content;
     max-width: 220px;
@@ -720,8 +732,9 @@
     .chart-header h2 { font-size: 0.55rem; letter-spacing: 0; }
     .sensor-count { display: none; }
     .stats-bar { gap: 0.25rem; }
-    .breath-state { font-size: 0.6rem; }
-    .breath-svg { width: 10px; height: 10px; }
+    .hrv-state { font-size: 0.6rem; }
+    .hrv-svg { width: 10px; height: 10px; }
+    .hrv-mean { font-size: 0.6rem; }
     .sync-value { font-size: 0.6rem; }
     .stat-divider { height: 0.6rem; }
     .sync-bar { height: 2px; margin-bottom: 0.1rem; }
@@ -731,7 +744,7 @@
 
   .sync-bar {
     height: 3px;
-    background: rgba(34, 211, 238, 0.1);
+    background: rgba(249, 115, 22, 0.1);
     border-radius: 2px;
     margin-bottom: 0.25rem;
     overflow: hidden;
@@ -753,8 +766,8 @@
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;
     font-family: monospace;
-    background: rgba(34, 211, 238, 0.1);
-    border: 1px solid rgba(34, 211, 238, 0.3);
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.3);
     border-radius: 0.25rem;
     color: #9ca3af;
     cursor: pointer;
@@ -762,15 +775,15 @@
   }
 
   .time-btn:hover {
-    background: rgba(34, 211, 238, 0.2);
-    color: #22d3ee;
+    background: rgba(249, 115, 22, 0.2);
+    color: #f97316;
   }
 
   .time-btn.active {
-    background: rgba(34, 211, 238, 0.3);
-    border-color: #22d3ee;
-    color: #22d3ee;
-    box-shadow: 0 0 8px rgba(34, 211, 238, 0.3);
+    background: rgba(249, 115, 22, 0.3);
+    border-color: #f97316;
+    color: #f97316;
+    box-shadow: 0 0 8px rgba(249, 115, 22, 0.3);
   }
 
   .chart-wrapper {
@@ -781,29 +794,29 @@
         0deg,
         transparent,
         transparent 19px,
-        rgba(34, 211, 238, 0.03) 19px,
-        rgba(34, 211, 238, 0.03) 20px
+        rgba(249, 115, 22, 0.03) 19px,
+        rgba(249, 115, 22, 0.03) 20px
       ),
       repeating-linear-gradient(
         90deg,
         transparent,
         transparent 19px,
-        rgba(34, 211, 238, 0.03) 19px,
-        rgba(34, 211, 238, 0.03) 20px
+        rgba(249, 115, 22, 0.03) 19px,
+        rgba(249, 115, 22, 0.03) 20px
       ),
       repeating-linear-gradient(
         0deg,
         transparent,
         transparent 99px,
-        rgba(34, 211, 238, 0.08) 99px,
-        rgba(34, 211, 238, 0.08) 100px
+        rgba(249, 115, 22, 0.08) 99px,
+        rgba(249, 115, 22, 0.08) 100px
       ),
       repeating-linear-gradient(
         90deg,
         transparent,
         transparent 99px,
-        rgba(34, 211, 238, 0.08) 99px,
-        rgba(34, 211, 238, 0.08) 100px
+        rgba(249, 115, 22, 0.08) 99px,
+        rgba(249, 115, 22, 0.08) 100px
       );
     border-radius: 0.25rem;
   }

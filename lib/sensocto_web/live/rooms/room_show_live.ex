@@ -2056,6 +2056,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "steps" -> "arrow-trending-up"
       "skeleton" -> "user"
       "respiration" -> "signal"
+      "hrv" -> "chart-bar-square"
       _ -> "signal"
     end
   end
@@ -2071,7 +2072,8 @@ defmodule SensoctoWeb.RoomShowLive do
       "battery",
       "spo2",
       "skeleton",
-      "respiration"
+      "respiration",
+      "hrv"
     ]
   end
 

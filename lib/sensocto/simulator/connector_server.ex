@@ -83,13 +83,25 @@ defmodule Sensocto.Simulator.ConnectorServer do
   def terminate(reason, state) do
     Logger.debug("ConnectorServer terminating: #{state.connector_id}, reason: #{inspect(reason)}")
 
-    # Explicitly terminate all sensor children to ensure their terminate callbacks run
+    # Terminate all sensor children in PARALLEL to avoid exceeding the 5s shutdown timeout.
+    # With 10+ sensors terminated sequentially, each taking ~500ms, we'd exceed the timeout
+    # and get :killed — causing SensorServer.terminate callbacks to never run.
     if state.supervisor do
-      DynamicSupervisor.which_children(state.supervisor)
-      |> Enum.each(fn {_, pid, _, _} ->
-        if is_pid(pid) and Process.alive?(pid) do
-          DynamicSupervisor.terminate_child(state.supervisor, pid)
-        end
+      children =
+        DynamicSupervisor.which_children(state.supervisor)
+        |> Enum.filter(fn {_, pid, _, _} -> is_pid(pid) and Process.alive?(pid) end)
+
+      tasks =
+        Enum.map(children, fn {_, pid, _, _} ->
+          Task.async(fn ->
+            DynamicSupervisor.terminate_child(state.supervisor, pid)
+          end)
+        end)
+
+      # Wait up to 4s for all sensors to terminate (leaves margin within 5s shutdown)
+      Task.yield_many(tasks, 4_000)
+      |> Enum.each(fn {task, result} ->
+        if result == nil, do: Task.shutdown(task, :brutal_kill)
       end)
     end
 

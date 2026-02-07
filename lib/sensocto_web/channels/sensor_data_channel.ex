@@ -221,6 +221,12 @@ defmodule SensoctoWeb.SensorDataChannel do
         "SimpleSensor update_attribute_registry sensor_id: #{socket.assigns.sensor_id}, action: #{action}, attribute_id: #{attribute_id}, metadata: #{inspect(metadata)}"
       )
 
+      # Pre-warm attention for skeleton sensors so pose data flows from first frame.
+      # Without this, skeleton sensors start at :none → 2 FPS → slow initial rendering.
+      if action_atom == :register do
+        maybe_prewarm_skeleton_attention(socket.assigns.sensor_id, safe_metadata)
+      end
+
       {:noreply, socket}
     else
       {:error, :invalid_action} ->
@@ -637,6 +643,20 @@ defmodule SensoctoWeb.SensorDataChannel do
       :error ->
         Logger.debug("error removing sensor #{sensor_id}")
         # {:error, reason}
+    end
+  end
+
+  # Pre-warm skeleton sensors to :medium attention so pose data broadcasts immediately.
+  # Cleaned up automatically by AttentionTracker.clear_sensor/1 when the sensor is removed.
+  defp maybe_prewarm_skeleton_attention(sensor_id, metadata) do
+    attr_type = Map.get(metadata, :attribute_type, "")
+
+    if attr_type == "skeleton" do
+      AttentionTracker.register_view(sensor_id, "skeleton_prewarm", "__system__")
+
+      Logger.debug(
+        "Pre-warmed skeleton attention for sensor #{sensor_id} to prevent cold-start delay"
+      )
     end
   end
 

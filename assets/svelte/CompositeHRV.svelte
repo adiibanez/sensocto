@@ -37,13 +37,15 @@
   const PHASE_BUFFER_SIZE = 20; // HRV data at ~0.2Hz, 20 samples = ~100s of context
 
   const TIME_WINDOWS = [
-    { label: '2min', ms: 2 * 60 * 1000 },
-    { label: '10min', ms: 10 * 60 * 1000 }
+    { label: '5min', ms: 5 * 60 * 1000 },
+    { label: '15min', ms: 15 * 60 * 1000 },
+    { label: '1h', ms: 60 * 60 * 1000 }
   ];
 
   let selectedWindowMs = $state(TIME_WINDOWS[0].ms);
   let sensorData: Map<string, Array<{ x: number; y: number }>> = new Map();
   let sensorColors: Map<string, string> = new Map();
+  let sensorNames: Map<string, string> = new Map();
   let pendingUpdates: Map<string, Array<{ x: number; y: number }>> = new Map();
   let rafId: number | null = null;
   let lastUpdateTime = 0;
@@ -59,6 +61,10 @@
   let phaseBuffers: Map<string, number[]> = new Map();
   let phaseSync = $state(0);
   let smoothedSync = 0;
+
+  // Sync history for chart visualization
+  let syncHistory: Array<{ x: number; y: number }> = [];
+  const SYNC_SERIES_NAME = 'Phase Sync';
 
   function updateHrvStates() {
     let stressed = 0, moderate = 0, relaxed = 0;
@@ -141,6 +147,12 @@
     // Exponential moving average for smooth display
     smoothedSync = smoothedSync === 0 ? R : 0.85 * smoothedSync + 0.15 * R;
     phaseSync = Math.round(smoothedSync * 100);
+
+    // Record to history
+    syncHistory.push({ x: Date.now(), y: phaseSync });
+    if (syncHistory.length > MAX_DATA_POINTS) {
+      syncHistory = syncHistory.slice(syncHistory.length - MAX_DATA_POINTS);
+    }
   }
 
   function getSyncColor(pct: number): string {
@@ -159,11 +171,18 @@
     return 'None';
   }
 
+  function getDisplayName(sensorId: string): string {
+    return sensorNames.get(sensorId) || (sensorId.length > 12 ? sensorId.slice(-8) : sensorId);
+  }
+
   function initializeSensorData() {
     sensors.forEach((sensor, index) => {
       if (!sensorData.has(sensor.sensor_id)) {
         sensorData.set(sensor.sensor_id, []);
         sensorColors.set(sensor.sensor_id, COLORS[index % COLORS.length]);
+      }
+      if (sensor.sensor_name) {
+        sensorNames.set(sensor.sensor_id, sensor.sensor_name);
       }
     });
   }
@@ -215,18 +234,46 @@
 
     const series: Highcharts.SeriesOptionsType[] = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
       type: 'line' as const,
-      name: sensorId.length > 12 ? sensorId.slice(-8) : sensorId,
+      name: getDisplayName(sensorId),
       data: data.map(d => [d.x, d.y]),
       color: sensorColors.get(sensorId) || '#f97316',
       lineWidth: 1.5,
+      yAxis: 0,
       marker: { enabled: false },
       animation: false,
       states: {
         hover: {
-          lineWidth: 2
+          lineWidth: 2.5
         }
       }
     }));
+
+    // Add sync history as colored area at bottom
+    series.push({
+      type: 'area' as const,
+      name: SYNC_SERIES_NAME,
+      data: syncHistory.map(d => [d.x, d.y]),
+      yAxis: 1,
+      lineWidth: 0,
+      marker: { enabled: false },
+      animation: false,
+      fillOpacity: 0.6,
+      enableMouseTracking: true,
+      showInLegend: false,
+      tooltip: {
+        pointFormatter: function() {
+          const c = this.y < 20 ? '#ef4444' : this.y < 40 ? '#f97316' : this.y < 60 ? '#eab308' : this.y < 80 ? '#84cc16' : '#22c55e';
+          return `<span style="color:${c}">\u25CF</span> Phase Sync: <b>${Math.round(this.y)}%</b><br/>`;
+        }
+      },
+      zones: [
+        { value: 20, color: '#ef4444' },
+        { value: 40, color: '#f97316' },
+        { value: 60, color: '#eab308' },
+        { value: 80, color: '#84cc16' },
+        { color: '#22c55e' }
+      ]
+    });
 
     chart = Highcharts.chart(chartContainer, {
       chart: {
@@ -262,13 +309,19 @@
           },
           format: '{value:%H:%M:%S}'
         },
+        crosshair: {
+          width: 1,
+          color: 'rgba(249, 115, 22, 0.4)',
+          dashStyle: 'Dot'
+        },
         gridLineWidth: 1,
         gridLineColor: 'rgba(249, 115, 22, 0.15)',
         minorGridLineWidth: 0,
         lineColor: 'rgba(249, 115, 22, 0.3)',
         tickColor: 'rgba(249, 115, 22, 0.3)'
       },
-      yAxis: {
+      yAxis: [{
+        // Primary: RMSSD values
         title: {
           text: 'ms',
           style: {
@@ -279,6 +332,7 @@
         },
         min: 0,
         max: 120,
+        height: '85%',
         labels: {
           style: {
             color: '#f97316',
@@ -299,7 +353,17 @@
             align: 'right'
           }
         }]
-      },
+      }, {
+        // Secondary: Sync percentage (bottom strip)
+        title: { text: undefined },
+        min: 0,
+        max: 100,
+        top: '88%',
+        height: '12%',
+        offset: 0,
+        labels: { enabled: false },
+        gridLineWidth: 0
+      }],
       legend: {
         enabled: true,
         align: 'center',
@@ -336,7 +400,6 @@
       plotOptions: {
         line: {
           animation: false,
-          enableMouseTracking: false,
           lineWidth: 1.5
         },
         series: {
@@ -344,7 +407,7 @@
           turboThreshold: 10000,
           states: {
             hover: {
-              enabled: false
+              lineWidthPlus: 1
             }
           }
         }
@@ -386,7 +449,7 @@
     let needsRedraw = false;
 
     Array.from(sensorData.entries()).forEach(([sensorId, data], index) => {
-      const displayName = sensorId.length > 12 ? sensorId.slice(-8) : sensorId;
+      const displayName = getDisplayName(sensorId);
       const existingSeries = chart!.series.find(s => s.name === displayName);
       const filteredData = getFilteredData(data, cutoff);
 
@@ -398,6 +461,7 @@
           type: 'line',
           name: displayName,
           data: filteredData,
+          yAxis: 0,
           color: sensorColors.get(sensorId) || COLORS[index % COLORS.length],
           lineWidth: 1.5,
           marker: { enabled: false },
@@ -406,6 +470,41 @@
         needsRedraw = true;
       }
     });
+
+    // Update sync history series
+    const syncSeries = chart.series.find(s => s.name === SYNC_SERIES_NAME);
+    const filteredSync = getFilteredData(syncHistory, cutoff);
+    if (syncSeries) {
+      syncSeries.setData(filteredSync, false, false, false);
+      needsRedraw = true;
+    } else if (filteredSync.length > 0) {
+      chart.addSeries({
+        type: 'area',
+        name: SYNC_SERIES_NAME,
+        data: filteredSync,
+        yAxis: 1,
+        lineWidth: 0,
+        marker: { enabled: false },
+        animation: false,
+        fillOpacity: 0.6,
+        enableMouseTracking: true,
+        showInLegend: false,
+        tooltip: {
+          pointFormatter: function() {
+            const c = this.y < 20 ? '#ef4444' : this.y < 40 ? '#f97316' : this.y < 60 ? '#eab308' : this.y < 80 ? '#84cc16' : '#22c55e';
+            return `<span style="color:${c}">\u25CF</span> Phase Sync: <b>${Math.round(this.y)}%</b><br/>`;
+          }
+        },
+        zones: [
+          { value: 20, color: '#ef4444' },
+          { value: 40, color: '#f97316' },
+          { value: 60, color: '#eab308' },
+          { value: 80, color: '#84cc16' },
+          { color: '#22c55e' }
+        ]
+      }, false);
+      needsRedraw = true;
+    }
 
     if (needsRedraw) {
       chart.xAxis[0].setExtremes(now - selectedWindowMs, now, false);
@@ -434,6 +533,13 @@
         event.data.forEach((m: any) => {
           if (typeof m?.payload === "number") {
             addDataPoint(sid, m.payload, m.timestamp);
+          }
+        });
+        consumed++;
+      } else if (event.attribute_id === "hrv_sync" && Array.isArray(event.data)) {
+        event.data.forEach((m: any) => {
+          if (typeof m?.payload === "number") {
+            syncHistory.push({ x: m.timestamp, y: m.payload });
           }
         });
         consumed++;
@@ -495,6 +601,15 @@
             }
             addDataPoint(eventSensorId, value, data.timestamp);
           }
+        }
+      } else if (attributeId === "hrv_sync") {
+        const data = e?.detail?.data;
+        if (Array.isArray(data) && data.length > 0) {
+          data.forEach((m: any) => {
+            if (typeof m?.payload === "number") {
+              syncHistory.push({ x: m.timestamp, y: m.payload });
+            }
+          });
         }
       }
     };

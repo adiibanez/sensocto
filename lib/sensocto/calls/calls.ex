@@ -199,12 +199,20 @@ defmodule Sensocto.Calls do
   end
 
   @doc """
-  Gets ICE server configuration.
-  Used by the CallChannel to send to clients.
+  Gets ICE server configuration for clients.
+  Merges static STUN servers from `:membrane_rtc_engine_ex_webrtc` config
+  with dynamic Cloudflare TURN credentials (when configured).
   """
   def get_ice_servers do
-    Application.get_env(:sensocto, :calls, [])
-    |> Keyword.get(:ice_servers, [%{urls: "stun:stun.l.google.com:19302"}])
+    stun_servers =
+      Application.get_env(:membrane_rtc_engine_ex_webrtc, :ice_servers, [
+        %{urls: "stun:stun.l.google.com:19302"}
+      ])
+
+    case Sensocto.Calls.CloudflareTurn.get_ice_servers() do
+      nil -> stun_servers
+      cloudflare_servers -> stun_servers ++ cloudflare_servers
+    end
   end
 
   @doc """

@@ -72,7 +72,7 @@ if System.get_env("TIGRIS_BUCKET") || System.get_env("BUCKET_NAME") do
     batch_size: String.to_integer(System.get_env("BACKUP_BATCH_SIZE") || "10")
 end
 
-# Optional TURN server for video/voice calls (Membrane RTC Engine ExWebRTC)
+# Optional static TURN server for video/voice calls (Membrane RTC Engine ExWebRTC)
 # TURN is only needed when clients are behind symmetric NATs
 if turn_url = System.get_env("TURN_SERVER_URL") do
   turn_username = System.get_env("TURN_USERNAME")
@@ -90,13 +90,22 @@ if turn_url = System.get_env("TURN_SERVER_URL") do
       %{urls: "stun:global.stun.twilio.com:3478"},
       # Cloudflare public STUN
       %{urls: "stun:stun.cloudflare.com:3478"},
-      # TURN relay (optional)
+      # TURN relay (static)
       %{
         urls: turn_url,
         username: turn_username,
         credential: turn_password
       }
     ]
+end
+
+# Cloudflare TURN (dynamic short-lived credentials via API)
+# Preferred over static TURN — generates ephemeral credentials per session.
+# Set CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN from Cloudflare dashboard.
+if cf_turn_key_id = System.get_env("CLOUDFLARE_TURN_KEY_ID") do
+  config :sensocto,
+    cloudflare_turn_key_id: cf_turn_key_id,
+    cloudflare_turn_api_token: System.get_env("CLOUDFLARE_TURN_API_TOKEN")
 end
 
 if config_env() == :prod do

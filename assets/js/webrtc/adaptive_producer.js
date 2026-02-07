@@ -6,9 +6,12 @@
  *
  * Tiers:
  * - active: Full video (720p@30fps)
- * - recent: Reduced video (480p@15fps)
- * - viewer: Snapshot mode (1-3fps JPEG)
- * - idle: Static avatar (no video/snapshots)
+ * - recent: Reduced video (720p@15fps, lower bitrate)
+ * - viewer: Snapshot mode (captures JPEG at 1fps, video stays at low bitrate)
+ * - idle: Minimal video (very low bitrate/framerate)
+ *
+ * Key design: Resolution NEVER changes after init to avoid camera reconfiguration
+ * which causes black frames. Only bitrate/framerate are adjusted.
  */
 
 export class AdaptiveProducer {
@@ -19,30 +22,32 @@ export class AdaptiveProducer {
     this.onError = options.onError || (() => {});
 
     // Quality settings per tier
+    // Resolution stays constant across all tiers to prevent black-frame flashes
+    // when the camera reconfigures. Bandwidth is controlled via bitrate + framerate.
     this.tierSettings = {
       active: {
         mode: "video",
-        width: 1280,
-        height: 720,
         frameRate: 30,
         bitrate: 2500000, // 2.5 Mbps
       },
       recent: {
         mode: "video",
-        width: 640,
-        height: 480,
         frameRate: 15,
         bitrate: 500000, // 500 Kbps
       },
       viewer: {
         mode: "snapshot",
-        snapshotInterval: 1000, // 1 fps
-        snapshotQuality: 0.7,   // JPEG quality (0-1)
-        maxWidth: 320,
-        maxHeight: 240,
+        frameRate: 5,
+        bitrate: 150000, // 150 Kbps — low video kept alive as fallback
+        snapshotInterval: 1000, // Capture JPEG every 1s
+        snapshotQuality: 0.7,
+        snapshotMaxWidth: 320,
+        snapshotMaxHeight: 240,
       },
       idle: {
-        mode: "none",
+        mode: "video",
+        frameRate: 5,
+        bitrate: 100000, // 100 Kbps
       },
     };
 
@@ -59,6 +64,10 @@ export class AdaptiveProducer {
 
     // RTCRtpSender for applying constraints
     this.sender = null;
+
+    // Store initial resolution so we never change it
+    this._initWidth = null;
+    this._initHeight = null;
   }
 
   /**
@@ -69,6 +78,11 @@ export class AdaptiveProducer {
   init(videoTrack, sender = null) {
     this.videoTrack = videoTrack;
     this.sender = sender;
+
+    // Store initial resolution from the track's actual settings
+    const trackSettings = videoTrack.getSettings();
+    this._initWidth = trackSettings.width || 1280;
+    this._initHeight = trackSettings.height || 720;
 
     // Create hidden video element for snapshot capture
     this.videoElement = document.createElement("video");
@@ -85,7 +99,7 @@ export class AdaptiveProducer {
     this.snapshotContext = this.snapshotCanvas.getContext("2d");
 
     this.isRunning = true;
-    console.log("[AdaptiveProducer] Initialized");
+    console.log(`[AdaptiveProducer] Initialized at ${this._initWidth}x${this._initHeight}`);
 
     // Apply initial tier
     this.setTier(this.currentTier);
@@ -110,16 +124,12 @@ export class AdaptiveProducer {
     // Stop any existing snapshot timer
     this._stopSnapshotTimer();
 
-    switch (settings.mode) {
-      case "video":
-        await this._switchToVideoMode(settings);
-        break;
-      case "snapshot":
-        await this._switchToSnapshotMode(settings);
-        break;
-      case "none":
-        this._switchToIdleMode();
-        break;
+    // Always apply framerate + bitrate (never changes resolution)
+    await this._applyQuality(settings);
+
+    // Start snapshot capture if in snapshot mode
+    if (settings.mode === "snapshot") {
+      this._startSnapshotTimer(settings);
     }
 
     this.currentMode = settings.mode;
@@ -127,39 +137,35 @@ export class AdaptiveProducer {
   }
 
   /**
-   * Switch to video streaming mode with specified constraints
+   * Apply framerate and bitrate without changing resolution.
+   * The video track stays enabled at its original resolution.
    */
-  async _switchToVideoMode(settings) {
+  async _applyQuality(settings) {
     if (!this.videoTrack) return;
 
-    // Re-enable video track if it was disabled
+    // Ensure track is enabled
     if (!this.videoTrack.enabled) {
       this.videoTrack.enabled = true;
     }
 
-    // Apply constraints to the video track
-    const constraints = {
-      width: { ideal: settings.width },
-      height: { ideal: settings.height },
-      frameRate: { ideal: settings.frameRate },
-    };
-
+    // Only change framerate — keep resolution locked to initial value
     try {
-      await this.videoTrack.applyConstraints(constraints);
-      console.log(`[AdaptiveProducer] Applied video constraints: ${settings.width}x${settings.height}@${settings.frameRate}fps`);
+      await this.videoTrack.applyConstraints({
+        width: { ideal: this._initWidth },
+        height: { ideal: this._initHeight },
+        frameRate: { ideal: settings.frameRate },
+      });
     } catch (error) {
-      console.warn("[AdaptiveProducer] Failed to apply constraints:", error);
-      // Continue anyway - browser may not support all constraints
+      console.warn("[AdaptiveProducer] Failed to apply framerate constraint:", error);
     }
 
-    // Apply bitrate via sender if available
+    // Apply bitrate via sender
     if (this.sender) {
       try {
         const params = this.sender.getParameters();
         if (params.encodings && params.encodings.length > 0) {
           params.encodings[0].maxBitrate = settings.bitrate;
           await this.sender.setParameters(params);
-          console.log(`[AdaptiveProducer] Set bitrate: ${settings.bitrate / 1000} Kbps`);
         }
       } catch (error) {
         console.warn("[AdaptiveProducer] Failed to set bitrate:", error);
@@ -168,56 +174,22 @@ export class AdaptiveProducer {
   }
 
   /**
-   * Switch to snapshot mode - captures JPEG frames at low rate
-   */
-  async _switchToSnapshotMode(settings) {
-    if (!this.videoTrack || !this.videoElement) return;
-
-    // Keep video track enabled for capture, but we'll send snapshots instead
-    // The actual WebRTC video track could be disabled/paused if bandwidth is critical
-    // For now, we keep it enabled but at lowest quality and capture snapshots separately
-
-    // Apply minimal video constraints to reduce bandwidth
-    const minConstraints = {
-      width: { ideal: settings.maxWidth },
-      height: { ideal: settings.maxHeight },
-      frameRate: { ideal: 5 }, // Low framerate for live preview
-    };
-
-    try {
-      await this.videoTrack.applyConstraints(minConstraints);
-    } catch (error) {
-      console.warn("[AdaptiveProducer] Failed to apply snapshot constraints:", error);
-    }
-
-    // Set canvas size
-    this.snapshotCanvas.width = settings.maxWidth;
-    this.snapshotCanvas.height = settings.maxHeight;
-
-    // Start snapshot timer
-    this._startSnapshotTimer(settings);
-  }
-
-  /**
-   * Switch to idle mode - no video output
-   */
-  _switchToIdleMode() {
-    if (this.videoTrack) {
-      this.videoTrack.enabled = false;
-    }
-    console.log("[AdaptiveProducer] Video disabled (idle mode)");
-  }
-
-  /**
    * Start capturing snapshots at the specified interval
    */
   _startSnapshotTimer(settings) {
+    const maxW = settings.snapshotMaxWidth || 320;
+    const maxH = settings.snapshotMaxHeight || 240;
+    const quality = settings.snapshotQuality || 0.7;
+
+    this.snapshotCanvas.width = maxW;
+    this.snapshotCanvas.height = maxH;
+
     this.snapshotTimer = setInterval(() => {
-      this._captureSnapshot(settings);
+      this._captureSnapshot(maxW, maxH, quality);
     }, settings.snapshotInterval);
 
     // Capture immediately
-    this._captureSnapshot(settings);
+    this._captureSnapshot(maxW, maxH, quality);
   }
 
   /**
@@ -233,34 +205,19 @@ export class AdaptiveProducer {
   /**
    * Capture a single snapshot from the video element
    */
-  _captureSnapshot(settings) {
+  _captureSnapshot(width, height, quality) {
     if (!this.videoElement || !this.snapshotContext) return;
-
-    // Check if video is ready
-    if (this.videoElement.readyState < 2) {
-      return;
-    }
+    if (this.videoElement.readyState < 2) return;
 
     try {
-      // Draw current frame to canvas
-      this.snapshotContext.drawImage(
-        this.videoElement,
-        0, 0,
-        this.snapshotCanvas.width,
-        this.snapshotCanvas.height
-      );
-
-      // Convert to JPEG data URL
-      const dataUrl = this.snapshotCanvas.toDataURL("image/jpeg", settings.snapshotQuality);
-
-      // Extract base64 data (remove data URL prefix)
+      this.snapshotContext.drawImage(this.videoElement, 0, 0, width, height);
+      const dataUrl = this.snapshotCanvas.toDataURL("image/jpeg", quality);
       const base64Data = dataUrl.split(",")[1];
 
-      // Callback with snapshot data
       this.onSnapshot({
         data: base64Data,
-        width: this.snapshotCanvas.width,
-        height: this.snapshotCanvas.height,
+        width,
+        height,
         timestamp: Date.now(),
       });
     } catch (error) {
@@ -271,33 +228,21 @@ export class AdaptiveProducer {
 
   /**
    * Get a single snapshot on demand
-   * @returns {Object} Snapshot data with base64 and metadata
    */
   captureSnapshotNow(quality = 0.7, maxWidth = 320, maxHeight = 240) {
-    if (!this.videoElement || !this.snapshotContext) {
-      return null;
-    }
-
-    if (this.videoElement.readyState < 2) {
-      return null;
-    }
+    if (!this.videoElement || !this.snapshotContext) return null;
+    if (this.videoElement.readyState < 2) return null;
 
     this.snapshotCanvas.width = maxWidth;
     this.snapshotCanvas.height = maxHeight;
 
-    this.snapshotContext.drawImage(
-      this.videoElement,
-      0, 0,
-      maxWidth,
-      maxHeight
-    );
-
+    this.snapshotContext.drawImage(this.videoElement, 0, 0, maxWidth, maxHeight);
     const dataUrl = this.snapshotCanvas.toDataURL("image/jpeg", quality);
     const base64Data = dataUrl.split(",")[1];
 
     return {
       data: base64Data,
-      dataUrl: dataUrl,
+      dataUrl,
       width: maxWidth,
       height: maxHeight,
       timestamp: Date.now(),
@@ -309,10 +254,9 @@ export class AdaptiveProducer {
    */
   setSender(sender) {
     this.sender = sender;
-    // Re-apply current tier settings
-    if (this.currentMode === "video") {
+    if (this.isRunning) {
       const settings = this.tierSettings[this.currentTier];
-      this._switchToVideoMode(settings);
+      this._applyQuality(settings);
     }
   }
 

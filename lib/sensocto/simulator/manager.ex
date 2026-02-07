@@ -188,7 +188,8 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_call({:stop_connector, connector_id}, _from, state) do
-    do_stop_connector(connector_id)
+    config = Map.get(state.connectors, connector_id)
+    do_stop_connector(connector_id, config)
     new_connectors = Map.delete(state.connectors, connector_id)
     {:reply, :ok, %{state | connectors: new_connectors}}
   end
@@ -218,8 +219,8 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_call(:stop_all, _from, state) do
-    Enum.each(state.connectors, fn {connector_id, _} ->
-      do_stop_connector(connector_id)
+    Enum.each(state.connectors, fn {connector_id, config} ->
+      do_stop_connector(connector_id, config)
     end)
 
     {:reply, :ok, state}
@@ -328,7 +329,9 @@ defmodule Sensocto.Simulator.Manager do
 
       scenario_info ->
         # Stop all connectors for this scenario
-        Enum.each(scenario_info.connector_ids, &do_stop_connector/1)
+        Enum.each(scenario_info.connector_ids, fn connector_id ->
+          do_stop_connector(connector_id, Map.get(state.connectors, connector_id))
+        end)
 
         # Remove connectors from state
         new_connectors = Map.drop(state.connectors, scenario_info.connector_ids)
@@ -355,8 +358,8 @@ defmodule Sensocto.Simulator.Manager do
           send(self(), {:sync_scenario_stopped, old_scenario_name})
         end)
 
-        Enum.each(state.connectors, fn {connector_id, _} ->
-          do_stop_connector(connector_id)
+        Enum.each(state.connectors, fn {connector_id, config} ->
+          do_stop_connector(connector_id, config)
         end)
 
         # Load the new scenario config
@@ -520,7 +523,10 @@ defmodule Sensocto.Simulator.Manager do
 
     # Stop removed connectors
     removed_connectors = Map.keys(state.connectors) -- Map.keys(new_connectors_config)
-    Enum.each(removed_connectors, &do_stop_connector/1)
+
+    Enum.each(removed_connectors, fn connector_id ->
+      do_stop_connector(connector_id, Map.get(state.connectors, connector_id))
+    end)
 
     # Check if we should autostart connectors
     simulator_config = Application.get_env(:sensocto, :simulator, [])
@@ -570,7 +576,8 @@ defmodule Sensocto.Simulator.Manager do
     %{state | connectors: Map.put(state.connectors, connector_id, connector_config)}
   end
 
-  defp do_stop_connector(connector_id) do
+  defp do_stop_connector(connector_id, connector_config) do
+    # First, terminate the connector process (which attempts to clean up its sensors)
     case Registry.lookup(Sensocto.Simulator.Registry, "connector_#{connector_id}") do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(Sensocto.Simulator.ConnectorSupervisor, pid)
@@ -578,6 +585,35 @@ defmodule Sensocto.Simulator.Manager do
 
       [] ->
         Logger.debug("Connector #{connector_id} not found in registry")
+    end
+
+    # Safety net: directly remove any SimpleSensor processes that may have survived
+    # the termination chain (e.g. if ConnectorServer.terminate timed out with many sensors).
+    # This is idempotent — remove_sensor returns :error for already-removed sensors.
+    cleanup_orphaned_sensors(connector_id, connector_config)
+  end
+
+  defp cleanup_orphaned_sensors(_connector_id, nil), do: :ok
+
+  defp cleanup_orphaned_sensors(connector_id, config) do
+    sensor_ids = Map.keys(config["sensors"] || %{})
+
+    orphaned =
+      Enum.filter(sensor_ids, fn sensor_id ->
+        Sensocto.SimpleSensor.alive?(sensor_id)
+      end)
+
+    if orphaned != [] do
+      Logger.warning(
+        "Found #{length(orphaned)} orphaned sensors after stopping connector #{connector_id}, cleaning up: #{inspect(orphaned)}"
+      )
+
+      Enum.each(orphaned, fn sensor_id ->
+        Sensocto.SensorsDynamicSupervisor.remove_sensor(sensor_id)
+
+        # Also untrack presence in case SensorServer.terminate didn't run
+        SensoctoWeb.Sensocto.Presence.untrack(self(), "presence:all", sensor_id)
+      end)
     end
   end
 

@@ -50,7 +50,10 @@
   let sigma: Sigma | null = null;
   let selectedNode = $state<string | null>(null);
   let hoveredNode = $state<string | null>(null);
-  let nodeDetails = $state<any>(null);
+  let hoverDetails = $state<any>(null);
+  let selectedDetails = $state<any>(null);
+  let mouseX = $state(0);
+  let mouseY = $state(0);
   let isLayoutRunning = $state(false);
 
   // Set of nodes to highlight (hovered node + all connected neighbors)
@@ -318,11 +321,17 @@
       }
     });
 
+    // Track mouse position for hover tooltip
+    container.addEventListener("mousemove", (e: MouseEvent) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+
     // Handle node hover - highlight connected subgraph
     sigma.on("enterNode", ({ node }) => {
       hoveredNode = node;
       const attrs = graph.getNodeAttributes(node);
-      nodeDetails = {
+      hoverDetails = {
         id: node,
         label: attrs.label,
         type: attrs.nodeType,
@@ -330,7 +339,6 @@
       };
       document.body.style.cursor = "pointer";
 
-      // Build set of highlighted nodes: the hovered node + all descendants
       highlightedNodes = new Set([node]);
       collectDescendants(node, highlightedNodes);
       sigma?.refresh();
@@ -338,31 +346,28 @@
 
     sigma.on("leaveNode", () => {
       document.body.style.cursor = "default";
+      hoveredNode = null;
+      hoverDetails = null;
 
-      // If a node is selected, keep its highlighting; otherwise clear
       if (selectedNode) {
         highlightedNodes = new Set([selectedNode]);
         collectDescendants(selectedNode, highlightedNodes);
       } else {
-        hoveredNode = null;
-        nodeDetails = null;
         highlightedNodes = new Set();
       }
       sigma?.refresh();
     });
 
-    // Handle node click - persist highlighting
+    // Handle node click - persist selection in bottom bar
     sigma.on("clickNode", ({ node }) => {
       if (selectedNode === node) {
-        // Deselect
         selectedNode = null;
-        nodeDetails = null;
+        selectedDetails = null;
         highlightedNodes = new Set();
       } else {
-        // Select and highlight
         selectedNode = node;
         const attrs = graph.getNodeAttributes(node);
-        nodeDetails = {
+        selectedDetails = {
           id: node,
           label: attrs.label,
           type: attrs.nodeType,
@@ -377,10 +382,8 @@
     // Handle background click to deselect
     sigma.on("clickStage", () => {
       selectedNode = null;
+      selectedDetails = null;
       highlightedNodes = new Set();
-      if (!hoveredNode) {
-        nodeDetails = null;
-      }
       sigma?.refresh();
     });
 
@@ -433,6 +436,26 @@
       return JSON.stringify(payload, null, 2);
     }
     return String(payload);
+  }
+
+  function getHoverSummary(details: any): string {
+    if (!details) return "";
+    switch (details.type) {
+      case "user":
+        return `${details.data.sensor_count} sensors`;
+      case "sensor":
+        return `${Object.keys(details.data.attributes || {}).length} attrs`;
+      case "attribute": {
+        const val = details.data?.lastvalue?.payload;
+        if (val == null) return details.data.attribute_type;
+        const short = typeof val === "object" ? JSON.stringify(val) : String(val);
+        return short.length > 30 ? short.slice(0, 27) + "..." : short;
+      }
+      case "room":
+        return `${details.data.sensor_count} sensors`;
+      default:
+        return "";
+    }
   }
 
   // Track active pulsation animations: nodeId => {timeout, baseSize, originalColor}
@@ -628,60 +651,60 @@
     </div>
   </div>
 
-  <!-- Node Details Panel -->
-  {#if nodeDetails}
-    <div class="details-panel">
-      <div class="details-header">
-        <span class="details-icon">{getNodeTypeIcon(nodeDetails.type)}</span>
-        <span class="details-type">{nodeDetails.type}</span>
-        {#if selectedNode}
-          <button onclick={() => { selectedNode = null; nodeDetails = null; }} class="close-btn">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+  <!-- Compact Hover Tooltip (follows cursor) -->
+  {#if hoverDetails && !selectedNode}
+    <div class="hover-tooltip" style="left: {mouseX + 14}px; top: {mouseY - 10}px;">
+      <span class="hover-icon" style="color: {nodeColors[hoverDetails.type] || '#9ca3af'}">{getNodeTypeIcon(hoverDetails.type)}</span>
+      <span class="hover-label">{hoverDetails.label}</span>
+      <span class="hover-meta">{getHoverSummary(hoverDetails)}</span>
+    </div>
+  {/if}
+
+  <!-- Selected Node Bottom Bar -->
+  {#if selectedDetails}
+    <div class="bottom-bar">
+      <div class="bottom-bar-main">
+        <span class="bottom-bar-icon" style="color: {nodeColors[selectedDetails.type] || '#9ca3af'}">{getNodeTypeIcon(selectedDetails.type)}</span>
+        <span class="bottom-bar-type">{selectedDetails.type}</span>
+        <span class="bottom-bar-label">{selectedDetails.label}</span>
+        <span class="bottom-bar-sep">|</span>
+
+        {#if selectedDetails.type === "user"}
+          <span class="bottom-bar-detail">Connector: {selectedDetails.data.connector_id}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-detail">Sensors: {selectedDetails.data.sensor_count}</span>
+          {#if selectedDetails.data.attributes_summary?.length > 0}
+            <span class="bottom-bar-sep">|</span>
+            {#each selectedDetails.data.attributes_summary as attr}
+              <span class="bottom-bar-tag">{attr.type}: {attr.count}</span>
+            {/each}
+          {/if}
+        {:else if selectedDetails.type === "sensor"}
+          <span class="bottom-bar-detail">ID: {selectedDetails.data.sensor_id}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-detail">Connector: {selectedDetails.data.connector_name}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-detail">Attrs: {Object.keys(selectedDetails.data.attributes || {}).length}</span>
+        {:else if selectedDetails.type === "attribute"}
+          <span class="bottom-bar-detail">ID: {selectedDetails.data.attribute_id}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-detail">Type: {selectedDetails.data.attribute_type}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-detail">Sensor: {selectedDetails.data.sensor_id}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-value">{formatAttributeValue(selectedDetails.data)}</span>
+        {:else if selectedDetails.type === "room"}
+          <span class="bottom-bar-detail">ID: {selectedDetails.data.id}</span>
+          <span class="bottom-bar-sep">|</span>
+          <span class="bottom-bar-detail">Sensors: {selectedDetails.data.sensor_count}</span>
         {/if}
       </div>
-      <h3 class="details-title">{nodeDetails.label}</h3>
 
-      {#if nodeDetails.type === "user"}
-        <div class="details-content">
-          <p><strong>Connector ID:</strong> {nodeDetails.data.connector_id}</p>
-          <p><strong>Sensors:</strong> {nodeDetails.data.sensor_count}</p>
-          <p><strong>Total Attributes:</strong> {nodeDetails.data.total_attributes}</p>
-          {#if nodeDetails.data.attributes_summary?.length > 0}
-            <div class="attr-summary">
-              <strong>Attribute Types:</strong>
-              <ul>
-                {#each nodeDetails.data.attributes_summary as attr}
-                  <li>{attr.type}: {attr.count}</li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-        </div>
-      {:else if nodeDetails.type === "sensor"}
-        <div class="details-content">
-          <p><strong>Sensor ID:</strong> {nodeDetails.data.sensor_id}</p>
-          <p><strong>Connector:</strong> {nodeDetails.data.connector_name}</p>
-          <p><strong>Attributes:</strong> {Object.keys(nodeDetails.data.attributes || {}).length}</p>
-        </div>
-      {:else if nodeDetails.type === "attribute"}
-        <div class="details-content">
-          <p><strong>Attribute ID:</strong> {nodeDetails.data.attribute_id}</p>
-          <p><strong>Type:</strong> {nodeDetails.data.attribute_type}</p>
-          <p><strong>Sensor:</strong> {nodeDetails.data.sensor_id}</p>
-          <div class="attr-value">
-            <strong>Value:</strong>
-            <pre>{formatAttributeValue(nodeDetails.data)}</pre>
-          </div>
-        </div>
-      {:else if nodeDetails.type === "room"}
-        <div class="details-content">
-          <p><strong>Room ID:</strong> {nodeDetails.data.id}</p>
-          <p><strong>Sensors:</strong> {nodeDetails.data.sensor_count}</p>
-        </div>
-      {/if}
+      <button onclick={() => { selectedNode = null; selectedDetails = null; highlightedNodes = new Set(); sigma?.refresh(); }} class="bottom-bar-close" title="Close">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   {/if}
 
@@ -768,105 +791,136 @@
     border-radius: 50%;
   }
 
-  .details-panel {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    width: 280px;
-    max-height: calc(100vh - 2rem);
-    overflow-y: auto;
+  /* Compact hover tooltip - follows cursor */
+  .hover-tooltip {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.625rem;
     background: rgba(17, 24, 39, 0.95);
-    border: 1px solid rgba(75, 85, 99, 0.5);
-    border-radius: 0.75rem;
-    padding: 1rem;
-    z-index: 20;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(75, 85, 99, 0.6);
+    border-radius: 0.375rem;
+    z-index: 30;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   }
 
-  .details-header {
+  .hover-icon {
+    font-size: 0.8rem;
+  }
+
+  .hover-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #f3f4f6;
+  }
+
+  .hover-meta {
+    font-size: 0.7rem;
+    color: #9ca3af;
+  }
+
+  /* Selected node bottom bar */
+  .bottom-bar {
+    position: absolute;
+    bottom: 3.5rem;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    max-width: calc(100% - 2rem);
+    padding: 0.5rem 0.75rem;
+    background: rgba(17, 24, 39, 0.95);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 0.5rem;
+    z-index: 20;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
   }
 
-  .details-icon {
-    font-size: 1.25rem;
+  .bottom-bar-main {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
   }
 
-  .details-type {
-    font-size: 0.7rem;
+  .bottom-bar-main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bottom-bar-icon {
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+
+  .bottom-bar-type {
+    font-size: 0.65rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #9ca3af;
-    flex: 1;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    flex-shrink: 0;
   }
 
-  .close-btn {
+  .bottom-bar-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #f3f4f6;
+    flex-shrink: 0;
+  }
+
+  .bottom-bar-sep {
+    color: #374151;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  .bottom-bar-detail {
+    font-size: 0.75rem;
+    color: #d1d5db;
+    flex-shrink: 0;
+  }
+
+  .bottom-bar-tag {
+    font-size: 0.65rem;
+    padding: 0.125rem 0.375rem;
+    background: rgba(75, 85, 99, 0.4);
+    border-radius: 0.25rem;
+    color: #d1d5db;
+    flex-shrink: 0;
+  }
+
+  .bottom-bar-value {
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: #a5f3fc;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+
+  .bottom-bar-close {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.25rem;
+    height: 1.25rem;
     background: rgba(55, 65, 81, 0.5);
     border: none;
     border-radius: 0.25rem;
     color: #9ca3af;
     cursor: pointer;
+    flex-shrink: 0;
   }
 
-  .close-btn:hover {
+  .bottom-bar-close:hover {
     background: rgba(75, 85, 99, 0.5);
     color: #d1d5db;
-  }
-
-  .details-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #f3f4f6;
-    margin: 0 0 0.75rem 0;
-  }
-
-  .details-content {
-    font-size: 0.8rem;
-    color: #d1d5db;
-  }
-
-  .details-content p {
-    margin: 0.375rem 0;
-  }
-
-  .details-content strong {
-    color: #9ca3af;
-  }
-
-  .attr-summary {
-    margin-top: 0.5rem;
-  }
-
-  .attr-summary ul {
-    margin: 0.25rem 0 0 1rem;
-    padding: 0;
-    list-style: disc;
-  }
-
-  .attr-summary li {
-    margin: 0.125rem 0;
-  }
-
-  .attr-value {
-    margin-top: 0.5rem;
-  }
-
-  .attr-value pre {
-    margin: 0.25rem 0 0 0;
-    padding: 0.5rem;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 0.375rem;
-    font-size: 0.7rem;
-    overflow-x: auto;
-    max-height: 150px;
-    color: #a5f3fc;
   }
 
   .stats {

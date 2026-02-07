@@ -104,6 +104,7 @@
     function handleBackpressureConfig(config) {
         logger.log(loggerCtxName, "Backpressure config received:", config);
 
+        const prevFps = targetFps;
         attentionLevel = config.attention_level || "none";
         backpressurePaused = config.paused || false;
 
@@ -136,6 +137,13 @@
         }
 
         frameInterval = 1000 / targetFps;
+
+        // When FPS increases (attention went up), reset lastFrameTime so the
+        // next rAF immediately captures a frame instead of waiting out the old interval
+        if (targetFps > prevFps) {
+            lastFrameTime = 0;
+        }
+
         logger.log(loggerCtxName, `Adjusted FPS to ${targetFps.toFixed(1)} based on attention level: ${attentionLevel}`);
 
         if (backpressurePaused) {
@@ -663,7 +671,7 @@
     }
 
     function stopPose() {
-        if (!detecting) return;
+        const wasDetecting = detecting;
 
         logger.log(loggerCtxName, "Stopping hybrid pose detection...");
 
@@ -685,11 +693,34 @@
         targetFps = BASE_FPS;
         frameInterval = 1000 / targetFps;
 
+        // Always clean up camera — handles race condition where startPose opened
+        // the camera but detecting wasn't set to true yet when user hit stop
         cleanupStandaloneCamera();
 
-        setTimeout(() => {
-            sensorService.unregisterAttribute(channelIdentifier, "pose_skeleton");
-        }, 50);
+        // Close MediaPipe landmarkers to release GPU/camera references
+        // Without this, some browsers keep the camera indicator active
+        if (poseLandmarker) {
+            try {
+                poseLandmarker.close();
+            } catch (e) {
+                logger.warn(loggerCtxName, "Error closing PoseLandmarker:", e);
+            }
+            poseLandmarker = null;
+        }
+        if (faceLandmarker) {
+            try {
+                faceLandmarker.close();
+            } catch (e) {
+                logger.warn(loggerCtxName, "Error closing FaceLandmarker:", e);
+            }
+            faceLandmarker = null;
+        }
+
+        if (wasDetecting) {
+            setTimeout(() => {
+                sensorService.unregisterAttribute(channelIdentifier, "pose_skeleton");
+            }, 50);
+        }
 
         logger.log(loggerCtxName, "Hybrid pose detection stopped");
     }

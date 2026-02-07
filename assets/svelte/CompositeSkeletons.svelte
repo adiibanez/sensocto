@@ -25,7 +25,38 @@
     bpm: number;                    // Heart rate in beats per minute
     lastHeartbeat: number;          // Timestamp of last heartbeat animation
     heartScale: number;             // Current heart animation scale (1.0 = normal, 1.3 = peak)
+    // Connection state tracking
+    connectedAt: number;            // When sensor first appeared in props
+    firstDataAt: number;            // When first skeleton frame arrived (0 = no data yet)
+    frameCount: number;             // Total frames received
+    recentFrameTimes: number[];     // Last N frame timestamps for FPS calculation
   }> = new Map();
+
+  // Warm-up threshold: sensor considered "active" after this many frames
+  const WARMUP_FRAME_THRESHOLD = 10;
+  // How many recent frames to track for FPS calculation
+  const FPS_WINDOW_SIZE = 15;
+
+  // Sensor connection state enum
+  type SensorState = 'connected' | 'warming_up' | 'active' | 'stale';
+
+  function getSensorState(sensorId: string): SensorState {
+    const data = skeletonData.get(sensorId);
+    if (!data || data.firstDataAt === 0) return 'connected';
+    if (data.frameCount < WARMUP_FRAME_THRESHOLD) return 'warming_up';
+    // Check for stale data (no update in 3 seconds)
+    if (Date.now() - data.lastUpdate > 3000) return 'stale';
+    return 'active';
+  }
+
+  function getSensorFps(sensorId: string): number {
+    const data = skeletonData.get(sensorId);
+    if (!data || !data.recentFrameTimes || data.recentFrameTimes.length < 2) return 0;
+    const times = data.recentFrameTimes;
+    const elapsed = times[times.length - 1] - times[0];
+    if (elapsed <= 0) return 0;
+    return Math.round(((times.length - 1) / elapsed) * 1000);
+  }
 
   // Activity calculation constants
   const ACTIVITY_HISTORY_LENGTH = 10;
@@ -72,7 +103,9 @@
   }
 
   // Build a map of sensor_id -> username/attention/bpm from props for fallback lookup
+  // Also initializes connection tracking for new sensors
   $effect(() => {
+    const now = Date.now();
     sensors.forEach(s => {
       const existing = skeletonData.get(s.sensor_id);
       if (existing) {
@@ -85,6 +118,24 @@
         if (s.bpm !== undefined && s.bpm > 0) {
           existing.bpm = s.bpm;
         }
+      } else {
+        // Initialize state for newly connected sensors (no data yet)
+        skeletonData.set(s.sensor_id, {
+          landmarks: [],
+          smoothedLandmarks: [],
+          lastUpdate: now,
+          username: s.username,
+          activity: 0,
+          attention: s.attention ?? 1,
+          movementHistory: [],
+          bpm: s.bpm ?? 0,
+          lastHeartbeat: 0,
+          heartScale: 1.0,
+          connectedAt: now,
+          firstDataAt: 0,
+          frameCount: 0,
+          recentFrameTimes: []
+        });
       }
     });
   });
@@ -982,27 +1033,140 @@
   function drawPlaceholder(centerX: number, centerY: number, size: number, sensorId: string, username?: string) {
     if (!ctx) return;
 
-    // Draw dashed circle placeholder
-    ctx.strokeStyle = "#374151";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, size * 0.3, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    const state = getSensorState(sensorId);
+    const data = skeletonData.get(sensorId);
+    const now = Date.now();
 
-    // Draw waiting text
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Waiting...", centerX, centerY);
+    if (state === 'connected') {
+      // Sensor connected but no data yet — show pulsing connection indicator
+      const elapsed = data ? now - data.connectedAt : 0;
+      const pulse = 0.4 + 0.3 * Math.sin(elapsed / 400); // Gentle pulse
+
+      // Pulsing ring
+      ctx.strokeStyle = "#6366f1";
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = pulse;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY - 12, size * 0.12, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Spinning arc to show activity
+      const angle = (elapsed / 800) % (Math.PI * 2);
+      ctx.strokeStyle = "#818cf8";
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY - 12, size * 0.12, angle, angle + Math.PI * 0.7);
+      ctx.stroke();
+
+      // Status text
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#9ca3af";
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Initializing pose estimation...", centerX, centerY + 12);
+
+      // Subtle hint
+      ctx.fillStyle = "#4b5563";
+      ctx.font = "9px sans-serif";
+      ctx.fillText("Waiting for camera data", centerX, centerY + 26);
+    } else if (state === 'stale') {
+      // Had data but went silent
+      const staleDuration = data ? Math.round((now - data.lastUpdate) / 1000) : 0;
+
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(centerX, centerY - 8, size * 0.12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Signal lost", centerX, centerY + 10);
+
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "9px sans-serif";
+      ctx.fillText(`No data for ${staleDuration}s`, centerX, centerY + 24);
+    } else {
+      // Fallback (shouldn't reach here normally)
+      ctx.strokeStyle = "#374151";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, size * 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Waiting...", centerX, centerY);
+    }
 
     // Draw label - prefer username over sensor_id
+    ctx.globalAlpha = 1;
     const displayLabel = username || sensorId;
     const truncatedLabel = displayLabel.length > 25 ? displayLabel.slice(0, 22) + "..." : displayLabel;
     ctx.fillStyle = "#4b5563";
     ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
     ctx.fillText(truncatedLabel, centerX, centerY + size / 2 + 20);
+  }
+
+  // Draw a warm-up overlay on top of skeleton during FPS ramp-up
+  function drawWarmupOverlay(areaX: number, areaY: number, areaWidth: number, areaHeight: number, sensorId: string) {
+    if (!ctx) return;
+
+    const data = skeletonData.get(sensorId);
+    if (!data) return;
+
+    const fps = getSensorFps(sensorId);
+    const progress = Math.min(1, data.frameCount / WARMUP_FRAME_THRESHOLD);
+
+    // Progress bar at bottom of area
+    const barHeight = 3;
+    const barY = areaY + areaHeight - 30;
+    const barWidth = areaWidth * 0.5;
+    const barX = areaX + (areaWidth - barWidth) / 2;
+
+    // Background
+    ctx.fillStyle = "#1f2937";
+    ctx.globalAlpha = 0.6;
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // Progress fill
+    ctx.fillStyle = "#6366f1";
+    ctx.globalAlpha = 0.9;
+    ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+
+    // FPS badge
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = "#1f2937";
+    const badgeText = fps > 0 ? `${fps} fps` : "starting...";
+    ctx.font = "9px sans-serif";
+    const textWidth = ctx.measureText(badgeText).width;
+    const badgeX = areaX + areaWidth - textWidth - 16;
+    const badgeY = areaY + 20;
+
+    // Badge background
+    ctx.beginPath();
+    const radius = 3;
+    const bw = textWidth + 10;
+    const bh = 16;
+    ctx.roundRect(badgeX, badgeY, bw, bh, radius);
+    ctx.fill();
+
+    // Badge text
+    ctx.fillStyle = fps > 0 ? "#818cf8" : "#6b7280";
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "left";
+    ctx.fillText(badgeText, badgeX + 5, badgeY + 11);
   }
 
   // Draw a beating heart with BPM
@@ -1135,9 +1299,16 @@
       const areaWidth = width;
       const areaHeight = height - titleHeight;
 
+      const sensorState = getSensorState(sensorId);
+
       if (data && data.smoothedLandmarks && data.smoothedLandmarks.length > 0) {
         // Use smoothed landmarks for jitter-free rendering
         drawSkeleton(data.smoothedLandmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.smoothedFaceLandmarks, data.blendshapes, data.mode);
+
+        // Show warm-up overlay while FPS is ramping up
+        if (sensorState === 'warming_up') {
+          drawWarmupOverlay(areaX, areaY, areaWidth, areaHeight, sensorId);
+        }
 
         // Draw heart if BPM available - position relative to skeleton bounds
         if (bpm > 0) {
@@ -1178,9 +1349,16 @@
         const bpm = data?.bpm || sensorFromProps?.bpm || 0;
         const color = SENSOR_COLORS[index % SENSOR_COLORS.length];
 
+        const sensorState = getSensorState(sensorId);
+
         if (data && data.smoothedLandmarks && data.smoothedLandmarks.length > 0) {
           // Use smoothed landmarks for jitter-free rendering
           drawSkeleton(data.smoothedLandmarks, areaX, areaY, areaWidth, areaHeight, color, sensorId, username, data.smoothedFaceLandmarks, data.blendshapes, data.mode);
+
+          // Show warm-up overlay while FPS is ramping up
+          if (sensorState === 'warming_up') {
+            drawWarmupOverlay(areaX, areaY, areaWidth, areaHeight, sensorId);
+          }
 
           // Draw heart if BPM available
           if (bpm > 0) {
@@ -1196,18 +1374,58 @@
       });
     }
 
-    // Draw compact title
+    // Draw compact title with state summary
     ctx.fillStyle = "#6b7280";
     ctx.font = "10px sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(`Pose (${numSensors})`, 8, 14);
 
-    // Draw distance hint on first render or when few sensors
-    if (numSensors <= 2) {
+    // Show state summary in header
+    let connectedCount = 0;
+    let warmingCount = 0;
+    let activeCount = 0;
+    let staleCount = 0;
+    sortedSensors.forEach(({ sensorId }) => {
+      const state = getSensorState(sensorId);
+      if (state === 'connected') connectedCount++;
+      else if (state === 'warming_up') warmingCount++;
+      else if (state === 'active') activeCount++;
+      else if (state === 'stale') staleCount++;
+    });
+
+    ctx.textAlign = "right";
+    let statusX = width - 8;
+
+    if (staleCount > 0) {
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "9px sans-serif";
+      const text = `${staleCount} lost`;
+      ctx.fillText(text, statusX, 14);
+      statusX -= ctx.measureText(text).width + 10;
+    }
+
+    if (connectedCount > 0) {
+      ctx.fillStyle = "#6366f1";
+      ctx.font = "9px sans-serif";
+      const text = `${connectedCount} connecting`;
+      ctx.fillText(text, statusX, 14);
+      statusX -= ctx.measureText(text).width + 10;
+    }
+
+    if (warmingCount > 0) {
+      ctx.fillStyle = "#818cf8";
+      ctx.font = "9px sans-serif";
+      const text = `${warmingCount} warming up`;
+      ctx.fillText(text, statusX, 14);
+      statusX -= ctx.measureText(text).width + 10;
+    }
+
+    // Show tip only when all sensors are active and few
+    if (numSensors <= 2 && connectedCount === 0 && warmingCount === 0) {
       ctx.fillStyle = "#4b5563";
       ctx.font = "9px sans-serif";
       ctx.textAlign = "right";
-      ctx.fillText("Tip: Stand 1-2m from camera", width - 8, 14);
+      ctx.fillText("Tip: Stand 1-2m from camera", statusX, 14);
     }
   }
 
@@ -1243,6 +1461,12 @@
           ? smoothLandmarks(data.faceLandmarks, existing?.smoothedFaceLandmarks, FACE_SMOOTHING_ALPHA)
           : undefined;
 
+        const now = Date.now();
+        const frameTime = timestamp || now;
+        const prevFrameCount = existing?.frameCount ?? 0;
+        const prevRecentTimes = existing?.recentFrameTimes ?? [];
+        const recentFrameTimes = [...prevRecentTimes, now].slice(-FPS_WINDOW_SIZE);
+
         skeletonData.set(sensor_id, {
           landmarks: data.landmarks,
           smoothedLandmarks: smoothedLandmarks,
@@ -1250,14 +1474,18 @@
           smoothedFaceLandmarks: smoothedFaceLandmarks,
           blendshapes: data.blendshapes,
           mode: data.mode,
-          lastUpdate: timestamp || Date.now(),
+          lastUpdate: frameTime,
           username: username || existing?.username,
           activity: activity,
           attention: existing?.attention ?? sensorFromProps?.attention ?? 1,
           movementHistory: existing?.movementHistory || [],
           bpm: existing?.bpm ?? sensorFromProps?.bpm ?? 0,
           lastHeartbeat: existing?.lastHeartbeat ?? 0,
-          heartScale: existing?.heartScale ?? 1.0
+          heartScale: existing?.heartScale ?? 1.0,
+          connectedAt: existing?.connectedAt ?? now,
+          firstDataAt: existing?.firstDataAt || now,
+          frameCount: prevFrameCount + 1,
+          recentFrameTimes: recentFrameTimes
         });
       }
     }
@@ -1277,16 +1505,22 @@
           existing.bpm = bpm;
         } else {
           const sensorFromProps = sensors.find(s => s.sensor_id === sensor_id);
+          const now = Date.now();
           skeletonData.set(sensor_id, {
             landmarks: [],
-            lastUpdate: Date.now(),
+            smoothedLandmarks: [],
+            lastUpdate: now,
             username: username || sensorFromProps?.username,
             activity: 0.5,
             attention: sensorFromProps?.attention ?? 1,
             movementHistory: [],
             bpm: bpm,
             lastHeartbeat: 0,
-            heartScale: 1.0
+            heartScale: 1.0,
+            connectedAt: now,
+            firstDataAt: 0,
+            frameCount: 0,
+            recentFrameTimes: []
           });
         }
       }
@@ -1340,6 +1574,11 @@
           ? smoothLandmarks(data.faceLandmarks, existing?.smoothedFaceLandmarks, FACE_SMOOTHING_ALPHA)
           : undefined;
 
+        const now = Date.now();
+        const prevFrameCount = existing?.frameCount ?? 0;
+        const prevRecentTimes = existing?.recentFrameTimes ?? [];
+        const recentFrameTimes = [...prevRecentTimes, now].slice(-FPS_WINDOW_SIZE);
+
         skeletonData.set(eventSensorId, {
           landmarks: data.landmarks,
           smoothedLandmarks: smoothedLandmarks,
@@ -1347,14 +1586,18 @@
           smoothedFaceLandmarks: smoothedFaceLandmarks,
           blendshapes: data.blendshapes,
           mode: data.mode,
-          lastUpdate: Date.now(),
+          lastUpdate: now,
           username: existing?.username,
           activity: activity,
           attention: existing?.attention ?? sensorFromProps?.attention ?? 1,
           movementHistory: existing?.movementHistory || [],
           bpm: existing?.bpm ?? sensorFromProps?.bpm ?? 0,
           lastHeartbeat: existing?.lastHeartbeat ?? 0,
-          heartScale: existing?.heartScale ?? 1.0
+          heartScale: existing?.heartScale ?? 1.0,
+          connectedAt: existing?.connectedAt ?? now,
+          firstDataAt: existing?.firstDataAt || now,
+          frameCount: prevFrameCount + 1,
+          recentFrameTimes: recentFrameTimes
         });
       }
     }

@@ -430,7 +430,7 @@
     }
 
     function stopPose() {
-        if (!detecting) return;
+        const wasDetecting = detecting;
 
         logger.log(loggerCtxName, "Stopping pose detection...");
 
@@ -442,7 +442,8 @@
             animationFrameId = null;
         }
 
-        // Cleanup standalone camera if we were using it
+        // Always clean up camera — handles race condition where startPose opened
+        // the camera but detecting wasn't set to true yet when user hit stop
         cleanupStandaloneCamera();
 
         // Close the pose landmarker to release any GPU/CPU resources
@@ -459,10 +460,11 @@
 
         // THEN: Unregister the attribute after detection is fully stopped
         // Small delay ensures any in-flight sendSkeletonData calls see detecting=false
-        setTimeout(() => {
-            sensorService.unregisterAttribute(channelIdentifier, "pose_skeleton");
-            // Note: leaveChannelIfUnused is already called by unregisterAttribute after a delay
-        }, 50);
+        if (wasDetecting) {
+            setTimeout(() => {
+                sensorService.unregisterAttribute(channelIdentifier, "pose_skeleton");
+            }, 50);
+        }
 
         logger.log(loggerCtxName, "Pose detection stopped");
     }

@@ -1924,16 +1924,30 @@ Hooks.DraggableBallsHook = {
     },
 
     render() {
-        // Clear existing balls
-        this.el.innerHTML = '';
-
         // Detect mobile for larger touch targets
         const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         const ballSize = isMobile ? 48 : 32;
         const halfSize = ballSize / 2;
 
+        // Track which ball IDs still exist for cleanup
+        const activeIds = new Set();
+
         this.balls.forEach((ball, id) => {
+            activeIds.add(id);
+            const existingDiv = this.el.querySelector(`[data-ball-id="${id}"]`);
+
+            if (existingDiv) {
+                // Update position of existing element without destroying it
+                // This preserves the touch target on mobile, preventing broken drag
+                existingDiv.style.left = `calc(${ball.x}% - ${halfSize}px)`;
+                existingDiv.style.top = `calc(${ball.y}% - ${halfSize}px)`;
+                existingDiv.style.backgroundColor = ball.color;
+                return;
+            }
+
+            // Create new ball element
             const div = document.createElement('div');
+            div.setAttribute('data-ball-id', id);
             div.className = 'absolute rounded-full cursor-grab active:cursor-grabbing';
             div.style.width = `${ballSize}px`;
             div.style.height = `${ballSize}px`;
@@ -1971,6 +1985,13 @@ Hooks.DraggableBallsHook = {
             }
 
             this.el.appendChild(div);
+        });
+
+        // Remove balls that are no longer present
+        this.el.querySelectorAll('[data-ball-id]').forEach(el => {
+            if (!activeIds.has(el.getAttribute('data-ball-id'))) {
+                el.remove();
+            }
         });
     },
 

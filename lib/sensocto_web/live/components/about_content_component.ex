@@ -133,6 +133,94 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
   ]
 
   @research_papers [
+    # Recent Research (2024-2025)
+    %{
+      title:
+        "Exploring Cardiac Physiological Synchrony and Its Implications for Stress and Anxiety",
+      authors: "Escobar et al.",
+      year: 2025,
+      journal: "Ageing and Neurodegenerative Diseases",
+      doi: "10.20517/and.2025.14",
+      category: :synchronization,
+      description:
+        "Comprehensive review of cardiac physiological synchrony (CPS) mechanisms—cognitive, mechanical, and environmental—and their roles in empathy, stress, and anxiety."
+    },
+    %{
+      title:
+        "Moral Decision-Making Style, Moral Persuasion, and Interpersonal Neurophysiological Synchronization",
+      authors: "Ciminaghi et al.",
+      year: 2025,
+      journal: "Adaptive Human Behavior and Physiology",
+      doi: "10.1007/s40750-025-00266-5",
+      category: :synchronization,
+      description:
+        "EEG-BIO hyperscanning study showing how moral alignment between individuals modulates neural and autonomic (including HRV) synchronization during persuasion."
+    },
+    %{
+      title: "Interpersonal Synchrony Research in Human Groups",
+      authors: "Gordon, I.",
+      year: 2025,
+      journal: "Social and Personality Psychology Compass",
+      doi: "10.1111/spc3.70068",
+      category: :group_dynamics,
+      description:
+        "Argues that interpersonal synchrony functions as 'social glue' and presents a theoretical framework for studying group synchrony beyond dyads."
+    },
+    %{
+      title: "How and Why People Synchronize: An Integrated Perspective",
+      authors: "daSilva & Wood",
+      year: 2025,
+      journal: "Personality and Social Psychology Review",
+      doi: "10.1177/10888683241252036",
+      category: :synchronization,
+      description:
+        "Major synthesis proposing a unified framework with six dimensions of synchrony form and four core functions: reducing complexity, accomplishing joint tasks, strengthening connection, and influencing partners."
+    },
+    %{
+      title:
+        "Interpersonal Physiological Synchrony During Dyadic Joint Action Is Increased by Task Novelty and Reduced by Social Anxiety",
+      authors: "Boukarras et al.",
+      year: 2025,
+      journal: "Psychophysiology",
+      doi: "10.1111/psyp.70031",
+      category: :synchronization,
+      description:
+        "Demonstrates that social anxiety reduces physiological synchrony during cooperative tasks, while task novelty increases it—contextual and individual factors shape autonomic alignment."
+    },
+    %{
+      title:
+        "Interpersonal Conversations Are Characterized by Increases in Respiratory Sinus Arrhythmia",
+      authors: "Stuart et al.",
+      year: 2025,
+      journal: "Psychophysiology",
+      doi: "10.1111/psyp.70043",
+      category: :synchronization,
+      description:
+        "Study of 712 adults showing RSA increases during interpersonal conversations regardless of relationship type, connecting vagally mediated HRV to self-regulatory and interpersonal processes."
+    },
+    %{
+      title:
+        "Interpersonal Heart Rate Synchrony Predicts Effective Information Processing in a Naturalistic Group Decision-Making Task",
+      authors: "Sharika et al.",
+      year: 2024,
+      journal: "PNAS",
+      doi: "10.1073/pnas.2313801121",
+      category: :group_dynamics,
+      description:
+        "Heart rate synchrony predicted correct group consensus with >70% cross-validation accuracy across 44 groups, providing a biomarker of interpersonal engagement."
+    },
+    # Foundational Research (2001-2018)
+    %{
+      title:
+        "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
+      authors: "Sano et al.",
+      year: 2018,
+      journal: "Journal of Medical Internet Research",
+      doi: "10.2196/jmir.9410",
+      category: :wearables,
+      description:
+        "Uses wearable biosensors and machine learning to classify stress and mental health status in real-time."
+    },
     %{
       title: "Interpersonal Autonomic Physiology: A Systematic Review of the Literature",
       authors: "Palumbo et al.",
@@ -154,14 +242,34 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
         "Reviews evidence for physiological synchrony between therapists and clients as a marker of therapeutic alliance."
     },
     %{
-      title: "Social Ties and Mental Health",
-      authors: "Kawachi & Berkman",
-      year: 2001,
-      journal: "Journal of Urban Health",
-      doi: "10.1093/jurban/78.3.458",
+      title: "Technology-Mediated Compassion in Healthcare",
+      authors: "Chen & Schultz",
+      year: 2016,
+      journal: "JMIR Mental Health",
+      doi: "10.2196/mental.5316",
       category: :care_networks,
       description:
-        "Foundational work on how social networks influence mental health outcomes and crisis prevention."
+        "Explores how technology can enhance compassionate care in mental health treatment settings."
+    },
+    %{
+      title: "Collective Effervescence and Synchrony in Ritual",
+      authors: "Páez et al.",
+      year: 2015,
+      journal: "Frontiers in Psychology",
+      doi: "10.3389/fpsyg.2015.01963",
+      category: :group_dynamics,
+      description:
+        "Studies how group rituals produce physiological and emotional synchronization among participants."
+    },
+    %{
+      title: "Autonomic Nervous System Dynamics for Mood Detection",
+      authors: "Valenza et al.",
+      year: 2014,
+      journal: "IEEE Transactions on Affective Computing",
+      doi: "10.1109/TAFFC.2014.2332167",
+      category: :wearables,
+      description:
+        "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
     },
     %{
       title:
@@ -173,17 +281,6 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
       category: :synchronization,
       description:
         "Examines how partners' physiological systems co-regulate during emotional conversations and health discussions."
-    },
-    %{
-      title:
-        "Identifying Objective Physiological Markers Using Wearable Sensors and Mobile Phones",
-      authors: "Sano et al.",
-      year: 2018,
-      journal: "Journal of Medical Internet Research",
-      doi: "10.2196/jmir.9410",
-      category: :wearables,
-      description:
-        "Uses wearable biosensors and machine learning to classify stress and mental health status in real-time."
     },
     %{
       title: "Biofeedback in the Treatment of Anxiety and PTSD",
@@ -206,34 +303,14 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
         "Systematic review of peer support effectiveness in mental health care and community interventions."
     },
     %{
-      title: "Collective Effervescence and Synchrony in Ritual",
-      authors: "Páez et al.",
-      year: 2015,
-      journal: "Frontiers in Psychology",
-      doi: "10.3389/fpsyg.2015.01963",
-      category: :synchronization,
-      description:
-        "Studies how group rituals produce physiological and emotional synchronization among participants."
-    },
-    %{
-      title: "Autonomic Nervous System Dynamics for Mood Detection",
-      authors: "Valenza et al.",
-      year: 2014,
-      journal: "IEEE Transactions on Affective Computing",
-      doi: "10.1109/TAFFC.2014.2332167",
-      category: :wearables,
-      description:
-        "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
-    },
-    %{
-      title: "Technology-Mediated Compassion in Healthcare",
-      authors: "Chen & Schultz",
-      year: 2016,
-      journal: "JMIR Mental Health",
-      doi: "10.2196/mental.5316",
+      title: "Social Ties and Mental Health",
+      authors: "Kawachi & Berkman",
+      year: 2001,
+      journal: "Journal of Urban Health",
+      doi: "10.1093/jurban/78.3.458",
       category: :care_networks,
       description:
-        "Explores how technology can enhance compassionate care in mental health treatment settings."
+        "Foundational work on how social networks influence mental health outcomes and crisis prevention."
     }
   ]
 
@@ -242,6 +319,11 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
       name: "HRV Synchronization",
       color: "cyan",
       icon: "hero-arrows-right-left"
+    },
+    group_dynamics: %{
+      name: "Group Dynamics",
+      color: "orange",
+      icon: "hero-user-group"
     },
     therapy: %{name: "Therapy & Healing", color: "green", icon: "hero-heart"},
     care_networks: %{name: "Care Networks", color: "purple", icon: "hero-users"},
@@ -256,9 +338,9 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     spark: """
     Human connection has a measurable heartbeat. When two people truly connect—in therapy, in love, in crisis support—their autonomic nervous systems begin to synchronize. Heart rate variability aligns. Breathing patterns match. This isn't metaphor; it's physiology.
 
-    The research behind Sensocto spans four domains: interpersonal synchronization studies showing how bodies co-regulate during meaningful interactions; therapy research demonstrating that physiological attunement predicts therapeutic outcomes; care network studies proving that social ties directly impact mental health; and wearable technology research enabling real-time monitoring of these vital signs.
+    The research behind Sensocto spans five domains: interpersonal synchronization studies showing how bodies co-regulate during meaningful interactions; group dynamics research revealing synchrony as "social glue" that predicts collective outcomes; therapy research demonstrating that physiological attunement predicts therapeutic outcomes; care network studies proving that social ties directly impact mental health; and wearable technology research enabling real-time monitoring of these vital signs.
 
-    What emerges is a scientific foundation for what humans have always intuited: presence is physical. Connection is measurable. And technology can amplify empathy rather than replace it. Sensocto builds on this research to create a platform where you don't just see someone's status update—you feel their actual state.
+    A wave of 2024-2025 research has strengthened this foundation dramatically. Heart rate synchrony now predicts group consensus with over 70% accuracy (PNAS 2024). Respiratory sinus arrhythmia increases during conversations regardless of relationship type. A unified framework identifies six dimensions of synchrony and four core functions. Social anxiety reduces physiological alignment, while shared novelty amplifies it. What emerges is a scientific foundation for what humans have always intuited: presence is physical, connection is measurable, and technology can amplify empathy rather than replace it.
     """,
     story: """
     The science of human connection has revealed something profound: our bodies are constantly communicating beneath conscious awareness. When we sit with someone we trust, our heart rate variability begins to synchronize. When a therapist truly attunes to a client, their autonomic nervous systems enter a coordinated dance. This interpersonal physiology—documented across hundreds of peer-reviewed studies—forms the scientific foundation for everything Sensocto does.
@@ -269,7 +351,9 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
 
     The care network research adds another dimension. Kawachi and Berkman's foundational work demonstrated that social ties directly influence mental health outcomes. People embedded in supportive networks experience better outcomes across nearly every health measure. Repper and Carter's systematic review of peer support showed that mutual aid and lived experience create therapeutic value that professional intervention alone cannot replicate. Chen and Schultz explored how technology can enhance rather than diminish compassionate care.
 
-    Finally, the wearable technology research makes all of this actionable. Sano's work showed that stress and mental health states can be classified in real-time using wearable biosensors. Valenza's research on autonomic nervous system dynamics demonstrated that emotional states can be detected through continuous monitoring. The hardware exists. The science is validated. What's been missing is a platform built on human values rather than attention extraction.
+    The wearable technology research makes all of this actionable. Sano's work showed that stress and mental health states can be classified in real-time using wearable biosensors. Valenza's research on autonomic nervous system dynamics demonstrated that emotional states can be detected through continuous monitoring. The hardware exists. The science is validated.
+
+    Recent advances (2024-2025) have transformed the field from foundational observation to predictive science. Sharika and colleagues demonstrated in PNAS that heart rate synchrony predicts correct group consensus with over 70% accuracy—establishing physiological alignment as a genuine biomarker of collective intelligence. daSilva and Wood's major synthesis in Personality and Social Psychology Review proposed a unified framework classifying synchrony along six dimensions with four core functions: reducing complexity, accomplishing joint tasks, strengthening social bonds, and influencing partners. Stuart's study of 712 adults showed that respiratory sinus arrhythmia increases during face-to-face conversations regardless of relationship type—our bodies prepare for connection before we consciously engage. Boukarras found that social anxiety reduces physiological synchrony while task novelty increases it, and Escobar's review mapped the mechanisms of cardiac synchrony to empathy, stress, and anxiety pathways. Gordon's framework positions synchrony as "social glue" operating at the group level, while Ciminaghi's hyperscanning study revealed that even moral alignment modulates neural and autonomic coupling.
 
     Sensocto synthesizes these research streams into a coherent vision: a platform where presence is physiological, where support is proactive rather than reactive, where intimacy transcends distance, and where technology serves connection rather than performance. We're not building another social network. We're building the infrastructure for genuine human attunement.
     """,
@@ -308,9 +392,19 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
 
     Valenza and colleagues' 2014 research in IEEE Transactions on Affective Computing developed methods for detecting emotional states through autonomic nervous system monitoring. Their work established that the information content in physiological signals is sufficient to distinguish between emotional states with meaningful reliability. Combined with advances in wearable hardware—medical-grade sensors now available in consumer devices—this research establishes that continuous physiological monitoring is technically feasible.
 
+    RECENT ADVANCES: GROUP DYNAMICS AND UNIFIED FRAMEWORKS (2024-2025)
+
+    The most recent wave of research has elevated synchrony science from observation to prediction, and from dyads to groups. Sharika and colleagues' 2024 study in PNAS represents a watershed moment: using multidimensional recurrence quantification analysis and machine learning on 44 groups (204 participants), they demonstrated that interpersonal heart rate synchrony predicted correct group consensus with over 70% cross-validation accuracy—significantly higher than discussion duration, subjective assessments, or baseline heart rates. This establishes physiological synchronization not merely as a correlate of connection but as a predictive biomarker of collective intelligence.
+
+    daSilva and Wood's 2025 synthesis in Personality and Social Psychology Review provided the field's first unified framework, classifying synchrony along six dimensions—periodicity, discreteness, spatial similarity, directionality, leader-follower dynamics, and observability—and distilling four core functions: reducing complexity and improving understanding, accomplishing joint tasks, strengthening social connection, and influencing partners' behavior. This framework resolves longstanding fragmentation across disciplines studying the same phenomenon under different names.
+
+    Gordon's 2025 review in Social and Personality Psychology Compass extended the theoretical lens beyond dyads, arguing that interpersonal synchrony functions as "social glue" at the group level and proposing a neuroscience-informed framework for understanding why some groups succeed while others fail. This group-level perspective is critical for applications like meditation circles, team coordination, and collective rituals.
+
+    At the physiological mechanism level, Stuart and colleagues' 2025 study of 712 adults in Psychophysiology revealed that respiratory sinus arrhythmia—a marker of vagal regulation—increases during face-to-face conversations regardless of relationship type or topic. This finding suggests that our autonomic nervous systems actively prepare for social engagement, a process independent of conscious intention. Boukarras and colleagues found that social anxiety dampens this natural synchronization during cooperative tasks, while task novelty amplifies it—pointing toward specific intervention targets for social anxiety treatment. Escobar's comprehensive review mapped three mechanisms of cardiac physiological synchrony—cognitive, mechanical, and environmental—to empathy expression and anxiety manifestation. Ciminaghi's EEG-BIO hyperscanning study added a striking finding: even moral alignment between individuals modulates both neural and autonomic coupling during persuasion tasks, suggesting that shared values create deeper physiological resonance.
+
     WHY THIS MATTERS FOR SENSOCTO
 
-    The synthesis of these four research streams points to a specific opportunity that current technology entirely misses. Social media platforms harvest attention for advertising revenue, creating incentive structures that favor outrage over calm, performance over authenticity, isolation disguised as connection. Healthcare systems remain reactive, responding to crises rather than preventing them. Therapy often treats the mind as separate from the body. Support networks rely on explicit communication that stigma and shame often prevent.
+    The synthesis of these five research streams points to a specific opportunity that current technology entirely misses. Social media platforms harvest attention for advertising revenue, creating incentive structures that favor outrage over calm, performance over authenticity, isolation disguised as connection. Healthcare systems remain reactive, responding to crises rather than preventing them. Therapy often treats the mind as separate from the body. Support networks rely on explicit communication that stigma and shame often prevent.
 
     Sensocto proposes something different: a platform where connection is physiological, not performative. Where a trusted friend can sense you're struggling before you post about it. Where a therapist can see nervous system dysregulation in real-time during sessions. Where romantic partners separated by distance can feel each other's presence through their actual heartbeats. Where groups can verify their synchronization in meditation, dance, or collective action.
 
@@ -409,6 +503,39 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     use_cases
     |> Enum.drop(offset)
     |> Enum.take(count)
+  end
+
+  defp research_paper_card(assigns) do
+    assigns = assign(assigns, :cat, assigns.paper_categories[assigns.paper.category])
+
+    ~H"""
+    <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 hover:border-amber-500/30 transition-colors">
+      <div class="flex items-start gap-3">
+        <div class={"p-2 rounded-lg shrink-0 bg-#{@cat.color}-500/20"}>
+          <.icon name={@cat.icon} class={"h-4 w-4 text-#{@cat.color}-400"} />
+        </div>
+        <div class="flex-1 min-w-0">
+          <h4 class="text-white font-medium text-sm leading-tight mb-1">
+            {@paper.title}
+          </h4>
+          <p class="text-gray-500 text-xs mb-2">
+            {@paper.authors} ({@paper.year}) · <span class="text-gray-600">{@paper.journal}</span>
+          </p>
+          <p class="text-gray-400 text-sm">
+            {@paper.description}
+          </p>
+          <a
+            href={"https://doi.org/#{@paper.doi}"}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" /> DOI: {@paper.doi}
+          </a>
+        </div>
+      </div>
+    </div>
+    """
   end
 
   @impl true
@@ -919,38 +1046,36 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
             <% end %>
           </div>
 
-          <%!-- Papers list --%>
-          <div class="space-y-4">
-            <%= for paper <- @research_papers do %>
-              <% cat = @paper_categories[paper.category] %>
-              <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 hover:border-amber-500/30 transition-colors">
-                <div class="flex items-start gap-3">
-                  <div class={"p-2 rounded-lg shrink-0 bg-#{cat.color}-500/20"}>
-                    <.icon name={cat.icon} class={"h-4 w-4 text-#{cat.color}-400"} />
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <h4 class="text-white font-medium text-sm leading-tight mb-1">
-                      {paper.title}
-                    </h4>
-                    <p class="text-gray-500 text-xs mb-2">
-                      {paper.authors} ({paper.year}) ·
-                      <span class="text-gray-600">{paper.journal}</span>
-                    </p>
-                    <p class="text-gray-400 text-sm">
-                      {paper.description}
-                    </p>
-                    <a
-                      href={"https://doi.org/#{paper.doi}"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="inline-flex items-center gap-1 mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors"
-                    >
-                      <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" /> DOI: {paper.doi}
-                    </a>
-                  </div>
-                </div>
+          <%!-- Papers list with section dividers --%>
+          <% {recent, foundational} =
+            Enum.split_with(@research_papers, fn p -> p.year >= 2024 end) %>
+
+          <div :if={recent != []} class="mb-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="inline-block px-2.5 py-1 bg-amber-500/20 text-amber-400 rounded-full text-xs font-medium">
+                Recent Research (2024-2025)
               </div>
-            <% end %>
+              <div class="flex-1 border-t border-gray-700/50"></div>
+            </div>
+            <div class="space-y-4">
+              <%= for paper <- recent do %>
+                <.research_paper_card paper={paper} paper_categories={@paper_categories} />
+              <% end %>
+            </div>
+          </div>
+
+          <div :if={foundational != []} class="mb-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="inline-block px-2.5 py-1 bg-gray-600/30 text-gray-400 rounded-full text-xs font-medium">
+                Foundational Research (2001-2018)
+              </div>
+              <div class="flex-1 border-t border-gray-700/50"></div>
+            </div>
+            <div class="space-y-4">
+              <%= for paper <- foundational do %>
+                <.research_paper_card paper={paper} paper_categories={@paper_categories} />
+              <% end %>
+            </div>
           </div>
         </div>
 

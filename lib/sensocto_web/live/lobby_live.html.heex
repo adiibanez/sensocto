@@ -888,7 +888,12 @@
   </div>
 
   <%!-- Graph Visualization --%>
-  <div :if={@live_action == :graph} id="lobby-graph-view" phx-hook="CompositeMeasurementHandler">
+  <div
+    :if={@live_action == :graph}
+    id="lobby-graph-view"
+    phx-hook="CompositeMeasurementHandler"
+    class="p-4"
+  >
     <.svelte
       name="LobbyGraph"
       props={
@@ -899,7 +904,7 @@
         }
       }
       socket={@socket}
-      class="w-full h-[calc(100vh-200px)] min-h-[500px]"
+      class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
     />
   </div>
 </div>

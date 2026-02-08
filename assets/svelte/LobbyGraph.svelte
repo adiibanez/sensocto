@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import Graph from "graphology";
   import Sigma from "sigma";
+  import EdgeCurveProgram from "@sigma/edge-curve";
   import forceAtlas2 from "graphology-layout-forceatlas2";
 
   interface Room {
@@ -55,6 +56,20 @@
   let mouseX = $state(0);
   let mouseY = $state(0);
   let isLayoutRunning = $state(false);
+  let isFullscreen = $state(false);
+  let showExportModal = $state(false);
+  let exportFormat = $state<"png" | "jpeg">("png");
+  let exportScale = $state(2);
+  let exportBackground = $state(true);
+  let isExporting = $state(false);
+  let isRecording = $state(false);
+  let recordingSeconds = $state(0);
+  let mediaRecorder: MediaRecorder | null = null;
+  let recordedChunks: Blob[] = [];
+  let recordingTimer: ReturnType<typeof setInterval> | null = null;
+  let recordingRaf: number | null = null;
+  let recordingCanvas: HTMLCanvasElement | null = null;
+  let graphRoot: HTMLDivElement;
 
   // Set of nodes to highlight (hovered node + all connected neighbors)
   let highlightedNodes = new Set<string>();
@@ -93,37 +108,32 @@
 
   // Base node sizes (will be scaled based on graph size)
   const baseNodeSizes = {
-    room: 20,
-    user: 15,
-    sensor: 10,
-    attribute: 6
+    room: 16,
+    user: 12,
+    sensor: 8,
+    attribute: 4
   };
 
-  // Current scaled sizes (updated when graph is built)
-  let scaledNodeSizes = { ...baseNodeSizes };
+  let scaledNodeSizes = $state({ ...baseNodeSizes });
 
-  // Calculate scale factor based on total node count
-  // Small graphs (<100 nodes) get larger nodes, large graphs (>500) get smaller nodes
   function calculateNodeScale(nodeCount: number): number {
-    if (nodeCount <= 50) {
-      // Very small graph: scale up by 1.5x
-      return 1.5;
-    } else if (nodeCount <= 100) {
-      // Small graph: scale up by 1.25x
-      return 1.25;
-    } else if (nodeCount <= 300) {
-      // Medium graph: normal size
-      return 1.0;
-    } else if (nodeCount <= 700) {
-      // Large graph: scale down to 0.7x
-      return 0.7;
-    } else if (nodeCount <= 1500) {
-      // Very large graph: scale down to 0.5x
-      return 0.5;
-    } else {
-      // Massive graph: scale down to 0.35x
-      return 0.35;
-    }
+    if (nodeCount <= 30) return 1.4;
+    if (nodeCount <= 80) return 1.1;
+    if (nodeCount <= 200) return 0.85;
+    if (nodeCount <= 500) return 0.7;
+    if (nodeCount <= 1000) return 0.55;
+    return 0.4;
+  }
+
+  // Slight random variation for organic feel (±15%)
+  function jitterSize(base: number): number {
+    return base * (0.85 + Math.random() * 0.3);
+  }
+
+  // Random curvature for organic edge feel
+  function randomCurvature(): number {
+    const sign = Math.random() > 0.5 ? 1 : -1;
+    return sign * (0.15 + Math.random() * 0.35);
   }
 
   function buildGraph() {
@@ -149,7 +159,7 @@
     for (const room of rooms) {
       graph.addNode(`room:${room.id}`, {
         label: room.name,
-        size: scaledNodeSizes.room,
+        size: jitterSize(scaledNodeSizes.room),
         color: nodeColors.room,
         nodeType: "room",
         data: room,
@@ -162,7 +172,7 @@
     for (const user of users) {
       graph.addNode(`user:${user.connector_id}`, {
         label: user.connector_name,
-        size: scaledNodeSizes.user + Math.min(user.sensor_count * scale, 10 * scale),
+        size: jitterSize(scaledNodeSizes.user + Math.min(user.sensor_count * scale, 8 * scale)),
         color: nodeColors.user,
         nodeType: "user",
         data: user,
@@ -178,7 +188,7 @@
 
       graph.addNode(sensorNodeId, {
         label: sensor.sensor_name || sensorId.substring(0, 12),
-        size: scaledNodeSizes.sensor + Math.min(attrCount * 2 * scale, 8 * scale),
+        size: jitterSize(scaledNodeSizes.sensor + Math.min(attrCount * 1.5 * scale, 6 * scale)),
         color: nodeColors.sensor,
         nodeType: "sensor",
         data: sensor,
@@ -190,8 +200,9 @@
       const userNodeId = `user:${sensor.connector_id}`;
       if (graph.hasNode(userNodeId)) {
         graph.addEdge(userNodeId, sensorNodeId, {
-          size: Math.max(0.5, 1 * scale),
-          color: "#4b5563"
+          size: Math.max(0.3, 0.7 * scale),
+          color: "rgba(55, 65, 81, 0.35)",
+          curvature: randomCurvature()
         });
       }
 
@@ -214,7 +225,7 @@
 
         graph.addNode(attrNodeId, {
           label: attrLabel,
-          size: scaledNodeSizes.attribute,
+          size: jitterSize(scaledNodeSizes.attribute),
           color: attrColor,
           nodeType: "attribute",
           data: { ...attr, sensor_id: sensorId },
@@ -223,8 +234,9 @@
         });
 
         graph.addEdge(sensorNodeId, attrNodeId, {
-          size: Math.max(0.25, 0.5 * scale),
-          color: "#374151"
+          size: Math.max(0.2, 0.4 * scale),
+          color: "rgba(55, 65, 81, 0.25)",
+          curvature: randomCurvature()
         });
       }
     }
@@ -238,23 +250,23 @@
 
     isLayoutRunning = true;
 
-    // Run ForceAtlas2 layout
-    const settings = {
-      iterations: 100,
+    const nodeCount = graph.order;
+    const iterations = nodeCount > 500 ? 200 : nodeCount > 200 ? 150 : 120;
+
+    forceAtlas2.assign(graph, {
+      iterations,
       settings: {
-        gravity: 1,
-        scalingRatio: 10,
-        strongGravityMode: true,
-        barnesHutOptimize: true,
-        barnesHutTheta: 0.5,
-        linLogMode: false,
+        gravity: 0.3,
+        scalingRatio: nodeCount > 300 ? 20 : 12,
+        strongGravityMode: false,
+        barnesHutOptimize: nodeCount > 100,
+        barnesHutTheta: 0.6,
+        linLogMode: true,
         adjustSizes: true,
         edgeWeightInfluence: 1,
-        slowDown: 1
+        slowDown: 2
       }
-    };
-
-    forceAtlas2.assign(graph, settings);
+    });
 
     if (sigma) {
       sigma.refresh();
@@ -276,6 +288,15 @@
     const labelThreshold = Math.max(2, 4 * scale);
     const labelSize = Math.max(8, Math.round(12 * scale));
 
+    // Temporarily inject preserveDrawingBuffer:true for export support
+    const origGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type: string, opts?: any) {
+      if (type === "webgl2" || type === "webgl" || type === "experimental-webgl") {
+        opts = { ...opts, preserveDrawingBuffer: true };
+      }
+      return origGetContext.call(this, type, opts);
+    } as any;
+
     sigma = new Sigma(graph, container, {
       renderLabels: true,
       labelRenderedSizeThreshold: labelThreshold,
@@ -284,7 +305,11 @@
       labelWeight: "500",
       labelColor: { color: "#e5e7eb" },
       defaultNodeColor: "#6b7280",
-      defaultEdgeColor: "#374151",
+      defaultEdgeColor: "rgba(55, 65, 81, 0.3)",
+      defaultEdgeType: "curved",
+      edgeProgramClasses: {
+        curved: EdgeCurveProgram
+      },
       allowInvalidContainer: true,
       labelDensity: scale < 0.7 ? 0.5 : 1,
       minCameraRatio: 0.1,
@@ -299,11 +324,10 @@
         }
         return {
           ...data,
-          color: "#2d3748",
+          color: "rgba(45, 55, 72, 0.3)",
           zIndex: 0
         };
       },
-      // Edge reducer: dim edges not connected to highlighted nodes
       edgeReducer: (edge, data) => {
         if (highlightedNodes.size === 0) {
           return data;
@@ -311,15 +335,18 @@
         const source = graph.source(edge);
         const target = graph.target(edge);
         if (highlightedNodes.has(source) && highlightedNodes.has(target)) {
-          return { ...data, zIndex: 1 };
+          return { ...data, color: "#c026d3", size: (data.size || 0.5) * 1.5, zIndex: 1 };
         }
         return {
           ...data,
-          color: "#1a202c",
+          color: "rgba(55, 65, 81, 0.2)",
           zIndex: 0
         };
       }
     });
+
+    // Restore original getContext
+    HTMLCanvasElement.prototype.getContext = origGetContext;
 
     // Track mouse position for hover tooltip
     container.addEventListener("mousemove", (e: MouseEvent) => {
@@ -405,18 +432,182 @@
     }
   }
 
-  function handleResetView() {
-    if (sigma) {
-      const camera = sigma.getCamera();
-      camera.animatedReset({ duration: 300 });
-    }
-  }
-
   function handleRelayout() {
     runLayout();
     if (sigma) {
       sigma.refresh();
     }
+  }
+
+  function handleFullscreen() {
+    isFullscreen = !isFullscreen;
+    setTimeout(() => sigma?.refresh(), 50);
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      if (isRecording) {
+        stopRecording();
+      } else if (showExportModal) {
+        showExportModal = false;
+      } else if (isFullscreen) {
+        isFullscreen = false;
+        setTimeout(() => sigma?.refresh(), 50);
+      }
+    }
+  }
+
+  function exportGraph() {
+    if (!sigma || !container) return;
+    isExporting = true;
+
+    try {
+      // Force synchronous re-render so WebGL buffers are filled
+      sigma.refresh();
+
+      const canvases = container.querySelectorAll("canvas");
+      if (canvases.length === 0) { isExporting = false; return; }
+
+      const baseWidth = container.offsetWidth;
+      const baseHeight = container.offsetHeight;
+      const width = Math.round(baseWidth * exportScale);
+      const height = Math.round(baseHeight * exportScale);
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = width;
+      offscreen.height = height;
+      const ctx = offscreen.getContext("2d");
+      if (!ctx) { isExporting = false; return; }
+
+      if (exportBackground) {
+        const grad = ctx.createLinearGradient(0, 0, width, height);
+        grad.addColorStop(0, "#0f172a");
+        grad.addColorStop(1, "#1e293b");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      // Capture immediately after render — WebGL buffer is still filled
+      canvases.forEach(canvas => {
+        ctx.drawImage(canvas, 0, 0, width, height);
+      });
+
+      const mimeType = exportFormat === "jpeg" ? "image/jpeg" : "image/png";
+      const quality = exportFormat === "jpeg" ? 0.95 : undefined;
+
+      offscreen.toBlob((blob) => {
+        if (!blob) { isExporting = false; return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `sensocto-graph-${width}x${height}.${exportFormat}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showExportModal = false;
+        isExporting = false;
+      }, mimeType, quality);
+    } catch (err) {
+      console.error("Export failed:", err);
+      isExporting = false;
+    }
+  }
+
+  function startRecording() {
+    if (!container) return;
+
+    const canvases = container.querySelectorAll("canvas");
+    if (canvases.length === 0) return;
+
+    const w = container.offsetWidth;
+    const h = container.offsetHeight;
+
+    recordingCanvas = document.createElement("canvas");
+    recordingCanvas.width = w;
+    recordingCanvas.height = h;
+    const ctx = recordingCanvas.getContext("2d");
+    if (!ctx) return;
+
+    // Composite loop at ~30fps
+    function drawFrame() {
+      if (!ctx || !recordingCanvas) return;
+      // Draw background
+      const grad = ctx.createLinearGradient(0, 0, recordingCanvas.width, recordingCanvas.height);
+      grad.addColorStop(0, "#0f172a");
+      grad.addColorStop(1, "#1e293b");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+      // Composite sigma canvases
+      canvases.forEach(c => {
+        ctx.drawImage(c, 0, 0, recordingCanvas!.width, recordingCanvas!.height);
+      });
+      recordingRaf = requestAnimationFrame(drawFrame);
+    }
+
+    drawFrame();
+
+    const stream = recordingCanvas.captureStream(30);
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : "video/webm";
+
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 8_000_000
+    });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sensocto-graph-${w}x${h}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      recordedChunks = [];
+    };
+
+    mediaRecorder.start(100); // collect data every 100ms
+    isRecording = true;
+    recordingSeconds = 0;
+    recordingTimer = setInterval(() => { recordingSeconds += 1; }, 1000);
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      mediaRecorder.stop();
+    }
+    if (recordingRaf !== null) {
+      cancelAnimationFrame(recordingRaf);
+      recordingRaf = null;
+    }
+    if (recordingTimer !== null) {
+      clearInterval(recordingTimer);
+      recordingTimer = null;
+    }
+    recordingCanvas = null;
+    mediaRecorder = null;
+    isRecording = false;
+    recordingSeconds = 0;
+  }
+
+  function toggleRecording() {
+    if (isRecording) stopRecording();
+    else startRecording();
+  }
+
+  function formatRecordingTime(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
   function getNodeTypeIcon(type: string): string {
@@ -461,6 +652,19 @@
   // Track active pulsation animations: nodeId => {timeout, baseSize, originalColor}
   // Store original values to prevent compounding growth from rapid events
   let activePulsations = new Map<string, {timeout: number, baseSize: number, originalColor: string}>();
+
+  // Throttle sigma.refresh() to at most once per animation frame
+  let refreshScheduled = false;
+  function scheduleRefresh() {
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    requestAnimationFrame(() => {
+      refreshScheduled = false;
+      if (sigma) {
+        sigma.refresh();
+      }
+    });
+  }
 
   // Lighten a hex color by mixing with white
   function lightenColor(hex: string, amount: number = 0.3): string {
@@ -513,14 +717,13 @@
         graph.setNodeAttribute(nodeId, "size", baseSize);
         graph.setNodeAttribute(nodeId, "color", originalColor);
         activePulsations.delete(nodeId);
-        // Refresh sigma to show the restored state
-        if (sigma) {
-          sigma.refresh();
-        }
+        scheduleRefresh();
       }
     }, 250);
 
     activePulsations.set(nodeId, {timeout, baseSize, originalColor});
+
+    scheduleRefresh();
   }
 
   // Handle graph activity events - pulsate sensor nodes
@@ -541,11 +744,6 @@
           pulsateNode(attrNodeId);
         }
       }
-    }
-
-    // Request a refresh from sigma to show the changes
-    if (sigma) {
-      sigma.refresh();
     }
   }
 
@@ -571,14 +769,35 @@
     }
   }
 
-  // Rebuild graph when data changes
+  // Track previous topology to avoid unnecessary rebuilds
+  let prevSensorKeys = "";
+  let prevUserCount = 0;
+  let rebuildTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Rebuild graph only when topology changes (sensors added/removed), debounced
   $effect(() => {
-    if (rooms || users || sensors) {
+    // Access reactive deps
+    const currentRooms = rooms;
+    const currentUsers = users;
+    const currentSensors = sensors;
+
+    const sensorKeys = Object.keys(currentSensors || {}).sort().join(",");
+    const userCount = (currentUsers || []).length;
+
+    if (sensorKeys === prevSensorKeys && userCount === prevUserCount) {
+      return; // topology unchanged, skip rebuild
+    }
+
+    prevSensorKeys = sensorKeys;
+    prevUserCount = userCount;
+
+    if (rebuildTimer) clearTimeout(rebuildTimer);
+    rebuildTimer = setTimeout(() => {
       buildGraph();
       if (container) {
         initSigma();
       }
-    }
+    }, 500);
   });
 
   onMount(() => {
@@ -586,9 +805,13 @@
     initSigma();
     window.addEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
     window.addEventListener("graph-activity-event", handleGraphActivity as EventListener);
+    window.addEventListener("keydown", onKeydown);
   });
 
   onDestroy(() => {
+    if (isRecording) stopRecording();
+    window.removeEventListener("keydown", onKeydown);
+    if (rebuildTimer) clearTimeout(rebuildTimer);
     if (sigma) {
       sigma.kill();
       sigma = null;
@@ -603,7 +826,7 @@
   });
 </script>
 
-<div class="lobby-graph">
+<div class="lobby-graph" class:fullscreen={isFullscreen} bind:this={graphRoot}>
   <!-- Graph Container -->
   <div bind:this={container} class="graph-container"></div>
 
@@ -619,17 +842,108 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
       </svg>
     </button>
-    <button onclick={handleResetView} title="Reset View" class="control-btn">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-      </svg>
-    </button>
-    <button onclick={handleRelayout} title="Re-layout" class="control-btn" disabled={isLayoutRunning}>
+<button onclick={handleRelayout} title="Re-layout" class="control-btn" disabled={isLayoutRunning}>
       <svg class="w-5 h-5" class:animate-spin={isLayoutRunning} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
       </svg>
     </button>
+    <div class="control-divider"></div>
+    <button onclick={handleFullscreen} title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"} class="control-btn">
+      {#if isFullscreen}
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+        </svg>
+      {:else}
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+        </svg>
+      {/if}
+    </button>
+    <button onclick={() => showExportModal = true} title="Export Image" class="control-btn">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+    </button>
+    <button onclick={toggleRecording} title={isRecording ? "Stop Recording" : "Record Video"} class="control-btn" class:recording={isRecording}>
+      {#if isRecording}
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12" rx="1" />
+        </svg>
+      {:else}
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8" stroke-width="2" />
+          <circle cx="12" cy="12" r="4" fill="currentColor" />
+        </svg>
+      {/if}
+    </button>
   </div>
+
+  <!-- Recording indicator -->
+  {#if isRecording}
+    <div class="recording-indicator">
+      <span class="rec-dot"></span>
+      <span class="rec-label">REC</span>
+      <span class="rec-time">{formatRecordingTime(recordingSeconds)}</span>
+    </div>
+  {/if}
+
+  <!-- Export Modal -->
+  {#if showExportModal}
+    <div class="export-overlay" onclick={() => showExportModal = false}>
+      <div class="export-modal" onclick={(e) => e.stopPropagation()}>
+        <div class="export-header">
+          <span class="export-title">Export Graph</span>
+          <button class="export-close" onclick={() => showExportModal = false}>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="export-body">
+          <div class="export-field">
+            <label class="export-label">Format</label>
+            <div class="export-options">
+              <button class="export-option" class:active={exportFormat === "png"} onclick={() => exportFormat = "png"}>PNG</button>
+              <button class="export-option" class:active={exportFormat === "jpeg"} onclick={() => exportFormat = "jpeg"}>JPEG</button>
+            </div>
+          </div>
+
+          <div class="export-field">
+            <label class="export-label">Resolution</label>
+            <div class="export-options">
+              {#each [1, 2, 4, 8] as scale}
+                <button class="export-option" class:active={exportScale === scale} onclick={() => exportScale = scale}>
+                  {scale}x
+                </button>
+              {/each}
+            </div>
+            <span class="export-hint">
+              {Math.round((container?.offsetWidth || 1920) * exportScale)} x {Math.round((container?.offsetHeight || 1080) * exportScale)} px
+            </span>
+          </div>
+
+          <div class="export-field">
+            <label class="export-label">Background</label>
+            <div class="export-options">
+              <button class="export-option" class:active={exportBackground} onclick={() => exportBackground = true}>Dark</button>
+              <button class="export-option" class:active={!exportBackground} onclick={() => exportBackground = false}>Transparent</button>
+            </div>
+            {#if !exportBackground && exportFormat === "jpeg"}
+              <span class="export-hint export-warn">JPEG doesn't support transparency - will be black</span>
+            {/if}
+          </div>
+        </div>
+
+        <div class="export-footer">
+          <button class="export-cancel" onclick={() => showExportModal = false}>Cancel</button>
+          <button class="export-submit" onclick={exportGraph} disabled={isExporting}>
+            {isExporting ? "Exporting..." : "Download"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Legend -->
   <div class="legend">
@@ -725,6 +1039,13 @@
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   }
 
+  .lobby-graph.fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    min-height: unset;
+  }
+
   .graph-container {
     position: absolute;
     inset: 0;
@@ -738,6 +1059,12 @@
     flex-direction: column;
     gap: 0.5rem;
     z-index: 10;
+  }
+
+  .control-divider {
+    width: 100%;
+    height: 1px;
+    background: rgba(75, 85, 99, 0.4);
   }
 
   .control-btn {
@@ -936,6 +1263,213 @@
     font-size: 0.7rem;
     color: #9ca3af;
     z-index: 10;
+  }
+
+  /* Export modal */
+  .export-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+  }
+
+  .export-modal {
+    background: #1f2937;
+    border: 1px solid rgba(75, 85, 99, 0.6);
+    border-radius: 0.75rem;
+    width: 22rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  .export-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+  }
+
+  .export-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f3f4f6;
+  }
+
+  .export-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    border-radius: 0.25rem;
+  }
+
+  .export-close:hover {
+    background: rgba(75, 85, 99, 0.4);
+    color: #d1d5db;
+  }
+
+  .export-body {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .export-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .export-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .export-options {
+    display: flex;
+    gap: 0.375rem;
+  }
+
+  .export-option {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: rgba(31, 41, 55, 0.8);
+    border: 1px solid rgba(75, 85, 99, 0.4);
+    border-radius: 0.375rem;
+    color: #d1d5db;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+
+  .export-option:hover {
+    background: rgba(55, 65, 81, 0.6);
+    border-color: rgba(107, 114, 128, 0.6);
+  }
+
+  .export-option.active {
+    background: rgba(6, 182, 212, 0.15);
+    border-color: rgba(6, 182, 212, 0.5);
+    color: #22d3ee;
+  }
+
+  .export-hint {
+    font-size: 0.7rem;
+    color: #6b7280;
+  }
+
+  .export-warn {
+    color: #f59e0b;
+  }
+
+  .export-footer {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid rgba(75, 85, 99, 0.3);
+    justify-content: flex-end;
+  }
+
+  .export-cancel {
+    padding: 0.5rem 1rem;
+    background: none;
+    border: 1px solid rgba(75, 85, 99, 0.4);
+    border-radius: 0.375rem;
+    color: #9ca3af;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .export-cancel:hover {
+    background: rgba(55, 65, 81, 0.4);
+    color: #d1d5db;
+  }
+
+  .export-submit {
+    padding: 0.5rem 1.25rem;
+    background: #0891b2;
+    border: none;
+    border-radius: 0.375rem;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .export-submit:hover:not(:disabled) {
+    background: #06b6d4;
+  }
+
+  .export-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Recording */
+  .control-btn.recording {
+    background: rgba(220, 38, 38, 0.3);
+    border-color: rgba(239, 68, 68, 0.6);
+    color: #fca5a5;
+  }
+
+  .control-btn.recording:hover {
+    background: rgba(220, 38, 38, 0.5);
+    border-color: rgba(239, 68, 68, 0.8);
+  }
+
+  .recording-indicator {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background: rgba(31, 41, 55, 0.9);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 0.5rem;
+    z-index: 10;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .rec-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: rec-blink 1s ease-in-out infinite;
+  }
+
+  .rec-label {
+    color: #ef4444;
+    letter-spacing: 0.08em;
+  }
+
+  .rec-time {
+    color: #d1d5db;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @keyframes rec-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
   }
 
   @keyframes spin {

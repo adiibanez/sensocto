@@ -50,17 +50,11 @@ defmodule SensoctoWeb.LobbyLive do
   # Performance telemetry: log interval in ms
   @perf_log_interval_ms 5_000
 
-  # Phase sync buffer sizes (Kuramoto order parameter)
-  @breathing_phase_buffer_size 50
-  @hrv_phase_buffer_size 20
-
   # Suppress unused warnings - these are used in handle_info callbacks
   _ = @measurement_flush_interval_ms
   _ = @perf_log_interval_ms
   _ = @use_sensor_components
   _ = @component_flush_interval_ms
-  _ = @breathing_phase_buffer_size
-  _ = @hrv_phase_buffer_size
 
   @impl true
   def mount(_params, _session, socket) do
@@ -239,10 +233,7 @@ defmodule SensoctoWeb.LobbyLive do
         row_height: @default_row_height,
         cols: 4,
         # Show loading indicator during initial sensor population
-        virtual_scroll_loading: true,
-        # Phase sync (Kuramoto) server-side state for persistence
-        sync_phase_buffers: %{},
-        sync_smoothed: %{}
+        virtual_scroll_loading: true
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -363,7 +354,17 @@ defmodule SensoctoWeb.LobbyLive do
   # Composite lens views need sensors to broadcast to data:global.
   # Registers a lightweight "view" for all relevant sensors.
   defp ensure_attention_for_composite_sensors(socket, action)
-       when action in [:heartrate, :ecg, :imu, :location, :battery, :skeleton, :respiration, :hrv] do
+       when action in [
+              :heartrate,
+              :ecg,
+              :imu,
+              :location,
+              :battery,
+              :skeleton,
+              :respiration,
+              :hrv,
+              :graph
+            ] do
     viewer_id = socket.id
 
     sensor_ids =
@@ -376,6 +377,7 @@ defmodule SensoctoWeb.LobbyLive do
         :skeleton -> Enum.map(socket.assigns.skeleton_sensors, & &1.sensor_id)
         :respiration -> Enum.map(socket.assigns.respiration_sensors, & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns.hrv_sensors, & &1.sensor_id)
+        :graph -> socket.assigns[:all_sensor_ids] || []
       end
 
     attr_key = "composite_#{action}"
@@ -1114,7 +1116,6 @@ defmodule SensoctoWeb.LobbyLive do
                  :hrv
                ] ->
             socket = process_lens_batch_for_composite(socket, batch_data, action)
-            socket = maybe_compute_and_store_sync(socket, batch_data, action)
             {:noreply, socket}
 
           :graph ->
@@ -2718,6 +2719,7 @@ defmodule SensoctoWeb.LobbyLive do
         :skeleton -> Enum.map(socket.assigns[:skeleton_sensors] || [], & &1.sensor_id)
         :respiration -> Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns[:hrv_sensors] || [], & &1.sensor_id)
+        :graph -> socket.assigns[:all_sensor_ids] || []
         _ -> []
       end
 
@@ -2952,123 +2954,6 @@ defmodule SensoctoWeb.LobbyLive do
         })
       end)
     end)
-  end
-
-  # Compute Kuramoto phase sync from batch data and store in AttributeStoreTiered
-  defp maybe_compute_and_store_sync(socket, batch_data, action)
-       when action in [:respiration, :hrv] do
-    {attr_filter, sync_attr_id, buffer_size, min_buffer_len} =
-      case action do
-        :respiration -> {["respiration"], "breathing_sync", @breathing_phase_buffer_size, 15}
-        :hrv -> {["hrv"], "hrv_sync", @hrv_phase_buffer_size, 8}
-      end
-
-    phase_buffers = socket.assigns.sync_phase_buffers
-
-    # Update phase buffers with new values from batch
-    phase_buffers =
-      Enum.reduce(batch_data, phase_buffers, fn {sensor_id, attributes}, buffers ->
-        relevant =
-          Enum.filter(attributes, fn {attr_id, _} -> attr_id in attr_filter end)
-
-        Enum.reduce(relevant, buffers, fn {_attr_id, m}, bufs ->
-          values =
-            case m do
-              list when is_list(list) ->
-                Enum.map(list, &extract_sync_value(&1.payload))
-
-              single ->
-                [extract_sync_value(single.payload)]
-            end
-
-          buffer = Map.get(bufs, sensor_id, [])
-          buffer = buffer ++ values
-
-          buffer =
-            if length(buffer) > buffer_size,
-              do: Enum.take(buffer, -buffer_size),
-              else: buffer
-
-          Map.put(bufs, sensor_id, buffer)
-        end)
-      end)
-
-    # Compute Kuramoto phase sync
-    phases =
-      phase_buffers
-      |> Map.values()
-      |> Enum.map(fn buffer ->
-        if length(buffer) >= min_buffer_len, do: estimate_phase(buffer), else: nil
-      end)
-      |> Enum.reject(&is_nil/1)
-
-    sync_smoothed_map = socket.assigns.sync_smoothed
-
-    if length(phases) >= 2 do
-      n = length(phases)
-
-      sum_cos =
-        Enum.reduce(phases, 0.0, fn theta, acc -> acc + :math.cos(theta) end)
-
-      sum_sin =
-        Enum.reduce(phases, 0.0, fn theta, acc -> acc + :math.sin(theta) end)
-
-      r = :math.sqrt(:math.pow(sum_cos / n, 2) + :math.pow(sum_sin / n, 2))
-
-      prev = Map.get(sync_smoothed_map, action, 0.0)
-      smoothed = if prev == 0.0, do: r, else: 0.85 * prev + 0.15 * r
-      sync_value = round(smoothed * 100)
-      sync_smoothed_map = Map.put(sync_smoothed_map, action, smoothed)
-
-      timestamp = System.system_time(:millisecond)
-
-      Sensocto.AttributeStoreTiered.put_attribute(
-        "__composite_sync",
-        sync_attr_id,
-        timestamp,
-        sync_value
-      )
-
-      socket
-      |> assign(:sync_phase_buffers, phase_buffers)
-      |> assign(:sync_smoothed, sync_smoothed_map)
-    else
-      socket
-      |> assign(:sync_phase_buffers, phase_buffers)
-      |> assign(:sync_smoothed, sync_smoothed_map)
-    end
-  end
-
-  defp maybe_compute_and_store_sync(socket, _batch_data, _action), do: socket
-
-  defp extract_sync_value(payload) when is_number(payload), do: payload * 1.0
-
-  defp extract_sync_value(payload) when is_map(payload) do
-    val = payload["value"] || payload["v"] || payload[:value]
-    if is_number(val), do: val * 1.0, else: 0.0
-  end
-
-  defp extract_sync_value(_), do: 0.0
-
-  # Estimate instantaneous phase from a rolling buffer of sensor values.
-  # Uses normalized value + derivative direction to map to [0, 2*pi].
-  defp estimate_phase(buffer) do
-    n = length(buffer)
-    {min_val, max_val} = Enum.min_max(buffer)
-    range = max_val - min_val
-
-    if range < 2 do
-      nil
-    else
-      current = List.last(buffer)
-      norm = max(0.0, min(1.0, (current - min_val) / range))
-
-      lookback = min(5, n - 1)
-      derivative = current - Enum.at(buffer, n - 1 - lookback)
-
-      base_angle = :math.acos(1 - 2 * norm)
-      if derivative >= 0, do: base_angle, else: 2 * :math.pi() - base_angle
-    end
   end
 
   # Release control for a specific mode when user navigates away

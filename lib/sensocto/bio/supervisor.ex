@@ -8,6 +8,7 @@ defmodule Sensocto.Bio.Supervisor do
   - HomeostaticTuner (Synaptic Plasticity)
   - ResourceArbiter (Lateral Inhibition)
   - CircadianScheduler (SCN)
+  - SyncComputer (Phase Synchronization)
   """
 
   use Supervisor
@@ -23,7 +24,8 @@ defmodule Sensocto.Bio.Supervisor do
       Sensocto.Bio.PredictiveLoadBalancer,
       Sensocto.Bio.HomeostaticTuner,
       Sensocto.Bio.ResourceArbiter,
-      Sensocto.Bio.CircadianScheduler
+      Sensocto.Bio.CircadianScheduler,
+      Sensocto.Bio.SyncComputer
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

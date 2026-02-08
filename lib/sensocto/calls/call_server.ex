@@ -611,7 +611,7 @@ defmodule Sensocto.Calls.CallServer do
     Logger.info("CallServer for room #{state.room_id} terminating: #{inspect(reason)}")
 
     if state.engine_pid && Process.alive?(state.engine_pid) do
-      Engine.terminate(state.engine_pid, reason)
+      Engine.terminate(state.engine_pid)
     end
 
     if state.inactivity_timer do

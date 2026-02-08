@@ -15,8 +15,8 @@ connectors:
     connector_name: "Larger_Group_Study"
     sensors:
       # === Persons 1-10: Have ECG (high frequency) + one low frequency sensor + battery ===
-      lg_person_1:
-        sensor_id: "lg_person_1"
+      xlg_person_1:
+        sensor_id: "xlg_person_1"
         sensor_name: "Person1"
         attributes:
           ecg:
@@ -49,8 +49,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_2:
-        sensor_id: "lg_person_2"
+      xlg_person_2:
+        sensor_id: "xlg_person_2"
         sensor_name: "Person2"
         attributes:
           ecg:
@@ -83,8 +83,8 @@ connectors:
             max_value: 85
             dummy_data: true
 
-      lg_person_3:
-        sensor_id: "lg_person_3"
+      xlg_person_3:
+        sensor_id: "xlg_person_3"
         sensor_name: "Person3"
         attributes:
           ecg:
@@ -117,8 +117,8 @@ connectors:
             max_value: 65
             dummy_data: true
 
-      lg_person_4:
-        sensor_id: "lg_person_4"
+      xlg_person_4:
+        sensor_id: "xlg_person_4"
         sensor_name: "Person4"
         attributes:
           ecg:
@@ -151,8 +151,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_5:
-        sensor_id: "lg_person_5"
+      xlg_person_5:
+        sensor_id: "xlg_person_5"
         sensor_name: "Person5"
         attributes:
           ecg:
@@ -185,8 +185,8 @@ connectors:
             max_value: 80
             dummy_data: true
 
-      lg_person_6:
-        sensor_id: "lg_person_6"
+      xlg_person_6:
+        sensor_id: "xlg_person_6"
         sensor_name: "Person6"
         attributes:
           ecg:
@@ -219,8 +219,8 @@ connectors:
             max_value: 45
             dummy_data: true
 
-      lg_person_7:
-        sensor_id: "lg_person_7"
+      xlg_person_7:
+        sensor_id: "xlg_person_7"
         sensor_name: "Person7"
         attributes:
           ecg:
@@ -253,8 +253,8 @@ connectors:
             max_value: 95
             dummy_data: true
 
-      lg_person_8:
-        sensor_id: "lg_person_8"
+      xlg_person_8:
+        sensor_id: "xlg_person_8"
         sensor_name: "Person8"
         attributes:
           ecg:
@@ -287,8 +287,8 @@ connectors:
             max_value: 70
             dummy_data: true
 
-      lg_person_9:
-        sensor_id: "lg_person_9"
+      xlg_person_9:
+        sensor_id: "xlg_person_9"
         sensor_name: "Person9"
         attributes:
           ecg:
@@ -321,8 +321,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_10:
-        sensor_id: "lg_person_10"
+      xlg_person_10:
+        sensor_id: "xlg_person_10"
         sensor_name: "Person10"
         attributes:
           ecg:
@@ -356,8 +356,8 @@ connectors:
             dummy_data: true
 
       # === Persons 11-50: Low frequency sensors only (heartrate + one other + battery) ===
-      lg_person_11:
-        sensor_id: "lg_person_11"
+      xlg_person_11:
+        sensor_id: "xlg_person_11"
         sensor_name: "Person11"
         attributes:
           heartrate:
@@ -390,8 +390,8 @@ connectors:
             max_value: 90
             dummy_data: true
 
-      lg_person_12:
-        sensor_id: "lg_person_12"
+      xlg_person_12:
+        sensor_id: "xlg_person_12"
         sensor_name: "Person12"
         attributes:
           heartrate:
@@ -424,8 +424,8 @@ connectors:
             max_value: 75
             dummy_data: true
 
-      lg_person_13:
-        sensor_id: "lg_person_13"
+      xlg_person_13:
+        sensor_id: "xlg_person_13"
         sensor_name: "Person13"
         attributes:
           heartrate:
@@ -458,8 +458,8 @@ connectors:
             max_value: 60
             dummy_data: true
 
-      lg_person_14:
-        sensor_id: "lg_person_14"
+      xlg_person_14:
+        sensor_id: "xlg_person_14"
         sensor_name: "Person14"
         attributes:
           heartrate:
@@ -492,8 +492,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_15:
-        sensor_id: "lg_person_15"
+      xlg_person_15:
+        sensor_id: "xlg_person_15"
         sensor_name: "Person15"
         attributes:
           heartrate:
@@ -526,8 +526,8 @@ connectors:
             max_value: 95
             dummy_data: true
 
-      lg_person_16:
-        sensor_id: "lg_person_16"
+      xlg_person_16:
+        sensor_id: "xlg_person_16"
         sensor_name: "Person16"
         attributes:
           heartrate:
@@ -560,8 +560,8 @@ connectors:
             max_value: 50
             dummy_data: true
 
-      lg_person_17:
-        sensor_id: "lg_person_17"
+      xlg_person_17:
+        sensor_id: "xlg_person_17"
         sensor_name: "Person17"
         attributes:
           heartrate:
@@ -594,8 +594,8 @@ connectors:
             max_value: 80
             dummy_data: true
 
-      lg_person_18:
-        sensor_id: "lg_person_18"
+      xlg_person_18:
+        sensor_id: "xlg_person_18"
         sensor_name: "Person18"
         attributes:
           heartrate:
@@ -628,8 +628,8 @@ connectors:
             max_value: 65
             dummy_data: true
 
-      lg_person_19:
-        sensor_id: "lg_person_19"
+      xlg_person_19:
+        sensor_id: "xlg_person_19"
         sensor_name: "Person19"
         attributes:
           heartrate:
@@ -662,8 +662,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_20:
-        sensor_id: "lg_person_20"
+      xlg_person_20:
+        sensor_id: "xlg_person_20"
         sensor_name: "Person20"
         attributes:
           heartrate:
@@ -696,8 +696,8 @@ connectors:
             max_value: 85
             dummy_data: true
 
-      lg_person_21:
-        sensor_id: "lg_person_21"
+      xlg_person_21:
+        sensor_id: "xlg_person_21"
         sensor_name: "Person21"
         attributes:
           heartrate:
@@ -730,8 +730,8 @@ connectors:
             max_value: 40
             dummy_data: true
 
-      lg_person_22:
-        sensor_id: "lg_person_22"
+      xlg_person_22:
+        sensor_id: "xlg_person_22"
         sensor_name: "Person22"
         attributes:
           heartrate:
@@ -764,8 +764,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_23:
-        sensor_id: "lg_person_23"
+      xlg_person_23:
+        sensor_id: "xlg_person_23"
         sensor_name: "Person23"
         attributes:
           heartrate:
@@ -798,8 +798,8 @@ connectors:
             max_value: 75
             dummy_data: true
 
-      lg_person_24:
-        sensor_id: "lg_person_24"
+      xlg_person_24:
+        sensor_id: "xlg_person_24"
         sensor_name: "Person24"
         attributes:
           heartrate:
@@ -832,8 +832,8 @@ connectors:
             max_value: 55
             dummy_data: true
 
-      lg_person_25:
-        sensor_id: "lg_person_25"
+      xlg_person_25:
+        sensor_id: "xlg_person_25"
         sensor_name: "Person25"
         attributes:
           heartrate:
@@ -866,8 +866,8 @@ connectors:
             max_value: 90
             dummy_data: true
 
-      lg_person_26:
-        sensor_id: "lg_person_26"
+      xlg_person_26:
+        sensor_id: "xlg_person_26"
         sensor_name: "Person26"
         attributes:
           heartrate:
@@ -900,8 +900,8 @@ connectors:
             max_value: 70
             dummy_data: true
 
-      lg_person_27:
-        sensor_id: "lg_person_27"
+      xlg_person_27:
+        sensor_id: "xlg_person_27"
         sensor_name: "Person27"
         attributes:
           heartrate:
@@ -934,8 +934,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_28:
-        sensor_id: "lg_person_28"
+      xlg_person_28:
+        sensor_id: "xlg_person_28"
         sensor_name: "Person28"
         attributes:
           heartrate:
@@ -968,8 +968,8 @@ connectors:
             max_value: 45
             dummy_data: true
 
-      lg_person_29:
-        sensor_id: "lg_person_29"
+      xlg_person_29:
+        sensor_id: "xlg_person_29"
         sensor_name: "Person29"
         attributes:
           heartrate:
@@ -1002,8 +1002,8 @@ connectors:
             max_value: 85
             dummy_data: true
 
-      lg_person_30:
-        sensor_id: "lg_person_30"
+      xlg_person_30:
+        sensor_id: "xlg_person_30"
         sensor_name: "Person30"
         attributes:
           heartrate:
@@ -1036,8 +1036,8 @@ connectors:
             max_value: 95
             dummy_data: true
 
-      lg_person_31:
-        sensor_id: "lg_person_31"
+      xlg_person_31:
+        sensor_id: "xlg_person_31"
         sensor_name: "Person31"
         attributes:
           heartrate:
@@ -1070,8 +1070,8 @@ connectors:
             max_value: 60
             dummy_data: true
 
-      lg_person_32:
-        sensor_id: "lg_person_32"
+      xlg_person_32:
+        sensor_id: "xlg_person_32"
         sensor_name: "Person32"
         attributes:
           heartrate:
@@ -1104,8 +1104,8 @@ connectors:
             max_value: 80
             dummy_data: true
 
-      lg_person_33:
-        sensor_id: "lg_person_33"
+      xlg_person_33:
+        sensor_id: "xlg_person_33"
         sensor_name: "Person33"
         attributes:
           heartrate:
@@ -1138,8 +1138,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_34:
-        sensor_id: "lg_person_34"
+      xlg_person_34:
+        sensor_id: "xlg_person_34"
         sensor_name: "Person34"
         attributes:
           heartrate:
@@ -1172,8 +1172,8 @@ connectors:
             max_value: 65
             dummy_data: true
 
-      lg_person_35:
-        sensor_id: "lg_person_35"
+      xlg_person_35:
+        sensor_id: "xlg_person_35"
         sensor_name: "Person35"
         attributes:
           heartrate:
@@ -1206,8 +1206,8 @@ connectors:
             max_value: 50
             dummy_data: true
 
-      lg_person_36:
-        sensor_id: "lg_person_36"
+      xlg_person_36:
+        sensor_id: "xlg_person_36"
         sensor_name: "Person36"
         attributes:
           heartrate:
@@ -1240,8 +1240,8 @@ connectors:
             max_value: 95
             dummy_data: true
 
-      lg_person_37:
-        sensor_id: "lg_person_37"
+      xlg_person_37:
+        sensor_id: "xlg_person_37"
         sensor_name: "Person37"
         attributes:
           heartrate:
@@ -1274,8 +1274,8 @@ connectors:
             max_value: 75
             dummy_data: true
 
-      lg_person_38:
-        sensor_id: "lg_person_38"
+      xlg_person_38:
+        sensor_id: "xlg_person_38"
         sensor_name: "Person38"
         attributes:
           heartrate:
@@ -1308,8 +1308,8 @@ connectors:
             max_value: 40
             dummy_data: true
 
-      lg_person_39:
-        sensor_id: "lg_person_39"
+      xlg_person_39:
+        sensor_id: "xlg_person_39"
         sensor_name: "Person39"
         attributes:
           heartrate:
@@ -1342,8 +1342,8 @@ connectors:
             max_value: 90
             dummy_data: true
 
-      lg_person_40:
-        sensor_id: "lg_person_40"
+      xlg_person_40:
+        sensor_id: "xlg_person_40"
         sensor_name: "Person40"
         attributes:
           heartrate:
@@ -1376,8 +1376,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_41:
-        sensor_id: "lg_person_41"
+      xlg_person_41:
+        sensor_id: "xlg_person_41"
         sensor_name: "Person41"
         attributes:
           heartrate:
@@ -1410,8 +1410,8 @@ connectors:
             max_value: 70
             dummy_data: true
 
-      lg_person_42:
-        sensor_id: "lg_person_42"
+      xlg_person_42:
+        sensor_id: "xlg_person_42"
         sensor_name: "Person42"
         attributes:
           heartrate:
@@ -1444,8 +1444,8 @@ connectors:
             max_value: 55
             dummy_data: true
 
-      lg_person_43:
-        sensor_id: "lg_person_43"
+      xlg_person_43:
+        sensor_id: "xlg_person_43"
         sensor_name: "Person43"
         attributes:
           heartrate:
@@ -1478,8 +1478,8 @@ connectors:
             max_value: 85
             dummy_data: true
 
-      lg_person_44:
-        sensor_id: "lg_person_44"
+      xlg_person_44:
+        sensor_id: "xlg_person_44"
         sensor_name: "Person44"
         attributes:
           heartrate:
@@ -1512,8 +1512,8 @@ connectors:
             max_value: 100
             dummy_data: true
 
-      lg_person_45:
-        sensor_id: "lg_person_45"
+      xlg_person_45:
+        sensor_id: "xlg_person_45"
         sensor_name: "Person45"
         attributes:
           heartrate:
@@ -1546,8 +1546,8 @@ connectors:
             max_value: 65
             dummy_data: true
 
-      lg_person_46:
-        sensor_id: "lg_person_46"
+      xlg_person_46:
+        sensor_id: "xlg_person_46"
         sensor_name: "Person46"
         attributes:
           heartrate:
@@ -1580,8 +1580,8 @@ connectors:
             max_value: 80
             dummy_data: true
 
-      lg_person_47:
-        sensor_id: "lg_person_47"
+      xlg_person_47:
+        sensor_id: "xlg_person_47"
         sensor_name: "Person47"
         attributes:
           heartrate:
@@ -1614,8 +1614,8 @@ connectors:
             max_value: 45
             dummy_data: true
 
-      lg_person_48:
-        sensor_id: "lg_person_48"
+      xlg_person_48:
+        sensor_id: "xlg_person_48"
         sensor_name: "Person48"
         attributes:
           heartrate:
@@ -1648,8 +1648,8 @@ connectors:
             max_value: 95
             dummy_data: true
 
-      lg_person_49:
-        sensor_id: "lg_person_49"
+      xlg_person_49:
+        sensor_id: "xlg_person_49"
         sensor_name: "Person49"
         attributes:
           heartrate:
@@ -1682,8 +1682,8 @@ connectors:
             max_value: 60
             dummy_data: true
 
-      lg_person_50:
-        sensor_id: "lg_person_50"
+      xlg_person_50:
+        sensor_id: "xlg_person_50"
         sensor_name: "Person50"
         attributes:
           heartrate:

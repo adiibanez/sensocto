@@ -824,28 +824,54 @@
       if (!isNodeInViewport(nodeId)) continue;
 
       const progress = elapsed / GLOW_DURATION_MS;
-      const alpha = 0.7 * (1 - progress * progress);
+      const alpha = 0.5 * (1 - progress * progress);
       const nodeAttrs = graph.getNodeAttributes(nodeId);
       const viewPos = sigma.graphToViewport({ x: nodeAttrs.x, y: nodeAttrs.y });
       const baseSize = nodeAttrs.size || 4;
       const camera = sigma.getCamera();
       const ratio = camera.ratio || 1;
       const displaySize = (baseSize / ratio) * 2;
-      const glowRadius = displaySize * (2.5 + progress * 1.5);
+      const glowRadius = displaySize * (2.0 + progress * 1.0);
 
-      const grad = glowCtx.createRadialGradient(
-        viewPos.x, viewPos.y, displaySize * 0.3,
-        viewPos.x, viewPos.y, glowRadius
+      // Use a seeded pseudo-random offset per node for organic irregularity
+      const hash = nodeId.charCodeAt(0) + (nodeId.charCodeAt(1) || 0) * 7;
+      const angle1 = (hash % 6.28);
+      const angle2 = angle1 + 2.1;
+      const drift = displaySize * 0.3;
+
+      // Layer 1: core glow around the node
+      const g1 = glowCtx.createRadialGradient(
+        viewPos.x, viewPos.y, displaySize * 0.2,
+        viewPos.x, viewPos.y, glowRadius * 0.7
       );
+      g1.addColorStop(0, `rgba(180, 255, 210, ${alpha * 0.9})`);
+      g1.addColorStop(0.4, `rgba(34, 197, 94, ${alpha * 0.4})`);
+      g1.addColorStop(1, `rgba(34, 197, 94, 0)`);
 
-      grad.addColorStop(0, `rgba(180, 255, 200, ${alpha})`);
-      grad.addColorStop(0.4, `rgba(34, 197, 94, ${alpha * 0.5})`);
-      grad.addColorStop(1, `rgba(34, 197, 94, 0)`);
-
-      glowCtx.fillStyle = grad;
+      glowCtx.fillStyle = g1;
       glowCtx.beginPath();
-      glowCtx.arc(viewPos.x, viewPos.y, glowRadius, 0, Math.PI * 2);
+      glowCtx.arc(viewPos.x, viewPos.y, glowRadius * 0.7, 0, Math.PI * 2);
       glowCtx.fill();
+
+      // Layer 2 & 3: offset wisps for organic shape
+      const offsets = [
+        { x: Math.cos(angle1) * drift, y: Math.sin(angle1) * drift },
+        { x: Math.cos(angle2) * drift, y: Math.sin(angle2) * drift },
+      ];
+
+      for (const off of offsets) {
+        const cx = viewPos.x + off.x;
+        const cy = viewPos.y + off.y;
+        const r = glowRadius * 0.5;
+        const g = glowCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, `rgba(120, 230, 170, ${alpha * 0.5})`);
+        g.addColorStop(0.5, `rgba(34, 197, 94, ${alpha * 0.2})`);
+        g.addColorStop(1, `rgba(34, 197, 94, 0)`);
+        glowCtx.fillStyle = g;
+        glowCtx.beginPath();
+        glowCtx.arc(cx, cy, r, 0, Math.PI * 2);
+        glowCtx.fill();
+      }
     }
   }
 

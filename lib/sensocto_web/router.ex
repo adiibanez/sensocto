@@ -192,9 +192,14 @@ defmodule SensoctoWeb.Router do
     get "/auth/verify", MobileAuthController, :verify
     post "/auth/verify", MobileAuthController, :verify
     get "/me", MobileAuthController, :me
+  end
 
-    # Debug endpoint for testing
-    post "/auth/debug", MobileAuthController, :debug_verify
+  # Debug endpoint - development only (exposes user IDs)
+  if Application.compile_env(:sensocto, :dev_routes) do
+    scope "/api", SensoctoWeb.Api do
+      pipe_through [:rate_limit_api_auth]
+      post "/auth/debug", MobileAuthController, :debug_verify
+    end
   end
 
   # Mobile API endpoints (non-auth routes - no rate limiting)
@@ -220,17 +225,12 @@ defmodule SensoctoWeb.Router do
     post "/rooms/verify-ticket", RoomTicketController, :verify
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
-  # if Application.compile_env(:sensocto, :dev_routes) do
-  # If you want to use the LiveDashboard in production, you should put
-  # it behind authentication and allow only admins to access it.
-  # If your application does not have an admins-only section yet,
-  # you can use Plug.BasicAuth to set up some basic authentication
-  # as long as you are also using SSL (which you should anyway).
-
-  scope "/dev" do
-    pipe_through :browser
-    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  # Enable Swoosh mailbox preview in development only
+  if Application.compile_env(:sensocto, :dev_routes) do
+    scope "/dev" do
+      pipe_through :browser
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
   end
 
   # Health check endpoints (no auth required)

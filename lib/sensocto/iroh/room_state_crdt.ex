@@ -47,7 +47,7 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   use GenServer
   require Logger
   alias IrohEx.Native
-  alias IrohEx.NodeConfig
+  alias Sensocto.Iroh.ConnectionManager
   alias Sensocto.Resilience.CircuitBreaker
 
   @type room_id :: String.t()
@@ -57,12 +57,9 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
     :node_ref,
     :docs,
     initialized: false,
-    init_attempts: 0,
     nif_unavailable: false
   ]
 
-  # Max initialization retry attempts before giving up
-  @max_init_attempts 3
   @call_timeout 5_000
 
   # ============================================================================
@@ -248,41 +245,22 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
 
   @impl true
   def handle_info(:initialize, %{nif_unavailable: true} = state) do
-    # NIF is not available, don't retry
     {:noreply, state}
   end
 
-  def handle_info(:initialize, %{init_attempts: attempts} = state)
-      when attempts >= @max_init_attempts do
-    Logger.warning(
-      "[RoomStateCRDT] Max initialization attempts (#{@max_init_attempts}) reached. " <>
-        "IrohEx NIF may not be available. CRDT features disabled."
-    )
-
-    {:noreply, %{state | nif_unavailable: true}}
-  end
-
   def handle_info(:initialize, state) do
-    # First check if the NIF is even loaded
-    unless function_exported?(Native, :create_node, 2) do
-      Logger.warning("[RoomStateCRDT] IrohEx.Native NIF not loaded. CRDT features disabled.")
-      {:noreply, %{state | nif_unavailable: true}}
-    else
-      case initialize_node() do
-        {:ok, node_ref} ->
-          Logger.info("[RoomStateCRDT] Initialized iroh node")
-          {:noreply, %{state | node_ref: node_ref, initialized: true}}
+    case ConnectionManager.get_node_ref() do
+      {:ok, node_ref} ->
+        Logger.info("[RoomStateCRDT] Initialized using shared iroh node")
+        {:noreply, %{state | node_ref: node_ref, initialized: true}}
 
-        {:error, reason} ->
-          new_attempts = state.init_attempts + 1
+      {:error, :nif_unavailable} ->
+        Logger.warning("[RoomStateCRDT] Iroh NIF unavailable. CRDT features disabled.")
+        {:noreply, %{state | nif_unavailable: true}}
 
-          Logger.error(
-            "[RoomStateCRDT] Failed to initialize (attempt #{new_attempts}/#{@max_init_attempts}): #{inspect(reason)}"
-          )
-
-          Process.send_after(self(), :initialize, 5000)
-          {:noreply, %{state | init_attempts: new_attempts}}
-      end
+      {:error, reason} ->
+        Logger.error("[RoomStateCRDT] Failed to initialize: #{inspect(reason)}")
+        {:noreply, %{state | nif_unavailable: true}}
     end
   end
 
@@ -544,30 +522,6 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   # ============================================================================
   # Private Functions
   # ============================================================================
-
-  defp initialize_node do
-    try do
-      node_config = %NodeConfig{
-        is_whale_node: false,
-        active_view_capacity: 10,
-        passive_view_capacity: 10,
-        relay_urls: ["https://euw1-1.relay.iroh.network./"],
-        discovery: ["n0", "local_network"]
-      }
-
-      node_ref = Native.create_node(self(), node_config)
-
-      if is_reference(node_ref) do
-        # Give the node time to initialize
-        Process.sleep(500)
-        {:ok, node_ref}
-      else
-        {:error, "Failed to create node: #{inspect(node_ref)}"}
-      end
-    rescue
-      e -> {:error, e}
-    end
-  end
 
   defp do_get_or_create_doc(state, room_id) do
     case Map.get(state.docs, room_id) do

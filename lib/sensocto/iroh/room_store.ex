@@ -18,6 +18,7 @@ defmodule Sensocto.Iroh.RoomStore do
   use GenServer
   require Logger
   alias IrohEx.Native
+  alias Sensocto.Iroh.ConnectionManager
   alias Sensocto.Resilience.CircuitBreaker
 
   defstruct [
@@ -26,12 +27,9 @@ defmodule Sensocto.Iroh.RoomStore do
     :rooms_namespace,
     :memberships_namespace,
     initialized: false,
-    init_attempts: 0,
     nif_unavailable: false
   ]
 
-  # Max initialization retry attempts before giving up
-  @max_init_attempts 3
   @call_timeout 5_000
 
   # ============================================================================
@@ -121,72 +119,38 @@ defmodule Sensocto.Iroh.RoomStore do
 
   @impl true
   def init(_opts) do
-    # Initialize asynchronously to not block application startup
+    # Initialize asynchronously — ConnectionManager is already started
+    # (synchronous init) by the rest_for_one supervisor, so it's guaranteed
+    # to be in a known state when we call it.
     send(self(), :initialize_iroh)
     {:ok, %__MODULE__{}}
   end
 
   @impl true
   def handle_info(:initialize_iroh, %{nif_unavailable: true} = state) do
-    # NIF is not available, don't retry
     {:noreply, state}
   end
 
-  def handle_info(:initialize_iroh, %{init_attempts: attempts} = state)
-      when attempts >= @max_init_attempts do
-    Logger.warning(
-      "[Iroh.RoomStore] Max initialization attempts (#{@max_init_attempts}) reached. " <>
-        "IrohEx NIF may not be available. Iroh storage disabled."
-    )
-
-    {:noreply, %{state | nif_unavailable: true}}
-  end
-
   def handle_info(:initialize_iroh, state) do
-    # First check if the NIF is even loaded
-    unless function_exported?(Native, :create_node, 2) do
-      Logger.warning("[Iroh.RoomStore] IrohEx.Native NIF not loaded. Iroh storage disabled.")
-      {:noreply, %{state | nif_unavailable: true}}
-    else
-      case initialize_iroh_node() do
-        {:ok, new_state} ->
-          Logger.info("[Iroh.RoomStore] Initialized iroh node successfully")
-          {:noreply, new_state}
+    case initialize_from_connection_manager() do
+      {:ok, new_state} ->
+        Logger.info("[Iroh.RoomStore] Initialized using shared iroh node")
+        {:noreply, new_state}
 
-        {:error, reason} ->
-          new_attempts = state.init_attempts + 1
+      {:error, :nif_unavailable} ->
+        Logger.warning("[Iroh.RoomStore] Iroh NIF unavailable. Iroh storage disabled.")
+        {:noreply, %{state | nif_unavailable: true}}
 
-          Logger.error(
-            "[Iroh.RoomStore] Failed to initialize iroh node (attempt #{new_attempts}/#{@max_init_attempts}): #{inspect(reason)}"
-          )
-
-          # Retry after delay
-          Process.send_after(self(), :initialize_iroh, 5000)
-          {:noreply, %{state | init_attempts: new_attempts}}
-      end
+      {:error, reason} ->
+        Logger.error("[Iroh.RoomStore] Failed to initialize: #{inspect(reason)}")
+        {:noreply, %{state | nif_unavailable: true}}
     end
   end
 
   @impl true
   def handle_info(msg, state) do
-    # Handle iroh events (gossip, sync, etc.)
-    case msg do
-      {:iroh_gossip_message_received, _source, _message} ->
-        Logger.debug("[Iroh.RoomStore] Received gossip message")
-        {:noreply, state}
-
-      {:iroh_gossip_neighbor_up, _source, _neighbor, _info, _count} ->
-        Logger.debug("[Iroh.RoomStore] Neighbor connected")
-        {:noreply, state}
-
-      {:iroh_gossip_neighbor_down, _source, _neighbor} ->
-        Logger.debug("[Iroh.RoomStore] Neighbor disconnected")
-        {:noreply, state}
-
-      _ ->
-        Logger.debug("[Iroh.RoomStore] Unknown message: #{inspect(msg)}")
-        {:noreply, state}
-    end
+    Logger.debug("[Iroh.RoomStore] Unhandled message: #{inspect(msg)}")
+    {:noreply, state}
   end
 
   @impl true
@@ -283,24 +247,10 @@ defmodule Sensocto.Iroh.RoomStore do
   # Private Functions - Initialization
   # ============================================================================
 
-  defp initialize_iroh_node do
-    try do
-      # Create iroh node with default config
-      node_config = build_node_config()
-      node_ref = Native.create_node(self(), node_config)
-
-      unless is_reference(node_ref) do
-        raise "Failed to create iroh node: #{inspect(node_ref)}"
-      end
-
-      # Create author for writing docs
-      author_id = Native.docs_create_author(node_ref)
-
-      unless is_binary(author_id) do
-        raise "Failed to create author: #{inspect(author_id)}"
-      end
-
-      # Create namespaces for rooms and memberships
+  defp initialize_from_connection_manager do
+    with {:ok, node_ref} <- ConnectionManager.get_node_ref(),
+         {:ok, author_id} <- ConnectionManager.get_author_id() do
+      # Create namespaces for rooms and memberships (these are per-RoomStore)
       rooms_namespace = Native.docs_create(node_ref)
       memberships_namespace = Native.docs_create(node_ref)
 
@@ -325,25 +275,11 @@ defmodule Sensocto.Iroh.RoomStore do
       }
 
       {:ok, state}
-    rescue
-      e ->
-        Logger.error("[Iroh.RoomStore] Initialization error: #{inspect(e)}")
-        {:error, e}
     end
-  end
-
-  defp build_node_config do
-    # Use default config, can be customized via application config
-    config = %IrohEx.NodeConfig{
-      is_whale_node: false,
-      active_view_capacity: 10,
-      passive_view_capacity: 10,
-      relay_urls: ["https://euw1-1.relay.iroh.network./"],
-      discovery: ["n0", "local_network"]
-    }
-
-    # Allow override from application config
-    Application.get_env(:sensocto, :iroh_node_config, config)
+  rescue
+    e ->
+      Logger.error("[Iroh.RoomStore] Initialization error: #{inspect(e)}")
+      {:error, e}
   end
 
   # ============================================================================

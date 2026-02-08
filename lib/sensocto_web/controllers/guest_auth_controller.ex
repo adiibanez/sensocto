@@ -11,7 +11,7 @@ defmodule SensoctoWeb.GuestAuthController do
   def sign_in(conn, %{"guest_id" => guest_id, "token" => token}) do
     case GuestUserStore.get_guest(guest_id) do
       {:ok, guest} ->
-        if guest.token == token do
+        if Plug.Crypto.secure_compare(guest.token, token) do
           # Valid guest, create session
           conn
           |> put_session(:guest_id, guest_id)

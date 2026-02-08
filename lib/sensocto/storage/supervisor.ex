@@ -6,19 +6,21 @@ defmodule Sensocto.Storage.Supervisor do
 
   Uses `:rest_for_one` because these processes have explicit dependencies:
 
-  1. `Iroh.RoomStore` - Low-level iroh document storage
-  2. `HydrationManager` - Coordinates multiple storage backends
-  3. `RoomStore` - In-memory room state cache (uses HydrationManager for persistence)
-  4. `Iroh.RoomSync` - Async persistence layer (writes to Iroh.RoomStore)
-  5. `Iroh.RoomStateCRDT` - Real-time collaborative state using Automerge
+  1. `Iroh.ConnectionManager` - Shared iroh node (all iroh processes depend on this)
+  2. `Iroh.RoomStore` - Low-level iroh document storage
+  3. `HydrationManager` - Coordinates multiple storage backends
+  4. `RoomStore` - In-memory room state cache (uses HydrationManager for persistence)
+  5. `Iroh.RoomSync` - Async persistence layer (writes to Iroh.RoomStore)
+  6. `Iroh.RoomStateCRDT` - Real-time collaborative state using Automerge
 
-  If `Iroh.RoomStore` crashes, the downstream processes that depend on it
-  (HydrationManager, RoomStore, RoomSync, RoomStateCRDT) must be restarted
-  to maintain consistency. This is the textbook use case for `:rest_for_one`.
+  If `Iroh.ConnectionManager` crashes, all downstream iroh-dependent processes
+  must restart to re-fetch the new node_ref. This is the textbook use case
+  for `:rest_for_one`.
 
   ## State Recovery
 
-  - `Iroh.RoomStore`: Recovers from persistent storage on restart
+  - `Iroh.ConnectionManager`: Creates a new iroh node (identity persistence planned)
+  - `Iroh.RoomStore`: Re-creates namespaces using the shared node
   - `HydrationManager`: Re-initializes backends (PostgreSQL, Iroh, LocalStorage)
   - `RoomStore`: Rebuilds in-memory cache via HydrationManager
   - `Iroh.RoomSync`: Resumes async sync operations
@@ -40,6 +42,10 @@ defmodule Sensocto.Storage.Supervisor do
   @impl true
   def init(_opts) do
     children = [
+      # Shared iroh node connection - MUST start first.
+      # All iroh-dependent processes below get their node_ref from this manager.
+      Sensocto.Iroh.ConnectionManager,
+
       # Room storage: iroh docs (low-level) -> HydrationManager -> RoomStore (in-memory)
       # Order matters! Later processes depend on earlier ones.
       Sensocto.Iroh.RoomStore,

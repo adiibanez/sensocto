@@ -231,15 +231,16 @@ defmodule Sensocto.Lenses.PriorityLens do
     # Reverse index: sensor_id => MapSet of socket_ids for O(1) lookup
     :ets.new(@sensor_subs_table, [:set, :public, :named_table, read_concurrency: true])
 
-    # Register with router
-    Sensocto.Lenses.Router.register_lens(self())
+    # Don't register with Router yet - demand-driven.
+    # Register only when the first socket connects, unregister when the last disconnects.
+    # This prevents the entire data:global pipeline from running when no one is viewing.
 
     # Schedule periodic dead socket cleanup
     schedule_gc()
 
-    Logger.info("PriorityLens started with ETS buffering and indexed sensor lookup")
+    Logger.info("PriorityLens started (demand-driven, not yet registered with Router)")
 
-    {:ok, %{}}
+    {:ok, %{registered_with_router: false}}
   end
 
   @impl true
@@ -277,6 +278,9 @@ defmodule Sensocto.Lenses.PriorityLens do
     # Update reverse index: sensor_id -> socket_ids
     update_sensor_subscriptions(socket_id, MapSet.new(), MapSet.new(sensor_ids))
 
+    # Register with Router on first socket (demand-driven)
+    state = maybe_register_with_router(state)
+
     Logger.debug("PriorityLens: registered socket #{socket_id} with quality #{quality}")
 
     {:reply, {:ok, topic}, state}
@@ -302,6 +306,9 @@ defmodule Sensocto.Lenses.PriorityLens do
       [] ->
         :ok
     end
+
+    # Unregister from Router if no more sockets (demand-driven)
+    state = maybe_unregister_from_router(state)
 
     {:noreply, state}
   end
@@ -429,11 +436,17 @@ defmodule Sensocto.Lenses.PriorityLens do
     # Find and clean up any sockets owned by the dead process
     dead_count = cleanup_sockets_for_pid(dead_pid)
 
-    if dead_count > 0 do
-      Logger.debug(
-        "PriorityLens: cleaned up #{dead_count} socket(s) for dead process #{inspect(dead_pid)}"
-      )
-    end
+    # Unregister from Router if no more sockets
+    state =
+      if dead_count > 0 do
+        Logger.debug(
+          "PriorityLens: cleaned up #{dead_count} socket(s) for dead process #{inspect(dead_pid)}"
+        )
+
+        maybe_unregister_from_router(state)
+      else
+        state
+      end
 
     {:noreply, state}
   end
@@ -443,9 +456,13 @@ defmodule Sensocto.Lenses.PriorityLens do
   def handle_info(:gc_dead_sockets, state) do
     dead_count = gc_dead_sockets()
 
-    if dead_count > 0 do
-      Logger.info("PriorityLens: GC cleaned up #{dead_count} orphaned socket(s)")
-    end
+    state =
+      if dead_count > 0 do
+        Logger.info("PriorityLens: GC cleaned up #{dead_count} orphaned socket(s)")
+        maybe_unregister_from_router(state)
+      else
+        state
+      end
 
     schedule_gc()
     {:noreply, state}
@@ -457,8 +474,11 @@ defmodule Sensocto.Lenses.PriorityLens do
   end
 
   @impl true
-  def terminate(_reason, _state) do
-    Sensocto.Lenses.Router.unregister_lens(self())
+  def terminate(_reason, state) do
+    if state.registered_with_router do
+      Sensocto.Lenses.Router.unregister_lens(self())
+    end
+
     :ok
   end
 
@@ -691,6 +711,32 @@ defmodule Sensocto.Lenses.PriorityLens do
 
       # Clear digest entries for this socket
       :ets.match_delete(@digest_table, pattern)
+    end
+  end
+
+  # Register with Router if not already registered and there are sockets
+  defp maybe_register_with_router(%{registered_with_router: true} = state), do: state
+
+  defp maybe_register_with_router(state) do
+    if :ets.info(@sockets_table, :size) > 0 do
+      Sensocto.Lenses.Router.register_lens(self())
+      Logger.info("PriorityLens: registered with Router (first socket connected)")
+      %{state | registered_with_router: true}
+    else
+      state
+    end
+  end
+
+  # Unregister from Router if registered and no more sockets
+  defp maybe_unregister_from_router(%{registered_with_router: false} = state), do: state
+
+  defp maybe_unregister_from_router(state) do
+    if :ets.info(@sockets_table, :size) == 0 do
+      Sensocto.Lenses.Router.unregister_lens(self())
+      Logger.info("PriorityLens: unregistered from Router (no more sockets)")
+      %{state | registered_with_router: false}
+    else
+      state
     end
   end
 

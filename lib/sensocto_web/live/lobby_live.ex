@@ -402,6 +402,11 @@ defmodule SensoctoWeb.LobbyLive do
         Sensocto.AttentionTracker.register_view(sensor_id, attr_key, viewer_id)
       end)
     end
+
+    # Activate SyncComputer when viewing breathing/HRV (demand-driven)
+    if action in [:respiration, :hrv] do
+      Sensocto.Bio.SyncComputer.register_viewer()
+    end
   end
 
   defp ensure_attention_for_composite_sensors(_socket, _action), do: :ok
@@ -2751,6 +2756,11 @@ defmodule SensoctoWeb.LobbyLive do
           Sensocto.AttentionTracker.unregister_view(sensor_id, attr_key, viewer_id)
         end)
       end
+    end
+
+    # Deactivate SyncComputer when leaving breathing/HRV views
+    if action in [:respiration, :hrv] do
+      Sensocto.Bio.SyncComputer.unregister_viewer()
     end
   end
 

@@ -1,9 +1,7 @@
 defmodule SensoctoWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :sensocto
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session will be stored in the cookie, signed and encrypted.
   #
   # Extended session cookie for persistent "remember me" sessions.
   # Users stay logged in until they manually log out.
@@ -14,6 +12,7 @@ defmodule SensoctoWeb.Endpoint do
     path: "/",
     key: "_sensocto_key",
     signing_salt: "4mNzZysc",
+    encryption_salt: "k8Xp2vQe",
     same_site: "Lax",
     max_age: 315_360_000,
     http_only: true

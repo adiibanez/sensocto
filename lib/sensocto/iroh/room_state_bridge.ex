@@ -46,7 +46,9 @@ defmodule Sensocto.Iroh.RoomStateBridge do
     :room_id,
     :user_id,
     :doc_id,
-    initialized: false
+    initialized: false,
+    # When true, suppress local→CRDT propagation to avoid echo loops
+    syncing_remote: false
   ]
 
   # ============================================================================
@@ -152,9 +154,10 @@ defmodule Sensocto.Iroh.RoomStateBridge do
   end
 
   # Handle media state changes from local PubSub
+  # Skip propagation when syncing_remote is true (echo suppression)
   @impl true
   def handle_info({:media_state_changed, event_data}, state) do
-    if state.initialized do
+    if state.initialized and not state.syncing_remote do
       apply_local_media_change(state, event_data)
     end
 
@@ -163,7 +166,7 @@ defmodule Sensocto.Iroh.RoomStateBridge do
 
   @impl true
   def handle_info({:media_sync, event_data}, state) do
-    if state.initialized do
+    if state.initialized and not state.syncing_remote do
       apply_local_media_change(state, event_data)
     end
 
@@ -173,7 +176,7 @@ defmodule Sensocto.Iroh.RoomStateBridge do
   # Handle Object3D item changes
   @impl true
   def handle_info({:object3d_item_changed, event_data}, state) do
-    if state.initialized do
+    if state.initialized and not state.syncing_remote do
       apply_local_object3d_change(state, {:item_changed, event_data})
     end
 
@@ -183,11 +186,16 @@ defmodule Sensocto.Iroh.RoomStateBridge do
   # Handle Object3D camera sync
   @impl true
   def handle_info({:object3d_camera_synced, event_data}, state) do
-    if state.initialized do
+    if state.initialized and not state.syncing_remote do
       apply_local_object3d_change(state, {:camera_synced, event_data})
     end
 
     {:noreply, state}
+  end
+
+  # Sentinel: clear the syncing_remote flag after all echo messages are processed
+  def handle_info(:crdt_sync_complete, state) do
+    {:noreply, %{state | syncing_remote: false}}
   end
 
   # Handle Object3D controller changes
@@ -223,9 +231,12 @@ defmodule Sensocto.Iroh.RoomStateBridge do
   def handle_cast(:sync_crdt_to_local, state) do
     if state.initialized do
       do_sync_crdt_to_local(state)
+      # Set flag to suppress echo messages, cleared by :crdt_sync_complete sentinel
+      send(self(), :crdt_sync_complete)
+      {:noreply, %{state | syncing_remote: true}}
+    else
+      {:noreply, state}
     end
-
-    {:noreply, state}
   end
 
   @impl true
@@ -358,14 +369,56 @@ defmodule Sensocto.Iroh.RoomStateBridge do
   end
 
   defp do_sync_crdt_to_local(state) do
-    case RoomStateCRDT.get_media_state(state.room_id) do
-      {:ok, media} ->
-        # Apply remote state to local MediaPlayerServer
-        # Note: This would need coordination to avoid loops
-        # For now, just log the remote state
-        Logger.debug("[RoomStateBridge] Remote media state: #{inspect(media)}")
+    sync_crdt_media_to_local(state)
+    sync_crdt_object3d_to_local(state)
+  end
 
-      {:error, _} ->
+  defp sync_crdt_media_to_local(state) do
+    with {:ok, crdt_media} <- RoomStateCRDT.get_media_state(state.room_id),
+         {:ok, local_state} <- Sensocto.Media.MediaPlayerServer.get_state(state.room_id) do
+      crdt_playing = crdt_media["is_playing"] == true
+      local_playing = local_state.state == :playing
+
+      # Sync play/pause state if different
+      if crdt_playing and not local_playing do
+        Sensocto.Media.MediaPlayerServer.play(state.room_id, state.user_id)
+      end
+
+      if not crdt_playing and local_playing do
+        Sensocto.Media.MediaPlayerServer.pause(state.room_id, state.user_id)
+      end
+
+      # Sync position if significantly different (>2s drift)
+      crdt_position_ms = crdt_media["position_ms"]
+
+      if is_number(crdt_position_ms) do
+        crdt_position_s = crdt_position_ms / 1000.0
+        local_position_s = local_state.position_seconds || 0.0
+
+        if abs(crdt_position_s - local_position_s) > 2.0 do
+          Sensocto.Media.MediaPlayerServer.seek(
+            state.room_id,
+            crdt_position_s,
+            state.user_id
+          )
+        end
+      end
+    else
+      {:error, _} -> :ok
+    end
+  end
+
+  defp sync_crdt_object3d_to_local(state) do
+    case RoomStateCRDT.get_object3d_state(state.room_id) do
+      {:ok, crdt_obj3d} when is_map(crdt_obj3d) and map_size(crdt_obj3d) > 0 ->
+        # Broadcast CRDT object3d state to local subscribers via PubSub
+        PubSub.broadcast(
+          Sensocto.PubSub,
+          "object3d:#{state.room_id}",
+          {:object3d_remote_state, crdt_obj3d}
+        )
+
+      _ ->
         :ok
     end
   end

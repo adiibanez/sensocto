@@ -21,6 +21,7 @@ defmodule Sensocto.RoomMarkdown.GossipTopic do
   require Logger
 
   alias IrohEx.Native
+  alias Sensocto.Iroh.ConnectionManager
   alias Sensocto.RoomMarkdown.RoomDocument
 
   @topic_prefix "room:"
@@ -124,14 +125,17 @@ defmodule Sensocto.RoomMarkdown.GossipTopic do
 
   @impl true
   def handle_info(:initialize, state) do
-    case initialize_node() do
+    case ConnectionManager.get_node_ref() do
       {:ok, node_ref} ->
-        Logger.info("[GossipTopic] Initialized iroh gossip node")
+        Logger.info("[GossipTopic] Initialized using shared iroh node")
         {:noreply, %{state | node_ref: node_ref, initialized: true}}
 
+      {:error, :nif_unavailable} ->
+        Logger.warning("[GossipTopic] Iroh NIF unavailable. Gossip features disabled.")
+        {:noreply, state}
+
       {:error, reason} ->
-        Logger.warning("[GossipTopic] Failed to initialize: #{inspect(reason)}, retrying...")
-        Process.send_after(self(), :initialize, 5000)
+        Logger.error("[GossipTopic] Failed to initialize: #{inspect(reason)}")
         {:noreply, state}
     end
   end
@@ -207,29 +211,6 @@ defmodule Sensocto.RoomMarkdown.GossipTopic do
   # ============================================================================
   # Private Functions
   # ============================================================================
-
-  defp initialize_node do
-    try do
-      node_config = %IrohEx.NodeConfig{
-        is_whale_node: false,
-        active_view_capacity: 10,
-        passive_view_capacity: 10,
-        relay_urls: ["https://euw1-1.relay.iroh.network./"],
-        discovery: ["n0", "local_network"]
-      }
-
-      node_ref = Native.create_node(self(), node_config)
-
-      if is_reference(node_ref) do
-        Process.sleep(500)
-        {:ok, node_ref}
-      else
-        {:error, "Failed to create node: #{inspect(node_ref)}"}
-      end
-    rescue
-      e -> {:error, e}
-    end
-  end
 
   defp do_join(state, room_id, pid) do
     topic = topic_id(room_id)

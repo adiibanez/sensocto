@@ -66,22 +66,62 @@ defmodule Sensocto.Lenses.ThrottledLens do
   # Server Callbacks
   # ============================================================================
 
+  @doc """
+  Activate the ThrottledLens, registering it with the Router to start receiving data.
+  Call this when a client subscribes to a throttled topic.
+  """
+  def activate do
+    GenServer.call(__MODULE__, :activate)
+  end
+
+  @doc """
+  Deactivate the ThrottledLens, unregistering from the Router.
+  Call this when no more clients need throttled data.
+  """
+  def deactivate do
+    GenServer.call(__MODULE__, :deactivate)
+  end
+
   @impl true
   def init(_opts) do
     # Create ETS table for buffering - :set ensures one entry per key
     :ets.new(@table_name, [:set, :public, :named_table, read_concurrency: true])
 
-    # Register with the router to receive measurements
+    # Don't register with Router yet - demand-driven.
+    # Nobody currently subscribes to throttled topics, so this avoids
+    # processing every measurement for nothing on resource-constrained servers.
+
+    Logger.info("ThrottledLens started (demand-driven, not yet registered with Router)")
+
+    {:ok, %{active: false}}
+  end
+
+  @impl true
+  def handle_call(:activate, _from, %{active: true} = state) do
+    {:reply, :already_active, state}
+  end
+
+  def handle_call(:activate, _from, state) do
     Sensocto.Lenses.Router.register_lens(self())
 
-    # Schedule flush timers for each rate
     for {rate, config} <- @throttle_configs do
       schedule_flush(rate, config.interval_ms)
     end
 
-    Logger.info("ThrottledLens started with rates: #{inspect(Map.keys(@throttle_configs))}")
+    Logger.info("ThrottledLens: activated, registered with Router")
+    {:reply, :ok, %{state | active: true}}
+  end
 
-    {:ok, %{}}
+  @impl true
+  def handle_call(:deactivate, _from, %{active: false} = state) do
+    {:reply, :already_inactive, state}
+  end
+
+  def handle_call(:deactivate, _from, state) do
+    Sensocto.Lenses.Router.unregister_lens(self())
+    :ets.delete_all_objects(@table_name)
+    Logger.info("ThrottledLens: deactivated, unregistered from Router")
+    {:reply, :ok, %{state | active: false}}
   end
 
   # Single measurement from router - write directly to ETS (no state mutation)
@@ -154,9 +194,11 @@ defmodule Sensocto.Lenses.ThrottledLens do
   end
 
   @impl true
-  def terminate(_reason, _state) do
-    Sensocto.Lenses.Router.unregister_lens(self())
-    # ETS table is automatically cleaned up when process dies
+  def terminate(_reason, state) do
+    if state.active do
+      Sensocto.Lenses.Router.unregister_lens(self())
+    end
+
     :ok
   end
 

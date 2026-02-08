@@ -11,6 +11,10 @@ defmodule Sensocto.Lenses.Router do
   The Router listens to "data:global" for all sensor measurements and forwards
   them to active lenses. Lenses register with the Router to receive measurements.
 
+  The Router is demand-driven: it only subscribes to "data:global" when there are
+  registered lenses, and unsubscribes when the last lens unregisters. This prevents
+  unnecessary message processing when no one is viewing sensor data.
+
   This centralizes the PubSub subscription management and allows lenses to
   process data in batches before forwarding to clients.
   """
@@ -20,7 +24,7 @@ defmodule Sensocto.Lenses.Router do
 
   @global_data_topic "data:global"
 
-  defstruct [:registered_lenses]
+  defstruct [:registered_lenses, :subscribed]
 
   # ============================================================================
   # Client API
@@ -58,12 +62,10 @@ defmodule Sensocto.Lenses.Router do
 
   @impl true
   def init(_opts) do
-    # Subscribe to global data topic
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, @global_data_topic)
+    # Don't subscribe yet - wait until a lens registers (demand-driven)
+    Logger.info("LensRouter started (demand-driven, not yet subscribed to #{@global_data_topic})")
 
-    Logger.info("LensRouter started, subscribed to #{@global_data_topic}")
-
-    {:ok, %__MODULE__{registered_lenses: MapSet.new()}}
+    {:ok, %__MODULE__{registered_lenses: MapSet.new(), subscribed: false}}
   end
 
   @impl true
@@ -71,6 +73,17 @@ defmodule Sensocto.Lenses.Router do
     # Monitor the lens so we can unregister it if it dies
     Process.monitor(lens_pid)
     new_lenses = MapSet.put(state.registered_lenses, lens_pid)
+
+    # Subscribe to data:global if this is the first lens
+    state =
+      if not state.subscribed and MapSet.size(new_lenses) > 0 do
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, @global_data_topic)
+        Logger.info("LensRouter: subscribed to #{@global_data_topic} (first lens registered)")
+        %{state | subscribed: true}
+      else
+        state
+      end
+
     Logger.debug("LensRouter: registered lens #{inspect(lens_pid)}")
     {:reply, :ok, %{state | registered_lenses: new_lenses}}
   end
@@ -78,6 +91,17 @@ defmodule Sensocto.Lenses.Router do
   @impl true
   def handle_call({:unregister_lens, lens_pid}, _from, state) do
     new_lenses = MapSet.delete(state.registered_lenses, lens_pid)
+
+    # Unsubscribe from data:global if no more lenses
+    state =
+      if state.subscribed and MapSet.size(new_lenses) == 0 do
+        Phoenix.PubSub.unsubscribe(Sensocto.PubSub, @global_data_topic)
+        Logger.info("LensRouter: unsubscribed from #{@global_data_topic} (no more lenses)")
+        %{state | subscribed: false}
+      else
+        state
+      end
+
     Logger.debug("LensRouter: unregistered lens #{inspect(lens_pid)}")
     {:reply, :ok, %{state | registered_lenses: new_lenses}}
   end
@@ -115,6 +139,17 @@ defmodule Sensocto.Lenses.Router do
   @impl true
   def handle_info({:DOWN, _ref, :process, lens_pid, _reason}, state) do
     new_lenses = MapSet.delete(state.registered_lenses, lens_pid)
+
+    # Unsubscribe from data:global if no more lenses
+    state =
+      if state.subscribed and MapSet.size(new_lenses) == 0 do
+        Phoenix.PubSub.unsubscribe(Sensocto.PubSub, @global_data_topic)
+        Logger.info("LensRouter: unsubscribed from #{@global_data_topic} (last lens died)")
+        %{state | subscribed: false}
+      else
+        state
+      end
+
     Logger.debug("LensRouter: lens #{inspect(lens_pid)} died, unregistering")
     {:noreply, %{state | registered_lenses: new_lenses}}
   end

@@ -176,7 +176,10 @@ defmodule Bridge do
   end
 
   defp decode(":" <> name) do
-    String.to_atom(name)
+    case Sensocto.Types.SafeKeys.safe_bridge_atom(name) do
+      {:ok, atom} -> atom
+      {:error, :unknown_atom} -> name
+    end
   end
 
   defp decode(map) when is_map(map) do

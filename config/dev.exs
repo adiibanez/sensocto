@@ -187,6 +187,7 @@ config :ash_authentication, debug_authentication_failures?: true
 # Enable dev routes for dashboard and mailbox
 config :sensocto,
   dev_routes: true,
+  allow_missing_token: true,
   token_signing_secret: System.get_env("DEV_TOKEN_SIGNING_SECRET", "dev_only_token_secret")
 
 # Set a higher stacktrace during development. Avoid configuring such

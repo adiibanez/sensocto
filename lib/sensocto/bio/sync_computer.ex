@@ -2,12 +2,14 @@ defmodule Sensocto.Bio.SyncComputer do
   @moduledoc """
   Kuramoto phase synchronization computer for breathing and HRV sensors.
 
-  Runs continuously regardless of viewers, computing phase sync metrics
-  and storing them in AttributeStoreTiered for later retrieval.
+  Demand-driven: only subscribes to sensor data and computes sync when there
+  are active viewers (via `register_viewer/0` / `unregister_viewer/0`).
+  When no viewers are present, the system is idle to conserve resources on
+  constrained environments like shared-CPU Fly.dev instances.
 
   Subscribes to per-sensor `data:{sensor_id}` PubSub topics (which always
-  broadcast, bypassing attention gating) to ensure sync is computed even
-  when no LiveView is watching.
+  broadcast, bypassing attention gating) to compute sync even for sensors
+  that no individual viewer has focused.
 
   ## Algorithm
 
@@ -50,7 +52,9 @@ defmodule Sensocto.Bio.SyncComputer do
   defstruct tracked_sensors: MapSet.new(),
             phase_buffers: %{breathing: %{}, hrv: %{}},
             smoothed: %{breathing: 0.0, hrv: 0.0, rsa: 0.0},
-            pending_checks: MapSet.new()
+            pending_checks: MapSet.new(),
+            viewer_count: 0,
+            active: false
 
   # --- Client API ---
 
@@ -58,7 +62,7 @@ defmodule Sensocto.Bio.SyncComputer do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  def get_sync(group) when group in [:breathing, :hrv] do
+  def get_sync(group) when group in [:breathing, :hrv, :rsa] do
     GenServer.call(__MODULE__, {:get_sync, group})
   end
 
@@ -70,45 +74,116 @@ defmodule Sensocto.Bio.SyncComputer do
     GenServer.call(__MODULE__, :tracked_sensor_count)
   end
 
+  @doc """
+  Register a viewer. When viewer count goes from 0 to 1, the SyncComputer
+  activates: discovers sensors and subscribes to their data topics.
+  """
+  def register_viewer do
+    GenServer.call(__MODULE__, :register_viewer)
+  end
+
+  @doc """
+  Unregister a viewer. When viewer count drops to 0, the SyncComputer
+  deactivates: unsubscribes from all sensor data topics to conserve resources.
+  Buffers and smoothed values are preserved for fast reactivation.
+  """
+  def unregister_viewer do
+    GenServer.cast(__MODULE__, :unregister_viewer)
+  end
+
   # --- Server Callbacks ---
 
   @impl true
   def init(_opts) do
+    # Always listen for sensor discovery events (low frequency)
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "discovery:sensors")
 
-    # Discover existing sensors (delayed to allow system startup)
-    Process.send_after(self(), :discover_existing_sensors, 500)
+    # Don't discover/subscribe to sensors yet — demand-driven.
+    # Wait for register_viewer to activate.
 
-    # Schedule periodic cleanup
-    Process.send_after(self(), :cleanup_stale_sensors, @cleanup_interval)
-
-    Logger.info("[Bio.SyncComputer] Started")
+    Logger.info("[Bio.SyncComputer] Started (demand-driven, idle until viewers register)")
     {:ok, %__MODULE__{}}
+  end
+
+  # --- GenServer Calls ---
+
+  @impl true
+  def handle_call(:register_viewer, _from, state) do
+    new_count = state.viewer_count + 1
+
+    state =
+      if state.viewer_count == 0 and new_count > 0 do
+        Logger.info("[Bio.SyncComputer] Activating (first viewer registered)")
+        activate(state)
+      else
+        state
+      end
+
+    {:reply, :ok, %{state | viewer_count: new_count}}
+  end
+
+  def handle_call({:get_sync, group}, _from, state) do
+    {:reply, Map.get(state.smoothed, group, 0.0), state}
+  end
+
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_call(:tracked_sensor_count, _from, state) do
+    {:reply, MapSet.size(state.tracked_sensors), state}
+  end
+
+  # --- Viewer Management (cast) ---
+
+  @impl true
+  def handle_cast(:unregister_viewer, state) do
+    new_count = max(0, state.viewer_count - 1)
+
+    state =
+      if state.viewer_count > 0 and new_count == 0 do
+        Logger.info("[Bio.SyncComputer] Deactivating (no more viewers)")
+        deactivate(state)
+      else
+        state
+      end
+
+    {:noreply, %{state | viewer_count: new_count}}
   end
 
   # --- Sensor Discovery ---
 
   @impl true
   def handle_info(:discover_existing_sensors, state) do
-    sensor_ids =
-      try do
-        Sensocto.SensorsDynamicSupervisor.get_device_names()
-      catch
-        :exit, _ -> []
-      end
+    # Only discover if active
+    if not state.active do
+      {:noreply, state}
+    else
+      sensor_ids =
+        try do
+          Sensocto.SensorsDynamicSupervisor.get_device_names()
+        catch
+          :exit, _ -> []
+        end
 
-    Logger.info("[Bio.SyncComputer] Discovering #{length(sensor_ids)} existing sensors")
-    pending = Enum.reduce(sensor_ids, state.pending_checks, &MapSet.put(&2, &1))
-    Process.send_after(self(), :check_pending, @attribute_discovery_delay_ms)
-    {:noreply, %{state | pending_checks: pending}}
+      Logger.info("[Bio.SyncComputer] Discovering #{length(sensor_ids)} existing sensors")
+      pending = Enum.reduce(sensor_ids, state.pending_checks, &MapSet.put(&2, &1))
+      Process.send_after(self(), :check_pending, @attribute_discovery_delay_ms)
+      {:noreply, %{state | pending_checks: pending}}
+    end
   end
 
   @impl true
   def handle_info({:sensor_registered, sensor_id, _view_state, _node}, state) do
-    pending = MapSet.put(state.pending_checks, sensor_id)
-    # Delay to let attributes auto-register on first data
-    Process.send_after(self(), :check_pending, @attribute_discovery_delay_ms)
-    {:noreply, %{state | pending_checks: pending}}
+    # Only track new sensors if active
+    if not state.active do
+      {:noreply, state}
+    else
+      pending = MapSet.put(state.pending_checks, sensor_id)
+      # Delay to let attributes auto-register on first data
+      Process.send_after(self(), :check_pending, @attribute_discovery_delay_ms)
+      {:noreply, %{state | pending_checks: pending}}
+    end
   end
 
   @impl true
@@ -116,7 +191,10 @@ defmodule Sensocto.Bio.SyncComputer do
     state =
       if MapSet.member?(state.tracked_sensors, sensor_id) do
         Logger.debug("[Bio.SyncComputer] Sensor unregistered: #{sensor_id}")
-        Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:#{sensor_id}")
+
+        if state.active do
+          Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:#{sensor_id}")
+        end
 
         %{
           state
@@ -140,57 +218,62 @@ defmodule Sensocto.Bio.SyncComputer do
 
   @impl true
   def handle_info(:check_pending, state) do
-    to_check =
-      state.pending_checks
-      |> MapSet.difference(state.tracked_sensors)
-      |> MapSet.to_list()
-
-    if to_check == [] do
-      {:noreply, %{state | pending_checks: MapSet.new()}}
+    # Skip if not active
+    if not state.active do
+      {:noreply, state}
     else
-      # Check attributes in parallel using Task.async_stream (non-blocking)
-      results =
-        to_check
-        |> Task.async_stream(
-          fn sensor_id ->
-            has_relevant =
-              try do
-                case Sensocto.SimpleSensor.get_state(sensor_id, 1) do
-                  %{attributes: attrs} when is_map(attrs) ->
-                    Enum.any?(Map.keys(attrs), fn key ->
-                      key in ["respiration", "hrv"]
-                    end)
+      to_check =
+        state.pending_checks
+        |> MapSet.difference(state.tracked_sensors)
+        |> MapSet.to_list()
 
-                  _ ->
-                    false
+      if to_check == [] do
+        {:noreply, %{state | pending_checks: MapSet.new()}}
+      else
+        # Check attributes in parallel using Task.async_stream (non-blocking)
+        results =
+          to_check
+          |> Task.async_stream(
+            fn sensor_id ->
+              has_relevant =
+                try do
+                  case Sensocto.SimpleSensor.get_state(sensor_id, 1) do
+                    %{attributes: attrs} when is_map(attrs) ->
+                      Enum.any?(Map.keys(attrs), fn key ->
+                        key in ["respiration", "hrv"]
+                      end)
+
+                    _ ->
+                      false
+                  end
+                catch
+                  :exit, _ -> false
                 end
-              catch
-                :exit, _ -> false
-              end
 
-            {sensor_id, has_relevant}
-          end,
-          max_concurrency: 10,
-          timeout: 5_000,
-          on_timeout: :kill_task
-        )
-        |> Enum.flat_map(fn
-          {:ok, {sensor_id, true}} -> [sensor_id]
-          _ -> []
+              {sensor_id, has_relevant}
+            end,
+            max_concurrency: 10,
+            timeout: 5_000,
+            on_timeout: :kill_task
+          )
+          |> Enum.flat_map(fn
+            {:ok, {sensor_id, true}} -> [sensor_id]
+            _ -> []
+          end)
+
+        Enum.each(results, fn sensor_id ->
+          Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
         end)
 
-      Enum.each(results, fn sensor_id ->
-        Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:#{sensor_id}")
-      end)
+        if results != [] do
+          Logger.info(
+            "[Bio.SyncComputer] Tracking #{length(results)} sensors: #{Enum.join(results, ", ")}"
+          )
+        end
 
-      if results != [] do
-        Logger.info(
-          "[Bio.SyncComputer] Tracking #{length(results)} sensors: #{Enum.join(results, ", ")}"
-        )
+        tracked = Enum.reduce(results, state.tracked_sensors, &MapSet.put(&2, &1))
+        {:noreply, %{state | tracked_sensors: tracked, pending_checks: MapSet.new()}}
       end
-
-      tracked = Enum.reduce(results, state.tracked_sensors, &MapSet.put(&2, &1))
-      {:noreply, %{state | tracked_sensors: tracked, pending_checks: MapSet.new()}}
     end
   end
 
@@ -261,34 +344,38 @@ defmodule Sensocto.Bio.SyncComputer do
 
   @impl true
   def handle_info(:cleanup_stale_sensors, state) do
-    stale =
-      state.tracked_sensors
-      |> Enum.reject(fn sensor_id ->
-        try do
-          Sensocto.SimpleSensor.alive?(sensor_id)
-        catch
-          :exit, _ -> false
-        end
-      end)
-
     state =
-      if stale != [] do
-        Logger.info("[Bio.SyncComputer] Cleaning up #{length(stale)} stale sensors")
+      if state.active do
+        stale =
+          state.tracked_sensors
+          |> Enum.reject(fn sensor_id ->
+            try do
+              Sensocto.SimpleSensor.alive?(sensor_id)
+            catch
+              :exit, _ -> false
+            end
+          end)
 
-        Enum.each(stale, fn sensor_id ->
-          Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:#{sensor_id}")
-        end)
+        if stale != [] do
+          Logger.info("[Bio.SyncComputer] Cleaning up #{length(stale)} stale sensors")
 
-        stale_set = MapSet.new(stale)
+          Enum.each(stale, fn sensor_id ->
+            Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:#{sensor_id}")
+          end)
 
-        %{
+          stale_set = MapSet.new(stale)
+
+          %{
+            state
+            | tracked_sensors: MapSet.difference(state.tracked_sensors, stale_set),
+              phase_buffers: %{
+                breathing: Map.drop(state.phase_buffers.breathing, stale),
+                hrv: Map.drop(state.phase_buffers.hrv, stale)
+              }
+          }
+        else
           state
-          | tracked_sensors: MapSet.difference(state.tracked_sensors, stale_set),
-            phase_buffers: %{
-              breathing: Map.drop(state.phase_buffers.breathing, stale),
-              hrv: Map.drop(state.phase_buffers.hrv, stale)
-            }
-        }
+        end
       else
         state
       end
@@ -299,7 +386,8 @@ defmodule Sensocto.Bio.SyncComputer do
     Logger.info(
       "[Bio.SyncComputer] Status: #{MapSet.size(state.tracked_sensors)} sensors tracked " <>
         "(#{breathing_count} breathing, #{hrv_count} HRV), " <>
-        "sync: breathing=#{round(state.smoothed.breathing * 100)}%, hrv=#{round(state.smoothed.hrv * 100)}%"
+        "sync: breathing=#{round(state.smoothed.breathing * 100)}%, hrv=#{round(state.smoothed.hrv * 100)}%, rsa=#{round(Map.get(state.smoothed, :rsa, 0.0) * 100)}%, " <>
+        "viewers: #{state.viewer_count}, active: #{state.active}"
     )
 
     Process.send_after(self(), :cleanup_stale_sensors, @cleanup_interval)
@@ -310,21 +398,31 @@ defmodule Sensocto.Bio.SyncComputer do
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
 
-  # --- GenServer Calls ---
+  # --- Activation / Deactivation ---
 
-  @impl true
-  def handle_call({:get_sync, group}, _from, state) do
-    {:reply, Map.get(state.smoothed, group, 0.0), state}
+  defp activate(state) do
+    # Discover and subscribe to sensors
+    Process.send_after(self(), :discover_existing_sensors, 200)
+
+    # Schedule periodic cleanup
+    Process.send_after(self(), :cleanup_stale_sensors, @cleanup_interval)
+
+    %{state | active: true}
   end
 
-  @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
-  end
+  defp deactivate(state) do
+    # Unsubscribe from all tracked sensor data topics
+    Enum.each(state.tracked_sensors, fn sensor_id ->
+      Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "data:#{sensor_id}")
+    end)
 
-  @impl true
-  def handle_call(:tracked_sensor_count, _from, state) do
-    {:reply, MapSet.size(state.tracked_sensors), state}
+    Logger.info(
+      "[Bio.SyncComputer] Unsubscribed from #{MapSet.size(state.tracked_sensors)} sensor topics"
+    )
+
+    # Keep tracked_sensors and buffers for fast reactivation
+    # (if a viewer comes back quickly, we don't lose the buffer state)
+    %{state | active: false}
   end
 
   # --- Private Helpers ---

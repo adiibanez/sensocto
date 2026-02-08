@@ -487,11 +487,18 @@ defmodule SensoctoWeb.SensorDataChannel do
         Logger.warning("Authorization failed: empty bearer_token for sensor #{sensor_id}")
         false
 
-      # Allow "missing" token for development/guest access
-      # TODO: Consider adding a config flag to disable this in production
+      # Allow "missing" token only in development
       "missing" ->
-        Logger.debug("Authorization allowed: guest/development access for sensor #{sensor_id}")
-        true
+        if Application.get_env(:sensocto, :allow_missing_token, false) do
+          Logger.debug("Authorization allowed: development access for sensor #{sensor_id}")
+          true
+        else
+          Logger.warning(
+            "Authorization rejected: missing token not allowed in this environment for sensor #{sensor_id}"
+          )
+
+          false
+        end
 
       # Guest token format: "guest:<guest_id>:<token>"
       "guest:" <> rest ->
@@ -511,9 +518,14 @@ defmodule SensoctoWeb.SensorDataChannel do
     case String.split(token_string, ":", parts: 2) do
       [guest_id, token] ->
         case Sensocto.Accounts.GuestUserStore.get_guest(guest_id) do
-          {:ok, guest} when guest.token == token ->
-            Logger.debug("Guest authorization successful for sensor #{sensor_id}")
-            true
+          {:ok, guest} ->
+            if Plug.Crypto.secure_compare(guest.token, token) do
+              Logger.debug("Guest authorization successful for sensor #{sensor_id}")
+              true
+            else
+              Logger.warning("Guest authorization failed for sensor #{sensor_id}")
+              false
+            end
 
           _ ->
             Logger.warning("Guest authorization failed for sensor #{sensor_id}")

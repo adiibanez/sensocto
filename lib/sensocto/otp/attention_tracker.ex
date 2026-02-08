@@ -67,10 +67,26 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @doc """
+  Register views for multiple sensors in a single cast.
+  Avoids the thundering herd of N individual casts when opening views
+  like the graph that subscribe to all sensors at once.
+  """
+  def register_views_bulk(sensor_ids, attribute_id, user_id) when is_list(sensor_ids) do
+    GenServer.cast(__MODULE__, {:register_views_bulk, sensor_ids, attribute_id, user_id})
+  end
+
+  @doc """
   Unregister that a user is no longer viewing an attribute.
   """
   def unregister_view(sensor_id, attribute_id, user_id) do
     GenServer.cast(__MODULE__, {:unregister_view, sensor_id, attribute_id, user_id})
+  end
+
+  @doc """
+  Unregister views for multiple sensors in a single cast.
+  """
+  def unregister_views_bulk(sensor_ids, attribute_id, user_id) when is_list(sensor_ids) do
+    GenServer.cast(__MODULE__, {:unregister_views_bulk, sensor_ids, attribute_id, user_id})
   end
 
   @doc """
@@ -284,16 +300,21 @@ defmodule Sensocto.AttentionTracker do
     # Get biomimetic factors (with safe fallbacks)
     bio_factors = get_bio_factors(sensor_id, attribute_id)
 
+    # Combined bio multiplier with inhibitory ceiling to prevent runaway
+    # excitation (all factors < 1.0 → flood) or inhibition (all > 1.0 → starve)
+    combined_bio =
+      (bio_factors.novelty * bio_factors.predictive * bio_factors.competitive *
+         bio_factors.circadian)
+      |> max(0.3)
+      |> min(3.0)
+
     # Apply all multipliers
     adjusted =
       trunc(
         base_window *
           config.window_multiplier *
           load_multiplier *
-          bio_factors.novelty *
-          bio_factors.predictive *
-          bio_factors.competitive *
-          bio_factors.circadian
+          combined_bio
       )
 
     max(config.min_window, min(adjusted, config.max_window))
@@ -378,12 +399,14 @@ defmodule Sensocto.AttentionTracker do
 
   @impl true
   def init(_opts) do
-    # Create ETS tables for fast concurrent reads
-    :ets.new(@attention_levels_table, [:named_table, :public, read_concurrency: true])
-    :ets.new(@attention_config_table, [:named_table, :public, read_concurrency: true])
-    :ets.new(@sensor_attention_table, [:named_table, :public, read_concurrency: true])
+    # Tables are owned by AttentionTracker.TableOwner (survives tracker crashes).
+    # Clear any stale data from a previous tracker instance, then populate config.
+    :ets.delete_all_objects(@attention_levels_table)
+    :ets.delete_all_objects(@sensor_attention_table)
 
-    # Pre-populate config table (static values)
+    # Re-populate config table (static values, idempotent)
+    :ets.delete_all_objects(@attention_config_table)
+
     for {level, config} <- @attention_config do
       :ets.insert(@attention_config_table, {level, config})
     end
@@ -413,9 +436,33 @@ defmodule Sensocto.AttentionTracker do
   end
 
   @impl true
+  def handle_cast({:register_views_bulk, sensor_ids, attribute_id, user_id}, state) do
+    new_state =
+      Enum.reduce(sensor_ids, state, fn sensor_id, acc ->
+        updated = update_attention(acc, sensor_id, attribute_id, user_id, :add_viewer)
+        maybe_broadcast_change(acc, updated, sensor_id, attribute_id)
+        updated
+      end)
+
+    {:noreply, new_state}
+  end
+
+  @impl true
   def handle_cast({:unregister_view, sensor_id, attribute_id, user_id}, state) do
     new_state = update_attention(state, sensor_id, attribute_id, user_id, :remove_viewer)
     maybe_broadcast_change(state, new_state, sensor_id, attribute_id)
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast({:unregister_views_bulk, sensor_ids, attribute_id, user_id}, state) do
+    new_state =
+      Enum.reduce(sensor_ids, state, fn sensor_id, acc ->
+        updated = update_attention(acc, sensor_id, attribute_id, user_id, :remove_viewer)
+        maybe_broadcast_change(acc, updated, sensor_id, attribute_id)
+        updated
+      end)
+
     {:noreply, new_state}
   end
 

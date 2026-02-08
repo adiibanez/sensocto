@@ -8,6 +8,12 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   - `:open` - Failures exceeded threshold, calls rejected immediately
   - `:half_open` - Timeout elapsed, one probe call allowed
 
+  ## Failure Decay
+
+  Failures decay over time with a configurable half-life (default 60s).
+  This prevents old failures from permanently degrading a breaker:
+  4 failures from 2 minutes ago + 1 new failure = ~2 effective failures, not 5.
+
   ## Usage
 
       case CircuitBreaker.call(:iroh_nif, fn -> expensive_nif_call() end) do
@@ -18,6 +24,9 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   """
 
   @table :circuit_breakers
+
+  # Failures halve every 60 seconds
+  @decay_half_life_ms 60_000
 
   @type breaker_name :: atom()
   @type state :: :closed | :open | :half_open
@@ -57,13 +66,13 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   @spec get_state(breaker_name()) :: state()
   def get_state(name) do
     case :ets.lookup(@table, name) do
-      [{^name, :open, _failures, _threshold, timeout_ms, opened_at}]
+      [{^name, :open, _failures, _threshold, timeout_ms, opened_at, _last_failure_at}]
       when is_integer(opened_at) ->
         if System.monotonic_time(:millisecond) - opened_at >= timeout_ms,
           do: :half_open,
           else: :open
 
-      [{^name, breaker_state, _failures, _threshold, _timeout_ms, _opened_at}] ->
+      [{^name, breaker_state, _failures, _threshold, _timeout_ms, _opened_at, _last_failure_at}] ->
         breaker_state
 
       [] ->
@@ -79,8 +88,8 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   @spec reset(breaker_name()) :: :ok
   def reset(name) do
     case :ets.lookup(@table, name) do
-      [{^name, _state, _failures, threshold, timeout_ms, _opened_at}] ->
-        :ets.insert(@table, {name, :closed, 0, threshold, timeout_ms, nil})
+      [{^name, _state, _failures, threshold, timeout_ms, _opened_at, _last_failure_at}] ->
+        :ets.insert(@table, {name, :closed, 0, threshold, timeout_ms, nil, nil})
         :ok
 
       [] ->
@@ -96,7 +105,8 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   @spec get_all_states() :: %{breaker_name() => state()}
   def get_all_states do
     :ets.tab2list(@table)
-    |> Enum.map(fn {name, _state, _failures, _threshold, _timeout_ms, _opened_at} ->
+    |> Enum.map(fn {name, _state, _failures, _threshold, _timeout_ms, _opened_at,
+                    _last_failure_at} ->
       {name, get_state(name)}
     end)
     |> Map.new()
@@ -106,16 +116,16 @@ defmodule Sensocto.Resilience.CircuitBreaker do
 
   @doc false
   def register(name, threshold, timeout_ms) do
-    :ets.insert(@table, {name, :closed, 0, threshold, timeout_ms, nil})
+    :ets.insert(@table, {name, :closed, 0, threshold, timeout_ms, nil, nil})
   end
 
   # -- Internal --
 
   defp record_success(name) do
     case :ets.lookup(@table, name) do
-      [{^name, state, _failures, threshold, timeout_ms, _opened_at}]
+      [{^name, state, _failures, threshold, timeout_ms, _opened_at, _last_failure_at}]
       when state in [:half_open, :closed] ->
-        :ets.insert(@table, {name, :closed, 0, threshold, timeout_ms, nil})
+        :ets.insert(@table, {name, :closed, 0, threshold, timeout_ms, nil, nil})
 
       _ ->
         :ok
@@ -125,25 +135,21 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   end
 
   defp record_failure(name) do
-    case :ets.lookup(@table, name) do
-      [{^name, :half_open, _failures, threshold, timeout_ms, _opened_at}] ->
-        # Probe failed, go back to open
-        :ets.insert(
-          @table,
-          {name, :open, threshold, threshold, timeout_ms, System.monotonic_time(:millisecond)}
-        )
+    now = System.monotonic_time(:millisecond)
 
-      [{^name, :closed, failures, threshold, timeout_ms, _opened_at}] ->
-        new_failures = failures + 1
+    case :ets.lookup(@table, name) do
+      [{^name, :half_open, _failures, threshold, timeout_ms, _opened_at, _last_failure_at}] ->
+        # Probe failed, go back to open
+        :ets.insert(@table, {name, :open, threshold, threshold, timeout_ms, now, now})
+
+      [{^name, :closed, failures, threshold, timeout_ms, _opened_at, last_failure_at}] ->
+        decayed = decay_failures(failures, last_failure_at, now)
+        new_failures = decayed + 1
 
         if new_failures >= threshold do
-          :ets.insert(
-            @table,
-            {name, :open, new_failures, threshold, timeout_ms,
-             System.monotonic_time(:millisecond)}
-          )
+          :ets.insert(@table, {name, :open, new_failures, threshold, timeout_ms, now, now})
         else
-          :ets.insert(@table, {name, :closed, new_failures, threshold, timeout_ms, nil})
+          :ets.insert(@table, {name, :closed, new_failures, threshold, timeout_ms, nil, now})
         end
 
       _ ->
@@ -152,4 +158,13 @@ defmodule Sensocto.Resilience.CircuitBreaker do
   rescue
     ArgumentError -> :ok
   end
+
+  defp decay_failures(_failures, nil, _now), do: 0
+
+  defp decay_failures(failures, last_failure_at, now) when failures > 0 do
+    elapsed = now - last_failure_at
+    (failures * :math.pow(0.5, elapsed / @decay_half_life_ms)) |> trunc()
+  end
+
+  defp decay_failures(_failures, _last_failure_at, _now), do: 0
 end

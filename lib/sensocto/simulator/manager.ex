@@ -15,13 +15,14 @@ defmodule Sensocto.Simulator.Manager do
   @hydration_delay_ms 5_000
   @sync_debounce_ms 500
 
-  defstruct [:connectors, :config_path, :running_scenarios, :available_scenarios]
+  defstruct [:connectors, :config_path, :running_scenarios, :available_scenarios, :startup_phase]
 
   @type t :: %__MODULE__{
           connectors: map(),
           config_path: String.t(),
           running_scenarios: map(),
-          available_scenarios: list(map())
+          available_scenarios: list(map()),
+          startup_phase: :ready | :loading_config | :starting_connectors
         }
 
   # Client API
@@ -152,15 +153,30 @@ defmodule Sensocto.Simulator.Manager do
 
   # Server Callbacks
 
+  @doc """
+  Check whether the Manager has finished initial startup.
+  Returns the current startup phase: :ready, :loading_config, or :starting_connectors.
+  """
+  def startup_phase do
+    GenServer.call(__MODULE__, :startup_phase)
+  catch
+    :exit, _ -> :loading_config
+  end
+
   @impl true
   def init(config_path) do
-    # Defer scenario discovery to avoid blocking startup with filesystem I/O
     state = %__MODULE__{
       connectors: %{},
       config_path: config_path,
       running_scenarios: %{},
-      available_scenarios: []
+      available_scenarios: [],
+      startup_phase: :loading_config
     }
+
+    # Non-blocking: send to self so the mailbox remains responsive during startup.
+    # This is the key difference from the old {:continue, :load_config} approach —
+    # GenServer.call messages can be processed even while config is loading.
+    send(self(), :load_config)
 
     # Schedule scenario discovery (filesystem I/O) after init
     Process.send_after(self(), :discover_scenarios, 1_000)
@@ -168,13 +184,12 @@ defmodule Sensocto.Simulator.Manager do
     # Schedule hydration from PostgreSQL after discovery completes
     Process.send_after(self(), :hydrate_from_postgres, @hydration_delay_ms)
 
-    {:ok, state, {:continue, :load_config}}
+    {:ok, state}
   end
 
   @impl true
-  def handle_continue(:load_config, state) do
-    new_state = load_config(state)
-    {:noreply, new_state}
+  def handle_call(:startup_phase, _from, state) do
+    {:reply, state.startup_phase, state}
   end
 
   @impl true
@@ -209,11 +224,7 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_call(:start_all, _from, state) do
-    new_state =
-      Enum.reduce(state.connectors, state, fn {connector_id, config}, acc ->
-        start_or_update_connector(acc, connector_id, config)
-      end)
-
+    new_state = start_connectors_parallel(state, state.connectors)
     {:reply, :ok, new_state}
   end
 
@@ -406,6 +417,13 @@ defmodule Sensocto.Simulator.Manager do
     end
   end
 
+  # Async config loading — non-blocking, keeps mailbox responsive
+  @impl true
+  def handle_info(:load_config, state) do
+    new_state = load_config(%{state | startup_phase: :loading_config})
+    {:noreply, %{new_state | startup_phase: :ready}}
+  end
+
   # Handle async scenario discovery
   @impl true
   def handle_info(:discover_scenarios, state) do
@@ -533,13 +551,8 @@ defmodule Sensocto.Simulator.Manager do
     autostart = Keyword.get(simulator_config, :autostart, true)
 
     if autostart do
-      # Start/Update connectors
-      Enum.reduce(new_connectors_config, %{state | connectors: %{}}, fn {connector_id,
-                                                                         connector_config},
-                                                                        acc ->
-        connector_config = Map.put(connector_config, "connector_id", connector_id)
-        start_or_update_connector(acc, connector_id, connector_config)
-      end)
+      state = %{state | connectors: %{}, startup_phase: :starting_connectors}
+      start_connectors_parallel(state, new_connectors_config)
     else
       # Just store config without starting - connectors can be started manually
       Logger.debug("Autostart disabled - connectors loaded but not started")
@@ -551,6 +564,65 @@ defmodule Sensocto.Simulator.Manager do
 
       %{state | connectors: new_connectors}
     end
+  end
+
+  # Start all connectors in parallel using Task.async_stream.
+  # Each connector start is independent, so we can fire them all concurrently.
+  # Individual failures are logged and skipped — one bad connector doesn't block the rest.
+  defp start_connectors_parallel(state, connectors_config) do
+    connector_list =
+      Enum.map(connectors_config, fn {connector_id, connector_config} ->
+        {connector_id, Map.put(connector_config, "connector_id", connector_id)}
+      end)
+
+    results =
+      connector_list
+      |> Task.async_stream(
+        fn {connector_id, connector_config} ->
+          try do
+            case DynamicSupervisor.start_child(
+                   Sensocto.Simulator.ConnectorSupervisor,
+                   {Sensocto.Simulator.ConnectorServer, connector_config}
+                 ) do
+              {:ok, _pid} ->
+                Logger.debug("Started simulator connector: #{connector_id}")
+                {:ok, connector_id, connector_config}
+
+              {:error, {:already_started, _}} ->
+                GenServer.cast(via_tuple(connector_id), {:update_config, connector_config})
+                {:ok, connector_id, connector_config}
+
+              {:error, reason} ->
+                Logger.error("Failed to start connector #{connector_id}: #{inspect(reason)}")
+                {:error, connector_id, connector_config}
+            end
+          rescue
+            e ->
+              Logger.error(
+                "Exception starting connector #{connector_id}: #{Exception.message(e)}"
+              )
+
+              {:error, connector_id, connector_config}
+          end
+        end,
+        max_concurrency: System.schedulers_online(),
+        timeout: 30_000,
+        on_timeout: :kill_task
+      )
+      |> Enum.reduce(%{}, fn
+        {:ok, {:ok, connector_id, config}}, acc ->
+          Map.put(acc, connector_id, config)
+
+        {:ok, {:error, connector_id, config}}, acc ->
+          # Store config even if start failed — allows manual retry from UI
+          Map.put(acc, connector_id, config)
+
+        {:exit, reason}, acc ->
+          Logger.error("Connector start task exited: #{inspect(reason)}")
+          acc
+      end)
+
+    %{state | connectors: results}
   end
 
   defp start_or_update_connector(state, connector_id, connector_config) do
@@ -656,14 +728,8 @@ defmodule Sensocto.Simulator.Manager do
     new_connectors_config = config["connectors"] || %{}
     connector_ids = Map.keys(new_connectors_config)
 
-    # Always auto-start connectors when a scenario is explicitly started
-    # The global autostart setting only applies to initial config load (simulators.yaml),
-    # not to explicit scenario starts via the UI
-    new_state =
-      Enum.reduce(new_connectors_config, state, fn {connector_id, connector_config}, acc ->
-        connector_config = Map.put(connector_config, "connector_id", connector_id)
-        start_or_update_connector(acc, connector_id, connector_config)
-      end)
+    # Start connectors in parallel — same resilient path used by initial config load
+    new_state = start_connectors_parallel(state, new_connectors_config)
 
     # Track the running scenario
     scenario_info = %{

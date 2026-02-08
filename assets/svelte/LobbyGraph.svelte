@@ -71,6 +71,115 @@
   let recordingCanvas: HTMLCanvasElement | null = null;
   let graphRoot: HTMLDivElement;
 
+  // Plasma crackle sound engine — electrical discharge / Knistern
+  let soundEnabled = $state(false);
+  let audioCtx: AudioContext | null = null;
+  let lastSoundTime = 0;
+  // ~6.7 events/sec — cortical theta window (150-300ms), proven
+  // sonification IOI range. Each crackle is perceptually discrete
+  // before the ~10Hz flutter/fusion threshold.
+  const SOUND_DEBOUNCE_MS = 150;
+  let noiseBuffer: AudioBuffer | null = null;
+
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+    if (!noiseBuffer) {
+      const len = Math.ceil(audioCtx.sampleRate * 0.05);
+      noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+    }
+    return audioCtx;
+  }
+
+  function playCrackle() {
+    if (!soundEnabled) return;
+
+    const now = performance.now();
+    if (now - lastSoundTime < SOUND_DEBOUNCE_MS) return;
+    lastSoundTime = now;
+
+    const ctx = ensureAudioCtx();
+    const t = ctx.currentTime;
+
+    const duration = 0.004 + Math.random() * 0.014;
+    const volume = 0.04 + Math.random() * 0.08;
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer!;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2500 + Math.random() * 5500;
+    bp.Q.value = 0.8 + Math.random() * 2.5;
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 800 + Math.random() * 1200;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+    noise.connect(bp);
+    bp.connect(hp);
+    hp.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(t, Math.random() * 0.03, duration + 0.01);
+
+    if (Math.random() < 0.25) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      const startFreq = 2000 + Math.random() * 5000;
+      osc.frequency.setValueAtTime(startFreq, t);
+      osc.frequency.exponentialRampToValueAtTime(150 + Math.random() * 300, t + 0.012);
+
+      const oscGain = ctx.createGain();
+      oscGain.gain.setValueAtTime(volume * 0.35, t);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
+
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.015);
+    }
+
+    if (Math.random() < 0.15) {
+      const noise2 = ctx.createBufferSource();
+      noise2.buffer = noiseBuffer!;
+
+      const bp2 = ctx.createBiquadFilter();
+      bp2.type = "bandpass";
+      bp2.frequency.value = 4000 + Math.random() * 4000;
+      bp2.Q.value = 1 + Math.random() * 3;
+
+      const gain2 = ctx.createGain();
+      const d2 = 0.002 + Math.random() * 0.006;
+      gain2.gain.setValueAtTime(volume * 0.6, t + 0.005);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.005 + d2);
+
+      noise2.connect(bp2);
+      bp2.connect(gain2);
+      gain2.connect(ctx.destination);
+      noise2.start(t + 0.005, Math.random() * 0.03, d2 + 0.01);
+    }
+  }
+
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    if (soundEnabled) {
+      ensureAudioCtx();
+    }
+  }
+
   // Set of nodes to highlight (hovered node + all connected neighbors)
   let highlightedNodes = new Set<string>();
 
@@ -339,7 +448,7 @@
         }
         return {
           ...data,
-          color: "rgba(55, 65, 81, 0.2)",
+          color: "rgba(55, 65, 81, 0.4)",
           zIndex: 0
         };
       }
@@ -492,6 +601,11 @@
         ctx.drawImage(canvas, 0, 0, width, height);
       });
 
+      // Composite glow overlay
+      if (glowCanvas && glowCanvas.width > 0) {
+        ctx.drawImage(glowCanvas, 0, 0, width, height);
+      }
+
       const mimeType = exportFormat === "jpeg" ? "image/jpeg" : "image/png";
       const quality = exportFormat === "jpeg" ? 0.95 : undefined;
 
@@ -542,6 +656,10 @@
       canvases.forEach(c => {
         ctx.drawImage(c, 0, 0, recordingCanvas!.width, recordingCanvas!.height);
       });
+      // Composite glow overlay
+      if (glowCanvas && glowCanvas.width > 0) {
+        ctx.drawImage(glowCanvas, 0, 0, recordingCanvas!.width, recordingCanvas!.height);
+      }
       recordingRaf = requestAnimationFrame(drawFrame);
     }
 
@@ -653,6 +771,84 @@
   // Store original values to prevent compounding growth from rapid events
   let activePulsations = new Map<string, {timeout: number, baseSize: number, originalColor: string}>();
 
+  // Glow overlay system — electric plasma halo on pulsating nodes
+  let glowCanvas: HTMLCanvasElement;
+  let glowCtx: CanvasRenderingContext2D | null = null;
+  let glowRaf: number | null = null;
+  let activeGlows = new Map<string, { start: number }>();
+  const GLOW_DURATION_MS = 350;
+
+  function startGlowLoop() {
+    if (glowRaf !== null) return;
+    function tick() {
+      renderGlows();
+      if (activeGlows.size > 0) {
+        glowRaf = requestAnimationFrame(tick);
+      } else {
+        glowRaf = null;
+      }
+    }
+    glowRaf = requestAnimationFrame(tick);
+  }
+
+  function renderGlows() {
+    if (!glowCanvas || !sigma || !graph) return;
+    if (!glowCtx) glowCtx = glowCanvas.getContext("2d");
+    if (!glowCtx) return;
+
+    const w = glowCanvas.clientWidth;
+    const h = glowCanvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    if (glowCanvas.width !== w * dpr || glowCanvas.height !== h * dpr) {
+      glowCanvas.width = w * dpr;
+      glowCanvas.height = h * dpr;
+      glowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    glowCtx.clearRect(0, 0, w, h);
+    const now = performance.now();
+
+    for (const [nodeId, glow] of activeGlows) {
+      const elapsed = now - glow.start;
+      if (elapsed > GLOW_DURATION_MS) {
+        activeGlows.delete(nodeId);
+        continue;
+      }
+
+      if (!graph.hasNode(nodeId)) {
+        activeGlows.delete(nodeId);
+        continue;
+      }
+
+      // Skip rendering glows for offscreen nodes
+      if (!isNodeInViewport(nodeId)) continue;
+
+      const progress = elapsed / GLOW_DURATION_MS;
+      const alpha = 0.7 * (1 - progress * progress);
+      const nodeAttrs = graph.getNodeAttributes(nodeId);
+      const viewPos = sigma.graphToViewport({ x: nodeAttrs.x, y: nodeAttrs.y });
+      const baseSize = nodeAttrs.size || 4;
+      const camera = sigma.getCamera();
+      const ratio = camera.ratio || 1;
+      const displaySize = (baseSize / ratio) * 2;
+      const glowRadius = displaySize * (2.5 + progress * 1.5);
+
+      const grad = glowCtx.createRadialGradient(
+        viewPos.x, viewPos.y, displaySize * 0.3,
+        viewPos.x, viewPos.y, glowRadius
+      );
+
+      grad.addColorStop(0, `rgba(180, 255, 200, ${alpha})`);
+      grad.addColorStop(0.4, `rgba(34, 197, 94, ${alpha * 0.5})`);
+      grad.addColorStop(1, `rgba(34, 197, 94, 0)`);
+
+      glowCtx.fillStyle = grad;
+      glowCtx.beginPath();
+      glowCtx.arc(viewPos.x, viewPos.y, glowRadius, 0, Math.PI * 2);
+      glowCtx.fill();
+    }
+  }
+
   // Throttle sigma.refresh() to at most once per animation frame
   let refreshScheduled = false;
   function scheduleRefresh() {
@@ -680,6 +876,19 @@
     const newB = Math.min(255, Math.round(b + (255 - b) * amount));
 
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+  }
+
+  // Check if a graph node is currently visible in the camera viewport.
+  // Uses Sigma's graphToViewport to project node coords, then tests
+  // against the canvas bounds with a generous margin for glow radius.
+  function isNodeInViewport(nodeId: string): boolean {
+    if (!sigma || !graph || !graph.hasNode(nodeId)) return false;
+    const attrs = graph.getNodeAttributes(nodeId);
+    const vp = sigma.graphToViewport({ x: attrs.x, y: attrs.y });
+    const w = container?.offsetWidth || 0;
+    const h = container?.offsetHeight || 0;
+    const margin = 80;
+    return vp.x >= -margin && vp.x <= w + margin && vp.y >= -margin && vp.y <= h + margin;
   }
 
   // Pulsate a node with subtle animation
@@ -723,48 +932,60 @@
 
     activePulsations.set(nodeId, {timeout, baseSize, originalColor});
 
+    activeGlows.set(nodeId, { start: performance.now() });
+    startGlowLoop();
+
     scheduleRefresh();
   }
 
-  // Handle graph activity events - pulsate sensor nodes
+  // Handle graph activity events - pulsate sensor nodes (viewport-aware)
   function handleGraphActivity(event: CustomEvent) {
     const { sensor_id, attribute_ids } = event.detail;
     const sensorNodeId = `sensor:${sensor_id}`;
+    let anyVisible = false;
 
-    // Pulsate the sensor node
-    if (graph && graph.hasNode(sensorNodeId)) {
+    // Only pulsate nodes visible in the current viewport
+    if (graph && graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
       pulsateNode(sensorNodeId);
+      anyVisible = true;
     }
 
-    // Also pulsate any updated attribute nodes
     if (attribute_ids && Array.isArray(attribute_ids)) {
       for (const attrId of attribute_ids) {
         const attrNodeId = `attr:${sensor_id}:${attrId}`;
-        if (graph && graph.hasNode(attrNodeId)) {
+        if (graph && graph.hasNode(attrNodeId) && isNodeInViewport(attrNodeId)) {
           pulsateNode(attrNodeId);
+          anyVisible = true;
         }
       }
     }
+
+    // Only play sound if at least one affected node is visible
+    if (anyVisible) {
+      playCrackle();
+    }
   }
 
-  // Handle composite measurement events for real-time updates
+  // Handle composite measurement events for real-time updates (viewport-aware)
   function handleCompositeMeasurement(event: CustomEvent) {
     const { sensor_id, attribute_id, payload } = event.detail;
     const attrNodeId = `attr:${sensor_id}:${attribute_id}`;
 
     if (graph && graph.hasNode(attrNodeId)) {
+      // Always update data (lightweight, no rendering cost)
       const attrs = graph.getNodeAttributes(attrNodeId);
       if (attrs.data) {
         attrs.data.lastvalue = { payload, timestamp: Date.now() };
       }
 
-      // Pulsate the attribute node
-      pulsateNode(attrNodeId);
+      // Only pulsate + glow if node is in the viewport
+      if (isNodeInViewport(attrNodeId)) {
+        pulsateNode(attrNodeId);
 
-      // Also pulsate the parent sensor node
-      const sensorNodeId = `sensor:${sensor_id}`;
-      if (graph.hasNode(sensorNodeId)) {
-        pulsateNode(sensorNodeId);
+        const sensorNodeId = `sensor:${sensor_id}`;
+        if (graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
+          pulsateNode(sensorNodeId);
+        }
       }
     }
   }
@@ -810,6 +1031,12 @@
 
   onDestroy(() => {
     if (isRecording) stopRecording();
+    if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }
+    activeGlows.clear();
+    if (audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+    }
     window.removeEventListener("keydown", onKeydown);
     if (rebuildTimer) clearTimeout(rebuildTimer);
     if (sigma) {
@@ -829,6 +1056,9 @@
 <div class="lobby-graph" class:fullscreen={isFullscreen} bind:this={graphRoot}>
   <!-- Graph Container -->
   <div bind:this={container} class="graph-container"></div>
+
+  <!-- Glow overlay canvas for plasma discharge halos -->
+  <canvas bind:this={glowCanvas} class="glow-overlay"></canvas>
 
   <!-- Controls -->
   <div class="controls">
@@ -873,6 +1103,18 @@
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="8" stroke-width="2" />
           <circle cx="12" cy="12" r="4" fill="currentColor" />
+        </svg>
+      {/if}
+    </button>
+    <div class="control-divider"></div>
+    <button onclick={toggleSound} title={soundEnabled ? "Sound On" : "Sound Off"} class="control-btn" class:sound-active={soundEnabled}>
+      {#if soundEnabled}
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+        </svg>
+      {:else}
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
         </svg>
       {/if}
     </button>
@@ -1049,6 +1291,15 @@
   .graph-container {
     position: absolute;
     inset: 0;
+  }
+
+  .glow-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
   }
 
   .controls {
@@ -1431,6 +1682,17 @@
   .control-btn.recording:hover {
     background: rgba(220, 38, 38, 0.5);
     border-color: rgba(239, 68, 68, 0.8);
+  }
+
+  .control-btn.sound-active {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(52, 211, 153, 0.5);
+    color: #6ee7b7;
+  }
+
+  .control-btn.sound-active:hover {
+    background: rgba(16, 185, 129, 0.35);
+    border-color: rgba(52, 211, 153, 0.7);
   }
 
   .recording-indicator {

@@ -180,16 +180,25 @@ defmodule SensoctoWeb.SimulatorLive do
   end
 
   defp assign_status(socket) do
-    {connectors, config, scenarios, running_scenarios} =
+    {connectors, config, scenarios, running_scenarios, startup_phase} =
       if SimSupervisor.enabled?() do
-        {
-          Manager.get_connectors(),
-          Manager.get_config(),
-          Manager.list_scenarios(),
-          Manager.get_running_scenarios()
-        }
+        try do
+          phase = Manager.startup_phase()
+
+          {
+            Manager.get_connectors(),
+            Manager.get_config(),
+            Manager.list_scenarios(),
+            Manager.get_running_scenarios(),
+            phase
+          }
+        catch
+          :exit, _ ->
+            Logger.warning("Simulator Manager busy during startup, will retry on next refresh")
+            {%{}, %{}, [], %{}, :loading_config}
+        end
       else
-        {%{}, %{}, [], %{}}
+        {%{}, %{}, [], %{}, :ready}
       end
 
     # Count running connectors
@@ -201,6 +210,7 @@ defmodule SensoctoWeb.SimulatorLive do
     |> assign(:running_count, running_count)
     |> assign(:scenarios, scenarios)
     |> assign(:running_scenarios, running_scenarios)
+    |> assign(:startup_phase, startup_phase)
   end
 
   defp assign_rooms(socket) do
@@ -225,6 +235,28 @@ defmodule SensoctoWeb.SimulatorLive do
             </span>
           </div>
         </div>
+
+        <%= if @startup_phase != :ready do %>
+          <div class="bg-amber-900/30 border border-amber-700/50 rounded-lg p-4 mb-6 flex items-center gap-3">
+            <svg class="w-5 h-5 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+              </circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              >
+              </path>
+            </svg>
+            <span class="text-amber-300 text-sm font-medium">
+              {case @startup_phase do
+                :loading_config -> "Loading simulator configuration..."
+                :starting_connectors -> "Starting connectors..."
+                _ -> "Initializing..."
+              end}
+            </span>
+          </div>
+        <% end %>
         
     <!-- Running Scenarios -->
         <%= if map_size(@running_scenarios) > 0 do %>

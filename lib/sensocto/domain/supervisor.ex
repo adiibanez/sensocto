@@ -62,6 +62,9 @@ defmodule Sensocto.Domain.Supervisor do
       {SensorsStateAgent, name: SensorsStateAgent},
       Sensocto.Otp.Connector,
 
+      # Attention ETS table ownership (survives tracker crashes)
+      Sensocto.AttentionTracker.TableOwner,
+
       # Attention tracking for back-pressure
       Sensocto.AttentionTracker,
 

@@ -463,15 +463,15 @@ defmodule Sensocto.Calls.CallServer do
         %Message.EndpointMessage{endpoint_id: endpoint_id, message: {:media_event, event}},
         state
       ) do
-    IO.puts(">>> CallServer: EndpointMessage media_event from #{endpoint_id}")
+    Logger.debug("CallServer: EndpointMessage media_event from #{endpoint_id}")
     # Forward media event to the participant's channel
     case find_participant_by_endpoint(state.participants, endpoint_id) do
       nil ->
-        IO.puts(">>> CallServer: No participant found for endpoint #{endpoint_id}")
+        Logger.debug("CallServer: no participant found for endpoint #{endpoint_id}")
         {:noreply, state}
 
       {user_id, _participant} ->
-        IO.puts(">>> CallServer: Forwarding to user #{user_id}")
+        Logger.debug("CallServer: forwarding media_event to user #{user_id}")
         broadcast_to_participant(state.room_id, user_id, {:media_event, event})
         {:noreply, state}
     end
@@ -487,7 +487,7 @@ defmodule Sensocto.Calls.CallServer do
         },
         state
       ) do
-    IO.puts(">>> CallServer: TrackAdded #{track_type} from #{endpoint_id}")
+    Logger.debug("CallServer: TrackAdded #{track_type} from #{endpoint_id}")
 
     track_info = %{
       track_id: track_id,

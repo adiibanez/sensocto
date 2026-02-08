@@ -338,9 +338,20 @@ defmodule SensoctoWeb.LobbyLive do
               :ok
           end
 
-        _ ->
-          # Clear focus for other views
+          # ECG needs high fidelity
+          Sensocto.Lenses.PriorityLens.set_quality(socket.id, :high)
+
+        :graph ->
+          # Graph only needs activity indicators, not waveform data.
+          # Medium quality (50ms flush) saves ~40% PriorityLens load per viewer
+          # vs high (32ms flush) with no visible difference in pulsation.
           Sensocto.Lenses.PriorityLens.set_focused_sensor(socket.id, nil)
+          Sensocto.Lenses.PriorityLens.set_quality(socket.id, :medium)
+
+        _ ->
+          # Clear focus for other views, restore high quality
+          Sensocto.Lenses.PriorityLens.set_focused_sensor(socket.id, nil)
+          Sensocto.Lenses.PriorityLens.set_quality(socket.id, :high)
       end
     end
 
@@ -382,9 +393,15 @@ defmodule SensoctoWeb.LobbyLive do
 
     attr_key = "composite_#{action}"
 
-    Enum.each(sensor_ids, fn sensor_id ->
-      Sensocto.AttentionTracker.register_view(sensor_id, attr_key, viewer_id)
-    end)
+    # Use bulk registration for graph (all sensors) to avoid thundering herd.
+    # Single cast vs N individual casts — critical when N > 50 sensors.
+    if action == :graph do
+      Sensocto.AttentionTracker.register_views_bulk(sensor_ids, attr_key, viewer_id)
+    else
+      Enum.each(sensor_ids, fn sensor_id ->
+        Sensocto.AttentionTracker.register_view(sensor_id, attr_key, viewer_id)
+      end)
+    end
   end
 
   defp ensure_attention_for_composite_sensors(_socket, _action), do: :ok
@@ -2726,9 +2743,14 @@ defmodule SensoctoWeb.LobbyLive do
     if sensor_ids != [] do
       attr_key = "composite_#{action}"
 
-      Enum.each(sensor_ids, fn sensor_id ->
-        Sensocto.AttentionTracker.unregister_view(sensor_id, attr_key, viewer_id)
-      end)
+      # Use bulk unregistration for graph to match bulk registration
+      if action == :graph do
+        Sensocto.AttentionTracker.unregister_views_bulk(sensor_ids, attr_key, viewer_id)
+      else
+        Enum.each(sensor_ids, fn sensor_id ->
+          Sensocto.AttentionTracker.unregister_view(sensor_id, attr_key, viewer_id)
+        end)
+      end
     end
   end
 

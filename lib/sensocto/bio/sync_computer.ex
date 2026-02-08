@@ -44,9 +44,12 @@ defmodule Sensocto.Bio.SyncComputer do
   @breathing_attrs ["respiration"]
   @hrv_attrs ["hrv"]
 
+  # Minimum buffer lengths for RSA (need both signals with enough data)
+  @rsa_min_buffer 10
+
   defstruct tracked_sensors: MapSet.new(),
             phase_buffers: %{breathing: %{}, hrv: %{}},
-            smoothed: %{breathing: 0.0, hrv: 0.0},
+            smoothed: %{breathing: 0.0, hrv: 0.0, rsa: 0.0},
             pending_checks: MapSet.new()
 
   # --- Client API ---
@@ -207,6 +210,7 @@ defmodule Sensocto.Bio.SyncComputer do
           @breathing_phase_buffer_size
         )
         |> maybe_compute_sync(:breathing, @breathing_min_buffer)
+        |> maybe_compute_rsa()
         |> then(&{:noreply, &1})
 
       attr_id in @hrv_attrs ->
@@ -215,6 +219,7 @@ defmodule Sensocto.Bio.SyncComputer do
         state
         |> append_to_buffer(:hrv, measurement.sensor_id, [value], @hrv_phase_buffer_size)
         |> maybe_compute_sync(:hrv, @hrv_min_buffer)
+        |> maybe_compute_rsa()
         |> then(&{:noreply, &1})
 
       true ->
@@ -247,6 +252,7 @@ defmodule Sensocto.Bio.SyncComputer do
       state
       |> maybe_compute_sync(:breathing, @breathing_min_buffer)
       |> maybe_compute_sync(:hrv, @hrv_min_buffer)
+      |> maybe_compute_rsa()
 
     {:noreply, state}
   end
@@ -384,6 +390,96 @@ defmodule Sensocto.Bio.SyncComputer do
       %{state | smoothed: Map.put(state.smoothed, group, smoothed)}
     else
       state
+    end
+  end
+
+  # Compute Respiratory Sinus Arrhythmia (RSA) as the phase-locking value
+  # between each sensor's breathing and HRV signals. RSA measures vagal tone --
+  # how strongly the parasympathetic nervous system couples breathing to heart rate.
+  # PLV = |mean(e^(i*(theta_breathing - theta_hrv)))| per sensor, then averaged.
+  defp maybe_compute_rsa(state) do
+    breathing_buffers = state.phase_buffers.breathing
+    hrv_buffers = state.phase_buffers.hrv
+
+    # Find sensors that have both breathing and HRV buffers with enough data
+    rsa_values =
+      breathing_buffers
+      |> Enum.flat_map(fn {sensor_id, breathing_buf} ->
+        case Map.get(hrv_buffers, sensor_id) do
+          nil ->
+            []
+
+          hrv_buf
+          when length(hrv_buf) >= @rsa_min_buffer and
+                 length(breathing_buf) >= @rsa_min_buffer ->
+            breathing_phase = estimate_phase(breathing_buf)
+            hrv_phase = estimate_phase(hrv_buf)
+
+            if breathing_phase && hrv_phase do
+              # PLV for a single time point: phase difference consistency
+              # For instantaneous phases, this is the magnitude of e^(i*delta)
+              # which is always 1.0. Instead, compute PLV over the buffer:
+              # use multiple phase estimates from sliding windows.
+              [{sensor_id, compute_buffer_plv(breathing_buf, hrv_buf)}]
+            else
+              []
+            end
+
+          _ ->
+            []
+        end
+      end)
+
+    if rsa_values != [] do
+      mean_rsa = Enum.sum(Enum.map(rsa_values, &elem(&1, 1))) / length(rsa_values)
+
+      prev = state.smoothed.rsa
+
+      smoothed =
+        if prev == 0.0,
+          do: mean_rsa,
+          else: (1.0 - @smoothing_alpha) * prev + @smoothing_alpha * mean_rsa
+
+      rsa_pct = round(smoothed * 100)
+
+      AttributeStoreTiered.put_attribute(
+        "__composite_sync",
+        "rsa_coherence",
+        System.system_time(:millisecond),
+        rsa_pct
+      )
+
+      %{state | smoothed: Map.put(state.smoothed, :rsa, smoothed)}
+    else
+      state
+    end
+  end
+
+  # Compute PLV between two signal buffers by estimating phase at multiple
+  # overlapping windows and measuring the consistency of their phase difference.
+  defp compute_buffer_plv(buf_a, buf_b) do
+    window_size = min(length(buf_a), length(buf_b)) |> min(20)
+    steps = max(1, window_size - 5)
+
+    phase_diffs =
+      for offset <- 0..(steps - 1) do
+        window_a = Enum.slice(buf_a, offset, window_size)
+        window_b = Enum.slice(buf_b, offset, window_size)
+
+        phase_a = estimate_phase(window_a)
+        phase_b = estimate_phase(window_b)
+
+        if phase_a && phase_b, do: phase_a - phase_b, else: nil
+      end
+      |> Enum.reject(&is_nil/1)
+
+    if phase_diffs == [] do
+      0.0
+    else
+      n = length(phase_diffs)
+      sum_cos = Enum.reduce(phase_diffs, 0.0, fn d, acc -> acc + :math.cos(d) end)
+      sum_sin = Enum.reduce(phase_diffs, 0.0, fn d, acc -> acc + :math.sin(d) end)
+      :math.sqrt(:math.pow(sum_cos / n, 2) + :math.pow(sum_sin / n, 2))
     end
   end
 

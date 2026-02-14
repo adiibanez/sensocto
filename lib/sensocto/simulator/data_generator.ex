@@ -39,6 +39,12 @@ defmodule Sensocto.Simulator.DataGenerator do
         sensor_type == "hrv" ->
           {:ok, fetch_hrv_data(config)}
 
+        sensor_type == "eye_gaze" ->
+          {:ok, fetch_eye_gaze_data(config)}
+
+        sensor_type == "eye_aperture" ->
+          {:ok, fetch_eye_aperture_data(config)}
+
         true ->
           result =
             case config[:dummy_data] do
@@ -231,6 +237,17 @@ defmodule Sensocto.Simulator.DataGenerator do
   @skeleton_states_table :skeleton_sim_states
   @respiration_buffers_table :respiration_sim_buffers
   @hrv_buffers_table :hrv_sim_buffers
+  @gaze_states_table :gaze_sim_states
+
+  # Safely create a named ETS table, handling the race condition where
+  # multiple DataServer workers try to create the same table concurrently.
+  defp ensure_ets_table(name) do
+    try do
+      :ets.new(name, [:named_table, :public, :set])
+    rescue
+      ArgumentError -> :ok
+    end
+  end
 
   defp get_skeleton_state(sensor_id, motion_type) do
     try do
@@ -240,7 +257,7 @@ defmodule Sensocto.Simulator.DataGenerator do
       end
     rescue
       ArgumentError ->
-        :ets.new(@skeleton_states_table, [:named_table, :public, :set])
+        ensure_ets_table(@skeleton_states_table)
         init_skeleton_state(sensor_id, motion_type)
     end
   end
@@ -405,7 +422,7 @@ defmodule Sensocto.Simulator.DataGenerator do
       end
     rescue
       ArgumentError ->
-        :ets.new(@respiration_buffers_table, [:named_table, :public, :set])
+        ensure_ets_table(@respiration_buffers_table)
         init_respiration_buffer(sensor_id, config)
     end
   end
@@ -517,7 +534,7 @@ defmodule Sensocto.Simulator.DataGenerator do
       end
     rescue
       ArgumentError ->
-        :ets.new(@hrv_buffers_table, [:named_table, :public, :set])
+        ensure_ets_table(@hrv_buffers_table)
         init_hrv_buffer(sensor_id, config)
     end
   end
@@ -582,6 +599,208 @@ defmodule Sensocto.Simulator.DataGenerator do
       Float.round(max(5.0, value + noise), 2)
     end)
   end
+
+  # ===========================================
+  # EYE TRACKING (Pupil Labs Neon)
+  # ===========================================
+
+  # Eye gaze data with realistic fixation/saccade state machine
+  # Payload: %{x: 0.0-1.0, y: 0.0-1.0, confidence: 0.6-0.99}
+  defp fetch_eye_gaze_data(config) do
+    sensor_id = config[:sensor_id] || "unknown"
+    batch_size = config[:batch_size] || 1
+    sampling_rate = max(config[:sampling_rate] || 200, 1)
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+
+    gaze_state = get_gaze_state(sensor_id, config)
+
+    {results, final_state} =
+      Enum.map_reduce(0..(batch_size - 1), gaze_state, fn i, state ->
+        timestamp = now + i * interval_ms
+        delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
+
+        {x, y, confidence, new_state} = generate_gaze_point(state, timestamp)
+
+        entry = %{
+          timestamp: timestamp,
+          delay: delay,
+          payload: %{
+            x: Float.round(x, 4),
+            y: Float.round(y, 4),
+            confidence: Float.round(confidence, 3)
+          }
+        }
+
+        {entry, new_state}
+      end)
+
+    :ets.insert(@gaze_states_table, {sensor_id, final_state})
+    results
+  end
+
+  defp get_gaze_state(sensor_id, config) do
+    try do
+      case :ets.lookup(@gaze_states_table, sensor_id) do
+        [{^sensor_id, state}] -> state
+        [] -> init_gaze_state(sensor_id, config)
+      end
+    rescue
+      ArgumentError ->
+        ensure_ets_table(@gaze_states_table)
+        init_gaze_state(sensor_id, config)
+    end
+  end
+
+  defp init_gaze_state(sensor_id, config) do
+    now = :os.system_time(:millisecond)
+    fixation_dur = config[:fixation_duration] || 200 + :rand.uniform(600)
+
+    state = %{
+      mode: :fixation,
+      fixation_x: 0.3 + :rand.uniform() * 0.4,
+      fixation_y: 0.3 + :rand.uniform() * 0.4,
+      fixation_start: now,
+      fixation_duration: fixation_dur,
+      base_fixation_duration: fixation_dur,
+      saccade_duration: config[:saccade_duration] || 20 + :rand.uniform(60),
+      next_fixation_x: nil,
+      next_fixation_y: nil
+    }
+
+    :ets.insert(@gaze_states_table, {sensor_id, state})
+    state
+  end
+
+  defp generate_gaze_point(state, timestamp) do
+    elapsed = timestamp - state.fixation_start
+
+    case state.mode do
+      :fixation ->
+        jitter_x = (:rand.uniform() - 0.5) * 0.01
+        jitter_y = (:rand.uniform() - 0.5) * 0.01
+
+        x = clamp(state.fixation_x + jitter_x, 0.0, 1.0)
+        y = clamp(state.fixation_y + jitter_y, 0.0, 1.0)
+        confidence = 0.92 + :rand.uniform() * 0.07
+
+        if elapsed >= state.fixation_duration do
+          next_x = :rand.uniform()
+          next_y = :rand.uniform()
+
+          new_state = %{
+            state
+            | mode: :saccade,
+              next_fixation_x: next_x,
+              next_fixation_y: next_y,
+              fixation_start: timestamp
+          }
+
+          {x, y, confidence, new_state}
+        else
+          {x, y, confidence, state}
+        end
+
+      :saccade ->
+        progress = min(elapsed / state.saccade_duration, 1.0)
+        eased = smoothstep(progress)
+
+        x = lerp(state.fixation_x, state.next_fixation_x, eased)
+        y = lerp(state.fixation_y, state.next_fixation_y, eased)
+        confidence = 0.6 + :rand.uniform() * 0.2
+
+        if progress >= 1.0 do
+          new_duration =
+            state.base_fixation_duration +
+              :rand.uniform(trunc(state.base_fixation_duration * 0.5)) -
+              trunc(state.base_fixation_duration * 0.25)
+
+          new_state = %{
+            state
+            | mode: :fixation,
+              fixation_x: state.next_fixation_x,
+              fixation_y: state.next_fixation_y,
+              fixation_start: timestamp,
+              fixation_duration: max(100, new_duration),
+              next_fixation_x: nil,
+              next_fixation_y: nil
+          }
+
+          {x, y, confidence, new_state}
+        else
+          {x, y, confidence, state}
+        end
+    end
+  end
+
+  # Eye aperture data with blink correlation
+  # Payload: %{left: 0.0-25.0, right: 0.0-25.0} (degrees)
+  defp fetch_eye_aperture_data(config) do
+    sensor_id = config[:sensor_id] || "unknown"
+    batch_size = config[:batch_size] || 1
+    sampling_rate = max(config[:sampling_rate] || 30, 1)
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+    blink_seed = :erlang.phash2(sensor_id, 1000)
+
+    Enum.map(0..(batch_size - 1), fn i ->
+      timestamp = now + i * interval_ms
+      delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
+
+      {left, right} = generate_aperture(timestamp, blink_seed)
+
+      %{
+        timestamp: timestamp,
+        delay: delay,
+        payload: %{
+          left: Float.round(left, 2),
+          right: Float.round(right, 2)
+        }
+      }
+    end)
+  end
+
+  defp generate_aperture(timestamp, blink_seed) do
+    base_aperture = 17.5
+    blink_phase = blink_phase(timestamp, blink_seed)
+
+    if blink_phase > 0.0 do
+      # During blink: smooth close/open curve
+      # blink_phase goes 0→1→0 over the blink
+      closure = :math.sin(blink_phase * :math.pi())
+      aperture = base_aperture * (1.0 - closure)
+      asymmetry = (:rand.uniform() - 0.5) * 0.3
+      {max(0.0, aperture + asymmetry), max(0.0, aperture - asymmetry)}
+    else
+      # Normal state
+      left = base_aperture + (:rand.uniform() - 0.5) * 1.5
+      right = base_aperture + (:rand.uniform() - 0.5) * 1.5
+      {clamp(left, 12.0, 22.0), clamp(right, 12.0, 22.0)}
+    end
+  end
+
+  # Returns 0.0 when not blinking, or 0.0-1.0 progress through a blink
+  # Uses deterministic timing from sensor_id hash for blink/aperture correlation
+  defp blink_phase(timestamp, seed) do
+    # ~15 blinks/min → one blink every ~4000ms
+    cycle = rem(timestamp + seed * 1000, 4000)
+    blink_duration = 250
+
+    cond do
+      cycle < blink_duration ->
+        cycle / blink_duration
+
+      cycle >= 2200 and cycle < 2200 + blink_duration ->
+        (cycle - 2200) / blink_duration
+
+      true ->
+        0.0
+    end
+  end
+
+  defp clamp(value, min_val, max_val), do: max(min_val, min(max_val, value))
 
   defp fetch_python_data(config) do
     # Path to Python script - check multiple locations
@@ -1053,6 +1272,28 @@ defmodule Sensocto.Simulator.DataGenerator do
     value = 75.0 + 25.0 * :math.sin(2 * :math.pi() * freq * t + phase_offset)
     noise = (:rand.uniform() - 0.5) * 1.5
     Float.round(value + noise, 1)
+  end
+
+  # Eye blink detection (0.0 = not blinking, 1.0 = blinking)
+  # Uses same deterministic timing as eye_aperture for correlation
+  defp generate_value("eye_blink", config, i, sampling_rate) do
+    sensor_id = config[:sensor_id] || "default"
+    blink_seed = :erlang.phash2(sensor_id, 1000)
+    timestamp_ms = :os.system_time(:millisecond) + trunc(i / max(sampling_rate, 1) * 1000)
+
+    if blink_phase(timestamp_ms, blink_seed) > 0.0, do: 1.0, else: 0.0
+  end
+
+  # Eye worn detection (1.0 = worn, 0.0 = not worn)
+  # Mostly worn with occasional brief off periods (~15s off every ~300s)
+  # Per-sensor phase offset so not all sensors go unworn simultaneously
+  defp generate_value("eye_worn", config, _i, _sampling_rate) do
+    sensor_id = config[:sensor_id] || "default"
+    phase_offset = :erlang.phash2(sensor_id, 300)
+    time_seconds = System.system_time(:second)
+    cycle_position = rem(time_seconds + phase_offset, 300)
+
+    if cycle_position < 15, do: 0.0, else: 1.0
   end
 
   # Generic sensor with min/max range

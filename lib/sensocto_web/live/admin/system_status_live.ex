@@ -108,7 +108,16 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
       |> Map.put(:attention_counts, attention_counts)
       |> Map.put(:total_sensors, total_sensors)
 
-    {:noreply, assign(socket, attention_summary: updated_summary, attention_update_timer: nil)}
+    socket = assign(socket, attention_summary: updated_summary, attention_update_timer: nil)
+
+    socket =
+      if MapSet.member?(socket.assigns.graph_tiles, :attention) do
+        update_graph_data(socket, :attention)
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   # Catch-all for other messages
@@ -118,6 +127,22 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
   @impl true
   def handle_event("force_refresh", _params, socket) do
     {:noreply, refresh_all_metrics(socket)}
+  end
+
+  @impl true
+  def handle_event("toggle_graph", %{"tile" => tile}, socket) do
+    tile_atom = String.to_existing_atom(tile)
+    graph_tiles = socket.assigns.graph_tiles
+
+    {new_tiles, socket} =
+      if MapSet.member?(graph_tiles, tile_atom) do
+        {MapSet.delete(graph_tiles, tile_atom), socket}
+      else
+        socket = update_graph_data(socket, tile_atom)
+        {MapSet.put(graph_tiles, tile_atom), socket}
+      end
+
+    {:noreply, assign(socket, :graph_tiles, new_tiles)}
   end
 
   # ============================================================================
@@ -133,6 +158,8 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     |> assign(:cluster_metrics, %{})
     |> assign(:current_node, node())
     |> assign(:connected_nodes, Node.list())
+    |> assign(:graph_tiles, MapSet.new())
+    |> assign(:graph_data, %{})
   end
 
   defp refresh_all_metrics(socket) do
@@ -140,7 +167,96 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     |> assign(:system_metrics, fetch_system_metrics())
     |> assign(:backpressure_stats, fetch_backpressure_stats())
     |> assign(:attention_summary, build_attention_summary())
+    |> refresh_active_graphs()
   end
+
+  defp refresh_active_graphs(socket) do
+    Enum.reduce(socket.assigns.graph_tiles, socket, fn tile, acc ->
+      update_graph_data(acc, tile)
+    end)
+  end
+
+  defp update_graph_data(socket, :system_load) do
+    m = socket.assigns.system_metrics
+
+    data = %{
+      cpu: m.scheduler_utilization,
+      memory: m.memory_pressure,
+      pubsub: m.pubsub_pressure,
+      queues: m.message_queue_pressure,
+      load_level: Atom.to_string(m.load_level)
+    }
+
+    assign(socket, :graph_data, Map.put(socket.assigns.graph_data, :system_load, data))
+  end
+
+  defp update_graph_data(socket, :backpressure) do
+    socket_data =
+      try do
+        :ets.tab2list(:priority_lens_sockets)
+        |> Enum.map(fn {socket_id, state} ->
+          %{
+            id: to_string(socket_id),
+            quality: Atom.to_string(state.quality),
+            sensor_count: MapSet.size(state.sensor_ids)
+          }
+        end)
+      rescue
+        ArgumentError -> []
+      end
+
+    assign(
+      socket,
+      :graph_data,
+      Map.put(socket.assigns.graph_data, :backpressure, %{sockets: socket_data})
+    )
+  end
+
+  defp update_graph_data(socket, :attention) do
+    sensors =
+      try do
+        :ets.tab2list(:sensor_attention_cache)
+        |> Enum.take(200)
+        |> Enum.map(fn {sensor_id, level} ->
+          %{id: to_string(sensor_id), level: Atom.to_string(level)}
+        end)
+      rescue
+        ArgumentError -> []
+      end
+
+    assign(
+      socket,
+      :graph_data,
+      Map.put(socket.assigns.graph_data, :attention, %{sensors: sensors})
+    )
+  end
+
+  defp update_graph_data(socket, :battery) do
+    sensors =
+      try do
+        :ets.tab2list(:sensor_attention_cache)
+        |> Enum.take(200)
+        |> Enum.map(fn {sensor_id, _level} ->
+          battery_level = get_sensor_battery_level(sensor_id)
+
+          status =
+            cond do
+              is_nil(battery_level) -> "normal"
+              battery_level < 15 -> "critical"
+              battery_level < 30 -> "low"
+              true -> "normal"
+            end
+
+          %{id: to_string(sensor_id), status: status}
+        end)
+      rescue
+        ArgumentError -> []
+      end
+
+    assign(socket, :graph_data, Map.put(socket.assigns.graph_data, :battery, %{sensors: sensors}))
+  end
+
+  defp update_graph_data(socket, _unknown), do: socket
 
   defp fetch_system_metrics do
     try do

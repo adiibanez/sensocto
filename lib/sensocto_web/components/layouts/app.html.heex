@@ -34,11 +34,42 @@
     <.link navigate={~p"/about"} class="text-gray-300 hover:text-white mr-4">
       {gettext("About")}
     </.link>
+    <%!-- Language switcher dropdown --%>
+    <div class="relative" id="lang-menu" phx-hook="LangMenu" phx-update="ignore">
+      <button
+        type="button"
+        data-dropdown-toggle
+        class="flex items-center gap-1 px-2 py-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-gray-700 transition-colors mr-2"
+        aria-label={gettext("Change language")}
+      >
+        <Heroicons.icon name="globe-alt" type="outline" class="h-5 w-5" />
+        <span class="text-xs font-medium uppercase">{@locale}</span>
+      </button>
+      <div
+        data-dropdown-menu
+        class="hidden absolute right-0 top-full mt-2 w-44 bg-gray-700 rounded-lg shadow-lg py-2 z-50"
+      >
+        <div class="grid grid-cols-2 gap-1 px-2">
+          <button
+            :for={{name, code} <- @locales}
+            phx-click="change_locale"
+            phx-value-locale={code}
+            class={"px-3 py-1.5 rounded text-sm font-medium transition-colors " <>
+              if(@locale == code,
+                do: "bg-indigo-600 text-white",
+                else: "text-gray-300 hover:bg-gray-600"
+              )}
+          >
+            {name}
+          </button>
+        </div>
+      </div>
+    </div>
     <%!-- User menu dropdown --%>
     <div class="relative" id="user-menu" phx-hook="UserMenu" phx-update="ignore">
       <button
         type="button"
-        id="user-menu-button"
+        data-dropdown-toggle
         class="flex items-center gap-2 px-3 py-1.5 text-gray-300 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
         aria-label="User menu"
       >
@@ -46,7 +77,7 @@
         <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4" />
       </button>
       <div
-        id="user-menu-dropdown"
+        data-dropdown-menu
         class="hidden absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-lg shadow-lg py-2 z-50"
       >
         <.link
@@ -113,6 +144,27 @@
       >
         {gettext("About")}
       </.link>
+      <hr class="my-2 border-gray-600" />
+      <div class="px-4 py-2">
+        <div class="flex items-center gap-1 text-xs text-gray-500 mb-1.5">
+          <Heroicons.icon name="globe-alt" type="outline" class="h-3.5 w-3.5" />
+          {gettext("Language")}
+        </div>
+        <div class="grid grid-cols-4 gap-1">
+          <button
+            :for={{name, code} <- @locales}
+            phx-click="change_locale"
+            phx-value-locale={code}
+            class={"px-2 py-1 rounded text-xs font-medium transition-colors " <>
+              if(@locale == code,
+                do: "bg-indigo-600 text-white",
+                else: "text-gray-400 hover:bg-gray-600"
+              )}
+          >
+            {name}
+          </button>
+        </div>
+      </div>
       <hr class="my-2 border-gray-600" />
       <.link
         navigate={~p"/settings"}

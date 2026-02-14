@@ -2057,6 +2057,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "skeleton" -> "user"
       "respiration" -> "signal"
       "hrv" -> "chart-bar-square"
+      t when t in ["eye_gaze", "eye_aperture"] -> "eye"
       _ -> "signal"
     end
   end
@@ -2073,7 +2074,9 @@ defmodule SensoctoWeb.RoomShowLive do
       "spo2",
       "skeleton",
       "respiration",
-      "hrv"
+      "hrv",
+      "eye_gaze",
+      "eye_aperture"
     ]
   end
 
@@ -2100,6 +2103,7 @@ defmodule SensoctoWeb.RoomShowLive do
       "spo2" -> extract_spo2_data(sensors_state)
       "skeleton" -> extract_skeleton_data(sensors_state)
       "respiration" -> extract_respiration_data(sensors_state)
+      t when t in ["eye_gaze", "eye_aperture"] -> extract_gaze_data(sensors_state)
       _ -> extract_generic_data(sensors_state, lens_type)
     end
   end
@@ -2285,6 +2289,51 @@ defmodule SensoctoWeb.RoomShowLive do
       %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, value: value}
     end)
   end
+
+  defp extract_gaze_data(sensors_state) do
+    sensors_state
+    |> Enum.filter(fn {_id, sensor} ->
+      (sensor.attributes || %{})
+      |> Enum.any?(fn {_attr_id, attr} ->
+        attr.attribute_type in ["eye_gaze", "eye_aperture", "eye_blink", "eye_worn"]
+      end)
+    end)
+    |> Enum.map(fn {sensor_id, sensor} ->
+      attrs = sensor.attributes || %{}
+
+      gaze_val = find_attr_payload(attrs, "eye_gaze")
+      aperture_val = find_attr_payload(attrs, "eye_aperture")
+      blink_val = find_attr_payload(attrs, "eye_blink")
+      worn_val = find_attr_payload(attrs, "eye_worn")
+
+      %{
+        sensor_id: sensor_id,
+        sensor_name: sensor.sensor_name,
+        gaze_x: get_nested_val(gaze_val, :x, "x", 0.5),
+        gaze_y: get_nested_val(gaze_val, :y, "y", 0.5),
+        confidence: get_nested_val(gaze_val, :confidence, "confidence", 0.0),
+        aperture_left: get_nested_val(aperture_val, :left, "left", 15.0),
+        aperture_right: get_nested_val(aperture_val, :right, "right", 15.0),
+        blinking: if(is_number(blink_val), do: blink_val, else: 0.0),
+        worn: if(is_number(worn_val), do: worn_val, else: 1.0)
+      }
+    end)
+  end
+
+  defp find_attr_payload(attrs, attr_type) do
+    case Enum.find(attrs, fn {_attr_id, attr} -> attr.attribute_type == attr_type end) do
+      {_attr_id, attr} -> attr.lastvalue && attr.lastvalue.payload
+      nil -> nil
+    end
+  end
+
+  defp get_nested_val(nil, _atom_key, _string_key, default), do: default
+
+  defp get_nested_val(val, atom_key, string_key, default) when is_map(val) do
+    Map.get(val, atom_key, Map.get(val, string_key, default))
+  end
+
+  defp get_nested_val(_val, _atom_key, _string_key, default), do: default
 
   defp extract_generic_data(sensors_state, attr_type) do
     sensors_state
@@ -3200,6 +3249,13 @@ defmodule SensoctoWeb.RoomShowLive do
         <% "respiration" -> %>
           <.svelte
             name="CompositeBreathing"
+            props={%{sensors: @lens_data}}
+            socket={@socket}
+            class="w-full"
+          />
+        <% t when t in ["eye_gaze", "eye_aperture"] -> %>
+          <.svelte
+            name="CompositeGaze"
             props={%{sensors: @lens_data}}
             socket={@socket}
             class="w-full"

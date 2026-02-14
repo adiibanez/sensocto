@@ -7,20 +7,20 @@ defmodule SensoctoWeb.AboutLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    socket =
-      socket
-      |> assign(:page_title, "About")
-
-    {:ok, socket}
+    {:ok, assign(socket, :page_title, "About")}
   end
 
   @impl true
-  def handle_params(%{"tab" => "research"}, _uri, socket) do
-    {:noreply, assign(socket, :initial_detail_level, :research)}
-  end
+  def handle_params(params, _uri, socket) do
+    detail_level =
+      case params["tab"] do
+        "story" -> :story
+        "deep" -> :deep
+        "research" -> :research
+        _ -> :spark
+      end
 
-  def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, :initial_detail_level, :spark)}
+    {:noreply, assign(socket, :detail_level, detail_level)}
   end
 
   @impl true
@@ -30,7 +30,8 @@ defmodule SensoctoWeb.AboutLive do
       <.live_component
         module={SensoctoWeb.Components.AboutContentComponent}
         id="about-content"
-        initial_detail_level={@initial_detail_level}
+        detail_level={@detail_level}
+        patch_base={~p"/about"}
       />
     </div>
     """

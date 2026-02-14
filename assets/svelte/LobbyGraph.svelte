@@ -71,19 +71,81 @@
   let recordingCanvas: HTMLCanvasElement | null = null;
   let graphRoot: HTMLDivElement;
 
-  // Plasma crackle sound engine — electrical discharge / Knistern
-  let soundEnabled = $state(false);
+  // ── View Mode System ──────────────────────────────────────────────
+  type ViewMode =
+    | "topology"       // ForceAtlas2 organic clustering
+    | "per-user"       // Circular clusters per user
+    | "per-type"       // Column lanes per attribute type
+    | "radial"         // Concentric rings
+    | "constellation"  // Geometric star patterns per user
+    | "heatmap"        // Activity frequency coloring
+    | "freshness"      // Time-since-data fading
+    | "heartbeat"      // BPM-synchronized pulsing
+    | "river"          // Animated data particles
+    | "attention";     // Attention level visualization
+
+  let viewMode = $state<ViewMode>("topology");
+  let isTransitioning = $state(false);
+  let lastLayoutMode = $state<ViewMode>("topology");
+
+  // Activity tracking (heatmap mode)
+  let activityCounts = new Map<string, number>();
+  let activityDecayTimers: ReturnType<typeof setTimeout>[] = [];
+  const ACTIVITY_WINDOW_MS = 10_000;
+
+  // Freshness tracking (freshness mode)
+  let nodeFreshness = new Map<string, number>();
+  let freshnessTimer: ReturnType<typeof setInterval> | null = null;
+  const FRESHNESS_INTERVAL_MS = 500;
+
+  // Heartbeat tracking (heartbeat mode)
+  let heartbeatBPMs = new Map<string, number>();
+  let heartbeatAnimFrame: number | null = null;
+  let heartbeatStartTime: number | null = null;
+
+  // Data river particles (river mode)
+  interface Particle {
+    path: Array<{x: number; y: number}>;
+    progress: number;
+    speed: number;
+    color: string;
+    size: number;
+  }
+  let riverParticles: Particle[] = [];
+  let riverAnimFrame: number | null = null;
+
+  // Attention tracking (attention mode)
+  let sensorAttentionLevels = new Map<string, string>();
+
+  const layoutModes: ViewMode[] = ["topology", "per-user", "per-type", "radial", "constellation"];
+  const visualModes: ViewMode[] = ["heatmap", "freshness", "heartbeat", "river", "attention"];
+
+  // Sound engine — switchable themes for graph activity sonification
+  type SoundTheme = "off" | "plasma" | "birds" | "underwater" | "chimes" | "heartbeat";
+  const SOUND_THEMES: SoundTheme[] = ["off", "plasma", "birds", "underwater", "chimes", "heartbeat"];
+  const THEME_LABELS: Record<SoundTheme, string> = {
+    off: "Sound Off",
+    plasma: "⚡ Plasma Crackle",
+    birds: "🐦 Bird Song",
+    underwater: "🫧 Underwater",
+    chimes: "🎐 Wind Chimes",
+    heartbeat: "💓 Heartbeat",
+  };
+  let soundTheme: SoundTheme = $state("off");
+  let soundEnabled = $derived(soundTheme !== "off");
+  let vibrateEnabled = $state(false);
   let audioCtx: AudioContext | null = null;
+  let masterOut: GainNode | null = null;
+  let recDest: MediaStreamAudioDestinationNode | null = null;
   let lastSoundTime = 0;
-  // ~6.7 events/sec — cortical theta window (150-300ms), proven
-  // sonification IOI range. Each crackle is perceptually discrete
-  // before the ~10Hz flutter/fusion threshold.
   const SOUND_DEBOUNCE_MS = 150;
   let noiseBuffer: AudioBuffer | null = null;
 
   function ensureAudioCtx() {
     if (!audioCtx) {
       audioCtx = new AudioContext();
+      masterOut = audioCtx.createGain();
+      masterOut.connect(audioCtx.destination);
     }
     if (audioCtx.state === "suspended") {
       audioCtx.resume();
@@ -99,40 +161,41 @@
     return audioCtx;
   }
 
-  function playCrackle() {
-    if (!soundEnabled) return;
-
+  function playSound() {
+    if (soundTheme === "off") return;
     const now = performance.now();
     if (now - lastSoundTime < SOUND_DEBOUNCE_MS) return;
     lastSoundTime = now;
 
+    switch (soundTheme) {
+      case "plasma": playCrackle(); break;
+      case "birds": playBirdChirp(); break;
+      case "underwater": playUnderwater(); break;
+      case "chimes": playChime(); break;
+      case "heartbeat": playHeartbeat(); break;
+    }
+  }
+
+  // --- Plasma Crackle: electrical discharge / Knistern ---
+  function playCrackle() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-
     const duration = 0.004 + Math.random() * 0.014;
     const volume = 0.04 + Math.random() * 0.08;
 
     const noise = ctx.createBufferSource();
     noise.buffer = noiseBuffer!;
-
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
     bp.frequency.value = 2500 + Math.random() * 5500;
     bp.Q.value = 0.8 + Math.random() * 2.5;
-
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 800 + Math.random() * 1200;
-
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(volume, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-
-    noise.connect(bp);
-    bp.connect(hp);
-    hp.connect(gain);
-    gain.connect(ctx.destination);
-
+    noise.connect(bp); bp.connect(hp); hp.connect(gain); gain.connect(masterOut!);
     noise.start(t, Math.random() * 0.03, duration + 0.01);
 
     if (Math.random() < 0.25) {
@@ -141,43 +204,180 @@
       const startFreq = 2000 + Math.random() * 5000;
       osc.frequency.setValueAtTime(startFreq, t);
       osc.frequency.exponentialRampToValueAtTime(150 + Math.random() * 300, t + 0.012);
-
       const oscGain = ctx.createGain();
       oscGain.gain.setValueAtTime(volume * 0.35, t);
       oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
-
-      osc.connect(oscGain);
-      oscGain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.015);
+      osc.connect(oscGain); oscGain.connect(masterOut!);
+      osc.start(t); osc.stop(t + 0.015);
     }
-
     if (Math.random() < 0.15) {
       const noise2 = ctx.createBufferSource();
       noise2.buffer = noiseBuffer!;
-
       const bp2 = ctx.createBiquadFilter();
       bp2.type = "bandpass";
       bp2.frequency.value = 4000 + Math.random() * 4000;
       bp2.Q.value = 1 + Math.random() * 3;
-
       const gain2 = ctx.createGain();
       const d2 = 0.002 + Math.random() * 0.006;
       gain2.gain.setValueAtTime(volume * 0.6, t + 0.005);
       gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.005 + d2);
-
-      noise2.connect(bp2);
-      bp2.connect(gain2);
-      gain2.connect(ctx.destination);
+      noise2.connect(bp2); bp2.connect(gain2); gain2.connect(masterOut!);
       noise2.start(t + 0.005, Math.random() * 0.03, d2 + 0.01);
     }
   }
 
-  function toggleSound() {
-    soundEnabled = !soundEnabled;
-    if (soundEnabled) {
-      ensureAudioCtx();
+  // --- Bird Song: FM-synthesized chirps and warbles ---
+  function playBirdChirp() {
+    const ctx = ensureAudioCtx();
+    const t = ctx.currentTime;
+    const volume = 0.06 + Math.random() * 0.06;
+    const chirps = Math.random() < 0.3 ? (2 + Math.floor(Math.random() * 2)) : 1;
+
+    for (let i = 0; i < chirps; i++) {
+      const offset = i * (0.06 + Math.random() * 0.04);
+      const baseFreq = 1800 + Math.random() * 2800;
+      const chirpDur = 0.04 + Math.random() * 0.06;
+
+      const carrier = ctx.createOscillator();
+      carrier.type = "sine";
+      carrier.frequency.setValueAtTime(baseFreq * 0.7, t + offset);
+      carrier.frequency.linearRampToValueAtTime(baseFreq, t + offset + chirpDur * 0.3);
+      carrier.frequency.exponentialRampToValueAtTime(baseFreq * (0.5 + Math.random() * 0.3), t + offset + chirpDur);
+
+      const modulator = ctx.createOscillator();
+      modulator.type = "sine";
+      modulator.frequency.value = 30 + Math.random() * 50;
+      const modGain = ctx.createGain();
+      modGain.gain.value = baseFreq * (0.02 + Math.random() * 0.04);
+      modulator.connect(modGain);
+      modGain.connect(carrier.frequency);
+
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.001, t + offset);
+      env.gain.linearRampToValueAtTime(volume, t + offset + chirpDur * 0.15);
+      env.gain.setValueAtTime(volume, t + offset + chirpDur * 0.5);
+      env.gain.exponentialRampToValueAtTime(0.001, t + offset + chirpDur);
+
+      carrier.connect(env); env.connect(masterOut!);
+      carrier.start(t + offset); carrier.stop(t + offset + chirpDur + 0.01);
+      modulator.start(t + offset); modulator.stop(t + offset + chirpDur + 0.01);
     }
+  }
+
+  // --- Underwater: sonar pings and bubble pops ---
+  function playUnderwater() {
+    const ctx = ensureAudioCtx();
+    const t = ctx.currentTime;
+    const volume = 0.05 + Math.random() * 0.05;
+
+    const pingFreq = 600 + Math.random() * 1200;
+    const pingDur = 0.12 + Math.random() * 0.1;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(pingFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(pingFreq * (0.85 + Math.random() * 0.1), t + pingDur);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2000 + Math.random() * 1000;
+    lp.Q.value = 2 + Math.random() * 3;
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(volume, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + pingDur);
+
+    osc.connect(lp); lp.connect(env); env.connect(masterOut!);
+    osc.start(t); osc.stop(t + pingDur + 0.02);
+
+    if (Math.random() < 0.25) {
+      const bubbles = 2 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < bubbles; i++) {
+        const bOffset = 0.02 + Math.random() * 0.08;
+        const bFreq = 300 + Math.random() * 600;
+        const bDur = 0.008 + Math.random() * 0.015;
+        const bOsc = ctx.createOscillator();
+        bOsc.type = "sine";
+        bOsc.frequency.setValueAtTime(bFreq, t + bOffset);
+        bOsc.frequency.exponentialRampToValueAtTime(bFreq * 2.5, t + bOffset + bDur);
+        const bGain = ctx.createGain();
+        bGain.gain.setValueAtTime(volume * 0.4, t + bOffset);
+        bGain.gain.exponentialRampToValueAtTime(0.001, t + bOffset + bDur);
+        bOsc.connect(bGain); bGain.connect(masterOut!);
+        bOsc.start(t + bOffset); bOsc.stop(t + bOffset + bDur + 0.01);
+      }
+    }
+  }
+
+  // --- Wind Chimes: gentle pentatonic metallic tones ---
+  function playChime() {
+    const ctx = ensureAudioCtx();
+    const t = ctx.currentTime;
+    const volume = 0.03 + Math.random() * 0.04;
+    const pentatonic = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3, 784.0, 880.0];
+    const baseFreq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
+    const detune = (Math.random() - 0.5) * 10;
+    const decay = 0.3 + Math.random() * 0.3;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = baseFreq;
+    osc.detune.value = detune;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(volume, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + decay);
+    osc.connect(env); env.connect(masterOut!);
+    osc.start(t); osc.stop(t + decay + 0.02);
+
+    const harm2 = ctx.createOscillator();
+    harm2.type = "sine";
+    harm2.frequency.value = baseFreq * 2.01;
+    harm2.detune.value = detune + (Math.random() - 0.5) * 6;
+    const env2 = ctx.createGain();
+    env2.gain.setValueAtTime(volume * 0.3, t);
+    env2.gain.exponentialRampToValueAtTime(0.001, t + decay * 0.7);
+    harm2.connect(env2); env2.connect(masterOut!);
+    harm2.start(t); harm2.stop(t + decay * 0.7 + 0.02);
+
+    if (Math.random() < 0.5) {
+      const harm3 = ctx.createOscillator();
+      harm3.type = "sine";
+      harm3.frequency.value = baseFreq * 3.02;
+      const env3 = ctx.createGain();
+      env3.gain.setValueAtTime(volume * 0.12, t);
+      env3.gain.exponentialRampToValueAtTime(0.001, t + decay * 0.4);
+      harm3.connect(env3); env3.connect(masterOut!);
+      harm3.start(t); harm3.stop(t + decay * 0.4 + 0.02);
+    }
+  }
+
+  // --- Heartbeat: warm double-pulse bass ---
+  function playHeartbeat() {
+    const ctx = ensureAudioCtx();
+    const t = ctx.currentTime;
+    const volume = 0.08 + Math.random() * 0.04;
+    const baseFreq = 50 + Math.random() * 20;
+
+    for (let i = 0; i < 2; i++) {
+      const offset = i * (0.08 + Math.random() * 0.03);
+      const dur = i === 0 ? 0.08 : 0.06;
+      const vol = i === 0 ? volume : volume * 0.7;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(baseFreq, t + offset);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.6, t + offset + dur);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.001, t + offset);
+      env.gain.linearRampToValueAtTime(vol, t + offset + 0.008);
+      env.gain.exponentialRampToValueAtTime(0.001, t + offset + dur);
+      osc.connect(env); env.connect(masterOut!);
+      osc.start(t + offset); osc.stop(t + offset + dur + 0.02);
+    }
+  }
+
+  function toggleSound() {
+    const idx = SOUND_THEMES.indexOf(soundTheme);
+    soundTheme = SOUND_THEMES[(idx + 1) % SOUND_THEMES.length];
+    if (soundTheme !== "off") ensureAudioCtx();
   }
 
   // Set of nodes to highlight (hovered node + all connected neighbors)
@@ -463,7 +663,7 @@
       mouseY = e.clientY;
     });
 
-    // Handle node hover - highlight connected subgraph
+    // Handle node hover - highlight connected subgraph + boost attention
     sigma.on("enterNode", ({ node }) => {
       hoveredNode = node;
       const attrs = graph.getNodeAttributes(node);
@@ -478,9 +678,19 @@
       highlightedNodes = new Set([node]);
       collectDescendants(node, highlightedNodes);
       sigma?.refresh();
+
+      // Boost attention for hovered sensor (or parent sensor of attribute)
+      const sensorId = attrs.nodeType === "sensor" ? attrs.data?.sensor_id
+        : attrs.nodeType === "attribute" ? attrs.data?.sensor_id : null;
+      if (sensorId) {
+        window.dispatchEvent(new CustomEvent("graph-hover-sensor", {
+          detail: { sensor_id: sensorId, action: "enter" }
+        }));
+      }
     });
 
-    sigma.on("leaveNode", () => {
+    sigma.on("leaveNode", ({ node }) => {
+      const attrs = graph.getNodeAttributes(node);
       document.body.style.cursor = "default";
       hoveredNode = null;
       hoverDetails = null;
@@ -492,6 +702,15 @@
         highlightedNodes = new Set();
       }
       sigma?.refresh();
+
+      // Release attention boost
+      const sensorId = attrs.nodeType === "sensor" ? attrs.data?.sensor_id
+        : attrs.nodeType === "attribute" ? attrs.data?.sensor_id : null;
+      if (sensorId) {
+        window.dispatchEvent(new CustomEvent("graph-hover-sensor", {
+          detail: { sensor_id: sensorId, action: "leave" }
+        }));
+      }
     });
 
     // Handle node click - persist selection in bottom bar
@@ -542,15 +761,730 @@
   }
 
   function handleRelayout() {
-    runLayout();
-    if (sigma) {
-      sigma.refresh();
-    }
+    handleRelayoutForMode();
   }
 
   function handleFullscreen() {
     isFullscreen = !isFullscreen;
     setTimeout(() => sigma?.refresh(), 50);
+  }
+
+  // ── Mode Switching ──────────────────────────────────────────────
+
+  function switchViewMode(newMode: ViewMode) {
+    if (viewMode === newMode || isTransitioning) return;
+
+    isTransitioning = true;
+    const oldMode = viewMode;
+    viewMode = newMode;
+
+    // Cleanup old mode's timers/animations
+    cleanupMode(oldMode);
+
+    // Track which layout was last applied
+    if (layoutModes.includes(newMode)) {
+      lastLayoutMode = newMode;
+    }
+
+    // For visual modes, re-apply the last layout first to get clean positions
+    if (visualModes.includes(newMode) && visualModes.includes(oldMode)) {
+      applyLayout(lastLayoutMode);
+    }
+
+    applyViewMode(newMode);
+
+    setTimeout(() => { isTransitioning = false; }, 300);
+  }
+
+  function applyLayout(mode: ViewMode) {
+    if (!graph || graph.order === 0) return;
+    switch (mode) {
+      case "topology":     runLayout(); break;
+      case "per-user":     layoutPerUser(); break;
+      case "per-type":     layoutPerType(); break;
+      case "radial":       layoutRadialTree(); break;
+      case "constellation": layoutConstellation(); break;
+    }
+  }
+
+  function applyViewMode(mode: ViewMode) {
+    if (!graph) return;
+
+    if (layoutModes.includes(mode)) {
+      applyLayout(mode);
+    }
+
+    // Start overlay-specific systems
+    switch (mode) {
+      case "heatmap":    startActivityHeatmap(); break;
+      case "freshness":  startFreshnessDecay(); break;
+      case "heartbeat":  startHeartbeatSync(); break;
+      case "river":      startDataRiver(); break;
+      case "attention":  startAttentionRadar(); break;
+    }
+
+    // Restore normal appearance for layout-only modes
+    if (layoutModes.includes(mode)) {
+      restoreNodeAppearances();
+    }
+
+    sigma?.refresh();
+  }
+
+  function cleanupMode(mode: ViewMode) {
+    switch (mode) {
+      case "heatmap":    stopActivityHeatmap(); break;
+      case "freshness":  stopFreshnessDecay(); break;
+      case "heartbeat":  stopHeartbeatSync(); break;
+      case "river":      stopDataRiver(); break;
+      case "attention":  stopAttentionRadar(); break;
+    }
+  }
+
+  function restoreNodeAppearances() {
+    if (!graph) return;
+    graph.forEachNode((node, attrs) => {
+      const type = attrs.nodeType as keyof typeof nodeColors;
+      const originalColor = getOriginalNodeColor(attrs);
+      const baseSize = scaledNodeSizes[type] || 4;
+      graph.setNodeAttribute(node, "color", originalColor);
+      graph.setNodeAttribute(node, "size", jitterSize(baseSize));
+    });
+  }
+
+  function getOriginalNodeColor(attrs: any): string {
+    if (attrs.nodeType === "attribute") {
+      if (attrs.data?.attribute_type === "heartrate" || attrs.data?.attribute_id?.includes("heart")) return "#ef4444";
+      if (attrs.data?.attribute_type === "battery") return "#eab308";
+      if (attrs.data?.attribute_type === "location" || attrs.data?.attribute_id?.includes("geo")) return "#06b6d4";
+      if (attrs.data?.attribute_type === "imu" || attrs.data?.attribute_id?.includes("accelero")) return "#a855f7";
+      return nodeColors.attribute;
+    }
+    return nodeColors[attrs.nodeType as keyof typeof nodeColors] || "#6b7280";
+  }
+
+  // ── Layout: Per User Clusters ─────────────────────────────────
+
+  function layoutPerUser() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const userNodes: string[] = [];
+    const sensorsByUser = new Map<string, string[]>();
+    const attributesBySensor = new Map<string, string[]>();
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") { userNodes.push(node); sensorsByUser.set(node, []); }
+    });
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "sensor") {
+        const userNode = `user:${attrs.data.connector_id}`;
+        sensorsByUser.get(userNode)?.push(node);
+        attributesBySensor.set(node, []);
+      }
+    });
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "attribute") {
+        const sensorNode = `sensor:${attrs.data.sensor_id}`;
+        attributesBySensor.get(sensorNode)?.push(node);
+      }
+    });
+
+    const userCount = Math.max(userNodes.length, 1);
+    const userRingR = Math.max(30, 20 * Math.sqrt(userCount));
+    const cx = 50, cy = 50;
+
+    userNodes.forEach((userNode, i) => {
+      const angle = (i / userCount) * 2 * Math.PI - Math.PI / 2;
+      const ux = cx + userRingR * Math.cos(angle);
+      const uy = cy + userRingR * Math.sin(angle);
+      graph.setNodeAttribute(userNode, "x", ux);
+      graph.setNodeAttribute(userNode, "y", uy);
+
+      const sensors = sensorsByUser.get(userNode) || [];
+      const sCount = Math.max(sensors.length, 1);
+      const sRingR = Math.max(6, 4 * Math.sqrt(sCount));
+
+      sensors.forEach((sNode, si) => {
+        const sAngle = (si / sCount) * 2 * Math.PI;
+        const sx = ux + sRingR * Math.cos(sAngle);
+        const sy = uy + sRingR * Math.sin(sAngle);
+        graph.setNodeAttribute(sNode, "x", sx);
+        graph.setNodeAttribute(sNode, "y", sy);
+
+        const attrs = attributesBySensor.get(sNode) || [];
+        const aCount = Math.max(attrs.length, 1);
+        const aRingR = Math.max(2, 1.5 * Math.sqrt(aCount));
+
+        attrs.forEach((aNode, ai) => {
+          const aAngle = (ai / aCount) * 2 * Math.PI;
+          graph.setNodeAttribute(aNode, "x", sx + aRingR * Math.cos(aAngle));
+          graph.setNodeAttribute(aNode, "y", sy + aRingR * Math.sin(aAngle));
+        });
+      });
+    });
+
+    isLayoutRunning = false;
+    sigma?.refresh();
+  }
+
+  // ── Layout: Per Attribute Type ────────────────────────────────
+
+  function layoutPerType() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const typeGroups = new Map<string, { sensors: Set<string>; attributes: string[] }>();
+    const userNodes: string[] = [];
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userNodes.push(node);
+      if (attrs.nodeType === "attribute") {
+        const type = attrs.data?.attribute_type || "other";
+        if (!typeGroups.has(type)) typeGroups.set(type, { sensors: new Set(), attributes: [] });
+        typeGroups.get(type)!.attributes.push(node);
+        typeGroups.get(type)!.sensors.add(`sensor:${attrs.data.sensor_id}`);
+      }
+    });
+
+    const types = Array.from(typeGroups.keys()).sort();
+    const colCount = Math.max(types.length, 1);
+    const colWidth = 100 / (colCount + 1);
+
+    // Users across top
+    userNodes.forEach((node, i) => {
+      graph.setNodeAttribute(node, "x", ((i + 1) / (userNodes.length + 1)) * 100);
+      graph.setNodeAttribute(node, "y", 8);
+    });
+
+    // Each type in its column
+    types.forEach((type, colIdx) => {
+      const group = typeGroups.get(type)!;
+      const colX = (colIdx + 1) * colWidth;
+      const sensors = Array.from(group.sensors);
+
+      sensors.forEach((sNode, si) => {
+        if (graph.hasNode(sNode)) {
+          graph.setNodeAttribute(sNode, "x", colX + (Math.random() - 0.5) * 4);
+          graph.setNodeAttribute(sNode, "y", 25 + (si / Math.max(sensors.length, 1)) * 40);
+        }
+      });
+
+      group.attributes.forEach((aNode, ai) => {
+        graph.setNodeAttribute(aNode, "x", colX + (Math.random() - 0.5) * 6);
+        graph.setNodeAttribute(aNode, "y", 30 + (ai / Math.max(group.attributes.length, 1)) * 55);
+      });
+    });
+
+    isLayoutRunning = false;
+    sigma?.refresh();
+  }
+
+  // ── Layout: Radial Tree ───────────────────────────────────────
+
+  function layoutRadialTree() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const cx = 50, cy = 50;
+    const rings = { user: 15, sensor: 35, attribute: 55 };
+    const nodesByType: Record<string, string[]> = { user: [], sensor: [], attribute: [] };
+
+    graph.forEachNode((node, attrs) => {
+      const t = attrs.nodeType;
+      if (t && nodesByType[t]) nodesByType[t].push(node);
+    });
+
+    // Users in inner ring
+    const uCount = Math.max(nodesByType.user.length, 1);
+    nodesByType.user.forEach((node, i) => {
+      const a = (i / uCount) * 2 * Math.PI - Math.PI / 2;
+      graph.setNodeAttribute(node, "x", cx + rings.user * Math.cos(a));
+      graph.setNodeAttribute(node, "y", cy + rings.user * Math.sin(a));
+    });
+
+    // Sensors in middle ring — angular position near parent user
+    // Group sensors by user to distribute evenly within each user's arc
+    const sensorsByUser = new Map<string, string[]>();
+    nodesByType.sensor.forEach(node => {
+      const attrs = graph.getNodeAttributes(node);
+      const uKey = `user:${attrs.data.connector_id}`;
+      if (!sensorsByUser.has(uKey)) sensorsByUser.set(uKey, []);
+      sensorsByUser.get(uKey)!.push(node);
+    });
+
+    let sensorIdx = 0;
+    const totalSensors = nodesByType.sensor.length || 1;
+    sensorsByUser.forEach((sensors, userNode) => {
+      let userAngle = 0;
+      if (graph.hasNode(userNode)) {
+        const ua = graph.getNodeAttributes(userNode);
+        userAngle = Math.atan2(ua.y - cy, ua.x - cx);
+      }
+      const arcSpan = (sensors.length / totalSensors) * 2 * Math.PI;
+      sensors.forEach((sNode, si) => {
+        const a = userAngle - arcSpan / 2 + (si / Math.max(sensors.length, 1)) * arcSpan;
+        graph.setNodeAttribute(sNode, "x", cx + rings.sensor * Math.cos(a));
+        graph.setNodeAttribute(sNode, "y", cy + rings.sensor * Math.sin(a));
+        sensorIdx++;
+      });
+    });
+
+    // Attributes in outer ring — near parent sensor
+    const attrsBySensor = new Map<string, string[]>();
+    nodesByType.attribute.forEach(node => {
+      const attrs = graph.getNodeAttributes(node);
+      const sKey = `sensor:${attrs.data.sensor_id}`;
+      if (!attrsBySensor.has(sKey)) attrsBySensor.set(sKey, []);
+      attrsBySensor.get(sKey)!.push(node);
+    });
+
+    attrsBySensor.forEach((attrs, sensorNode) => {
+      let sAngle = 0;
+      if (graph.hasNode(sensorNode)) {
+        const sa = graph.getNodeAttributes(sensorNode);
+        sAngle = Math.atan2(sa.y - cy, sa.x - cx);
+      }
+      const spread = Math.min(0.3, (attrs.length / 20) * Math.PI);
+      attrs.forEach((aNode, ai) => {
+        const a = sAngle - spread / 2 + (ai / Math.max(attrs.length, 1)) * spread;
+        graph.setNodeAttribute(aNode, "x", cx + rings.attribute * Math.cos(a));
+        graph.setNodeAttribute(aNode, "y", cy + rings.attribute * Math.sin(a));
+      });
+    });
+
+    isLayoutRunning = false;
+    sigma?.refresh();
+  }
+
+  // ── Layout: Constellation ─────────────────────────────────────
+
+  function layoutConstellation() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const userEntries: Array<{node: string; sensors: string[]}> = [];
+    const attrsBySensor = new Map<string, string[]>();
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userEntries.push({node, sensors: []});
+    });
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "sensor") {
+        const entry = userEntries.find(u => u.node === `user:${attrs.data.connector_id}`);
+        if (entry) entry.sensors.push(node);
+        attrsBySensor.set(node, []);
+      }
+    });
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "attribute") {
+        const sNode = `sensor:${attrs.data.sensor_id}`;
+        attrsBySensor.get(sNode)?.push(node);
+      }
+    });
+
+    const gridSize = Math.max(1, Math.ceil(Math.sqrt(userEntries.length)));
+    const cellW = 100 / gridSize;
+    const cellH = 100 / gridSize;
+
+    userEntries.forEach((entry, idx) => {
+      const row = Math.floor(idx / gridSize);
+      const col = idx % gridSize;
+      const cx = (col + 0.5) * cellW;
+      const cy = (row + 0.5) * cellH;
+
+      graph.setNodeAttribute(entry.node, "x", cx);
+      graph.setNodeAttribute(entry.node, "y", cy);
+
+      const sCount = Math.max(entry.sensors.length, 1);
+      const polyR = Math.min(cellW, cellH) * 0.3;
+
+      entry.sensors.forEach((sNode, si) => {
+        const angle = (si / sCount) * 2 * Math.PI - Math.PI / 2;
+        const sx = cx + polyR * Math.cos(angle);
+        const sy = cy + polyR * Math.sin(angle);
+        graph.setNodeAttribute(sNode, "x", sx);
+        graph.setNodeAttribute(sNode, "y", sy);
+
+        const attrs = attrsBySensor.get(sNode) || [];
+        const aR = polyR * 0.25;
+        attrs.forEach((aNode, ai) => {
+          const aAngle = (ai / Math.max(attrs.length, 1)) * 2 * Math.PI;
+          graph.setNodeAttribute(aNode, "x", sx + aR * Math.cos(aAngle));
+          graph.setNodeAttribute(aNode, "y", sy + aR * Math.sin(aAngle));
+        });
+      });
+    });
+
+    isLayoutRunning = false;
+    sigma?.refresh();
+  }
+
+  // ── Visual: Activity Heatmap ──────────────────────────────────
+
+  function startActivityHeatmap() {
+    // Apply heatmap coloring to current layout positions
+    applyLayout(lastLayoutMode);
+    if (graph) {
+      graph.forEachNode(node => {
+        activityCounts.set(node, 0);
+        updateHeatmapNode(node);
+      });
+    }
+  }
+
+  function stopActivityHeatmap() {
+    activityDecayTimers.forEach(t => clearTimeout(t));
+    activityDecayTimers = [];
+    activityCounts.clear();
+  }
+
+  function trackActivity(nodeId: string) {
+    const cur = (activityCounts.get(nodeId) || 0) + 1;
+    activityCounts.set(nodeId, cur);
+    updateHeatmapNode(nodeId);
+
+    const timer = setTimeout(() => {
+      const c = activityCounts.get(nodeId) || 0;
+      if (c > 0) activityCounts.set(nodeId, c - 1);
+      if (viewMode === "heatmap") updateHeatmapNode(nodeId);
+      scheduleRefresh();
+    }, ACTIVITY_WINDOW_MS);
+    activityDecayTimers.push(timer);
+  }
+
+  function updateHeatmapNode(nodeId: string) {
+    if (!graph || !graph.hasNode(nodeId)) return;
+    const count = activityCounts.get(nodeId) || 0;
+    const attrs = graph.getNodeAttributes(nodeId);
+    const baseSize = scaledNodeSizes[attrs.nodeType as keyof typeof scaledNodeSizes] || 4;
+
+    let color: string;
+    if (count === 0)      color = "#334155";    // dark slate
+    else if (count <= 2)  color = "#3b82f6";    // blue
+    else if (count <= 5)  color = "#22c55e";    // green
+    else if (count <= 10) color = "#eab308";    // yellow
+    else                  color = "#ef4444";    // red
+
+    const sizeMult = 1.0 + Math.min(count * 0.08, 0.8);
+    graph.setNodeAttribute(nodeId, "color", color);
+    graph.setNodeAttribute(nodeId, "size", baseSize * sizeMult);
+    scheduleRefresh();
+  }
+
+  // ── Visual: Freshness Decay ───────────────────────────────────
+
+  function startFreshnessDecay() {
+    applyLayout(lastLayoutMode);
+    const now = Date.now();
+    if (graph) {
+      graph.forEachNode(node => nodeFreshness.set(node, now));
+    }
+    freshnessTimer = setInterval(updateFreshnessAppearances, FRESHNESS_INTERVAL_MS);
+  }
+
+  function stopFreshnessDecay() {
+    if (freshnessTimer) { clearInterval(freshnessTimer); freshnessTimer = null; }
+    nodeFreshness.clear();
+  }
+
+  function hexToRgba(hex: string, alpha: number): string {
+    const c = hex.replace("#", "");
+    return `rgba(${parseInt(c.slice(0,2),16)},${parseInt(c.slice(2,4),16)},${parseInt(c.slice(4,6),16)},${alpha})`;
+  }
+
+  // Convert any CSS color to "r,g,b" string for safe rgba() construction
+  function colorToRgb(color: string): string {
+    if (color.startsWith("rgb")) {
+      const m = color.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (m) return `${m[1]},${m[2]},${m[3]}`;
+    }
+    if (color.startsWith("#")) {
+      const c = color.replace("#", "");
+      return `${parseInt(c.slice(0,2),16)},${parseInt(c.slice(2,4),16)},${parseInt(c.slice(4,6),16)}`;
+    }
+    return "139,92,246"; // fallback purple
+  }
+
+  function updateFreshnessAppearances() {
+    if (!graph || viewMode !== "freshness") return;
+    const now = Date.now();
+
+    graph.forEachNode((node, attrs) => {
+      const last = nodeFreshness.get(node) || now;
+      const stale = (now - last) / 1000;
+      const baseSize = scaledNodeSizes[attrs.nodeType as keyof typeof scaledNodeSizes] || 4;
+      const origColor = getOriginalNodeColor(attrs);
+
+      let opacity: number, sizeFactor: number;
+      if (stale < 2)       { opacity = 1.0; sizeFactor = 1.0; }
+      else if (stale < 10) { opacity = 0.8; sizeFactor = 0.95; }
+      else if (stale < 30) { opacity = 0.5; sizeFactor = 0.85; }
+      else if (stale < 120){ opacity = 0.3; sizeFactor = 0.7; }
+      else                 { opacity = 0.1; sizeFactor = 0.5; }
+
+      graph.setNodeAttribute(node, "color", hexToRgba(origColor, opacity));
+      graph.setNodeAttribute(node, "size", baseSize * sizeFactor);
+    });
+    scheduleRefresh();
+  }
+
+  function markNodeFresh(nodeId: string) {
+    nodeFreshness.set(nodeId, Date.now());
+    if (viewMode !== "freshness" || !graph || !graph.hasNode(nodeId)) return;
+    const attrs = graph.getNodeAttributes(nodeId);
+    const origColor = getOriginalNodeColor(attrs);
+    graph.setNodeAttribute(nodeId, "color", lightenColor(origColor, 0.6));
+    setTimeout(() => {
+      if (graph?.hasNode(nodeId)) {
+        graph.setNodeAttribute(nodeId, "color", origColor);
+        scheduleRefresh();
+      }
+    }, 200);
+    scheduleRefresh();
+  }
+
+  // ── Visual: Heartbeat Sync ────────────────────────────────────
+
+  function extractBPM(lastvalue: any): number | null {
+    if (!lastvalue?.payload) return null;
+    const p = lastvalue.payload;
+    if (typeof p === "number" && p > 20 && p < 250) return p;
+    if (p?.bpm && typeof p.bpm === "number") return p.bpm;
+    if (p?.heart_rate && typeof p.heart_rate === "number") return p.heart_rate;
+    if (p?.heartRate && typeof p.heartRate === "number") return p.heartRate;
+    return null;
+  }
+
+  function startHeartbeatSync() {
+    applyLayout(lastLayoutMode);
+    heartbeatStartTime = performance.now();
+    heartbeatBPMs.clear();
+
+    if (graph) {
+      graph.forEachNode((node, attrs) => {
+        if (attrs.nodeType === "attribute" &&
+            (attrs.data?.attribute_type === "heartrate" || attrs.data?.attribute_type === "hr" ||
+             attrs.data?.attribute_id?.includes("heart"))) {
+          const bpm = extractBPM(attrs.data?.lastvalue);
+          if (bpm) heartbeatBPMs.set(node, bpm);
+        }
+      });
+    }
+    heartbeatAnimFrame = requestAnimationFrame(animateHeartbeat);
+  }
+
+  function stopHeartbeatSync() {
+    if (heartbeatAnimFrame) { cancelAnimationFrame(heartbeatAnimFrame); heartbeatAnimFrame = null; }
+    heartbeatBPMs.clear();
+    heartbeatStartTime = null;
+  }
+
+  function animateHeartbeat() {
+    if (!sigma || !graph || viewMode !== "heartbeat") { heartbeatAnimFrame = null; return; }
+
+    const now = performance.now();
+    const elapsed = heartbeatStartTime ? now - heartbeatStartTime : 0;
+
+    const bpms = Array.from(heartbeatBPMs.values());
+    const avgBPM = bpms.length > 0 ? bpms.reduce((s, b) => s + b, 0) / bpms.length : 60;
+    const globalPhase = (elapsed / 1000) * (avgBPM / 60) * 2 * Math.PI;
+    const globalScale = 1.0 + Math.sin(globalPhase) * 0.03;
+
+    graph.forEachNode((node, attrs) => {
+      const baseSize = scaledNodeSizes[attrs.nodeType as keyof typeof scaledNodeSizes] || 4;
+
+      if (heartbeatBPMs.has(node)) {
+        const nodeBPM = heartbeatBPMs.get(node)!;
+        const nodePhase = (elapsed / 1000) * (nodeBPM / 60) * 2 * Math.PI;
+        const nodeScale = 1.0 + Math.sin(nodePhase) * 0.2;
+        graph.setNodeAttribute(node, "size", baseSize * nodeScale);
+
+        // Glow at peak
+        if (Math.sin(nodePhase) > 0.95 && isNodeInViewport(node)) {
+          activeGlows.set(node, { start: now });
+          startGlowLoop();
+        }
+        // Color heartbeat nodes red at peak, pink otherwise
+        const intensity = (Math.sin(nodePhase) + 1) / 2;
+        const r = Math.round(200 + intensity * 55);
+        graph.setNodeAttribute(node, "color", `rgb(${r}, ${Math.round(60 - intensity * 30)}, ${Math.round(80 - intensity * 40)})`);
+      } else {
+        graph.setNodeAttribute(node, "size", baseSize * globalScale);
+      }
+    });
+
+    sigma.refresh();
+    heartbeatAnimFrame = requestAnimationFrame(animateHeartbeat);
+  }
+
+  // ── Visual: Data River ────────────────────────────────────────
+
+  function startDataRiver() {
+    applyLayout(lastLayoutMode);
+    riverParticles = [];
+    riverAnimFrame = requestAnimationFrame(animateDataRiver);
+  }
+
+  function stopDataRiver() {
+    if (riverAnimFrame) { cancelAnimationFrame(riverAnimFrame); riverAnimFrame = null; }
+    riverParticles = [];
+    // Clear glow canvas
+    if (glowCtx && glowCanvas) {
+      glowCtx.clearRect(0, 0, glowCanvas.clientWidth, glowCanvas.clientHeight);
+    }
+  }
+
+  function spawnParticle(sensorId: string, attributeId: string) {
+    if (viewMode !== "river" || !graph || !sigma) return;
+
+    const sensorNodeId = `sensor:${sensorId}`;
+    const attrNodeId = `attr:${sensorId}:${attributeId}`;
+    if (!graph.hasNode(sensorNodeId) || !graph.hasNode(attrNodeId)) return;
+
+    const userNodeId = `user:${graph.getNodeAttribute(sensorNodeId, "data").connector_id}`;
+    const path: Array<{x: number; y: number}> = [];
+
+    if (graph.hasNode(userNodeId)) {
+      const ua = graph.getNodeAttributes(userNodeId);
+      path.push({x: ua.x, y: ua.y});
+    }
+    const sa = graph.getNodeAttributes(sensorNodeId);
+    path.push({x: sa.x, y: sa.y});
+    const aa = graph.getNodeAttributes(attrNodeId);
+    path.push({x: aa.x, y: aa.y});
+
+    if (path.length < 2) return;
+
+    const color = graph.getNodeAttribute(attrNodeId, "color") || "#8b5cf6";
+    riverParticles.push({ path, progress: 0, speed: 0.012 + Math.random() * 0.008, color, size: 1.5 + Math.random() });
+
+    if (riverParticles.length > 300) riverParticles.splice(0, riverParticles.length - 300);
+  }
+
+  function animateDataRiver() {
+    if (viewMode !== "river") { riverAnimFrame = null; return; }
+
+    // Update particles
+    riverParticles = riverParticles.filter(p => { p.progress += p.speed; return p.progress < 1.0; });
+
+    // Render on glow canvas
+    if (!glowCanvas || !sigma) { riverAnimFrame = requestAnimationFrame(animateDataRiver); return; }
+    if (!glowCtx) glowCtx = glowCanvas.getContext("2d");
+    if (!glowCtx) { riverAnimFrame = requestAnimationFrame(animateDataRiver); return; }
+
+    const w = glowCanvas.clientWidth;
+    const h = glowCanvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    if (glowCanvas.width !== w * dpr || glowCanvas.height !== h * dpr) {
+      glowCanvas.width = w * dpr;
+      glowCanvas.height = h * dpr;
+      glowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // Fade trail instead of full clear
+    glowCtx.fillStyle = "rgba(15, 23, 42, 0.3)";
+    glowCtx.fillRect(0, 0, w, h);
+
+    for (const p of riverParticles) {
+      const pos = interpolatePath(p.path, p.progress);
+      if (!pos) continue;
+      const vp = sigma.graphToViewport(pos);
+
+      const grad = glowCtx.createRadialGradient(vp.x, vp.y, 0, vp.x, vp.y, p.size * 4);
+      const rgb = colorToRgb(p.color);
+      grad.addColorStop(0, `rgba(${rgb},1)`);
+      grad.addColorStop(0.4, `rgba(${rgb},0.53)`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      glowCtx.fillStyle = grad;
+      glowCtx.beginPath();
+      glowCtx.arc(vp.x, vp.y, p.size * 4, 0, Math.PI * 2);
+      glowCtx.fill();
+    }
+
+    riverAnimFrame = requestAnimationFrame(animateDataRiver);
+  }
+
+  function interpolatePath(path: Array<{x: number; y: number}>, progress: number): {x: number; y: number} | null {
+    if (path.length < 2) return null;
+    const segs = path.length - 1;
+    const segLen = 1.0 / segs;
+    const segIdx = Math.min(Math.floor(progress / segLen), segs - 1);
+    const t = (progress - segIdx * segLen) / segLen;
+    const a = path[segIdx], b = path[segIdx + 1];
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+
+  // ── Visual: Attention Radar ───────────────────────────────────
+
+  function startAttentionRadar() {
+    applyLayout(lastLayoutMode);
+    if (graph) {
+      graph.forEachNode((node, attrs) => {
+        if (attrs.nodeType === "sensor") {
+          const level = sensorAttentionLevels.get(attrs.data?.sensor_id) || attrs.data?.attention_level || "none";
+          applyAttentionAppearance(node, level);
+        } else if (attrs.nodeType === "attribute") {
+          const sLevel = sensorAttentionLevels.get(attrs.data?.sensor_id) || "none";
+          applyAttentionAppearance(node, sLevel);
+        }
+      });
+    }
+    sigma?.refresh();
+  }
+
+  function stopAttentionRadar() {
+    // appearances restored by restoreNodeAppearances in next mode switch
+  }
+
+  function applyAttentionAppearance(nodeId: string, level: string) {
+    if (!graph || !graph.hasNode(nodeId)) return;
+    const attrs = graph.getNodeAttributes(nodeId);
+    const baseSize = scaledNodeSizes[attrs.nodeType as keyof typeof scaledNodeSizes] || 4;
+
+    let color: string, sizeMult: number;
+    switch (level) {
+      case "high":   color = "#22c55e"; sizeMult = 1.5; break;
+      case "medium": color = "#eab308"; sizeMult = 1.2; break;
+      case "low":    color = "#f97316"; sizeMult = 0.9; break;
+      default:       color = "#374151"; sizeMult = 0.6; break;
+    }
+
+    graph.setNodeAttribute(nodeId, "color", color);
+    graph.setNodeAttribute(nodeId, "size", baseSize * sizeMult);
+
+    if (level === "high") {
+      activeGlows.set(nodeId, { start: performance.now() });
+      startGlowLoop();
+    }
+  }
+
+  function handleAttentionChanged(event: CustomEvent) {
+    const { sensor_id, level } = event.detail;
+    sensorAttentionLevels.set(sensor_id, level);
+
+    if (viewMode !== "attention") return;
+    const sNodeId = `sensor:${sensor_id}`;
+    if (graph?.hasNode(sNodeId)) {
+      applyAttentionAppearance(sNodeId, level);
+      // Also update all attribute nodes of this sensor
+      graph.forEachNode((node, attrs) => {
+        if (attrs.nodeType === "attribute" && attrs.data?.sensor_id === sensor_id) {
+          applyAttentionAppearance(node, level);
+        }
+      });
+      scheduleRefresh();
+    }
+  }
+
+  // ── Mode-specific label for re-layout button ──────────────────
+  function handleRelayoutForMode() {
+    if (layoutModes.includes(viewMode)) {
+      applyLayout(viewMode);
+    } else {
+      applyLayout(lastLayoutMode);
+    }
+    sigma?.refresh();
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -666,6 +1600,14 @@
     drawFrame();
 
     const stream = recordingCanvas.captureStream(30);
+
+    // Pipe audio from the sound engine into the recording stream
+    if (soundEnabled && audioCtx && masterOut) {
+      recDest = audioCtx.createMediaStreamDestination();
+      masterOut.connect(recDest);
+      recDest.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+    }
+
     const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
       ? "video/webm;codecs=vp9"
       : "video/webm";
@@ -673,7 +1615,8 @@
     recordedChunks = [];
     mediaRecorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: 8_000_000
+      videoBitsPerSecond: 8_000_000,
+      audioBitsPerSecond: 128_000
     });
 
     mediaRecorder.ondataavailable = (e) => {
@@ -702,6 +1645,10 @@
   function stopRecording() {
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
       mediaRecorder.stop();
+    }
+    if (recDest && masterOut) {
+      try { masterOut.disconnect(recDest); } catch (_) {}
+      recDest = null;
     }
     if (recordingRaf !== null) {
       cancelAnimationFrame(recordingRaf);
@@ -917,34 +1864,50 @@
     return vp.x >= -margin && vp.x <= w + margin && vp.y >= -margin && vp.y <= h + margin;
   }
 
-  // Pulsate a node with subtle animation
+  // Pulsate a node with subtle animation + optional render-only vibration
   function pulsateNode(nodeId: string) {
     if (!graph || !graph.hasNode(nodeId)) return;
 
-    // Check if this node is already pulsating
     const existing = activePulsations.get(nodeId);
 
     let baseSize: number;
     let originalColor: string;
 
     if (existing) {
-      // Already pulsating - cancel timeout but keep original values
       clearTimeout(existing.timeout);
       baseSize = existing.baseSize;
       originalColor = existing.originalColor;
     } else {
-      // First pulsation - capture current values as originals
       baseSize = graph.getNodeAttribute(nodeId, "size");
       originalColor = graph.getNodeAttribute(nodeId, "color");
     }
 
     // Subtle size increase (20% larger)
-    const expandedSize = baseSize * 1.2;
-    graph.setNodeAttribute(nodeId, "size", expandedSize);
+    graph.setNodeAttribute(nodeId, "size", baseSize * 1.2);
 
     // Lighten the node's color
-    const highlightColor = lightenColor(originalColor, 0.4);
-    graph.setNodeAttribute(nodeId, "color", highlightColor);
+    graph.setNodeAttribute(nodeId, "color", lightenColor(originalColor, 0.4));
+
+    // Subtle positional vibration (opt-in) — short self-contained cycle
+    if (vibrateEnabled) {
+      const cx = graph.getNodeAttribute(nodeId, "x");
+      const cy = graph.getNodeAttribute(nodeId, "y");
+      const amp = 1.2 + Math.random() * 1.0;
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+          if (!graph || !graph.hasNode(nodeId)) return;
+          const angle = Math.random() * Math.PI * 2;
+          const r = amp * (1 - i * 0.3);
+          graph.setNodeAttribute(nodeId, "x", cx + Math.cos(angle) * r);
+          graph.setNodeAttribute(nodeId, "y", cy + Math.sin(angle) * r);
+        }, i * 35);
+      }
+      setTimeout(() => {
+        if (!graph || !graph.hasNode(nodeId)) return;
+        graph.setNodeAttribute(nodeId, "x", cx);
+        graph.setNodeAttribute(nodeId, "y", cy);
+      }, 110);
+    }
 
     // Contract back after animation
     const timeout = setTimeout(() => {
@@ -970,26 +1933,54 @@
     const sensorNodeId = `sensor:${sensor_id}`;
     let anyVisible = false;
 
-    // Only pulsate nodes visible in the current viewport
-    if (graph && graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
-      pulsateNode(sensorNodeId);
-      anyVisible = true;
+    // Mode-specific handling
+    if (viewMode === "heatmap") {
+      if (graph?.hasNode(sensorNodeId)) trackActivity(sensorNodeId);
+      if (attribute_ids && Array.isArray(attribute_ids)) {
+        for (const attrId of attribute_ids) {
+          const attrNodeId = `attr:${sensor_id}:${attrId}`;
+          if (graph?.hasNode(attrNodeId)) trackActivity(attrNodeId);
+        }
+      }
+      return;
     }
 
-    if (attribute_ids && Array.isArray(attribute_ids)) {
-      for (const attrId of attribute_ids) {
-        const attrNodeId = `attr:${sensor_id}:${attrId}`;
-        if (graph && graph.hasNode(attrNodeId) && isNodeInViewport(attrNodeId)) {
-          pulsateNode(attrNodeId);
-          anyVisible = true;
+    if (viewMode === "river") {
+      if (attribute_ids && Array.isArray(attribute_ids)) {
+        for (const attrId of attribute_ids) {
+          spawnParticle(sensor_id, attrId);
         }
       }
     }
 
-    // Only play sound if at least one affected node is visible
-    if (anyVisible) {
-      playCrackle();
+    if (viewMode === "freshness") {
+      if (graph?.hasNode(sensorNodeId)) markNodeFresh(sensorNodeId);
+      if (attribute_ids && Array.isArray(attribute_ids)) {
+        for (const attrId of attribute_ids) {
+          const attrNodeId = `attr:${sensor_id}:${attrId}`;
+          if (graph?.hasNode(attrNodeId)) markNodeFresh(attrNodeId);
+        }
+      }
     }
+
+    // Pulsation for topology and layout modes
+    if (layoutModes.includes(viewMode)) {
+      if (graph && graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
+        pulsateNode(sensorNodeId);
+        anyVisible = true;
+      }
+      if (attribute_ids && Array.isArray(attribute_ids)) {
+        for (const attrId of attribute_ids) {
+          const attrNodeId = `attr:${sensor_id}:${attrId}`;
+          if (graph && graph.hasNode(attrNodeId) && isNodeInViewport(attrNodeId)) {
+            pulsateNode(attrNodeId);
+            anyVisible = true;
+          }
+        }
+      }
+    }
+
+    if (anyVisible) playSound();
   }
 
   // Handle composite measurement events for real-time updates (viewport-aware)
@@ -998,16 +1989,32 @@
     const attrNodeId = `attr:${sensor_id}:${attribute_id}`;
 
     if (graph && graph.hasNode(attrNodeId)) {
-      // Always update data (lightweight, no rendering cost)
+      // Always update data
       const attrs = graph.getNodeAttributes(attrNodeId);
       if (attrs.data) {
         attrs.data.lastvalue = { payload, timestamp: Date.now() };
       }
 
-      // Only pulsate + glow if node is in the viewport
-      if (isNodeInViewport(attrNodeId)) {
-        pulsateNode(attrNodeId);
+      // Mode-specific handling
+      if (viewMode === "freshness") {
+        markNodeFresh(attrNodeId);
+        markNodeFresh(`sensor:${sensor_id}`);
+      }
+      if (viewMode === "heartbeat") {
+        const bpm = extractBPM({ payload });
+        if (bpm) heartbeatBPMs.set(attrNodeId, bpm);
+      }
+      if (viewMode === "river") {
+        spawnParticle(sensor_id, attribute_id);
+      }
+      if (viewMode === "heatmap") {
+        trackActivity(attrNodeId);
+        trackActivity(`sensor:${sensor_id}`);
+      }
 
+      // Pulsation for layout modes
+      if (layoutModes.includes(viewMode) && isNodeInViewport(attrNodeId)) {
+        pulsateNode(attrNodeId);
         const sensorNodeId = `sensor:${sensor_id}`;
         if (graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
           pulsateNode(sensorNodeId);
@@ -1043,6 +2050,8 @@
       buildGraph();
       if (container) {
         initSigma();
+        // Re-apply current view mode after rebuild
+        applyViewMode(viewMode);
       }
     }, 500);
   });
@@ -1052,6 +2061,7 @@
     initSigma();
     window.addEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
     window.addEventListener("graph-activity-event", handleGraphActivity as EventListener);
+    window.addEventListener("attention-changed-event", handleAttentionChanged as EventListener);
     window.addEventListener("keydown", onKeydown);
   });
 
@@ -1059,6 +2069,7 @@
     if (isRecording) stopRecording();
     if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }
     activeGlows.clear();
+    cleanupMode(viewMode);
     if (audioCtx) {
       audioCtx.close();
       audioCtx = null;
@@ -1069,13 +2080,13 @@
       sigma.kill();
       sigma = null;
     }
-    // Clear any pending pulsation timeouts
     for (const pulsation of activePulsations.values()) {
       clearTimeout(pulsation.timeout);
     }
     activePulsations.clear();
     window.removeEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
     window.removeEventListener("graph-activity-event", handleGraphActivity as EventListener);
+    window.removeEventListener("attention-changed-event", handleAttentionChanged as EventListener);
   });
 </script>
 
@@ -1088,23 +2099,23 @@
 
   <!-- Controls -->
   <div class="controls">
-    <button onclick={handleZoomIn} title="Zoom In" class="control-btn">
+    <button onclick={handleZoomIn} data-tooltip="Zoom In" class="control-btn tooltip-left">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
       </svg>
     </button>
-    <button onclick={handleZoomOut} title="Zoom Out" class="control-btn">
+    <button onclick={handleZoomOut} data-tooltip="Zoom Out" class="control-btn tooltip-left">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
       </svg>
     </button>
-<button onclick={handleRelayout} title="Re-layout" class="control-btn" disabled={isLayoutRunning}>
+    <button onclick={handleRelayout} data-tooltip="Re-layout — Recompute node positions" class="control-btn tooltip-left" disabled={isLayoutRunning}>
       <svg class="w-5 h-5" class:animate-spin={isLayoutRunning} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
       </svg>
     </button>
     <div class="control-divider"></div>
-    <button onclick={handleFullscreen} title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"} class="control-btn">
+    <button onclick={handleFullscreen} data-tooltip={isFullscreen ? "Exit Fullscreen" : "Fullscreen — Expand graph to fill screen"} class="control-btn tooltip-left">
       {#if isFullscreen}
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
@@ -1115,12 +2126,12 @@
         </svg>
       {/if}
     </button>
-    <button onclick={() => showExportModal = true} title="Export Image" class="control-btn">
+    <button onclick={() => showExportModal = true} data-tooltip="Export — Save as PNG or JPEG at up to 8x resolution" class="control-btn tooltip-left">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
       </svg>
     </button>
-    <button onclick={toggleRecording} title={isRecording ? "Stop Recording" : "Record Video"} class="control-btn" class:recording={isRecording}>
+    <button onclick={toggleRecording} data-tooltip={isRecording ? "Stop Recording" : `Record — Capture graph as WebM${soundEnabled ? " + audio" : ""}`} class="control-btn tooltip-left" class:recording={isRecording}>
       {#if isRecording}
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
           <rect x="6" y="6" width="12" height="12" rx="1" />
@@ -1133,7 +2144,7 @@
       {/if}
     </button>
     <div class="control-divider"></div>
-    <button onclick={toggleSound} title={soundEnabled ? "Sound On" : "Sound Off"} class="control-btn" class:sound-active={soundEnabled}>
+    <button onclick={toggleSound} data-tooltip={THEME_LABELS[soundTheme]} class="control-btn tooltip-left" class:sound-active={soundEnabled}>
       {#if soundEnabled}
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
@@ -1144,6 +2155,58 @@
         </svg>
       {/if}
     </button>
+    <button onclick={() => vibrateEnabled = !vibrateEnabled} data-tooltip={vibrateEnabled ? "Vibrate On" : "Vibrate Off"} class="control-btn tooltip-left" class:sound-active={vibrateEnabled}>
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {#if vibrateEnabled}
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+          <circle cx="18" cy="17.25" r="2" fill="currentColor" stroke="none" />
+          <path stroke-linecap="round" stroke-width="1.5" d="M21.5 15.5a3 3 0 010 3.5M15 15.5a3 3 0 000 3.5" />
+        {:else}
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        {/if}
+      </svg>
+    </button>
+  </div>
+
+  <!-- Mode Selector -->
+  <div class="mode-selector">
+    <div class="mode-group">
+      <span class="mode-group-label">Layout</span>
+      <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-below" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Organic force-directed clustering. Nodes self-organize by connectivity.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-below" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit their owner. Each user becomes a cluster center.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-below" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Vertical lanes by attribute type. See heartrate, battery, IMU etc. side by side.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-below" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings. Users at center, sensors in middle, attributes in outer ring.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" /><circle cx="12" cy="12" r="5" stroke-width="2" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("constellation")} class="mode-btn tooltip-below" class:active={viewMode === "constellation"} class:layout-active={lastLayoutMode === "constellation" && visualModes.includes(viewMode)} data-tooltip="Constellation — Each user's sensors form a geometric star pattern. Grid of constellations.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
+      </button>
+    </div>
+    <div class="mode-divider"></div>
+    <div class="mode-group">
+      <span class="mode-group-label">Visual</span>
+      <button onclick={() => switchViewMode("heatmap")} class="mode-btn tooltip-below" class:active={viewMode === "heatmap"} data-tooltip="Heatmap — Node color reflects data frequency. Cold (blue) to hot (red) over a 10s window.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("freshness")} class="mode-btn tooltip-below" class:active={viewMode === "freshness"} data-tooltip="Freshness — Nodes fade to invisible over time. Flash of light when stale sensors revive.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("heartbeat")} class="mode-btn tooltip-below" class:active={viewMode === "heartbeat"} data-tooltip="Heartbeat — Graph breathes at average BPM. Heart-rate sensors pulse individually.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("river")} class="mode-btn tooltip-below" class:active={viewMode === "river"} data-tooltip="Data River — Glowing particles flow along edges when data arrives. Color matches attribute type.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-below" class:active={viewMode === "attention"} data-tooltip="Attention — Nodes sized and colored by who's watching. High = green, none = dim.">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+      </button>
+    </div>
   </div>
 
   <!-- Recording indicator -->
@@ -1213,24 +2276,38 @@
     </div>
   {/if}
 
-  <!-- Legend -->
+  <!-- Legend (mode-aware) -->
   <div class="legend">
-    <div class="legend-item">
-      <span class="legend-dot" style="background: {nodeColors.room}"></span>
-      <span>Rooms</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: {nodeColors.user}"></span>
-      <span>Users</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: {nodeColors.sensor}"></span>
-      <span>Sensors</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: {nodeColors.attribute}"></span>
-      <span>Attributes</span>
-    </div>
+    {#if viewMode === "heatmap"}
+      <div class="legend-item"><span class="legend-dot" style="background: #334155"></span><span>Idle</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #3b82f6"></span><span>Low</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #22c55e"></span><span>Medium</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #eab308"></span><span>High</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #ef4444"></span><span>Intense</span></div>
+    {:else if viewMode === "attention"}
+      <div class="legend-item"><span class="legend-dot" style="background: #22c55e"></span><span>High</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #eab308"></span><span>Medium</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #f97316"></span><span>Low</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #374151"></span><span>None</span></div>
+    {:else if viewMode === "freshness"}
+      <div class="legend-item"><span class="legend-dot" style="background: #22c55e; opacity: 1"></span><span>Fresh</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #22c55e; opacity: 0.5"></span><span>Cooling</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #22c55e; opacity: 0.2"></span><span>Stale</span></div>
+    {:else if viewMode === "heartbeat"}
+      <div class="legend-item"><span class="legend-dot" style="background: #ef4444"></span><span>HR Sensors</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #6b7280"></span><span>Other</span></div>
+      <div class="legend-item"><span class="legend-label">Avg {heartbeatBPMs.size > 0 ? Math.round(Array.from(heartbeatBPMs.values()).reduce((s,b)=>s+b,0)/heartbeatBPMs.size) : '--'} BPM</span></div>
+    {:else if viewMode === "river"}
+      <div class="legend-item"><span class="legend-dot" style="background: #ef4444"></span><span>HR</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #eab308"></span><span>Battery</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #06b6d4"></span><span>Location</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: #a855f7"></span><span>IMU</span></div>
+    {:else}
+      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.room}"></span><span>Rooms</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.user}"></span><span>Users</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.sensor}"></span><span>Sensors</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.attribute}"></span><span>Attributes</span></div>
+    {/if}
   </div>
 
   <!-- Compact Hover Tooltip (follows cursor) -->
@@ -1282,7 +2359,7 @@
         {/if}
       </div>
 
-      <button onclick={() => { selectedNode = null; selectedDetails = null; highlightedNodes = new Set(); sigma?.refresh(); }} class="bottom-bar-close" title="Close">
+      <button onclick={() => { selectedNode = null; selectedDetails = null; highlightedNodes = new Set(); sigma?.refresh(); }} class="bottom-bar-close" data-tooltip="Deselect node" data-tooltip-pos="above">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
@@ -1368,6 +2445,153 @@
     cursor: not-allowed;
   }
 
+  /* ── CSS Tooltips ─────────────────────────────────────── */
+
+  [data-tooltip] {
+    position: relative;
+  }
+
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    white-space: normal;
+    max-width: 220px;
+    width: max-content;
+    padding: 0.4rem 0.6rem;
+    background: rgba(17, 24, 39, 0.97);
+    border: 1px solid rgba(75, 85, 99, 0.6);
+    border-radius: 0.375rem;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    font-weight: 400;
+    color: #e5e7eb;
+    letter-spacing: 0;
+    text-transform: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 100;
+  }
+
+  [data-tooltip]:hover::after {
+    opacity: 1;
+  }
+
+  /* Left-side tooltips (for the right-side controls panel) */
+  .tooltip-left[data-tooltip]::after {
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%) translateX(4px);
+  }
+
+  .tooltip-left[data-tooltip]:hover::after {
+    transform: translateY(-50%) translateX(0);
+  }
+
+  /* Below tooltips (for the top mode selector) */
+  .tooltip-below[data-tooltip]::after {
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+  }
+
+  .tooltip-below[data-tooltip]:hover::after {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Above tooltips (e.g. for bottom bar close) */
+  [data-tooltip-pos="above"][data-tooltip]::after {
+    bottom: calc(100% + 8px);
+    top: auto;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  [data-tooltip-pos="above"][data-tooltip]:hover::after {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ── Mode Selector ────────────────────────────────────── */
+
+  .mode-selector {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(31, 41, 55, 0.95);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 0.625rem;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+  }
+
+  .mode-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .mode-group-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6b7280;
+    margin-right: 0.25rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .mode-divider {
+    width: 1px;
+    height: 1.5rem;
+    background: rgba(75, 85, 99, 0.4);
+    flex-shrink: 0;
+  }
+
+  .mode-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    background: rgba(31, 41, 55, 0.6);
+    border: 1px solid rgba(75, 85, 99, 0.3);
+    border-radius: 0.375rem;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+  }
+
+  .mode-btn:hover {
+    background: rgba(55, 65, 81, 0.8);
+    border-color: rgba(107, 114, 128, 0.5);
+    color: #d1d5db;
+  }
+
+  .mode-btn.active {
+    background: rgba(6, 182, 212, 0.2);
+    border-color: rgba(6, 182, 212, 0.6);
+    color: #22d3ee;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+  }
+
+  .mode-btn.layout-active {
+    border-color: rgba(6, 182, 212, 0.35);
+    color: rgba(34, 211, 238, 0.55);
+  }
+
+  .mode-btn :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* ── Legend ──────────────────────────────────────────── */
+
   .legend {
     position: absolute;
     bottom: 1rem;
@@ -1393,6 +2617,12 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
+  }
+
+  .legend-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-variant-numeric: tabular-nums;
   }
 
   /* Compact hover tooltip - follows cursor */

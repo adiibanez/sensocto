@@ -154,6 +154,12 @@ defmodule SensoctoWeb.SimulatorLive do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to stop scenario: #{inspect(reason)}")}
     end
+  catch
+    :exit, {:timeout, _} ->
+      {:noreply,
+       socket
+       |> put_flash(:warning, "Stopping scenario is taking longer than expected, please wait...")
+       |> assign_status()}
   end
 
   @impl true
@@ -177,6 +183,12 @@ defmodule SensoctoWeb.SimulatorLive do
     else
       {:noreply, put_flash(socket, :error, "No scenario selected")}
     end
+  catch
+    :exit, {:timeout, _} ->
+      {:noreply,
+       socket
+       |> put_flash(:warning, "Scenario switch is taking longer than expected, please wait...")
+       |> assign_status()}
   end
 
   defp assign_status(socket) do

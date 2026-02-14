@@ -1,0 +1,674 @@
+# Security Assessment: Sensocto Platform
+
+```elixir
+Mix.install([])
+```
+
+## Executive Summary
+
+**Assessment Date:** 2026-02-05
+**Previous Assessment:** 2026-02-02
+**Assessor:** Security Advisor Agent (Claude Opus 4.5)
+**Platform Version:** Current main branch (commit 7c85e56)
+**Risk Framework:** OWASP Top 10 2021 + Elixir/Phoenix Best Practices
+
+### Overall Security Posture: **B+ (Good)**
+
+The Sensocto platform demonstrates a **mature security posture** with well-implemented authentication, comprehensive rate limiting, and strong input validation. Recent improvements have addressed several previously identified issues. However, some areas require attention, particularly around WebSocket authentication and token lifetime configuration.
+
+### Key Changes Since Last Assessment (2026-02-02 to 2026-02-05)
+
+- **IMPROVED**: Multi-language support additions (internationalization)
+- **IMPROVED**: AI chatbot integration (local Ollama)
+- **IMPROVED**: Safari/iPad compatibility fixes
+- **IMPROVED**: Quality control improvements
+- **IMPROVED**: Loading spinner UI fixes
+
+### Priority Recommendations Summary
+
+| Priority | Issue | Status | Effort |
+|----------|-------|--------|--------|
+| **HIGH** | WebSocket authentication at socket level | Open | Medium |
+| **HIGH** | Token lifetime increased to 10 years | **NEW** | Low |
+| **HIGH** | Implement bot protection (Paraxial.io) | Open | Medium |
+| **MEDIUM** | Development backdoor "missing" token | Open | Low |
+| **MEDIUM** | Configure bridge_token in production | Open | Low |
+| **MEDIUM** | /dev/mailbox route exposed | Open | Low |
+| **LOW** | Add Content-Security-Policy headers | Open | Low |
+| **LOW** | Consider MFA for admin operations | Open | High |
+
+## Scope
+
+This assessment covers:
+
+- Authentication architecture (Ash Authentication)
+- Authorization controls (Ash Policies, Room membership)
+- WebSocket/Channel security
+- API endpoint security
+- Input validation and sanitization
+- Session management
+- Rate limiting implementation
+- Distributed system security (clustering)
+
+**Limitations:** Static code analysis only. No penetration testing or infrastructure review.
+
+## Findings
+
+### HIGH: Token Lifetime Regression (NEW)
+
+- **Severity**: High
+- **Category**: Session Management
+- **File**: `/lib/sensocto/accounts/user.ex` line 29
+
+**Current State:**
+
+```elixir
+tokens do
+  enabled? true
+  token_resource Sensocto.Accounts.Token
+  signing_secret Sensocto.Secrets
+  store_all_tokens? true
+  require_token_presence_for_authentication? true
+  # Extended token lifetime for persistent "remember me" sessions.
+  # 10 years provides practical "infinite" session for most use cases.
+  token_lifetime {3650, :days}  # <-- 10 YEARS!
+end
+```
+
+**Risk:** A 10-year token lifetime significantly extends the attack window if a token is compromised. This represents a regression from the previously recommended 14-day lifetime (M-001 fix from January assessment).
+
+**Recommendation:**
+
+```elixir
+tokens do
+  # ...
+  # Balanced lifetime: 30 days is reasonable for "remember me"
+  # Implement refresh tokens for longer sessions
+  token_lifetime {30, :days}
+end
+```
+
+**Usability Impact:** Users will need to re-authenticate monthly. Consider implementing refresh tokens for truly persistent sessions while keeping access tokens short-lived.
+
+---
+
+### HIGH: No Socket-Level Authentication
+
+- **Severity**: High
+- **Category**: Authentication
+- **File**: `/lib/sensocto_web/channels/user_socket.ex`
+
+**Current State:**
+
+```elixir
+@impl true
+def connect(_params, socket, _connect_info) do
+  {:ok, socket}  # Accepts ALL connections without authentication
+end
+
+@impl true
+def id(_socket), do: nil  # Anonymous socket
+```
+
+**Risk:** Any client can establish a WebSocket connection. While channel-level authorization exists, defense-in-depth requires socket-level authentication.
+
+**Recommendation:**
+
+```elixir
+@impl true
+def connect(%{"token" => token}, socket, _connect_info) do
+  case verify_token(token) do
+    {:ok, user_or_guest} ->
+      {:ok, assign(socket, :current_user, user_or_guest)}
+    {:error, _} ->
+      :error
+  end
+end
+
+def connect(_params, _socket, _connect_info), do: :error
+
+defp verify_token(token) do
+  case AshAuthentication.Jwt.verify(token, :sensocto) do
+    {:ok, _claims, resource} -> {:ok, resource}
+    _ -> verify_guest_token(token)
+  end
+end
+```
+
+**Usability Impact:** Minimal - clients already send tokens for channel authentication.
+
+---
+
+### HIGH: Bot Protection Not Implemented
+
+- **Severity**: High
+- **Category**: Abuse Prevention
+- **Files**: Router, authentication endpoints
+
+**Current State:** Rate limiting is implemented via ETS-based sliding window, but no bot detection, IP reputation, or behavioral analysis exists.
+
+**Risk:** Sophisticated bots can:
+- Enumerate valid emails via timing attacks
+- Perform credential stuffing
+- Create fake accounts
+- Exhaust resources
+
+**Recommendation:** Implement Paraxial.io for native Elixir bot protection.
+
+```elixir
+# mix.exs
+{:paraxial, "~> 2.7"}
+
+# config/config.exs
+config :paraxial,
+  api_key: System.get_env("PARAXIAL_API_KEY"),
+  fetch_cloud_ips: true,
+  plug_config: [
+    challenge_tokens: true,
+    honeypot_fields: ["website", "company_phone"]
+  ]
+
+# In router.ex or endpoint.ex
+plug Paraxial.AllowedPlug
+```
+
+**Why Paraxial.io:**
+- Native Elixir integration for Phoenix/LiveView
+- Bot detection without CAPTCHAs (invisible to users)
+- IP intelligence and reputation scoring
+- Application-level rate limiting
+- Real-time threat dashboards
+- Minimal performance overhead
+
+**Usability Impact:** Invisible to legitimate users. Only bots are affected.
+
+---
+
+### MEDIUM: Development Backdoor Active
+
+- **Severity**: Medium
+- **Category**: Authentication Bypass
+- **File**: `/lib/sensocto_web/channels/sensor_data_channel.ex` line 486
+
+**Current State:**
+
+```elixir
+defp authorized?(%{"sensor_id" => sensor_id} = params) do
+  case Map.get(params, "bearer_token") do
+    # ...
+    "missing" ->
+      Logger.debug("Authorization allowed: guest/development access...")
+      true  # <-- BYPASSES ALL AUTHENTICATION
+    # ...
+  end
+end
+```
+
+**Risk:** Any client sending `bearer_token: "missing"` bypasses authentication entirely. If this reaches production, it's a critical vulnerability.
+
+**Recommendation:**
+
+```elixir
+"missing" ->
+  if Application.get_env(:sensocto, :allow_missing_token, false) do
+    Logger.warning("Dev auth bypass used for sensor #{sensor_id}")
+    true
+  else
+    Logger.warning("Auth bypass attempted but disabled for #{sensor_id}")
+    false
+  end
+```
+
+And in `config/prod.exs`:
+
+```elixir
+config :sensocto, allow_missing_token: false
+```
+
+**Usability Impact:** None in production. Development may need explicit configuration.
+
+---
+
+### MEDIUM: Bridge Token Not Required
+
+- **Severity**: Medium
+- **Category**: Authentication
+- **File**: `/lib/sensocto_web/channels/bridge_socket.ex`
+
+**Current State:**
+
+```elixir
+def connect(params, socket, _connect_info) do
+  case Map.get(params, "token") do
+    nil ->
+      {:ok, socket}  # Allows connection WITHOUT token
+    token ->
+      if valid_bridge_token?(token) do
+        {:ok, socket}
+      else
+        {:error, :unauthorized}
+      end
+  end
+end
+
+defp valid_bridge_token?(token) do
+  configured_token = Application.get_env(:sensocto, :bridge_token)
+  case configured_token do
+    nil -> true  # Allows ANY token if not configured
+    expected -> Plug.Crypto.secure_compare(token, expected)
+  end
+end
+```
+
+**Risk:** Without a configured bridge token, any client can connect to the bridge socket and interact with the P2P bridge.
+
+**Recommendation:** Require bridge token in production:
+
+```elixir
+# config/prod.exs
+config :sensocto, bridge_token: System.fetch_env!("BRIDGE_TOKEN")
+
+# In bridge_socket.ex
+def connect(params, socket, _connect_info) do
+  configured_token = Application.get_env(:sensocto, :bridge_token)
+
+  case {configured_token, Map.get(params, "token")} do
+    {nil, _} when Mix.env() == :prod ->
+      {:error, :bridge_token_not_configured}
+    {nil, _} ->
+      {:ok, socket}  # Dev only
+    {expected, token} when is_binary(token) ->
+      if Plug.Crypto.secure_compare(token, expected) do
+        {:ok, socket}
+      else
+        {:error, :unauthorized}
+      end
+    _ ->
+      {:error, :unauthorized}
+  end
+end
+```
+
+---
+
+### MEDIUM: Dev Mailbox Route Exposed
+
+- **Severity**: Medium
+- **Category**: Information Disclosure
+- **File**: `/lib/sensocto_web/router.ex` lines 229-232
+
+**Current State:**
+
+```elixir
+scope "/dev" do
+  pipe_through :browser
+  forward "/mailbox", Plug.Swoosh.MailboxPreview
+end
+```
+
+This route is NOT wrapped in the `dev_routes` conditional and is accessible in all environments.
+
+**Risk:** In production, this could expose email contents if the local adapter is accidentally configured.
+
+**Recommendation:**
+
+```elixir
+if Application.compile_env(:sensocto, :dev_routes) do
+  scope "/dev" do
+    pipe_through :browser
+    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
+end
+```
+
+---
+
+### LOW: Missing Content-Security-Policy
+
+- **Severity**: Low
+- **Category**: XSS Prevention
+- **File**: `/lib/sensocto_web/endpoint.ex`
+
+**Current State:** Security headers are configured but CSP is missing:
+
+```elixir
+plug :put_secure_browser_headers, %{
+  "x-frame-options" => "SAMEORIGIN",
+  "x-content-type-options" => "nosniff",
+  "x-xss-protection" => "1; mode=block",
+  "referrer-policy" => "strict-origin-when-cross-origin"
+  # Missing: content-security-policy
+}
+```
+
+**Recommendation:**
+
+```elixir
+plug :put_secure_browser_headers, %{
+  "x-frame-options" => "SAMEORIGIN",
+  "x-content-type-options" => "nosniff",
+  "x-xss-protection" => "1; mode=block",
+  "referrer-policy" => "strict-origin-when-cross-origin",
+  "content-security-policy" => """
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com;
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: https: blob:;
+    connect-src 'self' wss: https: blob:;
+    frame-src https://www.youtube.com;
+    media-src 'self' blob:;
+    worker-src 'self' blob:;
+  """
+}
+```
+
+**Usability Impact:** May require tuning based on actual content sources used by the app.
+
+## Positive Security Implementations
+
+The following security measures are properly implemented:
+
+### Authentication (Excellent)
+
+- **Ash Authentication** with multiple strategies (Google OAuth, Magic Link)
+- **Magic Link** uses `require_interaction?: true` preventing auto-consumption
+- **Token storage** in database enables revocation
+- **`require_token_presence_for_authentication?`** validates tokens against stored records
+
+### Rate Limiting (Excellent)
+
+- **Comprehensive implementation** in `/lib/sensocto_web/plugs/rate_limiter.ex`
+- **Multiple endpoint types**: auth, registration, api_auth, guest_auth
+- **IP-aware** with X-Forwarded-For support
+- **Proper 429 responses** with Retry-After headers
+- **ETS-based sliding window** for performance
+
+### Input Validation (Excellent)
+
+- **SafeKeys module** prevents atom exhaustion attacks
+- **Whitelist approach** for allowed message keys
+- **Validation** of attribute IDs with regex patterns
+
+```elixir
+# From /lib/sensocto/types/safe_keys.ex
+@allowed_message_keys ~w(
+  attribute_id payload timestamp sensor_id connector_id
+  connector_name sensor_name sensor_type sampling_rate
+  batch_size bearer_token action metadata features
+  ...
+)
+```
+
+### DoS Resistance (Excellent)
+
+- **Reactive backpressure** via PriorityLens quality levels
+- **Memory pressure protection** with configurable thresholds
+- **Socket cleanup** with process monitoring and periodic GC
+- **Timeout protection** (2-5 second limits on remote calls)
+
+### Request Logging (Good)
+
+- **Sanitization** of sensitive parameters, headers, and cookies
+- **No credential leakage** in logs
+
+```elixir
+@sensitive_params ~w(password password_confirmation token api_key secret
+                     current_password new_password reset_token access_token
+                     refresh_token authorization)
+@sensitive_headers ~w(authorization cookie x-api-key x-auth-token)
+@sensitive_cookies ~w(_sensocto_key)
+```
+
+### Channel Authorization (Good)
+
+- **Sensor channel** validates JWT tokens via `AshAuthentication.Jwt.verify/2`
+- **Call channel** validates room membership via `Calls.can_join_call?/2`
+- **Guest tokens** validated against GuestUserStore
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        Browser[Browser/PWA]
+        Mobile[Mobile App]
+        Sensor[Sensor Device]
+    end
+
+    subgraph "Edge Layer"
+        FlyEdge[Fly.io Edge/TLS]
+    end
+
+    subgraph "Application Layer"
+        Phoenix[Phoenix Endpoint]
+        RateLimiter[Rate Limiter]
+        Router[Router + Auth Plugs]
+
+        subgraph "WebSocket Layer"
+            UserSocket[UserSocket<br/>NO AUTH]
+            BridgeSocket[BridgeSocket<br/>Optional Token]
+            LiveSocket[LiveView Socket<br/>Session Auth]
+        end
+
+        subgraph "Channel Layer"
+            SensorChannel[SensorDataChannel<br/>JWT/Guest Auth]
+            CallChannel[CallChannel<br/>Room Membership]
+            BridgeChannel[BridgeChannel<br/>PubSub Bridge]
+        end
+    end
+
+    subgraph "Data Layer"
+        AshResources[Ash Resources<br/>+ Policies]
+        Postgres[(PostgreSQL)]
+        ETS[(ETS Cache)]
+    end
+
+    Browser --> FlyEdge
+    Mobile --> FlyEdge
+    Sensor --> FlyEdge
+
+    FlyEdge --> Phoenix
+    Phoenix --> RateLimiter
+    RateLimiter --> Router
+
+    Router --> UserSocket
+    Router --> BridgeSocket
+    Router --> LiveSocket
+
+    UserSocket --> SensorChannel
+    UserSocket --> CallChannel
+    BridgeSocket --> BridgeChannel
+
+    SensorChannel --> AshResources
+    CallChannel --> AshResources
+    AshResources --> Postgres
+    AshResources --> ETS
+
+    style UserSocket fill:#ff9999
+    style BridgeSocket fill:#ffcc99
+    style SensorChannel fill:#99ff99
+    style CallChannel fill:#99ff99
+```
+
+## Implementation Roadmap
+
+### Phase 1: Immediate (1-2 days)
+
+- [ ] Reduce token lifetime from 10 years to 30 days
+- [ ] Gate "missing" token behind environment config
+- [ ] Configure bridge_token requirement in production
+- [ ] Wrap /dev/mailbox in dev_routes conditional
+
+### Phase 2: Short-term (1 week)
+
+- [ ] Implement socket-level authentication in UserSocket
+- [ ] Add Content-Security-Policy headers
+- [ ] Integrate Paraxial.io for bot protection
+- [ ] Add security event logging for auth failures
+
+### Phase 3: Medium-term (2-4 weeks)
+
+- [ ] Implement refresh token pattern for persistent sessions
+- [ ] Add MFA for admin operations
+- [ ] Conduct penetration testing
+- [ ] Set up security monitoring/alerting
+
+## Security Metrics
+
+### Authentication Score: B
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Strategy Security | A | Magic link with interaction required |
+| Token Storage | A | Database-backed with revocation |
+| Token Lifetime | D | 10 years is excessive |
+| MFA | F | Not implemented |
+| Rate Limiting | A | Comprehensive implementation |
+
+### Authorization Score: A-
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Default Deny | A | Ash policies properly configured |
+| Room Access | A | Membership validation enforced |
+| Channel Auth | B | Good but socket-level missing |
+| API Auth | A | JWT validation on all endpoints |
+
+### Input Validation Score: A
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Atom Protection | A | SafeKeys whitelist |
+| SQL Injection | A | Ecto parameterized queries |
+| XSS Prevention | B | Headers good, CSP missing |
+
+### DoS Resistance Score: A
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Rate Limiting | A | Multi-tier, per-endpoint |
+| Backpressure | A | Quality-based throttling |
+| Memory Protection | A | Configurable thresholds |
+| Resource Cleanup | A | Monitor + GC patterns |
+
+## Code Examples
+
+### Secure Socket Authentication Pattern
+
+```elixir
+defmodule SensoctoWeb.UserSocket do
+  use Phoenix.Socket
+
+  channel("sensocto:*", SensoctoWeb.SensorDataChannel)
+  channel("call:*", SensoctoWeb.CallChannel)
+  channel("hydration:room:*", SensoctoWeb.HydrationChannel)
+
+  @impl true
+  def connect(%{"token" => token}, socket, _connect_info) when is_binary(token) do
+    case verify_token(token) do
+      {:ok, identity} ->
+        {:ok, assign(socket, :identity, identity)}
+      {:error, reason} ->
+        Logger.warning("Socket auth failed: #{inspect(reason)}")
+        :error
+    end
+  end
+
+  def connect(_params, _socket, _connect_info) do
+    Logger.warning("Socket connection attempted without token")
+    :error
+  end
+
+  @impl true
+  def id(socket) do
+    case socket.assigns[:identity] do
+      %{type: :user, id: id} -> "user_socket:#{id}"
+      %{type: :guest, id: id} -> "guest_socket:#{id}"
+      _ -> nil
+    end
+  end
+
+  defp verify_token(token) do
+    cond do
+      String.starts_with?(token, "guest:") ->
+        verify_guest_token(token)
+      true ->
+        verify_jwt(token)
+    end
+  end
+
+  defp verify_jwt(token) do
+    case AshAuthentication.Jwt.verify(token, :sensocto) do
+      {:ok, _claims, resource} ->
+        {:ok, %{type: :user, id: resource.id, resource: resource}}
+      error ->
+        {:error, error}
+    end
+  end
+
+  defp verify_guest_token("guest:" <> rest) do
+    case String.split(rest, ":", parts: 2) do
+      [guest_id, token] ->
+        case Sensocto.Accounts.GuestUserStore.get_guest(guest_id) do
+          {:ok, guest} when guest.token == token ->
+            {:ok, %{type: :guest, id: guest_id}}
+          _ ->
+            {:error, :invalid_guest_token}
+        end
+      _ ->
+        {:error, :malformed_guest_token}
+    end
+  end
+end
+```
+
+### Paraxial.io Integration Example
+
+```elixir
+# mix.exs
+defp deps do
+  [
+    {:paraxial, "~> 2.7"},
+    # ...
+  ]
+end
+
+# config/config.exs
+config :paraxial,
+  api_key: System.get_env("PARAXIAL_API_KEY"),
+  fetch_cloud_ips: true
+
+# config/prod.exs
+config :paraxial,
+  plug_config: [
+    # Enable challenge tokens for signup forms
+    challenge_tokens: true,
+    # Honeypot fields to detect bots
+    honeypot_fields: ["website", "company_url", "fax_number"],
+    # Block requests from known bad IPs
+    block_bad_ips: true,
+    # Rate limiting rules
+    rate_limit_rules: [
+      # Auth endpoints: 10 requests per minute
+      %{path: ~r"/auth/", limit: 10, period: 60_000},
+      # API auth: 20 requests per minute
+      %{path: ~r"/api/auth/", limit: 20, period: 60_000}
+    ]
+  ]
+
+# lib/sensocto_web/endpoint.ex
+# Add early in the plug pipeline
+plug Paraxial.AllowedPlug
+```
+
+## References
+
+- [Ash Authentication Documentation](https://hexdocs.pm/ash_authentication/)
+- [Phoenix Security Best Practices](https://hexdocs.pm/phoenix/security.html)
+- [Paraxial.io Documentation](https://hexdocs.pm/paraxial/)
+- [OWASP Top 10 2021](https://owasp.org/Top10/)
+- [Elixir Security Best Practices](https://paraxial.io/blog/elixir-security)
+
+---
+
+*Report generated by Security Advisor Agent (Claude Opus 4.5). Last updated: 2026-02-05*

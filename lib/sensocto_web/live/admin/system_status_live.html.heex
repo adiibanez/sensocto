@@ -85,45 +85,66 @@
         System Load
       <% end %>
     </h2>
-    <.load_level_badge level={@system_metrics.load_level} />
-  </div>
-
-  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    <.metric_gauge
-      label="CPU"
-      value={@system_metrics.scheduler_utilization}
-      icon="cpu-chip"
-    />
-    <.metric_gauge
-      label="Memory"
-      value={@system_metrics.memory_pressure}
-      icon="server-stack"
-      warning={@system_metrics.memory_protection_active}
-    />
-    <.metric_gauge
-      label="PubSub"
-      value={@system_metrics.pubsub_pressure}
-      icon="signal"
-    />
-    <.metric_gauge
-      label="Queues"
-      value={@system_metrics.message_queue_pressure}
-      icon="queue-list"
-    />
-    <div class="col-span-2 flex flex-col justify-center">
-      <span class="text-xs text-gray-500 uppercase tracking-wide">Batch Multiplier</span>
-      <span class="text-2xl font-mono text-white">
-        {Float.round(@system_metrics.load_multiplier * 1.0, 2)}x
-      </span>
-      <span
-        :if={@system_metrics.memory_protection_active}
-        class="text-xs text-red-400 flex items-center gap-1 mt-1"
+    <div class="flex items-center gap-2">
+      <button
+        phx-click="toggle_graph"
+        phx-value-tile="system_load"
+        class={"p-1.5 rounded transition-colors " <> if(MapSet.member?(@graph_tiles, :system_load), do: "bg-cyan-600/30 text-cyan-400", else: "bg-gray-700 text-gray-400 hover:text-gray-300")}
+        title="Toggle graph view"
       >
-        <Heroicons.icon name="shield-exclamation" type="solid" class="h-3 w-3" />
-        Memory Protection Active
-      </span>
+        <Heroicons.icon name="share" type="outline" class="h-4 w-4" />
+      </button>
+      <.load_level_badge level={@system_metrics.load_level} />
     </div>
   </div>
+
+  <%= if MapSet.member?(@graph_tiles, :system_load) do %>
+    <div class="h-[200px] w-full">
+      <.svelte
+        name="SystemGraph"
+        props={%{mode: "system_load", data: @graph_data[:system_load] || %{}}}
+        socket={@socket}
+        class="w-full h-full"
+      />
+    </div>
+  <% else %>
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      <.metric_gauge
+        label="CPU"
+        value={@system_metrics.scheduler_utilization}
+        icon="cpu-chip"
+      />
+      <.metric_gauge
+        label="Memory"
+        value={@system_metrics.memory_pressure}
+        icon="server-stack"
+        warning={@system_metrics.memory_protection_active}
+      />
+      <.metric_gauge
+        label="PubSub"
+        value={@system_metrics.pubsub_pressure}
+        icon="signal"
+      />
+      <.metric_gauge
+        label="Queues"
+        value={@system_metrics.message_queue_pressure}
+        icon="queue-list"
+      />
+      <div class="col-span-2 flex flex-col justify-center">
+        <span class="text-xs text-gray-500 uppercase tracking-wide">Batch Multiplier</span>
+        <span class="text-2xl font-mono text-white">
+          {Float.round(@system_metrics.load_multiplier * 1.0, 2)}x
+        </span>
+        <span
+          :if={@system_metrics.memory_protection_active}
+          class="text-xs text-red-400 flex items-center gap-1 mt-1"
+        >
+          <Heroicons.icon name="shield-exclamation" type="solid" class="h-3 w-3" />
+          Memory Protection Active
+        </span>
+      </div>
+    </div>
+  <% end %>
 </div>
 
 <%!-- Priority: Backpressure & Attention (most relevant for realtime monitoring) --%>
@@ -135,66 +156,87 @@
         <Heroicons.icon name="signal" type="outline" class="h-5 w-5 text-cyan-400" />
         Backpressure (PriorityLens)
       </h3>
-      <span class={"px-2 py-1 rounded text-xs " <> if(@backpressure_stats.healthy, do: "bg-green-600/20 text-green-400", else: "bg-red-600/20 text-red-400")}>
-        {if @backpressure_stats.healthy, do: "Healthy", else: "Degraded"}
-      </span>
-    </div>
-
-    <div class="grid grid-cols-2 gap-4 mb-4">
-      <div>
-        <span class="text-xs text-gray-500">Active Sockets</span>
-        <div class="text-2xl font-mono text-white">{@backpressure_stats.socket_count}</div>
-      </div>
-      <div>
-        <span class="text-xs text-gray-500">Sensor Subscriptions</span>
-        <div class="text-2xl font-mono text-white">
-          {@backpressure_stats.total_sensor_subscriptions}
-        </div>
+      <div class="flex items-center gap-2">
+        <button
+          phx-click="toggle_graph"
+          phx-value-tile="backpressure"
+          class={"p-1.5 rounded transition-colors " <> if(MapSet.member?(@graph_tiles, :backpressure), do: "bg-cyan-600/30 text-cyan-400", else: "bg-gray-700 text-gray-400 hover:text-gray-300")}
+          title="Toggle graph view"
+        >
+          <Heroicons.icon name="share" type="outline" class="h-4 w-4" />
+        </button>
+        <span class={"px-2 py-1 rounded text-xs " <> if(@backpressure_stats.healthy, do: "bg-green-600/20 text-green-400", else: "bg-red-600/20 text-red-400")}>
+          {if @backpressure_stats.healthy, do: "Healthy", else: "Degraded"}
+        </span>
       </div>
     </div>
 
-    <%!-- Quality distribution --%>
-    <div class="text-xs text-gray-400 mb-2">Quality Distribution</div>
-    <div class="grid grid-cols-5 gap-1 text-center">
-      <div class="bg-green-600/20 rounded p-1">
-        <div class="text-sm font-bold text-green-400">
-          {@backpressure_stats.quality_distribution.high}
-        </div>
-        <div class="text-xs text-green-400/70">high</div>
+    <%= if MapSet.member?(@graph_tiles, :backpressure) do %>
+      <div class="h-[200px] w-full">
+        <.svelte
+          name="SystemGraph"
+          props={%{mode: "backpressure", data: @graph_data[:backpressure] || %{}}}
+          socket={@socket}
+          class="w-full h-full"
+        />
       </div>
-      <div class="bg-blue-600/20 rounded p-1">
-        <div class="text-sm font-bold text-blue-400">
-          {@backpressure_stats.quality_distribution.medium}
+    <% else %>
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <span class="text-xs text-gray-500">Active Sockets</span>
+          <div class="text-2xl font-mono text-white">{@backpressure_stats.socket_count}</div>
         </div>
-        <div class="text-xs text-blue-400/70">med</div>
-      </div>
-      <div class="bg-yellow-600/20 rounded p-1">
-        <div class="text-sm font-bold text-yellow-400">
-          {@backpressure_stats.quality_distribution.low}
+        <div>
+          <span class="text-xs text-gray-500">Sensor Subscriptions</span>
+          <div class="text-2xl font-mono text-white">
+            {@backpressure_stats.total_sensor_subscriptions}
+          </div>
         </div>
-        <div class="text-xs text-yellow-400/70">low</div>
       </div>
-      <div class="bg-orange-600/20 rounded p-1">
-        <div class="text-sm font-bold text-orange-400">
-          {@backpressure_stats.quality_distribution.minimal}
-        </div>
-        <div class="text-xs text-orange-400/70">min</div>
-      </div>
-      <div class={"rounded p-1 " <> if(@backpressure_stats.paused_count > 0, do: "bg-red-600/30", else: "bg-red-600/20")}>
-        <div class="text-sm font-bold text-red-400">
-          {@backpressure_stats.quality_distribution.paused}
-        </div>
-        <div class="text-xs text-red-400/70">paused</div>
-      </div>
-    </div>
 
-    <div
-      :if={@backpressure_stats.paused_count > 0}
-      class="mt-3 text-xs text-red-400 flex items-center gap-1"
-    >
-      <Heroicons.icon name="exclamation-triangle" type="solid" class="h-4 w-4" />
-      {@backpressure_stats.paused_count} socket(s) paused due to backpressure
-    </div>
+      <%!-- Quality distribution --%>
+      <div class="text-xs text-gray-400 mb-2">Quality Distribution</div>
+      <div class="grid grid-cols-5 gap-1 text-center">
+        <div class="bg-green-600/20 rounded p-1">
+          <div class="text-sm font-bold text-green-400">
+            {@backpressure_stats.quality_distribution.high}
+          </div>
+          <div class="text-xs text-green-400/70">high</div>
+        </div>
+        <div class="bg-blue-600/20 rounded p-1">
+          <div class="text-sm font-bold text-blue-400">
+            {@backpressure_stats.quality_distribution.medium}
+          </div>
+          <div class="text-xs text-blue-400/70">med</div>
+        </div>
+        <div class="bg-yellow-600/20 rounded p-1">
+          <div class="text-sm font-bold text-yellow-400">
+            {@backpressure_stats.quality_distribution.low}
+          </div>
+          <div class="text-xs text-yellow-400/70">low</div>
+        </div>
+        <div class="bg-orange-600/20 rounded p-1">
+          <div class="text-sm font-bold text-orange-400">
+            {@backpressure_stats.quality_distribution.minimal}
+          </div>
+          <div class="text-xs text-orange-400/70">min</div>
+        </div>
+        <div class={"rounded p-1 " <> if(@backpressure_stats.paused_count > 0, do: "bg-red-600/30", else: "bg-red-600/20")}>
+          <div class="text-sm font-bold text-red-400">
+            {@backpressure_stats.quality_distribution.paused}
+          </div>
+          <div class="text-xs text-red-400/70">paused</div>
+        </div>
+      </div>
+
+      <div
+        :if={@backpressure_stats.paused_count > 0}
+        class="mt-3 text-xs text-red-400 flex items-center gap-1"
+      >
+        <Heroicons.icon name="exclamation-triangle" type="solid" class="h-4 w-4" />
+        {@backpressure_stats.paused_count} socket(s) paused due to backpressure
+      </div>
+    <% end %>
   </div>
 
   <%!-- Attention Summary Card (moved up) --%>
@@ -204,45 +246,66 @@
         <Heroicons.icon name="eye" type="outline" class="h-5 w-5 text-blue-400" />
         Attention Tracker
       </h3>
-      <span class="text-xs text-gray-500">{@attention_summary.total_sensors} sensors</span>
-    </div>
-
-    <%!-- Attention level counts --%>
-    <div class="grid grid-cols-4 gap-2 text-center mb-3">
-      <div class="bg-green-600/20 rounded p-2">
-        <div class="text-lg font-bold text-green-400">
-          {@attention_summary.attention_counts.high}
-        </div>
-        <div class="text-xs text-green-400/70">High</div>
-      </div>
-      <div class="bg-yellow-600/20 rounded p-2">
-        <div class="text-lg font-bold text-yellow-400">
-          {@attention_summary.attention_counts.medium}
-        </div>
-        <div class="text-xs text-yellow-400/70">Medium</div>
-      </div>
-      <div class="bg-orange-600/20 rounded p-2">
-        <div class="text-lg font-bold text-orange-400">
-          {@attention_summary.attention_counts.low}
-        </div>
-        <div class="text-xs text-orange-400/70">Low</div>
-      </div>
-      <div class="bg-gray-600/20 rounded p-2">
-        <div class="text-lg font-bold text-gray-400">
-          {@attention_summary.attention_counts.none}
-        </div>
-        <div class="text-xs text-gray-400/70">None</div>
+      <div class="flex items-center gap-2">
+        <button
+          phx-click="toggle_graph"
+          phx-value-tile="attention"
+          class={"p-1.5 rounded transition-colors " <> if(MapSet.member?(@graph_tiles, :attention), do: "bg-cyan-600/30 text-cyan-400", else: "bg-gray-700 text-gray-400 hover:text-gray-300")}
+          title="Toggle graph view"
+        >
+          <Heroicons.icon name="share" type="outline" class="h-4 w-4" />
+        </button>
+        <span class="text-xs text-gray-500">{@attention_summary.total_sensors} sensors</span>
       </div>
     </div>
 
-    <%!-- Pinned sensors --%>
-    <%= if length(@attention_summary.pinned_sensors) > 0 do %>
-      <div class="text-xs text-gray-400">
-        <span class="flex items-center gap-1">
-          <Heroicons.icon name="bolt" type="solid" class="h-3 w-3 text-orange-400" />
-          Pinned: {Enum.join(@attention_summary.pinned_sensors, ", ")}
-        </span>
+    <%= if MapSet.member?(@graph_tiles, :attention) do %>
+      <div class="h-[200px] w-full">
+        <.svelte
+          name="SystemGraph"
+          props={%{mode: "attention", data: @graph_data[:attention] || %{}}}
+          socket={@socket}
+          class="w-full h-full"
+        />
       </div>
+    <% else %>
+      <%!-- Attention level counts --%>
+      <div class="grid grid-cols-4 gap-2 text-center mb-3">
+        <div class="bg-green-600/20 rounded p-2">
+          <div class="text-lg font-bold text-green-400">
+            {@attention_summary.attention_counts.high}
+          </div>
+          <div class="text-xs text-green-400/70">High</div>
+        </div>
+        <div class="bg-yellow-600/20 rounded p-2">
+          <div class="text-lg font-bold text-yellow-400">
+            {@attention_summary.attention_counts.medium}
+          </div>
+          <div class="text-xs text-yellow-400/70">Medium</div>
+        </div>
+        <div class="bg-orange-600/20 rounded p-2">
+          <div class="text-lg font-bold text-orange-400">
+            {@attention_summary.attention_counts.low}
+          </div>
+          <div class="text-xs text-orange-400/70">Low</div>
+        </div>
+        <div class="bg-gray-600/20 rounded p-2">
+          <div class="text-lg font-bold text-gray-400">
+            {@attention_summary.attention_counts.none}
+          </div>
+          <div class="text-xs text-gray-400/70">None</div>
+        </div>
+      </div>
+
+      <%!-- Pinned sensors --%>
+      <%= if length(@attention_summary.pinned_sensors) > 0 do %>
+        <div class="text-xs text-gray-400">
+          <span class="flex items-center gap-1">
+            <Heroicons.icon name="bolt" type="solid" class="h-3 w-3 text-orange-400" />
+            Pinned: {Enum.join(@attention_summary.pinned_sensors, ", ")}
+          </span>
+        </div>
+      <% end %>
     <% end %>
   </div>
 </div>
@@ -254,76 +317,97 @@
       <Heroicons.icon name="battery-50" type="outline" class="h-5 w-5 text-amber-400" />
       Sensor Fleet Status
     </h3>
-    <span class="text-xs text-gray-500">
-      {@attention_summary.battery_counts.normal + @attention_summary.battery_counts.low +
-        @attention_summary.battery_counts.critical} devices reporting
-    </span>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <%!-- Normal Battery --%>
-    <div class="bg-green-600/10 rounded-lg p-3 border border-green-600/30">
-      <div class="flex items-center gap-2 mb-2">
-        <Heroicons.icon name="battery-100" type="outline" class="h-5 w-5 text-green-400" />
-        <span class="text-sm font-medium text-green-400">Normal</span>
-      </div>
-      <div class="text-3xl font-bold text-green-400 mb-1">
-        {@attention_summary.battery_counts.normal}
-      </div>
-      <div class="text-xs text-green-400/70">sensors with healthy battery</div>
-    </div>
-
-    <%!-- Low Battery --%>
-    <div class="bg-yellow-600/10 rounded-lg p-3 border border-yellow-600/30">
-      <div class="flex items-center gap-2 mb-2">
-        <Heroicons.icon name="battery-50" type="outline" class="h-5 w-5 text-yellow-400" />
-        <span class="text-sm font-medium text-yellow-400">Low Battery</span>
-      </div>
-      <div class="text-3xl font-bold text-yellow-400 mb-1">
-        {@attention_summary.battery_counts.low}
-      </div>
-      <div class="text-xs text-yellow-400/70">sensors need charging soon</div>
-    </div>
-
-    <%!-- Critical Battery --%>
-    <div class={"rounded-lg p-3 border " <> if(@attention_summary.battery_counts.critical > 0, do: "bg-red-600/20 border-red-500", else: "bg-red-600/10 border-red-600/30")}>
-      <div class="flex items-center gap-2 mb-2">
-        <Heroicons.icon name="battery-0" type="outline" class="h-5 w-5 text-red-400" />
-        <span class="text-sm font-medium text-red-400">Critical</span>
-      </div>
-      <div class="text-3xl font-bold text-red-400 mb-1">
-        {@attention_summary.battery_counts.critical}
-      </div>
-      <div class="text-xs text-red-400/70">sensors need immediate attention</div>
+    <div class="flex items-center gap-2">
+      <button
+        phx-click="toggle_graph"
+        phx-value-tile="battery"
+        class={"p-1.5 rounded transition-colors " <> if(MapSet.member?(@graph_tiles, :battery), do: "bg-cyan-600/30 text-cyan-400", else: "bg-gray-700 text-gray-400 hover:text-gray-300")}
+        title="Toggle graph view"
+      >
+        <Heroicons.icon name="share" type="outline" class="h-4 w-4" />
+      </button>
+      <span class="text-xs text-gray-500">
+        {@attention_summary.battery_counts.normal + @attention_summary.battery_counts.low +
+          @attention_summary.battery_counts.critical} devices reporting
+      </span>
     </div>
   </div>
 
-  <%!-- Fleet health bar --%>
-  <% total_devices =
-    @attention_summary.battery_counts.normal + @attention_summary.battery_counts.low +
-      @attention_summary.battery_counts.critical %>
-  <%= if total_devices > 0 do %>
-    <div class="mt-4">
-      <div class="flex justify-between text-xs text-gray-500 mb-1">
-        <span>Fleet Battery Health</span>
-        <span>
-          {Float.round(@attention_summary.battery_counts.normal / total_devices * 100, 0)}% healthy
-        </span>
+  <%= if MapSet.member?(@graph_tiles, :battery) do %>
+    <div class="h-[200px] w-full">
+      <.svelte
+        name="SystemGraph"
+        props={%{mode: "battery", data: @graph_data[:battery] || %{}}}
+        socket={@socket}
+        class="w-full h-full"
+      />
+    </div>
+  <% else %>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <%!-- Normal Battery --%>
+      <div class="bg-green-600/10 rounded-lg p-3 border border-green-600/30">
+        <div class="flex items-center gap-2 mb-2">
+          <Heroicons.icon name="battery-100" type="outline" class="h-5 w-5 text-green-400" />
+          <span class="text-sm font-medium text-green-400">Normal</span>
+        </div>
+        <div class="text-3xl font-bold text-green-400 mb-1">
+          {@attention_summary.battery_counts.normal}
+        </div>
+        <div class="text-xs text-green-400/70">sensors with healthy battery</div>
       </div>
-      <div class="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-        <div
-          class="h-full bg-green-500"
-          style={"width: #{@attention_summary.battery_counts.normal / total_devices * 100}%"}
-        />
-        <div
-          class="h-full bg-yellow-500"
-          style={"width: #{@attention_summary.battery_counts.low / total_devices * 100}%"}
-        />
-        <div
-          class="h-full bg-red-500"
-          style={"width: #{@attention_summary.battery_counts.critical / total_devices * 100}%"}
-        />
+
+      <%!-- Low Battery --%>
+      <div class="bg-yellow-600/10 rounded-lg p-3 border border-yellow-600/30">
+        <div class="flex items-center gap-2 mb-2">
+          <Heroicons.icon name="battery-50" type="outline" class="h-5 w-5 text-yellow-400" />
+          <span class="text-sm font-medium text-yellow-400">Low Battery</span>
+        </div>
+        <div class="text-3xl font-bold text-yellow-400 mb-1">
+          {@attention_summary.battery_counts.low}
+        </div>
+        <div class="text-xs text-yellow-400/70">sensors need charging soon</div>
+      </div>
+
+      <%!-- Critical Battery --%>
+      <div class={"rounded-lg p-3 border " <> if(@attention_summary.battery_counts.critical > 0, do: "bg-red-600/20 border-red-500", else: "bg-red-600/10 border-red-600/30")}>
+        <div class="flex items-center gap-2 mb-2">
+          <Heroicons.icon name="battery-0" type="outline" class="h-5 w-5 text-red-400" />
+          <span class="text-sm font-medium text-red-400">Critical</span>
+        </div>
+        <div class="text-3xl font-bold text-red-400 mb-1">
+          {@attention_summary.battery_counts.critical}
+        </div>
+        <div class="text-xs text-red-400/70">sensors need immediate attention</div>
       </div>
     </div>
+
+    <%!-- Fleet health bar --%>
+    <% total_devices =
+      @attention_summary.battery_counts.normal + @attention_summary.battery_counts.low +
+        @attention_summary.battery_counts.critical %>
+    <%= if total_devices > 0 do %>
+      <div class="mt-4">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Fleet Battery Health</span>
+          <span>
+            {Float.round(@attention_summary.battery_counts.normal / total_devices * 100, 0)}% healthy
+          </span>
+        </div>
+        <div class="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+          <div
+            class="h-full bg-green-500"
+            style={"width: #{@attention_summary.battery_counts.normal / total_devices * 100}%"}
+          />
+          <div
+            class="h-full bg-yellow-500"
+            style={"width: #{@attention_summary.battery_counts.low / total_devices * 100}%"}
+          />
+          <div
+            class="h-full bg-red-500"
+            style={"width: #{@attention_summary.battery_counts.critical / total_devices * 100}%"}
+          />
+        </div>
+      </div>
+    <% end %>
   <% end %>
 </div>

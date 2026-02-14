@@ -156,6 +156,7 @@ defmodule Sensocto.Simulator.ConnectorServer do
     track_mode start_lat start_lng playback_speed random_start no_loop
     track_duration track_name generate_track base_lat base_lng base_alt unit
     motion_type
+    blink_rate fixation_duration saccade_duration
   )a
 
   defp string_keys_to_atom_keys(map) when is_map(map) do

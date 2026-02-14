@@ -91,7 +91,7 @@ defmodule Sensocto.Simulator.Manager do
   Stop all running connectors.
   """
   def stop_all do
-    GenServer.call(__MODULE__, :stop_all)
+    GenServer.call(__MODULE__, :stop_all, 30_000)
   end
 
   @doc """
@@ -137,7 +137,7 @@ defmodule Sensocto.Simulator.Manager do
   Stop a specific running scenario.
   """
   def stop_scenario(scenario_name) do
-    GenServer.call(__MODULE__, {:stop_scenario, scenario_name})
+    GenServer.call(__MODULE__, {:stop_scenario, scenario_name}, 30_000)
   end
 
   @doc """
@@ -148,7 +148,7 @@ defmodule Sensocto.Simulator.Manager do
   - :room_id - assign all sensors to this room
   """
   def switch_scenario(scenario_name, opts \\ []) do
-    GenServer.call(__MODULE__, {:switch_scenario, scenario_name, opts})
+    GenServer.call(__MODULE__, {:switch_scenario, scenario_name, opts}, 30_000)
   end
 
   # Server Callbacks

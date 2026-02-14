@@ -1065,54 +1065,8 @@ Hooks.MobileMenu = {
                 }
             };
 
-            button.addEventListener('click', this.handleButtonClick);
-            document.addEventListener('click', this.handleDocumentClick);
-        }
-    },
-
-    destroyed() {
-        if (this.handleDocumentClick) {
-            document.removeEventListener('click', this.handleDocumentClick);
-        }
-    }
-};
-
-Hooks.UserMenu = {
-    mounted() {
-        const button = this.el.querySelector('#user-menu-button');
-        const dropdown = this.el.querySelector('#user-menu-dropdown');
-
-        if (button && dropdown) {
-            this.isOpen = false;
-            this.justOpened = false;
-
-            this.handleButtonClick = (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                this.isOpen = !this.isOpen;
-                if (this.isOpen) {
-                    dropdown.classList.remove('hidden');
-                    // Prevent immediate close on mobile touch devices
-                    this.justOpened = true;
-                    setTimeout(() => { this.justOpened = false; }, 100);
-                } else {
-                    dropdown.classList.add('hidden');
-                }
-            };
-
-            this.handleDocumentClick = (e) => {
-                // Skip if we just opened (prevents mobile touch double-fire)
-                if (this.justOpened) return;
-                if (this.isOpen && !this.el.contains(e.target)) {
-                    this.isOpen = false;
-                    dropdown.classList.add('hidden');
-                }
-            };
-
-            // Handle touchend to prevent ghost clicks on mobile
             this.handleTouchEnd = (e) => {
                 if (this.isOpen && !this.el.contains(e.target)) {
-                    // Small delay to allow link clicks to register
                     setTimeout(() => {
                         if (this.isOpen && !this.el.contains(document.activeElement)) {
                             this.isOpen = false;
@@ -1137,6 +1091,68 @@ Hooks.UserMenu = {
         }
     }
 };
+
+function createDropdownHook() {
+    return {
+        mounted() {
+            const button = this.el.querySelector('[data-dropdown-toggle]');
+            const dropdown = this.el.querySelector('[data-dropdown-menu]');
+
+            if (!button || !dropdown) return;
+
+            this.isOpen = false;
+            this.justOpened = false;
+
+            this.handleButtonClick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                this.isOpen = !this.isOpen;
+                if (this.isOpen) {
+                    dropdown.classList.remove('hidden');
+                    this.justOpened = true;
+                    setTimeout(() => { this.justOpened = false; }, 100);
+                } else {
+                    dropdown.classList.add('hidden');
+                }
+            };
+
+            this.handleDocumentClick = (e) => {
+                if (this.justOpened) return;
+                if (this.isOpen && !this.el.contains(e.target)) {
+                    this.isOpen = false;
+                    dropdown.classList.add('hidden');
+                }
+            };
+
+            this.handleTouchEnd = (e) => {
+                if (this.isOpen && !this.el.contains(e.target)) {
+                    setTimeout(() => {
+                        if (this.isOpen && !this.el.contains(document.activeElement)) {
+                            this.isOpen = false;
+                            dropdown.classList.add('hidden');
+                        }
+                    }, 50);
+                }
+            };
+
+            button.addEventListener('click', this.handleButtonClick);
+            document.addEventListener('click', this.handleDocumentClick);
+            document.addEventListener('touchend', this.handleTouchEnd);
+        },
+
+        destroyed() {
+            if (this.handleDocumentClick) {
+                document.removeEventListener('click', this.handleDocumentClick);
+            }
+            if (this.handleTouchEnd) {
+                document.removeEventListener('touchend', this.handleTouchEnd);
+            }
+        }
+    };
+}
+
+Hooks.UserMenu = createDropdownHook();
+Hooks.LangMenu = createDropdownHook();
 
 Hooks.ResizeDetection = {
     mounted() {

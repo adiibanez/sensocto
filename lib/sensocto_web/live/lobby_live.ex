@@ -102,7 +102,7 @@ defmodule SensoctoWeb.LobbyLive do
 
     # Extract composite visualization data
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors, respiration_sensors, hrv_sensors} =
+     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
       extract_composite_data(sensors)
 
     # Compute available lenses based on actual sensor attributes
@@ -115,7 +115,8 @@ defmodule SensoctoWeb.LobbyLive do
         battery_sensors,
         skeleton_sensors,
         respiration_sensors,
-        hrv_sensors
+        hrv_sensors,
+        gaze_sensors
       )
 
     # Group sensors by connector (user)
@@ -165,6 +166,7 @@ defmodule SensoctoWeb.LobbyLive do
         skeleton_sensors: skeleton_sensors,
         respiration_sensors: respiration_sensors,
         hrv_sensors: hrv_sensors,
+        gaze_sensors: gaze_sensors,
         available_lenses: available_lenses,
         sensors_by_user: sensors_by_user,
         favorite_sensors: favorite_sensors,
@@ -341,6 +343,11 @@ defmodule SensoctoWeb.LobbyLive do
           # ECG needs high fidelity
           Sensocto.Lenses.PriorityLens.set_quality(socket.id, :high)
 
+        :gaze ->
+          # Gaze visualization smoothly interpolates — medium quality is sufficient
+          Sensocto.Lenses.PriorityLens.set_focused_sensor(socket.id, nil)
+          Sensocto.Lenses.PriorityLens.set_quality(socket.id, :medium)
+
         :graph ->
           # Graph only needs activity indicators, not waveform data.
           # Medium quality (50ms flush) saves ~40% PriorityLens load per viewer
@@ -374,6 +381,7 @@ defmodule SensoctoWeb.LobbyLive do
               :skeleton,
               :respiration,
               :hrv,
+              :gaze,
               :graph
             ] do
     viewer_id = socket.id
@@ -388,6 +396,7 @@ defmodule SensoctoWeb.LobbyLive do
         :skeleton -> Enum.map(socket.assigns.skeleton_sensors, & &1.sensor_id)
         :respiration -> Enum.map(socket.assigns.respiration_sensors, & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns.hrv_sensors, & &1.sensor_id)
+        :gaze -> Enum.map(socket.assigns.gaze_sensors, & &1.sensor_id)
         :graph -> socket.assigns[:all_sensor_ids] || []
       end
 
@@ -783,8 +792,52 @@ defmodule SensoctoWeb.LobbyLive do
         %{sensor_id: sensor_id, sensor_name: sensor.sensor_name, value: value}
       end)
 
+    gaze_sensors =
+      sensors
+      |> Enum.filter(fn {_id, sensor} ->
+        attrs = sensor.attributes || %{}
+
+        Enum.any?(attrs, fn {_attr_id, attr} ->
+          attr.attribute_type in ["eye_gaze", "eye_aperture", "eye_blink", "eye_worn"]
+        end)
+      end)
+      |> Enum.map(fn {sensor_id, sensor} ->
+        attrs = sensor.attributes || %{}
+
+        gaze_val = extract_attr_payload(attrs, "eye_gaze")
+        aperture_val = extract_attr_payload(attrs, "eye_aperture")
+        blink_val = extract_attr_payload(attrs, "eye_blink")
+        worn_val = extract_attr_payload(attrs, "eye_worn")
+
+        %{
+          sensor_id: sensor_id,
+          sensor_name: sensor.sensor_name,
+          gaze_x: get_map_val(gaze_val, :x, "x", 0.5),
+          gaze_y: get_map_val(gaze_val, :y, "y", 0.5),
+          confidence: get_map_val(gaze_val, :confidence, "confidence", 0.0),
+          aperture_left: get_map_val(aperture_val, :left, "left", 15.0),
+          aperture_right: get_map_val(aperture_val, :right, "right", 15.0),
+          blinking: if(is_number(blink_val), do: blink_val, else: 0.0),
+          worn: if(is_number(worn_val), do: worn_val, else: 1.0)
+        }
+      end)
+
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors, respiration_sensors, hrv_sensors}
+     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors}
+  end
+
+  defp extract_attr_payload(attrs, type) do
+    case Enum.find(attrs, fn {_attr_id, attr} -> attr.attribute_type == type end) do
+      {_attr_id, attr} -> (attr.lastvalue && attr.lastvalue.payload) || nil
+      nil -> nil
+    end
+  end
+
+  defp get_map_val(nil, _atom_key, _str_key, default), do: default
+  defp get_map_val(val, _atom_key, _str_key, _default) when not is_map(val), do: val
+
+  defp get_map_val(map, atom_key, str_key, default) do
+    Map.get(map, atom_key) || Map.get(map, str_key) || default
   end
 
   # Compute which lens types are available based on actual sensor attributes
@@ -796,7 +849,8 @@ defmodule SensoctoWeb.LobbyLive do
          battery_sensors,
          skeleton_sensors,
          respiration_sensors,
-         hrv_sensors
+         hrv_sensors,
+         gaze_sensors
        ) do
     lenses = []
     lenses = if length(heartrate_sensors) > 0, do: [:heartrate | lenses], else: lenses
@@ -807,6 +861,7 @@ defmodule SensoctoWeb.LobbyLive do
     lenses = if length(skeleton_sensors) > 0, do: [:skeleton | lenses], else: lenses
     lenses = if length(respiration_sensors) > 0, do: [:respiration | lenses], else: lenses
     lenses = if length(hrv_sensors) > 0, do: [:hrv | lenses], else: lenses
+    lenses = if length(gaze_sensors) > 0, do: [:gaze | lenses], else: lenses
     Enum.reverse(lenses)
   end
 
@@ -854,6 +909,13 @@ defmodule SensoctoWeb.LobbyLive do
       }
     end)
     |> Enum.sort_by(& &1.connector_name)
+  end
+
+  defp enrich_sensors_with_attention(sensors) do
+    Map.new(sensors, fn {id, sensor} ->
+      level = Sensocto.AttentionTracker.get_sensor_attention_level(id)
+      {id, Map.put(sensor, :attention_level, level)}
+    end)
   end
 
   # Helper functions for user video card integration
@@ -940,7 +1002,7 @@ defmodule SensoctoWeb.LobbyLive do
 
         # Update composite visualization data
         {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-         skeleton_sensors, respiration_sensors, hrv_sensors} =
+         skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
           extract_composite_data(sensors)
 
         # Recompute available lenses when sensors change
@@ -953,7 +1015,8 @@ defmodule SensoctoWeb.LobbyLive do
             battery_sensors,
             skeleton_sensors,
             respiration_sensors,
-            hrv_sensors
+            hrv_sensors,
+            gaze_sensors
           )
 
         # Filter sensor IDs based on current min_attention setting
@@ -975,6 +1038,7 @@ defmodule SensoctoWeb.LobbyLive do
           |> assign(:skeleton_sensors, skeleton_sensors)
           |> assign(:respiration_sensors, respiration_sensors)
           |> assign(:hrv_sensors, hrv_sensors)
+          |> assign(:gaze_sensors, gaze_sensors)
           |> assign(:available_lenses, available_lenses)
           |> assign(:sensors_by_user, group_sensors_by_user(sensors))
 
@@ -1135,7 +1199,8 @@ defmodule SensoctoWeb.LobbyLive do
                  :battery,
                  :skeleton,
                  :respiration,
-                 :hrv
+                 :hrv,
+                 :gaze
                ] ->
             socket = process_lens_batch_for_composite(socket, batch_data, action)
             {:noreply, socket}
@@ -1166,7 +1231,7 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      action when action in [:heartrate, :battery, :respiration, :hrv] ->
+      action when action in [:heartrate, :battery, :respiration, :hrv, :gaze] ->
         # These can work with digest mode - show latest values
         socket = process_lens_digest_for_composite(socket, digests, action)
         {:noreply, socket}
@@ -1763,8 +1828,19 @@ defmodule SensoctoWeb.LobbyLive do
   # Handle sensor attention changes to re-filter sensor list in realtime
   # Debounced to avoid excessive re-renders from rapid attention changes
   @impl true
-  def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do
+  def handle_info({:attention_changed, %{sensor_id: sensor_id, level: level}}, socket) do
     min_attention = socket.assigns[:min_attention] || 0
+
+    # Push attention changes to graph view for attention radar mode
+    socket =
+      if socket.assigns.live_action == :graph do
+        push_event(socket, "attention_changed", %{
+          sensor_id: sensor_id,
+          level: to_string(level)
+        })
+      else
+        socket
+      end
 
     # Only schedule re-filter if min_attention > 0 (otherwise all sensors are shown)
     if min_attention > 0 do
@@ -1822,7 +1898,7 @@ defmodule SensoctoWeb.LobbyLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors, respiration_sensors, hrv_sensors} =
+     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
       extract_composite_data(sensors)
 
     available_lenses =
@@ -1834,7 +1910,8 @@ defmodule SensoctoWeb.LobbyLive do
         battery_sensors,
         skeleton_sensors,
         respiration_sensors,
-        hrv_sensors
+        hrv_sensors,
+        gaze_sensors
       )
 
     # Re-filter sensors based on current min_attention setting
@@ -1854,6 +1931,7 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:skeleton_sensors, skeleton_sensors)
      |> assign(:respiration_sensors, respiration_sensors)
      |> assign(:hrv_sensors, hrv_sensors)
+     |> assign(:gaze_sensors, gaze_sensors)
      |> assign(:available_lenses, available_lenses)
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))
      |> assign(:sensor_ids, filtered_sensor_ids)}
@@ -2042,7 +2120,7 @@ defmodule SensoctoWeb.LobbyLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
 
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors, respiration_sensors, hrv_sensors} =
+     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
       extract_composite_data(sensors)
 
     available_lenses =
@@ -2054,7 +2132,8 @@ defmodule SensoctoWeb.LobbyLive do
         battery_sensors,
         skeleton_sensors,
         respiration_sensors,
-        hrv_sensors
+        hrv_sensors,
+        gaze_sensors
       )
 
     {:noreply,
@@ -2068,6 +2147,7 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:skeleton_sensors, skeleton_sensors)
      |> assign(:respiration_sensors, respiration_sensors)
      |> assign(:hrv_sensors, hrv_sensors)
+     |> assign(:gaze_sensors, gaze_sensors)
      |> assign(:available_lenses, available_lenses)
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
   end
@@ -2406,6 +2486,19 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :media_control_request_modal, nil)}
   end
 
+  # Graph node hover → boost attention for that sensor
+  @impl true
+  def handle_event("graph_hover_enter", %{"sensor_id" => sensor_id}, socket) do
+    Sensocto.AttentionTracker.register_hover(sensor_id, "composite_graph", socket.id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("graph_hover_leave", %{"sensor_id" => sensor_id}, socket) do
+    Sensocto.AttentionTracker.unregister_hover(sensor_id, "composite_graph", socket.id)
+    {:noreply, socket}
+  end
+
   # Minimum attention filter slider
   @impl true
   def handle_event("set_min_attention", %{"min_attention" => value}, socket) do
@@ -2463,6 +2556,7 @@ defmodule SensoctoWeb.LobbyLive do
         "skeleton" -> ~p"/lobby/skeleton"
         "breathing" -> ~p"/lobby/breathing"
         "hrv" -> ~p"/lobby/hrv"
+        "gaze" -> ~p"/lobby/gaze"
         _ -> ~p"/lobby"
       end
 
@@ -2741,6 +2835,7 @@ defmodule SensoctoWeb.LobbyLive do
         :skeleton -> Enum.map(socket.assigns[:skeleton_sensors] || [], & &1.sensor_id)
         :respiration -> Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns[:hrv_sensors] || [], & &1.sensor_id)
+        :gaze -> Enum.map(socket.assigns[:gaze_sensors] || [], & &1.sensor_id)
         :graph -> socket.assigns[:all_sensor_ids] || []
         _ -> []
       end
@@ -2924,6 +3019,7 @@ defmodule SensoctoWeb.LobbyLive do
         :skeleton -> ["skeleton"]
         :respiration -> ["respiration"]
         :hrv -> ["hrv"]
+        :gaze -> ["eye_gaze", "eye_aperture", "eye_blink", "eye_worn"]
       end
 
     Enum.reduce(batch_data, socket, fn {sensor_id, attributes}, acc ->
@@ -2967,6 +3063,7 @@ defmodule SensoctoWeb.LobbyLive do
         :battery -> ["battery"]
         :respiration -> ["respiration"]
         :hrv -> ["hrv"]
+        :gaze -> ["eye_gaze", "eye_aperture", "eye_blink", "eye_worn"]
         _ -> []
       end
 

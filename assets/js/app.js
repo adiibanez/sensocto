@@ -426,12 +426,31 @@ Hooks.CompositeMeasurementHandler = {
       });
       window.dispatchEvent(customEvent);
     });
+
+    // Handle attention changes for attention radar mode
+    this.handleEvent("attention_changed", (event) => {
+      window.dispatchEvent(new CustomEvent('attention-changed-event', { detail: event }));
+    });
+
+    // Forward graph node hover events to server for attention boost
+    this._onGraphHover = (e) => {
+      const { sensor_id, action } = e.detail;
+      if (action === "enter") {
+        this.pushEvent("graph_hover_enter", { sensor_id });
+      } else {
+        this.pushEvent("graph_hover_leave", { sensor_id });
+      }
+    };
+    window.addEventListener("graph-hover-sensor", this._onGraphHover);
   },
 
   destroyed() {
     console.log("[CompositeMeasurementHandler] destroyed");
     if (this._onComponentReady) {
       window.removeEventListener('composite-component-ready', this._onComponentReady);
+    }
+    if (this._onGraphHover) {
+      window.removeEventListener("graph-hover-sensor", this._onGraphHover);
     }
     window.__compositeSeedReady = false;
     window.__compositeSeedBuffer = [];
@@ -707,62 +726,8 @@ Hooks.PulsatingLogo = {
   }
 }
 
-// MobileMenu hook - hamburger menu toggle for mobile navigation
-Hooks.MobileMenu = {
-  mounted() {
-    this.button = this.el.querySelector('#mobile-menu-button');
-    this.dropdown = this.el.querySelector('#mobile-menu-dropdown');
-    this.isOpen = false;
-
-    if (this.button && this.dropdown) {
-      this.button.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.toggle();
-      });
-
-      // Close menu when clicking outside
-      document.addEventListener('click', (e) => {
-        if (this.isOpen && !this.el.contains(e.target)) {
-          this.close();
-        }
-      });
-
-      // Close menu when pressing Escape
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && this.isOpen) {
-          this.close();
-        }
-      });
-
-      // Close menu when a link is clicked
-      this.dropdown.querySelectorAll('a').forEach(link => {
-        link.addEventListener('click', () => {
-          this.close();
-        });
-      });
-    }
-  },
-
-  toggle() {
-    this.isOpen ? this.close() : this.open();
-  },
-
-  open() {
-    this.dropdown.classList.remove('hidden');
-    this.isOpen = true;
-    this.button.setAttribute('aria-expanded', 'true');
-  },
-
-  close() {
-    this.dropdown.classList.add('hidden');
-    this.isOpen = false;
-    this.button.setAttribute('aria-expanded', 'false');
-  },
-
-  destroyed() {
-    // Cleanup is handled by garbage collection
-  }
-}
+// MobileMenu hook removed — use BaseHooks.MobileMenu from hooks.js
+// (has justOpened flag + touchend handling for mobile touch devices)
 
 Hooks.SensorDataAccumulator = {
 

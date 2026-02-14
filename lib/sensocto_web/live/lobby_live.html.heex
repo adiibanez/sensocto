@@ -452,6 +452,16 @@
           <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
         </.link>
         <.link
+          :if={:gaze in @available_lenses}
+          patch={~p"/lobby/gaze"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :gaze,
+              do: "bg-cyan-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="eye" type="outline" class="h-3 w-3" /> Gaze
+        </.link>
+        <.link
           patch={~p"/lobby/graph"}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph,
@@ -528,6 +538,13 @@
               selected={@live_action == :hrv}
             >
               HRV
+            </option>
+            <option
+              :if={:gaze in @available_lenses}
+              value="gaze"
+              selected={@live_action == :gaze}
+            >
+              Gaze
             </option>
           </optgroup>
         </select>
@@ -835,6 +852,26 @@
     </div>
   </div>
 
+  <%!-- Gaze Composite View --%>
+  <div
+    :if={@live_action == :gaze}
+    id="composite-gaze"
+    phx-hook="CompositeMeasurementHandler"
+    class="w-full"
+  >
+    <.svelte
+      name="CompositeGaze"
+      props={%{sensors: @gaze_sensors}}
+      socket={@socket}
+      class="w-full"
+    />
+    <div :if={@gaze_sensors == []} class="text-center py-12 text-gray-400">
+      <Heroicons.icon name="eye" type="outline" class="h-12 w-12 mx-auto mb-4" />
+      <p class="text-lg">No eye tracking sensors connected</p>
+      <p class="text-sm mt-2">Connect a Pupil Neon or similar eye tracker</p>
+    </div>
+  </div>
+
   <%!-- Favorites View --%>
   <div :if={@live_action == :favorites}>
     <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-400">
@@ -900,7 +937,7 @@
         %{
           rooms: [],
           users: @sensors_by_user,
-          sensors: @sensors
+          sensors: enrich_sensors_with_attention(@sensors)
         }
       }
       socket={@socket}

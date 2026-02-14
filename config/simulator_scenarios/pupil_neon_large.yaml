@@ -1,0 +1,2314 @@
+# Pupil Labs Neon Eye Tracker - Large (50 participants)
+# Use case: Large-scale eye tracking study, classroom observation, usability testing
+#
+# 50 participants with varied gaze behaviors:
+# - Readers (P01-P10): Long fixations (250-450ms), slow saccades
+# - Explorers (P11-P25): Short fixations (120-250ms), fast saccades
+# - Mixed (P26-P40): Medium fixations (200-350ms), moderate saccades
+# - Skimmers (P41-P50): Very short fixations (80-150ms), rapid saccades
+
+connectors:
+  pupil_neon_large_study:
+    connector_id: "pupil_neon_large_study"
+    connector_name: "Pupil_Neon_Large_Study"
+    sensors:
+      neon_p01:
+        sensor_id: "neon_p01"
+        sensor_name: "Neon_Reader_P01"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 250
+            saccade_duration: 35
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 65
+            max_value: 90
+
+      neon_p02:
+        sensor_id: "neon_p02"
+        sensor_name: "Neon_Reader_P02"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 272
+            saccade_duration: 37
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 66
+            max_value: 89
+
+      neon_p03:
+        sensor_id: "neon_p03"
+        sensor_name: "Neon_Reader_P03"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 294
+            saccade_duration: 38
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 67
+            max_value: 89
+
+      neon_p04:
+        sensor_id: "neon_p04"
+        sensor_name: "Neon_Reader_P04"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 317
+            saccade_duration: 40
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 68
+            max_value: 88
+
+      neon_p05:
+        sensor_id: "neon_p05"
+        sensor_name: "Neon_Reader_P05"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 339
+            saccade_duration: 42
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 69
+            max_value: 88
+
+      neon_p06:
+        sensor_id: "neon_p06"
+        sensor_name: "Neon_Reader_P06"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 361
+            saccade_duration: 43
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 71
+            max_value: 87
+
+      neon_p07:
+        sensor_id: "neon_p07"
+        sensor_name: "Neon_Reader_P07"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 383
+            saccade_duration: 45
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 72
+            max_value: 87
+
+      neon_p08:
+        sensor_id: "neon_p08"
+        sensor_name: "Neon_Reader_P08"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 406
+            saccade_duration: 47
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 73
+            max_value: 86
+
+      neon_p09:
+        sensor_id: "neon_p09"
+        sensor_name: "Neon_Reader_P09"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 428
+            saccade_duration: 48
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 74
+            max_value: 86
+
+      neon_p10:
+        sensor_id: "neon_p10"
+        sensor_name: "Neon_Reader_P10"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 450
+            saccade_duration: 50
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 75
+            max_value: 85
+
+      neon_p11:
+        sensor_id: "neon_p11"
+        sensor_name: "Neon_Explorer_P11"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 120
+            saccade_duration: 20
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 45
+            max_value: 75
+
+      neon_p12:
+        sensor_id: "neon_p12"
+        sensor_name: "Neon_Explorer_P12"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 129
+            saccade_duration: 21
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 46
+            max_value: 75
+
+      neon_p13:
+        sensor_id: "neon_p13"
+        sensor_name: "Neon_Explorer_P13"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 139
+            saccade_duration: 21
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 46
+            max_value: 74
+
+      neon_p14:
+        sensor_id: "neon_p14"
+        sensor_name: "Neon_Explorer_P14"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 148
+            saccade_duration: 22
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 47
+            max_value: 74
+
+      neon_p15:
+        sensor_id: "neon_p15"
+        sensor_name: "Neon_Explorer_P15"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 157
+            saccade_duration: 23
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 48
+            max_value: 74
+
+      neon_p16:
+        sensor_id: "neon_p16"
+        sensor_name: "Neon_Explorer_P16"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 166
+            saccade_duration: 24
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 49
+            max_value: 73
+
+      neon_p17:
+        sensor_id: "neon_p17"
+        sensor_name: "Neon_Explorer_P17"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 176
+            saccade_duration: 24
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 49
+            max_value: 73
+
+      neon_p18:
+        sensor_id: "neon_p18"
+        sensor_name: "Neon_Explorer_P18"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 185
+            saccade_duration: 25
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 72
+
+      neon_p19:
+        sensor_id: "neon_p19"
+        sensor_name: "Neon_Explorer_P19"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 194
+            saccade_duration: 26
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 51
+            max_value: 72
+
+      neon_p20:
+        sensor_id: "neon_p20"
+        sensor_name: "Neon_Explorer_P20"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 204
+            saccade_duration: 26
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 51
+            max_value: 72
+
+      neon_p21:
+        sensor_id: "neon_p21"
+        sensor_name: "Neon_Explorer_P21"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 213
+            saccade_duration: 27
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 52
+            max_value: 71
+
+      neon_p22:
+        sensor_id: "neon_p22"
+        sensor_name: "Neon_Explorer_P22"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 222
+            saccade_duration: 28
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 53
+            max_value: 71
+
+      neon_p23:
+        sensor_id: "neon_p23"
+        sensor_name: "Neon_Explorer_P23"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 231
+            saccade_duration: 29
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 54
+            max_value: 71
+
+      neon_p24:
+        sensor_id: "neon_p24"
+        sensor_name: "Neon_Explorer_P24"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 241
+            saccade_duration: 29
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 54
+            max_value: 70
+
+      neon_p25:
+        sensor_id: "neon_p25"
+        sensor_name: "Neon_Explorer_P25"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 250
+            saccade_duration: 30
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 70
+
+      neon_p26:
+        sensor_id: "neon_p26"
+        sensor_name: "Neon_Mixed_P26"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 200
+            saccade_duration: 28
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 85
+
+      neon_p27:
+        sensor_id: "neon_p27"
+        sensor_name: "Neon_Mixed_P27"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 211
+            saccade_duration: 29
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 51
+            max_value: 85
+
+      neon_p28:
+        sensor_id: "neon_p28"
+        sensor_name: "Neon_Mixed_P28"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 221
+            saccade_duration: 29
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 51
+            max_value: 84
+
+      neon_p29:
+        sensor_id: "neon_p29"
+        sensor_name: "Neon_Mixed_P29"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 232
+            saccade_duration: 30
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 52
+            max_value: 84
+
+      neon_p30:
+        sensor_id: "neon_p30"
+        sensor_name: "Neon_Mixed_P30"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 243
+            saccade_duration: 31
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 53
+            max_value: 84
+
+      neon_p31:
+        sensor_id: "neon_p31"
+        sensor_name: "Neon_Mixed_P31"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 254
+            saccade_duration: 32
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 54
+            max_value: 83
+
+      neon_p32:
+        sensor_id: "neon_p32"
+        sensor_name: "Neon_Mixed_P32"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 264
+            saccade_duration: 32
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 54
+            max_value: 83
+
+      neon_p33:
+        sensor_id: "neon_p33"
+        sensor_name: "Neon_Mixed_P33"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 275
+            saccade_duration: 33
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 82
+
+      neon_p34:
+        sensor_id: "neon_p34"
+        sensor_name: "Neon_Mixed_P34"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 286
+            saccade_duration: 34
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 56
+            max_value: 82
+
+      neon_p35:
+        sensor_id: "neon_p35"
+        sensor_name: "Neon_Mixed_P35"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 296
+            saccade_duration: 34
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 56
+            max_value: 82
+
+      neon_p36:
+        sensor_id: "neon_p36"
+        sensor_name: "Neon_Mixed_P36"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 307
+            saccade_duration: 35
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 57
+            max_value: 81
+
+      neon_p37:
+        sensor_id: "neon_p37"
+        sensor_name: "Neon_Mixed_P37"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 318
+            saccade_duration: 36
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 58
+            max_value: 81
+
+      neon_p38:
+        sensor_id: "neon_p38"
+        sensor_name: "Neon_Mixed_P38"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 329
+            saccade_duration: 37
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 59
+            max_value: 81
+
+      neon_p39:
+        sensor_id: "neon_p39"
+        sensor_name: "Neon_Mixed_P39"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 339
+            saccade_duration: 37
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 59
+            max_value: 80
+
+      neon_p40:
+        sensor_id: "neon_p40"
+        sensor_name: "Neon_Mixed_P40"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 350
+            saccade_duration: 38
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 60
+            max_value: 80
+
+      neon_p41:
+        sensor_id: "neon_p41"
+        sensor_name: "Neon_Skimmer_P41"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 80
+            saccade_duration: 15
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 70
+
+      neon_p42:
+        sensor_id: "neon_p42"
+        sensor_name: "Neon_Skimmer_P42"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 88
+            saccade_duration: 16
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 41
+            max_value: 69
+
+      neon_p43:
+        sensor_id: "neon_p43"
+        sensor_name: "Neon_Skimmer_P43"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 96
+            saccade_duration: 17
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 42
+            max_value: 69
+
+      neon_p44:
+        sensor_id: "neon_p44"
+        sensor_name: "Neon_Skimmer_P44"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 103
+            saccade_duration: 17
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 43
+            max_value: 68
+
+      neon_p45:
+        sensor_id: "neon_p45"
+        sensor_name: "Neon_Skimmer_P45"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 111
+            saccade_duration: 18
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 44
+            max_value: 68
+
+      neon_p46:
+        sensor_id: "neon_p46"
+        sensor_name: "Neon_Skimmer_P46"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 119
+            saccade_duration: 19
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 46
+            max_value: 67
+
+      neon_p47:
+        sensor_id: "neon_p47"
+        sensor_name: "Neon_Skimmer_P47"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 127
+            saccade_duration: 20
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 47
+            max_value: 67
+
+      neon_p48:
+        sensor_id: "neon_p48"
+        sensor_name: "Neon_Skimmer_P48"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 134
+            saccade_duration: 20
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 48
+            max_value: 66
+
+      neon_p49:
+        sensor_id: "neon_p49"
+        sensor_name: "Neon_Skimmer_P49"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 142
+            saccade_duration: 21
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 49
+            max_value: 66
+
+      neon_p50:
+        sensor_id: "neon_p50"
+        sensor_name: "Neon_Skimmer_P50"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 150
+            saccade_duration: 22
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 50
+            max_value: 65
+

@@ -1,0 +1,141 @@
+# Pupil Labs Neon Eye Tracker - Small (2 participants)
+# Use case: Eye tracking research, gaze analysis, blink detection
+#
+# Realistic Sampling Rates (based on Pupil Neon specs):
+# - Eye gaze: 200Hz (research-grade tracking)
+# - Blink detection: 30Hz (captures full blink dynamics)
+# - Eye aperture: 30Hz (synchronized with blink)
+# - Worn detection: 1Hz (device state)
+# - IMU: 110Hz (accelerometer + gyroscope for head movement)
+# - Battery: 0.1Hz (every 10 seconds)
+
+connectors:
+  pupil_neon_demo:
+    connector_id: "pupil_neon_demo"
+    connector_name: "Pupil_Neon_Eye_Tracker"
+    sensors:
+      # Participant 1: Reading task (longer fixations, concentrated gaze)
+      neon_reader_1:
+        sensor_id: "neon_reader_1"
+        sensor_name: "Neon_Reader_P1"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 350
+            saccade_duration: 40
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          accelerometer:
+            attribute_id: "accelerometer"
+            sensor_type: "accelerometer_x"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            dummy_data: true
+          gyroscope:
+            attribute_id: "gyroscope"
+            sensor_type: "gyroscope_x"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 65
+            max_value: 85
+
+      # Participant 2: Visual search task (rapid saccades, shorter fixations)
+      neon_explorer_2:
+        sensor_id: "neon_explorer_2"
+        sensor_name: "Neon_Explorer_P2"
+        attributes:
+          eye_gaze:
+            attribute_id: "eye_gaze"
+            sensor_type: "eye_gaze"
+            batch_size: 10
+            batch_window: 50
+            duration: 0
+            sampling_rate: 200
+            fixation_duration: 150
+            saccade_duration: 25
+          eye_blink:
+            attribute_id: "eye_blink"
+            sensor_type: "eye_blink"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+            dummy_data: true
+          eye_aperture:
+            attribute_id: "eye_aperture"
+            sensor_type: "eye_aperture"
+            batch_size: 1
+            batch_window: 33
+            duration: 0
+            sampling_rate: 30
+          eye_worn:
+            attribute_id: "eye_worn"
+            sensor_type: "eye_worn"
+            batch_size: 1
+            batch_window: 1000
+            duration: 0
+            sampling_rate: 1
+            dummy_data: true
+          accelerometer:
+            attribute_id: "accelerometer"
+            sensor_type: "accelerometer_x"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            dummy_data: true
+          gyroscope:
+            attribute_id: "gyroscope"
+            sensor_type: "gyroscope_x"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 60

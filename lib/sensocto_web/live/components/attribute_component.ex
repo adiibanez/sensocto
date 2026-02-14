@@ -2053,6 +2053,162 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  # Eye Gaze - summary mode: show x,y coordinates + confidence
+  @impl true
+  def render(%{:attribute_type => "eye_gaze", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <span class="text-purple-400">&#x25CE;</span> gaze
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {format_gaze_payload(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  # Eye Gaze - normal mode: show gaze position with confidence
+  @impl true
+  def render(%{:attribute_type => "eye_gaze"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+        attribute={@attribute}
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="eye gaze"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center justify-center py-4">
+          <div class="flex items-center gap-6">
+            <div class="relative w-24 h-24 rounded-full border border-gray-600 bg-gray-800/50">
+              <div
+                class="absolute w-3 h-3 rounded-full bg-purple-400 shadow-lg shadow-purple-400/50 -translate-x-1/2 -translate-y-1/2"
+                style={"left: #{extract_gaze_x(@lastvalue.payload) * 100}%; top: #{extract_gaze_y(@lastvalue.payload) * 100}%"}
+              />
+            </div>
+            <div class="flex flex-col gap-1 text-sm">
+              <div>
+                <span class="text-gray-500">X:</span>
+                <span class="text-white font-mono ml-1">
+                  {format_gaze_coord(extract_gaze_x(@lastvalue.payload))}
+                </span>
+              </div>
+              <div>
+                <span class="text-gray-500">Y:</span>
+                <span class="text-white font-mono ml-1">
+                  {format_gaze_coord(extract_gaze_y(@lastvalue.payload))}
+                </span>
+              </div>
+              <div>
+                <span class="text-gray-500">Conf:</span>
+                <span class={"font-mono ml-1 " <> gaze_confidence_class(extract_gaze_confidence(@lastvalue.payload))}>
+                  {format_gaze_confidence(extract_gaze_confidence(@lastvalue.payload))}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
+  # Eye Aperture - summary mode: show left/right angles
+  @impl true
+  def render(%{:attribute_type => "eye_aperture", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      class="flex items-center justify-between text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+    >
+      <span class="text-gray-400 flex items-center gap-1">
+        <span class="text-amber-400">&#x25C9;</span> aperture
+      </span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {format_aperture_payload(@lastvalue.payload)}
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
+    </div>
+    """
+  end
+
+  # Eye Aperture - normal mode: show left/right with visual bars
+  @impl true
+  def render(%{:attribute_type => "eye_aperture"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+        attribute={@attribute}
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name="eye aperture"
+          lastvalue={@lastvalue}
+          socket={@socket}
+        >
+        </.render_attribute_header>
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue} class="flex items-center justify-center py-4">
+          <div class="flex items-center gap-6">
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center gap-2">
+                <span class="text-gray-500 text-xs w-6">L</span>
+                <div class="w-32 h-3 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-amber-400 rounded-full transition-all duration-200"
+                    style={"width: #{min(extract_aperture_left(@lastvalue.payload) / 22.0 * 100, 100)}%"}
+                  />
+                </div>
+                <span class="text-white font-mono text-sm w-12 text-right">
+                  {format_aperture_value(extract_aperture_left(@lastvalue.payload))}°
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-gray-500 text-xs w-6">R</span>
+                <div class="w-32 h-3 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-amber-400 rounded-full transition-all duration-200"
+                    style={"width: #{min(extract_aperture_right(@lastvalue.payload) / 22.0 * 100, 100)}%"}
+                  />
+                </div>
+                <span class="text-white font-mono text-sm w-12 text-right">
+                  {format_aperture_value(extract_aperture_right(@lastvalue.payload))}°
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:view_mode => :summary} = assigns) do
     ~H"""
@@ -2532,6 +2688,65 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   defp format_payload(payload) when is_map(payload), do: "..."
   defp format_payload(payload) when is_binary(payload), do: payload
   defp format_payload(_), do: "--"
+
+  # Eye gaze helpers
+  defp extract_gaze_x(%{x: x}) when is_number(x), do: x
+  defp extract_gaze_x(%{"x" => x}) when is_number(x), do: x
+  defp extract_gaze_x(_), do: 0.5
+
+  defp extract_gaze_y(%{y: y}) when is_number(y), do: y
+  defp extract_gaze_y(%{"y" => y}) when is_number(y), do: y
+  defp extract_gaze_y(_), do: 0.5
+
+  defp extract_gaze_confidence(%{confidence: c}) when is_number(c), do: c
+  defp extract_gaze_confidence(%{"confidence" => c}) when is_number(c), do: c
+  defp extract_gaze_confidence(_), do: 0.0
+
+  defp format_gaze_payload(payload) when is_map(payload) do
+    x = extract_gaze_x(payload)
+    y = extract_gaze_y(payload)
+
+    "#{:erlang.float_to_binary(x * 1.0, decimals: 2)}, #{:erlang.float_to_binary(y * 1.0, decimals: 2)}"
+  end
+
+  defp format_gaze_payload(_), do: "--"
+
+  defp format_gaze_coord(val) when is_number(val),
+    do: :erlang.float_to_binary(val * 1.0, decimals: 3)
+
+  defp format_gaze_coord(_), do: "0.000"
+
+  defp format_gaze_confidence(val) when is_number(val),
+    do: :erlang.float_to_binary(val * 100.0, decimals: 0) <> "%"
+
+  defp format_gaze_confidence(_), do: "0%"
+
+  defp gaze_confidence_class(val) when is_number(val) and val >= 0.85, do: "text-green-400"
+  defp gaze_confidence_class(val) when is_number(val) and val >= 0.6, do: "text-yellow-400"
+  defp gaze_confidence_class(_), do: "text-red-400"
+
+  # Eye aperture helpers
+  defp extract_aperture_left(%{left: l}) when is_number(l), do: l
+  defp extract_aperture_left(%{"left" => l}) when is_number(l), do: l
+  defp extract_aperture_left(_), do: 0.0
+
+  defp extract_aperture_right(%{right: r}) when is_number(r), do: r
+  defp extract_aperture_right(%{"right" => r}) when is_number(r), do: r
+  defp extract_aperture_right(_), do: 0.0
+
+  defp format_aperture_payload(payload) when is_map(payload) do
+    l = extract_aperture_left(payload)
+    r = extract_aperture_right(payload)
+
+    "L:#{:erlang.float_to_binary(l * 1.0, decimals: 1)}° R:#{:erlang.float_to_binary(r * 1.0, decimals: 1)}°"
+  end
+
+  defp format_aperture_payload(_), do: "--"
+
+  defp format_aperture_value(val) when is_number(val),
+    do: :erlang.float_to_binary(val * 1.0, decimals: 1)
+
+  defp format_aperture_value(_), do: "0.0"
 
   # Helper to safely round payload values (handles both numbers and strings)
   defp safe_round(payload) when is_number(payload), do: round(payload)

@@ -1,0 +1,752 @@
+# Sensocto API Developer Experience
+
+```elixir
+Mix.install([
+  {:phoenix_client, "~> 0.11.1"},
+  {:jason, "~> 1.4"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.14"},
+  {:uuid, "~> 1.1"}
+])
+```
+
+## Introduction
+
+This Livebook provides an interactive guide for developers integrating with the Sensocto platform. It covers:
+
+1. **REST API** - Authentication, rooms, and management
+2. **WebSocket Channels** - Real-time sensor data streaming
+3. **Backpressure Handling** - Adaptive rate control
+4. **Error Handling** - Common issues and solutions
+5. **Client Patterns** - Best practices for robust integrations
+
+## Configuration
+
+```elixir
+# Configure your Sensocto instance
+form =
+  Kino.Control.form(
+    [
+      server_url:
+        Kino.Input.select("Server",
+          local: "http://localhost:4000",
+          staging: "https://staging.sensocto.io",
+          production: "https://sensocto.io"
+        ),
+      bearer_token: Kino.Input.password("Bearer Token (leave blank for guest)")
+    ],
+    submit: "Connect"
+  )
+```
+
+```elixir
+# Process the form and establish configuration
+config =
+  Kino.Control.stream(form)
+  |> Stream.map(fn event ->
+    %{
+      server_url: event.data.server_url,
+      socket_url:
+        event.data.server_url
+        |> String.replace("http://", "ws://")
+        |> String.replace("https://", "wss://")
+        |> Kernel.<>("/socket/websocket"),
+      bearer_token:
+        case event.data.bearer_token do
+          "" -> nil
+          token -> token
+        end
+    }
+  end)
+  |> Enum.take(1)
+  |> List.first()
+
+Kino.Markdown.new("""
+**Configuration:**
+- Server: `#{config.server_url}`
+- Socket: `#{config.socket_url}`
+- Auth: #{if config.bearer_token, do: "Bearer token provided", else: "Guest mode"}
+""")
+```
+
+## 1. REST API Exploration
+
+### Health Check
+
+The health endpoints don't require authentication and are useful for connectivity testing.
+
+```elixir
+# Test connectivity with liveness check
+case Req.get("#{config.server_url}/health/live") do
+  {:ok, %{status: 200, body: body}} ->
+    Kino.Markdown.new("""
+    **Liveness Check:** Healthy
+
+    ```json
+    #{Jason.encode!(body, pretty: true)}
+    ```
+    """)
+
+  {:ok, %{status: status}} ->
+    Kino.Markdown.new("**Liveness Check:** Failed (status #{status})")
+
+  {:error, reason} ->
+    Kino.Markdown.new("**Connection Error:** #{inspect(reason)}")
+end
+```
+
+```elixir
+# Deep health check with readiness probe
+case Req.get("#{config.server_url}/health/ready") do
+  {:ok, %{status: status, body: body}} ->
+    checks =
+      body["checks"]
+      |> Enum.map(fn {name, result} ->
+        status_emoji = if result["status"] == "ok", do: "[OK]", else: "[FAIL]"
+        "- #{status_emoji} **#{name}**: #{result["status"]}"
+      end)
+      |> Enum.join("\n")
+
+    Kino.Markdown.new("""
+    **Readiness Check:** #{if status == 200, do: "Ready", else: "Degraded"}
+
+    #{checks}
+    """)
+
+  {:error, reason} ->
+    Kino.Markdown.new("**Connection Error:** #{inspect(reason)}")
+end
+```
+
+### OpenAPI Specification
+
+```elixir
+# Fetch and display the OpenAPI spec summary
+case Req.get("#{config.server_url}/api/openapi") do
+  {:ok, %{status: 200, body: spec}} ->
+    paths =
+      spec["paths"]
+      |> Enum.flat_map(fn {path, methods} ->
+        methods
+        |> Enum.map(fn {method, details} ->
+          "| `#{String.upcase(method)}` | `#{path}` | #{details["summary"] || "N/A"} |"
+        end)
+      end)
+      |> Enum.join("\n")
+
+    Kino.Markdown.new("""
+    ## Available API Endpoints
+
+    **API Version:** #{spec["info"]["version"]}
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    #{paths}
+
+    **Swagger UI:** [Open Swagger UI](#{config.server_url}/swaggerui)
+    """)
+
+  {:error, _} ->
+    Kino.Markdown.new("OpenAPI spec not available. The server may not have `open_api_spex` enabled.")
+end
+```
+
+### Authentication Test
+
+```elixir
+# Test token verification
+if config.bearer_token do
+  headers = [{"authorization", "Bearer #{config.bearer_token}"}]
+
+  case Req.get("#{config.server_url}/api/auth/verify", headers: headers) do
+    {:ok, %{status: 200, body: %{"ok" => true, "user" => user}}} ->
+      Kino.Markdown.new("""
+      **Authentication:** Valid
+
+      - **User ID:** `#{user["id"]}`
+      - **Email:** #{user["email"]}
+      - **Display Name:** #{user["display_name"]}
+      """)
+
+    {:ok, %{status: 401, body: body}} ->
+      Kino.Markdown.new("""
+      **Authentication Failed**
+
+      ```json
+      #{Jason.encode!(body, pretty: true)}
+      ```
+      """)
+
+    {:error, reason} ->
+      Kino.Markdown.new("**Error:** #{inspect(reason)}")
+  end
+else
+  Kino.Markdown.new("""
+  **Guest Mode:** No bearer token provided.
+
+  To test authenticated endpoints, provide a bearer token in the configuration above.
+
+  **Getting a Token:**
+  1. Sign in to the Sensocto web UI
+  2. Open browser developer tools
+  3. Find the JWT in localStorage or session storage
+  """)
+end
+```
+
+### List Rooms
+
+```elixir
+if config.bearer_token do
+  headers = [{"authorization", "Bearer #{config.bearer_token}"}]
+
+  case Req.get("#{config.server_url}/api/rooms", headers: headers) do
+    {:ok, %{status: 200, body: %{"rooms" => rooms}}} ->
+      if rooms == [] do
+        Kino.Markdown.new("No rooms found. Create a room in the web UI first.")
+      else
+        room_list =
+          rooms
+          |> Enum.map(fn room ->
+            "| `#{room["id"]}` | #{room["name"]} | #{room["member_count"]} | #{if room["is_public"], do: "Public", else: "Private"} |"
+          end)
+          |> Enum.join("\n")
+
+        Kino.Markdown.new("""
+        ## Your Rooms
+
+        | ID | Name | Members | Visibility |
+        |----|------|---------|------------|
+        #{room_list}
+        """)
+      end
+
+    {:ok, %{status: 401}} ->
+      Kino.Markdown.new("**Unauthorized:** Token may be expired")
+
+    {:error, reason} ->
+      Kino.Markdown.new("**Error:** #{inspect(reason)}")
+  end
+else
+  Kino.Markdown.new("Provide a bearer token to list rooms.")
+end
+```
+
+## 2. WebSocket Channel Connection
+
+### Phoenix Channel Protocol
+
+The Sensocto platform uses Phoenix Channels over WebSocket. Here's how to connect:
+
+```elixir
+defmodule SensoctoClient do
+  @moduledoc """
+  Simple Phoenix channel client for Sensocto.
+
+  This demonstrates the connection flow that client SDKs must implement.
+  """
+
+  require Logger
+  alias PhoenixClient.{Socket, Channel, Message}
+
+  defstruct [:socket, :channel, :sensor_id, :config]
+
+  @doc """
+  Connect to Sensocto and join a sensor channel.
+  """
+  def connect(server_url, sensor_config) do
+    socket_opts = [url: server_url]
+
+    case Socket.start_link(socket_opts) do
+      {:ok, socket} ->
+        wait_for_connection(socket, 50)
+
+        topic = "sensocto:sensor:#{sensor_config.sensor_id}"
+
+        join_params = %{
+          connector_id: sensor_config.connector_id,
+          connector_name: sensor_config.connector_name,
+          sensor_id: sensor_config.sensor_id,
+          sensor_name: sensor_config.sensor_name,
+          sensor_type: sensor_config.sensor_type,
+          attributes: sensor_config.attributes,
+          sampling_rate: sensor_config.sampling_rate,
+          batch_size: sensor_config.batch_size,
+          bearer_token: sensor_config.bearer_token || "missing"
+        }
+
+        case Channel.join(socket, topic, join_params) do
+          {:ok, _response, channel} ->
+            {:ok,
+             %__MODULE__{
+               socket: socket,
+               channel: channel,
+               sensor_id: sensor_config.sensor_id,
+               config: sensor_config
+             }}
+
+          {:error, reason} ->
+            Socket.stop(socket)
+            {:error, {:join_failed, reason}}
+        end
+
+      {:error, reason} ->
+        {:error, {:connect_failed, reason}}
+    end
+  end
+
+  @doc """
+  Send a single measurement.
+  """
+  def send_measurement(%__MODULE__{channel: channel}, attribute_id, payload) do
+    message = %{
+      "attribute_id" => attribute_id,
+      "payload" => payload,
+      "timestamp" => System.system_time(:millisecond)
+    }
+
+    Channel.push(channel, "measurement", message)
+  end
+
+  @doc """
+  Send a batch of measurements.
+  """
+  def send_batch(%__MODULE__{channel: channel}, measurements) do
+    Channel.push(channel, "measurements_batch", measurements)
+  end
+
+  @doc """
+  Disconnect and cleanup.
+  """
+  def disconnect(%__MODULE__{socket: socket, channel: channel}) do
+    Channel.leave(channel)
+    Socket.stop(socket)
+    :ok
+  end
+
+  defp wait_for_connection(_socket, 0), do: :timeout
+
+  defp wait_for_connection(socket, attempts) do
+    if Socket.connected?(socket) do
+      :ok
+    else
+      Process.sleep(100)
+      wait_for_connection(socket, attempts - 1)
+    end
+  end
+end
+```
+
+### Connect and Stream Data
+
+```elixir
+# Generate unique IDs for this session
+connector_id = UUID.uuid4()
+sensor_id = UUID.uuid4()
+
+sensor_config = %{
+  connector_id: connector_id,
+  connector_name: "Livebook Demo",
+  sensor_id: sensor_id,
+  sensor_name: "Demo Sensor",
+  sensor_type: "heartrate",
+  attributes: %{
+    "heartrate" => %{
+      "attribute_id" => "heartrate",
+      "attribute_type" => "heartrate",
+      "sampling_rate" => 1
+    }
+  },
+  sampling_rate: 1,
+  batch_size: 1,
+  bearer_token: config.bearer_token
+}
+
+Kino.Markdown.new("""
+**Sensor Configuration:**
+
+| Field | Value |
+|-------|-------|
+| Connector ID | `#{connector_id}` |
+| Sensor ID | `#{sensor_id}` |
+| Sensor Type | `#{sensor_config.sensor_type}` |
+| Sampling Rate | #{sensor_config.sampling_rate} Hz |
+""")
+```
+
+```elixir
+# Connect to the server
+case SensoctoClient.connect(config.socket_url, sensor_config) do
+  {:ok, client} ->
+    # Store client in process dictionary for later cells
+    Process.put(:sensocto_client, client)
+
+    Kino.Markdown.new("""
+    **Connected!**
+
+    Channel joined: `sensocto:sensor:#{sensor_id}`
+
+    The sensor is now visible in the Sensocto lobby.
+    """)
+
+  {:error, {:join_failed, reason}} ->
+    Kino.Markdown.new("""
+    **Join Failed**
+
+    Reason: `#{inspect(reason)}`
+
+    Common issues:
+    - Invalid bearer token
+    - Server not accepting connections
+    - Channel validation failed
+    """)
+
+  {:error, {:connect_failed, reason}} ->
+    Kino.Markdown.new("""
+    **Connection Failed**
+
+    Reason: `#{inspect(reason)}`
+
+    Check that the server URL is correct and the server is running.
+    """)
+end
+```
+
+### Send Test Measurements
+
+```elixir
+client = Process.get(:sensocto_client)
+
+if client do
+  # Send 10 simulated heart rate measurements
+  measurements =
+    1..10
+    |> Enum.map(fn i ->
+      # Simulate varying heart rate between 60-100 bpm
+      bpm = 70 + :rand.uniform(30)
+      SensoctoClient.send_measurement(client, "heartrate", bpm)
+      Process.sleep(200)
+      bpm
+    end)
+
+  Kino.Markdown.new("""
+  **Sent 10 measurements:**
+
+  #{measurements |> Enum.with_index(1) |> Enum.map(fn {bpm, i} -> "#{i}. #{bpm} bpm" end) |> Enum.join("\n")}
+
+  Check the Sensocto lobby to see the data!
+  """)
+else
+  Kino.Markdown.new("Not connected. Run the connection cell first.")
+end
+```
+
+### Disconnect
+
+```elixir
+client = Process.get(:sensocto_client)
+
+if client do
+  SensoctoClient.disconnect(client)
+  Process.delete(:sensocto_client)
+  Kino.Markdown.new("**Disconnected** - Sensor removed from lobby")
+else
+  Kino.Markdown.new("No active connection")
+end
+```
+
+## 3. Backpressure Handling
+
+The server sends `backpressure_config` events to guide client transmission rates. Here's the structure:
+
+```elixir
+backpressure_example = %{
+  "attention_level" => "high",
+  "system_load" => "normal",
+  "memory_protection_active" => false,
+  "paused" => false,
+  "recommended_batch_window" => 100,
+  "recommended_batch_size" => 1,
+  "load_multiplier" => 1.0,
+  "timestamp" => System.system_time(:millisecond)
+}
+
+Kino.Markdown.new("""
+## Backpressure Configuration Structure
+
+```json
+#{Jason.encode!(backpressure_example, pretty: true)}
+```
+
+### Attention Levels
+
+| Level | Batch Window | Batch Size | Use Case |
+|-------|-------------|------------|----------|
+| `high` | 100ms | 1 | User actively viewing sensor |
+| `medium` | 500ms | 5 | Sensor visible but not focused |
+| `low` | 2000ms | 10 | Sensor in background |
+| `none` | 5000ms | 20 | No viewers |
+
+### Client Response Guidelines
+
+1. **`paused: true`** - Stop sending data immediately, queue locally
+2. **`memory_protection_active: true`** - Heavy throttling, multiply batch window by 5x
+3. **Normal operation** - Use `recommended_batch_window` and `recommended_batch_size`
+
+### Sample Client Handler
+
+```javascript
+channel.on("backpressure_config", (config) => {
+  if (config.paused) {
+    sensor.pause();
+    sensor.startLocalQueue();
+  } else {
+    sensor.setBatchWindow(config.recommended_batch_window);
+    sensor.setBatchSize(config.recommended_batch_size);
+    sensor.resume();
+  }
+});
+```
+""")
+```
+
+## 4. Error Handling Reference
+
+```elixir
+errors = [
+  %{
+    code: "unauthorized",
+    category: "Authentication",
+    description: "Invalid or expired bearer token",
+    recoverable: true,
+    action: "Refresh token and retry"
+  },
+  %{
+    code: "invalid_attribute_id",
+    category: "Validation",
+    description: "Attribute ID format is invalid",
+    recoverable: false,
+    action: "Fix attribute ID format (alphanumeric, underscores, hyphens)"
+  },
+  %{
+    code: "missing_fields",
+    category: "Validation",
+    description: "Required fields missing from message",
+    recoverable: false,
+    action: "Include all required fields: attribute_id, payload, timestamp"
+  },
+  %{
+    code: "invalid_batch",
+    category: "Validation",
+    description: "One or more measurements in batch failed validation",
+    recoverable: false,
+    action: "Validate all measurements before batching"
+  },
+  %{
+    code: "call_full",
+    category: "Resource",
+    description: "Video call room is at capacity",
+    recoverable: true,
+    action: "Wait and retry, or join a different room"
+  },
+  %{
+    code: "not_room_member",
+    category: "Authorization",
+    description: "User is not a member of the requested room",
+    recoverable: false,
+    action: "Request room access or join via invite code"
+  }
+]
+
+error_rows =
+  errors
+  |> Enum.map(fn e ->
+    "| `#{e.code}` | #{e.category} | #{e.description} | #{if e.recoverable, do: "Yes", else: "No"} | #{e.action} |"
+  end)
+  |> Enum.join("\n")
+
+Kino.Markdown.new("""
+## Error Codes Reference
+
+| Code | Category | Description | Recoverable | Action |
+|------|----------|-------------|-------------|--------|
+#{error_rows}
+
+### Error Handling Pattern
+
+```elixir
+case SensoctoClient.send_measurement(client, attr_id, payload) do
+  {:ok, _} ->
+    :success
+
+  {:error, %{reason: "unauthorized"}} ->
+    # Token expired - refresh and retry
+    new_token = refresh_auth_token()
+    reconnect_with_token(new_token)
+
+  {:error, %{reason: "invalid_attribute_id"}} ->
+    # Fix attribute ID and retry
+    Logger.error("Invalid attribute ID: \#{attr_id}")
+
+  {:error, %{reason: reason}} ->
+    Logger.error("Unknown error: \#{reason}")
+end
+```
+""")
+```
+
+## 5. Attribute Types Reference
+
+```elixir
+# List all valid attribute types
+attribute_types = [
+  # Health
+  {"ecg", "health", "ECG waveform data"},
+  {"hrv", "health", "Heart rate variability"},
+  {"hr", "health", "Heart rate (alias)"},
+  {"heartrate", "health", "Heart rate BPM"},
+  {"spo2", "health", "Blood oxygen saturation"},
+  {"respiration", "health", "Respiration rate"},
+  # Motion/IMU
+  {"imu", "motion", "Combined accelerometer/gyroscope/magnetometer"},
+  {"accelerometer", "motion", "3-axis acceleration"},
+  {"gyroscope", "motion", "3-axis angular velocity"},
+  {"magnetometer", "motion", "3-axis magnetic field"},
+  {"quaternion", "motion", "Orientation quaternion (w, x, y, z)"},
+  {"euler", "motion", "Euler angles (roll, pitch, yaw)"},
+  {"heading", "motion", "Compass heading"},
+  {"gravity", "motion", "Gravity vector"},
+  {"tap", "motion", "Tap detection events"},
+  {"orientation", "motion", "Device orientation"},
+  # Location
+  {"geolocation", "location", "GPS coordinates"},
+  {"altitude", "location", "Altitude above sea level"},
+  {"speed", "location", "Movement speed"},
+  # Environment
+  {"temperature", "environment", "Temperature reading"},
+  {"humidity", "environment", "Humidity percentage"},
+  {"pressure", "environment", "Atmospheric pressure"},
+  {"light", "environment", "Light intensity"},
+  {"proximity", "environment", "Proximity sensor"},
+  {"gas", "environment", "Gas sensor (eCO2, TVOC)"},
+  {"air_quality", "environment", "Air quality index"},
+  {"color", "environment", "Color sensor (RGB)"},
+  # Device
+  {"battery", "device", "Battery level percentage"},
+  {"button", "device", "Button press events"},
+  {"led", "device", "LED control"},
+  {"speaker", "device", "Speaker/audio output"},
+  {"microphone", "device", "Microphone input"},
+  {"body_location", "device", "Sensor body placement"},
+  {"rich_presence", "device", "Rich presence metadata"},
+  # Activity
+  {"steps", "activity", "Step counter"},
+  {"calories", "activity", "Calorie estimation"},
+  {"distance", "activity", "Distance traveled"},
+  # Specialty
+  {"buttplug", "specialty", "Buttplug.io device control"},
+  {"skeleton", "specialty", "Pose/skeleton tracking"}
+]
+
+categories = attribute_types |> Enum.group_by(fn {_, cat, _} -> cat end)
+
+category_sections =
+  categories
+  |> Enum.map(fn {category, types} ->
+    type_rows =
+      types
+      |> Enum.map(fn {type, _, desc} -> "| `#{type}` | #{desc} |" end)
+      |> Enum.join("\n")
+
+    """
+    ### #{String.capitalize(category)}
+
+    | Type | Description |
+    |------|-------------|
+    #{type_rows}
+    """
+  end)
+  |> Enum.join("\n")
+
+Kino.Markdown.new("""
+## Valid Attribute Types
+
+The following attribute types are recognized by the Sensocto platform.
+Using an unrecognized type will still work but may not have optimized rendering.
+
+#{category_sections}
+""")
+```
+
+## 6. Quick Reference: Join Parameters
+
+```elixir
+Kino.Markdown.new("""
+## Channel Join Parameters
+
+### Sensor Channel (`sensocto:sensor:{sensor_id}`)
+
+```typescript
+{
+  // Required
+  connector_id: string;      // UUID of the connecting device/app
+  connector_name: string;    // Human-readable connector name
+  sensor_id: string;         // UUID of this specific sensor
+  sensor_name: string;       // Human-readable sensor name
+  sensor_type: string;       // Primary sensor type (e.g., "heartrate")
+  bearer_token: string;      // JWT token or "missing" for guest
+
+  // Optional but recommended
+  attributes: {              // Map of attribute configurations
+    [attribute_id]: {
+      attribute_id: string;
+      attribute_type: string;
+      sampling_rate: number;
+    }
+  };
+  sampling_rate: number;     // Default sampling rate in Hz
+  batch_size: number;        // Preferred batch size
+}
+```
+
+### Call Channel (`call:{room_id}`)
+
+```typescript
+{
+  user_id: string;           // UUID of the user
+  user_info?: {              // Optional display info
+    name?: string;
+    avatar?: string;
+  }
+}
+```
+
+### Bridge Channel (`bridge:control` or `bridge:topic:{topic}`)
+
+```typescript
+{
+  token?: string;            // Optional bridge authentication token
+}
+```
+""")
+```
+
+## Summary
+
+This Livebook demonstrated:
+
+1. **REST API** - Health checks, OpenAPI spec, authentication, and room listing
+2. **WebSocket Channels** - Connection, channel joining, and data streaming
+3. **Backpressure** - Understanding and responding to server load signals
+4. **Error Handling** - Common errors and recovery strategies
+5. **Attribute Types** - All 30+ supported sensor types
+
+### Next Steps
+
+- Visit the [Swagger UI](#{config.server_url}/swaggerui) for interactive API exploration
+- Check the [lobby](#{config.server_url}/lobby) to see your connected sensors
+- Review SDK implementations in `clients/` directory
+
+---
+
+*Generated for Sensocto API Developer Experience*

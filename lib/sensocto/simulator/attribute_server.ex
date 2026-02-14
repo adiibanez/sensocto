@@ -32,7 +32,10 @@ defmodule Sensocto.Simulator.AttributeServer do
                 :current_batch_window,
                 :base_batch_window,
                 # String version of attribute_id for consistent AttentionTracker lookups
-                :attribute_id_str
+                :attribute_id_str,
+                # Timer ref for batch_window — tracked so we can cancel/reschedule
+                # when attention changes significantly (e.g., :none → :medium)
+                :batch_timer_ref
               ]
 
   @type t :: %__MODULE__{
@@ -48,7 +51,8 @@ defmodule Sensocto.Simulator.AttributeServer do
           batch_push_messages: list(),
           attention_level: atom(),
           current_batch_window: non_neg_integer(),
-          base_batch_window: non_neg_integer()
+          base_batch_window: non_neg_integer(),
+          batch_timer_ref: reference() | nil
         }
 
   def start_link(
@@ -148,9 +152,9 @@ defmodule Sensocto.Simulator.AttributeServer do
 
     # Start processing and batch window timer
     Process.send_after(self(), :process_queue, 100)
-    Process.send_after(self(), :batch_window, initial_batch_window)
+    batch_timer_ref = Process.send_after(self(), :batch_window, initial_batch_window)
 
-    {:ok, state}
+    {:ok, %{state | batch_timer_ref: batch_timer_ref}}
   end
 
   @impl true
@@ -293,13 +297,13 @@ defmodule Sensocto.Simulator.AttributeServer do
         :batch_window,
         %{batch_push_messages: messages, current_batch_window: batch_window} = state
       ) do
-    Process.send_after(self(), :batch_window, batch_window)
+    batch_timer_ref = Process.send_after(self(), :batch_window, batch_window)
 
     if length(messages) > 0 do
       GenServer.cast(self(), {:push_batch, messages})
-      {:noreply, %{state | batch_push_messages: []}}
+      {:noreply, %{state | batch_push_messages: [], batch_timer_ref: batch_timer_ref}}
     else
-      {:noreply, state}
+      {:noreply, %{state | batch_timer_ref: batch_timer_ref}}
     end
   end
 
@@ -319,6 +323,7 @@ defmodule Sensocto.Simulator.AttributeServer do
       )
     end
 
+    state = maybe_reschedule_batch_timer(state, new_batch_window)
     {:noreply, %{state | attention_level: new_level, current_batch_window: new_batch_window}}
   end
 
@@ -344,6 +349,7 @@ defmodule Sensocto.Simulator.AttributeServer do
       )
     end
 
+    state = maybe_reschedule_batch_timer(state, new_batch_window)
     {:noreply, %{state | attention_level: new_attention, current_batch_window: new_batch_window}}
   end
 
@@ -403,7 +409,23 @@ defmodule Sensocto.Simulator.AttributeServer do
       )
     end
 
+    state = maybe_reschedule_batch_timer(state, new_batch_window)
     {:noreply, %{state | system_load_level: new_level, current_batch_window: new_batch_window}}
+  end
+
+  # When attention improves (batch_window shrinks significantly), cancel the pending
+  # timer and reschedule immediately. Without this, a timer scheduled at 5000ms+
+  # (from :none attention) would delay data flow for seconds after attention recovers.
+  defp maybe_reschedule_batch_timer(state, new_batch_window) do
+    old_window = state.current_batch_window
+
+    if new_batch_window < old_window and old_window - new_batch_window > 500 do
+      if state.batch_timer_ref, do: Process.cancel_timer(state.batch_timer_ref)
+      ref = Process.send_after(self(), :batch_window, new_batch_window)
+      %{state | batch_timer_ref: ref}
+    else
+      state
+    end
   end
 
   # Apply backpressure by multiplying the delay based on attention level

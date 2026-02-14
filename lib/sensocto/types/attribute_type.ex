@@ -80,7 +80,13 @@ defmodule Sensocto.Types.AttributeType do
     "buttplug",
 
     # Pose/Skeleton
-    "skeleton"
+    "skeleton",
+
+    # Eye Tracking
+    "eye_gaze",
+    "eye_blink",
+    "eye_worn",
+    "eye_aperture"
   ]
 
   @type t :: String.t()
@@ -175,6 +181,9 @@ defmodule Sensocto.Types.AttributeType do
       "buttplug" ->
         :specialty
 
+      t when t in ~w(eye_gaze eye_blink eye_worn eye_aperture) ->
+        :eye_tracking
+
       _ ->
         :unknown
     end
@@ -259,6 +268,18 @@ defmodule Sensocto.Types.AttributeType do
       "skeleton" ->
         %{chart_type: :skeleton, color: "#8b5cf6", component: "SkeletonVisualization"}
 
+      "eye_gaze" ->
+        %{chart_type: :heatmap, color: "#8b5cf6", component: "SparklineWasm"}
+
+      "eye_blink" ->
+        %{chart_type: :event, color: "#06b6d4", component: "SparklineWasm"}
+
+      "eye_worn" ->
+        %{chart_type: :indicator, color: "#10b981", component: "SparklineWasm"}
+
+      "eye_aperture" ->
+        %{chart_type: :dual_gauge, color: "#f59e0b", component: "SparklineWasm"}
+
       _ ->
         %{chart_type: :sparkline, component: "SparklineWasm"}
     end
@@ -298,6 +319,9 @@ defmodule Sensocto.Types.AttributeType do
       "rich_presence" -> ["title", "description", "url", "image"]
       "buttplug" -> ["command"]
       "skeleton" -> ["landmarks"]
+      "eye_gaze" -> ["x", "y", "confidence"]
+      "eye_aperture" -> ["left", "right"]
+      t when t in ~w(eye_blink eye_worn) -> ["value"]
       _ -> []
     end
   end

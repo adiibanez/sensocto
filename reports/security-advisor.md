@@ -1,668 +1,476 @@
-# Sensocto Security Assessment Report
+# Security Assessment Report: Sensocto Platform
 
-**Assessment Date**: January 12, 2026 (Updated: January 20, 2026)
-**Assessor**: Claude Security Advisor
-**Application**: Sensocto - IoT Sensor Platform
-**Technology Stack**: Elixir, Phoenix, Ash Framework, PostgreSQL, WebSockets, WebRTC
+**Assessment Date:** 2026-02-08
+**Previous Assessment:** 2026-02-05
+**Assessor:** Security Advisor Agent (Claude Opus 4.6)
+**Platform Version:** Current main branch
+**Risk Framework:** OWASP Top 10 2021 + Elixir/Phoenix Best Practices
 
 ---
 
 ## Executive Summary
 
-This security assessment covers the Sensocto IoT sensor platform, an Elixir/Phoenix application that provides real-time sensor data visualization, room-based collaboration, video/voice calling, and user authentication.
+The Sensocto platform demonstrates a **mature security posture** with well-implemented security controls. This assessment identifies several areas requiring attention while acknowledging significant improvements since previous reviews.
 
-### Overall Security Posture: **LOW RISK** ✅ (Improved)
+**Overall Security Grade: B+ (Good)**
 
----
+### Key Changes Since Last Assessment (2026-02-05 to 2026-02-08)
 
-## 🆕 Update: January 20, 2026
+- **IMPROVED**: Serverside sync calculation added
+- **IMPROVED**: Graph improvements and tooltips
+- **STABLE**: Rate limiting, SafeKeys, backpressure systems all verified
 
-### Resolved Issues (Verified)
+### Priority Findings Summary
 
-| ID | Issue | Status | Evidence |
-|----|-------|--------|----------|
-| **H-003** | Weak Sensor Channel Authorization | ✅ **RESOLVED** | `lib/sensocto_web/channels/sensor_data_channel.ex` lines 404-444 now properly validates JWT tokens using `AshAuthentication.Jwt.verify(token, :sensocto)` |
-| **L-006** | Session Cookie Max Age | ✅ **RESOLVED** | `lib/sensocto_web/endpoint.ex` line 17: `max_age: 2_592_000` (30 days) |
-| **M-001** | Excessive Token Lifetime | ✅ **RESOLVED** | `lib/sensocto/accounts/user.ex` line 26: `token_lifetime {14, :days}` |
-| **H-002** | Request Logger Sensitive Data | ✅ **RESOLVED** | Comprehensive sanitization with `@sensitive_params`, `@sensitive_headers`, `@sensitive_cookies` |
-| **C-001/C-002** | Hardcoded Credentials | ✅ **RESOLVED** | All secrets use environment variables with safe development defaults |
-| **H-001** | WebSocket Origin Check | ✅ **RESOLVED** | `check_origin` properly configured in both dev and prod |
-| **L-003** | Missing Security Headers | ✅ **RESOLVED** | X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy added |
-
-### Remaining Open Issues
-
-#### M-002: No Rate Limiting on Authentication (MEDIUM)
-**Status**: Open - Recommend implementing Paraxial.io
-
-No rate limiting exists on:
-- Magic link requests (`/auth/user/magic_link`)
-- API authentication endpoints (`/api/auth/verify`)
-- Room ticket generation endpoints
-
-**Recommendation**: Add Paraxial.io to `mix.exs`:
-```elixir
-{:paraxial, "~> 2.7"}
-```
-
-Paraxial.io provides native Elixir integration with:
-- Bot detection without CAPTCHAs
-- IP intelligence and reputation scoring
-- Application-level rate limiting
-- Real-time threat dashboards
-
-#### M-004: Missing Content Security Policy (MEDIUM)
-**File**: `lib/sensocto_web/endpoint.ex`
-
-Add CSP header to the existing security headers configuration for XSS protection.
-
-#### L-005: Dev Mailbox Route (LOW)
-**File**: `lib/sensocto_web/router.ex` lines 188-191
-
-The `/dev/mailbox` route is not wrapped in the `dev_routes` conditional. Consider protecting it.
-
-#### L-007: UserSocket Anonymous Connection (LOW - Informational)
-**File**: `lib/sensocto_web/channels/user_socket.ex`
-
-Socket-level authentication is not implemented (acceptable since channel-level auth is properly enforced).
-
-### Positive Security Implementations Verified
-
-1. **Sensor Channel JWT Validation**: Bearer tokens now verified via `AshAuthentication.Jwt.verify/2`
-2. **SafeKeys Module**: Prevents atom exhaustion attacks with whitelisted keys
-3. **Call Channel Authorization**: Room membership validated via `Calls.can_join_call?/2`
-4. **Room API Authorization**: JWT verification and membership checks in place
-5. **Magic Link Security**: Uses `require_interaction? true` preventing automatic token consumption
-6. **Admin Route Protection**: Basic auth via `AUTH_USERNAME` and `AUTH_PASSWORD` environment variables
-7. **Ash Policy Authorizer**: Resource-level policies on User, Token, SensorManager
-
-### Priority Actions
-
-1. **Immediate**: Add rate limiting (Paraxial.io recommended)
-2. **Short-term**: Add Content Security Policy headers
-3. **Medium-term**: Consider socket-level authentication for defense in depth
+| ID | Severity | Finding | Status |
+|----|----------|---------|--------|
+| H-001 | HIGH | 10-year token lifetime | Open |
+| H-002 | HIGH | No socket-level authentication (UserSocket) | Open |
+| H-003 | HIGH | API room endpoints missing auth pipeline | **NEW** |
+| H-004 | HIGH | Bridge.decode/1 atom exhaustion via `String.to_atom` | **NEW** |
+| H-005 | HIGH | No bot protection | Open |
+| M-001 | MEDIUM | "missing" token development backdoor | Open |
+| M-002 | MEDIUM | Bridge token not required | Open |
+| M-003 | MEDIUM | Debug endpoint exposed in production | **NEW** |
+| M-004 | MEDIUM | Session cookie not encrypted | **NEW** |
+| M-005 | MEDIUM | Timing-unsafe guest token comparison | **NEW** |
+| M-006 | MEDIUM | /dev/mailbox route not gated | Open |
+| L-001 | LOW | No force_ssl / HSTS | **NEW** |
 
 ---
 
-## Previous Update: January 17, 2026
+## 1. Authentication Architecture
 
-### Issues Resolved in January 17 Assessment
+### 1.1 Overview
 
-| ID | Issue | Status | Notes |
-|----|-------|--------|-------|
-| **C-001** | Hardcoded Database Credentials | ✅ **RESOLVED** | Database credentials now use environment variables with safe local defaults |
-| **C-002** | Hardcoded Secret Keys | ✅ **RESOLVED** | `secret_key_base` and `token_signing_secret` now use environment variables. Development defaults clearly marked as non-production values |
-| **H-001** | WebSocket Origin Check Disabled | ✅ **RESOLVED** | Development: `check_origin: ["http://localhost:4000", "https://localhost:4001"]`. Production: Properly configured with allowed domains |
-| **H-002** | Request Logger Exposes Sensitive Data | ✅ **RESOLVED** | `lib/sensocto_web/plugs/request_logger.ex` now implements comprehensive sanitization of passwords, tokens, headers, and cookies |
-| **L-003** | Missing Security Headers | ✅ **RESOLVED** | Added X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy in `lib/sensocto_web/endpoint.ex` |
+Sensocto uses **Ash Authentication** with multiple authentication strategies:
 
----
+| Strategy | Status | Security Notes |
+|----------|--------|----------------|
+| Google OAuth | Active | Client credentials via environment variables |
+| Magic Link | Active | 1-hour token lifetime, `require_interaction?: true` |
+| Password | Commented Out | Available but disabled - passwordless preferred |
+| Guest Sessions | Active | Database-backed with configurable TTL |
 
-## Original Assessment (January 12, 2026)
+### 1.2 Token Configuration (H-001)
 
-### Overall Security Posture: **MEDIUM RISK** (Historical)
+**File:** `lib/sensocto/accounts/user.ex`
 
-The application demonstrates good foundational security practices leveraging the Ash Framework's built-in security features. However, several critical and high-severity issues were identified that require immediate attention:
-
-**Critical Issues (2)**:
-1. Hardcoded database credentials in development configuration committed to version control
-2. Hardcoded secret keys and token signing secrets in configuration files
-
-**High Issues (3)**:
-1. WebSocket origin checking disabled (`check_origin: false`) in both development and production
-2. Request logging plug exposes sensitive data (cookies, headers, params) in debug logs
-3. Overly permissive CORS/origin configuration for WebRTC calls
-
-**Medium Issues (5)**:
-1. Very long token lifetime (365 days) increases token theft risk window
-2. No rate limiting on authentication endpoints
-3. Neo4j default credentials hardcoded in configuration
-4. Missing Content Security Policy headers
-5. Debug routes enabled without sufficient protection
-
-**Low Issues (4)**:
-1. Information disclosure via debug authentication failures logging
-2. Development-only sensitive data exposure flag enabled
-3. TURN server credentials passed via environment without rotation mechanism
-4. Missing security headers (X-Frame-Options, X-Content-Type-Options)
-
----
-
-## Security Architecture Overview
-
-### Authentication System
-
-The application uses **AshAuthentication** with multiple authentication strategies:
-
-1. **Google OAuth2**: External identity provider integration
-2. **Magic Link**: Passwordless email-based authentication
-3. **Password Authentication**: Traditional email/password (partially configured)
-
-**Token Management**:
-- JWT tokens with configurable signing secret
-- Token storage in database via `Sensocto.Accounts.Token`
-- Token lifetime: 365 days (1 year)
-
-### Authorization Model
-
-- **Ash Policy Authorizer**: Integrated at the resource level
-- **Room-based Access Control**: Owner, Admin, Member roles
-- **LiveView Authentication**: Custom `on_mount` hooks for session validation
-
-### Data Flow
-
-```
-Client <-> Phoenix Endpoint <-> Router <-> LiveView/Controller
-                                   |
-                                   v
-                            Ash Resources <-> PostgreSQL
-                                   |
-                                   v
-                            WebSocket Channels <-> Sensor Data
-```
-
----
-
-## Detailed Findings
-
-### CRITICAL FINDINGS
-
-#### C-001: Hardcoded Database Credentials in Version Control
-
-**Severity**: Critical
-**Category**: Secrets Management
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/dev.exs`
-**Lines**: 8, 22
-
-**Current State**:
-```elixir
-# config/dev.exs lines 6-10
-config :sensocto, Sensocto.Repo,
-  database: "neondb",
-  username: "neondb_owner",
-  password: "npg_JYAldE0u5Xmk",  # CRITICAL: Hardcoded production-grade credential
-  hostname: "ep-dark-mountain-a2nvkl0o-pooler.eu-central-1.aws.neon.tech",
-```
-
-**Risk**: The Neon.tech database credentials are hardcoded in the development configuration file. If this file is committed to a public or shared repository, attackers gain direct database access. The hostname suggests this is a real cloud-hosted database, not a local development instance.
-
-**Recommendation**:
-1. Immediately rotate the Neon.tech database password
-2. Move all database credentials to environment variables
-3. Use `.env` files that are gitignored (already present in `.gitignore`)
-4. Consider using a secrets manager (Vault, AWS Secrets Manager, Fly.io secrets)
-
-```elixir
-# Recommended approach in config/dev.exs
-config :sensocto, Sensocto.Repo,
-  database: System.get_env("DEV_DATABASE_NAME", "sensocto_dev"),
-  username: System.get_env("DEV_DATABASE_USER", "postgres"),
-  password: System.get_env("DEV_DATABASE_PASSWORD"),
-  hostname: System.get_env("DEV_DATABASE_HOST", "localhost")
-```
-
----
-
-#### C-002: Hardcoded Secret Keys in Configuration
-
-**Severity**: Critical
-**Category**: Secrets Management
-**Files**:
-- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/dev.exs` (lines 78, 176)
-- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/test.exs` (lines 2, 21)
-
-**Current State**:
-```elixir
-# config/dev.exs line 78
-secret_key_base: "0EViyDRvvk8yO72jkyPMGrvTm0iqLuDckbHUdqrBkZb2Td2NDLkS590D08E9qLL6",
-
-# config/dev.exs line 176
-token_signing_secret: "9fhsVJSpOCeIGPWB7AL7/Q3Emgy34xJK"
-```
-
-**Risk**:
-- `secret_key_base` is used to sign cookies and session data. If compromised, attackers can forge sessions.
-- `token_signing_secret` is used to sign JWTs. If compromised, attackers can forge authentication tokens.
-
-**Recommendation**:
-1. Generate new secrets: `mix phx.gen.secret`
-2. Store all secrets in environment variables
-3. Add pre-commit hooks to detect secrets in code
-
----
-
-### HIGH FINDINGS
-
-#### H-001: WebSocket Origin Check Disabled
-
-**Severity**: High
-**Category**: Cross-Site WebSocket Hijacking
-**Files**:
-- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/dev.exs` (line 75)
-- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/prod.exs` (line 36)
-
-**Current State**:
-```elixir
-# config/dev.exs line 75
-check_origin: false,
-
-# config/prod.exs line 36
-check_origin: false
-```
-
-**Risk**: Disabling `check_origin` allows any website to establish WebSocket connections to the application. This enables Cross-Site WebSocket Hijacking (CSWSH) attacks where malicious sites can:
-- Read sensor data in real-time
-- Join rooms without user consent
-- Potentially manipulate sensor data if write operations are exposed
-
-**Recommendation**:
-```elixir
-# config/prod.exs - Enable strict origin checking
-config :sensocto, SensoctoWeb.Endpoint,
-  check_origin: ["https://sensocto.ddns.net", "https://yourdomain.com"]
-
-# config/dev.exs - Use specific origins even in development
-config :sensocto, SensoctoWeb.Endpoint,
-  check_origin: ["http://localhost:4000", "https://localhost:4001"]
-```
-
----
-
-#### H-002: Request Logger Exposes Sensitive Data
-
-**Severity**: High
-**Category**: Information Disclosure
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/plugs/request_logger.ex`
-**Lines**: 16-26
-
-**Current State**:
-```elixir
-defp log_cookies(conn) do
-  Logger.debug("Cookies: #{inspect(conn.cookies)}")  # Logs all cookies including session tokens
-end
-
-defp log_headers(conn) do
-  Logger.debug("Headers: #{inspect(conn.req_headers)}")  # Logs Authorization headers
-end
-
-defp log_params(conn) do
-  Logger.debug("Request Parameters: #{inspect(conn.params)}")  # Logs passwords, tokens
-end
-```
-
-**Risk**: This plug logs all cookies (including session tokens), all headers (including Authorization headers), and all request parameters (including passwords and sensitive data). Even in debug mode, these logs may be persisted and could expose credentials.
-
-**Recommendation**:
-1. Remove this plug from production
-2. Filter sensitive parameters before logging
-3. Use structured logging with explicit field selection
-
-```elixir
-defmodule SensoctoWeb.Plugs.RequestLogger do
-  @sensitive_params ~w(password password_confirmation token api_key secret)
-  @sensitive_headers ~w(authorization cookie)
-
-  defp sanitize_params(params) do
-    Enum.reduce(@sensitive_params, params, fn key, acc ->
-      if Map.has_key?(acc, key), do: Map.put(acc, key, "[FILTERED]"), else: acc
-    end)
-  end
-end
-```
-
----
-
-#### H-003: Missing CORS/Origin Protection for WebRTC
-
-**Severity**: High
-**Category**: Cross-Origin Security
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/channels/call_channel.ex`
-
-**Current State**: The CallChannel handles WebRTC signaling without explicit origin validation beyond Phoenix's disabled check_origin.
-
-**Risk**: Combined with H-001, malicious sites can join video/voice calls without user consent, potentially eavesdropping on conversations.
-
-**Recommendation**:
-1. Enable `check_origin` in production (fixes H-001)
-2. Add room membership validation in the channel join handler
-3. Require explicit user consent before joining calls
-
----
-
-### MEDIUM FINDINGS
-
-#### M-001: Excessive Token Lifetime
-
-**Severity**: Medium
-**Category**: Session Management
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/accounts/user.ex`
-**Lines**: 21-22
-
-**Current State**:
 ```elixir
 tokens do
   enabled? true
   token_resource Sensocto.Accounts.Token
   signing_secret Sensocto.Secrets
   store_all_tokens? true
-  token_lifetime {365, :days}  # 1 year token lifetime
+  require_token_presence_for_authentication? true
+  token_lifetime {3650, :days}  # <-- 10 YEARS
 end
 ```
 
-**Risk**: A one-year token lifetime significantly extends the attack window if a token is compromised. Tokens can be stolen via XSS, network interception, or device theft.
-
-**Recommendation**:
-- Reduce token lifetime to 7-30 days for web sessions
-- Implement token refresh mechanism
-- Consider shorter lifetimes (1-4 hours) with refresh tokens
-
-```elixir
-tokens do
-  token_lifetime {7, :days}
-  # Implement refresh tokens for better security
-end
-```
+**Finding H-001: HIGH - Excessive Token Lifetime**
+- **Risk**: Compromised tokens valid for extremely long period
+- **Positive**: `require_token_presence_for_authentication?` enables revocation
+- **Recommendation**: Reduce to 30 days, implement refresh tokens
 
 ---
 
-#### M-002: No Rate Limiting on Authentication
+## 2. WebSocket Channel Security
 
-**Severity**: Medium
-**Category**: Authentication Security
-**Files**: Router, Auth Controller, LiveView authentication
+### 2.1 UserSocket Authentication (H-002)
 
-**Current State**: No rate limiting is implemented on:
-- Magic link requests
-- Password login attempts
-- Password reset requests
-- Google OAuth callbacks
-
-**Risk**: Attackers can perform:
-- Brute force attacks on password endpoints
-- Email enumeration via timing attacks on magic link requests
-- Resource exhaustion via repeated authentication attempts
-
-**Recommendation**: Implement Paraxial.io for comprehensive rate limiting and bot protection.
+**File:** `lib/sensocto_web/channels/user_socket.ex`
 
 ```elixir
-# In mix.exs
-{:paraxial, "~> 2.7"}
-
-# In endpoint.ex
-plug Paraxial.AllowedPlug
+@impl true
+def connect(_params, socket, _connect_info) do
+  {:ok, socket}
+end
 ```
 
-Paraxial.io provides:
-- Native Elixir integration designed for Phoenix/LiveView
-- Bot detection without degrading UX with CAPTCHAs
-- IP intelligence and reputation scoring
-- Application-level rate limiting
-- Invisible security measures
-- Real-time threat dashboards
+**Finding H-002: HIGH - No Socket-Level Authentication**
+- Socket accepts all connections without authentication
+- Allows anonymous connections to sensor data and call channels
 
-Alternatively, implement basic rate limiting with Hammer:
+**Recommendation:**
 ```elixir
-defmodule SensoctoWeb.Plugs.RateLimiter do
-  import Plug.Conn
-
-  def rate_limit_auth(conn, _opts) do
-    case Hammer.check_rate("auth:#{conn.remote_ip}", 60_000, 10) do
-      {:allow, _count} -> conn
-      {:deny, _limit} ->
-        conn
-        |> send_resp(429, "Too many requests")
-        |> halt()
-    end
+def connect(%{"token" => token}, socket, _connect_info) do
+  case verify_token(token) do
+    {:ok, user_or_guest} -> {:ok, assign(socket, :current_user, user_or_guest)}
+    {:error, _reason} -> :error
   end
 end
+def connect(_params, _socket, _connect_info), do: :error
 ```
 
----
+### 2.2 Development Backdoor (M-001)
 
-#### M-003: Hardcoded Neo4j Credentials
+**File:** `lib/sensocto_web/channels/sensor_data_channel.ex`
 
-**Severity**: Medium
-**Category**: Secrets Management
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/config.exs`
-**Lines**: 52-55
-
-**Current State**:
 ```elixir
-config :boltx, Bolt,
-  uri: "bolt://localhost:7687",
-  auth: [username: "neo4j", password: "sensocto123"],
-  pool_size: 10
+"missing" ->
+  Logger.debug("Authorization allowed: guest/development access...")
+  true  # BYPASSES ALL AUTHENTICATION
 ```
 
-**Risk**: Default/weak Neo4j credentials are committed to version control. If Neo4j is exposed or the codebase is leaked, the graph database is immediately compromised.
+**Recommendation**: Gate behind environment check using `Application.get_env(:sensocto, :allow_missing_token, false)`.
 
-**Recommendation**:
+### 2.3 Bridge Socket (M-002)
+
+**File:** `lib/sensocto_web/channels/bridge_socket.ex`
+
+Bridge token validation is optional - missing token allows connection.
+
+---
+
+## 3. New Findings
+
+### 3.1 API Room Endpoints Missing Auth Pipeline (H-003)
+
+**File:** `lib/sensocto_web/router.ex` (lines 200-221)
+
+The `/api/rooms/*` scope has no `pipe_through` at all - no `:api` pipeline, no `:load_from_bearer`, no rate limiting. `RoomTicketController.show/2` reads from `conn.assigns[:current_user]` which will always be nil since no plug populates it.
+
+**Risk**: Unauthenticated access to room management API endpoints.
+
+**Recommendation**: Add `pipe_through [:api, :load_from_bearer]` to the rooms API scope.
+
+### 3.2 Bridge.decode/1 Atom Exhaustion (H-004)
+
+**File:** `lib/sensocto/bridge.ex` (lines 178-179)
+
+Uses `String.to_atom(name)` on untrusted input from the bridge protocol. The safe alternative `SafeKeys.safe_bridge_atom/1` already exists in the codebase but is not used here.
+
+**Risk**: Remote atom table exhaustion via crafted bridge messages.
+
+**Recommendation**: Replace `String.to_atom(name)` with `SafeKeys.safe_bridge_atom(name)`.
+
+### 3.3 Debug Endpoint Exposed (M-003)
+
+**File:** `lib/sensocto_web/router.ex` (line 197)
+
+`POST /api/auth/debug` calls `MobileAuthController.debug_verify/2` which returns all user IDs from the database in error messages.
+
+**Risk**: Information disclosure in production.
+
+**Recommendation**: Wrap in `if Application.compile_env(:sensocto, :dev_routes)`.
+
+### 3.4 Session Cookie Not Encrypted (M-004)
+
+**File:** `lib/sensocto_web/endpoint.ex` (lines 12-20)
+
+Session cookie uses `signing_salt` but no `encryption_salt`, meaning session data is readable (though not tamperable).
+
+**Recommendation**: Add `encryption_salt` to session configuration.
+
+### 3.5 Timing-Unsafe Token Comparison (M-005)
+
+**File:** `lib/sensocto_web/controllers/guest_auth_controller.ex` (line 14)
+
+Uses `guest.token == token` instead of `Plug.Crypto.secure_compare/2`. Same issue in `sensor_data_channel.ex` (line 514).
+
+**Risk**: Timing side-channel attack on token comparison.
+
+**Recommendation**: Use `Plug.Crypto.secure_compare/2` for all token comparisons (already used correctly in `authenticated_tidewave.ex`).
+
+### 3.6 No force_ssl / HSTS (L-001)
+
+**File:** `config/runtime.exs` (lines 226-232)
+
+The `force_ssl` configuration is commented out. While Fly.io handles TLS termination, HSTS provides defense-in-depth.
+
+---
+
+## 4. Verified Security Controls (Excellent)
+
+### 4.1 Rate Limiting
+
+**File:** `lib/sensocto_web/plugs/rate_limiter.ex`
+
+- ETS-based sliding window counter
+- Per-IP, per-endpoint-type buckets
+- Proper X-Forwarded-For header handling
+- Separate limits: auth (10/min), registration (5/min), API (20/min), guest (10/min)
+
+**Assessment: Excellent**
+
+### 4.2 Atom Exhaustion Protection
+
+**File:** `lib/sensocto/types/safe_keys.ex`
+
+Whitelist approach with comprehensive allowed keys list. **Assessment: Excellent** (except H-004 bypass in bridge.ex).
+
+### 4.3 DoS Resistance
+
+| Mechanism | Implementation | Effectiveness |
+|-----------|---------------|---------------|
+| Rate Limiting | ETS-based sliding window | High |
+| Backpressure | PriorityLens quality levels | High |
+| Memory Protection | 85%/92% thresholds | High |
+| Socket Cleanup | Monitor + periodic GC | High |
+| Request Timeouts | 2-5 second limits | Medium |
+
+### 4.4 Security Headers
+
+**File:** `lib/sensocto_web/endpoint.ex`
+
+- x-frame-options: SAMEORIGIN
+- x-content-type-options: nosniff
+- x-xss-protection: 1; mode=block
+- referrer-policy: strict-origin-when-cross-origin
+
+### 4.5 Ash Policies
+
+Default-deny on User and Token resources. **Assessment: Excellent**
+
+### 4.6 Request Logger
+
+**File:** `lib/sensocto_web/plugs/request_logger.ex`
+
+Properly sanitizes sensitive data. **Assessment: Excellent**
+
+### 4.7 Authenticated Tidewave
+
+**File:** `lib/sensocto_web/plugs/authenticated_tidewave.ex`
+
+Uses `Plug.Crypto.secure_compare/2` for timing-safe comparison. **Assessment: Excellent**
+
+---
+
+## 5. Bot Protection Recommendation (H-005)
+
+**Why Paraxial.io for Sensocto:**
+
+1. **Native Elixir Integration**: Designed specifically for Phoenix/LiveView
+2. **Invisible Security**: Bot detection without CAPTCHAs degrading UX
+3. **IP Intelligence**: Real-time reputation scoring
+4. **Minimal Overhead**: Designed for Elixir's concurrency model
+
+---
+
+## 6. /dev/mailbox Route (M-006)
+
+**File:** `lib/sensocto_web/router.ex` (lines 229-232)
+
 ```elixir
-config :boltx, Bolt,
-  uri: System.get_env("NEO4J_URI", "bolt://localhost:7687"),
-  auth: [
-    username: System.get_env("NEO4J_USERNAME", "neo4j"),
-    password: System.get_env("NEO4J_PASSWORD")
-  ],
-  pool_size: 10
+scope "/dev" do
+  pipe_through :browser
+  forward "/mailbox", Plug.Swoosh.MailboxPreview
+end
 ```
+
+Not wrapped in `dev_routes` conditional. **Risk**: May expose email contents in production.
 
 ---
 
-#### M-004: Missing Content Security Policy
+## 7. Security Metrics
 
-**Severity**: Medium
-**Category**: XSS Prevention
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/endpoint.ex`
+### Authentication Security Score: B
 
-**Current State**: No Content Security Policy (CSP) headers are configured.
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Strategy Security | A | Magic Link with interaction required |
+| Token Storage | A | Database-backed with revocation |
+| Token Lifetime | D | 10 years is excessive |
+| MFA | F | Not implemented |
+| Rate Limiting | A | Comprehensive implementation |
 
-**Risk**: Without CSP, the application is more vulnerable to XSS attacks as browsers won't block unauthorized script execution.
+### Authorization Security Score: A-
 
-**Recommendation**:
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Default Deny | A | Ash policies correctly configured |
+| Room Access | A | Membership validation enforced |
+| Channel Auth | B | Good but socket-level missing |
+| API Auth | B | JWT validation good, room endpoints gap |
+
+### Input Validation Score: A-
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Atom Protection | B+ | SafeKeys excellent, bridge.ex bypass |
+| SQL Injection | A | Ecto parameterized queries |
+| XSS Prevention | B | Headers good, CSP missing |
+
+### DoS Resistance Score: A
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Rate Limiting | A | Multi-tier implementation |
+| Backpressure | A | Quality-based throttling |
+| Memory Protection | A | Configurable thresholds |
+| Resource Cleanup | A | Monitor + GC patterns |
+
+---
+
+## 8. Planned Work: Security Implications
+
+### 8.1 Room Iroh Migration (PLAN-room-iroh-migration.md)
+
+**Security Impact: MEDIUM**
+
+- **Risk**: Moving from PostgreSQL (with Ash policies) to in-memory GenServer + Iroh docs removes the authorization layer. Room CRUD operations currently go through Ash which enforces default-deny policies. The new `RoomStore` GenServer has no equivalent access control.
+- **Risk**: Iroh P2P sync introduces a new trust boundary. Data synced between nodes via Iroh docs must be validated on receipt to prevent poisoned state propagation.
+- **Risk**: No encryption-at-rest. PostgreSQL had this via disk encryption; in-memory + Iroh docs need explicit encryption for sensitive room data.
+- **Recommendation**: Implement authorization checks in `RoomStore` API functions before migration. Validate all Iroh-synced data. Consider encrypting room metadata in Iroh docs.
+
+### 8.2 Adaptive Video Quality (PLAN-adaptive-video-quality.md) - IMPLEMENTED
+
+**Security Impact: LOW**
+
+- **Positive**: SnapshotManager uses ETS with TTL-based cleanup (60s), preventing unbounded memory growth from snapshot data.
+- **Risk**: `video_snapshot` channel event broadcasts base64-encoded JPEG data. No size validation on incoming snapshots could allow memory exhaustion via oversized payloads.
+- **Recommendation**: Add max size validation (e.g., 100KB) for incoming `video_snapshot` events in `call_channel.ex`.
+
+### 8.3 Sensor Component Migration (PLAN-sensor-component-migration.md)
+
+**Security Impact: LOW**
+
+- Purely internal architecture change (LiveView → LiveComponent). No new attack surface.
+- **Positive**: Reduces process count from 73 to 1, reducing the surface for process-targeting attacks.
+
+### 8.4 Startup Optimization (PLAN-startup-optimization.md) - IMPLEMENTED
+
+**Security Impact: NONE**
+
+- Deferred hydration timing only. No security implications.
+- **Positive**: Faster HTTP server availability means health checks respond sooner, reducing window where the app is unprotected.
+
+### 8.5 Delta Encoding ECG (plans/delta-encoding-ecg.md)
+
+**Security Impact: LOW-MEDIUM**
+
+- **Risk**: Binary protocol parsing (both Elixir encoder and JS decoder) introduces potential for buffer-related bugs. Malformed binary data could cause decoder errors or unexpected behavior.
+- **Risk**: Feature flag via `Application.get_env` is mutable at runtime via IEx. An attacker with IEx access could toggle encoding to disrupt data flow.
+- **Recommendation**: Validate binary header version and bounds-check all offsets in the decoder. Use `:persistent_term` for the feature flag (harder to tamper).
+
+### 8.6 Cluster Sensor Visibility (plans/PLAN-cluster-sensor-visibility.md)
+
+**Security Impact: MEDIUM**
+
+- **Risk**: Migrating to Horde.Registry makes sensor processes discoverable from any node. Currently, sensors are only visible on their local node, providing implicit isolation.
+- **Risk**: Cross-node sensor state fetching via PubSub request/reply or `:rpc.call` introduces new RPC surface. Malicious node could request sensitive sensor data.
+- **Recommendation**: Validate node membership before processing cross-node requests. Use libcluster's node authorization. Rate-limit cross-node state requests.
+
+### 8.7 Distributed Discovery (plans/PLAN-distributed-discovery.md)
+
+**Security Impact: MEDIUM**
+
+- **Risk**: DiscoveryCache stores sensor/room metadata in ETS with `:public` access. Any process on the node can read/write this data.
+- **Risk**: PubSub-based sync (`discovery:sensors` topic) could be poisoned by a compromised node broadcasting fake sensor registrations.
+- **Risk**: Circuit breaker `NodeHealth` uses `:net_kernel.monitor_nodes(true)` - should validate that joining nodes are authorized.
+- **Recommendation**: Use `:protected` ETS tables instead of `:public`. Validate discovery events against Horde registry state. Ensure libcluster's topology configuration restricts which nodes can join.
+
+### 8.8 Sensor Scaling Refactor (plans/PLAN-sensor-scaling-refactor.md)
+
+**Security Impact: LOW-MEDIUM**
+
+- **Risk**: Per-socket ETS tables (`:"lens_buffer_#{socket_id}"`) use dynamically generated atom names. If `socket_id` comes from untrusted input, this is an atom exhaustion vector.
+- **Risk**: `:pg` process groups are cluster-wide by default. Any node can join groups and receive sensor data.
+- **Recommendation**: Use integer-keyed ETS tables (not atom names) for per-socket buffers. Validate `:pg` group membership.
+
+### 8.9 Research-Grade Synchronization (plans/PLAN-research-grade-synchronization.md)
+
+**Security Impact: LOW-MEDIUM**
+
+- **Risk**: Pythonx (NIF) introduces native code execution. Python dependency chain (`scipy`, `neurokit2`, `pywt`, `pyrqa`, `networkx`) significantly expands the attack surface via supply chain.
+- **Risk**: New `sync_reports` PostgreSQL table stores JSONB results. Ensure no user-controlled strings are stored without sanitization.
+- **Risk**: Post-hoc analysis runs potentially expensive computations (CRQA is O(T^2)). Unbounded session data could cause OOM.
+- **Recommendation**: Pin Python dependency versions. Limit maximum session length for analysis. Run Pythonx computations in a sandboxed Task with memory limits. Validate JSONB payloads before storage.
+
+### 8.10 TURN/Cloudflare (plans/PLAN-turn-cloudflare.md) - IMPLEMENTED
+
+**Security Impact: LOW**
+
+- **Positive**: Uses `persistent_term` for credential caching (no GenServer state to leak).
+- **Positive**: Credentials are ephemeral (24h TTL) and auto-refresh.
+- **Positive**: Graceful degradation when Cloudflare API is unavailable.
+- **Risk**: `CLOUDFLARE_TURN_API_TOKEN` is a long-lived secret. If compromised, attacker can generate TURN credentials and relay traffic through your Cloudflare account.
+- **Recommendation**: Rotate Cloudflare API tokens periodically. Monitor Cloudflare TURN usage for anomalies.
+
+### Security Implications Summary Matrix
+
+| Plan | Impact | Auth | Data | Network | Priority |
+|------|--------|------|------|---------|----------|
+| Room Iroh Migration | MEDIUM | Lost Ash policies | No encryption-at-rest | P2P trust boundary | Before migration |
+| Adaptive Video | LOW | N/A | Snapshot size validation | N/A | Low priority |
+| Sensor Component | LOW | N/A | N/A | N/A | No action needed |
+| Startup Optimization | NONE | N/A | N/A | N/A | No action needed |
+| Delta Encoding | LOW-MED | N/A | Binary parsing validation | N/A | During implementation |
+| Cluster Visibility | MEDIUM | Node authorization | Cross-node data access | RPC surface | Before implementation |
+| Distributed Discovery | MEDIUM | Node validation | ETS access control | PubSub poisoning | Before implementation |
+| Sensor Scaling | LOW-MED | N/A | Atom exhaustion risk | pg group access | During implementation |
+| Research Sync | LOW-MED | N/A | JSONB sanitization | Python supply chain | During implementation |
+| TURN/Cloudflare | LOW | Token rotation | N/A | Relay abuse | Monitoring |
+
+---
+
+## 9. Implementation Roadmap
+
+### Phase 1: Immediate (1-2 days)
+- [ ] Reduce token lifetime from 10 years to 30 days (H-001)
+- [ ] Gate "missing" token behind configuration (M-001)
+- [ ] Replace `String.to_atom` in bridge.ex with SafeKeys (H-004)
+- [ ] Use `Plug.Crypto.secure_compare` for guest tokens (M-005)
+- [ ] Protect /dev/mailbox route (M-006)
+- [ ] Gate debug endpoint behind dev_routes (M-003)
+
+### Phase 2: Short-term (1 week)
+- [ ] Add socket-level authentication to UserSocket (H-002)
+- [ ] Add auth pipeline to room API endpoints (H-003)
+- [ ] Add session cookie encryption_salt (M-004)
+- [ ] Integrate Paraxial.io for bot protection (H-005)
+- [ ] Add Content-Security-Policy headers
+
+### Phase 3: Medium-term (2-4 weeks)
+- [ ] Implement refresh token pattern
+- [ ] Add MFA for admin operations
+- [ ] Security monitoring/alerting setup
+- [ ] Pre-migration security review for Room Iroh Migration
+- [ ] Pre-migration security review for Cluster Visibility plans
+
+### Phase 4: Ongoing
+- [ ] Penetration testing
+- [ ] Python dependency auditing (for research-grade sync)
+- [ ] Cloudflare TURN token rotation schedule
+- [ ] Node authorization for distributed features
+
+---
+
+## 10. Security Configuration Checklist
+
 ```elixir
-# In endpoint.ex
-plug :put_secure_browser_headers, %{
-  "content-security-policy" => """
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' https://www.youtube.com;
-    style-src 'self' 'unsafe-inline';
-    img-src 'self' data: https:;
-    connect-src 'self' wss: https:;
-    frame-src https://www.youtube.com;
-  """
-}
+# config/prod.exs - Recommended security settings
+config :sensocto,
+  allow_missing_token: false,
+  bridge_token: System.fetch_env!("BRIDGE_TOKEN")
+
+config :sensocto, SensoctoWeb.Endpoint,
+  check_origin: [
+    "https://sensocto.ddns.net",
+    "https://#{System.get_env("PHX_HOST")}",
+    "https://sensocto.fly.dev"
+  ]
+
+config :sensocto, :memory_pressure,
+  protection_start: 0.85,
+  critical: 0.92
+
+# Paraxial.io (recommended addition)
+config :paraxial,
+  api_key: System.get_env("PARAXIAL_API_KEY"),
+  fetch_cloud_ips: true
 ```
 
 ---
 
-#### M-005: Debug Routes Enabled
+## References
 
-**Severity**: Medium
-**Category**: Information Disclosure
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/dev.exs`
-**Line**: 176
-
-**Current State**:
-```elixir
-config :sensocto, dev_routes: true, token_signing_secret: "..."
-```
-
-**Risk**: Development routes like `/dev/mailbox` and LiveDashboard may expose sensitive debugging information if accidentally enabled in production or if the development server is publicly accessible.
-
-**Recommendation**:
-1. Ensure `dev_routes: false` in production
-2. Add IP-based restrictions for development routes
-3. Consider authentication for LiveDashboard even in development
+- [Ash Authentication Documentation](https://hexdocs.pm/ash_authentication/)
+- [Phoenix Security Best Practices](https://hexdocs.pm/phoenix/security.html)
+- [Paraxial.io Documentation](https://hexdocs.pm/paraxial/)
+- [OWASP Top 10 2021](https://owasp.org/Top10/)
+- [Elixir Security Best Practices](https://paraxial.io/blog/elixir-security)
 
 ---
 
-### LOW FINDINGS
-
-#### L-001: Debug Authentication Failure Logging
-
-**Severity**: Low
-**Category**: Information Disclosure
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/dev.exs`
-**Line**: 173
-
-**Current State**:
-```elixir
-config :ash_authentication, debug_authentication_failures?: true
-```
-
-**Risk**: Detailed authentication failure messages may reveal information about valid usernames or authentication mechanisms.
-
-**Recommendation**: Ensure this is `false` in production environments.
-
----
-
-#### L-002: Sensitive Data Exposure on Connection Error
-
-**Severity**: Low
-**Category**: Information Disclosure
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/dev.exs`
-**Line**: 12
-
-**Current State**:
-```elixir
-show_sensitive_data_on_connection_error: true,
-```
-
-**Risk**: Database connection errors may expose connection strings, hostnames, and credentials in error messages.
-
-**Recommendation**: Ensure this is `false` in production.
-
----
-
-#### L-003: Missing Security Headers
-
-**Severity**: Low
-**Category**: Security Headers
-**File**: Endpoint configuration
-
-**Current State**: Missing recommended security headers.
-
-**Recommendation**: Add comprehensive security headers:
-```elixir
-plug :put_secure_browser_headers, %{
-  "x-frame-options" => "DENY",
-  "x-content-type-options" => "nosniff",
-  "x-xss-protection" => "1; mode=block",
-  "referrer-policy" => "strict-origin-when-cross-origin",
-  "permissions-policy" => "camera=(), microphone=(), geolocation=()"
-}
-```
-
----
-
-#### L-004: Unrotated TURN Credentials
-
-**Severity**: Low
-**Category**: Credential Management
-**File**: `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/config/runtime.exs`
-**Lines**: 37-51
-
-**Current State**: TURN server credentials are loaded from environment variables without any rotation mechanism.
-
-**Risk**: Long-lived TURN credentials could be abused if compromised.
-
-**Recommendation**: Consider implementing time-based TURN credentials (TURN REST API) or regular credential rotation.
-
----
-
-## Positive Security Observations
-
-The following security best practices are already implemented:
-
-1. **Ash Framework Authorization**: Resource-level policies with `Ash.Policy.Authorizer`
-2. **Password Hashing**: AshAuthentication handles password hashing securely
-3. **CSRF Protection**: Phoenix's built-in CSRF protection is enabled
-4. **Parameterized Queries**: Ecto and Ash use parameterized queries, preventing SQL injection
-5. **Token Storage**: Tokens are stored in the database for revocation capability
-6. **SSL Configuration**: SSL is configured with strong cipher suites
-7. **Environment-Based Configuration**: Production uses environment variables for secrets
-8. **Confirmation Emails**: New user email confirmation is implemented
-9. **Input Validation**: Ash Changesets provide structured input validation
-10. **Room Authorization**: Owner/member checks are performed for room operations
-
----
-
-## Recommendations Summary
-
-### Immediate Actions (Within 24 hours)
-
-1. **Rotate all compromised credentials**:
-   - Neon.tech database password
-   - Neo4j password
-   - Generate new `secret_key_base` values
-
-2. **Enable WebSocket origin checking** in production
-
-3. **Remove or protect the RequestLogger plug**
-
-### Short-Term Actions (Within 1 week)
-
-1. **Implement rate limiting** using Paraxial.io or Hammer
-2. **Reduce token lifetime** to 7-30 days
-3. **Add Content Security Policy** headers
-4. **Move all secrets to environment variables**
-
-### Medium-Term Actions (Within 1 month)
-
-1. **Implement comprehensive security headers**
-2. **Add IP-based restrictions** for admin routes
-3. **Set up security monitoring** and alerting
-4. **Conduct penetration testing**
-5. **Review and document security policies**
-
----
-
-## Security Best Practices Recommendations
-
-### For Signup/Authentication
-
-1. **Passwordless First**: Continue promoting magic link authentication
-2. **Progressive Security**: Add MFA for sensitive operations
-3. **Bot Protection**: Implement Paraxial.io for invisible bot detection
-4. **Account Recovery**: Implement secure account recovery flows
-
-### For Real-Time Features
-
-1. **Channel Authorization**: Add room membership validation to all channel joins
-2. **Message Validation**: Use `MessageValidator` consistently across all channels
-3. **Rate Limiting**: Implement per-user message rate limits
-4. **Audit Logging**: Log security-relevant events
-
-### For API Security
-
-1. **API Versioning**: Implement API versioning for breaking changes
-2. **Input Sanitization**: Use `SafeKeys` type consistently
-3. **Output Encoding**: Ensure proper HTML encoding in all templates
-4. **Error Handling**: Return generic error messages to clients
-
----
-
-## Appendix: File References
-
-| Finding | File | Lines |
-|---------|------|-------|
-| C-001 | config/dev.exs | 8, 22 |
-| C-002 | config/dev.exs, config/test.exs | 78, 176, 2, 21 |
-| H-001 | config/dev.exs, config/prod.exs | 75, 36 |
-| H-002 | lib/sensocto_web/plugs/request_logger.ex | 16-26 |
-| M-001 | lib/sensocto/accounts/user.ex | 21-22 |
-| M-003 | config/config.exs | 52-55 |
-| M-005 | config/dev.exs | 176 |
-| L-001 | config/dev.exs | 173 |
-| L-002 | config/dev.exs | 12 |
-
----
-
-## Disclaimer
-
-This security assessment was performed through static code analysis and configuration review. It does not include dynamic testing, penetration testing, or infrastructure security review. Additional vulnerabilities may exist that require hands-on testing to identify.
-
----
-
-*Report generated by Claude Security Advisor*
-*Anthropic Claude - Application Security Specialist for Elixir/Phoenix/Ash*
+*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-08*

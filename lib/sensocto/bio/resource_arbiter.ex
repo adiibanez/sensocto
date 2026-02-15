@@ -79,7 +79,12 @@ defmodule Sensocto.Bio.ResourceArbiter do
 
   @impl true
   def init(_opts) do
-    :ets.new(:bio_resource_allocations, [:named_table, :public, read_concurrency: true])
+    :ets.new(:bio_resource_allocations, [
+      :named_table,
+      :public,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
 
     Process.send_after(self(), :reallocate, @reallocation_interval)
 

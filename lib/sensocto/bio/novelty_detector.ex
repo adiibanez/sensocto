@@ -87,7 +87,12 @@ defmodule Sensocto.Bio.NoveltyDetector do
 
   @impl true
   def init(opts) do
-    :ets.new(:bio_novelty_scores, [:named_table, :public, read_concurrency: true])
+    :ets.new(:bio_novelty_scores, [
+      :named_table,
+      :public,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
 
     threshold = Keyword.get(opts, :threshold, @novelty_threshold)
 

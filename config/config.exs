@@ -124,7 +124,7 @@ config :sensocto, SensoctoWeb.Endpoint,
 # For multi-node production, this enables distributed PubSub across cluster
 config :sensocto, Sensocto.PubSub,
   adapter: Phoenix.PubSub.PG2,
-  pool_size: 10
+  pool_size: 16
 
 # Configures the mailer
 #

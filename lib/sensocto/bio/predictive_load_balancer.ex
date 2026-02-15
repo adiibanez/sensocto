@@ -83,8 +83,14 @@ defmodule Sensocto.Bio.PredictiveLoadBalancer do
 
   @impl true
   def init(_opts) do
-    :ets.new(:bio_predictions, [:named_table, :public, read_concurrency: true])
-    :ets.new(:bio_attention_history, [:named_table, :public, :bag])
+    :ets.new(:bio_predictions, [
+      :named_table,
+      :public,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
+
+    :ets.new(:bio_attention_history, [:named_table, :public, :bag, write_concurrency: true])
 
     Process.send_after(self(), :analyze_patterns, @analysis_interval)
     Process.send_after(self(), :update_predictions, :timer.minutes(1))

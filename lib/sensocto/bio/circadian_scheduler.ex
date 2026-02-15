@@ -89,7 +89,13 @@ defmodule Sensocto.Bio.CircadianScheduler do
 
   @impl true
   def init(_opts) do
-    :ets.new(:bio_circadian_state, [:named_table, :public, read_concurrency: true])
+    :ets.new(:bio_circadian_state, [
+      :named_table,
+      :public,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
+
     :ets.insert(:bio_circadian_state, {:adjustment, 1.0})
     :ets.insert(:bio_circadian_state, {:phase, :unknown})
 

@@ -202,9 +202,6 @@ defmodule SensoctoWeb.LobbyLive do
         # Users grouped by sync mode for visual indicator
         synced_users: [],
         solo_users: [],
-        # Performance monitoring: measurement buffer for batching push_events
-        measurement_buffer: %{},
-        measurement_flush_timer: nil,
         # Performance stats for telemetry
         perf_stats: %{
           handle_info_count: 0,
@@ -1364,62 +1361,6 @@ defmodule SensoctoWeb.LobbyLive do
       end
 
     {:noreply, socket}
-  end
-
-  # ==========================================================================
-  # Legacy Direct Measurement Handlers (DEPRECATED)
-  # These are kept for backwards compatibility but LobbyLive no longer
-  # subscribes to "data:#{sensor_id}" topics. Data now comes via PriorityLens.
-  # These handlers will only fire if messages come from other sources.
-  # ==========================================================================
-
-  # Legacy: Handle single measurement (now handled by lens_batch)
-  @impl true
-  def handle_info({:measurement, %{:sensor_id => _sensor_id}}, socket) do
-    # Data now comes via PriorityLens - this handler is deprecated
-    {:noreply, socket}
-  end
-
-  # Legacy: Handle batch measurements (now handled by lens_batch)
-  # ECG data now properly flows through PriorityLens with high-frequency support
-  @impl true
-  def handle_info({:measurements_batch, {_sensor_id, _measurements_list}}, socket) do
-    # Data now comes via PriorityLens - this handler is deprecated
-    {:noreply, socket}
-  end
-
-  # Flush measurement buffer - sends batched measurements to clients
-  @impl true
-  def handle_info(:flush_measurement_buffer, socket) do
-    buffer = socket.assigns.measurement_buffer
-
-    if map_size(buffer) > 0 do
-      # Push one batched event per sensor (combines all buffered measurements)
-      socket =
-        Enum.reduce(buffer, socket, fn {sensor_id, measurements}, acc ->
-          push_event(acc, "measurements_batch", %{
-            sensor_id: sensor_id,
-            attributes: measurements
-          })
-        end)
-
-      # Update perf stats
-      perf_stats = socket.assigns.perf_stats
-      push_count = map_size(buffer)
-
-      new_perf_stats = %{
-        perf_stats
-        | push_event_count: perf_stats.push_event_count + push_count
-      }
-
-      {:noreply,
-       socket
-       |> assign(:measurement_buffer, %{})
-       |> assign(:measurement_flush_timer, nil)
-       |> assign(:perf_stats, new_perf_stats)}
-    else
-      {:noreply, assign(socket, :measurement_flush_timer, nil)}
-    end
   end
 
   # Performance logging - reports server-side stats every 5 seconds

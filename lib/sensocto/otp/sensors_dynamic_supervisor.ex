@@ -195,29 +195,6 @@ defmodule Sensocto.SensorsDynamicSupervisor do
     :pg.which_groups(:sensocto_sensors)
   end
 
-  # Function to extract device names (IDs) from the children list
-  def get_device_names2 do
-    Logger.debug("children: #{inspect(children())}")
-
-    Enum.map(children(), fn
-      {:undefined, pid, :worker, [Sensocto.SensorSupervisor]} ->
-        # You can extract device ID here based on how it's registered
-        # For example, assuming the device is registered with `{:via, Sensocto.Registry, device_id}`
-        case Process.info(pid, :registered_name) do
-          {:registered_name, device_id} ->
-            device_id
-
-          _ ->
-            Logger.debug("nope")
-        end
-
-      _ ->
-        Logger.debug("test")
-    end)
-    # Filter out nil values (if the process name is not found)
-    |> Enum.filter(& &1)
-  end
-
   # Nice utility method to check which processes are under supervision
   def children do
     DynamicSupervisor.which_children(__MODULE__)

@@ -260,16 +260,40 @@ defmodule Sensocto.Lenses.PriorityLens do
   def init(_opts) do
     # Create ETS tables
     # Buffer: {socket_id, sensor_id, attribute_id} => measurement or [measurements] for ECG
-    :ets.new(@buffer_table, [:set, :public, :named_table, read_concurrency: true])
+    :ets.new(@buffer_table, [
+      :set,
+      :public,
+      :named_table,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
 
     # Sockets: socket_id => %{sensor_ids: MapSet, quality: atom, focused_sensor: string, timer_ref: ref}
-    :ets.new(@sockets_table, [:set, :public, :named_table, read_concurrency: true])
+    :ets.new(@sockets_table, [
+      :set,
+      :public,
+      :named_table,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
 
     # Digests: {socket_id, sensor_id, attribute_id} => %{count, sum, min, max, latest, latest_timestamp}
-    :ets.new(@digest_table, [:set, :public, :named_table, read_concurrency: true])
+    :ets.new(@digest_table, [
+      :set,
+      :public,
+      :named_table,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
 
     # Reverse index: sensor_id => MapSet of socket_ids for O(1) lookup
-    :ets.new(@sensor_subs_table, [:set, :public, :named_table, read_concurrency: true])
+    :ets.new(@sensor_subs_table, [
+      :set,
+      :public,
+      :named_table,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
 
     # Don't register with Router yet - demand-driven.
     # Register only when the first socket connects, unregister when the last disconnects.

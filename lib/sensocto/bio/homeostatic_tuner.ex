@@ -87,7 +87,13 @@ defmodule Sensocto.Bio.HomeostaticTuner do
 
   @impl true
   def init(_opts) do
-    :ets.new(:bio_homeostatic_offsets, [:named_table, :public, read_concurrency: true])
+    :ets.new(:bio_homeostatic_offsets, [
+      :named_table,
+      :public,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
+
     :ets.insert(:bio_homeostatic_offsets, {:offsets, %{elevated: 0.0, high: 0.0, critical: 0.0}})
 
     Process.send_after(self(), :adapt, @adaptation_interval)

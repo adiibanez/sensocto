@@ -90,8 +90,7 @@ config :sensocto, SensoctoWeb.Endpoint,
     ),
   watchers: [
     node: ["build.js", "--watch", cd: Path.expand("../assets", __DIR__)],
-    tailwind: {Tailwind, :install_and_run, [:sensocto, ~w(--watch)]},
-    node: ["build.js", "--watch", cd: Path.expand("../assets", __DIR__)]
+    tailwind: {Tailwind, :install_and_run, [:sensocto, ~w(--watch)]}
     # esbuild: {Esbuild, :install_and_run, [:sensocto, ~w(--sourcemap=inline --watch)]},
 
     # live_svelte: {LiveSvelte, :init, []}

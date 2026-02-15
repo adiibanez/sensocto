@@ -24,7 +24,9 @@ defmodule Sensocto.Simulator.SensorServer do
       :supervisor,
       :real_sensor_started,
       # Tracks if sensor is currently in the room (for auto-reconnect)
-      :room_connected
+      :room_connected,
+      # Tracks consecutive reconnection failures (integer or :permanently_lost)
+      reconnect_failures: 0
     ]
   end
 
@@ -212,6 +214,12 @@ defmodule Sensocto.Simulator.SensorServer do
   end
 
   @impl true
+  def handle_info(:check_room_connection, %{reconnect_failures: :permanently_lost} = state) do
+    # Room confirmed deleted from DB — stop retrying
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:check_room_connection, state) do
     # Check if sensor is still in the room
     in_room = sensor_in_room?(state.room_id, state.sensor_id)
@@ -219,53 +227,24 @@ defmodule Sensocto.Simulator.SensorServer do
     new_state =
       cond do
         in_room and state.room_connected ->
-          # Still connected, all good
-          state
+          # Still connected, all good — reset failure counter
+          %{state | reconnect_failures: 0}
 
         in_room and not state.room_connected ->
           # Just reconnected (maybe room was recreated)
           Logger.debug("SensorServer #{state.sensor_id}: Reconnected to room #{state.room_id}")
+          %{state | room_connected: true, reconnect_failures: 0}
 
-          %{state | room_connected: true}
-
-        not in_room and state.room_connected ->
-          # Disconnected from room, try to reconnect
-          Logger.warning(
-            "SensorServer #{state.sensor_id}: Disconnected from room #{state.room_id}, attempting reconnect"
-          )
-
-          case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
-            :ok ->
-              Logger.debug(
-                "SensorServer #{state.sensor_id}: Successfully reconnected to room #{state.room_id}"
-              )
-
-              %{state | room_connected: true}
-
-            {:error, reason} ->
-              Logger.warning(
-                "SensorServer #{state.sensor_id}: Failed to reconnect to room #{state.room_id}: #{inspect(reason)}"
-              )
-
-              %{state | room_connected: false}
-          end
-
-        not in_room and not state.room_connected ->
-          # Not connected, try to connect
-          case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
-            :ok ->
-              Logger.debug("SensorServer #{state.sensor_id}: Connected to room #{state.room_id}")
-
-              %{state | room_connected: true}
-
-            {:error, _reason} ->
-              # Still not connected, will retry
-              state
-          end
+        not in_room ->
+          # Not in room — attempt reconnect and track failures
+          attempt_room_reconnect(state)
       end
 
-    # Schedule next check
-    Process.send_after(self(), :check_room_connection, @room_check_interval)
+    # Schedule next check (unless permanently lost)
+    if new_state.reconnect_failures != :permanently_lost do
+      Process.send_after(self(), :check_room_connection, @room_check_interval)
+    end
+
     {:noreply, new_state}
   end
 
@@ -371,6 +350,51 @@ defmodule Sensocto.Simulator.SensorServer do
 
   defp via_tuple(identifier) do
     {:via, Registry, {Sensocto.Simulator.Registry, "sensor_#{identifier}"}}
+  end
+
+  # Attempt to reconnect to room, tracking consecutive failures.
+  # After 6 failures (30s), checks DB to see if room was permanently deleted.
+  defp attempt_room_reconnect(state) do
+    was_connected = state.room_connected
+
+    if was_connected do
+      Logger.warning(
+        "SensorServer #{state.sensor_id}: Disconnected from room #{state.room_id}, attempting reconnect"
+      )
+    end
+
+    case Sensocto.RoomStore.add_sensor(state.room_id, state.sensor_id) do
+      :ok ->
+        Logger.debug(
+          "SensorServer #{state.sensor_id}: #{if was_connected, do: "Reconnected to", else: "Connected to"} room #{state.room_id}"
+        )
+
+        %{state | room_connected: true, reconnect_failures: 0}
+
+      {:error, _reason} ->
+        failures = state.reconnect_failures + 1
+
+        # After 6 consecutive failures (30s), check if room still exists in DB
+        if failures >= 6 and room_exists_in_db?(state.room_id) == false do
+          Logger.warning(
+            "SensorServer #{state.sensor_id}: Room #{state.room_id} confirmed deleted from DB after #{failures} failures, stopping reconnect"
+          )
+
+          %{state | room_connected: false, reconnect_failures: :permanently_lost}
+        else
+          %{state | room_connected: false, reconnect_failures: failures}
+        end
+    end
+  end
+
+  # Check if room still exists in the database (bypasses RoomStore cache)
+  defp room_exists_in_db?(room_id) do
+    case Ash.get(Sensocto.Sensors.Room, room_id, authorize?: false) do
+      {:ok, _room} -> true
+      {:error, _} -> false
+    end
+  rescue
+    _ -> true
   end
 
   # Check if sensor is currently in the room

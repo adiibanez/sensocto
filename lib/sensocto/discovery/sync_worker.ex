@@ -135,12 +135,8 @@ defmodule Sensocto.Discovery.SyncWorker do
   end
 
   defp sync_sensors do
-    # Get all sensors from Horde registry (cluster-wide)
-    sensor_ids =
-      Horde.Registry.select(
-        Sensocto.DistributedSensorRegistry,
-        [{{:"$1", :_, :_}, [], [:"$1"]}]
-      )
+    # Get all sensors from :pg process groups (cluster-wide)
+    sensor_ids = :pg.which_groups(:sensocto_sensors)
 
     Logger.debug("[SyncWorker] Syncing #{length(sensor_ids)} sensors from registry")
 

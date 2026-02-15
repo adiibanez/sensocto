@@ -184,6 +184,9 @@ defmodule Sensocto.Simulator.Manager do
     # Schedule hydration from PostgreSQL after discovery completes
     Process.send_after(self(), :hydrate_from_postgres, @hydration_delay_ms)
 
+    # Periodic health check — prune orphaned connectors from state
+    Process.send_after(self(), :health_check, 30_000)
+
     {:ok, state}
   end
 
@@ -449,18 +452,35 @@ defmodule Sensocto.Simulator.Manager do
 
   @impl true
   def handle_info(:hydrate_from_postgres, state) do
-    Logger.debug("Hydrating simulator state from PostgreSQL...")
+    hydration_attempts = Map.get(state, :hydration_attempts, 0)
 
-    # Run database query in a task to avoid blocking GenServer
-    Task.Supervisor.start_child(
-      Sensocto.Simulator.DbTaskSupervisor,
-      fn ->
-        result = load_running_scenarios_from_db()
-        send(__MODULE__, {:hydration_result, result})
+    if Sensocto.RoomStore.ready?() or hydration_attempts >= 10 do
+      if hydration_attempts >= 10 do
+        Logger.warning(
+          "[Manager] RoomStore not ready after #{hydration_attempts} attempts, proceeding with hydration anyway"
+        )
+      else
+        Logger.debug("[Manager] RoomStore ready, hydrating simulator state from PostgreSQL...")
       end
-    )
 
-    {:noreply, state}
+      # Run database query in a task to avoid blocking GenServer
+      Task.Supervisor.start_child(
+        Sensocto.Simulator.DbTaskSupervisor,
+        fn ->
+          result = load_running_scenarios_from_db()
+          send(__MODULE__, {:hydration_result, result})
+        end
+      )
+
+      {:noreply, Map.delete(state, :hydration_attempts)}
+    else
+      Logger.debug(
+        "[Manager] Waiting for RoomStore to be ready (attempt #{hydration_attempts + 1}/10)"
+      )
+
+      Process.send_after(self(), :hydrate_from_postgres, 1_000)
+      {:noreply, Map.put(state, :hydration_attempts, hydration_attempts + 1)}
+    end
   end
 
   @impl true
@@ -480,6 +500,27 @@ defmodule Sensocto.Simulator.Manager do
   def handle_info({:hydration_result, {:error, reason}}, state) do
     Logger.warning("Failed to hydrate from PostgreSQL: #{inspect(reason)}")
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:health_check, state) do
+    updated_connectors =
+      Map.filter(state.connectors, fn {connector_id, _config} ->
+        case Registry.lookup(Sensocto.Simulator.Registry, connector_id) do
+          [{_pid, _}] ->
+            true
+
+          [] ->
+            Logger.warning(
+              "[Manager] Connector #{connector_id} in state but no process found, removing from tracking"
+            )
+
+            false
+        end
+      end)
+
+    Process.send_after(self(), :health_check, 30_000)
+    {:noreply, %{state | connectors: updated_connectors}}
   end
 
   @impl true

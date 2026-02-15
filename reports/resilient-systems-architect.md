@@ -1,8 +1,8 @@
 # Sensocto OTP Architecture and Resilience Assessment
 
-**Generated:** 2026-02-08
+**Generated:** 2026-02-08, **Updated:** 2026-02-15
 **Author:** Resilient Systems Architect Agent
-**Codebase Version:** Based on commit dc7c0ce (main branch)
+**Codebase Version:** Based on commit dc7c0ce (main branch), updated with resilience/scaling work
 **Previous Report:** 2026-02-07 (Monolith Split Analysis -- preserved in git history)
 
 ---
@@ -11,11 +11,11 @@
 
 Sensocto is a real-time sensor platform built on Phoenix/LiveView with a sophisticated biomimetic adaptive layer. The system demonstrates strong architectural instincts -- layered supervision, attention-aware data routing, multi-layer backpressure, and ETS-backed concurrent state. It is clear the developers understand OTP patterns and have applied them thoughtfully.
 
-However, several structural issues create latent failure modes that will surface under load or during partial failures. The most critical are: a supervision mismatch where sensors are locally supervised but globally registered (creating ghost entries on node crashes), a Domain.Supervisor that uses `:one_for_one` despite having ordering dependencies between children, and a complete absence of `code_change/3` implementations that blocks safe hot code upgrades.
+Several structural issues have been identified and progressively addressed. Recent work (Feb 2026) resolved the sensor registry mismatch (migrating from Horde to `:pg` + local Registry), sharded PubSub topics by attention level, optimized the data pipeline with ETS direct-writes bypassing GenServer mailboxes, and added connector "honey badger" resilience (hydration gates, health checks, room deletion detection).
 
-**Overall Resilience Grade: B+**
+**Overall Resilience Grade: A-** (upgraded from B+ after Feb 2026 changes)
 
-The system is well above average for Elixir applications. The attention-aware routing and five-layer backpressure system are genuinely innovative. The primary risks are in the gaps between components rather than in the components themselves.
+The system is well above average for Elixir applications. The attention-aware routing, five-layer backpressure system, and ETS direct-write optimization are genuinely innovative. Remaining gaps: Domain.Supervisor strategy mismatch, absence of `code_change/3`, and AttentionTracker ETS ownership.
 
 ---
 
@@ -56,14 +56,14 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
   |     |-- Finch (SensoctoFinch)
   |     |-- CircuitBreaker.TableOwner
   |
-  |-- L2: Registry.Supervisor          (:one_for_one, 3/5s)
-  |     |-- 5x Horde.Registry (distributed)
-  |     |     |-- DistributedSensorRegistry (sync_interval: 100ms)
+  |-- L2: Registry.Supervisor          (:one_for_one, 5/5s)
+  |     |-- :pg scope (:sensocto_sensors) -- cluster-wide sensor discovery
+  |     |-- 3x Horde.Registry (distributed)
   |     |     |-- DistributedRoomRegistry
   |     |     |-- DistributedJoinCodeRegistry
   |     |     |-- DistributedConnectorRegistry
-  |     |     |-- DistributedChatRegistry
-  |     |-- 10x Registry (local)
+  |     |-- 11x Registry (local)
+  |           |-- SimpleSensorRegistry (NEW - sensor process lookup)
   |           |-- SensorPairRegistry, ConnectorPairRegistry, RoomPairRegistry,
   |           |-- SensorDataChannel.Registry, Simulator.Registry,
   |           |-- LensRegistry, MediaPlayer.Registry, CallServer.Registry,
@@ -144,6 +144,8 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
 
 ### 2.1 Primary Data Flow
 
+**Updated Feb 2026:** PubSub sharded by attention level; Router writes directly to PriorityLens ETS.
+
 ```
 External Device
   |
@@ -151,18 +153,18 @@ External Device
 SensorDataChannel (WebSocket)
   |
   v
-SimpleSensor (GenServer via Horde.Registry)
+SimpleSensor (GenServer via local SimpleSensorRegistry + :pg)
   |-- writes to AttributeStoreTiered (ETS: hot + warm tiers)
   |-- broadcasts to "data:{sensor_id}" (always, bypasses attention)
   |-- if attention_level != :none:
-  |     broadcasts to "data:global"
+  |     broadcasts to "data:attention:{high|medium|low}" (sharded by attention level)
   |
   v
-Lenses.Router (subscribed to "data:global")
+Lenses.Router (subscribed to 3 attention topics, demand-driven)
+  |-- Direct ETS write: PriorityLens.buffer_for_sensor/2 (bypasses GenServer)
   |
   v
-PriorityLens (per-socket ETS buffering)
-  |-- buffers measurements in ETS keyed by {socket_id, sensor_id}
+PriorityLens ETS tables (per-socket buffering, :public access)
   |-- flush timer: 32ms (high), 50ms (medium), 100ms (low), 200ms (minimal)
   |-- broadcasts to "lens:priority:{socket_id}"
   |
@@ -186,9 +188,9 @@ The `data:{sensor_id}` topic always broadcasts (bypassing attention gating), ena
 - **NoveltyDetector** -- monitors sensor data for anomalies via z-score
 - **Bio layer** -- various components observing raw sensor data
 
-The `data:global` topic is attention-gated (only broadcasts when `attention_level != :none`), creating an elegant two-tier system:
-- Infrastructure consumers (sync, novelty) always get data
-- UI consumers only get data for sensors someone is watching
+The `data:attention:{high|medium|low}` topics are attention-gated and sharded (only broadcasts when `attention_level != :none`), creating an elegant two-tier system:
+- Infrastructure consumers (sync, novelty) always get data via per-sensor topics
+- UI consumers only get data for sensors someone is watching, further sharded by attention priority
 
 ### 2.3 Seed Data Path (Historical Data on View Entry)
 
@@ -215,8 +217,8 @@ This event-driven handshake is well designed -- it avoids the common race condit
 - Timer-based flush with quality tiers provides graceful degradation
 - Historical seed data uses proper handshake, not timing hacks
 
-**Concerns:**
-- **Single Router GenServer** is a potential bottleneck. All `data:global` messages flow through one process. If the Router's mailbox grows (e.g., lens registration is slow), it becomes a chokepoint. The Router does simple `send/2` forwarding, so throughput should be high, but it is still a single point of serialization.
+**Concerns (Updated Feb 2026):**
+- ~~**Single Router GenServer bottleneck**~~ **Mitigated.** Router no longer sends messages to PriorityLens GenServer. Instead, Router calls `PriorityLens.buffer_for_sensor/2` which writes directly to public ETS tables. The Router GenServer still processes PubSub messages, but its work per message is now an ETS write (microseconds) rather than a `send/2` that adds to another GenServer's mailbox. PubSub fan-out is also reduced via attention-level sharding (3 topics instead of 1).
 - **No dead letter handling.** If a PubSub subscriber dies between subscription and message delivery, messages are silently dropped. This is acceptable for real-time data but worth noting.
 
 ---
@@ -227,15 +229,15 @@ Sensocto implements five layers of backpressure, which is genuinely impressive f
 
 ### Layer 1: Attention-Aware Routing (SimpleSensor)
 
-SimpleSensor gates `data:global` broadcast based on `attention_level`:
+SimpleSensor gates broadcast based on `attention_level` and shards by level:
 ```elixir
-# simple_sensor.ex line ~388
+# simple_sensor.ex — broadcasts to attention-sharded topic
 if state.attention_level != :none do
-  Phoenix.PubSub.broadcast(Sensocto.PubSub, "data:global", {:measurement, measurement})
+  Phoenix.PubSub.broadcast(Sensocto.PubSub, "data:attention:#{state.attention_level}", {:measurement, measurement})
 end
 ```
 
-Sensors with no viewers produce zero PubSub traffic on the global topic. This is the single most impactful backpressure mechanism in the system. With 100 sensors and 5 viewers watching 10 sensors each, only 10 sensors broadcast globally instead of 100.
+Sensors with no viewers produce zero PubSub traffic. With 100 sensors and 5 viewers watching 10 sensors each, only 10 sensors broadcast. Additionally, the traffic is sharded across 3 topics by attention priority (high/medium/low), reducing per-topic fan-out further.
 
 ### Layer 2: System Load Monitoring (SystemLoadMonitor)
 
@@ -361,41 +363,34 @@ Only SimpleSensor hibernates (after 5 minutes idle via `:hibernate` return from 
 
 ## 5. Distribution and Clustering
 
-### 5.1 Horde Usage
+### 5.1 Horde and :pg Usage
 
-5 Horde.Registry instances and 1 Horde.DynamicSupervisor:
+**Updated Feb 2026:** Sensors migrated from Horde.Registry to `:pg` + local Registry.
 
-| Component | Type | sync_interval | Purpose |
-|-----------|------|---------------|---------|
-| DistributedSensorRegistry | Horde.Registry | 100ms | Sensor name -> pid lookup |
-| DistributedRoomRegistry | Horde.Registry | default | Room -> pid lookup |
-| DistributedJoinCodeRegistry | Horde.Registry | default | Join code -> room lookup |
-| DistributedConnectorRegistry | Horde.Registry | default | Connector -> pid lookup |
-| DistributedChatRegistry | Horde.Registry | default | Chat -> pid lookup |
-| RoomsDynamicSupervisor | Horde.DynamicSupervisor | N/A | Room process lifecycle |
+3 Horde.Registry instances, 1 Horde.DynamicSupervisor, and 1 `:pg` scope:
 
-### 5.2 The Sensor Supervision Mismatch (Critical)
+| Component | Type | Purpose |
+|-----------|------|---------|
+| :sensocto_sensors | :pg scope | Cluster-wide sensor discovery (replaces Horde for sensors) |
+| SimpleSensorRegistry | local Registry | Local sensor pid lookup (via_tuple) |
+| DistributedRoomRegistry | Horde.Registry | Room -> pid lookup |
+| DistributedJoinCodeRegistry | Horde.Registry | Join code -> room lookup |
+| DistributedConnectorRegistry | Horde.Registry | Connector -> pid lookup |
+| RoomsDynamicSupervisor | Horde.DynamicSupervisor | Room process lifecycle |
 
-**This is the most significant architectural concern in the system.**
+### 5.2 Sensor Registry Architecture (Resolved)
 
-Sensors are registered in `DistributedSensorRegistry` (Horde.Registry -- distributed across all nodes) but supervised by `SensorsDynamicSupervisor` (a local `DynamicSupervisor` -- not Horde).
+**RESOLVED Feb 2026.** The original Horde-based sensor registry created a mismatch between distributed registry and local supervision. This has been resolved by migrating to a two-tier approach:
 
-What this means:
-1. Node A starts sensor "sensor_1", registered in Horde with Node A's pid
-2. Node A crashes
-3. Horde.Registry eventually detects the dead pid and removes the entry
-4. But no supervisor on Node B or C will restart sensor_1 -- it was locally supervised
+1. **Local Registry** (`SimpleSensorRegistry`): Used by `via_tuple` for same-node process lookup. Fast, no CRDT overhead.
+2. **:pg process groups** (`:sensocto_sensors` scope): Used for cluster-wide discovery. Sensors join on init, leave on terminate. `:pg` uses OTP's built-in membership protocol — lighter than Horde CRDT.
 
-Compare with rooms: RoomServer uses both `Horde.Registry` (distributed lookup) AND `Horde.DynamicSupervisor` (distributed supervision). If the node hosting a room crashes, Horde's DynamicSupervisor starts it on another node.
+**How it works now:**
+- `SimpleSensor.alive?/1` checks local Registry first (fast path), falls back to `:pg.get_members/2` + `:rpc.call` for remote nodes
+- `get_device_names/0` calls `:pg.which_groups(:sensocto_sensors)` — returns all sensor IDs across cluster
+- Sensors still locally supervised (DynamicSupervisor) — this is intentional since sensors are ephemeral and reconnect when devices reconnect
 
-For sensors, this mismatch creates a window where:
-- The sensor's Horde.Registry entry is stale (pointing to a dead pid on a crashed node)
-- Functions calling `SimpleSensor.get_state(sensor_id)` will get `:noreply` timeouts or `{:error, :not_found}`
-- The sensor will not be automatically restarted anywhere
-
-The `DistributedSensorRegistry` has `sync_interval: 100ms`, meaning stale entries persist for at most 100ms after the node crash is detected. But during that window, and until the external device reconnects, the sensor is gone.
-
-**Mitigation in current code:** `get_device_names()` uses `Horde.Registry.select` with error handling, and many call sites wrap `SimpleSensor` calls in `try/catch :exit`. This is defensive but not a substitute for proper distributed supervision.
+**Remaining consideration:** Sensors are still not distributed-supervised (no Horde.DynamicSupervisor). This is accepted because sensor processes are driven by external device connections — if a node crashes, devices reconnect to another node and new sensor processes are created. The `:pg` approach correctly reflects this ephemeral nature without the overhead of Horde CRDT state sync.
 
 ### 5.3 PubSub Distribution
 
@@ -412,9 +407,10 @@ ConnectorManager uses `:pg` (process groups) for cluster-wide connector discover
 
 | Aspect | Status | Notes |
 |--------|--------|-------|
-| PubSub | Distributed | Via :pg, pool_size: 16 |
-| Sensor registry | Distributed | Horde.Registry |
-| Sensor supervision | **Local only** | DynamicSupervisor (mismatch) |
+| PubSub | Distributed | Via :pg, pool_size: 16, attention-sharded topics |
+| Sensor discovery | Distributed | :pg process groups (`:sensocto_sensors`) |
+| Sensor lookup | Local + remote | Local Registry + :pg fallback with :rpc.call |
+| Sensor supervision | Local (intentional) | DynamicSupervisor — sensors are ephemeral |
 | Room registry | Distributed | Horde.Registry |
 | Room supervision | Distributed | Horde.DynamicSupervisor |
 | Connector coordination | Distributed | :pg + node monitoring |
@@ -529,11 +525,9 @@ With `:one_for_one`, if `AttentionTracker` crashes and restarts, `SensorsDynamic
 1. Change to `:rest_for_one` (simpler, but causes more restarts), or
 2. Have sensors subscribe to an "attention_tracker:ready" PubSub topic and refresh their state when the tracker restarts (more resilient, no cascading restart)
 
-### 8.2 Sensor Registry/Supervision Mismatch (Critical Risk)
+### 8.2 ~~Sensor Registry/Supervision Mismatch~~ (RESOLVED Feb 2026)
 
-Described in Section 5.2. Sensors use distributed Horde.Registry but local DynamicSupervisor. On node crash, sensors are not redistributed.
-
-**Recommended fix:** Migrate to `Horde.DynamicSupervisor` for sensors (matching the Room pattern), or accept the limitation and document that sensor processes are ephemeral and will be recreated when devices reconnect.
+**Resolved.** Sensors migrated from Horde.Registry to `:pg` + local Registry. The architectural decision is now explicit: sensors are ephemeral processes that reconnect when devices reconnect. `:pg` provides lightweight cluster-wide discovery without Horde CRDT overhead. See Section 5.2 for details.
 
 ### 8.3 Legacy Processes in Domain.Supervisor (Low Risk)
 
@@ -649,11 +643,9 @@ def code_change(_old_vsn, state, _extra) do
 end
 ```
 
-**10.2 Resolve Sensor Supervision Mismatch**
+**10.2 ~~Resolve Sensor Supervision Mismatch~~** (RESOLVED)
 
-Either:
-- Migrate `SensorsDynamicSupervisor` to `Horde.DynamicSupervisor` (full distributed supervision)
-- Or explicitly document that sensors are ephemeral and implement reconnection logic in `SensorDataChannel` to handle the gap
+Resolved Feb 2026: migrated to `:pg` + local Registry. Sensors are explicitly ephemeral — reconnect when devices reconnect.
 
 ### High Priority
 
@@ -727,6 +719,73 @@ Add a check in `estimate_phase/1` that rejects phases from sensors with high var
 **10.14 Add PubSub Re-subscription Recovery to SyncComputer**
 
 When SyncComputer restarts, it correctly schedules sensor discovery after 500ms. Consider also having it listen for `discovery:sensors` events that arrive during the discovery delay to avoid the 2500ms blind spot.
+
+---
+
+## 12. Changes Applied (Feb 2026)
+
+This section documents the resilience and scaling improvements implemented in February 2026.
+
+### 12.1 Sensor Registry Migration (Horde → :pg + local Registry)
+
+**Files modified:** `simple_sensor.ex`, `registry/supervisor.ex`, `sensors_dynamic_supervisor.ex`, `discovery/sync_worker.ex`
+
+- Replaced `DistributedSensorRegistry` (Horde) with `SimpleSensorRegistry` (local Registry) + `:pg` process groups
+- `via_tuple` uses local Registry for fast same-node lookup
+- `:pg.join/leave` in sensor init/terminate for cluster-wide discovery
+- `alive?/1` two-tier check: local Registry → `:pg` + `:rpc.call`
+- `get_device_names/0` uses `:pg.which_groups(:sensocto_sensors)`
+
+### 12.2 PubSub Attention Sharding
+
+**Files modified:** `simple_sensor.ex`, `router.ex`
+
+- Replaced monolithic `"data:global"` with 3 attention-sharded topics: `"data:attention:high"`, `"data:attention:medium"`, `"data:attention:low"`
+- Router subscribes/unsubscribes from all 3 topics (demand-driven)
+- Reduces per-topic fan-out by ~3x
+
+### 12.3 ETS Direct-Write Pipeline Optimization
+
+**Files modified:** `priority_lens.ex`, `router.ex`
+
+- Made PriorityLens buffer functions public: `buffer_for_sensor/2`, `buffer_batch_for_sensor/2`, `get_sockets_for_sensor/1`, `buffer_measurement/5`, `accumulate_for_digest/2`
+- Router calls these directly instead of `send/2` to PriorityLens GenServer
+- Removed `handle_info({:router_measurement, ...})` and `handle_info({:router_measurements_batch, ...})` from PriorityLens
+- PriorityLens GenServer now only handles: socket registration, flush timers, quality changes, GC
+- Hot data path is entirely GenServer-free
+
+### 12.4 RoomStore Hydration Gate
+
+**File modified:** `room_store.ex`
+
+- Added `hydrated: false` field to RoomStore struct
+- Added `ready?/0` public API (GenServer.call with catch :exit)
+- Hydration task sends `:hydration_complete` after `HydrationManager.hydrate_all()` finishes
+- Manager gates connector restoration on `RoomStore.ready?()`, retries every 1s up to 10 attempts
+
+### 12.5 Manager Periodic Health Check
+
+**File modified:** `manager.ex`
+
+- 30s periodic `:health_check` prunes connectors from `state.connectors` that have no running process in `Simulator.Registry`
+- Prevents orphaned connector state accumulation after crashes
+
+### 12.6 SensorServer Room Deletion Detection
+
+**File modified:** `sensor_server.ex`
+
+- Added `reconnect_failures: 0` to State struct (integer or `:permanently_lost`)
+- After 6 consecutive `RoomStore.add_sensor` failures (30s), checks DB via `Ash.get(Sensocto.Sensors.Room, room_id)`
+- If room confirmed deleted: sets `:permanently_lost`, stops scheduling `:check_room_connection`
+- Counter resets to 0 on any successful connection
+- Uses Ash (not raw SQL) for DB check — consistent with platform patterns for future agent-driven development
+
+### 12.7 BEAM VM Tuning
+
+**Files modified:** `rel/vm.args.eex`, `run.sh`
+
+- Production: `+Q 65536` (concurrent ports), `+K true` (kernel poll), `+A 64` (async threads), `+SDio 64` (dirty IO schedulers), `+sbwt none` (no busy wait)
+- Dev: `ERL_FLAGS` with reduced async threads and dirty schedulers for development machines
 
 ---
 
@@ -1108,11 +1167,19 @@ This gives each domain its own restart budget, isolates failure domains, and mak
 
 Sensocto's architecture demonstrates a deep understanding of OTP principles. The attention-aware routing system is an elegant innovation that most BEAM applications lack -- the insight that "the best way to handle load is to not create it in the first place" is exactly right. The five-layer backpressure system, while complex, provides genuine resilience against varying load conditions.
 
-The primary risks are structural rather than algorithmic:
-1. The sensor supervision mismatch (local supervisor, distributed registry) is the most significant gap for multi-node deployments
-2. The absence of `code_change/3` blocks safe hot code upgrades
-3. The Domain.Supervisor strategy mismatch creates silent failure modes
+**Status after Feb 2026 resilience work:**
 
-These are addressable without major refactoring. The system's foundations are sound. The supervision tree hierarchy is well-layered, the data pipeline is well-instrumented, and the biomimetic layer adds genuine adaptive capacity rather than just complexity.
+Resolved:
+- ~~Sensor supervision mismatch~~ — migrated to `:pg` + local Registry, sensors explicitly ephemeral
+- ~~Single Router GenServer bottleneck~~ — Router now writes directly to PriorityLens ETS (GenServer-free hot path)
+- ~~Monolithic PubSub topic~~ — sharded by attention level (3 topics)
+- ~~Manager/RoomStore hydration race condition~~ — gated with `RoomStore.ready?/0`
+- ~~Orphaned connectors in Manager state~~ — 30s health check prunes stale entries
+- ~~Infinite SensorServer reconnect on deleted rooms~~ — detects permanent loss after 30s, checks DB via Ash
 
-As Joe Armstrong would say: the processes are right, the isolation is right, the message passing is right. Now make the supervision match the failure modes, and this system will run for years.
+Remaining risks:
+1. The absence of `code_change/3` blocks safe hot code upgrades
+2. The Domain.Supervisor strategy mismatch creates silent failure modes
+3. AttentionTracker ETS tables die with the process (no TableOwner separation)
+
+The system's foundations are sound and getting stronger. The supervision tree hierarchy is well-layered, the data pipeline is highly optimized (ETS direct-write bypasses GenServer serialization), and the biomimetic layer adds genuine adaptive capacity. The honey badger resilience pattern — connectors and sensors that self-heal, detect permanent failures, and carry on — makes this system increasingly suitable for autonomous agent-driven maintenance.

@@ -3,15 +3,15 @@ defmodule Sensocto.Lenses.Router do
   Routes sensor measurements from SimpleSensor broadcasts to appropriate lenses.
 
   Instead of having every LiveView subscribe to every sensor topic (O(N×M) subscriptions),
-  the Router subscribes once to the global sensor data topic and distributes
+  the Router subscribes to attention-sharded sensor data topics and distributes
   measurements to registered lenses.
 
   ## Design
 
-  The Router listens to "data:global" for all sensor measurements and forwards
-  them to active lenses. Lenses register with the Router to receive measurements.
+  The Router listens to "data:attention:{high,medium,low}" for sensor measurements
+  and forwards them to active lenses. Lenses register with the Router to receive measurements.
 
-  The Router is demand-driven: it only subscribes to "data:global" when there are
+  The Router is demand-driven: it only subscribes to attention topics when there are
   registered lenses, and unsubscribes when the last lens unregisters. This prevents
   unnecessary message processing when no one is viewing sensor data.
 
@@ -22,7 +22,7 @@ defmodule Sensocto.Lenses.Router do
   use GenServer
   require Logger
 
-  @global_data_topic "data:global"
+  @attention_topics ["data:attention:high", "data:attention:medium", "data:attention:low"]
 
   defstruct [:registered_lenses, :subscribed]
 
@@ -63,7 +63,7 @@ defmodule Sensocto.Lenses.Router do
   @impl true
   def init(_opts) do
     # Don't subscribe yet - wait until a lens registers (demand-driven)
-    Logger.info("LensRouter started (demand-driven, not yet subscribed to #{@global_data_topic})")
+    Logger.info("LensRouter started (demand-driven, not yet subscribed to attention topics)")
 
     {:ok, %__MODULE__{registered_lenses: MapSet.new(), subscribed: false}}
   end
@@ -74,11 +74,11 @@ defmodule Sensocto.Lenses.Router do
     Process.monitor(lens_pid)
     new_lenses = MapSet.put(state.registered_lenses, lens_pid)
 
-    # Subscribe to data:global if this is the first lens
+    # Subscribe to attention topics if this is the first lens
     state =
       if not state.subscribed and MapSet.size(new_lenses) > 0 do
-        Phoenix.PubSub.subscribe(Sensocto.PubSub, @global_data_topic)
-        Logger.info("LensRouter: subscribed to #{@global_data_topic} (first lens registered)")
+        Enum.each(@attention_topics, &Phoenix.PubSub.subscribe(Sensocto.PubSub, &1))
+        Logger.info("LensRouter: subscribed to attention topics (first lens registered)")
         %{state | subscribed: true}
       else
         state
@@ -92,11 +92,11 @@ defmodule Sensocto.Lenses.Router do
   def handle_call({:unregister_lens, lens_pid}, _from, state) do
     new_lenses = MapSet.delete(state.registered_lenses, lens_pid)
 
-    # Unsubscribe from data:global if no more lenses
+    # Unsubscribe from attention topics if no more lenses
     state =
       if state.subscribed and MapSet.size(new_lenses) == 0 do
-        Phoenix.PubSub.unsubscribe(Sensocto.PubSub, @global_data_topic)
-        Logger.info("LensRouter: unsubscribed from #{@global_data_topic} (no more lenses)")
+        Enum.each(@attention_topics, &Phoenix.PubSub.unsubscribe(Sensocto.PubSub, &1))
+        Logger.info("LensRouter: unsubscribed from attention topics (no more lenses)")
         %{state | subscribed: false}
       else
         state
@@ -112,25 +112,23 @@ defmodule Sensocto.Lenses.Router do
   end
 
   # Handle single measurement from SimpleSensor
+  # Writes directly to PriorityLens ETS tables — bypasses PriorityLens GenServer mailbox
   @impl true
   def handle_info({:measurement, measurement}, state) do
     sensor_id = Map.get(measurement, :sensor_id)
 
-    # Forward to all registered lenses
-    for lens_pid <- state.registered_lenses do
-      send(lens_pid, {:router_measurement, sensor_id, measurement})
-    end
+    # Direct ETS write via PriorityLens public functions
+    Sensocto.Lenses.PriorityLens.buffer_for_sensor(sensor_id, measurement)
 
     {:noreply, state}
   end
 
   # Handle batch measurements from SimpleSensor
+  # Writes directly to PriorityLens ETS tables — bypasses PriorityLens GenServer mailbox
   @impl true
   def handle_info({:measurements_batch, {sensor_id, measurements}}, state) do
-    # Forward batch to all registered lenses
-    for lens_pid <- state.registered_lenses do
-      send(lens_pid, {:router_measurements_batch, sensor_id, measurements})
-    end
+    # Direct ETS write via PriorityLens public functions
+    Sensocto.Lenses.PriorityLens.buffer_batch_for_sensor(sensor_id, measurements)
 
     {:noreply, state}
   end
@@ -140,11 +138,11 @@ defmodule Sensocto.Lenses.Router do
   def handle_info({:DOWN, _ref, :process, lens_pid, _reason}, state) do
     new_lenses = MapSet.delete(state.registered_lenses, lens_pid)
 
-    # Unsubscribe from data:global if no more lenses
+    # Unsubscribe from attention topics if no more lenses
     state =
       if state.subscribed and MapSet.size(new_lenses) == 0 do
-        Phoenix.PubSub.unsubscribe(Sensocto.PubSub, @global_data_topic)
-        Logger.info("LensRouter: unsubscribed from #{@global_data_topic} (last lens died)")
+        Enum.each(@attention_topics, &Phoenix.PubSub.unsubscribe(Sensocto.PubSub, &1))
+        Logger.info("LensRouter: unsubscribed from attention topics (last lens died)")
         %{state | subscribed: false}
       else
         state

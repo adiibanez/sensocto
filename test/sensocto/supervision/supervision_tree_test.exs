@@ -76,8 +76,7 @@ defmodule Sensocto.Supervision.SupervisionTreeTest do
     test "sensor registries are running" do
       assert Registry.lookup(Sensocto.Sensors.Registry, :test) != nil
       assert Registry.lookup(Sensocto.Sensors.SensorRegistry, :test) != nil
-      # SimpleSensorRegistry was replaced by DistributedSensorRegistry (Horde-based)
-      assert Horde.Registry.lookup(Sensocto.DistributedSensorRegistry, :test) != nil
+      assert Registry.lookup(Sensocto.SimpleSensorRegistry, :test) != nil
       assert Registry.lookup(Sensocto.SimpleAttributeRegistry, :test) != nil
       assert Registry.lookup(Sensocto.SensorPairRegistry, :test) != nil
     end

@@ -56,6 +56,9 @@ defmodule Sensocto.Registry.Supervisor do
   @impl true
   def init(_opts) do
     children = [
+      # :pg scope for cluster-wide sensor discovery (replaces Horde.Registry for sensors)
+      %{id: :sensocto_sensors_pg, start: {:pg, :start_link, [:sensocto_sensors]}},
+
       # Development/testing registry
       {Registry, keys: :unique, name: Sensocto.TestRegistry},
 
@@ -63,14 +66,7 @@ defmodule Sensocto.Registry.Supervisor do
       {Registry, keys: :unique, name: Sensocto.Sensors.Registry},
       {Registry, keys: :unique, name: Sensocto.Sensors.SensorRegistry},
       {Registry, keys: :unique, name: Sensocto.SimpleAttributeRegistry},
-      # Distributed sensor registry for cluster-wide sensor lookup
-      {Horde.Registry,
-       [
-         name: Sensocto.DistributedSensorRegistry,
-         keys: :unique,
-         members: :auto,
-         delta_crdt_options: [sync_interval: 100]
-       ]},
+      {Registry, keys: :unique, name: Sensocto.SimpleSensorRegistry},
       {Registry, keys: :unique, name: Sensocto.SensorPairRegistry},
 
       # Room domain - local registries (backward compatibility)

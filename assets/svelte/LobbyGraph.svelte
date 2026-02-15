@@ -138,14 +138,24 @@
   let masterOut: GainNode | null = null;
   let recDest: MediaStreamAudioDestinationNode | null = null;
   let lastSoundTime = 0;
-  const SOUND_DEBOUNCE_MS = 150;
+  const SOUND_DEBOUNCE_MS = 180;
+  let activeSounds = 0;
+  const MAX_CONCURRENT_SOUNDS = 3;
   let noiseBuffer: AudioBuffer | null = null;
 
   function ensureAudioCtx() {
     if (!audioCtx) {
       audioCtx = new AudioContext();
+      const compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.value = -30;
+      compressor.knee.value = 6;
+      compressor.ratio.value = 12;
+      compressor.attack.value = 0.001;
+      compressor.release.value = 0.1;
+      compressor.connect(audioCtx.destination);
       masterOut = audioCtx.createGain();
-      masterOut.connect(audioCtx.destination);
+      masterOut.gain.value = 0.4;
+      masterOut.connect(compressor);
     }
     if (audioCtx.state === "suspended") {
       audioCtx.resume();
@@ -165,7 +175,12 @@
     if (soundTheme === "off") return;
     const now = performance.now();
     if (now - lastSoundTime < SOUND_DEBOUNCE_MS) return;
+    if (activeSounds >= MAX_CONCURRENT_SOUNDS) return;
     lastSoundTime = now;
+    activeSounds++;
+
+    const dur = soundTheme === "chimes" ? 500 : soundTheme === "underwater" ? 200 : 250;
+    setTimeout(() => { activeSounds = Math.max(0, activeSounds - 1); }, dur);
 
     switch (soundTheme) {
       case "plasma": playCrackle(); break;
@@ -181,7 +196,7 @@
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
     const duration = 0.004 + Math.random() * 0.014;
-    const volume = 0.04 + Math.random() * 0.08;
+    const volume = 0.02 + Math.random() * 0.04;
 
     const noise = ctx.createBufferSource();
     noise.buffer = noiseBuffer!;
@@ -230,7 +245,7 @@
   function playBirdChirp() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.06 + Math.random() * 0.06;
+    const volume = 0.03 + Math.random() * 0.04;
     const chirps = Math.random() < 0.3 ? (2 + Math.floor(Math.random() * 2)) : 1;
 
     for (let i = 0; i < chirps; i++) {
@@ -264,55 +279,36 @@
     }
   }
 
-  // --- Underwater: sonar pings and bubble pops ---
+  // --- Underwater: single clean bubble blub ---
   function playUnderwater() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.05 + Math.random() * 0.05;
 
-    const pingFreq = 600 + Math.random() * 1200;
-    const pingDur = 0.12 + Math.random() * 0.1;
+    // One clean sine bubble — pitch drops like a rising bubble
+    const freq = 300 + Math.random() * 200;
+    const dur = 0.06 + Math.random() * 0.04;
+
     const osc = ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(pingFreq, t);
-    osc.frequency.exponentialRampToValueAtTime(pingFreq * (0.85 + Math.random() * 0.1), t + pingDur);
-
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 2000 + Math.random() * 1000;
-    lp.Q.value = 2 + Math.random() * 3;
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + dur);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(volume, t);
-    env.gain.exponentialRampToValueAtTime(0.001, t + pingDur);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.012, t + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-    osc.connect(lp); lp.connect(env); env.connect(masterOut!);
-    osc.start(t); osc.stop(t + pingDur + 0.02);
-
-    if (Math.random() < 0.25) {
-      const bubbles = 2 + Math.floor(Math.random() * 4);
-      for (let i = 0; i < bubbles; i++) {
-        const bOffset = 0.02 + Math.random() * 0.08;
-        const bFreq = 300 + Math.random() * 600;
-        const bDur = 0.008 + Math.random() * 0.015;
-        const bOsc = ctx.createOscillator();
-        bOsc.type = "sine";
-        bOsc.frequency.setValueAtTime(bFreq, t + bOffset);
-        bOsc.frequency.exponentialRampToValueAtTime(bFreq * 2.5, t + bOffset + bDur);
-        const bGain = ctx.createGain();
-        bGain.gain.setValueAtTime(volume * 0.4, t + bOffset);
-        bGain.gain.exponentialRampToValueAtTime(0.001, t + bOffset + bDur);
-        bOsc.connect(bGain); bGain.connect(masterOut!);
-        bOsc.start(t + bOffset); bOsc.stop(t + bOffset + bDur + 0.01);
-      }
-    }
+    osc.connect(env);
+    env.connect(masterOut!);
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
   }
 
   // --- Wind Chimes: gentle pentatonic metallic tones ---
   function playChime() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.03 + Math.random() * 0.04;
+    const volume = 0.02 + Math.random() * 0.03;
     const pentatonic = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3, 784.0, 880.0];
     const baseFreq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
     const detune = (Math.random() - 0.5) * 10;
@@ -354,7 +350,7 @@
   function playHeartbeat() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.08 + Math.random() * 0.04;
+    const volume = 0.04 + Math.random() * 0.03;
     const baseFreq = 50 + Math.random() * 20;
 
     for (let i = 0; i < 2; i++) {
@@ -1143,6 +1139,7 @@
     const cur = (activityCounts.get(nodeId) || 0) + 1;
     activityCounts.set(nodeId, cur);
     updateHeatmapNode(nodeId);
+    vibrateNode(nodeId);
 
     const timer = setTimeout(() => {
       const c = activityCounts.get(nodeId) || 0;
@@ -1235,6 +1232,7 @@
     const attrs = graph.getNodeAttributes(nodeId);
     const origColor = getOriginalNodeColor(attrs);
     graph.setNodeAttribute(nodeId, "color", lightenColor(origColor, 0.6));
+    vibrateNode(nodeId);
     setTimeout(() => {
       if (graph?.hasNode(nodeId)) {
         graph.setNodeAttribute(nodeId, "color", origColor);
@@ -1360,6 +1358,8 @@
     riverParticles.push({ path, progress: 0, speed: 0.012 + Math.random() * 0.008, color, size: 1.5 + Math.random() });
 
     if (riverParticles.length > 300) riverParticles.splice(0, riverParticles.length - 300);
+
+    vibrateNode(attrNodeId);
   }
 
   function animateDataRiver() {
@@ -1467,10 +1467,11 @@
     const sNodeId = `sensor:${sensor_id}`;
     if (graph?.hasNode(sNodeId)) {
       applyAttentionAppearance(sNodeId, level);
-      // Also update all attribute nodes of this sensor
+      vibrateNode(sNodeId);
       graph.forEachNode((node, attrs) => {
         if (attrs.nodeType === "attribute" && attrs.data?.sensor_id === sensor_id) {
           applyAttentionAppearance(node, level);
+          vibrateNode(node);
         }
       });
       scheduleRefresh();
@@ -1718,6 +1719,59 @@
   // Store original values to prevent compounding growth from rapid events
   let activePulsations = new Map<string, {timeout: number, baseSize: number, originalColor: string}>();
 
+  // Standalone vibration tracking — shared across all view modes
+  let activeVibrations = new Map<string, {timeouts: number[], offset: {dx: number, dy: number}}>();
+
+  // Vibrate a node with a subtle, scale-aware positional jitter.
+  // Can be called from any view mode — purely positional, doesn't touch size/color.
+  function vibrateNode(nodeId: string) {
+    if (!vibrateEnabled || !sigma || !graph || !graph.hasNode(nodeId)) return;
+    if (!isNodeInViewport(nodeId)) return;
+
+    const existing = activeVibrations.get(nodeId);
+    if (existing) {
+      for (const vt of existing.timeouts) clearTimeout(vt);
+      if (existing.offset.dx !== 0 || existing.offset.dy !== 0) {
+        graph.setNodeAttribute(nodeId, "x", graph.getNodeAttribute(nodeId, "x") - existing.offset.dx);
+        graph.setNodeAttribute(nodeId, "y", graph.getNodeAttribute(nodeId, "y") - existing.offset.dy);
+      }
+    }
+
+    const ratio = sigma.getCamera().ratio || 1;
+    const amp = (0.3 + Math.random() * 0.2) * ratio;
+    const timeouts: number[] = [];
+    const offset = { dx: 0, dy: 0 };
+
+    const steps = 2;
+    for (let i = 0; i < steps; i++) {
+      const vt = setTimeout(() => {
+        if (!graph || !graph.hasNode(nodeId)) return;
+        const prevDx = offset.dx;
+        const prevDy = offset.dy;
+        const angle = Math.random() * Math.PI * 2;
+        const r = amp * (1 - i / steps);
+        const newDx = Math.cos(angle) * r;
+        const newDy = Math.sin(angle) * r;
+        graph.setNodeAttribute(nodeId, "x", graph.getNodeAttribute(nodeId, "x") - prevDx + newDx);
+        graph.setNodeAttribute(nodeId, "y", graph.getNodeAttribute(nodeId, "y") - prevDy + newDy);
+        offset.dx = newDx;
+        offset.dy = newDy;
+      }, i * 40);
+      timeouts.push(vt);
+    }
+    const resetVt = setTimeout(() => {
+      if (!graph || !graph.hasNode(nodeId)) return;
+      graph.setNodeAttribute(nodeId, "x", graph.getNodeAttribute(nodeId, "x") - offset.dx);
+      graph.setNodeAttribute(nodeId, "y", graph.getNodeAttribute(nodeId, "y") - offset.dy);
+      offset.dx = 0;
+      offset.dy = 0;
+      activeVibrations.delete(nodeId);
+    }, 100);
+    timeouts.push(resetVt);
+
+    activeVibrations.set(nodeId, { timeouts, offset });
+  }
+
   // Glow overlay system — electric plasma halo on pulsating nodes
   let glowCanvas: HTMLCanvasElement;
   let glowCtx: CanvasRenderingContext2D | null = null;
@@ -1888,26 +1942,8 @@
     // Lighten the node's color
     graph.setNodeAttribute(nodeId, "color", lightenColor(originalColor, 0.4));
 
-    // Subtle positional vibration (opt-in) — short self-contained cycle
-    if (vibrateEnabled) {
-      const cx = graph.getNodeAttribute(nodeId, "x");
-      const cy = graph.getNodeAttribute(nodeId, "y");
-      const amp = 1.2 + Math.random() * 1.0;
-      for (let i = 0; i < 3; i++) {
-        setTimeout(() => {
-          if (!graph || !graph.hasNode(nodeId)) return;
-          const angle = Math.random() * Math.PI * 2;
-          const r = amp * (1 - i * 0.3);
-          graph.setNodeAttribute(nodeId, "x", cx + Math.cos(angle) * r);
-          graph.setNodeAttribute(nodeId, "y", cy + Math.sin(angle) * r);
-        }, i * 35);
-      }
-      setTimeout(() => {
-        if (!graph || !graph.hasNode(nodeId)) return;
-        graph.setNodeAttribute(nodeId, "x", cx);
-        graph.setNodeAttribute(nodeId, "y", cy);
-      }, 110);
-    }
+    // Delegate vibration to standalone function
+    vibrateNode(nodeId);
 
     // Contract back after animation
     const timeout = setTimeout(() => {
@@ -2002,7 +2038,10 @@
       }
       if (viewMode === "heartbeat") {
         const bpm = extractBPM({ payload });
-        if (bpm) heartbeatBPMs.set(attrNodeId, bpm);
+        if (bpm) {
+          heartbeatBPMs.set(attrNodeId, bpm);
+          vibrateNode(attrNodeId);
+        }
       }
       if (viewMode === "river") {
         spawnParticle(sensor_id, attribute_id);
@@ -2084,6 +2123,10 @@
       clearTimeout(pulsation.timeout);
     }
     activePulsations.clear();
+    for (const vib of activeVibrations.values()) {
+      for (const vt of vib.timeouts) clearTimeout(vt);
+    }
+    activeVibrations.clear();
     window.removeEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
     window.removeEventListener("graph-activity-event", handleGraphActivity as EventListener);
     window.removeEventListener("attention-changed-event", handleAttentionChanged as EventListener);

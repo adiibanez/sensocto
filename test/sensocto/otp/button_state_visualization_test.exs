@@ -95,8 +95,10 @@ defmodule Sensocto.ButtonStateVisualizationTest do
       Sensocto.AttentionTracker.register_view(sensor_id, "button", "test_user")
       Process.sleep(50)
 
-      # Subscribe to global data topic (used by LensRouter)
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:global")
+      # Subscribe to attention-sharded data topics (used by LensRouter)
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:attention:high")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:attention:medium")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "data:attention:low")
 
       SimpleSensor.put_attribute(sensor_id, %{
         attribute_id: "button",

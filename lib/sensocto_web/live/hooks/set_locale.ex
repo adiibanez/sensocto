@@ -37,6 +37,7 @@ defmodule SensoctoWeb.Live.Hooks.SetLocale do
     socket =
       socket
       |> assign(:locale, locale)
+      |> assign(:locale_label, locale_label(locale))
       |> assign(:locales, @locale_options)
       |> assign(:current_uri_path, "/")
       |> attach_hook(:locale_uri, :handle_params, &track_uri/3)
@@ -89,5 +90,12 @@ defmodule SensoctoWeb.Live.Hooks.SetLocale do
   defp default_locale do
     Application.get_env(:sensocto, SensoctoWeb.Gettext, [])
     |> Keyword.get(:default_locale, "en")
+  end
+
+  defp locale_label(code) do
+    Enum.find_value(@locale_options, String.upcase(code), fn
+      {label, ^code} -> label
+      _ -> nil
+    end)
   end
 end

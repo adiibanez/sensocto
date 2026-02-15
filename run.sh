@@ -11,9 +11,12 @@
 # +swt - Scheduler wakeup threshold
 # +spp - Enable/disable scheduler poll for IO (true/false)
 
-# Uncomment/adjust these based on your needs:
-# ERL_FLAGS="+hms 8388608"  # 8MB default heap per process (default is ~233 words)
-export ERL_FLAGS=""
+# Production-grade BEAM tuning (see docs/beam-vm-tuning.md for profiles)
+# +K true       - Enable kernel poll (epoll/kqueue)
+# +A 64         - Async thread pool for NIF/port operations
+# +SDio 64      - Dirty IO schedulers for blocking operations
+# +sbwt none    - No scheduler busy waiting (save CPU)
+export ERL_FLAGS="+K true +A 64 +SDio 64 +sbwt none"
 
 #ERLANG_COOKIE=testlitest AUTH_USERNAME=admin AUTH_PASSWORD=nimda_1234 mix phx.server
 iex --erl "$ERL_FLAGS" --name $NODE_NAME --cookie testlitest -S mix phx.server

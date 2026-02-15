@@ -2,7 +2,6 @@ defmodule Sensocto.SimpleSensor do
   use GenServer
   require Logger
   alias Sensocto.AttributeStoreTiered, as: AttributeStore
-  # SimpleSensorRegistry replaced by Sensocto.DistributedSensorRegistry (Horde-based)
   alias Sensocto.Sensors.Sensor
   alias Sensocto.Otp.RepoReplicatorPool
 
@@ -60,6 +59,8 @@ defmodule Sensocto.SimpleSensor do
         )
     end
 
+    :pg.join(:sensocto_sensors, sensor_id, self())
+
     RepoReplicatorPool.sensor_up(sensor_id)
     broadcast_sensor_registered(state)
 
@@ -68,6 +69,8 @@ defmodule Sensocto.SimpleSensor do
 
   @impl true
   def terminate(_reason, %{:sensor_id => sensor_id} = _state) do
+    :pg.leave(:sensocto_sensors, sensor_id, self())
+
     # Broadcast sensor unregistration for cluster-wide discovery
     broadcast_sensor_unregistered(sensor_id)
 
@@ -383,12 +386,11 @@ defmodule Sensocto.SimpleSensor do
       {:measurement, enriched_attribute}
     )
 
-    # Only broadcast to global topic when there are viewers (attention-aware routing)
-    # Data is already stored in AttributeStore, so viewers can retrieve it on demand
+    # Broadcast to attention-sharded topic when there are viewers
     if state.attention_level != :none do
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
-        "data:global",
+        "data:attention:#{state.attention_level}",
         {:measurement, enriched_attribute}
       )
     end
@@ -428,12 +430,11 @@ defmodule Sensocto.SimpleSensor do
       {:measurements_batch, {sensor_id, broadcast_messages_list}}
     )
 
-    # Only broadcast to global topic when there are viewers (attention-aware routing)
-    # Data is already stored in AttributeStore, so viewers can retrieve it on demand
+    # Broadcast to attention-sharded topic when there are viewers
     if state.attention_level != :none do
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
-        "data:global",
+        "data:attention:#{state.attention_level}",
         {:measurements_batch, {sensor_id, broadcast_messages_list}}
       )
     end
@@ -618,8 +619,7 @@ defmodule Sensocto.SimpleSensor do
   end
 
   def via_tuple(sensor_id) do
-    # Use Horde.Registry for cluster-wide sensor lookup
-    {:via, Horde.Registry, {Sensocto.DistributedSensorRegistry, sensor_id}}
+    {:via, Registry, {Sensocto.SimpleSensorRegistry, sensor_id}}
   end
 
   @doc """
@@ -628,24 +628,22 @@ defmodule Sensocto.SimpleSensor do
   """
   @spec alive?(String.t()) :: boolean()
   def alive?(sensor_id) do
-    case Horde.Registry.lookup(Sensocto.DistributedSensorRegistry, sensor_id) do
+    case Registry.lookup(Sensocto.SimpleSensorRegistry, sensor_id) do
       [{pid, _}] ->
-        pid_node = node(pid)
-
-        if pid_node == node() do
-          # Local PID - can check directly
-          Process.alive?(pid)
-        else
-          # Remote PID - use :rpc with short timeout to check
-          # Returns true if check fails (network issue) to avoid false negatives
-          case :rpc.call(pid_node, Process, :alive?, [pid], 2_000) do
-            {:badrpc, _} -> true
-            result -> result
-          end
-        end
+        Process.alive?(pid)
 
       [] ->
-        false
+        # Check cluster-wide via :pg
+        case :pg.get_members(:sensocto_sensors, sensor_id) do
+          [pid | _] ->
+            case :rpc.call(node(pid), Process, :alive?, [pid], 2_000) do
+              {:badrpc, _} -> true
+              result -> result
+            end
+
+          [] ->
+            false
+        end
     end
   end
 

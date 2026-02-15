@@ -186,13 +186,13 @@ defmodule Sensocto.SensorsDynamicSupervisor do
   end
 
   @doc """
-  Gets all sensor IDs from the distributed sensor registry.
+  Gets all sensor IDs from :pg process groups.
 
-  Uses Horde.Registry for cluster-wide sensor discovery - returns sensors
+  Uses :pg for cluster-wide sensor discovery - returns sensors
   from all nodes in the cluster.
   """
   def get_device_names do
-    Horde.Registry.select(Sensocto.DistributedSensorRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    :pg.which_groups(:sensocto_sensors)
   end
 
   # Function to extract device names (IDs) from the children list

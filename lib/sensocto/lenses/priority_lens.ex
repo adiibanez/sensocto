@@ -169,6 +169,46 @@ defmodule Sensocto.Lenses.PriorityLens do
   end
 
   @doc """
+  Buffer a single measurement for all sockets subscribed to a sensor.
+  Called directly by Router — bypasses PriorityLens GenServer entirely.
+  """
+  def buffer_for_sensor(sensor_id, measurement) do
+    attribute_id = Map.get(measurement, :attribute_id)
+
+    get_sockets_for_sensor(sensor_id)
+    |> Enum.each(fn socket_id ->
+      case :ets.lookup(@sockets_table, socket_id) do
+        [{^socket_id, socket_state}] ->
+          buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement)
+
+        [] ->
+          :ok
+      end
+    end)
+  end
+
+  @doc """
+  Buffer a batch of measurements for all sockets subscribed to a sensor.
+  Called directly by Router — bypasses PriorityLens GenServer entirely.
+  """
+  def buffer_batch_for_sensor(sensor_id, measurements) do
+    sockets = get_sockets_for_sensor(sensor_id)
+
+    Enum.each(sockets, fn socket_id ->
+      case :ets.lookup(@sockets_table, socket_id) do
+        [{^socket_id, socket_state}] ->
+          Enum.each(measurements, fn measurement ->
+            attribute_id = Map.get(measurement, :attribute_id)
+            buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement)
+          end)
+
+        [] ->
+          :ok
+      end
+    end)
+  end
+
+  @doc """
   Get aggregate stats for monitoring. Direct ETS reads, no GenServer call.
   Returns quality distribution, socket count, and sensor subscription counts.
   """
@@ -369,47 +409,6 @@ defmodule Sensocto.Lenses.PriorityLens do
     {:noreply, state}
   end
 
-  # Single measurement from router - write to ETS for interested sockets
-  @impl true
-  def handle_info({:router_measurement, sensor_id, measurement}, state) do
-    attribute_id = Map.get(measurement, :attribute_id)
-
-    # O(1) lookup of interested sockets via reverse index
-    get_sockets_for_sensor(sensor_id)
-    |> Enum.each(fn socket_id ->
-      case :ets.lookup(@sockets_table, socket_id) do
-        [{^socket_id, socket_state}] ->
-          buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement)
-
-        [] ->
-          :ok
-      end
-    end)
-
-    {:noreply, state}
-  end
-
-  # Batch measurements from router
-  @impl true
-  def handle_info({:router_measurements_batch, sensor_id, measurements}, state) do
-    # O(1) lookup of interested sockets via reverse index
-    get_sockets_for_sensor(sensor_id)
-    |> Enum.each(fn socket_id ->
-      case :ets.lookup(@sockets_table, socket_id) do
-        [{^socket_id, socket_state}] ->
-          Enum.each(measurements, fn measurement ->
-            attribute_id = Map.get(measurement, :attribute_id)
-            buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement)
-          end)
-
-        [] ->
-          :ok
-      end
-    end)
-
-    {:noreply, state}
-  end
-
   # Flush timer for a specific socket
   @impl true
   def handle_info({:flush, socket_id}, state) do
@@ -486,8 +485,11 @@ defmodule Sensocto.Lenses.PriorityLens do
   # Private Functions
   # ============================================================================
 
-  # Get all socket_ids subscribed to a sensor (O(1) lookup)
-  defp get_sockets_for_sensor(sensor_id) do
+  @doc """
+  Get all socket_ids subscribed to a sensor (O(1) lookup via reverse index).
+  Public so Router can call directly for ETS bypass.
+  """
+  def get_sockets_for_sensor(sensor_id) do
     case :ets.lookup(@sensor_subs_table, sensor_id) do
       [{^sensor_id, socket_ids}] -> MapSet.to_list(socket_ids)
       [] -> []
@@ -530,7 +532,11 @@ defmodule Sensocto.Lenses.PriorityLens do
     end)
   end
 
-  defp buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement) do
+  @doc """
+  Buffer a single measurement into ETS for a specific socket.
+  Public so Router can write directly, bypassing PriorityLens GenServer mailbox.
+  """
+  def buffer_measurement(socket_id, socket_state, sensor_id, attribute_id, measurement) do
     config = @quality_configs[socket_state.quality]
     key = {socket_id, sensor_id, attribute_id}
 
@@ -562,7 +568,11 @@ defmodule Sensocto.Lenses.PriorityLens do
     end
   end
 
-  defp accumulate_for_digest(key, measurement) do
+  @doc """
+  Accumulate a measurement into a digest entry in ETS.
+  Public so Router can write directly, bypassing PriorityLens GenServer mailbox.
+  """
+  def accumulate_for_digest(key, measurement) do
     payload = measurement.payload
     timestamp = measurement.timestamp || 0
 

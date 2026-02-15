@@ -44,7 +44,9 @@ defmodule Sensocto.RoomStore do
     # user_id => [room_ids]
     user_rooms: %{},
     # Track if iroh sync is available
-    iroh_available: false
+    iroh_available: false,
+    # Track if initial hydration is complete
+    hydrated: false
   ]
 
   # ============================================================================
@@ -53,6 +55,16 @@ defmodule Sensocto.RoomStore do
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @doc """
+  Returns true if initial room hydration is complete.
+  Safe to call even if RoomStore is not yet started.
+  """
+  def ready? do
+    GenServer.call(__MODULE__, :ready?, 2_000)
+  catch
+    :exit, _ -> false
   end
 
   @doc """
@@ -265,6 +277,8 @@ defmodule Sensocto.RoomStore do
     Logger.info("[RoomStore] Hydrating state via HydrationManager...")
 
     # Request hydration from HydrationManager (async, results come via PubSub)
+    room_store_pid = self()
+
     Task.Supervisor.start_child(Sensocto.TaskSupervisor, fn ->
       case HydrationManager.hydrate_all() do
         {:ok, count} ->
@@ -273,9 +287,17 @@ defmodule Sensocto.RoomStore do
         {:error, reason} ->
           Logger.error("[RoomStore] HydrationManager hydration failed: #{inspect(reason)}")
       end
+
+      send(room_store_pid, :hydration_complete)
     end)
 
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:hydration_complete, state) do
+    Logger.info("[RoomStore] Hydration complete, #{map_size(state.rooms)} rooms loaded")
+    {:noreply, %{state | hydrated: true}}
   end
 
   @impl true
@@ -377,6 +399,11 @@ defmodule Sensocto.RoomStore do
   def handle_info(msg, state) do
     Logger.debug("[RoomStore] Unknown message: #{inspect(msg)}")
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_call(:ready?, _from, state) do
+    {:reply, state.hydrated, state}
   end
 
   # ---- Create Room ----

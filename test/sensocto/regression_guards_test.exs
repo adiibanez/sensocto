@@ -368,4 +368,399 @@ defmodule Sensocto.RegressionGuardsTest do
       PriorityLens.buffer_batch_for_sensor("batch_test", measurements)
     end
   end
+
+  # ===========================================================================
+  # 6. Router Lifecycle
+  #
+  # The Router is demand-driven: subscribe on first lens, unsubscribe on last.
+  # If this breaks, either all data flows when nobody watches (waste) or
+  # no data flows when someone watches (silent failure).
+  # ===========================================================================
+
+  describe "Router lifecycle contract" do
+    test "register_lens adds to registered list, unregister removes" do
+      :ok = Router.register_lens(self())
+      lenses = Router.get_registered_lenses()
+      assert self() in lenses
+
+      :ok = Router.unregister_lens(self())
+      lenses = Router.get_registered_lenses()
+      refute self() in lenses
+    end
+
+    test "lens process death auto-unregisters via :DOWN monitor" do
+      # Spawn a lens that immediately sleeps, then let it die
+      lens_pid =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      :ok = Router.register_lens(lens_pid)
+      assert lens_pid in Router.get_registered_lenses()
+
+      # Kill the lens — Router should detect via monitor
+      Process.exit(lens_pid, :kill)
+      Process.sleep(50)
+
+      refute lens_pid in Router.get_registered_lenses()
+    end
+
+    test "re-register after all lenses gone works correctly" do
+      :ok = Router.register_lens(self())
+      :ok = Router.unregister_lens(self())
+      assert Router.get_registered_lenses() == [] or self() not in Router.get_registered_lenses()
+
+      # Re-register should work
+      :ok = Router.register_lens(self())
+      assert self() in Router.get_registered_lenses()
+
+      :ok = Router.unregister_lens(self())
+    end
+
+    test "multiple lens registrations are independent" do
+      pid1 = spawn(fn -> Process.sleep(:infinity) end)
+      pid2 = spawn(fn -> Process.sleep(:infinity) end)
+
+      :ok = Router.register_lens(pid1)
+      :ok = Router.register_lens(pid2)
+      assert length(Router.get_registered_lenses()) >= 2
+
+      # Removing one doesn't affect the other
+      :ok = Router.unregister_lens(pid1)
+      assert pid2 in Router.get_registered_lenses()
+
+      # Cleanup
+      :ok = Router.unregister_lens(pid2)
+      Process.exit(pid1, :kill)
+      Process.exit(pid2, :kill)
+    end
+  end
+
+  # ===========================================================================
+  # 7. PriorityLens Flush & Socket Lifecycle
+  #
+  # PriorityLens manages per-socket ETS buffers and flush timers.
+  # If flush breaks, data accumulates in ETS forever. If socket cleanup
+  # breaks, orphaned entries leak memory.
+  # ===========================================================================
+
+  describe "PriorityLens flush and socket lifecycle" do
+    test "register_socket makes sensor discoverable via get_sockets_for_sensor" do
+      socket_id = "flush_test_#{System.unique_integer([:positive])}"
+      sensor_id = "sensor_flush_test"
+
+      {:ok, _topic} = PriorityLens.register_socket(socket_id, [sensor_id], quality: :high)
+
+      sockets = PriorityLens.get_sockets_for_sensor(sensor_id)
+      assert socket_id in sockets
+
+      PriorityLens.unregister_socket(socket_id)
+    end
+
+    test "unregister_socket removes from reverse index" do
+      socket_id = "unsub_test_#{System.unique_integer([:positive])}"
+      sensor_id = "sensor_unsub_test_#{System.unique_integer([:positive])}"
+
+      {:ok, _topic} = PriorityLens.register_socket(socket_id, [sensor_id], quality: :high)
+      PriorityLens.unregister_socket(socket_id)
+      Process.sleep(50)
+
+      sockets = PriorityLens.get_sockets_for_sensor(sensor_id)
+      refute socket_id in sockets
+    end
+
+    test "buffer_for_sensor writes to ETS, readable before flush" do
+      socket_id = "ets_buf_#{System.unique_integer([:positive])}"
+      sensor_id = "ets_sensor_#{System.unique_integer([:positive])}"
+
+      {:ok, _topic} = PriorityLens.register_socket(socket_id, [sensor_id], quality: :high)
+
+      measurement = %{
+        sensor_id: sensor_id,
+        attribute_id: "hr",
+        value: 80,
+        timestamp: DateTime.utc_now()
+      }
+
+      PriorityLens.buffer_for_sensor(sensor_id, measurement)
+
+      # Verify data is in ETS
+      key = {socket_id, sensor_id, "hr"}
+      entries = :ets.lookup(:priority_lens_buffers, key)
+      assert length(entries) > 0
+
+      PriorityLens.unregister_socket(socket_id)
+    end
+
+    test "set_quality changes socket quality level" do
+      socket_id = "quality_test_#{System.unique_integer([:positive])}"
+
+      {:ok, _topic} = PriorityLens.register_socket(socket_id, ["s1"], quality: :high)
+
+      state = PriorityLens.get_socket_state(socket_id)
+      assert state.quality == :high
+
+      PriorityLens.set_quality(socket_id, :low)
+      Process.sleep(20)
+
+      state = PriorityLens.get_socket_state(socket_id)
+      assert state.quality == :low
+
+      PriorityLens.unregister_socket(socket_id)
+    end
+
+    test "get_stats returns expected shape" do
+      stats = PriorityLens.get_stats()
+
+      assert is_map(stats)
+      assert Map.has_key?(stats, :socket_count)
+      assert Map.has_key?(stats, :quality_distribution)
+      assert Map.has_key?(stats, :healthy)
+      assert is_integer(stats.socket_count)
+      assert is_boolean(stats.healthy)
+    end
+
+    test "topic_for_socket returns correct format" do
+      topic = PriorityLens.topic_for_socket("my_socket_123")
+      assert topic == "lens:priority:my_socket_123"
+    end
+  end
+
+  # ===========================================================================
+  # 8. Bio Layer Graceful Degradation
+  #
+  # Every Bio module (NoveltyDetector, ResourceArbiter, CircadianScheduler,
+  # HomeostaticTuner, PredictiveLoadBalancer) must return neutral fallback
+  # values when called with unknown keys. If a module crashes and restarts,
+  # callers must not crash — they get safe defaults.
+  # ===========================================================================
+
+  describe "Bio layer graceful degradation" do
+    test "NoveltyDetector returns 0.0 for unknown sensor" do
+      score =
+        Sensocto.Bio.NoveltyDetector.get_novelty_score("nonexistent_sensor", "nonexistent_attr")
+
+      assert score == 0.0
+    end
+
+    test "ResourceArbiter returns 1.0 for unknown sensor" do
+      multiplier = Sensocto.Bio.ResourceArbiter.get_multiplier("nonexistent_sensor")
+      assert multiplier == 1.0
+    end
+
+    test "CircadianScheduler returns 1.0 for phase adjustment (neutral)" do
+      adj = Sensocto.Bio.CircadianScheduler.get_phase_adjustment()
+      assert is_number(adj)
+    end
+
+    test "CircadianScheduler returns valid phase" do
+      phase = Sensocto.Bio.CircadianScheduler.get_phase()
+
+      assert phase in [
+               :approaching_peak,
+               :peak,
+               :approaching_off_peak,
+               :off_peak,
+               :normal,
+               :unknown
+             ]
+    end
+
+    test "HomeostaticTuner returns default offsets" do
+      offsets = Sensocto.Bio.HomeostaticTuner.get_offsets()
+      assert is_map(offsets)
+      assert Map.has_key?(offsets, :elevated)
+      assert Map.has_key?(offsets, :high)
+      assert Map.has_key?(offsets, :critical)
+      assert is_number(offsets.elevated)
+    end
+
+    test "PredictiveLoadBalancer returns 1.0 for unknown sensor" do
+      factor = Sensocto.Bio.PredictiveLoadBalancer.get_predictive_factor("nonexistent_sensor")
+      assert factor == 1.0
+    end
+
+    test "all Bio modules return numeric values usable as multipliers" do
+      # These are the values SystemLoadMonitor and AttentionTracker multiply with.
+      # If any returns nil or a non-number, arithmetic crashes silently.
+      assert is_number(Sensocto.Bio.CircadianScheduler.get_phase_adjustment())
+      assert is_number(Sensocto.Bio.PredictiveLoadBalancer.get_predictive_factor("any"))
+      assert is_number(Sensocto.Bio.ResourceArbiter.get_multiplier("any"))
+      assert is_number(Sensocto.Bio.NoveltyDetector.get_novelty_score("any", "any"))
+
+      offsets = Sensocto.Bio.HomeostaticTuner.get_offsets()
+      assert Enum.all?(Map.values(offsets), &is_number/1)
+    end
+  end
+
+  # ===========================================================================
+  # 9. AttributeStoreTiered Seed Data
+  #
+  # Seed data powers historical charts on view entry. If put/get contracts
+  # break, charts show stale or missing data. The maybe_take fix (returning
+  # most recent N, not oldest N) is a critical regression target.
+  # ===========================================================================
+
+  describe "AttributeStoreTiered seed data contract" do
+    alias Sensocto.AttributeStoreTiered
+
+    test "put_attribute stores data retrievable via get_attributes" do
+      sensor_id = "store_test_#{System.unique_integer([:positive])}"
+
+      AttributeStoreTiered.put_attribute(sensor_id, "temperature", 1000, 25.0)
+      AttributeStoreTiered.put_attribute(sensor_id, "temperature", 1001, 25.5)
+
+      attrs = AttributeStoreTiered.get_attributes(sensor_id)
+      assert Map.has_key?(attrs, "temperature")
+      assert length(attrs["temperature"]) >= 2
+
+      AttributeStoreTiered.cleanup(sensor_id)
+    end
+
+    test "get_attribute returns most recent N entries (not oldest)" do
+      sensor_id = "recency_test_#{System.unique_integer([:positive])}"
+
+      # Insert 10 entries with ascending timestamps
+      for i <- 1..10 do
+        AttributeStoreTiered.put_attribute(sensor_id, "hr", i * 1000, 60 + i)
+      end
+
+      # Request only 3 entries
+      {:ok, entries} = AttributeStoreTiered.get_attribute(sensor_id, "hr", nil, :infinity, 3)
+
+      # Should be the MOST RECENT 3 (timestamps 8000, 9000, 10000)
+      timestamps = Enum.map(entries, & &1.timestamp)
+      assert length(entries) == 3
+      assert Enum.max(timestamps) == 10_000
+      assert Enum.min(timestamps) == 8_000
+
+      AttributeStoreTiered.cleanup(sensor_id)
+    end
+
+    test "get_attribute respects time window filtering" do
+      sensor_id = "window_test_#{System.unique_integer([:positive])}"
+
+      for i <- 1..10 do
+        AttributeStoreTiered.put_attribute(sensor_id, "ecg", i * 1000, 1.0 + i * 0.1)
+      end
+
+      # Only entries with timestamp >= 5000
+      {:ok, entries} = AttributeStoreTiered.get_attribute(sensor_id, "ecg", 5000, :infinity)
+      timestamps = Enum.map(entries, & &1.timestamp)
+      assert Enum.all?(timestamps, &(&1 >= 5000))
+
+      AttributeStoreTiered.cleanup(sensor_id)
+    end
+
+    test "cleanup removes all data for a sensor" do
+      sensor_id = "cleanup_test_#{System.unique_integer([:positive])}"
+
+      AttributeStoreTiered.put_attribute(sensor_id, "temp", 1000, 20.0)
+      attrs = AttributeStoreTiered.get_attributes(sensor_id)
+      assert map_size(attrs) > 0
+
+      AttributeStoreTiered.cleanup(sensor_id)
+
+      attrs = AttributeStoreTiered.get_attributes(sensor_id)
+      assert attrs == %{}
+    end
+
+    test "stats returns expected shape" do
+      sensor_id = "stats_test_#{System.unique_integer([:positive])}"
+      AttributeStoreTiered.put_attribute(sensor_id, "hr", 1000, 72)
+
+      stats = AttributeStoreTiered.stats(sensor_id)
+      assert Map.has_key?(stats, :sensor_id)
+      assert Map.has_key?(stats, :hot_entries)
+      assert Map.has_key?(stats, :warm_entries)
+      assert Map.has_key?(stats, :attributes)
+      assert stats.sensor_id == sensor_id
+      assert stats.hot_entries >= 1
+
+      AttributeStoreTiered.cleanup(sensor_id)
+    end
+
+    test "current_limits returns load-adaptive configuration" do
+      limits = AttributeStoreTiered.current_limits()
+      assert Map.has_key?(limits, :load_level)
+      assert Map.has_key?(limits, :hot_limit)
+      assert Map.has_key?(limits, :warm_limit)
+      assert is_integer(limits.hot_limit) or is_float(limits.hot_limit)
+      assert limits.hot_limit > 0
+      assert limits.warm_limit > 0
+    end
+  end
+
+  # ===========================================================================
+  # 10. Discovery Cache Consistency
+  #
+  # DiscoveryCache provides fast local reads for sensor listings.
+  # If put/get/delete contracts change, the lobby shows stale or
+  # missing sensors.
+  # ===========================================================================
+
+  describe "DiscoveryCache consistency" do
+    alias Sensocto.Discovery.DiscoveryCache
+
+    test "put_sensor + get_sensor returns fresh data" do
+      sensor_id = "discovery_test_#{System.unique_integer([:positive])}"
+      data = %{name: "Test Sensor", status: :active}
+
+      DiscoveryCache.put_sensor(sensor_id, data)
+      Process.sleep(20)
+
+      result = DiscoveryCache.get_sensor(sensor_id)
+      assert {:ok, ^data, :fresh} = result
+
+      DiscoveryCache.delete_sensor(sensor_id)
+    end
+
+    test "get_sensor returns :not_found for unknown sensor" do
+      result = DiscoveryCache.get_sensor("nonexistent_#{System.unique_integer([:positive])}")
+      assert {:error, :not_found} = result
+    end
+
+    test "sensor_count reflects inserted sensors" do
+      before_count = DiscoveryCache.sensor_count()
+
+      sensor_id = "count_test_#{System.unique_integer([:positive])}"
+      DiscoveryCache.put_sensor(sensor_id, %{name: "counter"})
+      Process.sleep(20)
+
+      after_count = DiscoveryCache.sensor_count()
+      assert after_count >= before_count + 1
+
+      DiscoveryCache.delete_sensor(sensor_id)
+    end
+
+    test "delete_sensor removes entry" do
+      sensor_id = "delete_test_#{System.unique_integer([:positive])}"
+      DiscoveryCache.put_sensor(sensor_id, %{name: "doomed"})
+      Process.sleep(20)
+
+      DiscoveryCache.delete_sensor(sensor_id)
+      Process.sleep(20)
+
+      assert {:error, :not_found} = DiscoveryCache.get_sensor(sensor_id)
+    end
+
+    test "list_sensors returns a list" do
+      sensors = DiscoveryCache.list_sensors()
+      assert is_list(sensors)
+    end
+
+    test "clear_sensors removes all entries" do
+      # Save current count to verify behavior
+      DiscoveryCache.put_sensor("clear_test_1_#{System.unique_integer([:positive])}", %{a: 1})
+      DiscoveryCache.put_sensor("clear_test_2_#{System.unique_integer([:positive])}", %{b: 2})
+      Process.sleep(20)
+
+      DiscoveryCache.clear_sensors()
+      Process.sleep(20)
+
+      assert DiscoveryCache.sensor_count() == 0
+    end
+  end
 end

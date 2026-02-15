@@ -1766,6 +1766,15 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # AttentionTracker crashed and restarted — re-register all composite attention views
+  # so GenServer state is rebuilt and sensors keep broadcasting
+  @impl true
+  def handle_info(:attention_tracker_restarted, socket) do
+    Logger.warning("[LobbyLive] AttentionTracker restarted, re-registering attention views")
+    ensure_attention_for_composite_sensors(socket, socket.assigns[:live_action])
+    {:noreply, socket}
+  end
+
   # Handle sensor attention changes to re-filter sensor list in realtime
   # Debounced to avoid excessive re-renders from rapid attention changes
   @impl true

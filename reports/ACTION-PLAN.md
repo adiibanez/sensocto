@@ -68,6 +68,8 @@
 | R-007 | DONE | SafeKeys atom exhaustion fix (ConnectorServer, SensorServer) |
 | R-008 | DONE | Dead code removal (duplicate watcher, legacy handlers) |
 | R-009 | DONE | Bio.Supervisor explicit restart limits (max_restarts: 10, max_seconds: 60) |
+| R-010 | DONE | Adaptive attention decay (load-correlated thresholds, two-tier cleanup) |
+| R-011 | DONE | Honey badger AttentionTracker (crash-resilient restart, ETS preservation, re-register broadcast) |
 
 ---
 
@@ -91,6 +93,10 @@
 16. `lib/sensocto/utils/otp_dsl_genserver.ex` - Removed compile-time IO.puts
 17. `lib/sensocto/accounts/user/senders/*.ex` - Centralized mailer_from config
 18. `lib/sensocto/bio/supervisor.ex` - Explicit restart limits
+19. `lib/sensocto/otp/attention_tracker.ex` - Adaptive decay, honey badger crash resilience
+20. `lib/sensocto_web/live/lobby_live.ex` - Re-register attention on tracker restart
+21. `lib/sensocto_web/live/index_live.ex` - Re-register attention on tracker restart
+22. `lib/sensocto_web/live/admin/system_status_live.ex` - Handle tracker restart message
 
 ---
 

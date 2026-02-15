@@ -440,20 +440,25 @@ ConnectorManager uses `:pg` (process groups) for cluster-wide connector discover
 
 ### 6.2 ETS Ownership and Crash Impact
 
-**Critical concern: AttentionTracker owns 3 ETS tables directly.**
+**RESOLVED (Feb 15, 2026):** AttentionTracker now has full "honey badger" crash resilience.
 
-If AttentionTracker crashes:
-1. All 3 ETS tables are destroyed (ETS tables die with their owner)
-2. The supervisor restarts AttentionTracker
-3. New empty ETS tables are created
-4. All cached attention levels are lost
-5. All sensors revert to `attention_level: :none`
-6. All `data:global` broadcasts stop (attention gate is closed)
-7. LiveViews get no new data until they re-register views
+1. **ETS TableOwner** (`Sensocto.AttentionTracker.TableOwner`): Separate process owns all 3 ETS tables. Started before AttentionTracker in Domain.Supervisor (line 66 vs 69). Tables survive tracker crashes.
 
-The system would self-heal (LiveViews would re-register on next interaction), but there would be a period of silence.
+2. **Crash-resilient restart**: On restart, `init/1` preserves ETS data instead of clearing it. Sensors continue broadcasting at their last-known attention levels while GenServer state rebuilds.
 
-**Better pattern (already used by CircuitBreaker and AttributeStoreTiered):** Use a separate `TableOwner` process that does nothing except own the ETS tables. The GenServer that uses the tables reads/writes but does not own them. If the GenServer crashes, tables survive. The `TableOwner` is a simple process unlikely to crash.
+3. **Re-registration broadcast**: After crash-restart, broadcasts `:attention_tracker_restarted` on `"attention:lobby"` PubSub topic. LobbyLive and IndexLive re-register all their composite attention views, rebuilding GenServer state from actual active viewers.
+
+4. **Recovery grace period**: 60s post-crash window where cleanup is suspended, giving LiveViews time to re-register. After recovery, `reconcile_ets_with_state/1` cleans up orphaned ETS entries not backed by re-registered state.
+
+5. **Restart counting**: Uses `persistent_term` to track crash count across restarts for observability.
+
+**Crash behavior now:**
+1. AttentionTracker crashes → ETS tables survive (owned by TableOwner)
+2. Supervisor restarts AttentionTracker → ETS data preserved, recovery mode active
+3. Broadcast `:attention_tracker_restarted` → LiveViews re-register views
+4. GenServer state rebuilt from actual active viewers within seconds
+5. After 60s, orphaned ETS entries reconciled and cleaned up
+6. Zero data flow interruption for active viewers
 
 ### 6.3 ETS Safety Assessment
 
@@ -497,7 +502,7 @@ The `write_concurrency: true` flag on AttributeStoreTiered tables enables concur
 | `code_change/3` | Completely absent | Blocks safe hot code upgrades |
 | Distributed sensor supervision | Local only | Sensors lost on node crash |
 | Circuit breaker failure decay | No decay -- counter only resets on success | Permanent half-open state possible |
-| ETS table ownership separation | Missing for AttentionTracker | Tables lost on crash |
+| ETS table ownership separation | **RESOLVED** — TableOwner + honey badger restart | Tables survive crashes, auto re-register |
 | Health check endpoint | Unknown (not found in analysis) | Operational blind spot |
 | Bulkhead pattern | Absent | No isolation between sensor types |
 | Rate limiting | Absent at PubSub level | Fast producer can flood topics |
@@ -647,9 +652,9 @@ Resolved Feb 2026: migrated to `:pg` + local Registry. Sensors are explicitly ep
 
 ### High Priority
 
-**10.3 Separate AttentionTracker ETS Ownership**
+**10.3 ~~Separate AttentionTracker ETS Ownership~~** (RESOLVED)
 
-Create `Sensocto.AttentionTracker.TableOwner` (following the pattern already established by `CircuitBreaker.TableOwner` and `AttributeStoreTiered.TableOwner`). Start it before `AttentionTracker` in the supervision tree. This ensures attention caches survive tracker crashes.
+Resolved Feb 15, 2026: `AttentionTracker.TableOwner` exists at `lib/sensocto/otp/attention_tracker/table_owner.ex`. Started before AttentionTracker in Domain.Supervisor. Full honey badger resilience implemented: crash-resilient restart preserves ETS data, broadcasts re-register request to LiveViews, 60s recovery grace period, ETS reconciliation after recovery.
 
 **10.4 Fix Domain.Supervisor Strategy**
 
@@ -1202,6 +1207,6 @@ Resolved:
 Remaining risks:
 1. The absence of `code_change/3` blocks safe hot code upgrades
 2. The Domain.Supervisor strategy mismatch creates silent failure modes
-3. AttentionTracker ETS tables die with the process (no TableOwner separation)
+3. ~~AttentionTracker ETS tables die with the process~~ (RESOLVED: TableOwner + honey badger restart)
 
 The system's foundations are sound and getting stronger. The supervision tree hierarchy is well-layered, the data pipeline is highly optimized (ETS direct-write bypasses GenServer serialization), and the biomimetic layer adds genuine adaptive capacity. The honey badger resilience pattern — connectors and sensors that self-heal, detect permanent failures, and carry on — makes this system increasingly suitable for autonomous agent-driven maintenance.

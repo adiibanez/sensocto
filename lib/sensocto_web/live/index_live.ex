@@ -228,6 +228,18 @@ defmodule SensoctoWeb.IndexLive do
   end
 
   # Handle attention changes from any sensor - debounce to avoid excessive re-sorting
+  # AttentionTracker crashed and restarted — re-register attention for visible sensors
+  @impl true
+  def handle_info(:attention_tracker_restarted, socket) do
+    user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
+
+    Enum.each(socket.assigns[:lobby_sensor_ids] || [], fn sensor_id ->
+      Sensocto.AttentionTracker.register_view(sensor_id, "index_preview", user_id)
+    end)
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do
     # Cancel any pending debounce timer

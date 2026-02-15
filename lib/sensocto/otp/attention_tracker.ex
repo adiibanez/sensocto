@@ -21,11 +21,6 @@ defmodule Sensocto.AttentionTracker do
   require Logger
 
   @cleanup_interval :timer.seconds(30)
-  @stale_threshold :timer.seconds(60)
-
-  # Attention boost decay durations (how long boost lasts after interaction ends)
-  @focus_boost_duration :timer.seconds(5)
-  @hover_boost_duration :timer.seconds(2)
 
   # ETS table names for fast concurrent reads
   @attention_levels_table :attention_levels_cache
@@ -48,7 +43,9 @@ defmodule Sensocto.AttentionTracker do
     :pinned_sensors,
     :battery_states,
     :boost_timers,
-    :last_cleanup
+    :last_cleanup,
+    :recovery_until,
+    :restart_count
   ]
 
   # ============================================================================
@@ -400,9 +397,9 @@ defmodule Sensocto.AttentionTracker do
   @impl true
   def init(_opts) do
     # Tables are owned by AttentionTracker.TableOwner (survives tracker crashes).
-    # Clear any stale data from a previous tracker instance, then populate config.
-    :ets.delete_all_objects(@attention_levels_table)
-    :ets.delete_all_objects(@sensor_attention_table)
+    # HONEY BADGER: Don't clear ETS data on restart. The surviving ETS tables
+    # keep sensors broadcasting at their last-known attention levels while we
+    # rebuild GenServer state from re-registering LiveViews.
 
     # Re-populate config table (static values, idempotent)
     :ets.delete_all_objects(@attention_config_table)
@@ -411,6 +408,19 @@ defmodule Sensocto.AttentionTracker do
       :ets.insert(@attention_config_table, {level, config})
     end
 
+    # Track restarts via persistent_term (survives GenServer crashes)
+    restart_count = get_and_increment_restart_count()
+    is_recovery = restart_count > 0
+
+    # Recovery grace period: 60s after crash-restart
+    # During recovery, cleanup is suspended to give LiveViews time to re-register
+    recovery_until =
+      if is_recovery do
+        DateTime.add(DateTime.utc_now(), 60, :second)
+      else
+        nil
+      end
+
     schedule_cleanup()
 
     state = %__MODULE__{
@@ -418,12 +428,28 @@ defmodule Sensocto.AttentionTracker do
       pinned_sensors: %{},
       battery_states: %{},
       boost_timers: %{},
-      last_cleanup: DateTime.utc_now()
+      last_cleanup: DateTime.utc_now(),
+      recovery_until: recovery_until,
+      restart_count: restart_count
     }
 
-    Logger.info(
-      "AttentionTracker started with ETS caching, battery awareness, and attention decay"
-    )
+    if is_recovery do
+      ets_sensors = count_ets_sensors()
+
+      Logger.warning(
+        "[AttentionTracker] Restarted (crash ##{restart_count}). " <>
+          "Preserving #{ets_sensors} sensor ETS entries. " <>
+          "Recovery mode active for 60s. Broadcasting re-register request."
+      )
+
+      # Ask all LiveViews to re-register their attention views
+      # This rebuilds GenServer state from actual active viewers
+      send(self(), :broadcast_reregister)
+    else
+      Logger.info(
+        "AttentionTracker started with ETS caching, battery awareness, and attention decay"
+      )
+    end
 
     {:ok, state}
   end
@@ -706,44 +732,25 @@ defmodule Sensocto.AttentionTracker do
 
   @impl true
   def handle_info(:cleanup, state) do
-    now = DateTime.utc_now()
-    threshold = DateTime.add(now, -div(@stale_threshold, 1000), :second)
-
-    # Clean up stale attention records and track removed entries for ETS cleanup
-    {new_attention_state, removed_entries} =
-      Enum.reduce(state.attention_state, {%{}, []}, fn {sensor_id, attributes}, {acc, removed} ->
-        {cleaned_attributes, removed_attrs} =
-          Enum.reduce(attributes, {%{}, removed}, fn {attr_id, attr_state}, {attr_acc, rem_acc} ->
-            if DateTime.compare(attr_state.last_updated, threshold) == :lt do
-              {attr_acc, [{sensor_id, attr_id} | rem_acc]}
-            else
-              {Map.put(attr_acc, attr_id, attr_state), rem_acc}
-            end
-          end)
-
-        if map_size(cleaned_attributes) == 0 do
-          {acc, removed_attrs}
-        else
-          {Map.put(acc, sensor_id, cleaned_attributes), removed_attrs}
-        end
-      end)
-
-    # Clean up ETS entries for removed records
-    for {sensor_id, attr_id} <- removed_entries do
-      delete_ets_cache(sensor_id, attr_id)
+    # During recovery, skip cleanup to give LiveViews time to re-register
+    if in_recovery?(state) do
+      schedule_cleanup()
+      {:noreply, state}
+    else
+      do_cleanup(state)
     end
+  end
 
-    # Find sensors that were completely removed and clean up their sensor-level ETS entries
-    old_sensors = Map.keys(state.attention_state)
-    new_sensors = Map.keys(new_attention_state)
-    removed_sensors = old_sensors -- new_sensors
+  # Broadcast re-register request to all LiveViews after crash-restart
+  @impl true
+  def handle_info(:broadcast_reregister, state) do
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "attention:lobby",
+      :attention_tracker_restarted
+    )
 
-    for sensor_id <- removed_sensors do
-      :ets.delete(@sensor_attention_table, sensor_id)
-    end
-
-    schedule_cleanup()
-    {:noreply, %{state | attention_state: new_attention_state, last_cleanup: now}}
+    {:noreply, state}
   end
 
   # Handle boost decay timer expiry
@@ -771,6 +778,74 @@ defmodule Sensocto.AttentionTracker do
   # ============================================================================
   # Private Functions
   # ============================================================================
+
+  defp do_cleanup(state) do
+    now = DateTime.utc_now()
+    active_cutoff = DateTime.add(now, -div(active_viewer_stale_threshold(), 1000), :second)
+    orphan_cutoff = DateTime.add(now, -div(orphan_stale_threshold(), 1000), :second)
+
+    # Clean up stale attention records, using different thresholds:
+    # - Records WITH active viewers: generous threshold (30 min under normal load)
+    # - Records WITHOUT viewers (orphaned): shorter safety-net threshold
+    {new_attention_state, removed_entries} =
+      Enum.reduce(state.attention_state, {%{}, []}, fn {sensor_id, attributes}, {acc, removed} ->
+        {cleaned_attributes, removed_attrs} =
+          Enum.reduce(attributes, {%{}, removed}, fn {attr_id, attr_state}, {attr_acc, rem_acc} ->
+            cutoff =
+              if has_active_viewers?(attr_state), do: active_cutoff, else: orphan_cutoff
+
+            if DateTime.compare(attr_state.last_updated, cutoff) == :lt do
+              {attr_acc, [{sensor_id, attr_id} | rem_acc]}
+            else
+              {Map.put(attr_acc, attr_id, attr_state), rem_acc}
+            end
+          end)
+
+        if map_size(cleaned_attributes) == 0 do
+          {acc, removed_attrs}
+        else
+          {Map.put(acc, sensor_id, cleaned_attributes), removed_attrs}
+        end
+      end)
+
+    # Clean up ETS entries for removed records
+    for {sensor_id, attr_id} <- removed_entries do
+      delete_ets_cache(sensor_id, attr_id)
+    end
+
+    # Find sensors that were completely removed and clean up their sensor-level ETS entries
+    old_sensors = Map.keys(state.attention_state)
+    new_sensors = Map.keys(new_attention_state)
+    removed_sensors = old_sensors -- new_sensors
+
+    for sensor_id <- removed_sensors do
+      :ets.delete(@sensor_attention_table, sensor_id)
+    end
+
+    # After recovery, reconcile ETS with GenServer state:
+    # Clean up orphaned ETS entries that weren't re-registered
+    if state.recovery_until != nil do
+      reconcile_ets_with_state(new_attention_state)
+    end
+
+    schedule_cleanup()
+
+    {:noreply,
+     %{state | attention_state: new_attention_state, last_cleanup: now, recovery_until: nil}}
+  end
+
+  defp reconcile_ets_with_state(attention_state) do
+    known_sensors = Map.keys(attention_state) |> MapSet.new()
+
+    # Walk the sensor_attention ETS table and remove entries not in GenServer state
+    :ets.tab2list(@sensor_attention_table)
+    |> Enum.each(fn {sensor_id, _level} ->
+      unless MapSet.member?(known_sensors, sensor_id) do
+        :ets.delete(@sensor_attention_table, sensor_id)
+        :ets.match_delete(@attention_levels_table, {{sensor_id, :_}, :_})
+      end
+    end)
+  end
 
   defp update_attention(state, sensor_id, attribute_id, user_id, action) do
     now = DateTime.utc_now()
@@ -803,7 +878,7 @@ defmodule Sensocto.AttentionTracker do
 
         :remove_hover ->
           # Set hover boost expiry
-          hover_boost_until = DateTime.add(now, div(@hover_boost_duration, 1000), :second)
+          hover_boost_until = DateTime.add(now, div(hover_boost_duration(), 1000), :second)
 
           %{
             attr_state
@@ -823,7 +898,7 @@ defmodule Sensocto.AttentionTracker do
 
         :remove_focus ->
           # Set focus boost expiry
-          focus_boost_until = DateTime.add(now, div(@focus_boost_duration, 1000), :second)
+          focus_boost_until = DateTime.add(now, div(focus_boost_duration(), 1000), :second)
 
           %{
             attr_state
@@ -846,8 +921,8 @@ defmodule Sensocto.AttentionTracker do
 
     duration =
       case boost_type do
-        :focus -> @focus_boost_duration
-        :hover -> @hover_boost_duration
+        :focus -> focus_boost_duration()
+        :hover -> hover_boost_duration()
       end
 
     # Cancel any existing timer for this key
@@ -1084,5 +1159,97 @@ defmodule Sensocto.AttentionTracker do
 
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup, @cleanup_interval)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Load-adaptive thresholds
+  #
+  # Attention decay correlates with system health. Under normal load, viewers
+  # maintain attention indefinitely (LiveView terminate/2 handles cleanup).
+  # Under pressure, attention is shed aggressively to reduce data flow.
+  # ---------------------------------------------------------------------------
+
+  defp has_active_viewers?(attr_state) do
+    viewers = Map.get(attr_state, :viewers, MapSet.new())
+    hovered = Map.get(attr_state, :hovered, MapSet.new())
+    focused = Map.get(attr_state, :focused, MapSet.new())
+    MapSet.size(viewers) > 0 or MapSet.size(hovered) > 0 or MapSet.size(focused) > 0
+  end
+
+  defp active_viewer_stale_threshold do
+    case load_level() do
+      :normal -> :timer.minutes(30)
+      :elevated -> :timer.minutes(5)
+      :high -> :timer.minutes(2)
+      :critical -> :timer.seconds(30)
+    end
+  end
+
+  defp orphan_stale_threshold do
+    case load_level() do
+      :normal -> :timer.seconds(120)
+      :elevated -> :timer.seconds(60)
+      :high -> :timer.seconds(30)
+      :critical -> :timer.seconds(15)
+    end
+  end
+
+  defp focus_boost_duration do
+    case load_level() do
+      :normal -> :timer.seconds(15)
+      :elevated -> :timer.seconds(8)
+      :high -> :timer.seconds(5)
+      :critical -> :timer.seconds(2)
+    end
+  end
+
+  defp hover_boost_duration do
+    case load_level() do
+      :normal -> :timer.seconds(8)
+      :elevated -> :timer.seconds(4)
+      :high -> :timer.seconds(2)
+      :critical -> :timer.seconds(1)
+    end
+  end
+
+  defp load_level do
+    try do
+      Sensocto.SystemLoadMonitor.get_load_level()
+    catch
+      :exit, _ -> :normal
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Honey badger resilience helpers
+  # ---------------------------------------------------------------------------
+
+  defp get_and_increment_restart_count do
+    key = {__MODULE__, :restart_count}
+
+    count =
+      try do
+        :persistent_term.get(key)
+      rescue
+        ArgumentError -> 0
+      end
+
+    :persistent_term.put(key, count + 1)
+    count
+  end
+
+  defp count_ets_sensors do
+    try do
+      :ets.info(@sensor_attention_table, :size) || 0
+    rescue
+      ArgumentError -> 0
+    end
+  end
+
+  defp in_recovery?(state) do
+    case state.recovery_until do
+      nil -> false
+      until -> DateTime.compare(DateTime.utc_now(), until) == :lt
+    end
   end
 end

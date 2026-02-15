@@ -325,4 +325,151 @@ defmodule Sensocto.AttentionTrackerTest do
       assert state == :normal
     end
   end
+
+  # ===========================================================================
+  # Honey Badger Resilience Tests
+  # ===========================================================================
+
+  describe "ETS preservation on crash-restart" do
+    test "ETS data survives AttentionTracker restart", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id,
+      user_id: user_id
+    } do
+      # Register attention — this writes to both GenServer state and ETS
+      AttentionTracker.register_view(sensor_id, attr_id, user_id)
+      Process.sleep(50)
+
+      assert AttentionTracker.get_attention_level(sensor_id, attr_id) == :medium
+      assert AttentionTracker.get_sensor_attention_level(sensor_id) == :medium
+
+      # Stop the AttentionTracker (simulates a crash)
+      pid = Process.whereis(Sensocto.AttentionTracker)
+      GenServer.stop(pid, :kill)
+      Process.sleep(100)
+
+      # ETS tables are owned by TableOwner, so they should still have data
+      # The tracker should have been restarted by the supervisor
+      assert Process.whereis(Sensocto.AttentionTracker) != nil
+
+      # ETS data should still be readable (preserved from before the crash)
+      assert :ets.lookup(:sensor_attention_cache, sensor_id) == [{sensor_id, :medium}]
+
+      assert :ets.lookup(:attention_levels_cache, {sensor_id, attr_id}) == [
+               {{sensor_id, attr_id}, :medium}
+             ]
+    end
+
+    test "re-registration broadcast is sent after crash-restart" do
+      # Subscribe to the lobby topic to catch the re-register message
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
+
+      # Stop the AttentionTracker (simulates a crash)
+      pid = Process.whereis(Sensocto.AttentionTracker)
+      GenServer.stop(pid, :kill)
+      Process.sleep(200)
+
+      # Should have received the re-register broadcast
+      assert_received :attention_tracker_restarted
+    end
+
+    test "GenServer state is empty after restart but ETS preserved", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id,
+      user_id: user_id
+    } do
+      AttentionTracker.register_view(sensor_id, attr_id, user_id)
+      Process.sleep(50)
+
+      # Stop and restart
+      pid = Process.whereis(Sensocto.AttentionTracker)
+      GenServer.stop(pid, :kill)
+      Process.sleep(100)
+
+      # GenServer state should be empty (attention_state map is reset)
+      state = AttentionTracker.get_state()
+      assert state.attention_state == %{}
+
+      # But ETS reads still work — sensors keep broadcasting
+      assert :ets.lookup(:sensor_attention_cache, sensor_id) == [{sensor_id, :medium}]
+    end
+  end
+
+  describe "recovery mode" do
+    test "recovery_until is set after crash-restart" do
+      # Stop the AttentionTracker (simulates a crash)
+      pid = Process.whereis(Sensocto.AttentionTracker)
+      GenServer.stop(pid, :kill)
+      Process.sleep(100)
+
+      state = AttentionTracker.get_state()
+      assert state.recovery_until != nil
+      assert DateTime.compare(state.recovery_until, DateTime.utc_now()) == :gt
+    end
+
+    test "restart_count increments on each restart" do
+      state_before = AttentionTracker.get_state()
+      count_before = state_before.restart_count
+
+      pid = Process.whereis(Sensocto.AttentionTracker)
+      GenServer.stop(pid, :kill)
+      Process.sleep(100)
+
+      state_after = AttentionTracker.get_state()
+      assert state_after.restart_count == count_before + 1
+    end
+  end
+
+  describe "two-tier cleanup (has_active_viewers?)" do
+    test "records with active viewers survive cleanup", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id,
+      user_id: user_id
+    } do
+      # Register a view — this record has active viewers
+      AttentionTracker.register_view(sensor_id, attr_id, user_id)
+      Process.sleep(50)
+
+      assert AttentionTracker.get_attention_level(sensor_id, attr_id) == :medium
+
+      # Manually trigger cleanup
+      send(Process.whereis(Sensocto.AttentionTracker), :cleanup)
+      Process.sleep(50)
+
+      # Record should survive — has active viewers, threshold is ~30 min
+      assert AttentionTracker.get_attention_level(sensor_id, attr_id) == :medium
+    end
+  end
+
+  describe "re-registration rebuilds state" do
+    test "re-registering after crash restores GenServer state", %{
+      sensor_id: sensor_id,
+      attribute_id: attr_id,
+      user_id: user_id
+    } do
+      AttentionTracker.register_view(sensor_id, attr_id, user_id)
+      Process.sleep(50)
+      assert AttentionTracker.get_attention_level(sensor_id, attr_id) == :medium
+
+      # Crash the tracker
+      pid = Process.whereis(Sensocto.AttentionTracker)
+      GenServer.stop(pid, :kill)
+      Process.sleep(100)
+
+      # GenServer state is empty
+      state = AttentionTracker.get_state()
+      assert state.attention_state == %{}
+
+      # Re-register (simulating what LobbyLive does on :attention_tracker_restarted)
+      AttentionTracker.register_view(sensor_id, attr_id, user_id)
+      Process.sleep(50)
+
+      # GenServer state is rebuilt
+      state = AttentionTracker.get_state()
+      assert Map.has_key?(state.attention_state, sensor_id)
+
+      # ETS still correct
+      assert AttentionTracker.get_attention_level(sensor_id, attr_id) == :medium
+    end
+  end
 end

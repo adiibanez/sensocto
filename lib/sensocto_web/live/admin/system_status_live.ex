@@ -66,6 +66,9 @@ defmodule SensoctoWeb.Admin.SystemStatusLive do
     {:noreply, assign(socket, :system_metrics, system_metrics)}
   end
 
+  @impl true
+  def handle_info(:attention_tracker_restarted, socket), do: {:noreply, socket}
+
   # Handle attention changes - debounce to avoid excessive ETS scans
   @impl true
   def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do

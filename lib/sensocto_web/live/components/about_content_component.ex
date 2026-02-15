@@ -436,6 +436,7 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
       |> assign(:research_summaries, research_summaries())
       |> assign(:research_summary_level, :spark)
       |> assign(:carousel_index, 0)
+      |> assign(:show_full_video, false)
 
     {:ok, socket}
   end
@@ -533,6 +534,11 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("toggle_full_video", _params, socket) do
+    {:noreply, assign(socket, show_full_video: !socket.assigns.show_full_video)}
+  end
+
   # Renders a translated string with **highlighted** word in a colored span.
   # Translators can place the **word** anywhere in the sentence for natural grammar.
   attr :text, :string, required: true
@@ -587,9 +593,11 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
           :story -> "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
           :deep -> "bg-purple-500 text-white shadow-lg shadow-purple-500/30"
           :research -> "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
+          :videos -> "bg-rose-500 text-white shadow-lg shadow-rose-500/30"
         end
     else
-      base <> "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+      base <>
+        "bg-gray-700/80 text-gray-300 hover:text-white hover:bg-gray-600 border border-gray-600/50"
     end
   end
 
@@ -686,6 +694,14 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
             >
               {gettext("Research")}
             </.level_button>
+            <.level_button
+              level={:videos}
+              current={@detail_level}
+              patch_base={@patch_base}
+              target={@myself}
+            >
+              {gettext("Videos")}
+            </.level_button>
           </div>
         </div>
       </div>
@@ -694,7 +710,7 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
       <div class="max-w-4xl mx-auto px-4 pb-24 flex flex-col">
         <%!-- THE SPARK section (order changes based on detail level, hidden on research) --%>
         <div
-          :if={@detail_level != :research}
+          :if={@detail_level not in [:research, :videos]}
           class={
             case @detail_level do
               :spark -> "order-1 mb-12 text-center"
@@ -1366,6 +1382,95 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
               <%= for paper <- foundational do %>
                 <.research_paper_card paper={paper} paper_categories={@paper_categories} />
               <% end %>
+            </div>
+          </div>
+        </div>
+
+        <%!-- Videos Tab --%>
+        <div :if={@detail_level == :videos} class="order-1">
+          <div class="inline-block px-3 py-1 bg-rose-500/20 text-rose-400 rounded-full text-sm font-medium mb-4">
+            {gettext("VIDEOS")}
+          </div>
+          <h2 class="text-3xl font-bold text-white mb-3">
+            {gettext("Recordings of Unique Human Experiences")}
+          </h2>
+          <p class="text-gray-400 mb-8 max-w-2xl">
+            {gettext(
+              "Real sensor recordings capturing fascinating moments of human physiology. Each video tells a story through data."
+            )}
+          </p>
+
+          <div class="space-y-8">
+            <%!-- Graph Demo Recording --%>
+            <div class="bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-gray-700/50 overflow-hidden">
+              <div class="aspect-video relative">
+                <video
+                  :if={!@show_full_video}
+                  id="video-graph-clip"
+                  autoplay
+                  muted
+                  loop
+                  playsinline
+                  class="w-full h-full object-cover"
+                >
+                  <source src={~p"/videos/sensocto-graph-clip.mp4"} type="video/mp4" />
+                  <source src={~p"/videos/sensocto-graph-clip.webm"} type="video/webm" />
+                </video>
+                <video
+                  :if={@show_full_video}
+                  id="video-graph-full"
+                  controls
+                  playsinline
+                  class="w-full h-full object-cover"
+                >
+                  <source src={~p"/videos/sensocto-graph.mp4"} type="video/mp4" />
+                  <source src={~p"/videos/sensocto-graph.webm"} type="video/webm" />
+                </video>
+              </div>
+              <div class="p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white mb-1">
+                      {gettext("Multi-Sensor Graph Visualization")}
+                    </h3>
+                    <p class="text-gray-400 text-sm">
+                      {gettext(
+                        "Real-time heart rate, breathing, and gaze data rendered as an interactive force-directed graph. Watch how physiological signals create living, breathing patterns."
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    phx-click="toggle_full_video"
+                    phx-target={@myself}
+                    class={"shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all " <>
+                      if @show_full_video do
+                        "bg-rose-500 text-white hover:bg-rose-400"
+                      else
+                        "bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white"
+                      end}
+                  >
+                    <%= if @show_full_video do %>
+                      <.icon name="hero-stop" class="h-4 w-4 inline-block mr-1" />
+                      {gettext("Show Clip")}
+                    <% else %>
+                      <.icon name="hero-play" class="h-4 w-4 inline-block mr-1" />
+                      {gettext("Watch Full Recording")}
+                    <% end %>
+                  </button>
+                </div>
+                <div class="flex items-center gap-3 mt-3">
+                  <span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded text-xs">
+                    {gettext("Heart Rate")}
+                  </span>
+                  <span class="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-xs">
+                    {gettext("Breathing")}
+                  </span>
+                  <span class="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-xs">
+                    {gettext("Gaze")}
+                  </span>
+                  <span class="text-gray-500 text-xs ml-auto">{gettext("31 seconds")}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

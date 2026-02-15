@@ -17,6 +17,7 @@ defmodule SensoctoWeb.AboutLive do
         "story" -> :story
         "deep" -> :deep
         "research" -> :research
+        "videos" -> :videos
         _ -> :spark
       end
 

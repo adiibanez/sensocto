@@ -53,7 +53,7 @@ defmodule Sensocto.RegistryUtils do
   alias Horde.DynamicSupervisor
 
   def check_supervisor_type(tuple) do
-    IO.inspect(tuple)
+    Logger.debug("check_supervisor_type: #{inspect(tuple)}")
 
     case tuple do
       {:via, _, {supervisor_type, _}} when supervisor_type in [Horde.DynamicSupervisor] ->
@@ -119,11 +119,11 @@ defmodule Sensocto.RegistryUtils do
              Sensocto.SensorRegistry,
              Sensocto.SensorAttributeRegistry
            ] ->
-        IO.puts("using Elixir Registry")
+        Logger.debug("using Elixir Registry")
         {:ok, :elixir_registry, module}
 
       {:via, Horde.Registry, {module, _key}} ->
-        IO.puts("using Horde Registry")
+        Logger.debug("using Horde Registry")
         {:ok, :horde_registry, module}
 
       _ ->

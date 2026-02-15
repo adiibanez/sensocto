@@ -20,17 +20,12 @@ defmodule Sensocto.Accounts.User.Senders.SendMagicLinkEmail do
         email -> email
       end
 
-    email =
-      new()
-      # TODO: replace with your email
-      |> from({"noreply", "hello@adrianibanez.info"})
-      |> to(to_string(email))
-      |> subject("Your magic login link")
-      |> html_body(body(token: token, email: email))
-      |> Mailer.deliver!()
-
-    IO.inspect(email)
-    email
+    new()
+    |> from(Application.get_env(:sensocto, :mailer_from))
+    |> to(to_string(email))
+    |> subject("Your magic login link")
+    |> html_body(body(token: token, email: email))
+    |> Mailer.deliver!()
   end
 
   # iOS: #{url("sensocto://token=#{params[:token]}")}

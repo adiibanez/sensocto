@@ -1067,7 +1067,7 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_info({:signal, msg}, socket) do
-    IO.inspect(msg, label: "Lobby handled signal")
+    Logger.debug("Lobby handled signal: #{inspect(msg)}")
     {:noreply, put_flash(socket, :info, "Signal received!")}
   end
 

@@ -86,10 +86,13 @@ defmodule Sensocto.SimpleSensor do
   end
 
   # client
+  @call_timeout 3_000
+
   def get_state(sensor_id, values \\ 1) do
     GenServer.call(
       via_tuple(sensor_id),
-      {:get_state, values}
+      {:get_state, values},
+      @call_timeout
     )
   end
 
@@ -205,7 +208,8 @@ defmodule Sensocto.SimpleSensor do
   def get_attribute(sensor_id, attribute_id, from \\ 0, to \\ :infinity, limit \\ :infinity) do
     GenServer.call(
       via_tuple(sensor_id),
-      {:get_attribute, attribute_id, from, to, limit}
+      {:get_attribute, attribute_id, from, to, limit},
+      @call_timeout
     )
   end
 

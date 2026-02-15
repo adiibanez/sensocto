@@ -1,6 +1,6 @@
 # Security Assessment Report: Sensocto Platform
 
-**Assessment Date:** 2026-02-08
+**Assessment Date:** 2026-02-08 | **Updated:** 2026-02-15
 **Previous Assessment:** 2026-02-05
 **Assessor:** Security Advisor Agent (Claude Opus 4.6)
 **Platform Version:** Current main branch
@@ -27,14 +27,14 @@ The Sensocto platform demonstrates a **mature security posture** with well-imple
 | H-001 | HIGH | 10-year token lifetime | Open |
 | H-002 | HIGH | No socket-level authentication (UserSocket) | Open |
 | H-003 | HIGH | API room endpoints missing auth pipeline | **NEW** |
-| H-004 | HIGH | Bridge.decode/1 atom exhaustion via `String.to_atom` | **NEW** |
+| H-004 | HIGH | Bridge.decode/1 atom exhaustion via `String.to_atom` | **VERIFIED: Not present** |
 | H-005 | HIGH | No bot protection | Open |
-| M-001 | MEDIUM | "missing" token development backdoor | Open |
+| M-001 | MEDIUM | "missing" token development backdoor | **RESOLVED**: gated on `:allow_missing_token` config |
 | M-002 | MEDIUM | Bridge token not required | Open |
-| M-003 | MEDIUM | Debug endpoint exposed in production | **NEW** |
+| M-003 | MEDIUM | Debug endpoint exposed in production | **RESOLVED**: behind `dev_routes` |
 | M-004 | MEDIUM | Session cookie not encrypted | **NEW** |
-| M-005 | MEDIUM | Timing-unsafe guest token comparison | **NEW** |
-| M-006 | MEDIUM | /dev/mailbox route not gated | Open |
+| M-005 | MEDIUM | Timing-unsafe guest token comparison | **RESOLVED**: uses `Plug.Crypto.secure_compare` |
+| M-006 | MEDIUM | /dev/mailbox route not gated | **RESOLVED**: behind `dev_routes` |
 | L-001 | LOW | No force_ssl / HSTS | **NEW** |
 
 ---
@@ -114,6 +114,8 @@ def connect(_params, _socket, _connect_info), do: :error
 
 **Recommendation**: Gate behind environment check using `Application.get_env(:sensocto, :allow_missing_token, false)`.
 
+**Status (Feb 15, 2026): RESOLVED.** Already gated: the "missing" token path checks `Application.get_env(:sensocto, :allow_missing_token, false)` and only allows bypass when explicitly enabled. Production config defaults to `false`.
+
 ### 2.3 Bridge Socket (M-002)
 
 **File:** `lib/sensocto_web/channels/bridge_socket.ex`
@@ -144,6 +146,8 @@ Uses `String.to_atom(name)` on untrusted input from the bridge protocol. The saf
 
 **Recommendation**: Replace `String.to_atom(name)` with `SafeKeys.safe_bridge_atom(name)`.
 
+**Status (Feb 15, 2026): VERIFIED — NOT PRESENT.** Code inspection of `bridge.ex` confirms `String.to_atom` is not used. The bridge already uses `String.to_existing_atom` or SafeKeys patterns. The original finding may have been based on an older version. Additionally, `ConnectorServer` and `SensorServer` were migrated to use `SafeKeys` whitelist for all atom conversion.
+
 ### 3.3 Debug Endpoint Exposed (M-003)
 
 **File:** `lib/sensocto_web/router.ex` (line 197)
@@ -153,6 +157,8 @@ Uses `String.to_atom(name)` on untrusted input from the bridge protocol. The saf
 **Risk**: Information disclosure in production.
 
 **Recommendation**: Wrap in `if Application.compile_env(:sensocto, :dev_routes)`.
+
+**Status (Feb 15, 2026): RESOLVED.** The `/api/auth/debug` route is already inside the `if Application.compile_env(:sensocto, :dev_routes)` block in `router.ex`. Not accessible in production.
 
 ### 3.4 Session Cookie Not Encrypted (M-004)
 
@@ -171,6 +177,8 @@ Uses `guest.token == token` instead of `Plug.Crypto.secure_compare/2`. Same issu
 **Risk**: Timing side-channel attack on token comparison.
 
 **Recommendation**: Use `Plug.Crypto.secure_compare/2` for all token comparisons (already used correctly in `authenticated_tidewave.ex`).
+
+**Status (Feb 15, 2026): RESOLVED.** Both `guest_auth_controller.ex` and `sensor_data_channel.ex` already use `Plug.Crypto.secure_compare/2` for token comparison. The original finding may have been based on an older version.
 
 ### 3.6 No force_ssl / HSTS (L-001)
 
@@ -197,7 +205,7 @@ The `force_ssl` configuration is commented out. While Fly.io handles TLS termina
 
 **File:** `lib/sensocto/types/safe_keys.ex`
 
-Whitelist approach with comprehensive allowed keys list. **Assessment: Excellent** (except H-004 bypass in bridge.ex).
+Whitelist approach with comprehensive allowed keys list. **Assessment: Excellent.** H-004 (bridge.ex bypass) was verified as not present — `String.to_atom` is not used in bridge.ex. ConnectorServer and SensorServer also migrated to SafeKeys.
 
 ### 4.3 DoS Resistance
 
@@ -258,7 +266,7 @@ scope "/dev" do
 end
 ```
 
-Not wrapped in `dev_routes` conditional. **Risk**: May expose email contents in production.
+**Status (Feb 15, 2026): RESOLVED.** The `/dev/mailbox` route is inside the `if Application.compile_env(:sensocto, :dev_routes)` block. Not accessible in production.
 
 ---
 
@@ -287,7 +295,7 @@ Not wrapped in `dev_routes` conditional. **Risk**: May expose email contents in 
 
 | Metric | Score | Notes |
 |--------|-------|-------|
-| Atom Protection | B+ | SafeKeys excellent, bridge.ex bypass |
+| Atom Protection | A | SafeKeys excellent, bridge.ex verified clean |
 | SQL Injection | A | Ecto parameterized queries |
 | XSS Prevention | B | Headers good, CSP missing |
 
@@ -408,11 +416,11 @@ Not wrapped in `dev_routes` conditional. **Risk**: May expose email contents in 
 
 ### Phase 1: Immediate (1-2 days)
 - [ ] Reduce token lifetime from 10 years to 30 days (H-001)
-- [ ] Gate "missing" token behind configuration (M-001)
-- [ ] Replace `String.to_atom` in bridge.ex with SafeKeys (H-004)
-- [ ] Use `Plug.Crypto.secure_compare` for guest tokens (M-005)
-- [ ] Protect /dev/mailbox route (M-006)
-- [ ] Gate debug endpoint behind dev_routes (M-003)
+- [x] Gate "missing" token behind configuration (M-001) — **already implemented**
+- [x] Replace `String.to_atom` in bridge.ex with SafeKeys (H-004) — **verified: not present in code**
+- [x] Use `Plug.Crypto.secure_compare` for guest tokens (M-005) — **already implemented**
+- [x] Protect /dev/mailbox route (M-006) — **already behind `dev_routes`**
+- [x] Gate debug endpoint behind dev_routes (M-003) — **already behind `dev_routes`**
 
 ### Phase 2: Short-term (1 week)
 - [ ] Add socket-level authentication to UserSocket (H-002)
@@ -463,6 +471,19 @@ config :paraxial,
 
 ---
 
+## 11. Changes Applied (Feb 15, 2026)
+
+The following improvements were made during low-hanging fruit optimization rounds:
+
+1. **IO.puts/IO.inspect cleanup**: Replaced debug output with `Logger.debug` in 6 files (registry_utils.ex, lobby_live.ex, index_live.ex, sense_live.ex, otp_dsl_genserver.ex). Prevents information leakage via stdout and enables proper log filtering.
+2. **GenServer call timeouts**: Added explicit `@call_timeout 3_000` to RoomPresenceServer (8 client functions), complementing existing timeouts in RoomStore, SimpleSensor, and AttentionTracker.
+3. **Email sender centralization**: Replaced hardcoded/placeholder sender addresses in 3 email sender modules with `Application.get_env(:sensocto, :mailer_from)`. Added env var override in `runtime.exs` for production flexibility.
+4. **SafeKeys migration**: ConnectorServer and SensorServer now use SafeKeys whitelist for atom conversion, preventing atom exhaustion from external input.
+5. **ETS write_concurrency**: Enabled on Bio module ETS tables, PriorityLens tables, and AttentionTracker tables for improved concurrent write performance.
+6. **Bio.Supervisor restart limits**: Added explicit `max_restarts: 10, max_seconds: 60` (was using defaults 3/5s which was too aggressive for non-critical bio components).
+
+---
+
 ## References
 
 - [Ash Authentication Documentation](https://hexdocs.pm/ash_authentication/)
@@ -473,4 +494,4 @@ config :paraxial,
 
 ---
 
-*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-08*
+*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-15*

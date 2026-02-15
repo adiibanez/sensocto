@@ -200,14 +200,14 @@ defmodule Sensocto.AttentionTracker do
   Returns {state, metadata} tuple or {:normal, nil} if not set.
   """
   def get_battery_state(user_id) do
-    GenServer.call(__MODULE__, {:get_battery_state, user_id})
+    GenServer.call(__MODULE__, {:get_battery_state, user_id}, 3_000)
   end
 
   @doc """
   Get all battery states (for debugging/dashboard).
   """
   def get_all_battery_states do
-    GenServer.call(__MODULE__, :get_all_battery_states)
+    GenServer.call(__MODULE__, :get_all_battery_states, 5_000)
   end
 
   @doc """
@@ -390,7 +390,7 @@ defmodule Sensocto.AttentionTracker do
   Get full attention state for debugging/display.
   """
   def get_state do
-    GenServer.call(__MODULE__, :get_state)
+    GenServer.call(__MODULE__, :get_state, 5_000)
   end
 
   # ============================================================================

@@ -83,7 +83,7 @@ defmodule SensoctoWeb.SenseLive do
 
   @impl true
   def handle_info(:test_event, socket) do
-    IO.puts("Test event received")
+    Logger.debug("Test event received")
     send_test_event()
     put_flash(socket, :info, "It worked!")
     {:noreply, push_event(socket, "test_event", %{points: 100, user: "josé"})}
@@ -92,13 +92,13 @@ defmodule SensoctoWeb.SenseLive do
 
   # {:signal, %{test: 1}}
   def handle_info({:signal, msg}, socket) do
-    IO.inspect(msg, label: "Handled message {__MODULE__}")
+    Logger.debug("SenseLive handled signal: #{inspect(msg)}")
     {:noreply, socket}
   end
 
   # Catch-all for unmatched messages
   def handle_info(msg, socket) do
-    IO.inspect(msg, label: "Unhandled message {__MODULE__}")
+    Logger.debug("SenseLive unhandled message: #{inspect(msg)}")
     {:noreply, socket}
   end
 
@@ -109,8 +109,6 @@ defmodule SensoctoWeb.SenseLive do
   end
 
   def handle_event("toggle_bluetooth", _, socket) do
-    IO.inspect(socket.assigns.bluetooth_enabled)
-
     {:noreply, assign(socket, :bluetooth_enabled, !socket.assigns.bluetooth_enabled)}
   end
 end

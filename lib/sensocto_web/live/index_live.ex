@@ -217,7 +217,7 @@ defmodule SensoctoWeb.IndexLive do
 
   @impl true
   def handle_info({:signal, msg}, socket) do
-    IO.inspect(msg, label: "Handled message {__MODULE__}")
+    Logger.debug("IndexLive handled signal: #{inspect(msg)}")
 
     {:noreply, put_flash(socket, :info, "You clicked the button!")}
   end
@@ -342,7 +342,7 @@ defmodule SensoctoWeb.IndexLive do
 
   @impl true
   def handle_info(msg, socket) do
-    IO.inspect(msg, label: "Unknown Message")
+    Logger.debug("IndexLive unhandled message: #{inspect(msg)}")
     {:noreply, socket}
   end
 

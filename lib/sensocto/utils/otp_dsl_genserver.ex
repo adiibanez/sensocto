@@ -4,8 +4,6 @@ defmodule Sensocto.Utils.OtpDsl.Genserver do
 
   @doc nil
   defmacro __using__(options) do
-    IO.puts("OTP genserver macro: #{inspect(options)}")
-
     register = Keyword.get(options, :register, nil)
     initial_state = Keyword.get(options, :initial_state, nil)
 

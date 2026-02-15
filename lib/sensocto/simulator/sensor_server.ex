@@ -411,11 +411,7 @@ defmodule Sensocto.Simulator.SensorServer do
   # Safe conversion using SafeKeys whitelist to prevent atom exhaustion
   defp string_keys_to_atom_keys(map) when is_map(map) do
     {:ok, converted} = SafeKeys.safe_keys_to_atoms(map)
-    # Recursively process nested maps that may have been kept as strings
-    Map.new(converted, fn
-      {k, v} when is_map(v) -> {k, string_keys_to_atom_keys(v)}
-      {k, v} -> {k, v}
-    end)
+    converted
   end
 
   defp string_keys_to_atom_keys(value), do: value

@@ -244,6 +244,10 @@ if config_env() == :prod do
     adapter: Swoosh.Adapters.SMTP2GO,
     api_key: System.get_env("SMTP2GO_APIKEY")
 
+  mailer_from_name = System.get_env("MAILER_FROM_NAME", "Sensocto")
+  mailer_from_email = System.get_env("MAILER_FROM_EMAIL", "hello@adrianibanez.info")
+  config :sensocto, :mailer_from, {mailer_from_name, mailer_from_email}
+
   config :sensocto,
     google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
     # ||raise("Missing environment variable `GOOGLE_SIGNING_SECRET`!"),

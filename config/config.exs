@@ -134,6 +134,7 @@ config :sensocto, Sensocto.PubSub,
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
 config :sensocto, Sensocto.Mailer, adapter: Swoosh.Adapters.Local
+config :sensocto, :mailer_from, {"Sensocto", "hello@adrianibanez.info"}
 config :sensocto, :dns_cluster_query, "sensocto.internal"
 
 # Configure tailwind (the version is required)

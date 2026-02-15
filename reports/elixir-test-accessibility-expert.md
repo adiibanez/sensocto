@@ -1,32 +1,33 @@
 # Comprehensive Test Coverage and Accessibility Analysis
 ## Sensocto IoT Sensor Platform
 
-**Analysis Date:** January 12, 2026 (Updated: February 8, 2026)
+**Analysis Date:** January 12, 2026 (Updated: February 15, 2026)
 **Analyzed By:** Testing, Usability, and Accessibility Expert Agent
 **Project:** Sensocto - Elixir/Phoenix IoT Sensor Platform
 
 ---
 
-## Update: February 8, 2026
+## Update: February 15, 2026
 
 ### Executive Summary
 
-This update reflects a full re-analysis of the Sensocto codebase as of February 2026. The project has grown to **249 implementation files** in `/lib` and **32 test files** with approximately **400 test cases**. While testing has improved since January (from ~20 test files to 32, from ~150 tests to ~400), the overall coverage remains at roughly **13%** (32/249 files covered). Accessibility has seen meaningful improvement in the modal component area (24 new accessibility tests), but significant WCAG gaps remain across the rest of the UI.
+This update reflects the Sensocto codebase as of February 15, 2026. The project has **249 implementation files** in `/lib` and **32 test files** with **291 passing tests** (2 pre-existing failures, 3 skipped, 109 excluded). Recent code quality work (Feb 15) replaced all `IO.puts`/`IO.inspect` debug output with `Logger.debug` across 6 files, improving observability and log filtering. Accessibility has seen meaningful improvement in the modal component area (24 accessibility tests), but significant WCAG gaps remain across the rest of the UI.
 
 ### Current Metrics
 
-| Metric | Jan 20 | Feb 8 | Change |
-|--------|--------|-------|--------|
-| Implementation Files | ~200 | **249** | +24% |
-| Test Files | 20 | **32** | +60% |
-| Test Count | 150+ | **~400** | +167% |
-| LiveView Test Files | 3 | **4** | +1 |
-| LiveView Modules | ~30 | **46** | +53% |
-| Component Files | ~10 | **13** | +30% |
-| WCAG Level A Violations | 52+ | **40+** | Improvement |
-| WCAG Level AA Violations | ~15 | **12+** | Slight improvement |
-| Accessibility Tests | 0 | **24** | New |
-| Estimated Code Coverage | ~10% | **~13%** | +3pp |
+| Metric | Jan 20 | Feb 8 | Feb 15 | Change |
+|--------|--------|-------|--------|--------|
+| Implementation Files | ~200 | 249 | **249** | Stable |
+| Test Files | 20 | 32 | **32** | Stable |
+| Test Count (passing) | 150+ | ~400 | **291** (2 fail, 3 skip, 109 excl) | Clarified |
+| LiveView Test Files | 3 | 4 | **4** | Stable |
+| LiveView Modules | ~30 | 46 | **46** | Stable |
+| Component Files | ~10 | 13 | **13** | Stable |
+| WCAG Level A Violations | 52+ | 40+ | **40+** | Stable |
+| WCAG Level AA Violations | ~15 | 12+ | **12+** | Stable |
+| Accessibility Tests | 0 | 24 | **24** | Stable |
+| Estimated Code Coverage | ~10% | ~13% | **~13%** | Stable |
+| Structured Logging | Mixed | Mixed | **Logger-only** | IO.puts eliminated |
 
 ### Key Changes Since Last Review
 
@@ -39,6 +40,9 @@ This update reflects a full re-analysis of the Sensocto codebase as of February 
 6. Rate limiter plug fully tested (13 tests)
 7. Bio layer homeostatic tuner tested
 8. New StatefulSensorComponent (LiveComponent) created alongside StatefulSensorLive
+9. **(Feb 15)** IO.puts/IO.inspect replaced with Logger.debug in 6 files — structured logging improves debuggability
+10. **(Feb 15)** GenServer call timeouts added to RoomPresenceServer, RoomStore, SimpleSensor, AttentionTracker — prevents 5s default hangs under load
+11. **(Feb 15)** Email sender addresses centralized via `Application.get_env(:sensocto, :mailer_from)` with env var override
 
 **Remaining Critical Gaps:**
 1. No tests for LobbyLive (most complex module, ~1200 lines of template)

@@ -122,7 +122,7 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
 | Infrastructure | :one_for_one | 3 | 5s | Tight -- PubSub or Repo flapping 3x in 5s kills Infra |
 | Registry | :one_for_one | 3 | 5s | Appropriate -- registries rarely crash |
 | Storage | :rest_for_one | 3 | 5s | Correct -- storage has ordering dependencies |
-| Bio | :one_for_one | default | default | Missing explicit limits -- should have max_restarts |
+| Bio | :one_for_one | 10 | 60s | Good -- generous budget appropriate for non-critical bio components |
 | Domain | :one_for_one | 5 | 10s | **Concern: wrong strategy** (see Section 8) |
 | Lenses | :one_for_one | 5 | 10s | Appropriate |
 
@@ -134,7 +134,7 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
 - Restart budgets are generally reasonable. Not too loose (would mask flapping), not too tight (would escalate too quickly).
 
 **Concerns:**
-- **Bio.Supervisor has no explicit restart limits.** Defaults to `max_restarts: 3, max_seconds: 5`, but this should be explicitly stated. If NoveltyDetector starts crashing in a loop (e.g., due to bad sensor data), it will take down the entire Bio supervisor after 3 crashes, killing SyncComputer, HomeostaticTuner, and all other bio components -- collateral damage.
+- ~~**Bio.Supervisor has no explicit restart limits.**~~ **RESOLVED (Feb 15, 2026).** Now has `max_restarts: 10, max_seconds: 60`. A generous budget (10/60s vs the previous default 3/5s) is appropriate because bio components are non-critical -- the system functions without them, just less efficiently.
 - **Domain.Supervisor uses `:one_for_one` but has ordering dependencies** (see Section 8.1).
 - **SensoctoWeb.Telemetry lives in Infrastructure.Supervisor** -- a web module in a core supervisor creates a coupling that complicates any future separation.
 
@@ -477,7 +477,7 @@ The `write_concurrency: true` flag on AttributeStoreTiered tables enables concur
 | Process monitoring | PriorityLens, Router, ConnectorManager | Good |
 | Adaptive load shedding | SystemLoadMonitor + HomeostaticTuner | Good |
 | Graceful degradation | PriorityLens quality tiers | Excellent |
-| Timeouts | Explicit 5s timeouts on RoomServer calls | Good |
+| Timeouts | Explicit timeouts on GenServer calls (RoomServer, RoomStore, RoomPresenceServer, SimpleSensor, AttentionTracker) | Excellent |
 | Hibernation | SimpleSensor after 5min idle | Good |
 | Bounded buffers | Phase buffers in SyncComputer (50/20) | Good |
 | Parallel shutdown | ConnectorServer Task.yield_many(4000) | Good |
@@ -501,7 +501,7 @@ The `write_concurrency: true` flag on AttributeStoreTiered tables enables concur
 | Health check endpoint | Unknown (not found in analysis) | Operational blind spot |
 | Bulkhead pattern | Absent | No isolation between sensor types |
 | Rate limiting | Absent at PubSub level | Fast producer can flood topics |
-| Structured logging | Mix of Logger and IO.puts | Inconsistent observability |
+| ~~Structured logging~~ | ~~Mix of Logger and IO.puts~~ | **RESOLVED (Feb 15)**: IO.puts replaced with Logger.debug across 6 files |
 
 ---
 
@@ -565,11 +565,9 @@ SyncComputer subscribes to `data:{sensor_id}` topics for tracked sensors and uns
 
 The cleanup timer (every 5 minutes) catches stale sensors but does not re-discover missed ones.
 
-### 8.6 CallServer Uses IO.puts in Production (Low Risk, Easy Fix)
+### 8.6 ~~CallServer Uses IO.puts in Production~~ (RESOLVED Feb 2026)
 
-`call_server.ex` contains `IO.puts` calls at lines ~466, 470, 474, 490. These bypass the Logger, cannot be filtered by log level, and do not include metadata (timestamps, pids, etc.).
-
-**Fix:** Replace with `Logger.debug/1` or `Logger.info/1`.
+**RESOLVED.** IO.puts/IO.inspect replaced with Logger.debug across 6 files in Feb 15, 2026 low-hanging fruit round: registry_utils.ex, lobby_live.ex, index_live.ex, sense_live.ex, otp_dsl_genserver.ex, and previously call_channel.ex. Only `release.ex` retains IO.puts (appropriate — runs via `bin/sensocto eval` where Logger isn't available before app boot).
 
 ---
 
@@ -665,19 +663,15 @@ Implement time-based decay on the failure counter. A simple approach:
 effective_failures = failure_count * :math.pow(0.5, elapsed / decay_period)
 ```
 
-**10.6 Add Explicit Restart Limits to Bio.Supervisor**
+**10.6 ~~Add Explicit Restart Limits to Bio.Supervisor~~** (RESOLVED Feb 15, 2026)
 
-```elixir
-Supervisor.init(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
-```
-
-A more generous budget (10/60s vs the default 3/5s) is appropriate here because bio components are non-critical -- the system functions without them, just less efficiently.
+Implemented: `Supervisor.init(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)`. A generous budget appropriate for non-critical bio components.
 
 ### Medium Priority
 
-**10.7 Replace IO.puts with Logger in CallServer**
+**10.7 ~~Replace IO.puts with Logger in CallServer~~** (RESOLVED Feb 15, 2026)
 
-Search for `IO.puts` in `call_server.ex` and replace with appropriate `Logger` calls.
+IO.puts replaced with Logger.debug across all affected files (see Section 8.6 and 12.8).
 
 **10.8 Add Telemetry to SyncComputer**
 
@@ -786,6 +780,30 @@ This section documents the resilience and scaling improvements implemented in Fe
 
 - Production: `+Q 65536` (concurrent ports), `+K true` (kernel poll), `+A 64` (async threads), `+SDio 64` (dirty IO schedulers), `+sbwt none` (no busy wait)
 - Dev: `ERL_FLAGS` with reduced async threads and dirty schedulers for development machines
+
+### 12.8 Low-Hanging Fruit Optimization Rounds (Feb 15, 2026)
+
+Three rounds of targeted improvements addressing items from security, resilience, and code quality reports:
+
+**Round 1: ETS & Pipeline**
+- Enabled `write_concurrency: true` on hot-path ETS tables: PriorityLens (buffers, digests, sensor_subscriptions), AttentionTracker (3 tables), Bio module tables (novelty_scores, sync data)
+- Removed duplicate watcher from RoomStore supervision
+- Aligned PubSub pool_size to 16 (matching scheduler count)
+- Removed legacy router message handlers (superseded by ETS direct-write)
+- Added database indexes for common query patterns
+
+**Round 2: Dead Code & ETS**
+- Removed unused code paths and legacy handlers
+- Additional ETS write_concurrency for Bio modules
+
+**Round 3: Safety & Observability**
+- **SafeKeys atom exhaustion fix**: ConnectorServer and SensorServer migrated from `String.to_atom` to SafeKeys whitelist for all external input
+- **GenServer call timeouts**: Added explicit `@call_timeout` to SimpleSensor (7 client functions), AttentionTracker (9 client functions), RoomPresenceServer (8 client functions), complementing existing RoomStore timeouts
+- **IO.puts/IO.inspect → Logger.debug**: Cleaned up 6 files (registry_utils.ex, lobby_live.ex, index_live.ex, sense_live.ex, otp_dsl_genserver.ex). Only release.ex retains IO.puts (appropriate for pre-boot context)
+- **Bio.Supervisor restart limits**: Added `max_restarts: 10, max_seconds: 60` (was using defaults 3/5s)
+- **Email sender centralization**: 3 sender modules now use `Application.get_env(:sensocto, :mailer_from)` with env var override in runtime.exs
+
+**Net impact**: Improved concurrency (ETS), eliminated atom exhaustion vectors, prevented GenServer timeout cascades, enabled log filtering, and made Bio supervision more resilient.
 
 ---
 
@@ -1176,6 +1194,10 @@ Resolved:
 - ~~Manager/RoomStore hydration race condition~~ — gated with `RoomStore.ready?/0`
 - ~~Orphaned connectors in Manager state~~ — 30s health check prunes stale entries
 - ~~Infinite SensorServer reconnect on deleted rooms~~ — detects permanent loss after 30s, checks DB via Ash
+- ~~Bio.Supervisor missing restart limits~~ — now `max_restarts: 10, max_seconds: 60` (Feb 15)
+- ~~Structured logging (IO.puts mixed with Logger)~~ — IO.puts eliminated across 6 files (Feb 15)
+- ~~GenServer default timeouts~~ — explicit timeouts on all major GenServer client APIs (Feb 15)
+- ~~Atom exhaustion in ConnectorServer/SensorServer~~ — migrated to SafeKeys whitelist (Feb 15)
 
 Remaining risks:
 1. The absence of `code_change/3` blocks safe hot code upgrades

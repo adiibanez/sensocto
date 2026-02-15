@@ -21,6 +21,7 @@ defmodule Sensocto.RoomPresenceServer do
   require Logger
 
   @name __MODULE__
+  @call_timeout 3_000
 
   # ============================================================================
   # Client API
@@ -32,18 +33,18 @@ defmodule Sensocto.RoomPresenceServer do
 
   @doc """
   Joins a user to a room with their sensors.
-  Updates in-memory state immediately, syncs to Neo4j async.
+  Updates in-memory state immediately.
   """
   def join_room(room_id, user_id, sensor_ids, opts \\ []) do
     role = Keyword.get(opts, :role, :member)
-    GenServer.call(@name, {:join_room, room_id, user_id, sensor_ids, role})
+    GenServer.call(@name, {:join_room, room_id, user_id, sensor_ids, role}, @call_timeout)
   end
 
   @doc """
   Leaves a room. Removes user's presence and sensors.
   """
   def leave_room(room_id, user_id) do
-    GenServer.call(@name, {:leave_room, room_id, user_id})
+    GenServer.call(@name, {:leave_room, room_id, user_id}, @call_timeout)
   end
 
   @doc """
@@ -51,7 +52,7 @@ defmodule Sensocto.RoomPresenceServer do
   Called when sensors connect/disconnect.
   """
   def update_sensors(room_id, user_id, sensor_ids) do
-    GenServer.call(@name, {:update_sensors, room_id, user_id, sensor_ids})
+    GenServer.call(@name, {:update_sensors, room_id, user_id, sensor_ids}, @call_timeout)
   end
 
   @doc """
@@ -59,32 +60,32 @@ defmodule Sensocto.RoomPresenceServer do
   Fast in-memory read.
   """
   def get_room_sensors(room_id) do
-    GenServer.call(@name, {:get_room_sensors, room_id})
+    GenServer.call(@name, {:get_room_sensors, room_id}, @call_timeout)
   end
 
   @doc """
   Gets all users present in a room with their sensors.
   """
   def get_room_presences(room_id) do
-    GenServer.call(@name, {:get_room_presences, room_id})
+    GenServer.call(@name, {:get_room_presences, room_id}, @call_timeout)
   end
 
   @doc """
   Checks if a user is present in a room.
   """
   def in_room?(room_id, user_id) do
-    GenServer.call(@name, {:in_room?, room_id, user_id})
+    GenServer.call(@name, {:in_room?, room_id, user_id}, @call_timeout)
   end
 
   @doc """
   Gets all rooms a user is present in.
   """
   def get_user_rooms(user_id) do
-    GenServer.call(@name, {:get_user_rooms, user_id})
+    GenServer.call(@name, {:get_user_rooms, user_id}, @call_timeout)
   end
 
   @doc """
-  Hydrates state from Neo4j backend.
+  Hydrates state from backend.
   Called on startup or when recovering state.
   """
   def hydrate_from_backend do
@@ -96,7 +97,7 @@ defmodule Sensocto.RoomPresenceServer do
   Future: Used for P2P state synchronization.
   """
   def seed_state(room_id, presences) do
-    GenServer.call(@name, {:seed_state, room_id, presences})
+    GenServer.call(@name, {:seed_state, room_id, presences}, @call_timeout)
   end
 
   # ============================================================================

@@ -589,15 +589,15 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     if level == current do
       base <>
         case level do
-          :spark -> "bg-cyan-500 text-white shadow-lg shadow-cyan-500/30"
-          :story -> "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-          :deep -> "bg-purple-500 text-white shadow-lg shadow-purple-500/30"
-          :research -> "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
-          :videos -> "bg-rose-500 text-white shadow-lg shadow-rose-500/30"
+          :spark -> "bg-cyan-600 text-white shadow-lg shadow-cyan-600/40"
+          :story -> "bg-blue-600 text-white shadow-lg shadow-blue-600/40"
+          :deep -> "bg-purple-600 text-white shadow-lg shadow-purple-600/40"
+          :research -> "bg-[#6b8e23] text-white shadow-lg shadow-[#6b8e23]/40"
+          :videos -> "bg-rose-600 text-white shadow-lg shadow-rose-600/40"
         end
     else
       base <>
-        "bg-gray-700/80 text-gray-300 hover:text-white hover:bg-gray-600 border border-gray-600/50"
+        "bg-gray-600 text-gray-100 hover:text-white hover:bg-gray-500 ring-1 ring-gray-500"
     end
   end
 

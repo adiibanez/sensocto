@@ -38,12 +38,14 @@
     rooms?: Room[];
     users?: User[];
     sensors?: Record<string, Sensor>;
+    compact?: boolean;
   }
 
   let {
     rooms = [],
     users = [],
-    sensors = {}
+    sensors = {},
+    compact = false
   }: Props = $props();
 
   let container: HTMLDivElement;
@@ -58,6 +60,7 @@
   let isLayoutRunning = $state(false);
   let isFullscreen = $state(false);
   let showExportModal = $state(false);
+  let controlsOpen = $state(false);
   let exportFormat = $state<"png" | "jpeg">("png");
   let exportScale = $state(2);
   let exportBackground = $state(true);
@@ -550,6 +553,17 @@
     // (This would require additional data from the backend)
   }
 
+  function zoomToRandomDetail() {
+    if (!sigma || !graph || graph.order === 0) return;
+    const camera = sigma.getCamera();
+    const nodes = graph.nodes();
+    const target = nodes[Math.floor(Math.random() * nodes.length)];
+    const pos = sigma.getNodeDisplayData(target);
+    if (!pos) return;
+    const center = sigma.viewportToFramedGraph(sigma.graphToViewport(pos));
+    camera.setState({ x: center.x, y: center.y, ratio: 0.35, angle: 0 });
+  }
+
   function runLayout() {
     if (!graph || graph.order === 0) return;
 
@@ -575,6 +589,10 @@
 
     if (sigma) {
       sigma.refresh();
+    }
+
+    if (compact) {
+      setTimeout(() => zoomToRandomDetail(), 50);
     }
 
     isLayoutRunning = false;
@@ -603,7 +621,7 @@
     } as any;
 
     sigma = new Sigma(graph, container, {
-      renderLabels: true,
+      renderLabels: !compact,
       labelRenderedSizeThreshold: labelThreshold,
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: labelSize,
@@ -730,11 +748,12 @@
       sigma?.refresh();
     });
 
-    // Handle background click to deselect
+    // Handle background click to deselect and close mobile controls
     sigma.on("clickStage", () => {
       selectedNode = null;
       selectedDetails = null;
       highlightedNodes = new Set();
+      controlsOpen = false;
       sigma?.refresh();
     });
 
@@ -2133,82 +2152,88 @@
   });
 </script>
 
-<div class="lobby-graph" class:fullscreen={isFullscreen} bind:this={graphRoot}>
-  <!-- Graph Container -->
+<div class="lobby-graph" class:fullscreen={isFullscreen} class:compact={compact} bind:this={graphRoot}>
   <div bind:this={container} class="graph-container"></div>
 
   <!-- Glow overlay canvas for plasma discharge halos -->
   <canvas bind:this={glowCanvas} class="glow-overlay"></canvas>
 
   <!-- Controls -->
-  <div class="controls">
-    <button onclick={handleZoomIn} data-tooltip="Zoom In" class="control-btn tooltip-left">
+  <div class="controls" class:controls-open={controlsOpen}>
+    <button class="controls-toggle" aria-label="Toggle controls" onclick={() => controlsOpen = !controlsOpen}>
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
       </svg>
     </button>
-    <button onclick={handleZoomOut} data-tooltip="Zoom Out" class="control-btn tooltip-left">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
-      </svg>
-    </button>
-    <button onclick={handleRelayout} data-tooltip="Re-layout — Recompute node positions" class="control-btn tooltip-left" disabled={isLayoutRunning}>
-      <svg class="w-5 h-5" class:animate-spin={isLayoutRunning} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-      </svg>
-    </button>
-    <div class="control-divider"></div>
-    <button onclick={handleFullscreen} data-tooltip={isFullscreen ? "Exit Fullscreen" : "Fullscreen — Expand graph to fill screen"} class="control-btn tooltip-left">
-      {#if isFullscreen}
+    <div class="controls-panel">
+      <button onclick={handleZoomIn} data-tooltip="Zoom In" class="control-btn tooltip-left">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
         </svg>
-      {:else}
+      </button>
+      <button onclick={handleZoomOut} data-tooltip="Zoom Out" class="control-btn tooltip-left">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
         </svg>
-      {/if}
-    </button>
-    <button onclick={() => showExportModal = true} data-tooltip="Export — Save as PNG or JPEG at up to 8x resolution" class="control-btn tooltip-left">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-      </svg>
-    </button>
-    <button onclick={toggleRecording} data-tooltip={isRecording ? "Stop Recording" : `Record — Capture graph as WebM${soundEnabled ? " + audio" : ""}`} class="control-btn tooltip-left" class:recording={isRecording}>
-      {#if isRecording}
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-          <rect x="6" y="6" width="12" height="12" rx="1" />
+      </button>
+      <button onclick={handleRelayout} data-tooltip="Re-layout — Recompute node positions" class="control-btn tooltip-left" disabled={isLayoutRunning}>
+        <svg class="w-5 h-5" class:animate-spin={isLayoutRunning} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
-      {:else}
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="8" stroke-width="2" />
-          <circle cx="12" cy="12" r="4" fill="currentColor" />
-        </svg>
-      {/if}
-    </button>
-    <div class="control-divider"></div>
-    <button onclick={toggleSound} data-tooltip={THEME_LABELS[soundTheme]} class="control-btn tooltip-left" class:sound-active={soundEnabled}>
-      {#if soundEnabled}
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-        </svg>
-      {:else}
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-        </svg>
-      {/if}
-    </button>
-    <button onclick={() => vibrateEnabled = !vibrateEnabled} data-tooltip={vibrateEnabled ? "Vibrate On" : "Vibrate Off"} class="control-btn tooltip-left" class:sound-active={vibrateEnabled}>
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {#if vibrateEnabled}
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-          <circle cx="18" cy="17.25" r="2" fill="currentColor" stroke="none" />
-          <path stroke-linecap="round" stroke-width="1.5" d="M21.5 15.5a3 3 0 010 3.5M15 15.5a3 3 0 000 3.5" />
+      </button>
+      <div class="control-divider"></div>
+      <button onclick={handleFullscreen} data-tooltip={isFullscreen ? "Exit Fullscreen" : "Fullscreen — Expand graph to fill screen"} class="control-btn tooltip-left">
+        {#if isFullscreen}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+          </svg>
         {:else}
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+          </svg>
         {/if}
-      </svg>
-    </button>
+      </button>
+      <button onclick={() => showExportModal = true} data-tooltip="Export — Save as PNG or JPEG at up to 8x resolution" class="control-btn tooltip-left">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+      </button>
+      <button onclick={toggleRecording} data-tooltip={isRecording ? "Stop Recording" : `Record — Capture graph as WebM${soundEnabled ? " + audio" : ""}`} class="control-btn tooltip-left" class:recording={isRecording}>
+        {#if isRecording}
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="6" width="12" height="12" rx="1" />
+          </svg>
+        {:else}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="8" stroke-width="2" />
+            <circle cx="12" cy="12" r="4" fill="currentColor" />
+          </svg>
+        {/if}
+      </button>
+      <div class="control-divider"></div>
+      <button onclick={toggleSound} data-tooltip={THEME_LABELS[soundTheme]} class="control-btn tooltip-left" class:sound-active={soundEnabled}>
+        {#if soundEnabled}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+          </svg>
+        {:else}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+          </svg>
+        {/if}
+      </button>
+      <button onclick={() => vibrateEnabled = !vibrateEnabled} data-tooltip={vibrateEnabled ? "Vibrate On" : "Vibrate Off"} class="control-btn tooltip-left" class:sound-active={vibrateEnabled}>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {#if vibrateEnabled}
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+            <circle cx="18" cy="17.25" r="2" fill="currentColor" stroke="none" />
+            <path stroke-linecap="round" stroke-width="1.5" d="M21.5 15.5a3 3 0 010 3.5M15 15.5a3 3 0 000 3.5" />
+          {:else}
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          {/if}
+        </svg>
+      </button>
+    </div>
   </div>
 
   <!-- Mode Selector -->
@@ -2434,6 +2459,19 @@
     min-height: unset;
   }
 
+  .lobby-graph.compact {
+    min-height: unset;
+    height: 100%;
+  }
+
+  .lobby-graph.compact .controls,
+  .lobby-graph.compact .mode-selector,
+  .lobby-graph.compact .legend,
+  .lobby-graph.compact .stats,
+  .lobby-graph.compact .export-modal {
+    display: none;
+  }
+
   .graph-container {
     position: absolute;
     inset: 0;
@@ -2476,6 +2514,7 @@
     color: #d1d5db;
     cursor: pointer;
     transition: all 0.15s ease;
+    touch-action: manipulation;
   }
 
   .control-btn:hover:not(:disabled) {
@@ -2608,6 +2647,7 @@
     cursor: pointer;
     transition: all 0.15s ease;
     padding: 0;
+    touch-action: manipulation;
   }
 
   .mode-btn:hover {
@@ -3040,5 +3080,107 @@
 
   .animate-spin {
     animation: spin 1s linear infinite;
+  }
+
+  /* ── Mobile Responsive ─────────────────────────────── */
+
+  .controls-toggle {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    .controls-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      background: rgba(31, 41, 55, 0.9);
+      border: 1px solid rgba(75, 85, 99, 0.5);
+      border-radius: 0.5rem;
+      color: #d1d5db;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+
+    .controls-toggle:hover {
+      background: rgba(55, 65, 81, 0.9);
+      color: #ffffff;
+    }
+
+    .controls-panel {
+      display: none;
+    }
+
+    .controls-open .controls-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .mode-selector {
+      top: auto;
+      bottom: 4rem;
+      left: 0.5rem;
+      right: 0.5rem;
+      transform: none;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      justify-content: flex-start;
+      padding: 0.375rem 0.5rem;
+      overscroll-behavior-x: contain;
+    }
+
+    .mode-selector::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mode-group-label {
+      display: none;
+    }
+
+    .mode-divider {
+      width: 1px;
+      height: 1.5rem;
+      min-width: 1px;
+    }
+
+    .mode-btn {
+      min-width: 2.5rem;
+      min-height: 2.5rem;
+      width: 2.5rem;
+      height: 2.5rem;
+    }
+
+    .legend {
+      bottom: 0.5rem;
+      left: 0.5rem;
+      padding: 0.375rem 0.5rem;
+      gap: 0.5rem;
+      font-size: 0.625rem;
+    }
+
+    .legend-dot {
+      width: 7px;
+      height: 7px;
+    }
+
+    .stats {
+      bottom: 0.5rem;
+      right: 0.5rem;
+      padding: 0.25rem 0.5rem;
+      gap: 0.5rem;
+      font-size: 0.6rem;
+    }
+
+    [data-tooltip]::after {
+      display: none;
+    }
+
+    .bottom-bar {
+      bottom: 4.5rem;
+    }
   }
 </style>

@@ -45,7 +45,7 @@ let optsClient = {
     outdir: "../priv/static/assets",
     // Output CSS to a different file to avoid overwriting Tailwind's app.css
     outExtension: { ".css": ".bundle.css" },
-    logLevel: (deploy) ? "info" : "debug",
+    logLevel: "info",
     sourcemap: watch ? "inline" : false,
     // Suppress Svelte 5 source map warnings (known compiler issue)
     logOverride: {
@@ -68,6 +68,7 @@ let optsClient = {
 
         sveltePlugin({
             compilerOptions: { dev: !deploy, css: "injected" },
+            filterWarnings: (warning) => !warning.code?.startsWith('a11y'),
         }),
 
         /*wasmLoader(

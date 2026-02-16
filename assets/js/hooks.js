@@ -2258,7 +2258,7 @@ Hooks.ChatSidebarHook = {
     }
 };
 
-// Tabbed Footer Hook - persists active tab state
+// Tabbed Footer Hook - persists active tab state and tracks navigation
 Hooks.TabbedFooterHook = {
     mounted() {
         // Restore active tab from localStorage
@@ -2271,6 +2271,19 @@ Hooks.TabbedFooterHook = {
         this.handleEvent('save_active_tab', ({ tab }) => {
             localStorage.setItem('mobile_active_tab', tab);
         });
+
+        // Track navigation changes to show/hide footer based on path
+        this._pushCurrentPath = () => {
+            this.pushEvent('path_changed', { path: window.location.pathname });
+        };
+        this._pushCurrentPath();
+        window.addEventListener('phx:page-loading-stop', this._pushCurrentPath);
+    },
+
+    destroyed() {
+        if (this._pushCurrentPath) {
+            window.removeEventListener('phx:page-loading-stop', this._pushCurrentPath);
+        }
     }
 };
 

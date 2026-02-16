@@ -1,441 +1,171 @@
 defmodule SensoctoWeb.IndexLive do
   @moduledoc """
   Main index page showing:
-  - Lobby preview (sensors)
+  - Sigma graph preview of lobby sensors (adaptive to system load)
   - My Rooms section
   - Public Rooms section
   """
   use SensoctoWeb, :live_view
-  require Logger
   use LiveSvelte.Components
-  alias SensoctoWeb.Live.Components.StatefulSensorComponent
-  alias SensoctoWeb.Live.Components.MediaPlayerComponent
+  require Logger
   alias Sensocto.Rooms
+  alias Sensocto.SystemLoadMonitor
   alias Sensocto.AttentionTracker
-  alias Sensocto.Lenses.PriorityLens
+  import SensoctoWeb.LiveHelpers.SensorData
 
-  # Require authentication for this LiveView
   on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
 
-  @lobby_preview_options [10, 20, 30]
-  @default_lobby_limit 10
-
-  @attention_debounce_ms 200
-
-  # Maximum send_update calls per batch to prevent overwhelming the system
-  @max_updates_per_batch 10
+  @snapshot_intervals %{
+    normal: 3_000,
+    elevated: 5_000,
+    high: 15_000
+  }
 
   @impl true
-  @spec mount(any(), any(), any()) :: {:ok, any()}
   def mount(_params, _session, socket) do
-    start = System.monotonic_time()
-
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
-    # Subscribe to lobby media player events
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "media_player:lobby")
 
     user = socket.assigns.current_user
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-    sensors_count = Enum.count(sensors)
+    sensor_ids = Map.keys(sensors)
 
-    # Get lobby preview limit with attention-based sorting
-    lobby_limit = @default_lobby_limit
-    lobby_sensor_ids = get_sorted_sensor_ids(sensors, lobby_limit)
+    sensors_by_user = group_sensors_by_user(sensors)
+    enriched_sensors = enrich_sensors_with_attention(sensors)
 
-    # Fetch rooms
     my_rooms = Rooms.list_user_rooms(user)
     public_rooms = Rooms.list_public_rooms()
-
-    # Filter out user's rooms from public rooms to avoid duplicates
     my_room_ids = MapSet.new(my_rooms, & &1.id)
+    public_rooms_filtered = Enum.reject(public_rooms, &MapSet.member?(my_room_ids, &1.id))
 
-    public_rooms_filtered =
-      Enum.reject(public_rooms, fn room -> MapSet.member?(my_room_ids, room.id) end)
+    load_level = SystemLoadMonitor.get_load_level()
 
-    new_socket =
-      socket
-      |> assign(
+    socket =
+      assign(socket,
         current_path: "/",
-        sensors_online_count: sensors_count,
-        sensors_online: %{},
-        sensors_offline: %{},
-        sensors: sensors,
-        lobby_sensor_ids: lobby_sensor_ids,
-        lobby_limit: lobby_limit,
-        lobby_limit_options: @lobby_preview_options,
+        sensors_online_count: map_size(sensors),
         my_rooms: my_rooms,
         public_rooms: public_rooms_filtered,
-        global_view_mode: :summary,
-        attention_debounce_ref: nil,
-        priority_lens_registered: false,
-        priority_lens_topic: nil
+        sensors: sensors,
+        sensor_ids: sensor_ids,
+        sensors_by_user: sensors_by_user,
+        enriched_sensors: enriched_sensors,
+        load_level: load_level,
+        data_mode: :static,
+        snapshot_timer: nil
       )
 
-    # Schedule PriorityLens registration after mount to handle timing issues
-    # Sensors may not be fully available during the initial mount
-    new_socket =
-      if connected?(new_socket) do
-        # Delay registration to allow sensors to be ready
-        Process.send_after(self(), :register_priority_lens, 100)
-        new_socket
-      else
-        new_socket
-      end
+    socket =
+      if connected?(socket) and sensor_ids != [] do
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "system:load")
 
-    :telemetry.execute(
-      [:sensocto, :live, :mount],
-      %{duration: System.monotonic_time() - start},
-      %{}
-    )
+        AttentionTracker.register_views_bulk(sensor_ids, "composite_index_graph", socket.id)
 
-    {:ok, new_socket}
-  end
-
-  @impl true
-  def handle_info(
-        %Phoenix.Socket.Broadcast{
-          event: "presence_diff",
-          payload: payload
-        },
-        socket
-      ) do
-    Logger.debug(
-      "presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
-    )
-
-    # Update online/offline immediately with payload data (fast)
-    sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
-
-    # Schedule async refresh of full sensor state to avoid blocking parent LiveView
-    # This prevents child mount timeouts when get_all_sensors_state is slow
-    send(self(), :refresh_sensors)
-
-    # If not registered with PriorityLens yet and we have new sensors, try to register
-    if not socket.assigns[:priority_lens_registered] and map_size(payload.joins) > 0 do
-      send(self(), :register_priority_lens)
-    end
-
-    {
-      :noreply,
-      socket
-      |> assign(:sensors_online, sensors_online)
-      |> assign(:sensors_offline, payload.leaves)
-    }
-  end
-
-  # Register with PriorityLens - called after mount to ensure sensors are available
-  @impl true
-  def handle_info(:register_priority_lens, socket) do
-    # Skip if already registered
-    if socket.assigns[:priority_lens_registered] do
-      {:noreply, socket}
-    else
-      # Use sensors already assigned during mount, or refresh if empty
-      lobby_sensor_ids = socket.assigns.lobby_sensor_ids
-
-      # If no sensors in assigns, try to fetch fresh
-      {lobby_sensor_ids, socket} =
-        if lobby_sensor_ids == [] do
-          sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-          lobby_limit = socket.assigns.lobby_limit
-          new_ids = get_sorted_sensor_ids(sensors, lobby_limit)
-
-          socket =
-            socket
-            |> assign(:sensors, sensors)
-            |> assign(:lobby_sensor_ids, new_ids)
-            |> assign(:sensors_online_count, Enum.count(sensors))
-
-          {new_ids, socket}
-        else
-          {lobby_sensor_ids, socket}
-        end
-
-      if lobby_sensor_ids != [] do
-        user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
-
-        # Register attention for each sensor so data flows to global topic
-        # Without this, SimpleSensor won't broadcast to data:global
-        Enum.each(lobby_sensor_ids, fn sensor_id ->
-          AttentionTracker.register_view(sensor_id, "index_preview", user_id)
-        end)
-
-        # Subscribe to signal topics for attribute change notifications
-        Enum.each(lobby_sensor_ids, fn sensor_id ->
-          Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
-        end)
-
-        # Register with PriorityLens for adaptive data streaming
-        case PriorityLens.register_socket(socket.id, lobby_sensor_ids, quality: :high) do
-          {:ok, topic} ->
-            Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
-
-            {:noreply,
-             socket
-             |> assign(:priority_lens_registered, true)
-             |> assign(:priority_lens_topic, topic)}
-
-          {:error, _reason} ->
-            {:noreply, socket}
-        end
-      else
-        {:noreply, socket}
-      end
-    end
-  end
-
-  @impl true
-  def handle_info(:refresh_sensors, socket) do
-    # Fetch full sensor state asynchronously - this won't block child mounts
-    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-    sensors_count = Enum.count(sensors)
-    lobby_limit = socket.assigns.lobby_limit
-
-    # Get sorted sensor IDs with attention-based sorting
-    new_sensor_ids = get_sorted_sensor_ids(sensors, lobby_limit)
-    current_sensor_ids = socket.assigns.lobby_sensor_ids
-
-    updated_socket =
-      socket
-      |> assign(:sensors_online_count, sensors_count)
-      |> assign(:sensors, sensors)
-
-    # Only assign new sensor_ids if they actually changed
-    updated_socket =
-      if new_sensor_ids != current_sensor_ids do
-        # Update PriorityLens with new sensor list
-        updated_socket = update_priority_lens_sensors(updated_socket, new_sensor_ids)
-        assign(updated_socket, :lobby_sensor_ids, new_sensor_ids)
-      else
-        updated_socket
-      end
-
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_info({:signal, msg}, socket) do
-    Logger.debug("IndexLive handled signal: #{inspect(msg)}")
-
-    {:noreply, put_flash(socket, :info, "You clicked the button!")}
-  end
-
-  @impl true
-  def handle_info({:trigger_parent_flash, message}, socket) do
-    {:noreply, put_flash(socket, :info, message)}
-  end
-
-  # Handle attention changes from any sensor - debounce to avoid excessive re-sorting
-  # AttentionTracker crashed and restarted — re-register attention for visible sensors
-  @impl true
-  def handle_info(:attention_tracker_restarted, socket) do
-    user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
-
-    Enum.each(socket.assigns[:lobby_sensor_ids] || [], fn sensor_id ->
-      Sensocto.AttentionTracker.register_view(sensor_id, "index_preview", user_id)
-    end)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:attention_changed, %{sensor_id: _sensor_id, level: _level}}, socket) do
-    # Cancel any pending debounce timer
-    if socket.assigns.attention_debounce_ref do
-      Process.cancel_timer(socket.assigns.attention_debounce_ref)
-    end
-
-    # Schedule debounced resort
-    ref = Process.send_after(self(), :resort_lobby_by_attention, @attention_debounce_ms)
-    {:noreply, assign(socket, :attention_debounce_ref, ref)}
-  end
-
-  # Perform the actual resort after debounce period
-  @impl true
-  def handle_info(:resort_lobby_by_attention, socket) do
-    sensors = socket.assigns.sensors
-    lobby_limit = socket.assigns.lobby_limit
-    new_sensor_ids = get_sorted_sensor_ids(sensors, lobby_limit)
-    current_sensor_ids = socket.assigns.lobby_sensor_ids
-
-    updated_socket =
-      if new_sensor_ids != current_sensor_ids do
-        assign(socket, :lobby_sensor_ids, new_sensor_ids)
+        setup_data_mode(socket, load_level, sensor_ids)
       else
         socket
       end
 
-    {:noreply, assign(updated_socket, :attention_debounce_ref, nil)}
-  end
-
-  # Handle media player state updates from PubSub
-  @impl true
-  def handle_info({:media_player_state, state}, socket) do
-    send_update(MediaPlayerComponent,
-      id: "index-media-player",
-      player_state: state.state,
-      position_seconds: state.position_seconds,
-      current_item: state.current_item,
-      playlist_items: state.playlist_items,
-      controller_user_id: state.controller_user_id,
-      controller_user_name: state.controller_user_name
-    )
-
-    {:noreply, socket}
-  end
-
-  # ==========================================================================
-  # PriorityLens Message Handlers (realtime sensor data)
-  # ==========================================================================
-
-  # Handle PriorityLens batch data - forward to visible sensor components
-  @impl true
-  def handle_info({:lens_batch, batch_data}, socket) do
-    visible_sensor_ids = socket.assigns.lobby_sensor_ids
-
-    # Filter to sensors that are in our lobby preview and have data in this batch
-    sensors_with_data = Map.keys(batch_data) |> MapSet.new()
-
-    sensors_to_update =
-      visible_sensor_ids
-      |> Enum.filter(&MapSet.member?(sensors_with_data, &1))
-      |> Enum.take(@max_updates_per_batch)
-
-    # Forward measurements to each visible sensor component
-    Enum.each(sensors_to_update, fn sensor_id ->
-      attrs = Map.get(batch_data, sensor_id, %{})
-
-      # Transform to measurements_batch format expected by StatefulSensorComponent
-      # IMPORTANT: Preserve the event field for button press/release events
-      # NOTE: Each attribute may contain a list of measurements or a single measurement
-      measurements =
-        Enum.flat_map(attrs, fn {attr_id, measurements_or_single} ->
-          # Handle both list of measurements and single measurement
-          measurements_list =
-            case measurements_or_single do
-              list when is_list(list) -> list
-              single when is_map(single) -> [single]
-              _other -> []
-            end
-
-          Enum.map(measurements_list, fn measurement ->
-            timestamp = Map.get(measurement, :timestamp, System.system_time(:millisecond))
-            payload = Map.get(measurement, :payload, measurement)
-            event = Map.get(measurement, :event)
-
-            base = %{
-              attribute_id: attr_id,
-              timestamp: timestamp,
-              payload: payload
-            }
-
-            # Add event field if present (for button press/release)
-            if event, do: Map.put(base, :event, event), else: base
-          end)
-        end)
-
-      send_update(StatefulSensorComponent,
-        id: "sensor_#{sensor_id}",
-        measurements_batch: measurements
-      )
-    end)
-
-    {:noreply, socket}
-  end
-
-  # Handle PriorityLens digest data (low quality mode)
-  @impl true
-  def handle_info({:lens_digest, _digests}, socket) do
-    # For index page, we can ignore digest mode - just show last known state
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(msg, socket) do
-    Logger.debug("IndexLive unhandled message: #{inspect(msg)}")
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("toggle_all_view_mode", _params, socket) do
-    new_mode = if socket.assigns.global_view_mode == :summary, do: :normal, else: :summary
-
-    # Broadcast to all sensor LiveViews to update their view mode
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      "ui:view_mode",
-      {:global_view_mode_changed, new_mode}
-    )
-
-    {:noreply, assign(socket, :global_view_mode, new_mode)}
-  end
-
-  @impl true
-  def handle_event("set_lobby_limit", %{"limit" => limit_str}, socket) do
-    limit = String.to_integer(limit_str)
-    sensors = socket.assigns.sensors
-    new_sensor_ids = get_sorted_sensor_ids(sensors, limit)
-
-    # Update PriorityLens with new sensor list
-    socket = update_priority_lens_sensors(socket, new_sensor_ids)
-
-    {:noreply,
-     socket
-     |> assign(:lobby_limit, limit)
-     |> assign(:lobby_sensor_ids, new_sensor_ids)}
-  end
-
-  @impl true
-  def handle_event(type, params, socket) do
-    Logger.debug("Unknown event: #{type} #{inspect(params)}")
-    {:noreply, socket}
+    {:ok, socket}
   end
 
   @impl true
   def terminate(_reason, socket) do
-    # Unregister attention for the lobby sensors
-    user_id = socket.assigns[:current_user] && socket.assigns.current_user.id
-    lobby_sensor_ids = socket.assigns[:lobby_sensor_ids] || []
+    sensor_ids = socket.assigns[:sensor_ids] || []
 
-    Enum.each(lobby_sensor_ids, fn sensor_id ->
-      AttentionTracker.unregister_view(sensor_id, "index_preview", user_id)
-    end)
-
-    # Unregister from PriorityLens to clean up per-socket state
-    if socket.assigns[:priority_lens_registered] do
-      PriorityLens.unregister_socket(socket.id)
+    if sensor_ids != [] do
+      AttentionTracker.unregister_views_bulk(sensor_ids, "composite_index_graph", socket.id)
     end
 
     :ok
   end
 
-  # Update PriorityLens subscription when sensor list changes
-  defp update_priority_lens_sensors(socket, new_sensor_ids) do
-    if socket.assigns[:priority_lens_registered] do
-      # Update the sensor list in PriorityLens
-      PriorityLens.set_sensors(socket.id, new_sensor_ids)
+  # --- Data mode management ---
+  # Homepage uses snapshot-only strategy (no PriorityLens) to avoid
+  # overwhelming the client with push_events on a preview widget.
+
+  defp setup_data_mode(socket, load_level, _sensor_ids) do
+    case Map.get(@snapshot_intervals, load_level) do
+      nil ->
+        assign(socket, data_mode: :static)
+
+      interval ->
+        timer = Process.send_after(self(), :snapshot_refresh, interval)
+
+        assign(socket,
+          data_mode: :snapshot,
+          snapshot_timer: timer
+        )
+    end
+  end
+
+  defp teardown_data_mode(socket) do
+    if socket.assigns[:snapshot_timer] do
+      Process.cancel_timer(socket.assigns.snapshot_timer)
     end
 
-    socket
+    assign(socket, snapshot_timer: nil, data_mode: :static)
   end
 
-  # Sort sensors by attention level (highest first) and take the limit
-  defp get_sorted_sensor_ids(sensors, limit) do
-    attention_priority = %{high: 4, medium: 3, low: 2, none: 1}
+  # --- Handle info callbacks ---
 
-    sensors
-    |> Map.keys()
-    |> Enum.map(fn sensor_id ->
-      attention_level = AttentionTracker.get_sensor_attention_level(sensor_id)
-      priority = Map.get(attention_priority, attention_level, 0)
-      {sensor_id, priority}
-    end)
-    |> Enum.sort_by(fn {sensor_id, priority} -> {-priority, sensor_id} end)
-    |> Enum.take(limit)
-    |> Enum.map(fn {sensor_id, _priority} -> sensor_id end)
+  @impl true
+  def handle_info({:system_load_changed, %{level: new_level}}, socket) do
+    if new_level == socket.assigns.load_level do
+      {:noreply, socket}
+    else
+      socket =
+        socket
+        |> teardown_data_mode()
+        |> setup_data_mode(new_level, socket.assigns.sensor_ids)
+        |> assign(:load_level, new_level)
+
+      {:noreply, socket}
+    end
   end
+
+  @impl true
+  def handle_info({:memory_protection_changed, _}, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info(:snapshot_refresh, socket) do
+    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+    sensor_ids = Map.keys(sensors)
+
+    sensors_by_user = group_sensors_by_user(sensors)
+    enriched_sensors = enrich_sensors_with_attention(sensors)
+
+    interval = Map.get(@snapshot_intervals, socket.assigns.load_level, 15_000)
+    timer = Process.send_after(self(), :snapshot_refresh, interval)
+
+    {:noreply,
+     assign(socket,
+       sensors: sensors,
+       sensor_ids: sensor_ids,
+       sensors_by_user: sensors_by_user,
+       enriched_sensors: enriched_sensors,
+       sensors_online_count: map_size(sensors),
+       snapshot_timer: timer
+     )}
+  end
+
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{event: "presence_diff", payload: payload},
+        socket
+      ) do
+    joins = map_size(payload.joins)
+    leaves = map_size(payload.leaves)
+    new_count = socket.assigns.sensors_online_count + joins - leaves
+
+    {:noreply, assign(socket, :sensors_online_count, max(new_count, 0))}
+  end
+
+  @impl true
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
+  end
+
+  # --- Components ---
 
   attr :room, :map, required: true
 

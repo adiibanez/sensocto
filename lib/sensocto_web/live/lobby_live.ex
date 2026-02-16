@@ -7,6 +7,7 @@ defmodule SensoctoWeb.LobbyLive do
   require Logger
   use LiveSvelte.Components
   use Sensocto.Chat.AIChatHandler
+  import SensoctoWeb.LiveHelpers.SensorData
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
@@ -860,59 +861,6 @@ defmodule SensoctoWeb.LobbyLive do
     lenses = if length(hrv_sensors) > 0, do: [:hrv | lenses], else: lenses
     lenses = if length(gaze_sensors) > 0, do: [:gaze | lenses], else: lenses
     Enum.reverse(lenses)
-  end
-
-  defp group_sensors_by_user(sensors) do
-    sensors
-    |> Enum.group_by(fn {_id, sensor} -> {sensor.connector_id, sensor.connector_name} end)
-    |> Enum.map(fn {{connector_id, connector_name}, sensor_list} ->
-      # Collect all attribute types and latest values across sensors
-      all_attributes =
-        sensor_list
-        |> Enum.flat_map(fn {_id, sensor} ->
-          (sensor.attributes || %{})
-          |> Map.values()
-          |> Enum.map(fn attr ->
-            %{
-              type: attr.attribute_type,
-              name: Map.get(attr, :attribute_name, attr.attribute_id),
-              value: attr.lastvalue && attr.lastvalue.payload,
-              timestamp: attr.lastvalue && attr.lastvalue.timestamp
-            }
-          end)
-        end)
-
-      # Group by attribute type for summary
-      attributes_summary =
-        all_attributes
-        |> Enum.group_by(& &1.type)
-        |> Enum.map(fn {type, attrs} ->
-          # Get latest value for this type
-          latest = Enum.max_by(attrs, fn a -> a.timestamp || 0 end, fn -> %{value: nil} end)
-          %{type: type, count: length(attrs), latest_value: latest.value}
-        end)
-        |> Enum.sort_by(& &1.type)
-
-      %{
-        connector_id: connector_id,
-        connector_name: connector_name || "Unknown",
-        sensor_count: length(sensor_list),
-        sensors:
-          Enum.map(sensor_list, fn {id, s} ->
-            %{sensor_id: id, sensor_name: s.sensor_name}
-          end),
-        attributes_summary: attributes_summary,
-        total_attributes: length(all_attributes)
-      }
-    end)
-    |> Enum.sort_by(& &1.connector_name)
-  end
-
-  defp enrich_sensors_with_attention(sensors) do
-    Map.new(sensors, fn {id, sensor} ->
-      level = Sensocto.AttentionTracker.get_sensor_attention_level(id)
-      {id, Map.put(sensor, :attention_level, level)}
-    end)
   end
 
   # Helper functions for user video card integration

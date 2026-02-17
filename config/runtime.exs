@@ -1,5 +1,13 @@
 import Config
 
+# Safe integer parsing for environment variables — returns default on invalid input
+safe_int = fn env_var, default ->
+  case Integer.parse(System.get_env(env_var) || "") do
+    {n, ""} -> n
+    _ -> default
+  end
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -68,8 +76,8 @@ if System.get_env("TIGRIS_BUCKET") || System.get_env("BUCKET_NAME") do
   # Enable backup worker when Tigris is configured
   config :sensocto, :backup_worker,
     enabled: true,
-    interval_ms: String.to_integer(System.get_env("BACKUP_INTERVAL_MS") || "300000"),
-    batch_size: String.to_integer(System.get_env("BACKUP_BATCH_SIZE") || "10")
+    interval_ms: safe_int.("BACKUP_INTERVAL_MS", 300_000),
+    batch_size: safe_int.("BACKUP_BATCH_SIZE", 10)
 end
 
 # Optional static TURN server for video/voice calls (Membrane RTC Engine ExWebRTC)
@@ -125,7 +133,7 @@ if config_env() == :prod do
     ssl: [cacerts: :public_key.cacerts_get()],
     # Conservative default - Neon pooler has limits, don't exceed them
     # Each connection uses ~5-10MB RAM on Postgres side
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: safe_int.("POOL_SIZE", 10),
     # Queue settings help during connection pressure
     queue_target: 5000,
     queue_interval: 1000,
@@ -142,7 +150,7 @@ if config_env() == :prod do
     config :sensocto, Sensocto.Repo.Replica,
       url: replica_url,
       ssl: [cacerts: :public_key.cacerts_get()],
-      pool_size: String.to_integer(System.get_env("REPLICA_POOL_SIZE") || "5"),
+      pool_size: safe_int.("REPLICA_POOL_SIZE", 5),
       timeout: 60_000,
       connect_timeout: 60_000,
       socket_options: maybe_ipv6
@@ -151,7 +159,7 @@ if config_env() == :prod do
     config :sensocto, Sensocto.Repo.Replica,
       url: database_url,
       ssl: [cacerts: :public_key.cacerts_get()],
-      pool_size: String.to_integer(System.get_env("REPLICA_POOL_SIZE") || "5"),
+      pool_size: safe_int.("REPLICA_POOL_SIZE", 5),
       timeout: 60_000,
       connect_timeout: 60_000,
       socket_options: maybe_ipv6
@@ -170,7 +178,7 @@ if config_env() == :prod do
       """
 
   host = System.get_env("PHX_HOST") || "example.com"
-  port = String.to_integer(System.get_env("PORT") || "4000")
+  port = safe_int.("PORT", 4000)
 
   config :sensocto, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 

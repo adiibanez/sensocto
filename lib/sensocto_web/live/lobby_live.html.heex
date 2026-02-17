@@ -25,7 +25,7 @@
             :medium -> "bg-yellow-600/20 text-yellow-400 border border-yellow-600/30"
             :low -> "bg-orange-600/20 text-orange-400 border border-orange-600/30"
             :minimal -> "bg-red-600/20 text-red-400 border border-red-600/30"
-            :paused -> "bg-gray-600/20 text-gray-400 border border-gray-600/30 animate-pulse"
+            :paused -> "bg-gray-600/20 text-gray-300 border border-gray-600/30 animate-pulse"
           end}>
           <span class={"w-2 h-2 rounded-full " <>
             case @current_quality do
@@ -44,13 +44,13 @@
         <%!-- Quality Override Dropdown --%>
         <div class="relative group">
           <button
-            class="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-600 text-gray-400 hover:text-white transition-colors"
+            class="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
             title="Quality settings"
           >
             <Heroicons.icon name="adjustments-horizontal" type="outline" class="h-4 w-4" />
           </button>
           <div class="absolute right-0 top-full mt-1 w-40 bg-gray-800 border border-gray-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-            <div class="p-2 text-xs text-gray-400 border-b border-gray-700">
+            <div class="p-2 text-xs text-gray-300 border-b border-gray-700">
               Data Quality
             </div>
             <button
@@ -114,7 +114,7 @@
   <div class="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <Heroicons.icon name="phone" type="solid" class="h-5 w-5 text-gray-400" />
+        <Heroicons.icon name="phone" type="solid" class="h-5 w-5 text-gray-300" />
         <span class="text-sm text-gray-300 font-medium">Voice/Video Call</span>
       </div>
 
@@ -643,7 +643,7 @@
       <%!-- Scroll/loading indicator - always present so JS can control it --%>
       <div
         id="virtual-scroll-indicator"
-        class="col-span-full flex items-center justify-center py-4 text-gray-400"
+        class="col-span-full flex items-center justify-center py-4 text-gray-300"
       >
         <%!-- Loading spinner (shown by JS when loading, or server-rendered during initial load) --%>
         <div class={[
@@ -692,7 +692,7 @@
 
     <div
       :if={@sensor_ids == []}
-      class="text-center py-12 text-gray-400"
+      class="text-center py-12 text-gray-300"
     >
       <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No sensors connected</p>
@@ -721,10 +721,93 @@
       <option value="">-- Select MIDI output --</option>
     </select>
     <span id="midi-availability" class="text-gray-500 italic"></span>
-    <span id="midi-status-text" class="text-gray-500">Off</span>
-    <span class="ml-auto text-gray-600 hidden sm:block">
-      CC1=HRV CC2=Breath CC16=BreathSync CC17=HRVSync
-    </span>
+    <%!-- Live CC value meters + status --%>
+    <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
+      <%!-- Tempo / MIDI Clock --%>
+      <div class="flex items-center gap-1" title="MIDI Clock — Group mean heart rate">
+        <span class="text-red-400 text-[10px]">BPM</span>
+        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            id="midi-bar-tempo"
+            class="h-full bg-red-500 rounded-full transition-all duration-150"
+            style="width: 0%"
+          >
+          </div>
+        </div>
+        <span id="midi-val-tempo" class="text-gray-500 w-6 tabular-nums">-</span>
+      </div>
+      <%!-- Arousal --%>
+      <div class="flex items-center gap-1" title="CC7 Volume — Collective arousal">
+        <span class="text-amber-400 text-[10px]">ARO</span>
+        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            id="midi-bar-arousal"
+            class="h-full bg-amber-500 rounded-full transition-all duration-150"
+            style="width: 0%"
+          >
+          </div>
+        </div>
+        <span id="midi-val-arousal" class="text-gray-500 w-6 tabular-nums">0</span>
+      </div>
+      <%!-- HRV --%>
+      <div class="flex items-center gap-1" title="CC1 Mod Wheel — Group HRV RMSSD">
+        <span class="text-purple-400 text-[10px]">HRV</span>
+        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            id="midi-bar-hrv"
+            class="h-full bg-purple-500 rounded-full transition-all duration-75"
+            style="width: 0%"
+          >
+          </div>
+        </div>
+        <span id="midi-val-hrv" class="text-gray-500 w-6 tabular-nums">0</span>
+      </div>
+      <%!-- Breath Phase LFO --%>
+      <div class="flex items-center gap-1" title="CC2 Breath — Group breath phase LFO">
+        <span class="text-cyan-400 text-[10px]">BRE</span>
+        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            id="midi-bar-breath"
+            class="h-full bg-cyan-500 rounded-full transition-all duration-75"
+            style="width: 0%"
+          >
+          </div>
+        </div>
+        <span id="midi-val-breath" class="text-gray-500 w-6 tabular-nums">0</span>
+      </div>
+      <%!-- Breathing Sync --%>
+      <div class="flex items-center gap-1" title="CC16 — Breathing sync (Kuramoto R)">
+        <span class="text-teal-400 text-[10px]">BSy</span>
+        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            id="midi-bar-bsync"
+            class="h-full bg-teal-500 rounded-full transition-all duration-75"
+            style="width: 0%"
+          >
+          </div>
+        </div>
+        <span id="midi-val-bsync" class="text-gray-500 w-6 tabular-nums">0</span>
+      </div>
+      <%!-- HRV Sync --%>
+      <div class="flex items-center gap-1" title="CC17 — HRV sync (Kuramoto R)">
+        <span class="text-indigo-400 text-[10px]">HSy</span>
+        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            id="midi-bar-hsync"
+            class="h-full bg-indigo-500 rounded-full transition-all duration-75"
+            style="width: 0%"
+          >
+          </div>
+        </div>
+        <span id="midi-val-hsync" class="text-gray-500 w-6 tabular-nums">0</span>
+      </div>
+      <%!-- Sync threshold trigger flash --%>
+      <span
+        id="midi-sync-trigger"
+        class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
+      >
+      </span>
+    </div>
   </div>
 
   <div
@@ -738,7 +821,7 @@
       socket={@socket}
       class="w-full"
     />
-    <div :if={@heartrate_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@heartrate_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="heart" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No heartrate sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with heartrate capability</p>
@@ -752,7 +835,7 @@
       socket={@socket}
       class="w-full"
     />
-    <div :if={@imu_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@imu_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="cube" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No IMU sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with IMU capability</p>
@@ -770,7 +853,7 @@
       socket={@socket}
       class="w-full h-96"
     />
-    <div :if={@location_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@location_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="map-pin" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No location sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with geolocation capability</p>
@@ -784,7 +867,7 @@
       socket={@socket}
       class="w-full"
     />
-    <div :if={@ecg_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@ecg_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="chart-bar" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No ECG sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with ECG capability</p>
@@ -802,7 +885,7 @@
       socket={@socket}
       class="w-full"
     />
-    <div :if={@battery_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@battery_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="battery-50" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No battery sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with battery monitoring</p>
@@ -821,7 +904,7 @@
       socket={@socket}
       class="w-full h-full"
     />
-    <div :if={@skeleton_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@skeleton_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="user" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No skeleton/pose sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with pose detection enabled</p>
@@ -841,7 +924,7 @@
       socket={@socket}
       class="w-full h-full"
     />
-    <div :if={@respiration_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@respiration_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="signal" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No breathing sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with respiration/breathing data</p>
@@ -861,7 +944,7 @@
       socket={@socket}
       class="w-full h-full"
     />
-    <div :if={@hrv_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@hrv_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="chart-bar-square" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No HRV sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor with HRV data</p>
@@ -881,7 +964,7 @@
       socket={@socket}
       class="w-full"
     />
-    <div :if={@gaze_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@gaze_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="eye" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No eye tracking sensors connected</p>
       <p class="text-sm mt-2">Connect a Pupil Neon or similar eye tracker</p>
@@ -890,7 +973,7 @@
 
   <%!-- Favorites View --%>
   <div :if={@live_action == :favorites}>
-    <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-400">
+    <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="star" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No favorite sensors</p>
       <p class="text-sm mt-2">Click the star icon on any sensor to add it to favorites</p>
@@ -920,7 +1003,7 @@
 
   <%!-- Users/Connectors Summary View with Video Presence --%>
   <div :if={@live_action == :users}>
-    <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-400">
+    <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
       <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No users connected</p>
       <p class="text-sm mt-2">Connect a sensor to see user summaries</p>
@@ -985,7 +1068,7 @@
     >
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-xl font-semibold">Join a Room</h2>
-        <button phx-click="close_join_modal" class="text-gray-400 hover:text-white">
+        <button phx-click="close_join_modal" class="text-gray-300 hover:text-white">
           <Heroicons.icon name="x-mark" type="outline" class="h-6 w-6" />
         </button>
       </div>
@@ -1029,7 +1112,7 @@
               <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
                 <div class="flex-1 min-w-0">
                   <p class="font-medium text-white truncate">{room.name}</p>
-                  <p :if={room.description} class="text-xs text-gray-400 truncate">
+                  <p :if={room.description} class="text-xs text-gray-300 truncate">
                     {room.description}
                   </p>
                 </div>
@@ -1094,7 +1177,7 @@
         <div class="flex items-center gap-4 mb-6">
           <div class="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center">
             <svg
-              class="w-8 h-8 text-gray-400"
+              class="w-8 h-8 text-gray-300"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1111,7 +1194,7 @@
             <p class="text-lg font-semibold text-white">
               {@control_request_modal.requester_name}
             </p>
-            <p class="text-sm text-gray-400">
+            <p class="text-sm text-gray-300">
               wants to control the 3D viewer
             </p>
           </div>
@@ -1205,7 +1288,7 @@
         <div class="flex items-center gap-4 mb-6">
           <div class="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center">
             <svg
-              class="w-8 h-8 text-gray-400"
+              class="w-8 h-8 text-gray-300"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1222,7 +1305,7 @@
             <p class="text-lg font-semibold text-white">
               {@media_control_request_modal.requester_name}
             </p>
-            <p class="text-sm text-gray-400">
+            <p class="text-sm text-gray-300">
               wants to control the media player
             </p>
           </div>

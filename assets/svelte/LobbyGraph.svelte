@@ -4,6 +4,7 @@
   import Sigma from "sigma";
   import EdgeCurveProgram from "@sigma/edge-curve";
   import forceAtlas2 from "graphology-layout-forceatlas2";
+  import FA2Layout from "graphology-layout-forceatlas2/worker";
 
   interface Room {
     id: string;
@@ -74,6 +75,16 @@
   let recordingRaf: number | null = null;
   let recordingCanvas: HTMLCanvasElement | null = null;
   let graphRoot: HTMLDivElement;
+
+  // ── Level-of-Detail (LOD) ──────────────────────────────────────────
+  // Hide attribute nodes only on very large graphs when fully zoomed out.
+  // Threshold scales with graph size: small graphs never trigger LOD.
+  let lodAttributesVisible = $state(true);
+  const LOD_MIN_NODES = 1000; // LOD only activates for graphs this large
+  const LOD_ZOOM_THRESHOLD = 2.5; // camera ratio above this = very zoomed out
+
+  // ── ForceAtlas2 Web Worker ─────────────────────────────────────────
+  let fa2Worker: FA2Layout | null = null;
 
   // ── View Mode System ──────────────────────────────────────────────
   type ViewMode =
@@ -568,6 +579,63 @@
   function runLayout() {
     if (!graph || graph.order === 0) return;
 
+    const nodeCount = graph.order;
+
+    // For small graphs or when worker isn't available, use sync fallback
+    if (nodeCount < 50) {
+      runLayoutSync();
+      return;
+    }
+
+    // Stop any existing worker
+    if (fa2Worker) {
+      fa2Worker.stop();
+      fa2Worker.kill();
+      fa2Worker = null;
+    }
+
+    isLayoutRunning = true;
+
+    try {
+      fa2Worker = new FA2Layout(graph, {
+        settings: {
+          gravity: 0.3,
+          scalingRatio: nodeCount > 300 ? 20 : 12,
+          strongGravityMode: false,
+          barnesHutOptimize: nodeCount > 100,
+          barnesHutTheta: 0.6,
+          linLogMode: true,
+          adjustSizes: true,
+          edgeWeightInfluence: 1,
+          slowDown: 2
+        }
+      });
+
+      fa2Worker.start();
+
+      // Auto-stop after a duration proportional to graph size
+      const duration = nodeCount > 500 ? 3000 : nodeCount > 200 ? 2000 : 1500;
+      setTimeout(() => {
+        if (fa2Worker) {
+          fa2Worker.stop();
+          fa2Worker.kill();
+          fa2Worker = null;
+        }
+        isLayoutRunning = false;
+        sigma?.refresh();
+        if (compact) {
+          setTimeout(() => zoomToRandomDetail(), 50);
+        }
+      }, duration);
+    } catch (e) {
+      console.warn("FA2 Worker failed, falling back to sync:", e);
+      runLayoutSync();
+    }
+  }
+
+  // Synchronous fallback for small graphs or when worker fails
+  function runLayoutSync() {
+    if (!graph || graph.order === 0) return;
     isLayoutRunning = true;
 
     const nodeCount = graph.order;
@@ -588,14 +656,10 @@
       }
     });
 
-    if (sigma) {
-      sigma.refresh();
-    }
-
+    sigma?.refresh();
     if (compact) {
       setTimeout(() => zoomToRandomDetail(), 50);
     }
-
     isLayoutRunning = false;
   }
 
@@ -638,8 +702,12 @@
       labelDensity: scale < 0.7 ? 0.5 : 1,
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
-      // Node reducer: dim nodes that aren't highlighted
+      // Node reducer: LOD + highlight dimming
       nodeReducer: (node, data) => {
+        // LOD: hide attribute nodes when zoomed out
+        if (!lodAttributesVisible && data.nodeType === "attribute") {
+          return { ...data, hidden: true };
+        }
         if (highlightedNodes.size === 0) {
           return data;
         }
@@ -653,6 +721,14 @@
         };
       },
       edgeReducer: (edge, data) => {
+        // LOD: hide edges to hidden attribute nodes
+        if (!lodAttributesVisible) {
+          const target = graph.target(edge);
+          const targetAttrs = graph.getNodeAttributes(target);
+          if (targetAttrs.nodeType === "attribute") {
+            return { ...data, hidden: true };
+          }
+        }
         if (highlightedNodes.size === 0) {
           return data;
         }
@@ -759,6 +835,15 @@
       sigma?.refresh();
     });
 
+    // LOD: toggle attribute visibility based on zoom level
+    sigma.getCamera().on("updated", (state) => {
+      const shouldShow = graph.order < LOD_MIN_NODES || state.ratio < LOD_ZOOM_THRESHOLD;
+      if (shouldShow !== lodAttributesVisible) {
+        lodAttributesVisible = shouldShow;
+        sigma?.refresh();
+      }
+    });
+
     // Run initial layout
     runLayout();
   }
@@ -788,6 +873,58 @@
 
   // ── Mode Switching ──────────────────────────────────────────────
 
+  // Smoothly animate all node positions from current to target over duration ms
+  function animateNodePositions(targetPositions: Map<string, {x: number; y: number}>, duration: number = 400) {
+    if (!graph || !sigma) return;
+
+    const startPositions = new Map<string, {x: number; y: number}>();
+    graph.forEachNode((node) => {
+      startPositions.set(node, {
+        x: graph.getNodeAttribute(node, "x"),
+        y: graph.getNodeAttribute(node, "y")
+      });
+    });
+
+    const startTime = performance.now();
+
+    function tick() {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease-out cubic for smooth deceleration
+      const t = 1 - Math.pow(1 - progress, 3);
+
+      graph.forEachNode((node) => {
+        const start = startPositions.get(node);
+        const target = targetPositions.get(node);
+        if (start && target) {
+          graph.setNodeAttribute(node, "x", start.x + (target.x - start.x) * t);
+          graph.setNodeAttribute(node, "y", start.y + (target.y - start.y) * t);
+        }
+      });
+
+      sigma?.refresh();
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // Capture all current node positions from the graph
+  function capturePositions(): Map<string, {x: number; y: number}> {
+    const positions = new Map<string, {x: number; y: number}>();
+    if (!graph) return positions;
+    graph.forEachNode((node) => {
+      positions.set(node, {
+        x: graph.getNodeAttribute(node, "x"),
+        y: graph.getNodeAttribute(node, "y")
+      });
+    });
+    return positions;
+  }
+
   function switchViewMode(newMode: ViewMode) {
     if (viewMode === newMode || isTransitioning) return;
 
@@ -808,19 +945,39 @@
       applyLayout(lastLayoutMode);
     }
 
-    applyViewMode(newMode);
+    // For layout mode switches, animate the transition
+    if (layoutModes.includes(newMode)) {
+      applyLayout(newMode, true);
+    } else {
+      applyViewMode(newMode);
+    }
 
-    setTimeout(() => { isTransitioning = false; }, 300);
+    setTimeout(() => { isTransitioning = false; }, 600);
   }
 
-  function applyLayout(mode: ViewMode) {
+  function applyLayout(mode: ViewMode, animate: boolean = false) {
     if (!graph || graph.order === 0) return;
+
+    const oldPositions = animate ? capturePositions() : null;
+
     switch (mode) {
       case "topology":     runLayout(); break;
       case "per-user":     layoutPerUser(); break;
       case "per-type":     layoutPerType(); break;
       case "radial":       layoutRadialTree(); break;
       case "constellation": layoutConstellation(); break;
+    }
+
+    if (animate && oldPositions) {
+      const targetPositions = capturePositions();
+      // Restore old positions, then animate to new
+      for (const [node, pos] of oldPositions) {
+        if (graph.hasNode(node)) {
+          graph.setNodeAttribute(node, "x", pos.x);
+          graph.setNodeAttribute(node, "y", pos.y);
+        }
+      }
+      animateNodePositions(targetPositions, 500);
     }
   }
 
@@ -1321,7 +1478,7 @@
 
         // Glow at peak
         if (Math.sin(nodePhase) > 0.95 && isNodeInViewport(node)) {
-          activeGlows.set(node, { start: now });
+          activeGlows.set(node, { start: now, kind: "heartbeat" });
           startGlowLoop();
         }
         // Color heartbeat nodes red at peak, pink otherwise
@@ -1475,7 +1632,7 @@
     graph.setNodeAttribute(nodeId, "size", baseSize * sizeMult);
 
     if (level === "high") {
-      activeGlows.set(nodeId, { start: performance.now() });
+      activeGlows.set(nodeId, { start: performance.now(), kind: "attention" });
       startGlowLoop();
     }
   }
@@ -1502,11 +1659,10 @@
   // ── Mode-specific label for re-layout button ──────────────────
   function handleRelayoutForMode() {
     if (layoutModes.includes(viewMode)) {
-      applyLayout(viewMode);
+      applyLayout(viewMode, true);
     } else {
-      applyLayout(lastLayoutMode);
+      applyLayout(lastLayoutMode, true);
     }
-    sigma?.refresh();
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -1797,7 +1953,17 @@
   let glowCanvas: HTMLCanvasElement;
   let glowCtx: CanvasRenderingContext2D | null = null;
   let glowRaf: number | null = null;
-  let activeGlows = new Map<string, { start: number }>();
+  type GlowKind = "data" | "attention" | "heartbeat" | "connect" | "disconnect";
+  interface GlowColors { core: [number, number, number]; mid: [number, number, number]; wisp: [number, number, number]; }
+  const GLOW_PALETTES: Record<GlowKind, GlowColors> = {
+    data:       { core: [147, 197, 253], mid: [96, 165, 250], wisp: [120, 180, 255] },  // electric blue
+    attention:  { core: [103, 232, 249], mid: [34, 211, 238],  wisp: [80, 220, 245] },  // cyan/teal
+    heartbeat:  { core: [253, 164, 175], mid: [251, 113, 133], wisp: [255, 140, 160] }, // rose/pink
+    connect:    { core: [167, 243, 208], mid: [52, 211, 153],  wisp: [120, 230, 180] }, // emerald
+    disconnect: { core: [253, 230, 138], mid: [251, 191, 36],  wisp: [255, 210, 100] }, // amber
+  };
+  interface GlowEntry { start: number; kind: GlowKind; frozenPos?: { x: number; y: number }; frozenSize?: number; }
+  let activeGlows = new Map<string, GlowEntry>();
   const GLOW_DURATION_MS = 350;
 
   function startGlowLoop() {
@@ -1837,45 +2003,56 @@
         continue;
       }
 
+      // For nodes that no longer exist, use frozen position if available (disconnect glow)
+      let viewPos: { x: number; y: number };
+      let displaySize: number;
+
       if (!graph.hasNode(nodeId)) {
-        activeGlows.delete(nodeId);
-        continue;
+        if (glow.frozenPos) {
+          viewPos = glow.frozenPos;
+          displaySize = glow.frozenSize || 8;
+        } else {
+          activeGlows.delete(nodeId);
+          continue;
+        }
+      } else {
+        if (!isNodeInViewport(nodeId)) continue;
+        const nodeAttrs = graph.getNodeAttributes(nodeId);
+        viewPos = sigma.graphToViewport({ x: nodeAttrs.x, y: nodeAttrs.y });
+        const baseSize = nodeAttrs.size || 4;
+        const ratio = sigma.getCamera().ratio || 1;
+        displaySize = (baseSize / ratio) * 2;
       }
 
-      // Skip rendering glows for offscreen nodes
-      if (!isNodeInViewport(nodeId)) continue;
+      const palette = GLOW_PALETTES[glow.kind] || GLOW_PALETTES.data;
+      const [cR, cG, cB] = palette.core;
+      const [mR, mG, mB] = palette.mid;
+      const [wR, wG, wB] = palette.wisp;
 
       const progress = elapsed / GLOW_DURATION_MS;
       const alpha = 0.5 * (1 - progress * progress);
-      const nodeAttrs = graph.getNodeAttributes(nodeId);
-      const viewPos = sigma.graphToViewport({ x: nodeAttrs.x, y: nodeAttrs.y });
-      const baseSize = nodeAttrs.size || 4;
-      const camera = sigma.getCamera();
-      const ratio = camera.ratio || 1;
-      const displaySize = (baseSize / ratio) * 2;
       const glowRadius = displaySize * (2.0 + progress * 1.0);
 
-      // Use a seeded pseudo-random offset per node for organic irregularity
       const hash = nodeId.charCodeAt(0) + (nodeId.charCodeAt(1) || 0) * 7;
       const angle1 = (hash % 6.28);
       const angle2 = angle1 + 2.1;
       const drift = displaySize * 0.3;
 
-      // Layer 1: core glow around the node
+      // Layer 1: core glow
       const g1 = glowCtx.createRadialGradient(
         viewPos.x, viewPos.y, displaySize * 0.2,
         viewPos.x, viewPos.y, glowRadius * 0.7
       );
-      g1.addColorStop(0, `rgba(180, 255, 210, ${alpha * 0.9})`);
-      g1.addColorStop(0.4, `rgba(34, 197, 94, ${alpha * 0.4})`);
-      g1.addColorStop(1, `rgba(34, 197, 94, 0)`);
+      g1.addColorStop(0, `rgba(${cR}, ${cG}, ${cB}, ${alpha * 0.9})`);
+      g1.addColorStop(0.4, `rgba(${mR}, ${mG}, ${mB}, ${alpha * 0.4})`);
+      g1.addColorStop(1, `rgba(${mR}, ${mG}, ${mB}, 0)`);
 
       glowCtx.fillStyle = g1;
       glowCtx.beginPath();
       glowCtx.arc(viewPos.x, viewPos.y, glowRadius * 0.7, 0, Math.PI * 2);
       glowCtx.fill();
 
-      // Layer 2 & 3: offset wisps for organic shape
+      // Layer 2 & 3: offset wisps
       const offsets = [
         { x: Math.cos(angle1) * drift, y: Math.sin(angle1) * drift },
         { x: Math.cos(angle2) * drift, y: Math.sin(angle2) * drift },
@@ -1886,9 +2063,9 @@
         const cy = viewPos.y + off.y;
         const r = glowRadius * 0.5;
         const g = glowCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        g.addColorStop(0, `rgba(120, 230, 170, ${alpha * 0.5})`);
-        g.addColorStop(0.5, `rgba(34, 197, 94, ${alpha * 0.2})`);
-        g.addColorStop(1, `rgba(34, 197, 94, 0)`);
+        g.addColorStop(0, `rgba(${wR}, ${wG}, ${wB}, ${alpha * 0.5})`);
+        g.addColorStop(0.5, `rgba(${mR}, ${mG}, ${mB}, ${alpha * 0.2})`);
+        g.addColorStop(1, `rgba(${mR}, ${mG}, ${mB}, 0)`);
         glowCtx.fillStyle = g;
         glowCtx.beginPath();
         glowCtx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -1978,7 +2155,7 @@
 
     activePulsations.set(nodeId, {timeout, baseSize, originalColor});
 
-    activeGlows.set(nodeId, { start: performance.now() });
+    activeGlows.set(nodeId, { start: performance.now(), kind: "data" });
     startGlowLoop();
 
     scheduleRefresh();
@@ -2084,41 +2261,205 @@
   }
 
   // Track previous topology to avoid unnecessary rebuilds
-  let prevSensorKeys = "";
-  let prevUserCount = 0;
+  let prevSensorSet = new Set<string>();
+  let prevUserSet = new Set<string>();
   let rebuildTimer: ReturnType<typeof setTimeout> | null = null;
+  let isInitialBuild = true;
 
-  // Rebuild graph only when topology changes (sensors added/removed), debounced
+  // Incremental graph updates: add/remove only changed nodes instead of full rebuild
   $effect(() => {
     // Access reactive deps
     const currentRooms = rooms;
     const currentUsers = users;
     const currentSensors = sensors;
 
-    const sensorKeys = Object.keys(currentSensors || {}).sort().join(",");
-    const userCount = (currentUsers || []).length;
+    const currentSensorSet = new Set(Object.keys(currentSensors || {}));
+    const currentUserSet = new Set((currentUsers || []).map(u => u.connector_id));
 
-    if (sensorKeys === prevSensorKeys && userCount === prevUserCount) {
-      return; // topology unchanged, skip rebuild
+    // Check for actual topology changes
+    const sensorsEqual = currentSensorSet.size === prevSensorSet.size &&
+      [...currentSensorSet].every(s => prevSensorSet.has(s));
+    const usersEqual = currentUserSet.size === prevUserSet.size &&
+      [...currentUserSet].every(u => prevUserSet.has(u));
+
+    if (sensorsEqual && usersEqual && !isInitialBuild) {
+      return;
     }
-
-    prevSensorKeys = sensorKeys;
-    prevUserCount = userCount;
 
     if (rebuildTimer) clearTimeout(rebuildTimer);
     rebuildTimer = setTimeout(() => {
-      buildGraph();
-      if (container) {
-        initSigma();
-        // Re-apply current view mode after rebuild
-        applyViewMode(viewMode);
+      // First build: full rebuild needed (no graph or sigma yet)
+      if (isInitialBuild || !graph || !sigma) {
+        isInitialBuild = false;
+        prevSensorSet = currentSensorSet;
+        prevUserSet = currentUserSet;
+        buildGraph();
+        if (container) {
+          initSigma();
+          applyViewMode(viewMode);
+        }
+        return;
       }
+
+      // Incremental: compute diff
+      const addedSensors = [...currentSensorSet].filter(s => !prevSensorSet.has(s));
+      const removedSensors = [...prevSensorSet].filter(s => !currentSensorSet.has(s));
+      const addedUsers = [...currentUserSet].filter(u => !prevUserSet.has(u));
+      const removedUsers = [...prevUserSet].filter(u => !currentUserSet.has(u));
+
+      prevSensorSet = currentSensorSet;
+      prevUserSet = currentUserSet;
+
+      // If too many changes (>30% of graph), do full rebuild
+      const changeCount = addedSensors.length + removedSensors.length + addedUsers.length + removedUsers.length;
+      const totalNodes = graph.order;
+      if (changeCount > totalNodes * 0.3 || changeCount > 50) {
+        buildGraph();
+        if (container) {
+          initSigma();
+          applyViewMode(viewMode);
+        }
+        return;
+      }
+
+      // Calculate scale for new nodes
+      const scale = scaledNodeSizes.sensor / baseNodeSizes.sensor;
+
+      // Remove departed sensors (and their attributes + edges)
+      for (const sensorId of removedSensors) {
+        const sensorNodeId = `sensor:${sensorId}`;
+        if (graph.hasNode(sensorNodeId)) {
+          // Freeze position for amber disconnect glow, then drop the node
+          const attrs = graph.getNodeAttributes(sensorNodeId);
+          const frozenPos = sigma ? sigma.graphToViewport({ x: attrs.x, y: attrs.y }) : null;
+          const ratio = sigma ? (sigma.getCamera().ratio || 1) : 1;
+          const frozenSize = ((attrs.size || 4) / ratio) * 2;
+          if (frozenPos) {
+            activeGlows.set(sensorNodeId, { start: performance.now(), kind: "disconnect", frozenPos, frozenSize });
+            startGlowLoop();
+          }
+          // Remove attribute nodes first
+          const edges = graph.edges(sensorNodeId);
+          for (const edge of edges) {
+            const target = graph.target(edge);
+            const targetAttrs = graph.getNodeAttributes(target);
+            if (targetAttrs.nodeType === "attribute") {
+              graph.dropNode(target);
+            }
+          }
+          graph.dropNode(sensorNodeId);
+        }
+      }
+
+      // Remove departed users
+      for (const userId of removedUsers) {
+        const userNodeId = `user:${userId}`;
+        if (graph.hasNode(userNodeId)) {
+          graph.dropNode(userNodeId);
+        }
+      }
+
+      // Add new users
+      for (const userId of addedUsers) {
+        const user = (currentUsers || []).find(u => u.connector_id === userId);
+        if (!user) continue;
+        const userNodeId = `user:${userId}`;
+        if (!graph.hasNode(userNodeId)) {
+          graph.addNode(userNodeId, {
+            label: user.connector_name,
+            size: jitterSize(scaledNodeSizes.user + Math.min(user.sensor_count * scale, 8 * scale)),
+            color: nodeColors.user,
+            nodeType: "user",
+            data: user,
+            x: 50 + (Math.random() - 0.5) * 20,
+            y: 50 + (Math.random() - 0.5) * 20
+          });
+        }
+      }
+
+      // Add new sensors (with attributes + edges)
+      for (const sensorId of addedSensors) {
+        const sensor = currentSensors[sensorId];
+        if (!sensor) continue;
+
+        const sensorNodeId = `sensor:${sensorId}`;
+        const attrCount = Object.keys(sensor.attributes || {}).length;
+
+        // Position near the parent user for visual continuity
+        const userNodeId = `user:${sensor.connector_id}`;
+        let startX = 50 + (Math.random() - 0.5) * 30;
+        let startY = 50 + (Math.random() - 0.5) * 30;
+        if (graph.hasNode(userNodeId)) {
+          startX = graph.getNodeAttribute(userNodeId, "x") + (Math.random() - 0.5) * 10;
+          startY = graph.getNodeAttribute(userNodeId, "y") + (Math.random() - 0.5) * 10;
+        }
+
+        if (!graph.hasNode(sensorNodeId)) {
+          graph.addNode(sensorNodeId, {
+            label: sensor.sensor_name || sensorId.substring(0, 12),
+            size: jitterSize(scaledNodeSizes.sensor + Math.min(attrCount * 1.5 * scale, 6 * scale)),
+            color: nodeColors.sensor,
+            nodeType: "sensor",
+            data: sensor,
+            x: startX,
+            y: startY
+          });
+          // Emerald connect glow for newly appearing sensors
+          activeGlows.set(sensorNodeId, { start: performance.now(), kind: "connect" });
+          startGlowLoop();
+        }
+
+        // Edge to user
+        if (graph.hasNode(userNodeId) && !graph.hasEdge(userNodeId, sensorNodeId)) {
+          graph.addEdge(userNodeId, sensorNodeId, {
+            size: Math.max(0.3, 0.7 * scale),
+            color: "rgba(55, 65, 81, 0.35)",
+            curvature: randomCurvature()
+          });
+        }
+
+        // Attribute nodes
+        for (const [attrId, attr] of Object.entries(sensor.attributes || {})) {
+          const attrNodeId = `attr:${sensorId}:${attrId}`;
+          let attrColor = nodeColors.attribute;
+          if ((attr as any).attribute_type === "heartrate" || attrId.includes("heart")) attrColor = "#ef4444";
+          else if ((attr as any).attribute_type === "battery") attrColor = "#eab308";
+          else if ((attr as any).attribute_type === "location" || attrId.includes("geo")) attrColor = "#06b6d4";
+          else if ((attr as any).attribute_type === "imu" || attrId.includes("accelero")) attrColor = "#a855f7";
+
+          if (!graph.hasNode(attrNodeId)) {
+            graph.addNode(attrNodeId, {
+              label: (attr as any).attribute_name || (attr as any).attribute_id,
+              size: jitterSize(scaledNodeSizes.attribute),
+              color: attrColor,
+              nodeType: "attribute",
+              data: { ...(attr as any), sensor_id: sensorId },
+              x: startX + (Math.random() - 0.5) * 5,
+              y: startY + (Math.random() - 0.5) * 5
+            });
+          }
+
+          if (!graph.hasEdge(sensorNodeId, attrNodeId)) {
+            graph.addEdge(sensorNodeId, attrNodeId, {
+              size: Math.max(0.2, 0.4 * scale),
+              color: "rgba(55, 65, 81, 0.25)",
+              curvature: randomCurvature()
+            });
+          }
+        }
+      }
+
+      // Re-run layout to integrate new nodes smoothly
+      if (addedSensors.length > 0 || addedUsers.length > 0) {
+        runLayout();
+      }
+      sigma?.refresh();
     }, 500);
   });
 
   onMount(() => {
-    buildGraph();
-    initSigma();
+    // Initial build is handled by the $effect when props arrive.
+    // Only set up event listeners here.
     window.addEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
     window.addEventListener("graph-activity-event", handleGraphActivity as EventListener);
     window.addEventListener("attention-changed-event", handleAttentionChanged as EventListener);
@@ -2130,6 +2471,11 @@
     if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }
     activeGlows.clear();
     cleanupMode(viewMode);
+    if (fa2Worker) {
+      fa2Worker.stop();
+      fa2Worker.kill();
+      fa2Worker = null;
+    }
     if (audioCtx) {
       audioCtx.close();
       audioCtx = null;
@@ -2442,7 +2788,7 @@
 
   <!-- Stats -->
   <div class="stats">
-    <span>Nodes: {graph?.order || 0}</span>
+    <span>Nodes: {graph?.order || 0}{!lodAttributesVisible ? " (LOD)" : ""}</span>
     <span>Edges: {graph?.size || 0}</span>
     <span>Scale: {(scaledNodeSizes.sensor / baseNodeSizes.sensor).toFixed(2)}x</span>
   </div>

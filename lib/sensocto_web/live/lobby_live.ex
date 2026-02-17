@@ -39,11 +39,6 @@ defmodule SensoctoWeb.LobbyLive do
   # Preload more sensors initially for smoother experience
   @default_visible_count 72
 
-  # Threshold for switching to summary mode (<=3 sensors = normal, >3 = summary)
-  # Kept for future use when dynamic view mode switching is implemented
-  @summary_mode_threshold 3
-  _ = @summary_mode_threshold
-
   # Performance monitoring: batch flush interval in ms
   # Measurements are buffered and flushed at this interval to reduce push_event calls
   @measurement_flush_interval_ms 50
@@ -311,15 +306,32 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_params(_params, _uri, socket) do
+    action = socket.assigns.live_action
+
+    # Dynamic page title per lens view
+    socket = assign(socket, :page_title, lens_page_title(action))
+
     # Update PriorityLens focused sensor based on current view
     # ECG needs full data fidelity for waveform visualization
-    socket = update_lens_focus_for_action(socket, socket.assigns.live_action)
+    socket = update_lens_focus_for_action(socket, action)
 
     # Push historical data so composite charts are pre-populated on navigation
-    socket = seed_composite_historical_data(socket, socket.assigns.live_action)
+    socket = seed_composite_historical_data(socket, action)
 
     {:noreply, socket}
   end
+
+  defp lens_page_title(:heartrate), do: "Heartrate"
+  defp lens_page_title(:ecg), do: "ECG"
+  defp lens_page_title(:respiration), do: "Breathing"
+  defp lens_page_title(:hrv), do: "HRV"
+  defp lens_page_title(:imu), do: "Motion"
+  defp lens_page_title(:location), do: "Geolocation"
+  defp lens_page_title(:battery), do: "Battery"
+  defp lens_page_title(:skeleton), do: "Skeleton"
+  defp lens_page_title(:gaze), do: "Gaze"
+  defp lens_page_title(:graph), do: "Graph"
+  defp lens_page_title(_), do: "Lobby"
 
   # Set focused sensor for PriorityLens based on current live_action
   # Focused sensors get priority even at lower quality levels
@@ -410,8 +422,10 @@ defmodule SensoctoWeb.LobbyLive do
     end
 
     # Activate SyncComputer when viewing breathing/HRV (demand-driven)
+    # For :graph, SyncComputer activates on-demand via midi_toggled event
     if action in [:respiration, :hrv] do
       Sensocto.Bio.SyncComputer.register_viewer()
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "sync:updates")
     end
   end
 
@@ -2094,8 +2108,49 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # SyncComputer broadcasts real-time sync values — push them as composite_measurement
+  # so MIDI hook and Svelte components receive breathing_sync/hrv_sync updates
+  def handle_info({:sync_update, attr_id, value, timestamp}, socket) do
+    socket =
+      push_event(socket, "composite_measurement", %{
+        sensor_id: "__composite_sync",
+        attribute_id: attr_id,
+        payload: value,
+        timestamp: timestamp
+      })
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(_msg, socket) do
+    {:noreply, socket}
+  end
+
+  # MIDI toggle — activate/deactivate SyncComputer on demand for non-sync views
+  @impl true
+  def handle_event("midi_toggled", %{"enabled" => enabled}, socket) do
+    was_active = socket.assigns[:midi_sync_active] || false
+
+    # Only register/unregister if not already on a sync-native view
+    needs_sync = socket.assigns[:live_action] not in [:respiration, :hrv]
+
+    socket =
+      cond do
+        enabled and !was_active and needs_sync ->
+          Sensocto.Bio.SyncComputer.register_viewer()
+          Phoenix.PubSub.subscribe(Sensocto.PubSub, "sync:updates")
+          assign(socket, :midi_sync_active, true)
+
+        !enabled and was_active and needs_sync ->
+          Sensocto.Bio.SyncComputer.unregister_viewer()
+          Phoenix.PubSub.unsubscribe(Sensocto.PubSub, "sync:updates")
+          assign(socket, :midi_sync_active, false)
+
+        true ->
+          socket
+      end
+
     {:noreply, socket}
   end
 
@@ -2786,6 +2841,11 @@ defmodule SensoctoWeb.LobbyLive do
     if action in [:respiration, :hrv] do
       Sensocto.Bio.SyncComputer.unregister_viewer()
     end
+
+    # Clean up MIDI-triggered SyncComputer registration
+    if socket.assigns[:midi_sync_active] do
+      Sensocto.Bio.SyncComputer.unregister_viewer()
+    end
   end
 
   # ==========================================================================
@@ -2991,7 +3051,16 @@ defmodule SensoctoWeb.LobbyLive do
           attr_id in attr_type or String.contains?(attr_id, attr_type)
         end)
 
-      Enum.reduce(relevant, acc, fn {attr_id, m}, sock ->
+      # Also push MIDI-relevant attributes not already in the primary set,
+      # so the MIDI output hook receives all biometric data on every view.
+      midi_extra =
+        Enum.filter(attributes, fn {attr_id, _m} ->
+          attr_id in @midi_attribute_types and
+            attr_id not in attr_type and
+            not Enum.any?(attr_type, &String.contains?(attr_id, &1))
+        end)
+
+      Enum.reduce(relevant ++ midi_extra, acc, fn {attr_id, m}, sock ->
         # Handle both single measurements and lists (for high-frequency data like ECG)
         case m do
           list when is_list(list) ->

@@ -3,7 +3,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <title>Sensocto | LiveView</title>
+    <.live_title>
+      {assigns[:page_title] || "Sensocto"}
+    </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <!-- Three.js from CDN - required by GaussianSplats3D for 3D object viewer -->
     <!-- Using v0.160.0 which has UMD build exposing global THREE (>=0.160.0 required) -->

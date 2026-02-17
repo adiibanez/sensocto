@@ -19,14 +19,10 @@ defmodule Sensocto.Accounts.User do
       signing_secret Sensocto.Secrets
       store_all_tokens? true
       require_token_presence_for_authentication? true
-      # Extended token lifetime for persistent "remember me" sessions.
-      # Users should stay logged in until they manually log out or tokens are invalidated.
-      # 10 years provides practical "infinite" session for most use cases.
-      # Security is maintained through:
-      # - Manual logout invalidates tokens
-      # - Admin can revoke tokens if needed
-      # - Token presence required for authentication
-      token_lifetime {3650, :days}
+      # Token lifetime: 30 days provides a good balance between convenience and security.
+      # Users stay logged in for a month before needing to re-authenticate.
+      # Security maintained through: manual logout, admin revocation, token presence required.
+      token_lifetime {30, :days}
     end
 
     strategies do
@@ -62,19 +58,23 @@ defmodule Sensocto.Accounts.User do
         sender Sensocto.Accounts.User.Senders.SendMagicLinkEmail
       end
 
-      """
-      password :password do
-        identity_field :email
-        hashed_password_field :hashed_password
+      # password :password do
+      #   identity_field :email
+      #   hashed_password_field :hashed_password
+      #
+      #   resettable do
+      #     sender Sensocto.Accounts.User.Senders.SendPasswordResetEmail
+      #     password_reset_action_name :reset_password_with_token
+      #     request_password_reset_action_name :request_password_reset_token
+      #   end
+      # end
 
-        resettable do
-          sender Sensocto.Accounts.User.Senders.SendPasswordResetEmail
-          # these configurations will be the default in a future release
-          password_reset_action_name :reset_password_with_token
-          request_password_reset_action_name :request_password_reset_token
-        end
+      # Remember Me: long-lived cookie that silently re-authenticates when session token expires.
+      # Session tokens last 30 days, remember_me cookie lasts 365 days.
+      # Users stay logged in until explicit logout or 1 year of inactivity.
+      remember_me :remember_me do
+        token_lifetime {365, :days}
       end
-      """
     end
 
     add_ons do
@@ -119,10 +119,19 @@ defmodule Sensocto.Accounts.User do
     create :register_with_google do
       argument :user_info, :map, allow_nil?: false
       argument :oauth_tokens, :map, allow_nil?: false
+
+      argument :remember_me, :boolean do
+        allow_nil? true
+        default true
+      end
+
       upsert? true
       upsert_identity :unique_email
 
       change AshAuthentication.GenerateTokenChange
+
+      change {AshAuthentication.Strategy.RememberMe.MaybeGenerateTokenChange,
+              strategy_name: :remember_me}
 
       # Required if you have the `identity_resource` configuration enabled.
       # change AshAuthentication.Strategy.OAuth2.IdentityChange
@@ -143,6 +152,10 @@ defmodule Sensocto.Accounts.User do
                  _ -> {:ok, user}
                end
              end)
+
+      metadata :remember_me, :map do
+        allow_nil? true
+      end
     end
 
     create :sign_in_with_magic_link do
@@ -153,6 +166,11 @@ defmodule Sensocto.Accounts.User do
         allow_nil? false
       end
 
+      argument :remember_me, :boolean do
+        allow_nil? true
+        default true
+      end
+
       upsert? true
       upsert_identity :unique_email
       upsert_fields [:email]
@@ -160,7 +178,32 @@ defmodule Sensocto.Accounts.User do
       # Uses the information from the token to create or sign in the user
       change AshAuthentication.Strategy.MagicLink.SignInChange
 
+      change {AshAuthentication.Strategy.RememberMe.MaybeGenerateTokenChange,
+              strategy_name: :remember_me}
+
       metadata :token, :string do
+        allow_nil? false
+      end
+
+      metadata :remember_me, :map do
+        allow_nil? true
+      end
+    end
+
+    read :sign_in_with_remember_me do
+      description "Attempt to sign in using a remember me token."
+      get? true
+
+      argument :token, :string do
+        description "The remember me token"
+        allow_nil? false
+        sensitive? true
+      end
+
+      prepare AshAuthentication.Strategy.RememberMe.SignInPreparation
+
+      metadata :token, :string do
+        description "A JWT that can be used to authenticate the user."
         allow_nil? false
       end
     end

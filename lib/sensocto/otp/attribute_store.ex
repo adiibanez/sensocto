@@ -6,7 +6,6 @@ defmodule Sensocto.AttributeStore do
 
   def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link2: #{inspect(configuration)}")
-    # IO.inspect(via_tuple(configuration.sensor_id), label: "via tuple for sensor")
     Agent.start_link(fn -> %{} end, name: via_tuple(sensor_id))
   end
 
@@ -18,18 +17,9 @@ defmodule Sensocto.AttributeStore do
     end)
   end
 
-  # def get_attributes(sensor_id) do
-  #   # Logger.debug("Agent client get_attributes #{sensor_id}")
-  #   Agent.get(via_tuple(sensor_id), & &1)
-  # end
-
   def get_attributes(sensor_id, limit \\ @default_limit) do
-    # Logger.debug("Agent client get_attributes #{sensor_id} limit: #{limit}")
     Agent.get(via_tuple(sensor_id), fn state ->
       Enum.reduce(state, %{}, fn {attribute_id, attr}, acc ->
-        # attr |> dbg()
-        # Logger.info("limit: #{limit}")
-
         limited_payloads =
           case attr do
             %{payloads: payloads} -> Enum.take(payloads, limit)
@@ -56,15 +46,12 @@ defmodule Sensocto.AttributeStore do
           {:ok, []}
 
         %{payloads: payloads} ->
-          payloads
-          |> maybe_filter(from_timestamp, to_timestamp)
-          |> maybe_limit(limit)
+          filtered =
+            payloads
+            |> maybe_filter(from_timestamp, to_timestamp)
+            |> maybe_limit(limit)
 
-          Logger.debug(
-            "Agent: attribute data for #{sensor_id} #{is_nil(limit)} from: #{from_timestamp} to: #{to_timestamp} #{inspect(limit)} #{inspect(payloads)}"
-          )
-
-          {:ok, payloads}
+          {:ok, filtered}
       end
     end)
   end

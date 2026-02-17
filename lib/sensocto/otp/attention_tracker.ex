@@ -335,9 +335,13 @@ defmodule Sensocto.AttentionTracker do
       score = Sensocto.Bio.NoveltyDetector.get_novelty_score(sensor_id, attribute_id)
       if score > 0.5, do: 0.5, else: 1.0
     rescue
-      _ -> 1.0
+      e ->
+        Logger.warning("NoveltyDetector failed for #{sensor_id}/#{attribute_id}: #{inspect(e)}")
+        1.0
     catch
-      :exit, _ -> 1.0
+      :exit, reason ->
+        Logger.warning("NoveltyDetector exit for #{sensor_id}: #{inspect(reason)}")
+        1.0
     end
   end
 
@@ -345,9 +349,13 @@ defmodule Sensocto.AttentionTracker do
     try do
       Sensocto.Bio.PredictiveLoadBalancer.get_predictive_factor(sensor_id)
     rescue
-      _ -> 1.0
+      e ->
+        Logger.warning("PredictiveLoadBalancer failed for #{sensor_id}: #{inspect(e)}")
+        1.0
     catch
-      :exit, _ -> 1.0
+      :exit, reason ->
+        Logger.warning("PredictiveLoadBalancer exit for #{sensor_id}: #{inspect(reason)}")
+        1.0
     end
   end
 
@@ -355,9 +363,13 @@ defmodule Sensocto.AttentionTracker do
     try do
       Sensocto.Bio.ResourceArbiter.get_multiplier(sensor_id)
     rescue
-      _ -> 1.0
+      e ->
+        Logger.warning("ResourceArbiter failed for #{sensor_id}: #{inspect(e)}")
+        1.0
     catch
-      :exit, _ -> 1.0
+      :exit, reason ->
+        Logger.warning("ResourceArbiter exit for #{sensor_id}: #{inspect(reason)}")
+        1.0
     end
   end
 
@@ -365,9 +377,13 @@ defmodule Sensocto.AttentionTracker do
     try do
       Sensocto.Bio.CircadianScheduler.get_phase_adjustment()
     rescue
-      _ -> 1.0
+      e ->
+        Logger.warning("CircadianScheduler failed: #{inspect(e)}")
+        1.0
     catch
-      :exit, _ -> 1.0
+      :exit, reason ->
+        Logger.warning("CircadianScheduler exit: #{inspect(reason)}")
+        1.0
     end
   end
 

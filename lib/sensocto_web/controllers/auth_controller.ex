@@ -72,6 +72,9 @@ defmodule SensoctoWeb.Controllers.AuthController do
 
     conn
     |> clear_session(:sensocto)
+    |> AshAuthentication.Strategy.RememberMe.Plug.Helpers.delete_all_remember_me_cookies(
+      :sensocto
+    )
     |> redirect(to: ~p"/sign-in")
   end
 

@@ -41,36 +41,6 @@ defmodule SensoctoWeb.SensorDataChannel do
     Logger.debug("JOIN connector #{connector_id} : #{inspect(params)}")
 
     {:ok, socket}
-
-    # if authorized?(params) do
-    #   send(self(), :after_join)
-
-    #   Logger.debug("socket join #{sensor_id}", params)
-
-    #   case Sensocto.SensorsDynamicSupervisor.add_sensor(
-    #          sensor_id,
-    #          Sensocto.Utils.string_keys_to_atom_keys(params)
-    #        ) do
-    #     {:ok, pid} when is_pid(pid) ->
-    #       Logger.debug("Added sensor #{sensor_id}")
-
-    #     {:ok, :already_started} ->
-    #       Logger.debug("Sensor already started #{sensor_id}")
-
-    #     {:error, reason} ->
-    #       Logger.debug("error adding sensor: #{inspect(reason)}")
-    #       # {:error, reason}
-    #   end
-
-    #   {
-    #     :ok,
-    #     socket
-    #     |> assign(:sensor_id, sensor_id)
-    #     # |> assign(:sensor_params, params)
-    #   }
-    # else
-    #   {:error, %{reason: "unauthorized"}}
-    # end
   end
 
   # Store the device ID in the socket's assigns when joining the channel
@@ -112,38 +82,13 @@ defmodule SensoctoWeb.SensorDataChannel do
 
     case Sensocto.Sensors.SensorManager
          |> Ash.Changeset.for_create(:validate_sensor, request)
-         |> Ash.create!() do
+         |> Ash.create() do
       {:ok, sensor} ->
         Logger.debug("ASH validated and created sensor: #{inspect(sensor)}")
 
-      # Now 'sensor' contains the newly created sensor resource
-
-      {:error, :bad_request, changeset} ->
-        Logger.error("ASH bad request: #{inspect(changeset)}")
-
-      {:error, :unauthorized, reason} ->
-        Logger.warning("ASH unauthorized: #{reason}")
-
-      {:error, :not_found} ->
-        Logger.warning("ASH resource not found")
-
-      {:error, {:duplicate_record, details}} ->
-        Logger.error("ASH duplicate record: #{inspect(details)}")
-
       {:error, changeset} ->
-        Logger.error("ASH changeset error: #{inspect(changeset)}")
-
-      response ->
-        Logger.debug("ASH unknown response: #{inspect(response)}")
+        Logger.warning("ASH validation failed: #{inspect(changeset)}")
     end
-
-    # with params do
-    #   {:ok, validated} <- Ash.create(Sensocto.Sensors.SensorManager, :validate_sensor, params)
-    #   {:ok, sensor} <-
-    #     Ash.read(Sensocto.Sensors.SensorManager, :get_sensor, %{sensor_id: sensor_id})
-    #   #{:ok, assign(socket, :sensor_id, sensor_id)}
-    #   Logger.debug("ASH Sensor #{inspect(sensor)}")
-    # end
 
     if authorized?(params) do
       send(self(), :after_join)

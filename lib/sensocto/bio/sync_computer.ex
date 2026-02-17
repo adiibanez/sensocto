@@ -49,9 +49,14 @@ defmodule Sensocto.Bio.SyncComputer do
   # Minimum buffer lengths for RSA (need both signals with enough data)
   @rsa_min_buffer 10
 
+  # Minimum interval between PubSub broadcasts per sync type (ms)
+  # Prevents flooding MIDI output — sync values change slowly anyway
+  @broadcast_throttle_ms 200
+
   defstruct tracked_sensors: MapSet.new(),
             phase_buffers: %{breathing: %{}, hrv: %{}},
             smoothed: %{breathing: 0.0, hrv: 0.0, rsa: 0.0},
+            last_broadcast: %{},
             pending_checks: MapSet.new(),
             viewer_count: 0,
             active: false
@@ -442,7 +447,14 @@ defmodule Sensocto.Bio.SyncComputer do
     else
       group_buffers = state.phase_buffers[group]
       buffer = Map.get(group_buffers, sensor_id, [])
-      new_buffer = Enum.take(buffer ++ values, -buffer_size)
+      combined = :lists.append(buffer, values)
+
+      new_buffer =
+        case length(combined) - buffer_size do
+          excess when excess > 0 -> Enum.drop(combined, excess)
+          _ -> combined
+        end
+
       new_group_buffers = Map.put(group_buffers, sensor_id, new_buffer)
       %{state | phase_buffers: Map.put(state.phase_buffers, group, new_group_buffers)}
     end
@@ -478,13 +490,16 @@ defmodule Sensocto.Bio.SyncComputer do
           :hrv -> "hrv_sync"
         end
 
+      now = System.system_time(:millisecond)
+
       AttributeStoreTiered.put_attribute(
         "__composite_sync",
         sync_attr_id,
-        System.system_time(:millisecond),
+        now,
         sync_value
       )
 
+      state = maybe_broadcast_sync(state, sync_attr_id, sync_value, now)
       %{state | smoothed: Map.put(state.smoothed, group, smoothed)}
     else
       state
@@ -540,13 +555,16 @@ defmodule Sensocto.Bio.SyncComputer do
 
       rsa_pct = round(smoothed * 100)
 
+      now = System.system_time(:millisecond)
+
       AttributeStoreTiered.put_attribute(
         "__composite_sync",
         "rsa_coherence",
-        System.system_time(:millisecond),
+        now,
         rsa_pct
       )
 
+      state = maybe_broadcast_sync(state, "rsa_coherence", rsa_pct, now)
       %{state | smoothed: Map.put(state.smoothed, :rsa, smoothed)}
     else
       state
@@ -599,6 +617,24 @@ defmodule Sensocto.Bio.SyncComputer do
 
       base_angle = :math.acos(1 - 2 * norm)
       if derivative >= 0, do: base_angle, else: 2 * :math.pi() - base_angle
+    end
+  end
+
+  # Throttled PubSub broadcast — at most once per @broadcast_throttle_ms per attr_id.
+  # Prevents flooding MIDI output with 100+ updates/sec when sync changes slowly.
+  defp maybe_broadcast_sync(state, attr_id, value, now) do
+    last = Map.get(state.last_broadcast, attr_id, 0)
+
+    if now - last >= @broadcast_throttle_ms do
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "sync:updates",
+        {:sync_update, attr_id, value, now}
+      )
+
+      %{state | last_broadcast: Map.put(state.last_broadcast, attr_id, now)}
+    else
+      state
     end
   end
 end

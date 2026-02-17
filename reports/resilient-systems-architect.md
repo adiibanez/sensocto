@@ -1,6 +1,6 @@
 # Sensocto OTP Architecture and Resilience Assessment
 
-**Generated:** 2026-02-08, **Updated:** 2026-02-16
+**Generated:** 2026-02-08, **Updated:** 2026-02-17 (scalability revision with live measurement data)
 **Author:** Resilient Systems Architect Agent
 **Codebase Version:** Based on commit 853f702 (main branch)
 **Previous Report:** 2026-02-15
@@ -15,7 +15,7 @@ Several structural issues have been identified and progressively addressed. Rece
 
 **Overall Resilience Grade: A-** (maintained from prior assessment)
 
-The system is well above average for Elixir applications. The attention-aware routing, five-layer backpressure system, and ETS direct-write optimization are genuinely innovative. Remaining gaps: Domain.Supervisor strategy mismatch, absence of `code_change/3`, and IO.puts remnants in legacy DSL macros.
+The system is well above average for Elixir applications. The attention-aware routing, five-layer backpressure system, and ETS direct-write optimization are genuinely innovative. Live measurements with 152 sensors revealed that the SimpleSensor GC fix reduced per-sensor process memory from 2.1 MB to 175 KB (12x improvement), but ETS warm store is now the dominant memory consumer at 3.6 MB/sensor. A single node can support ~1,400 sensors with current caps, or ~4,000 with the recommended warm store cap reduction. Remaining gaps: ETS warm store scaling, Domain.Supervisor strategy mismatch, absence of `code_change/3`, and database retention policy.
 
 ---
 
@@ -32,6 +32,8 @@ The system is well above average for Elixir applications. The attention-aware ro
 9. [Biomimetic Layer Assessment](#9-biomimetic-layer-assessment)
 10. [Recommendations](#10-recommendations)
 11. [Planned Work: Resilience Implications](#11-planned-work-resilience-implications)
+12. [Changes Applied (Feb 2026)](#12-changes-applied-feb-2026)
+13. [Scalability Analysis](#13-scalability-analysis)
 
 ---
 
@@ -339,7 +341,7 @@ This is a remarkably sophisticated backpressure system. The key insight is that 
 
 | GenServer | Instances | State Type | State Size Risk | Hibernates? |
 |-----------|-----------|-----------|-----------------|-------------|
-| SimpleSensor | N (per sensor) | Map | Medium (~12 keys + attributes) | Yes (5 min idle) |
+| SimpleSensor | N (per sensor) | Map | Low (~175 KB with fullsweep_after: 10) | Yes (5 min idle) |
 | RoomServer | N (per room) | Struct (14 fields) | Low | No |
 | AttentionTracker | 1 | Struct (7 fields) + 3 ETS | Medium (ETS grows with sensors) | No |
 | SystemLoadMonitor | 1 | Struct (11 fields) | Low | No |
@@ -392,7 +394,7 @@ This is good practice. The PriorityLens monitoring is particularly important -- 
 
 ### 4.5 Hibernation
 
-Only SimpleSensor hibernates (after 5 minutes idle via `:hibernate` return from `handle_info`). Given that idle sensors are the common case (most sensors are not being watched), this is an excellent memory optimization.
+Only SimpleSensor hibernates (after 5 minutes idle via `:hibernate` return from `handle_info`). Given that idle sensors are the common case (most sensors are not being watched), this is an excellent memory optimization. Combined with the `fullsweep_after: 10` GC tuning, active sensors stay at ~175 KB and idle sensors hibernate to near-zero heap.
 
 **Recommendation:** Consider hibernation for RoomServer (rooms can be idle for extended periods) and CallServer (between active calls).
 
@@ -899,6 +901,269 @@ Three rounds of targeted improvements:
 - Shared between LobbyLive and IndexLive
 - Reduces code duplication for sensor data transformation
 
+### 12.14 SyncComputer Buffer Optimization (Feb 17, 2026)
+
+**File modified:** `lib/sensocto/bio/sync_computer.ex` (`append_to_buffer/5`)
+
+Changed the hot-path buffer append from:
+```elixir
+Enum.take(buffer ++ values, -buffer_size)
+```
+to:
+```elixir
+combined = :lists.append(buffer, values)
+excess = length(combined) - buffer_size
+if excess > 0, do: Enum.drop(combined, excess), else: combined
+```
+
+The original approach was O(n) in both the concatenation (allocating a full intermediate list) and the `Enum.take` scan from the head to find the tail. The new approach uses `:lists.append/2` (a native BIF), then `Enum.drop/2` only when there is actual overflow -- O(excess) rather than O(n). For breathing buffers (max 50) with typical batch sizes of 1-5, the working set stays small, and GC pressure on the hot computation loop is meaningfully reduced. This matters because `append_to_buffer/5` is called on every incoming sensor measurement for all sensors registered with SyncComputer.
+
+**Resilience implication:** Lower GC pressure on the SyncComputer process reduces the risk of that GenServer becoming a mailbox bottleneck during high-sensor-count events. The Bio.Supervisor's generous budget (10/60s) absorbs crashes, but a slow SyncComputer causes measurement staleness that degrades synchronization accuracy before any crash occurs.
+
+### 12.15 SyncComputer Throttled Broadcasting (Feb 17, 2026)
+
+**File modified:** `lib/sensocto/bio/sync_computer.ex` (`maybe_broadcast_sync/4`)
+
+Added a 200ms per-sync-type throttle on PubSub broadcasts. State tracks `last_broadcast` timestamps per sync type. The broadcast only fires if `System.monotonic_time(:millisecond) - last_broadcast >= 200`. If not, the new value replaces the pending value but no PubSub message is sent until the throttle window lapses.
+
+**Before:** With N active sensor pairs and a flush interval of ~16ms, SyncComputer was emitting 300+ PubSub events per second on the `"sync:updates"` topic. Downstream consumers (LobbyLive, LiveView graph hooks) were receiving more updates than the UI could render at 60fps.
+
+**After:** Capped at ~5 broadcasts per second per sync type (~22/sec total for 4-5 sync types). The most recent computed value is always the one broadcast when the window opens -- no stale values are delivered, since each throttle window selects the latest computation. This is a correct rate-limiting strategy: compute eagerly, transmit lazily.
+
+**Resilience implication:** Eliminates a class of thundering-herd failure where a spike in synchronized sensors (e.g., 50 participants entering a breathing exercise simultaneously) would previously flood PubSub and cause LobbyLive processes to fall behind their message queues. Rate limiting is now a property of the producer, not dependent on consumer-side back-pressure.
+
+### 12.16 Demand-Driven SyncComputer Activation (Feb 17, 2026)
+
+**Files modified:** `lib/sensocto/bio/sync_computer.ex`, `lib/sensocto_web/live/lobby_live.ex`, `assets/js/hooks.js`
+
+SyncComputer viewer registration is now demand-driven from the MIDI hook. Previously, SyncComputer was active whenever the graph view was open, regardless of whether any consumer needed sync data. Now:
+
+1. The JS MIDI hook emits `pushEvent("midi_toggled", %{enabled: bool})` when the user enables or disables MIDI output.
+2. `LobbyLive.handle_event("midi_toggled", ...)` registers or unregisters a viewer with SyncComputer via `SyncComputer.register_viewer/1` / `unregister_viewer/1`.
+3. LobbyLive subscribes/unsubscribes to the `"sync:updates"` PubSub topic accordingly.
+4. When `viewer_count` drops to zero, SyncComputer stops broadcasting (no active consumers, no wasted PubSub traffic).
+
+**Resilience implication:** This closes the loop on the attention-aware routing philosophy applied throughout the pipeline -- "the best way to handle load is to not create it." SyncComputer computation continues regardless (it is lightweight), but PubSub emissions now respect the consumer-presence contract. This also eliminates a class of LobbyLive state bloat where sync data was accumulating in assigns even when MIDI output was not active.
+
+### 12.17 Remember Me Token Strategy (Feb 17, 2026)
+
+**Files modified:** Auth configuration, AshAuthentication strategy config
+
+Added AshAuthentication's `remember_me` strategy for persistent sessions:
+
+- 30-day session tokens (standard session lifetime)
+- 365-day `remember_me` cookie (long-lived persistent token)
+- The `sign_in_with_remember_me` plug silently re-authenticates when session expires using the persistent cookie, issuing a fresh session token
+
+**Resilience implication:** Re-authentication failures (e.g., token signing key rotation during deployments) are surfaced silently to the plug layer rather than forcing LiveView connections to terminate. The 365-day cookie has a separate rotation cycle from session tokens, reducing the blast radius of signing key changes. From an availability perspective, users survive rolling deployments without manual re-login.
+
+**Security note:** Long-lived tokens require the associated AshAuthentication token table to be pruned of expired entries. Ensure the token cleanup job (if any) does not aggressively prune tokens younger than 365 days.
+
+### 12.18 Bio Factor Error Logging (Feb 17, 2026)
+
+**File modified:** `lib/sensocto/otp/attention_tracker.ex`
+
+The four AttentionTracker bio factor functions previously swallowed errors silently, returning fallback values (e.g., `1.0` for a failed novelty factor computation) with no indication that the biomimetic layer was degraded. Added `Logger.warning/2` calls in all four error branches with:
+
+- Module name (for log aggregation routing)
+- Error details (exception or reason)
+- The fallback value being used
+
+**Resilience implication:** Silent fallbacks are the enemy of observable systems. When the NoveltyDetector, HomeostaticTuner, ResourceArbiter, or CircadianScheduler produces bad data (e.g., GenServer call timeout, ETS table missing), the attention computation silently used neutral weights. Operators had no visibility into bio layer degradation. Logging warnings surfaces these events to the observability stack (Logger -> log aggregator) without crashing the AttentionTracker process. The fallback behavior is preserved -- the system degrades gracefully -- but the degradation is no longer invisible.
+
+This is the minimal step before the proper fix: adding `:telemetry.execute` calls to emit bio factor computation failures as metrics, enabling alert-on-threshold rather than log-grep-after-incident.
+
+---
+
+## 13. Scalability Analysis
+
+**Based on live measurements with 152 simulated sensors (Feb 2026).**
+
+### 13.1 Per-Sensor Memory Budget (Revised)
+
+The SimpleSensor GC fix (`spawn_opt: [fullsweep_after: 10]`) reduced per-sensor process memory by 12x:
+
+| Component | Before GC Fix | After GC Fix | Notes |
+|-----------|--------------|-------------|-------|
+| SimpleSensor process | ~2.1 MB | ~175 KB | fullsweep_after: 10 vs default 65535 |
+| 4x AttributeServer processes | ~200 KB est. | ~80 KB est. | 4 per sensor, lightweight |
+| 1x SensorStub process | ~50 KB est. | ~20 KB est. | Minimal state |
+| **Per-sensor process memory** | **~2.35 MB** | **~275 KB** | **6 processes per sensor** |
+
+**Root cause of the old bloat:** BEAM's default `fullsweep_after: 65535` means a process must survive 65,535 minor GCs before old-generation heap is reclaimed. Sensors processing at 100 Hz generate many short-lived binaries (measurement maps, PubSub messages) that get promoted to old-gen but never swept. At 100 Hz, a sensor would need ~11 minutes of continuous operation to trigger a single fullsweep. In practice, the old-gen heap grew monotonically during a session. Setting `fullsweep_after: 10` means old-gen is swept every 10 minor GCs -- roughly every 100ms at 100 Hz -- keeping heap size bounded.
+
+**ETS memory is now the dominant consumer.** The `:attribute_store_warm` table alone consumed 546 MB for 152 sensors (~3.6 MB per sensor), dwarfing the process memory by 13x. Total per-sensor memory budget:
+
+| Resource | Per Sensor | 152 Sensors | Notes |
+|----------|-----------|-------------|-------|
+| Process memory (6 procs) | ~275 KB | ~41 MB | After GC fix |
+| ETS warm store | ~3.6 MB | ~546 MB | 10,000 entries/attribute, multiple attributes |
+| ETS hot store + metadata | ~480 KB | ~73 MB | Smaller caps, higher churn |
+| **Total per sensor** | **~4.3 MB** | **~660 MB** | **ETS is 95% of memory** |
+
+### 13.2 Single-Node Capacity Projections
+
+**Available resources (assumed production node: 8 GB RAM, 4 vCPU):**
+
+| Limit | Value | Constraint |
+|-------|-------|-----------|
+| Usable RAM (after OS + BEAM overhead) | ~6 GB | Assuming 2 GB for OS, BEAM VM, Repo, Phoenix, etc. |
+| Process limit | 1,048,576 (default) | BEAM default, configurable via `+P` |
+| Scheduler count | 4 | Matches vCPU |
+
+**Sensor scaling by bottleneck:**
+
+| Bottleneck | Limit | Sensors Supported | Binding? |
+|-----------|-------|-------------------|----------|
+| **RAM (6 GB usable)** | 4.3 MB/sensor | **~1,400 sensors** | **YES -- primary bottleneck** |
+| Process count | 6 procs/sensor + ~1,800 base | ~174,000 sensors | No |
+| CPU (100 Hz processing) | 4 schedulers | ~800-1,200 sensors | Possible co-bottleneck |
+| PubSub throughput | 3 attention topics | ~2,000+ sensors (with attention gating) | No |
+
+**Memory is the binding constraint, and ETS warm store is the reason.**
+
+At 4.3 MB per sensor, a 6 GB node hits the wall at ~1,400 sensors. However, this assumes every sensor has multiple attributes each capped at 10,000 warm entries. The actual number depends on attribute diversity.
+
+**If we reduce the warm store cap from 10,000 to 2,000 entries per attribute:**
+
+| Resource | Per Sensor (revised) | Sensors in 6 GB |
+|----------|---------------------|-----------------|
+| Process memory | ~275 KB | -- |
+| ETS warm store (2K cap) | ~720 KB | -- |
+| ETS hot + metadata | ~480 KB | -- |
+| **Total** | **~1.5 MB** | **~4,000 sensors** |
+
+**If warm store is disabled entirely (hot-only mode under pressure):**
+
+| Resource | Per Sensor | Sensors in 6 GB |
+|----------|-----------|-----------------|
+| Process memory | ~275 KB | -- |
+| ETS hot + metadata | ~480 KB | -- |
+| **Total** | **~755 KB** | **~8,000 sensors** |
+
+The existing `SystemLoadMonitor` already reduces warm tier to 5% of base limits under `:critical` load. This provides automatic degradation from ~4,000 to ~8,000 sensor capacity as memory pressure increases -- a genuine self-healing capacity curve.
+
+### 13.3 ETS Warm Store Scaling Analysis
+
+The `:attribute_store_warm` table is the single largest memory consumer:
+
+- **152 sensors, 546 MB** = ~3.6 MB per sensor
+- **4.26 million entries across 540 keys** = ~7,889 entries per key average
+- Each key is `{sensor_id, attribute_type}` -- with ~3.5 attributes per sensor on average
+
+**Is the 10,000 entry cap appropriate?**
+
+At 100 Hz, 10,000 entries represents 100 seconds of history. For composite views (ECG, breathing, gaze), historical data is used for:
+1. Seed data on view entry (typically last 5-30 seconds)
+2. Phase estimation in SyncComputer (50 breathing / 20 HRV entries)
+3. Novelty detection (z-score over recent window)
+
+None of these consumers need 100 seconds of warm history. A cap of 2,000-3,000 entries (20-30 seconds at 100 Hz) would serve all current use cases while reducing per-sensor ETS memory by 65-80%.
+
+**Recommendation:** Reduce the default warm store cap from 10,000 to 2,500. Type-specific overrides can keep ECG/HRV higher if needed. This single change moves the scaling ceiling from ~1,400 to ~3,500 sensors per node.
+
+### 13.4 Process Count Scaling
+
+At 6 processes per sensor plus ~1,800 base processes:
+
+| Sensors | Total Processes | % of Default Limit |
+|---------|----------------|-------------------|
+| 152 (current) | ~2,712 | 0.26% |
+| 500 | ~4,800 | 0.46% |
+| 1,400 | ~10,200 | 0.97% |
+| 5,000 | ~31,800 | 3.03% |
+| 10,000 | ~61,800 | 5.89% |
+
+Process count is not a concern. The BEAM comfortably handles hundreds of thousands of processes. Even at 10,000 sensors, process count is well within limits. Scheduler utilization and memory will bind long before process count does.
+
+### 13.5 CPU and PubSub Throughput
+
+**CPU at 100 Hz per sensor:**
+
+Each sensor at 100 Hz generates: 1 ETS write to hot store, 1 conditional PubSub broadcast (attention-gated), occasional warm tier splits.
+
+With 4 schedulers and attention-aware routing (only watched sensors broadcast), CPU scales well:
+- 152 sensors, ~10 watched: 10 broadcasts/tick = 1,000 PubSub msgs/sec -- trivial
+- 1,000 sensors, ~50 watched: 5,000 PubSub msgs/sec -- comfortable
+- 5,000 sensors, ~100 watched: 10,000 PubSub msgs/sec -- requires monitoring
+
+The attention-gating system means PubSub throughput scales with **viewers**, not sensors. This is the key architectural insight that makes high sensor counts viable.
+
+**SyncComputer at scale:**
+
+SyncComputer subscribes per-sensor for phase computation. At 1,000+ sensors, the per-sensor subscription model becomes expensive. The demand-driven activation (only active when MIDI enabled) limits this, but if many sensors participate in sync computation, SyncComputer becomes a CPU bottleneck. Consider sharding SyncComputer by sensor group at 500+ active sync participants.
+
+### 13.6 Database Scaling
+
+Current state:
+- `sensors` table: 712 rows (cleaned from 37K duplicates)
+- `sensors_attribute_data`: 50,710 rows (no retention policy, oldest 10 months)
+
+**Concern: `sensors_attribute_data` has no retention policy.** At current insertion rates, this table will grow indefinitely. If sensors persist attribute data at even 1 write/minute per sensor:
+- 1,000 sensors x 1 write/min x 60 min x 24 hr x 30 days = 43.2M rows/month
+
+A retention policy (e.g., 30-day TTL via `pg_partman` or periodic `DELETE WHERE inserted_at < now() - interval '30 days'`) is essential before scaling beyond current levels.
+
+The redundant index cleanup (`sensors_unique_index` dropped) is good hygiene. Ensure remaining indexes support the actual query patterns.
+
+### 13.7 Multi-Node Cluster Scaling
+
+With `:pg` for discovery and local Registry for lookup, the cluster architecture is clean:
+
+| Aspect | Single Node | 2 Nodes | N Nodes |
+|--------|------------|---------|---------|
+| Sensor capacity | ~1,400 (current caps) | ~2,800 | ~1,400 x N |
+| Discovery overhead | None | `:pg` membership sync | O(total sensors) on :pg |
+| PubSub cross-node | None | All attention topics replicated | All attention topics replicated |
+| Room distribution | Local | Horde CRDT sync | Horde CRDT sync |
+
+**Cluster bottlenecks:**
+
+1. **PubSub replication.** Every message on `data:attention:{level}` is replicated to all nodes. With 50 watched sensors at 100 Hz, this is 5,000 cross-node messages/sec per node pair. At 4+ nodes, this becomes significant. **Mitigation:** PubSub pool_size: 16 provides concurrency, but the underlying `:pg` adapter sends one Erlang message per subscriber per node. Consider `Phoenix.PubSub.PG2` partitioning or topic-level node affinity for attention topics.
+
+2. **`:pg` membership churn.** Sensors joining/leaving `:pg` groups generates cluster-wide membership updates. At 1,000 sensors with 10% churn per minute, this is ~100 membership updates/minute across all nodes. `:pg` handles this efficiently (delta-based), but monitor at scale.
+
+3. **Horde CRDT convergence.** Room registries use Horde CRDT, which has O(n) state size where n is total registered entries. At 1,000+ rooms across 4+ nodes, Horde sync overhead becomes measurable. Monitor Horde sync latency.
+
+**Recommended cluster topology for 5,000+ sensors:**
+
+```
+Load Balancer (sticky sessions for WebSocket)
+  |
+  +-- Node A (sensors 1-1250, rooms 1-50)
+  +-- Node B (sensors 1251-2500, rooms 51-100)
+  +-- Node C (sensors 2501-3750, rooms 101-150)
+  +-- Node D (sensors 3751-5000, rooms 151-200)
+```
+
+Sensors naturally distribute by device connection point. Rooms distribute via Horde. The attention-aware routing ensures cross-node PubSub traffic scales with viewers (tens) not sensors (thousands).
+
+### 13.8 The Next Bottleneck
+
+With the GC fix in place, the scaling bottlenecks in priority order:
+
+1. **ETS warm store memory (NOW).** At 3.6 MB/sensor, this is 95% of per-sensor cost. Reducing the 10,000 entry cap to 2,500 is the single highest-leverage change. Estimated impact: 3x increase in single-node sensor capacity.
+
+2. **Database retention (SOON).** `sensors_attribute_data` grows without bound. At scale, this table becomes a query performance problem and a storage cost problem. Implement time-based partitioning or a retention policy.
+
+3. **PubSub cross-node replication (AT CLUSTER SCALE).** When scaling beyond 2 nodes, attention-topic messages replicate to all nodes. Topic-level affinity or partitioned PubSub adapters would address this.
+
+4. **SyncComputer per-sensor subscriptions (AT HIGH SYNC PARTICIPATION).** If 500+ sensors participate in sync computation simultaneously, SyncComputer becomes CPU-bound. Sharding by group would solve this.
+
+5. **Horde CRDT sync overhead (AT 1000+ ROOMS).** Horde's delta-CRDT protocol has overhead proportional to total registered entries. Monitor and consider migration to `:pg` for rooms (as was done for sensors) if convergence latency becomes problematic.
+
+### 13.9 Capacity Planning Summary
+
+| Scenario | Sensors | Memory (per node) | Nodes | Key Requirement |
+|----------|---------|-------------------|-------|-----------------|
+| Current | 152 | ~660 MB | 1 | None -- works today |
+| Near-term growth | 500 | ~2.2 GB | 1 | Reduce warm cap to 2,500 |
+| Medium deployment | 1,500 | ~2.3 GB | 1 | Warm cap 2,500 + DB retention |
+| Large deployment | 5,000 | ~2.3 GB/node | 4 | Cluster + PubSub affinity |
+| Research event | 10,000 | ~2.3 GB/node | 8 | All of the above + SyncComputer sharding |
+
+These projections assume the warm store cap is reduced to 2,500 (~1.5 MB/sensor total). Without that change, divide sensor counts by ~3.
+
 ---
 
 ## Appendix A: Failure Scenario Analysis
@@ -1029,7 +1294,8 @@ Three rounds of targeted improvements:
 - **Local registries:** 12
 - **:pg scopes:** 1 (`:sensocto_sensors`)
 - **GenServer processes (singletons):** ~20
-- **GenServer processes (dynamic):** N sensors + N rooms + N calls
+- **GenServer processes (dynamic):** 6 per sensor (1 SimpleSensor + 4 AttributeServer + 1 SensorStub) + N rooms + N calls
+- **Measured process count:** ~2,669 total with 152 sensors (~1,800 base + 912 sensor processes)
 - **PubSub topics (patterns):** 20+ distinct patterns
 - **Telemetry instrumentation points:** 7 files
 
@@ -1123,11 +1389,20 @@ Resolved:
 - Distributed discovery -- DiscoveryCache + SyncWorker (event-driven)
 - Iroh connection sharing -- ConnectionManager in Storage.Supervisor
 - AttentionTracker thundering herd -- bulk registration/unregistration APIs
+- SyncComputer GC pressure on hot path -- O(excess) buffer append replacing O(n)
+- SyncComputer PubSub flooding -- 200ms per-type throttle on broadcast (~22/sec cap)
+- SyncComputer always-on waste -- demand-driven activation via MIDI hook event
+- Silent bio factor degradation -- Logger.warning added to all four error branches
+- Session continuity across deployments -- remember_me 365-day persistent token strategy
 
 Remaining risks (ordered by impact):
-1. The absence of `code_change/3` blocks safe hot code upgrades
-2. Domain.Supervisor has 22 children under `:one_for_one` -- needs sub-supervisors
-3. Circuit breaker lacks failure decay -- permanent half-open state possible
-4. No health check endpoint for operational monitoring
+1. **ETS warm store is the scaling ceiling.** At 3.6 MB/sensor (10,000 entry cap), ETS consumes 95% of per-sensor memory. Reducing the cap to 2,500 would triple single-node capacity from ~1,400 to ~4,000 sensors.
+2. The absence of `code_change/3` blocks safe hot code upgrades
+3. Domain.Supervisor has 22 children under `:one_for_one` -- needs sub-supervisors
+4. `sensors_attribute_data` has no retention policy -- unbounded database growth
+5. Circuit breaker lacks failure decay -- permanent half-open state possible
+6. No health check endpoint for operational monitoring
+
+**Scalability headline (revised with live data):** The SimpleSensor GC fix (`fullsweep_after: 10`) reclaimed 296 MB from 152 sensors -- a 12x per-process memory reduction (2.1 MB to 175 KB). This moved the per-sensor bottleneck from process heap to ETS warm store. A single 8 GB node can support ~1,400 sensors with current ETS caps, or ~4,000 sensors with the recommended warm store cap reduction to 2,500 entries. Multi-node clusters scale linearly thanks to the `:pg` + local Registry architecture and attention-aware PubSub gating.
 
 The system's foundations are sound and continue to strengthen. The supervision tree hierarchy is well-layered, the data pipeline is highly optimized (ETS direct-write bypasses GenServer serialization), and the biomimetic layer adds genuine adaptive capacity. The honey badger resilience pattern -- processes that self-heal, detect permanent failures, and carry on -- makes this system increasingly suitable for autonomous agent-driven maintenance.

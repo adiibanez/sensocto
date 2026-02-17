@@ -24,6 +24,7 @@ defmodule SensoctoWeb.Router do
 
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :sign_in_with_remember_me
     plug :load_from_session
 
     plug SensoctoWeb.Plugs.RequestLogger

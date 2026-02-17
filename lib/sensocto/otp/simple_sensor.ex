@@ -17,7 +17,11 @@ defmodule Sensocto.SimpleSensor do
           :ignore | {:error, any()} | {:ok, pid()}
   def start_link(%{:sensor_id => sensor_id} = configuration) do
     Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
-    GenServer.start_link(__MODULE__, configuration, name: via_tuple(sensor_id))
+
+    GenServer.start_link(__MODULE__, configuration,
+      name: via_tuple(sensor_id),
+      spawn_opt: [fullsweep_after: 10]
+    )
   end
 
   @impl true
@@ -308,7 +312,6 @@ defmodule Sensocto.SimpleSensor do
 
         :unregister ->
           Map.delete(state.attributes, attribute_id)
-          # TODO cleanup state data
       end
 
     new_state = state |> update_in([:attributes], fn _ -> new_attributes end)

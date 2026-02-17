@@ -1,45 +1,58 @@
 # Sensocto API Client Development Report
 
 **Generated:** 2026-01-24
-**Last Updated:** 2026-02-08
-**Status:** Comprehensive Review with DX Deep Dive and Cross-SDK Audit
+**Last Updated:** 2026-02-16
+**Status:** Comprehensive Review with DX Deep Dive, Cross-SDK Audit, and New Attribute Types
 
 ---
 
 ## Executive Summary
 
-The Sensocto platform provides four client SDKs (Unity/C#, Rust, Python, TypeScript/Three.js) for connecting to the sensor streaming platform. All SDKs are functionally complete for core use cases including sensor data streaming, video/voice calls, and backpressure handling. However, a critical cross-SDK model mismatch has been identified: the server sends `backpressure_config` events with 8 fields, but only Rust and TypeScript SDKs model all key fields. Unity and Python SDKs are missing critical fields (`paused`, `system_load`, `load_multiplier`), and ALL SDKs are missing `memory_protection_active`.
+The Sensocto platform provides four client SDKs (Unity/C#, Rust, Python, TypeScript/Three.js) for connecting to the sensor streaming platform. All SDKs are functionally complete for core use cases including sensor data streaming, video/voice calls, and backpressure handling. However, a critical cross-SDK model mismatch remains: the server sends `backpressure_config` events with 8 fields, but only Rust and TypeScript SDKs model all key fields. Unity and Python SDKs are missing critical fields (`paused`, `system_load`, `load_multiplier`), and ALL SDKs are missing `memory_protection_active`.
 
-### Key Findings (2026-02-08)
+Since the last review (2026-02-08), the platform has added new attribute types (eye tracking: `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture`; pose: `skeleton`), new composite lenses (gaze, skeleton, HRV, breathing), a new lobby graph view with server-side Kuramoto phase synchronization (SyncComputer), new lobby routes (`/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users`), a shared `SensorData` helper module, and significant resilience improvements. No breaking API or WebSocket protocol changes were made.
+
+### Key Findings (2026-02-16)
 
 | Area | Status | Priority |
 |------|--------|----------|
 | BackpressureConfig Model Mismatch | Unity + Python missing critical fields | **Critical** |
 | `memory_protection_active` field | Missing from ALL SDKs | **Critical** |
+| New Attribute Types (Eye Tracking) | `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` not in any SDK model | High |
+| New Attribute Type (Skeleton) | `skeleton` not in any SDK model | High |
 | `update_connector` event | Server supports it, NO SDK exposes it | High |
 | HydrationChannel | New channel, no SDK support or docs | High |
+| SyncComputer (Kuramoto Sync) | Server-side sync data exposed via composite events, no SDK access | Medium |
 | SDK Identification Constants | Inconsistent across SDKs | Medium |
 | Test Coverage | Python SDK tests still empty | Medium |
 | Python Reconnection Logic | Config exists but not implemented | Medium |
 | `request_quality_tier` event | Undocumented in SDKs | Medium |
 | Package Publishing | Not published to registries | Low |
 
-### Changes Since Last Review (2026-02-06 to 2026-02-08)
+### Changes Since Last Review (2026-02-08 to 2026-02-16)
 
 | Change | Impact |
 |--------|--------|
-| Identified BackpressureConfig model mismatch across SDKs | Critical - Unity/Python silently ignore `paused` field |
-| Discovered `update_connector` event exists on server (lines 249-265 of sensor_data_channel.ex) | No SDK can rename connectors at runtime |
-| Confirmed rate limiting is now fully implemented | Resolves gap flagged in previous review |
-| Discovered HydrationChannel (318 lines, client-side room snapshot storage) | New channel not covered by any SDK |
-| Identified `request_quality_tier` call channel event (lines 184-198 of call_channel.ex) | Undocumented adaptive video quality feature |
-| No breaking server-side changes in recent commits | SDKs remain backward-compatible |
+| New attribute types: `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` | SDKs need new model types for eye tracking payloads |
+| New attribute type: `skeleton` (pose tracking with `landmarks` field) | SDKs need skeleton/pose model type |
+| New eye tracking category in `AttributeType.category/1` | New `:eye_tracking` category for organizing attributes |
+| New composite lenses: CompositeGaze, CompositeSkeletons, CompositeBreathing, CompositeHRV | No direct SDK impact (LiveView-only) |
+| New lobby routes: `/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users` | No direct SDK impact (LiveView-only) |
+| `SyncComputer` GenServer for Kuramoto phase synchronization | Server-side breathing/HRV sync computation; could become future API |
+| Shared `SensoctoWeb.LiveHelpers.SensorData` module extracted | Internal refactor, no API change |
+| Attention tracker resilience improvements | More robust attention tracking, no protocol changes |
+| PriorityLens and Router resilience improvements | Internal pipeline hardening, no protocol changes |
+| CircuitBreaker module added | Internal resilience pattern, no API change |
+| Biomimetic modules (CircadianScheduler, HomeostaticTuner, etc.) | Internal bio-inspired resilience, no API change |
+| Guest sessions database index migration | Performance improvement, no API change |
+| Internationalization (i18n) with Gettext (8 languages) | UI only, no API change |
+| Rust SDK dependency bump (bytes 1.11.0 to 1.11.1) | Minor maintenance |
 
 ---
 
 ## CRITICAL FINDING: BackpressureConfig Model Mismatch
 
-### Server Payload (sensor_data_channel.ex lines 735-744)
+### Server Payload (sensor_data_channel.ex lines 747-756)
 
 The server's `get_backpressure_config/1` function returns 8 fields:
 
@@ -75,7 +88,7 @@ The server's `get_backpressure_config/1` function returns 8 fields:
 
 **All SDKs** are missing `memory_protection_active`. While `paused` is the actionable field (clients should stop sending when `paused: true`), `memory_protection_active` provides valuable diagnostic information about why backpressure is being applied.
 
-### Pause Conditions (from server code lines 710-723)
+### Pause Conditions (from server code lines 718-735)
 
 The server sets `paused: true` under two conditions:
 1. **Memory protection active** AND attention is `low` or `none`
@@ -107,7 +120,63 @@ When memory protection is active, non-paused sensors (high/medium attention) rec
 
 ---
 
-## DX Deep Dive Analysis (2026-02-06, updated 2026-02-08)
+## NEW FINDING: Attribute Type Expansion (Eye Tracking + Skeleton)
+
+### New Attribute Types Added Since Last Review
+
+The `AttributeType` module (`lib/sensocto/types/attribute_type.ex`) now includes 48 attribute types across 8 categories, up from the previously documented set. The following types are new:
+
+#### Eye Tracking Category (`:eye_tracking`)
+
+| Type | Payload Fields | Visualization | Description |
+|------|----------------|---------------|-------------|
+| `eye_gaze` | `x`, `y`, `confidence` | Heatmap | Eye gaze direction with confidence score |
+| `eye_blink` | `value` | Event indicator | Blink detection |
+| `eye_worn` | `value` | Indicator | Whether eye tracker is being worn |
+| `eye_aperture` | `left`, `right` | Dual gauge | Eye aperture (openness) per eye |
+
+#### Pose/Skeleton Category (within `:motion`)
+
+| Type | Payload Fields | Visualization | Description |
+|------|----------------|---------------|-------------|
+| `skeleton` | `landmarks` | Skeleton visualization | Full body pose tracking landmarks |
+
+### SDK Impact
+
+No SDK currently includes models for these new attribute types. While the SDKs can still receive and forward the raw payload data (they do not strictly validate attribute types), adding typed models would improve developer experience through autocomplete, type safety, and documentation.
+
+**Recommendation:** Add typed payload models for `EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`, and `Skeleton` to all SDKs.
+
+### Simulator Support
+
+The `DataGenerator` module (`lib/sensocto/simulator/data_generator.ex`) includes data generation for the new eye tracking types, and pupil neon simulator scenarios exist at:
+- `config/simulator_scenarios/pupil_neon_large.yaml`
+- `config/simulator_scenarios/pupil_neon_small.yaml`
+
+---
+
+## NEW FINDING: Server-Side Synchronization Computing
+
+### SyncComputer (Kuramoto Phase Synchronization)
+
+A new `Sensocto.Bio.SyncComputer` GenServer computes real-time interpersonal physiological synchronization using the Kuramoto order parameter. This is a demand-driven system that only activates when viewers are present.
+
+| Aspect | Details |
+|--------|---------|
+| Location | `lib/sensocto/bio/sync_computer.ex` |
+| Algorithm | Kuramoto order parameter with exponential smoothing (alpha=0.15) |
+| Data sources | Breathing (`respiration`) and HRV (`hrv`) sensors |
+| Buffer sizes | Breathing: 50 phases, HRV: 20 phases |
+| Output | Stored as attributes under `__composite_sync` sensor in `AttributeStoreTiered` |
+| Demand-driven | Only subscribes to sensor data when viewers are registered |
+
+**SDK Impact:** Currently internal only, exposed via LiveView composite events. If REST endpoints are added for sync data, SDKs will need new models.
+
+**Recommendation:** When sync metrics become available via API, add a `SyncMetrics` model with `order_parameter` (0.0-1.0) to the Python SDK (primary research audience).
+
+---
+
+## DX Deep Dive Analysis (2026-02-06, updated 2026-02-16)
 
 ### New Developer Onboarding Friction Assessment
 
@@ -121,18 +190,20 @@ After a detailed code review of the server-side implementation, the following fr
 | **Undocumented Backpressure Response Contract** | High | `backpressure_config` events pushed to clients but no guidance on how clients should respond |
 | **Memory Protection Protocol Undocumented** | Medium | System can activate memory protection mode that pauses low-priority sensors - clients need to handle gracefully |
 | **Guest Token Format Secret** | Medium | Guest tokens use `guest:{id}:{token}` format but this is not documented externally |
-| **Attribute Type Validation** | Medium | 30+ valid attribute types but no client-side validation utilities in SDKs |
+| **Attribute Type Validation** | Medium | 48 valid attribute types but no client-side validation utilities in SDKs |
 
 #### Positive DX Elements Found
 
 | Element | Implementation | Location |
 |---------|---------------|----------|
 | **OpenAPI Spec** | Full spec with Swagger UI | `/api/openapi`, `/swaggerui` |
-| **Type System** | Comprehensive `AttributeType` module | `lib/sensocto/types/attribute_type.ex` |
+| **Type System** | Comprehensive `AttributeType` module (48 types) | `lib/sensocto/types/attribute_type.ex` |
 | **Safe Key Validation** | Prevents atom exhaustion attacks | `lib/sensocto/types/safe_keys.ex` |
 | **BLE UUID Mappings** | 80+ Bluetooth characteristic mappings | `assets/svelte/bluetooth-utils.js` |
 | **Health Endpoints** | Kubernetes-ready liveness/readiness | `/health/live`, `/health/ready` |
 | **Rate Limiting** | ETS-based sliding window with headers | `lib/sensocto_web/plugs/rate_limiter.ex` |
+| **Internationalization** | Gettext with 8 languages (en, de, es, fr, gsw, ja, pt_BR, zh) | `priv/gettext/` |
+| **Shared Helpers** | `SensorData` module for sensor grouping and enrichment | `lib/sensocto_web/live/helpers/sensor_data.ex` |
 
 ### Client-Side Resilience Patterns Required
 
@@ -291,7 +362,7 @@ This plan introduced attention-based quality tiers for video calls, enabling 100
 ### 3. Sensor Component Migration (LiveView to LiveComponent)
 
 **Plan:** `PLAN-sensor-component-migration.md`
-**Status:** Planned
+**Status:** Partially implemented (`@use_sensor_components true` flag in LobbyLive)
 
 **SDK Impact: NONE** -- Purely server-side/frontend architecture change. No WebSocket protocol, REST API, or channel event changes.
 
@@ -359,7 +430,7 @@ Staleness indicator (`fresh` vs `stale`) in sensor state could be exposed to SDK
 ### 8. Sensor Scaling Refactor
 
 **Plan:** `plans/PLAN-sensor-scaling-refactor.md`
-**Status:** Planned
+**Status:** Partially implemented (attention-based sharded PubSub is live)
 
 **SDK Impact: MEDIUM -- PubSub topic structure changes affect subscription patterns**
 
@@ -367,16 +438,18 @@ Major refactor for 1000+ sensor scale: hybrid registry (pg + local), sharded Pub
 
 New capability: sensor-specific topic `data:sensor:{sensor_id}` enables direct subscriptions. Ring buffers enable `get_buffered_data(from, to)` for historical windows.
 
-**Recommendation:** When sharded topics ship, add `subscribeTo(sensorId)` and `requestHistory(sensorId, from, to)` methods to SDKs.
+**Update:** The sharded PubSub topics (`data:attention:high/medium/low`) are now live in production. The sensor-specific topic `data:sensor:{id}` also exists (used by SyncComputer). The per-socket ETS buffers in PriorityLens are also implemented.
+
+**Recommendation:** When direct sensor subscription is exposed via API, add `subscribeTo(sensorId)` and `requestHistory(sensorId, from, to)` methods to SDKs.
 
 ### 9. Research-Grade Synchronization Metrics
 
 **Plan:** `plans/PLAN-research-grade-synchronization.md`
-**Status:** Planned
+**Status:** Partially implemented (SyncComputer with Kuramoto order parameter is live)
 
 **SDK Impact: HIGH -- Major new API surface for analysis**
 
-Introduces research-grade interpersonal physiological synchronization metrics (PLV, TLCC, WTC, CRQA, DTW, IRN). Real-time metrics run client-side in Svelte; post-hoc analysis runs server-side via Pythonx.
+Introduces research-grade interpersonal physiological synchronization metrics (PLV, TLCC, WTC, CRQA, DTW, IRN). Real-time Kuramoto sync is now computed server-side via SyncComputer. Post-hoc analysis runs server-side via Pythonx.
 
 New database schema `sync_reports` stores analysis results. New REST endpoints needed:
 - `GET /api/sessions/:id/sync-report` -- Fetch sync analysis results
@@ -412,31 +485,69 @@ Call join response now includes 7 STUN + optional Cloudflare TURN servers. SDKs 
 
 ---
 
-## Recent Changes (2026-01-30 to 2026-02-02)
+## Recent Changes (2026-02-08 to 2026-02-16)
 
 ### Server-Side Architecture Changes
 
-#### 1. Distributed Sensors (Horde Registry)
+#### 1. New Attribute Types: Eye Tracking and Skeleton
 
-**Commit:** `97c9fbd` - distributed sensors
+**Commits:** `377026d`, `4d12618`
 
-The platform now uses `Horde.Registry` for cluster-wide sensor discovery instead of a local `Registry`. This is a **backend-only change** that is transparent to clients.
+The `AttributeType` module now includes 48 attribute types with a new `:eye_tracking` category containing `eye_gaze`, `eye_blink`, `eye_worn`, and `eye_aperture`. The `skeleton` type for pose tracking was also added to the `:motion` category.
 
-**Impact on SDKs:** None - the WebSocket channel API remains unchanged.
+New simulator scenarios for Pupil Neon eye trackers:
+- `config/simulator_scenarios/pupil_neon_large.yaml`
+- `config/simulator_scenarios/pupil_neon_small.yaml`
 
-#### 2. Reactive Backpressure Philosophy Change
+**Impact on SDKs:** SDKs should add typed models for these new attribute types to provide autocomplete and validation.
 
-**Commits:** `cc60ecb`, `08add49`, `3ba49c0`, `c0910a1`
+#### 2. Server-Side Synchronization Computing (SyncComputer)
 
-**Previous Behavior:**
-- Quality levels: high (20Hz), medium (10Hz), low (1s digests), minimal (2s digests)
-- Preemptive throttling based on sensor count
+**Commits:** `dc7c0ce`, `8fa301e`, `9b2d8ca`
 
-**New Behavior:**
-- Quality levels now target higher throughput: high (~60fps/32ms), medium (~20fps/50ms), low (~10fps/100ms), minimal (~5fps/200ms)
-- New `paused` quality level stops data flow entirely (critical backpressure)
-- **No preemptive throttling** - system starts at maximum quality regardless of sensor count
-- Degradation only occurs based on actual backpressure (mailbox depth)
+New `Sensocto.Bio.SyncComputer` GenServer implements Kuramoto phase synchronization for breathing and HRV sensors. Demand-driven architecture activates only when viewers are present. Results stored in `AttributeStoreTiered` under `__composite_sync` sensor.
+
+**Impact on SDKs:** None currently. If sync data becomes available via REST API, SDKs will need new models.
+
+#### 3. Biomimetic Resilience Framework
+
+**Commits:** `56c58c7`, `1ba92a1`, `9b2d8ca`
+
+New modules added for bio-inspired system resilience:
+- `Sensocto.Bio.CircadianScheduler` -- Time-based resource management
+- `Sensocto.Bio.HomeostaticTuner` -- Self-regulating parameter adjustment
+- `Sensocto.Bio.NoveltyDetector` -- Anomaly detection
+- `Sensocto.Bio.PredictiveLoadBalancer` -- Predictive load distribution
+- `Sensocto.Bio.ResourceArbiter` -- Resource allocation
+- `Sensocto.Resilience.CircuitBreaker` -- Fault isolation
+
+**Impact on SDKs:** None -- internal resilience mechanisms only.
+
+#### 4. Attention Tracker Hardening
+
+**Commits:** `7cd2179`, `9ae2339`, `9b2d8ca`
+
+Attention tracker received significant resilience improvements including a separate `TableOwner` process for ETS table ownership. This ensures attention tracking survives process restarts.
+
+**Impact on SDKs:** None -- backpressure protocol remains identical.
+
+#### 5. New Composite Lenses and Lobby Views
+
+**Commits:** `377026d`, `8fa301e`, various
+
+New composite lenses added: `CompositeGaze.svelte`, `CompositeSkeletons.svelte`, `CompositeBreathing.svelte`, `CompositeHRV.svelte`, `LobbyGraph.svelte`. New lobby routes: `/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users`.
+
+**Impact on SDKs:** None -- LiveView-only features.
+
+#### 6. Shared SensorData Helper Module
+
+**Commit:** Various recent
+
+New `SensoctoWeb.LiveHelpers.SensorData` module extracted from LobbyLive, providing:
+- `group_sensors_by_user/1` -- Groups sensors by connector for graph visualization
+- `enrich_sensors_with_attention/1` -- Adds attention levels to sensor data
+
+Used by both `LobbyLive` and `IndexLive`. Internal refactor with no API impact.
 
 ---
 
@@ -474,7 +585,7 @@ Sensocto provides multiple API entry points for external clients to interact wit
 |--------|------|------------|---------|
 | GET/POST | `/api/auth/verify` | MobileAuthController | Verify JWT token |
 | GET | `/api/me` | MobileAuthController | Get current user info |
-| POST | `/api/auth/debug` | MobileAuthController | Debug token verification |
+| POST | `/api/auth/debug` | MobileAuthController | Debug token verification (dev only) |
 
 #### Rooms
 | Method | Path | Controller | Purpose |
@@ -500,10 +611,18 @@ Sensocto provides multiple API entry points for external clients to interact wit
 ### 1.3 Phoenix LiveView (Browser-Only)
 
 LiveView routes require browser sessions with CSRF protection:
-- `/lobby/*` - Real-time sensor monitoring dashboard
+- `/` - Index page with sigma graph preview and rooms
+- `/lobby/*` - Real-time sensor monitoring dashboard (14 sub-routes including new gaze, graph, favorites, users)
+- `/lobby/sensors/:sensor_id` - Single sensor detail view
+- `/lobby/compare` - Multi-sensor comparison view
 - `/rooms/*` - Room management and viewing
 - `/simulator` - Sensor simulation interface
 - `/settings` - User settings
+- `/about` - About page with videos tab
+- `/system-status` - System status dashboard
+- `/ai-chat` - AI chat interface
+- `/sense` - Sensor data capture interface
+- `/playground` - Development playground
 
 ---
 
@@ -521,6 +640,7 @@ LiveView routes require browser sessions with CSRF protection:
 - `FromPayload()` (Models.cs lines 149-174) only parses 4 of 8 fields
 - `BackpressureManager.cs` has no pause check
 - Missing `SDK_NAME` and `VERSION` constants
+- No models for new attribute types (eye tracking, skeleton)
 
 ### 2.2 Rust SDK
 
@@ -529,7 +649,9 @@ LiveView routes require browser sessions with CSRF protection:
 
 **Strengths:** Idiomatic Rust, async tokio, builder pattern, thiserror errors, `SDK_NAME = "sensocto-rust"`, full backpressure with `paused`/`system_load`/`load_multiplier`, `should_pause()` + `effective_batch_window()`, pause checks in all send paths, force-flush on close
 
-**Issues:** Missing `memory_protection_active`, `blocking` feature flag not implemented, examples commented out
+**Issues:** Missing `memory_protection_active`, `blocking` feature flag not implemented, examples commented out, no models for new attribute types (eye tracking, skeleton)
+
+**Recent:** Dependency bump `bytes` 1.11.0 to 1.11.1 (PR #63)
 
 ### 2.3 Python SDK
 
@@ -543,6 +665,7 @@ LiveView routes require browser sessions with CSRF protection:
 - Tests directory empty
 - Reconnection not implemented (config exists, socket does not use it)
 - Missing `SDK_NAME`
+- No models for new attribute types (eye tracking, skeleton)
 
 ### 2.4 TypeScript/Three.js SDK
 
@@ -551,11 +674,11 @@ LiveView routes require browser sessions with CSRF protection:
 
 **Strengths:** Full TypeScript, `BackpressureConfig` with `paused`/`systemLoad`/`loadMultiplier`, `parseBackpressureConfig()`, `isPaused` getter, pause checks everywhere, force-flush on close, handler unsubscribe pattern, ESM + CJS
 
-**Issues:** Missing `memory_protection_active`, missing `SDK_NAME`
+**Issues:** Missing `memory_protection_active`, missing `SDK_NAME`, no models for new attribute types (eye tracking, skeleton)
 
 ### 2.5 Livebook/Elixir
 
-**Status:** Interactive `livebooks/api-developer-experience.livemd` available. Not formally packaged.
+**Status:** Interactive `livebooks/api-developer-experience.livemd` available. Additional livebooks added for resilience assessment, security assessment, and biomimetic resilience. Not formally packaged.
 
 ---
 
@@ -653,6 +776,7 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 | Guest Token | `guest:{guest_id}:{token}` | Channel join params |
 | Development Token | `"missing"` literal | Channel join (bypass -- TODO disable in prod) |
 | Basic Auth | Env vars | Admin routes |
+| Magic Link | Email-based authentication | Sign-in flow |
 
 **Socket-Level:** UserSocket accepts ALL connections. Auth deferred to channel join. BridgeSocket has optional token validation.
 
@@ -660,7 +784,43 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ---
 
-## 5. Summary Recommendations
+## 5. Complete Attribute Types Reference (48 Types)
+
+### By Category
+
+| Category | Types | Count |
+|----------|-------|-------|
+| Health/Cardiac | `ecg`, `hrv`, `hr`, `heartrate`, `spo2`, `respiration` | 6 |
+| Motion/IMU | `imu`, `accelerometer`, `gyroscope`, `magnetometer`, `quaternion`, `euler`, `heading`, `gravity`, `tap`, `orientation`, `skeleton` | 11 |
+| Location | `geolocation`, `altitude`, `speed` | 3 |
+| Environment | `temperature`, `humidity`, `pressure`, `light`, `proximity`, `gas`, `air_quality`, `color` | 8 |
+| Device | `battery`, `button`, `led`, `speaker`, `microphone`, `body_location`, `rich_presence` | 7 |
+| Activity | `steps`, `calories`, `distance` | 3 |
+| Specialty | `buttplug` | 1 |
+| Eye Tracking | `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` | 4 |
+| **Marine** | `water_temperature`, `sea_surface_temperature`, `salinity`, `ph`, `dissolved_oxygen`, `turbidity`, `depth`, `light_par`, `nitrate`, `phosphate`, `ammonia`, `alkalinity`, `current_speed`, `current_direction`, `wave_height` | Documented in API ref but not in `AttributeType` module |
+| **AI/Inference** | `fish_count`, `species_diversity`, `coral_coverage`, `algae_coverage`, `bleaching_index`, `inference_confidence` | Documented in API ref but not in `AttributeType` module |
+
+**Note:** Marine and AI/Inference types are documented in `docs/api-attributes-reference.md` but are NOT currently in the `@attribute_types` list in `attribute_type.ex`. They would pass through without type validation. SDKs should support them as generic types with `value` payloads.
+
+### New Eye Tracking Payload Fields
+
+| Type | Fields | Example Payload |
+|------|--------|-----------------|
+| `eye_gaze` | `x`, `y`, `confidence` | `{"x": 0.5, "y": 0.3, "confidence": 0.95}` |
+| `eye_blink` | `value` | `{"value": true}` |
+| `eye_worn` | `value` | `{"value": true}` |
+| `eye_aperture` | `left`, `right` | `{"left": 0.8, "right": 0.75}` |
+
+### New Skeleton Payload Fields
+
+| Type | Fields | Example Payload |
+|------|--------|-----------------|
+| `skeleton` | `landmarks` | `{"landmarks": [{...}, ...]}` |
+
+---
+
+## 6. Summary Recommendations
 
 ### Immediate Actions (Priority: Critical)
 
@@ -671,31 +831,34 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ### Short-term Actions (Priority: High)
 
-5. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
-6. **Add Python SDK tests** -- Currently empty directory
-7. **Expose `update_connector` event in SDKs**
-8. **Document HydrationChannel protocol**
-9. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
-10. **Document adaptive video quality events** in SDK call session classes
+5. **Add eye tracking attribute models** (`EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`) to all SDKs
+6. **Add skeleton/pose attribute model** (`Skeleton` with `landmarks` field) to all SDKs
+7. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
+8. **Add Python SDK tests** -- Currently empty directory
+9. **Expose `update_connector` event in SDKs**
+10. **Document HydrationChannel protocol**
+11. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
+12. **Document adaptive video quality events** in SDK call session classes
 
 ### Medium-term Actions (Priority: Medium)
 
-11. **Prepare delta decoders** for each SDK ahead of delta encoding rollout
-12. **Publish SDKs** to package registries (crates.io, PyPI, npm, OpenUPM)
-13. **Add `blocking` API** to Rust SDK
-14. **Add sync wrapper** for Python SDK
-15. **Create cross-SDK backpressure handling guide**
-16. **Add sensor listing API** when Distributed Discovery ships
+13. **Prepare delta decoders** for each SDK ahead of delta encoding rollout
+14. **Publish SDKs** to package registries (crates.io, PyPI, npm, OpenUPM)
+15. **Add `blocking` API** to Rust SDK
+16. **Add sync wrapper** for Python SDK
+17. **Create cross-SDK backpressure handling guide**
+18. **Add sensor listing API** when Distributed Discovery ships
+19. **Document marine/coral attribute types** in SDK attribute enums (currently in docs but not in `AttributeType` module)
 
 ### Long-term Actions (Priority: Low)
 
-17. **Create Elixir/Livebook SDK** with Kino integration
-18. **Add binary protocol option** for high-frequency data
-19. **Implement API versioning** strategy
-20. **Build developer portal** with interactive docs
-21. **Add WebWorker support** to TypeScript SDK
-22. **Add sync report API** to Python SDK when research sync metrics ship
-23. **Verify ICE server propagation** across all SDKs for TURN support
+20. **Create Elixir/Livebook SDK** with Kino integration
+21. **Add binary protocol option** for high-frequency data
+22. **Implement API versioning** strategy
+23. **Build developer portal** with interactive docs
+24. **Add WebWorker support** to TypeScript SDK
+25. **Add sync report API** to Python SDK when research sync metrics ship
+26. **Verify ICE server propagation** across all SDKs for TURN support
 
 ---
 
@@ -792,6 +955,16 @@ interface HydrationJoinParams {
 | HealthController | `lib/sensocto_web/controllers/health_controller.ex` |
 | GuestAuthController | `lib/sensocto_web/controllers/guest_auth_controller.ex` |
 
+### Key Server Modules (New/Updated)
+
+| Module | Location | Purpose |
+|--------|----------|---------|
+| AttributeType | `lib/sensocto/types/attribute_type.ex` | 48 attribute type definitions |
+| SyncComputer | `lib/sensocto/bio/sync_computer.ex` | Kuramoto phase synchronization |
+| CircuitBreaker | `lib/sensocto/resilience/circuit_breaker.ex` | Fault isolation |
+| AttentionTracker.TableOwner | `lib/sensocto/otp/attention_tracker/table_owner.ex` | ETS table ownership |
+| SensorData Helper | `lib/sensocto_web/live/helpers/sensor_data.ex` | Shared sensor data helpers |
+
 ### Documentation
 
 | Document | Location |
@@ -800,11 +973,14 @@ interface HydrationJoinParams {
 | Getting Started | `docs/getting-started.md` |
 | Architecture | `docs/architecture.md` |
 | Simulator Integration | `docs/simulator-integration.md` |
+| Attention System | `docs/attention-system.md` |
+| Supervision Tree | `docs/supervision-tree.md` |
 | API Developer Experience Livebook | `livebooks/api-developer-experience.livemd` |
+| Biomimetic Resilience Livebook | `livebooks/biomimetic-resilience.livemd` |
 | OpenAPI Spec Module | `lib/sensocto_web/api_spec.ex` |
 | Rate Limiter | `lib/sensocto_web/plugs/rate_limiter.ex` |
 
 ---
 
 *Report generated by api-client-developer agent*
-*Last review: 2026-02-08*
+*Last review: 2026-02-16*

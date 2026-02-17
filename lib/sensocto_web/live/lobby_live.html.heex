@@ -17,33 +17,6 @@
   <div class="flex items-center justify-between mb-4">
     <div class="flex items-center gap-3 text-xs text-gray-500"></div>
     <div class="flex items-center gap-4">
-      <button
-        phx-click="open_join_modal"
-        class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1"
-      >
-        <Heroicons.icon name="arrow-right-on-rectangle" type="outline" class="h-4 w-4" />
-        Join Room
-      </button>
-      <button
-        :if={@sensor_ids != [] && @live_action == :sensors}
-        phx-click="toggle_all_view_mode"
-        class="text-gray-400 hover:text-white text-sm flex items-center gap-1"
-        title={
-          if @global_view_mode == :summary, do: "Expand all sensors", else: "Minimize all sensors"
-        }
-      >
-        <span>All:</span>
-        <Heroicons.icon
-          name={
-            if @global_view_mode == :summary,
-              do: "magnifying-glass-plus",
-              else: "magnifying-glass-minus"
-          }
-          type="outline"
-          class="h-4 w-4"
-        />
-      </button>
-
       <%!-- Quality Indicator & Override --%>
       <div class="flex items-center gap-2">
         <div class={"flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium " <>
@@ -362,6 +335,15 @@
           <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
         </.link>
         <.link
+          patch={~p"/lobby/users"}
+          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :users,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
+        </.link>
+        <.link
           :if={@favorite_sensors != []}
           patch={~p"/lobby/favorites"}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
@@ -550,26 +532,51 @@
         </select>
       </form>
 
-      <%!-- Minimum Attention Filter Slider --%>
-      <form phx-change="set_min_attention" class="flex items-center gap-2 ml-4">
-        <label class="text-xs text-gray-400 whitespace-nowrap">Min Attention:</label>
-        <input
-          type="range"
-          name="min_attention"
-          min="0"
-          max="3"
-          value={@min_attention}
-          class="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
-        />
-        <span class="text-xs text-gray-300 w-14">
-          {case @min_attention do
-            0 -> "None"
-            1 -> "Low"
-            2 -> "Medium"
-            3 -> "High"
-          end}
-        </span>
-      </form>
+      <%!-- Sort Controls --%>
+      <div class="flex items-center gap-1.5 ml-4">
+        <span class="text-xs text-gray-500 mr-1">Sort:</span>
+        <button
+          phx-click="set_sort"
+          phx-value-sort="activity"
+          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            if(@sort_by == :activity,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          Activity
+        </button>
+        <button
+          phx-click="set_sort"
+          phx-value-sort="name"
+          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            if(@sort_by == :name,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          Name
+        </button>
+        <button
+          phx-click="set_sort"
+          phx-value-sort="type"
+          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            if(@sort_by == :type,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          Type
+        </button>
+        <button
+          :if={:battery in @available_lenses}
+          phx-click="set_sort"
+          phx-value-sort="battery"
+          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            if(@sort_by == :battery,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          Battery
+        </button>
+      </div>
     </div>
   </div>
 
@@ -684,31 +691,40 @@
     </div>
 
     <div
-      :if={@sensor_ids == [] and @min_attention > 0 and length(@all_sensor_ids) > 0}
-      class="text-center py-12 text-gray-400"
-    >
-      <Heroicons.icon name="funnel" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No sensors match attention filter</p>
-      <p class="text-sm mt-2">
-        {length(@all_sensor_ids)} sensor(s) hidden by "Min Attention" filter.
-        <button
-          phx-click="set_min_attention"
-          phx-value-min_attention="0"
-          class="text-orange-400 hover:text-orange-300 underline"
-        >
-          Show all
-        </button>
-      </p>
-    </div>
-
-    <div
-      :if={@sensor_ids == [] and (@min_attention == 0 or length(@all_sensor_ids) == 0)}
+      :if={@sensor_ids == []}
       class="text-center py-12 text-gray-400"
     >
       <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
     </div>
+  </div>
+
+  <%!-- MIDI Output Panel — pure client-side, no server interaction --%>
+  <div
+    id="midi-output-panel"
+    phx-hook="MidiOutputHook"
+    phx-update="ignore"
+    class="mb-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center gap-3 flex-wrap text-xs"
+  >
+    <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
+    <button
+      id="midi-toggle-btn"
+      class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+    >
+      MIDI Off
+    </button>
+    <select
+      id="midi-device-select"
+      class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
+    >
+      <option value="">-- Select MIDI output --</option>
+    </select>
+    <span id="midi-availability" class="text-gray-500 italic"></span>
+    <span id="midi-status-text" class="text-gray-500">Off</span>
+    <span class="ml-auto text-gray-600 hidden sm:block">
+      CC1=HRV CC2=Breath CC16=BreathSync CC17=HRVSync
+    </span>
   </div>
 
   <div

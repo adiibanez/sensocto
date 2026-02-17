@@ -14,10 +14,10 @@ defmodule Sensocto.Lenses.PriorityLens do
 
   ## Quality Levels
 
-  - `:high` - ~60fps, full sensor set, maximum throughput
+  - `:high` - ~30fps, full sensor set, maximum throughput
   - `:medium` - ~20fps, full sensor set, slight batching
-  - `:low` - ~10fps, limited sensors (first level of throttling)
-  - `:minimal` - ~5fps, few sensors (emergency mode)
+  - `:low` - ~10fps, full sensor set (slower flush only)
+  - `:minimal` - ~5fps, full sensor set (slowest flush)
 
   ## Topics
 
@@ -57,15 +57,18 @@ defmodule Sensocto.Lenses.PriorityLens do
 
   # Quality level configurations
   # Philosophy: Default to maximum throughput. Throttling is a last resort.
+  # All non-paused levels send ALL sensors — backpressure is managed solely
+  # by slowing the flush interval. Dropping sensors causes composite views
+  # (gaze, ecg, etc.) to show stale/grey faces, which is worse than slower updates.
   @quality_configs %{
     # High throughput - ~30fps, sustainable for large sensor counts
     high: %{flush_interval_ms: 32, max_sensors: :unlimited, mode: :batch},
     # Still realtime, batched (~20fps)
     medium: %{flush_interval_ms: 50, max_sensors: :unlimited, mode: :batch},
-    # First level of throttling - only when there's real backpressure
-    low: %{flush_interval_ms: 100, max_sensors: 20, mode: :batch},
-    # Emergency mode - significant throttling
-    minimal: %{flush_interval_ms: 200, max_sensors: 5, mode: :batch},
+    # First level of throttling - slower flush rate only
+    low: %{flush_interval_ms: 100, max_sensors: :unlimited, mode: :batch},
+    # Emergency mode - slowest flush rate, still sends all sensors
+    minimal: %{flush_interval_ms: 200, max_sensors: :unlimited, mode: :batch},
     # Paused - stop sending data entirely (critical backpressure)
     paused: %{flush_interval_ms: :infinity, max_sensors: 0, mode: :paused}
   }
@@ -651,48 +654,16 @@ defmodule Sensocto.Lenses.PriorityLens do
   end
 
   defp flush_batch(socket_id, socket_state) do
-    config = @quality_configs[socket_state.quality]
-    max_sensors = config.max_sensors
-
     # Use match to get all entries for this socket
     pattern = {{socket_id, :_, :_}, :_}
     entries = :ets.match_object(@buffer_table, pattern)
 
     if length(entries) > 0 do
-      # Group by sensor_id first
-      by_sensor =
+      # Build batch from all entries — all sensors always included
+      batch =
         entries
         |> Enum.group_by(fn {{_sid, sensor_id, _attr_id}, _m} -> sensor_id end)
-
-      # Apply max_sensors limit (focused sensor always included)
-      sensors_to_include =
-        case max_sensors do
-          :unlimited ->
-            Map.keys(by_sensor)
-
-          limit when is_integer(limit) ->
-            focused = socket_state.focused_sensor
-            all_sensors = Map.keys(by_sensor)
-
-            # Always include focused sensor if present
-            {focused_list, other_sensors} =
-              if focused && focused in all_sensors do
-                {[focused], List.delete(all_sensors, focused)}
-              else
-                {[], all_sensors}
-              end
-
-            # Take remaining slots from other sensors
-            remaining_slots = max(0, limit - length(focused_list))
-            focused_list ++ Enum.take(other_sensors, remaining_slots)
-        end
-
-      # Build batch only with allowed sensors
-      batch =
-        sensors_to_include
-        |> Enum.reduce(%{}, fn sensor_id, acc ->
-          sensor_entries = Map.get(by_sensor, sensor_id, [])
-
+        |> Enum.reduce(%{}, fn {sensor_id, sensor_entries}, acc ->
           sensor_data =
             Enum.reduce(sensor_entries, %{}, fn {{_sid, _s_id, attr_id}, measurement}, s_acc ->
               Map.put(s_acc, attr_id, measurement)
@@ -709,7 +680,7 @@ defmodule Sensocto.Lenses.PriorityLens do
         )
       end
 
-      # Clear ALL buffer entries for this socket (including dropped sensors)
+      # Clear buffer entries for this socket
       :ets.match_delete(@buffer_table, pattern)
     end
   end

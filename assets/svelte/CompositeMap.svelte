@@ -44,6 +44,7 @@
   let trails: Map<string, Array<[number, number]>> = new Map();
   let sensorColorIndex: Map<string, number> = new Map();
   let nextColorIndex = 0;
+  let _cleanupListeners: (() => void) | null = null;
 
   const MARKER_COLORS = [
     '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
@@ -327,7 +328,7 @@
 
     window.addEventListener('resize', handleResize);
 
-    return () => {
+    _cleanupListeners = () => {
       window.removeEventListener(
         "composite-measurement-event",
         handleCompositeMeasurement as EventListener
@@ -375,8 +376,11 @@
   }
 
   onDestroy(() => {
+    _cleanupListeners?.();
+    _cleanupListeners = null;
     if (map) {
       map.remove();
+      map = null;
     }
   });
 </script>

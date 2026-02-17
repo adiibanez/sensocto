@@ -27,9 +27,101 @@
     let backpressureConfigs = {};
     let backpressureCallbacks = {}; // sensorId -> Set of callbacks
 
+    // Offline resilience: in-memory queue for measurements that can't be sent
+    let offlineQueue = [];
+    const OFFLINE_QUEUE_MAX = 10000;
+    const STALE_MESSAGE_AGE_MS = 30_000; // Drop buffered messages older than 30s
+    let drainInProgress = false;
+    let staleCleanupTimer = null;
+
     export let defaultBatchSize = 10;
     export let defaultBatchTimeout = 1000 / 24;
     export let bearerToken = null;
+
+    // Notify the global connection monitor about sensor socket state
+    function notifyConnectionMonitor(connected) {
+        const monitor = window.__sensocto_connection;
+        if (monitor) {
+            monitor.setSensorSocket(connected);
+            if (!connected) {
+                monitor.setBufferedCount(offlineQueue.length);
+            }
+        }
+    }
+
+    function updateBufferedCount() {
+        const monitor = window.__sensocto_connection;
+        if (monitor) {
+            monitor.setBufferedCount(offlineQueue.length);
+        }
+    }
+
+    // Buffer a measurement for later delivery
+    function bufferOffline(sensorId, message) {
+        if (offlineQueue.length >= OFFLINE_QUEUE_MAX) {
+            // Drop oldest to make room
+            offlineQueue.shift();
+        }
+        offlineQueue.push({ sensorId, message, bufferedAt: Date.now() });
+        updateBufferedCount();
+    }
+
+    // Drain buffered measurements after reconnect.
+    // Called when a channel transitions to 'joined'.
+    // Only drains messages for channels that are already joined;
+    // keeps the rest for when their channels rejoin later.
+    function drainOfflineQueue() {
+        if (drainInProgress || offlineQueue.length === 0) return;
+        drainInProgress = true;
+
+        const total = offlineQueue.length;
+        logger.log(loggerCtxName, `Draining offline queue: ${total} messages`);
+
+        // Partition: drain what we can, keep the rest
+        const kept = [];
+        const bySensor = {};
+        for (const item of offlineQueue) {
+            const fullChannelName = getFullChannelName(item.sensorId);
+            const channel = sensorChannels[fullChannelName];
+            if (!channel || channelStates[fullChannelName] !== 'joined') {
+                kept.push(item);
+                continue;
+            }
+            if (!bySensor[item.sensorId]) bySensor[item.sensorId] = [];
+            bySensor[item.sensorId].push(item.message);
+        }
+
+        let drained = 0;
+        for (const [sensorId, messages] of Object.entries(bySensor)) {
+            const fullChannelName = getFullChannelName(sensorId);
+            const channel = sensorChannels[fullChannelName];
+            if (messages.length === 1) {
+                channel.push("measurement", messages[0]);
+            } else {
+                channel.push("measurements_batch", messages);
+            }
+            drained += messages.length;
+        }
+
+        offlineQueue = kept;
+        drainInProgress = false;
+        logger.log(loggerCtxName, `Drained ${drained}/${total} buffered measurements, ${kept.length} kept for pending channels`);
+        updateBufferedCount();
+
+        // Schedule stale cleanup if orphaned messages remain
+        if (kept.length > 0 && !staleCleanupTimer) {
+            staleCleanupTimer = setTimeout(() => {
+                staleCleanupTimer = null;
+                const now = Date.now();
+                const before = offlineQueue.length;
+                offlineQueue = offlineQueue.filter(item => now - item.bufferedAt < STALE_MESSAGE_AGE_MS);
+                if (offlineQueue.length < before) {
+                    logger.log(loggerCtxName, `Dropped ${before - offlineQueue.length} stale buffered messages (>${STALE_MESSAGE_AGE_MS}ms old)`);
+                    updateBufferedCount();
+                }
+            }, STALE_MESSAGE_AGE_MS);
+        }
+    }
 
     setContext("sensorService", {
         setupChannel,
@@ -103,6 +195,7 @@
 
             socket.onOpen(() => {
                 socketState = "ready";
+                notifyConnectionMonitor(true);
                 stateCallbacks.ready.forEach((cb) => cb());
             });
 
@@ -112,12 +205,14 @@
                 Object.keys(channelStates).forEach(ch => {
                     channelStates[ch] = 'closed';
                 });
+                notifyConnectionMonitor(false);
                 stateCallbacks.disconnected.forEach((cb) => cb());
             });
 
             socket.onError((error) => {
                 logger.warn(loggerCtxName, "Socket error", error);
                 socketState = "error";
+                notifyConnectionMonitor(false);
                 stateCallbacks.error.forEach((cb) => cb(error));
             });
 
@@ -279,6 +374,8 @@
                         channel.push("measurement", msg);
                     });
                 }
+                // Drain offline queue after channel rejoin
+                drainOfflineQueue();
             })
             .receive("error", (resp) => {
                 channelStates[fullChannelName] = 'error';
@@ -336,17 +433,21 @@
         const channel = sensorChannels[fullChannelName];
         const channelState = channelStates[fullChannelName];
 
-        // Check if channel exists and is in a valid state
+        // Only buffer if the socket is actually down and the channel existed before.
+        // If channel was never set up, just drop — not an offline scenario.
         if (!channel) {
-            logger.warn(loggerCtxName, `Cannot send message - channel not found: ${fullChannelName}`);
+            if (socketState !== 'ready') {
+                bufferOffline(sensorId, message);
+            }
+            return false;
+        }
+
+        if (channelState !== 'joined' && channelState !== 'joining') {
+            bufferOffline(sensorId, message);
             return false;
         }
 
         if (channelState !== 'joined') {
-            logger.warn(
-                loggerCtxName,
-                `Cannot send message - channel not ready: ${fullChannelName}, state: ${channelState}`,
-            );
             // Queue message for later if channel is still joining
             if (channelState === 'joining') {
                 if (!messageQueues[fullChannelName]) {

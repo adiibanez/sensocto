@@ -357,6 +357,8 @@
     }
   }
 
+  let _cleanupListeners: (() => void) | null = null;
+
   onMount(async () => {
     await new Promise(resolve => setTimeout(resolve, 100));
     if (viewMode === "map" || viewMode === "split") initMap();
@@ -402,7 +404,7 @@
     window.addEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
     window.addEventListener('resize', handleResize);
 
-    return () => {
+    _cleanupListeners = () => {
       window.removeEventListener("composite-measurement-event", handleCompositeMeasurement as EventListener);
       window.removeEventListener('resize', handleResize);
     };
@@ -428,9 +430,10 @@
   });
 
   onDestroy(() => {
-    window.removeEventListener("resize", handleResize);
-    if (map) map.remove();
-    if (sigma) sigma.kill();
+    _cleanupListeners?.();
+    _cleanupListeners = null;
+    if (map) { map.remove(); map = null; }
+    if (sigma) { sigma.kill(); sigma = null; }
   });
 </script>
 

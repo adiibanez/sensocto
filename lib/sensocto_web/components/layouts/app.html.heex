@@ -1,5 +1,39 @@
 {live_render(@socket, SensoctoWeb.SearchLive, id: "global-search")}
 
+<%!-- Offline overlay banner - controlled by connection-monitor.js, works without LiveView --%>
+<div
+  id="offline-overlay"
+  phx-update="ignore"
+  class="hidden fixed top-0 inset-x-0 z-[100] transition-transform duration-300 translate-y-[-100%]"
+  style="pointer-events: none;"
+>
+  <div
+    class="bg-amber-600 text-white text-sm py-2 px-4 text-center flex items-center justify-center gap-2 shadow-lg"
+    style="pointer-events: auto;"
+  >
+    <svg
+      class="w-4 h-4 animate-pulse"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      stroke-width="2"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M15.536 8.464a5 5 0 010 7.072M8.464 8.464a5 5 0 000 7.072M12 12h.01"
+      />
+    </svg>
+    <span id="offline-message">Reconnecting&hellip;</span>
+    <span
+      id="offline-buffer-count"
+      class="hidden font-mono text-xs bg-amber-700/60 px-1.5 py-0.5 rounded"
+    >
+      <span id="offline-buffer-num">0</span> buffered
+    </span>
+  </div>
+</div>
+
 <header class="bg-gray-800 px-4 py-1 flex justify-between items-center">
   <div class="flex items-center gap-4">
     <.link navigate={~p"/"} class="flex items-center">

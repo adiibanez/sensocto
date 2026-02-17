@@ -40,6 +40,9 @@ import {
   setDebug
 } from './indexeddb.js';
 
+// Connection monitor for offline resilience
+import connectionMonitor from './connection-monitor.js';
+
 // Room-related hooks
 import { RoomStorage, CopyToClipboard, QRCode } from './hooks/room_storage.js';
 
@@ -54,6 +57,9 @@ import { MiniCallIndicatorHook } from './hooks/mini_call_indicator.js';
 
 // User video tile for attention-based video in Users tab
 import { UserVideoTileHook } from './hooks/user_video_tile.js';
+
+// MIDI output for biometric → MIDI CC mapping
+import MidiOutputHook from './hooks/midi_output_hook.js';
 
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
@@ -85,6 +91,9 @@ Hooks.VideoTileHook = VideoTileHook;
 Hooks.CallControlsHook = CallControlsHook;
 Hooks.MiniCallIndicator = MiniCallIndicatorHook;
 Hooks.UserVideoTile = UserVideoTileHook;
+
+// MIDI output hook
+Hooks.MidiOutputHook = MidiOutputHook;
 
 // Vibrate hook - vibrates device and plays sound on every button press
 // Supports repetitive clicks on same button (uses timestamp to detect)
@@ -961,3 +970,70 @@ liveSocket.disableDebug();
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket
+
+// Override reloadWithJitter to prevent unnecessary full page reloads.
+// Default LiveView behavior: on socket close (code 1000), immediately disconnects
+// the socket and schedules window.location.reload() after 5-10s jitter.
+// The disconnect() call is fatal — it prevents the natural reconnection that would
+// otherwise remount views without a page reload.
+// Our override: don't disconnect, give the socket 20s to reconnect naturally.
+// Views will rejoin with new server processes — no page reload needed.
+const _origReloadWithJitter = liveSocket.reloadWithJitter.bind(liveSocket);
+liveSocket.reloadWithJitter = function(view, log) {
+  clearTimeout(this.reloadWithJitterTimer);
+  // DON'T call this.disconnect() — let the socket reconnect naturally
+  this.reloadWithJitterTimer = setTimeout(() => {
+    if (view.isDestroyed() || view.isConnected()) {
+      return; // View recovered — cancel reload
+    }
+    // Server didn't come back in 20s — fall back to hard reload
+    _origReloadWithJitter(view, log);
+  }, 20000);
+};
+
+// Wire up connection monitor to watch LiveSocket and control the offline overlay
+connectionMonitor.watchLiveSocket(liveSocket);
+
+connectionMonitor.subscribe((state) => {
+  const overlay = document.getElementById('offline-overlay');
+  const message = document.getElementById('offline-message');
+  const bufferCount = document.getElementById('offline-buffer-count');
+  const bufferNum = document.getElementById('offline-buffer-num');
+  if (!overlay) return;
+
+  const { STATES } = connectionMonitor;
+
+  if (state.status === STATES.ONLINE) {
+    // Slide out, then hide
+    overlay.classList.add('translate-y-[-100%]');
+    setTimeout(() => overlay.classList.add('hidden'), 300);
+  } else {
+    // Show and slide in
+    overlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      overlay.classList.remove('translate-y-[-100%]');
+    });
+
+    if (state.status === STATES.SYNCING) {
+      message.textContent = 'Syncing buffered data\u2026';
+    } else if (state.status === STATES.OFFLINE) {
+      message.textContent = 'Server unreachable \u2013 BLE data is being buffered';
+    } else {
+      message.textContent = 'Reconnecting\u2026';
+    }
+
+    if (state.bufferedCount > 0) {
+      bufferCount.classList.remove('hidden');
+      bufferNum.textContent = state.bufferedCount;
+    } else {
+      bufferCount.classList.add('hidden');
+    }
+  }
+});
+
+// Re-apply overlay state after LiveView navigation replaces the DOM
+window.addEventListener('phx:page-loading-stop', () => {
+  if (connectionMonitor.state.status !== connectionMonitor.STATES.ONLINE) {
+    connectionMonitor.notify();
+  }
+});

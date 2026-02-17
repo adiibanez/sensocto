@@ -1,7 +1,7 @@
 # Security Assessment Report: Sensocto Platform
 
-**Assessment Date:** 2026-02-08 | **Updated:** 2026-02-15
-**Previous Assessment:** 2026-02-05
+**Assessment Date:** 2026-02-08 | **Updated:** 2026-02-16
+**Previous Assessment:** 2026-02-15
 **Assessor:** Security Advisor Agent (Claude Opus 4.6)
 **Platform Version:** Current main branch
 **Risk Framework:** OWASP Top 10 2021 + Elixir/Phoenix Best Practices
@@ -14,11 +14,12 @@ The Sensocto platform demonstrates a **mature security posture** with well-imple
 
 **Overall Security Grade: B+ (Good)**
 
-### Key Changes Since Last Assessment (2026-02-05 to 2026-02-08)
+### Key Changes Since Last Assessment (2026-02-15 to 2026-02-16)
 
-- **IMPROVED**: Serverside sync calculation added
-- **IMPROVED**: Graph improvements and tooltips
-- **STABLE**: Rate limiting, SafeKeys, backpressure systems all verified
+- **RESOLVED**: Session cookie encryption (M-004) -- `encryption_salt` now configured in endpoint.ex
+- **STABLE**: All other findings unchanged. No new attack surface introduced by recent commits (graph improvements, resilience updates, lobby/index refactoring, translations)
+- **NEW OBSERVATION**: `create_test_user` action in User resource -- verified test-only usage
+- **NEW OBSERVATION**: Rate limiter only applies to POST requests -- GET-based auth routes (guest sign-in) bypass rate limiting
 
 ### Priority Findings Summary
 
@@ -26,16 +27,19 @@ The Sensocto platform demonstrates a **mature security posture** with well-imple
 |----|----------|---------|--------|
 | H-001 | HIGH | 10-year token lifetime | Open |
 | H-002 | HIGH | No socket-level authentication (UserSocket) | Open |
-| H-003 | HIGH | API room endpoints missing auth pipeline | **NEW** |
+| H-003 | HIGH | API room endpoints missing auth pipeline | Open |
 | H-004 | HIGH | Bridge.decode/1 atom exhaustion via `String.to_atom` | **VERIFIED: Not present** |
 | H-005 | HIGH | No bot protection | Open |
 | M-001 | MEDIUM | "missing" token development backdoor | **RESOLVED**: gated on `:allow_missing_token` config |
 | M-002 | MEDIUM | Bridge token not required | Open |
 | M-003 | MEDIUM | Debug endpoint exposed in production | **RESOLVED**: behind `dev_routes` |
-| M-004 | MEDIUM | Session cookie not encrypted | **NEW** |
+| M-004 | MEDIUM | Session cookie not encrypted | **RESOLVED**: `encryption_salt` added |
 | M-005 | MEDIUM | Timing-unsafe guest token comparison | **RESOLVED**: uses `Plug.Crypto.secure_compare` |
 | M-006 | MEDIUM | /dev/mailbox route not gated | **RESOLVED**: behind `dev_routes` |
-| L-001 | LOW | No force_ssl / HSTS | **NEW** |
+| M-007 | MEDIUM | Rate limiter skips GET requests (guest auth is GET) | **NEW** |
+| L-001 | LOW | No force_ssl / HSTS | Open |
+| L-002 | LOW | `create_test_user` action accessible via Ash policies bypass | **NEW** (low risk) |
+| L-003 | LOW | No `Plug.Parsers` body size limit configured | **NEW** |
 
 ---
 
@@ -49,7 +53,7 @@ Sensocto uses **Ash Authentication** with multiple authentication strategies:
 |----------|--------|----------------|
 | Google OAuth | Active | Client credentials via environment variables |
 | Magic Link | Active | 1-hour token lifetime, `require_interaction?: true` |
-| Password | Commented Out | Available but disabled - passwordless preferred |
+| Password | Commented Out | Available but disabled -- passwordless preferred |
 | Guest Sessions | Active | Database-backed with configurable TTL |
 
 ### 1.2 Token Configuration (H-001)
@@ -89,7 +93,8 @@ end
 
 **Finding H-002: HIGH - No Socket-Level Authentication**
 - Socket accepts all connections without authentication
-- Allows anonymous connections to sensor data and call channels
+- Allows anonymous connections to sensor data, call, and hydration channels
+- Channels: `sensocto:*` (SensorDataChannel), `call:*` (CallChannel), `hydration:room:*` (HydrationChannel)
 
 **Recommendation:**
 ```elixir
@@ -106,91 +111,99 @@ def connect(_params, _socket, _connect_info), do: :error
 
 **File:** `lib/sensocto_web/channels/sensor_data_channel.ex`
 
-```elixir
-"missing" ->
-  Logger.debug("Authorization allowed: guest/development access...")
-  true  # BYPASSES ALL AUTHENTICATION
-```
-
-**Recommendation**: Gate behind environment check using `Application.get_env(:sensocto, :allow_missing_token, false)`.
-
-**Status (Feb 15, 2026): RESOLVED.** Already gated: the "missing" token path checks `Application.get_env(:sensocto, :allow_missing_token, false)` and only allows bypass when explicitly enabled. Production config defaults to `false`.
+**Status: RESOLVED.** The "missing" token path checks `Application.get_env(:sensocto, :allow_missing_token, false)` and only allows bypass when explicitly enabled. Production config defaults to `false`.
 
 ### 2.3 Bridge Socket (M-002)
 
 **File:** `lib/sensocto_web/channels/bridge_socket.ex`
 
-Bridge token validation is optional - missing token allows connection.
+Bridge token validation is optional -- missing token allows connection. When `bridge_token` is not configured (nil), any token is accepted. When no token is provided at all, the connection is also accepted.
+
+**Recommendation:** Require bridge token in production. Add environment check:
+```elixir
+def connect(params, socket, _connect_info) do
+  case {Map.get(params, "token"), Application.get_env(:sensocto, :bridge_token)} do
+    {_, nil} when Mix.env() == :prod ->
+      {:error, :bridge_token_not_configured}
+    {nil, nil} ->
+      {:ok, socket}  # dev only
+    {token, expected} when is_binary(expected) ->
+      if Plug.Crypto.secure_compare(token, expected), do: {:ok, socket}, else: {:error, :unauthorized}
+    _ ->
+      {:error, :unauthorized}
+  end
+end
+```
 
 ---
 
-## 3. New Findings
+## 3. API Security
 
 ### 3.1 API Room Endpoints Missing Auth Pipeline (H-003)
 
-**File:** `lib/sensocto_web/router.ex` (lines 200-221)
+**File:** `lib/sensocto_web/router.ex` (lines 207-227)
 
-The `/api/rooms/*` scope has no `pipe_through` at all - no `:api` pipeline, no `:load_from_bearer`, no rate limiting. `RoomTicketController.show/2` reads from `conn.assigns[:current_user]` which will always be nil since no plug populates it.
+The `/api/rooms/*` scope has no `pipe_through` at all -- no `:api` pipeline, no `:load_from_bearer`, no rate limiting.
 
-**Risk**: Unauthenticated access to room management API endpoints.
+**Current mitigation:** `RoomController` manually parses the `Authorization` header and verifies JWT tokens in its own `get_current_user/1` private function. `RoomTicketController.show/2` reads from `conn.assigns[:current_user]` which will be nil since no plug populates it -- it falls back to allowing access for public rooms only.
 
-**Recommendation**: Add `pipe_through [:api, :load_from_bearer]` to the rooms API scope.
+**Risks:**
+- No rate limiting on room API endpoints (could be used for enumeration)
+- No standardized error handling for malformed tokens
+- `RoomTicketController.show/2` silently treats all requests as unauthenticated
+- `verify-ticket` POST endpoint is completely unauthenticated (anyone can decode tickets)
 
-### 3.2 Bridge.decode/1 Atom Exhaustion (H-004)
+**Recommendation**: Add `pipe_through [:api, :load_from_bearer]` to the rooms API scope. This would populate `conn.assigns[:current_user]` via Ash Authentication's bearer token plug.
 
-**File:** `lib/sensocto/bridge.ex` (lines 178-179)
+### 3.2 Rate Limiter Skips GET Requests (M-007)
 
-Uses `String.to_atom(name)` on untrusted input from the bridge protocol. The safe alternative `SafeKeys.safe_bridge_atom/1` already exists in the codebase but is not used here.
+**File:** `lib/sensocto_web/plugs/rate_limiter.ex` (line 116)
 
-**Risk**: Remote atom table exhaustion via crafted bridge messages.
+```elixir
+# Only rate limit POST requests (actual auth attempts), not page views
+conn.method != "POST" ->
+  conn
+```
 
-**Recommendation**: Replace `String.to_atom(name)` with `SafeKeys.safe_bridge_atom(name)`.
+The guest authentication route is a GET request:
+```elixir
+get "/auth/guest/:guest_id/:token", GuestAuthController, :sign_in
+```
 
-**Status (Feb 15, 2026): VERIFIED — NOT PRESENT.** Code inspection of `bridge.ex` confirms `String.to_atom` is not used. The bridge already uses `String.to_existing_atom` or SafeKeys patterns. The original finding may have been based on an older version. Additionally, `ConnectorServer` and `SensorServer` were migrated to use `SafeKeys` whitelist for all atom conversion.
+This means the guest auth rate limiter (`rate_limit_guest_auth`) never actually limits guest sign-in attempts, since they are GET requests.
 
-### 3.3 Debug Endpoint Exposed (M-003)
+**Risk:** Brute-force guest token enumeration is not rate-limited.
 
-**File:** `lib/sensocto_web/router.ex` (line 197)
-
-`POST /api/auth/debug` calls `MobileAuthController.debug_verify/2` which returns all user IDs from the database in error messages.
-
-**Risk**: Information disclosure in production.
-
-**Recommendation**: Wrap in `if Application.compile_env(:sensocto, :dev_routes)`.
-
-**Status (Feb 15, 2026): RESOLVED.** The `/api/auth/debug` route is already inside the `if Application.compile_env(:sensocto, :dev_routes)` block in `router.ex`. Not accessible in production.
-
-### 3.4 Session Cookie Not Encrypted (M-004)
-
-**File:** `lib/sensocto_web/endpoint.ex` (lines 12-20)
-
-Session cookie uses `signing_salt` but no `encryption_salt`, meaning session data is readable (though not tamperable).
-
-**Recommendation**: Add `encryption_salt` to session configuration.
-
-### 3.5 Timing-Unsafe Token Comparison (M-005)
-
-**File:** `lib/sensocto_web/controllers/guest_auth_controller.ex` (line 14)
-
-Uses `guest.token == token` instead of `Plug.Crypto.secure_compare/2`. Same issue in `sensor_data_channel.ex` (line 514).
-
-**Risk**: Timing side-channel attack on token comparison.
-
-**Recommendation**: Use `Plug.Crypto.secure_compare/2` for all token comparisons (already used correctly in `authenticated_tidewave.ex`).
-
-**Status (Feb 15, 2026): RESOLVED.** Both `guest_auth_controller.ex` and `sensor_data_channel.ex` already use `Plug.Crypto.secure_compare/2` for token comparison. The original finding may have been based on an older version.
-
-### 3.6 No force_ssl / HSTS (L-001)
-
-**File:** `config/runtime.exs` (lines 226-232)
-
-The `force_ssl` configuration is commented out. While Fly.io handles TLS termination, HSTS provides defense-in-depth.
+**Recommendation:** Either change guest auth to POST, or add GET to the rate-limited methods for the `:guest_auth` type.
 
 ---
 
-## 4. Verified Security Controls (Excellent)
+## 4. Session and Cookie Security
 
-### 4.1 Rate Limiting
+### 4.1 Session Cookie Configuration (M-004 -- RESOLVED)
+
+**File:** `lib/sensocto_web/endpoint.ex`
+
+```elixir
+@session_options [
+  store: :cookie,
+  path: "/",
+  key: "_sensocto_key",
+  signing_salt: "4mNzZysc",
+  encryption_salt: "k8Xp2vQe",  # <-- NOW PRESENT
+  same_site: "Lax",
+  max_age: 315_360_000,
+  http_only: true
+]
+```
+
+**Status: RESOLVED.** The `encryption_salt` has been added. Session cookies are now both signed and encrypted. The 10-year `max_age` mirrors the token lifetime strategy (intentional "remember me" pattern).
+
+---
+
+## 5. Verified Security Controls (Excellent)
+
+### 5.1 Rate Limiting
 
 **File:** `lib/sensocto_web/plugs/rate_limiter.ex`
 
@@ -198,26 +211,27 @@ The `force_ssl` configuration is commented out. While Fly.io handles TLS termina
 - Per-IP, per-endpoint-type buckets
 - Proper X-Forwarded-For header handling
 - Separate limits: auth (10/min), registration (5/min), API (20/min), guest (10/min)
+- Note: Only applies to POST requests (see M-007)
 
-**Assessment: Excellent**
+**Assessment: Good** (downgraded from Excellent due to M-007)
 
-### 4.2 Atom Exhaustion Protection
+### 5.2 Atom Exhaustion Protection
 
 **File:** `lib/sensocto/types/safe_keys.ex`
 
-Whitelist approach with comprehensive allowed keys list. **Assessment: Excellent.** H-004 (bridge.ex bypass) was verified as not present — `String.to_atom` is not used in bridge.ex. ConnectorServer and SensorServer also migrated to SafeKeys.
+Whitelist approach with comprehensive allowed keys list. **Assessment: Excellent.** H-004 (bridge.ex bypass) was verified as not present. ConnectorServer and SensorServer also migrated to SafeKeys.
 
-### 4.3 DoS Resistance
+### 5.3 DoS Resistance
 
 | Mechanism | Implementation | Effectiveness |
 |-----------|---------------|---------------|
-| Rate Limiting | ETS-based sliding window | High |
+| Rate Limiting | ETS-based sliding window | High (POST only) |
 | Backpressure | PriorityLens quality levels | High |
 | Memory Protection | 85%/92% thresholds | High |
 | Socket Cleanup | Monitor + periodic GC | High |
 | Request Timeouts | 2-5 second limits | Medium |
 
-### 4.4 Security Headers
+### 5.4 Security Headers
 
 **File:** `lib/sensocto_web/endpoint.ex`
 
@@ -226,25 +240,78 @@ Whitelist approach with comprehensive allowed keys list. **Assessment: Excellent
 - x-xss-protection: 1; mode=block
 - referrer-policy: strict-origin-when-cross-origin
 
-### 4.5 Ash Policies
+### 5.5 Ash Policies
 
 Default-deny on User and Token resources. **Assessment: Excellent**
 
-### 4.6 Request Logger
+### 5.6 Request Logger
 
 **File:** `lib/sensocto_web/plugs/request_logger.ex`
 
 Properly sanitizes sensitive data. **Assessment: Excellent**
 
-### 4.7 Authenticated Tidewave
+### 5.7 Authenticated Tidewave
 
 **File:** `lib/sensocto_web/plugs/authenticated_tidewave.ex`
 
-Uses `Plug.Crypto.secure_compare/2` for timing-safe comparison. **Assessment: Excellent**
+Uses `Plug.Crypto.secure_compare/2` for timing-safe comparison. Production access requires Basic Auth with env vars. **Assessment: Excellent**
+
+### 5.8 Guest Token Verification
+
+**File:** `lib/sensocto_web/controllers/guest_auth_controller.ex`
+
+Uses `Plug.Crypto.secure_compare/2` for timing-safe token comparison. **Assessment: Excellent**
+
+### 5.9 Sensor Data Channel Authentication
+
+**File:** `lib/sensocto_web/channels/sensor_data_channel.ex`
+
+Multi-strategy token verification: JWT bearer tokens via `AshAuthentication.Jwt.verify/2`, guest tokens via `Plug.Crypto.secure_compare/2`, development bypass gated on config. **Assessment: Good**
 
 ---
 
-## 5. Bot Protection Recommendation (H-005)
+## 6. New Observations (Feb 16, 2026)
+
+### 6.1 `create_test_user` Action (L-002)
+
+**File:** `lib/sensocto/accounts/user.ex` (lines 338-365)
+
+The `create_test_user` action bypasses AshAuthentication validation and auto-confirms users. It uses `Bcrypt.hash_pwd_salt` directly rather than going through the password strategy.
+
+**Current mitigation:** Ash policies default-deny all non-AshAuthentication interactions. The action is only used in test files (`object3d_player_component_test.exs`, `object3d_player_server_test.exs`).
+
+**Risk:** LOW. The Ash policy layer prevents external callers from invoking this action. However, any code running with `authorize?: false` could create users without proper validation.
+
+**Recommendation:** Add a guard comment or consider using `config :sensocto, :env` to conditionally compile this action only in test.
+
+### 6.2 No Plug.Parsers Body Size Limit (L-003)
+
+**File:** `lib/sensocto_web/endpoint.ex` (lines 81-84)
+
+```elixir
+plug Plug.Parsers,
+  parsers: [:urlencoded, :multipart, :json],
+  pass: ["*/*"],
+  json_decoder: Phoenix.json_library()
+```
+
+No `length` option is specified. The default is 8MB for urlencoded/multipart and 1MB for JSON, which is reasonable for most cases. However, the `pass: ["*/*"]` allows any content type through unparsed.
+
+**Risk:** LOW. Default limits are reasonable. The `pass: ["*/*"]` is standard for Phoenix apps that handle multiple content types.
+
+### 6.3 Shared Helper Module (No Security Impact)
+
+**File:** `lib/sensocto_web/live/helpers/sensor_data.ex`
+
+New helper module `SensoctoWeb.LiveHelpers.SensorData` extracted from lobby/index live views. Contains only data transformation logic (grouping sensors, enriching with attention levels). No security implications.
+
+### 6.4 SyncComputer / Bio Modules (No Security Impact)
+
+Recent resilience improvements to Bio modules, SyncComputer, CircuitBreaker, and attention tracking. These are internal computation modules with no external input surface. No security implications.
+
+---
+
+## 7. Bot Protection Recommendation (H-005)
 
 **Why Paraxial.io for Sensocto:**
 
@@ -255,22 +322,7 @@ Uses `Plug.Crypto.secure_compare/2` for timing-safe comparison. **Assessment: Ex
 
 ---
 
-## 6. /dev/mailbox Route (M-006)
-
-**File:** `lib/sensocto_web/router.ex` (lines 229-232)
-
-```elixir
-scope "/dev" do
-  pipe_through :browser
-  forward "/mailbox", Plug.Swoosh.MailboxPreview
-end
-```
-
-**Status (Feb 15, 2026): RESOLVED.** The `/dev/mailbox` route is inside the `if Application.compile_env(:sensocto, :dev_routes)` block. Not accessible in production.
-
----
-
-## 7. Security Metrics
+## 8. Security Metrics
 
 ### Authentication Security Score: B
 
@@ -280,7 +332,7 @@ end
 | Token Storage | A | Database-backed with revocation |
 | Token Lifetime | D | 10 years is excessive |
 | MFA | F | Not implemented |
-| Rate Limiting | A | Comprehensive implementation |
+| Rate Limiting | B | Comprehensive but skips GET requests |
 
 ### Authorization Security Score: A-
 
@@ -303,16 +355,16 @@ end
 
 | Metric | Score | Notes |
 |--------|-------|-------|
-| Rate Limiting | A | Multi-tier implementation |
+| Rate Limiting | A- | Multi-tier implementation (GET gap) |
 | Backpressure | A | Quality-based throttling |
 | Memory Protection | A | Configurable thresholds |
 | Resource Cleanup | A | Monitor + GC patterns |
 
 ---
 
-## 8. Planned Work: Security Implications
+## 9. Planned Work: Security Implications
 
-### 8.1 Room Iroh Migration (PLAN-room-iroh-migration.md)
+### 9.1 Room Iroh Migration (PLAN-room-iroh-migration.md)
 
 **Security Impact: MEDIUM**
 
@@ -321,7 +373,7 @@ end
 - **Risk**: No encryption-at-rest. PostgreSQL had this via disk encryption; in-memory + Iroh docs need explicit encryption for sensitive room data.
 - **Recommendation**: Implement authorization checks in `RoomStore` API functions before migration. Validate all Iroh-synced data. Consider encrypting room metadata in Iroh docs.
 
-### 8.2 Adaptive Video Quality (PLAN-adaptive-video-quality.md) - IMPLEMENTED
+### 9.2 Adaptive Video Quality (PLAN-adaptive-video-quality.md) - IMPLEMENTED
 
 **Security Impact: LOW**
 
@@ -329,21 +381,21 @@ end
 - **Risk**: `video_snapshot` channel event broadcasts base64-encoded JPEG data. No size validation on incoming snapshots could allow memory exhaustion via oversized payloads.
 - **Recommendation**: Add max size validation (e.g., 100KB) for incoming `video_snapshot` events in `call_channel.ex`.
 
-### 8.3 Sensor Component Migration (PLAN-sensor-component-migration.md)
+### 9.3 Sensor Component Migration (PLAN-sensor-component-migration.md)
 
 **Security Impact: LOW**
 
-- Purely internal architecture change (LiveView → LiveComponent). No new attack surface.
+- Purely internal architecture change (LiveView to LiveComponent). No new attack surface.
 - **Positive**: Reduces process count from 73 to 1, reducing the surface for process-targeting attacks.
 
-### 8.4 Startup Optimization (PLAN-startup-optimization.md) - IMPLEMENTED
+### 9.4 Startup Optimization (PLAN-startup-optimization.md) - IMPLEMENTED
 
 **Security Impact: NONE**
 
 - Deferred hydration timing only. No security implications.
 - **Positive**: Faster HTTP server availability means health checks respond sooner, reducing window where the app is unprotected.
 
-### 8.5 Delta Encoding ECG (plans/delta-encoding-ecg.md)
+### 9.5 Delta Encoding ECG (plans/delta-encoding-ecg.md)
 
 **Security Impact: LOW-MEDIUM**
 
@@ -351,7 +403,7 @@ end
 - **Risk**: Feature flag via `Application.get_env` is mutable at runtime via IEx. An attacker with IEx access could toggle encoding to disrupt data flow.
 - **Recommendation**: Validate binary header version and bounds-check all offsets in the decoder. Use `:persistent_term` for the feature flag (harder to tamper).
 
-### 8.6 Cluster Sensor Visibility (plans/PLAN-cluster-sensor-visibility.md)
+### 9.6 Cluster Sensor Visibility (plans/PLAN-cluster-sensor-visibility.md)
 
 **Security Impact: MEDIUM**
 
@@ -359,16 +411,16 @@ end
 - **Risk**: Cross-node sensor state fetching via PubSub request/reply or `:rpc.call` introduces new RPC surface. Malicious node could request sensitive sensor data.
 - **Recommendation**: Validate node membership before processing cross-node requests. Use libcluster's node authorization. Rate-limit cross-node state requests.
 
-### 8.7 Distributed Discovery (plans/PLAN-distributed-discovery.md)
+### 9.7 Distributed Discovery (plans/PLAN-distributed-discovery.md)
 
 **Security Impact: MEDIUM**
 
 - **Risk**: DiscoveryCache stores sensor/room metadata in ETS with `:public` access. Any process on the node can read/write this data.
 - **Risk**: PubSub-based sync (`discovery:sensors` topic) could be poisoned by a compromised node broadcasting fake sensor registrations.
-- **Risk**: Circuit breaker `NodeHealth` uses `:net_kernel.monitor_nodes(true)` - should validate that joining nodes are authorized.
+- **Risk**: Circuit breaker `NodeHealth` uses `:net_kernel.monitor_nodes(true)` -- should validate that joining nodes are authorized.
 - **Recommendation**: Use `:protected` ETS tables instead of `:public`. Validate discovery events against Horde registry state. Ensure libcluster's topology configuration restricts which nodes can join.
 
-### 8.8 Sensor Scaling Refactor (plans/PLAN-sensor-scaling-refactor.md)
+### 9.8 Sensor Scaling Refactor (plans/PLAN-sensor-scaling-refactor.md)
 
 **Security Impact: LOW-MEDIUM**
 
@@ -376,7 +428,7 @@ end
 - **Risk**: `:pg` process groups are cluster-wide by default. Any node can join groups and receive sensor data.
 - **Recommendation**: Use integer-keyed ETS tables (not atom names) for per-socket buffers. Validate `:pg` group membership.
 
-### 8.9 Research-Grade Synchronization (plans/PLAN-research-grade-synchronization.md)
+### 9.9 Research-Grade Synchronization (plans/PLAN-research-grade-synchronization.md)
 
 **Security Impact: LOW-MEDIUM**
 
@@ -385,7 +437,7 @@ end
 - **Risk**: Post-hoc analysis runs potentially expensive computations (CRQA is O(T^2)). Unbounded session data could cause OOM.
 - **Recommendation**: Pin Python dependency versions. Limit maximum session length for analysis. Run Pythonx computations in a sandboxed Task with memory limits. Validate JSONB payloads before storage.
 
-### 8.10 TURN/Cloudflare (plans/PLAN-turn-cloudflare.md) - IMPLEMENTED
+### 9.10 TURN/Cloudflare (plans/PLAN-turn-cloudflare.md) - IMPLEMENTED
 
 **Security Impact: LOW**
 
@@ -412,20 +464,21 @@ end
 
 ---
 
-## 9. Implementation Roadmap
+## 10. Implementation Roadmap
 
 ### Phase 1: Immediate (1-2 days)
 - [ ] Reduce token lifetime from 10 years to 30 days (H-001)
-- [x] Gate "missing" token behind configuration (M-001) — **already implemented**
-- [x] Replace `String.to_atom` in bridge.ex with SafeKeys (H-004) — **verified: not present in code**
-- [x] Use `Plug.Crypto.secure_compare` for guest tokens (M-005) — **already implemented**
-- [x] Protect /dev/mailbox route (M-006) — **already behind `dev_routes`**
-- [x] Gate debug endpoint behind dev_routes (M-003) — **already behind `dev_routes`**
+- [x] Gate "missing" token behind configuration (M-001) -- **already implemented**
+- [x] Replace `String.to_atom` in bridge.ex with SafeKeys (H-004) -- **verified: not present in code**
+- [x] Use `Plug.Crypto.secure_compare` for guest tokens (M-005) -- **already implemented**
+- [x] Protect /dev/mailbox route (M-006) -- **already behind `dev_routes`**
+- [x] Gate debug endpoint behind dev_routes (M-003) -- **already behind `dev_routes`**
+- [x] Add session cookie encryption_salt (M-004) -- **already implemented**
 
 ### Phase 2: Short-term (1 week)
 - [ ] Add socket-level authentication to UserSocket (H-002)
 - [ ] Add auth pipeline to room API endpoints (H-003)
-- [ ] Add session cookie encryption_salt (M-004)
+- [ ] Fix rate limiter to cover GET-based auth routes (M-007)
 - [ ] Integrate Paraxial.io for bot protection (H-005)
 - [ ] Add Content-Security-Policy headers
 
@@ -435,6 +488,7 @@ end
 - [ ] Security monitoring/alerting setup
 - [ ] Pre-migration security review for Room Iroh Migration
 - [ ] Pre-migration security review for Cluster Visibility plans
+- [ ] Require bridge token in production (M-002)
 
 ### Phase 4: Ongoing
 - [ ] Penetration testing
@@ -444,7 +498,7 @@ end
 
 ---
 
-## 10. Security Configuration Checklist
+## 11. Security Configuration Checklist
 
 ```elixir
 # config/prod.exs - Recommended security settings
@@ -471,7 +525,7 @@ config :paraxial,
 
 ---
 
-## 11. Changes Applied (Feb 15, 2026)
+## 12. Changes Applied (Feb 15, 2026)
 
 The following improvements were made during low-hanging fruit optimization rounds:
 
@@ -494,4 +548,4 @@ The following improvements were made during low-hanging fruit optimization round
 
 ---
 
-*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-15*
+*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-16*

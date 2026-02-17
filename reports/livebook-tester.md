@@ -1,4 +1,4 @@
-# Sensocto Codebase Analysis: Livebook & Testing Opportunities
+# Sensocto Codebase Analysis: Livebook & Testing Landscape
 
 ## Executive Summary
 
@@ -6,1061 +6,343 @@ Sensocto is a sophisticated real-time sensor platform built on Phoenix/LiveView 
 - Multi-sensor data ingestion via WebSocket channels
 - Room-based collaboration with distributed state (Horde, Iroh)
 - Video/voice calling via Membrane RTC Engine
+- Attention-aware back-pressure with sharded PubSub
 - GPS track replay simulation
-- Neo4j graph storage for relationship queries
-- Nx/numerical computing integration for quaternion calculations
+- Nx/numerical computing for quaternion calculations
+- Collaborative whiteboard, media player, and 3D object viewer
 
-**Current Testing Status:** Major improvements - **20 test files** with **150+ tests**. MediaPlayerServer and Object3DPlayerServer now have comprehensive coverage.
+**Current Testing Status:** Substantial and growing -- **33 test files** with **456 test cases** across unit, integration, E2E (Wallaby), and regression guard tests.
 
-**Livebook Status:** 11 existing livebooks with 2 HIGH quality additions.
+**Livebook Status:** 16 livebooks totaling 8,713 lines, covering architecture, security, resilience, API developer experience, biomimetic patterns, and accessibility.
 
-**Priority Recommendation:** Focus on Ash resource tests, fix LiveView test blocking issue, create `QualityManager` tests.
-
----
-
-## 🆕 Update: January 20, 2026
-
-### Testing Status - Major Improvements
-
-| Metric | Previous (Jan 17) | Current (Jan 20) | Change |
-|--------|-------------------|------------------|--------|
-| Test Files | 15+ | **20** | +33% |
-| MediaPlayerServer | 0% | **100%** | NEW - 42 tests, 721 lines |
-| Object3DPlayerServer | 0% | **100%** | NEW - 30 tests, 543 lines |
-| Supervision Tree Tests | 0% | **100%** | NEW - 31 tests |
-| LiveView Component Tests | 0% | **2 files** | NEW |
-
-### Test Suite Verified (from `mix test --trace`)
-
-The test suite now includes **150+ tests** covering:
-
-**Fully Tested Systems:**
-- `test/sensocto/media/media_player_server_test.exs` - Complete coverage of synchronized media playback
-- `test/sensocto/object3d/object3d_player_server_test.exs` - Complete coverage of 3D viewer synchronization
-- `test/sensocto/supervision/supervision_tree_test.exs` - Verifies entire supervision hierarchy
-- All Bio layer tests (NoveltyDetector, PredictiveLoadBalancer, CircadianScheduler, etc.)
-- Automerge CRDT operations via RoomStateCRDT
-
-### High-Quality Livebooks Found
-
-1. `livebooks/object3d_exploration.livemd` (667 lines)
-   - Complete Object3D architecture documentation
-   - Interactive controller logic demonstrations
-   - CRDT synchronization flow diagrams
-   - Camera preset parser with Kino widgets
-
-2. `livebooks/adaptive_video_quality.livemd` (359 lines)
-   - Attention-based quality tier calculator
-   - Bandwidth estimation with VegaLite visualizations
-   - Interactive tier calculation examples
-
-### Remaining Critical Gaps
-
-1. **No Ash Resource Tests:**
-   - User, Sensor, Room resources have zero unit test coverage
-   - Actions and validations untested
-
-2. **No Call System Tests:**
-   - `CallServer` - WebRTC coordination untested
-   - `QualityManager` at `lib/sensocto/calls/quality_manager.ex` (336 lines) - Pure functions, easy to test
-   - `SnapshotManager` untested
-
-3. **LiveView Tests Blocked:**
-   - `stateful_sensor_live_test.exs` has 2 skipped tests due to duplicate component IDs in SearchLive
-
-4. **Known Warning:**
-   - `IrohEx.Native.node_id/1 is undefined or private` in `room_ticket.ex:238`
-
-### Ecto Schemas (23 Total)
-
-The project has comprehensive schema coverage across domains:
-- **Accounts:** User, Token, UserPreference
-- **Sensors:** Sensor, SensorType, SensorAttribute, Room, RoomMembership, Connector, etc.
-- **Media:** Playlist, PlaylistItem
-- **Object3D:** Object3DPlaylist, Object3DPlaylistItem
-- **Simulator:** SimulatorBatteryState, SimulatorConnector, SimulatorScenario, SimulatorTrackPosition
-
-### Priority Recommendations
-
-**Immediate (This Week):**
-1. Create `QualityManager` tests - Pure function module, easy to test
-2. Fix SearchLive component IDs to unblock LiveView tests
-3. Address the IrohEx.Native.node_id warning
-
-**Short-term (2 Weeks):**
-1. Create Ash resource test helpers following usage-rules patterns
-2. Create `call_system_exploration.livemd` for interactive call system documentation
-3. Create `bio_layer_exploration.livemd` to document the biomimetic supervision layer
-
-**Medium-term:**
-1. Add CallServer tests for WebRTC coordination
-2. Add comprehensive E2E tests for room workflows
-3. Property-based testing with StreamData for sensor payloads
-
-The test infrastructure is solid with good patterns established in the existing test files. The MediaPlayerServer and Object3DPlayerServer tests provide excellent templates for testing GenServers with PubSub integration.
+**Priority Recommendation:** Expand Ash resource test coverage (only Room tested so far), add property-based testing for sensor payloads, create QualityManager tests, and consolidate the data pipeline / lobby lens testing.
 
 ---
 
-## Previous Update: January 17, 2026
+## Update: February 16, 2026
 
-### Testing Status (Historical)
+### Testing Status -- Significant Growth Since January
 
-| Metric | Previous | Jan 17 | Change |
-|--------|----------|--------|--------|
-| Test Files | ~6 | 15+ | ✅ **+150%** |
-| Module Coverage | ~10% | ~30% | ✅ **+20%** |
-| Bio Layer Coverage | 0% | 100% | ✅ **+100%** |
-| CRDT Coverage | 0% | 100% | ✅ **+100%** |
+| Metric | Jan 20, 2026 | Feb 16, 2026 | Change |
+|--------|-------------|-------------|--------|
+| Test Files | 20 | **33** | +65% |
+| Test Cases (approximate) | 150+ | **456** | +200% |
+| E2E Feature Tests (Wallaby) | 0 | **4 files** | NEW |
+| Ash Resource Tests | 0 | **1 file (Room)** | NEW |
+| Regression Guard Tests | 0 | **1 file** | NEW |
+| Rate Limiter Tests | 0 | **1 file** | NEW |
+| OpenAPI Spec Tests | 0 | **1 file** | NEW |
+| Accessibility Tests | 0 | **2 files** | NEW |
+| Attention Tracker Tests | 0 | **1 file** | NEW |
+| PriorityLens Tests | 0 | **1 file** | NEW |
+| AttributeStoreTiered Tests | 0 | **1 file** | NEW |
+| ButtonState Visualization Tests | 0 | **1 file** | NEW |
+| Livebook Count | 11 | **16** | +45% |
+| Livebook Total Lines | ~3,500 | **8,713** | +149% |
 
----
+### Complete Test File Inventory (33 files)
 
-## Original Assessment (January 12, 2026)
+**Core OTP / Data Pipeline:**
+- `test/sensocto/otp/simple_sensor_test.exs` -- SimpleSensor GenServer
+- `test/sensocto/otp/attribute_store_tiered_test.exs` -- Tiered attribute storage
+- `test/sensocto/otp/attention_tracker_test.exs` -- Attention level management
+- `test/sensocto/otp/button_state_visualization_test.exs` -- Button press/release integration
+- `test/sensocto/lenses/priority_lens_test.exs` -- Reactive backpressure, quality tiers
+- `test/sensocto/regression_guards_test.exs` -- Data pipeline contract guards
 
----
+**Ash Resources:**
+- `test/sensocto/sensors/room_test.exs` -- Room resource create/read/update actions
+- `test/sensocto/sensors/attribute_store_test.exs` -- Legacy attribute store (may be outdated)
 
-## Table of Contents
+**Bio Layer (Biomimetic Supervision):**
+- `test/sensocto/bio/homeostatic_tuner_test.exs`
+- `test/sensocto/bio/resource_arbiter_test.exs`
+- `test/sensocto/bio/predictive_load_balancer_test.exs`
+- `test/sensocto/bio/circadian_scheduler_test.exs`
+- `test/sensocto/bio/novelty_detector_test.exs`
 
-1. [Architecture Overview](#architecture-overview)
-2. [Testing Gap Analysis](#testing-gap-analysis)
-3. [Recommended Livebooks](#recommended-livebooks)
-4. [End-to-End Test Scenarios](#end-to-end-test-scenarios)
-5. [Gamification Opportunities](#gamification-opportunities)
-6. [Priority Recommendations](#priority-recommendations)
+**CRDT / Iroh:**
+- `test/sensocto/iroh/room_state_crdt_test.exs`
+- `test/sensocto/iroh/iroh_automerge_test.exs`
 
----
+**Media / Object3D:**
+- `test/sensocto/media/media_player_server_test.exs` -- Complete GenServer coverage
+- `test/sensocto/object3d/object3d_player_server_test.exs` -- Complete GenServer coverage
 
-## Architecture Overview
+**Supervision:**
+- `test/sensocto/supervision/supervision_tree_test.exs` -- Hierarchy verification
 
-### Core Domains
+**Web Layer:**
+- `test/sensocto_web/controllers/error_json_test.exs`
+- `test/sensocto_web/controllers/error_html_test.exs`
+- `test/sensocto_web/controllers/page_controller_test.exs`
+- `test/sensocto_web/channels/sensor_data_channel_test.exs`
+- `test/sensocto_web/openapi_test.exs` -- OpenAPI 3.x spec validation
+- `test/sensocto_web/plugs/rate_limiter_test.exs` -- Rate limiting with ETS
 
-```
-Sensocto Application
-├── Accounts (Ash Domain)
-│   ├── User (authentication via ash_authentication)
-│   ├── Token (JWT storage)
-│   └── UserPreference
-│
-├── Sensors (Ash Domain)
-│   ├── Sensor
-│   ├── SensorType
-│   ├── SensorAttribute
-│   ├── SensorAttributeData
-│   ├── Connector
-│   ├── Room
-│   ├── RoomMembership
-│   └── SensorConnection
-│
-├── Graph (Ash Domain - Neo4j)
-│   ├── RoomNode
-│   ├── UserNode
-│   └── RoomPresence
-│
-└── Media (OTP)
-    ├── Playlist
-    └── PlaylistItem
+**LiveView / Component Tests:**
+- `test/sensocto_web/live/media_player_component_test.exs`
+- `test/sensocto_web/live/object3d_player_component_test.exs`
+- `test/sensocto_web/live/stateful_sensor_live_test.exs`
+- `test/sensocto_web/components/core_components_test.exs` -- ARIA/accessibility
+- `test/sensocto_web/components/modal_accessibility_test.exs` -- Focus management, keyboard nav
+
+**E2E Feature Tests (Wallaby / ChromeDriver):**
+- `test/sensocto_web/features/collab_demo_feature_test.exs` -- Cross-component collaboration
+- `test/sensocto_web/features/media_player_feature_test.exs` -- Media player E2E
+- `test/sensocto_web/features/whiteboard_feature_test.exs` -- Whiteboard E2E
+- `test/sensocto_web/features/object3d_player_feature_test.exs` -- 3D viewer E2E
+
+### E2E Testing Infrastructure
+
+A comprehensive E2E testing framework has been established using Wallaby with ChromeDriver, as documented in `docs/e2e-testing.md`. Key highlights:
+
+- **FeatureCase** with helper module (`SensoctoWeb.FeatureCase.Helpers`) providing navigation, tab switching, control actions, and event simulation
+- **Multi-user testing** via multiple Wallaby sessions
+- **Device compatibility**: Desktop (1920x1080), Tablet (768x1024), Mobile (390x844)
+- **Touch simulation**: `simulate_touch_tap/2`, `simulate_touch_drag/6`
+- **Tag-based execution**: `@tag :e2e` (excluded by default), `@tag :multi_user`, `@tag :slow`, `@tag :touch`, `@tag :mobile`
+- **CI support**: `CI=true` enables headless Chrome; screenshots saved on failure
+
+Running E2E tests:
+```bash
+mix test --include e2e                    # All E2E
+mix test test/sensocto_web/features/      # Feature tests only
 ```
 
-### OTP Supervision Tree
+### Notable New Test Patterns
 
-The application has a complex supervision tree with multiple registries and dynamic supervisors:
+**Regression Guards** (`regression_guards_test.exs`): A "honey badger" approach that tests contracts (message shapes, topic formats, API return values) rather than implementation details. These catch silent breakage during refactoring. This pattern is worth expanding to other subsystems.
 
-```
-Sensocto.Supervisor (one_for_one)
-├── Database Layer
-│   ├── Sensocto.Repo
-│   └── Sensocto.Repo.Replica
-│
-├── External Services
-│   └── Boltx (Neo4j connection)
-│
-├── Registries (9 total)
-│   ├── Sensocto.TestRegistry
-│   ├── Sensocto.Sensors.Registry
-│   ├── Sensocto.Sensors.SensorRegistry
-│   ├── Sensocto.SimpleAttributeRegistry
-│   ├── Sensocto.SimpleSensorRegistry
-│   ├── Sensocto.SensorPairRegistry
-│   ├── Sensocto.RoomRegistry / Sensocto.RoomJoinCodeRegistry
-│   ├── Sensocto.DistributedRoomRegistry (Horde)
-│   ├── Sensocto.DistributedJoinCodeRegistry (Horde)
-│   ├── Sensocto.CallRegistry
-│   └── Sensocto.MediaRegistry
-│
-├── PubSub & Presence
-│   ├── Phoenix.PubSub (Sensocto.PubSub)
-│   └── SensoctoWeb.Sensocto.Presence
-│
-├── Room Infrastructure
-│   ├── Sensocto.Iroh.RoomStore
-│   ├── Sensocto.RoomStore
-│   ├── Sensocto.Iroh.RoomSync
-│   └── Sensocto.RoomPresenceServer
-│
-├── Back-pressure Management
-│   ├── Sensocto.AttentionTracker
-│   └── Sensocto.SystemLoadMonitor
-│
-├── Dynamic Supervisors
-│   ├── Sensocto.SensorsDynamicSupervisor
-│   ├── Sensocto.RoomsDynamicSupervisor
-│   ├── Sensocto.Calls.CallSupervisor
-│   └── Sensocto.Media.MediaPlayerSupervisor
-│
-├── Infrastructure Services
-│   ├── Sensocto.Otp.RepoReplicatorPool (8 workers)
-│   └── Sensocto.Search.SearchIndex
-│
-├── Web Layer
-│   └── SensoctoWeb.Endpoint
-│
-├── Authentication
-│   └── AshAuthentication.Supervisor
-│
-└── (Optional) Simulator
-    └── Sensocto.Simulator.Supervisor
-        ├── Registry (Sensocto.Simulator.Registry)
-        ├── BatteryState
-        ├── TrackPlayer
-        ├── DataServer (5 workers)
-        ├── ConnectorSupervisor (DynamicSupervisor)
-        └── Manager
-```
+**PriorityLens Tests**: Verify the removal of preemptive quality throttling -- quality always starts at `:high` regardless of sensor count, validating the reactive backpressure design.
 
-### Key GenServers & Agents
+**AttentionTracker Tests**: Cover the attention level lifecycle (`:none` -> `:medium` -> `:high`), multi-user view registration, and hover tracking.
 
-| Module | Type | Purpose |
-|--------|------|---------|
-| `Sensocto.AttributeStore` | Agent | Per-sensor attribute storage (10k limit) |
-| `Sensocto.SimpleSensor` | GenServer | Individual sensor state management |
-| `Sensocto.RoomServer` | GenServer | Room state with Horde distribution |
-| `Sensocto.Calls.CallServer` | GenServer | WebRTC call management via Membrane |
-| `Sensocto.Iroh.RoomStore` | GenServer | Iroh docs persistence layer |
-| `Sensocto.Simulator.TrackPlayer` | GenServer | GPS track interpolation playback |
-| `Sensocto.Simulator.DataGenerator` | Module | Sensor data generation (ECG, GPS, etc.) |
+**ButtonState Visualization Tests**: Integration tests that create actual SimpleSensor processes, send button events through PubSub, and verify PriorityLens buffering.
 
-### WebSocket Channels
+### Complete Livebook Inventory (16 files, 8,713 lines)
 
-| Channel | Topic Pattern | Purpose |
-|---------|---------------|---------|
-| `SensoctoWeb.SensorDataChannel` | `sensocto:*` | Sensor data ingestion |
-| `SensoctoWeb.CallChannel` | `call:*` | Video/voice calling |
+| File | Lines | Category | Quality |
+|------|-------|----------|---------|
+| `test-accessibility-assessment.livemd` | 1,088 | Testing/Accessibility | HIGH |
+| `supervisor_mermaid_viz.livemd` | 1,019 | Architecture | HIGH |
+| `biomimetic-resilience.livemd` | 1,000 | Architecture/Bio | HIGH |
+| `resilience-assessment.livemd` | 811 | Architecture/Ops | HIGH |
+| `api-developer-experience.livemd` | 752 | Developer Guide | HIGH |
+| `security-assessment.livemd` | 674 | Security | HIGH |
+| `object3d_exploration.livemd` | 666 | Feature Exploration | HIGH |
+| `livebook-phoenixclient.livemd` | 656 | Client Testing | MEDIUM |
+| `ash_neo4j_demo.livemd` | 587 | Integration (outdated*) | LOW |
+| `livebook-ash.livemd` | 387 | Domain Documentation | MEDIUM |
+| `adaptive_video_quality.livemd` | 358 | Feature Exploration | HIGH |
+| `nx_demo_liveview.livemd` | 335 | Tutorial | MEDIUM |
+| `livebook.livemd` | 139 | General Exploration | LOW |
+| `liveview-processing.livemd` | 120 | Prototype | LOW |
+| `map-juggeling.livemd` | 61 | Utility | LOW |
+| `supervisors.livemd` | 60 | Sketch (incomplete) | LOW |
 
-### Sensor Type System
+*Note: `ash_neo4j_demo.livemd` references Neo4j, which has been removed from the project. This livebook should be archived or deleted.
 
-The codebase implements a behavior-based sensor type system:
+**New since January 20:**
+- `security-assessment.livemd` (674 lines) -- Platform security audit with OWASP framework
+- `biomimetic-resilience.livemd` (1,000 lines) -- Bio-inspired patterns (immune memory, synaptic pruning, quorum sensing)
+- `api-developer-experience.livemd` (752 lines) -- Interactive API guide with Kino forms for REST and WebSocket
+- `test-accessibility-assessment.livemd` (1,088 lines) -- Testing coverage and accessibility audit
+- `resilience-assessment.livemd` (811 lines) -- Live supervision tree visualization and resilience metrics
 
-```elixir
-@behaviour Sensocto.Behaviours.SensorBehaviour
+### Ecto Schemas (24 Total)
 
-# Callbacks:
-sensor_type/0        # "ecg", "imu", etc.
-allowed_attributes/0 # ["ecg", "hr", "battery"]
-validate_payload/2   # Payload validation
-default_config/0     # Default settings
-attribute_metadata/1 # Optional: unit, range info
-handle_command/2     # Optional: bidirectional sensors
-```
+The project now has 24 Ecto schemas across domains:
+- **Accounts (4):** User, Token, UserPreference, GuestSession
+- **Sensors (14):** Sensor, SensorType, SensorAttribute, SensorAttributeData, Room, RoomMembership, RoomSensorType, Connector, ConnectorSensorType, SensorConnection, SensorSensorConnection, SensorManager, SimulatorBatteryState, SimulatorConnector, SimulatorScenario, SimulatorTrackPosition
+- **Media (2):** Playlist, PlaylistItem
+- **Object3D (2):** Object3DPlaylist, Object3DPlaylistItem
 
-**Implemented Sensor Types:**
-- `ECGSensor` - Heart rate monitoring
-- `IMUSensor` - Accelerometer/gyroscope
-- `HTML5Sensor` - Browser geolocation/motion
-- `ButtplugSensor` - Bidirectional device control
-- `Thingy52Sensor` - Nordic Thingy:52 device
+### Source Changes in Progress (Git Status)
+
+Active modifications on main branch:
+- `lib/sensocto_web/live/lobby_live.ex` -- Lobby LiveView changes
+- `lib/sensocto_web/live/index_live.ex` -- Index LiveView changes
+- `lib/sensocto_web/live/tabbed_footer_live.ex` -- Tabbed footer
+- `lib/sensocto_web/live/helpers/sensor_data.ex` -- NEW shared helper for sensor data transformation (used by both LobbyLive and IndexLive)
+- `lib/sensocto_web/live/components/about_content_component.ex` -- About content
+- `assets/svelte/LobbyGraph.svelte` -- Lobby graph Svelte component
+- `assets/js/hooks.js` -- JS hooks updates
+
+The new `SensoctoWeb.LiveHelpers.SensorData` module is a refactoring that extracts shared logic (`group_sensors_by_user/1`) for both LobbyLive and IndexLive. This is a good candidate for unit testing.
 
 ---
 
-## Testing Gap Analysis
-
-### Current Test Coverage
-
-| File | Lines | Coverage |
-|------|-------|----------|
-| `error_json_test.exs` | Minimal | Error JSON responses |
-| `error_html_test.exs` | Minimal | Error HTML responses |
-| `page_controller_test.exs` | Minimal | Basic page routes |
-| `sensor_data_channel_test.exs` | 32 lines | Basic channel join/broadcast |
-| `room_channel_test.exs` | 27 lines | Basic room channel operations |
-| `attribute_store_test.exs` | 128 lines | Agent operations (BROKEN - references non-existent modules) |
-| `view_data_test.exs` | 155 lines | ViewData transformations |
+## Remaining Gaps and Recommendations
 
 ### Critical Gaps
 
-#### 1. No Ash Resource Tests
-- **Gap:** Zero tests for any Ash resources
-- **Risk:** Data integrity, action validation
-- **Priority:** HIGH
+#### 1. Ash Resource Tests -- Only Room Covered
 
-#### 2. No OTP Process Tests
-- **Gap:** No tests for GenServers, Supervisors, or DynamicSupervisors
-- **Risk:** Process crash recovery, state management
-- **Priority:** HIGH
+Only `Sensocto.Sensors.Room` has Ash resource tests. The following resources have zero test coverage:
 
-#### 3. No Room System Tests
-- **Gap:** RoomServer, RoomStore, Iroh integration untested
-- **Risk:** Room creation, membership, distributed state
-- **Priority:** HIGH
+| Resource | Actions | Risk |
+|----------|---------|------|
+| `Sensocto.Sensors.Sensor` | create, read, update | HIGH -- core entity |
+| `Sensocto.Accounts.User` | register, sign_in | HIGH -- authentication |
+| `Sensocto.Sensors.SensorAttribute` | create, read | MEDIUM |
+| `Sensocto.Sensors.Connector` | create, read | MEDIUM |
+| `Sensocto.Media.Playlist` | CRUD | MEDIUM |
+| `Sensocto.Object3D.Object3DPlaylist` | CRUD | MEDIUM |
 
-#### 4. No Simulator Tests
-- **Gap:** DataGenerator, TrackPlayer, BatteryState untested
-- **Risk:** Invalid data generation, track interpolation bugs
-- **Priority:** MEDIUM
+**Recommendation:** Use the pattern established in `room_test.exs` (Ash.Seed.seed! for setup, Ash.Changeset.for_create for actions) and extend to Sensor and User resources first.
 
-#### 5. No Call System Tests
-- **Gap:** CallServer, Membrane RTC integration untested
-- **Risk:** Call failures, participant management
-- **Priority:** MEDIUM
+#### 2. No Call System Tests
 
-#### 6. No LiveView Tests
-- **Gap:** RoomListLive, SenseLive, etc. untested
-- **Risk:** UI regressions, event handling bugs
-- **Priority:** MEDIUM
+- `CallServer` -- WebRTC coordination via Membrane RTC Engine, untested
+- `QualityManager` (`lib/sensocto/calls/quality_manager.ex`) -- Pure functions, straightforward to test
+- `SnapshotManager` -- untested
 
-#### 7. No Validation Tests
-- **Gap:** MessageValidator, SensorRegistry validation untested
-- **Risk:** Invalid data acceptance, security vulnerabilities
-- **Priority:** HIGH
+**Recommendation:** Start with QualityManager since it contains pure functions with no process dependencies.
 
-#### 8. Broken Existing Tests
-- `attribute_store_test.exs` references `SensorAttributeRegistry` which doesn't exist
-- Tests likely haven't been run in a while
+#### 3. No Simulator Tests
 
----
+DataGenerator, TrackPlayer, BatteryState remain untested. These modules generate ECG waveforms, GPS track interpolation, and battery drain curves -- all with mathematical logic that benefits from property-based testing.
 
-## Recommended Livebooks
+**Recommendation:** Use StreamData for property-based testing of DataGenerator output ranges and waveform characteristics.
 
-### Tier 1: Essential Documentation (Create First)
+#### 4. No LobbyLive / Data Pipeline Integration Tests
 
-#### 1. `01_architecture_overview.livemd`
-**Purpose:** Interactive architecture documentation with live process inspection
+The lobby lens system (LobbyLive + PriorityLens + Router + AttentionTracker) is the most complex data path in the application. While individual components (PriorityLens, AttentionTracker) now have tests, there are no integration tests for the full pipeline including composite lenses (heartrate, ECG, breathing).
 
-```markdown
-# Sensocto Architecture Explorer
+The new `SensoctoWeb.LiveHelpers.SensorData` module also lacks tests.
 
-## Overview
-Interactive exploration of the Sensocto supervision tree and process architecture.
+#### 5. Outdated Content
 
-## Setup
-```elixir
-# Connect to running Sensocto node
-Node.connect(:"sensocto@localhost")
-```
+- `ash_neo4j_demo.livemd` references Neo4j, which has been removed from the project
+- `attribute_store_test.exs` may reference outdated modules (flagged since January)
+- The architecture overview in this report still listed Neo4j under "Graph (Ash Domain)" -- now corrected
 
-## Supervision Tree Visualization
-```elixir
-Kino.Process.app_tree(:sensocto)
-```
+### Priority Recommendations
 
-## Registry Inspection
-```elixir
-# List all registered sensors
-Registry.select(Sensocto.SimpleSensorRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
-```
+**Immediate (This Sprint):**
 
-## Process State Inspection
-```elixir
-# Inspect a specific sensor's state
-Sensocto.SimpleSensor.get_state("sensor_id_here")
-```
-```
+1. **Test `SensoctoWeb.LiveHelpers.SensorData`** -- New shared helper module, pure functions, easy to test
+2. **Create QualityManager tests** -- Pure function module in the call system
+3. **Archive or delete `ash_neo4j_demo.livemd`** -- References removed Neo4j dependency
+4. **Expand regression guards** -- Add contracts for attention level changes, composite lens data shapes, PubSub topic formats
 
-**Rationale:** The supervision tree is complex with 9+ registries and multiple dynamic supervisors. Interactive documentation helps developers understand the runtime topology.
+**Short-term (2-4 Weeks):**
+
+1. **Ash resource tests for Sensor and User** -- Follow the Room test pattern
+2. **Simulator DataGenerator tests** -- Property-based testing with StreamData for ECG waveform bounds, GPS coordinate validity
+3. **Create `data_pipeline_exploration.livemd`** -- Interactive notebook documenting SimpleSensor -> PubSub -> Router -> PriorityLens -> LobbyLive flow with live tracing
+4. **Lobby composite lens integration tests** -- Test `extract_composite_data/1` tuple shapes and all destructuring sites
+
+**Medium-term (1-2 Months):**
+
+1. **CallServer integration tests** -- WebRTC participant lifecycle
+2. **Full E2E for sensor data flow** -- Connect via channel, send measurement, verify it appears in lobby LiveView
+3. **Performance benchmarking livebook** -- Benchmark PriorityLens ETS write throughput, attention level switching latency
+4. **Property-based testing expansion** -- StreamData for all sensor type payloads (ECG, IMU, HTML5, Thingy52)
 
 ---
 
-#### 2. `02_sensor_data_flow.livemd`
-**Purpose:** Trace data from WebSocket to storage
+## Testing Infrastructure Quality Assessment
 
-```markdown
-# Sensor Data Flow Explorer
+### Strengths
 
-## Overview
-Follow a measurement from client WebSocket through to AttributeStore storage.
+- **Well-structured E2E framework**: Wallaby setup with FeatureCase helpers, multi-user support, device viewport simulation, and proper tag-based execution gating
+- **Regression guard pattern**: The "honey badger" approach in `regression_guards_test.exs` is excellent -- testing contracts rather than implementations
+- **Consistent test isolation**: Most tests use `System.unique_integer([:positive])` for unique IDs, avoiding cross-test interference
+- **Accessibility testing**: Two dedicated test files for ARIA attributes, keyboard navigation, and focus management in modals
+- **Integration tests**: ButtonState visualization tests create real processes and verify the full PubSub pipeline
 
-## Flow Diagram
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant Ch as SensorDataChannel
-    participant V as MessageValidator
-    participant SS as SimpleSensor
-    participant AS as AttributeStore
-    participant PS as PubSub
+### Areas for Improvement
 
-    C->>Ch: measurement (WebSocket)
-    Ch->>V: validate_measurement()
-    V-->>Ch: {:ok, data}
-    Ch->>SS: put_attribute()
-    SS->>AS: put_attribute()
-    SS->>PS: broadcast(:measurement)
-    PS->>LV: handle_info(:measurement)
-```
+- **No test factories or shared fixture module**: Each test file creates its own helpers (e.g., `create_user/1` in room_test.exs). A shared factory module would reduce duplication
+- **No property-based testing**: StreamData is not yet used anywhere
+- **No test coverage tooling**: No excoveralls or similar tool configured
+- **Limited channel tests**: `sensor_data_channel_test.exs` is only 28 lines with basic join/broadcast tests
+- **Async test ratio**: Many tests use `async: false` -- reviewing which can safely use `async: true` would improve test suite speed
 
-## Live Tracing
-```elixir
-# Trace a measurement through the system
-Kino.Process.render_seq_trace(fn ->
-  # Simulate sending a measurement
-  Phoenix.PubSub.broadcast(Sensocto.PubSub, "data:test_sensor", {:measurement, %{...}})
-end)
-```
-```
+### Documentation Ecosystem
 
-**Rationale:** The data flow involves multiple processes and transformations. This livebook helps debug data issues.
+The docs/ directory contains 20 markdown files providing comprehensive coverage:
+
+| Category | Files |
+|----------|-------|
+| Architecture | `architecture.md`, `supervision-tree.md`, `attention-system.md` |
+| Operations | `deployment.md`, `beam-vm-tuning.md`, `scalability.md` |
+| Development | `getting-started.md`, `e2e-testing.md`, `attributes.md`, `api-attributes-reference.md` |
+| Integration | `simulator-integration.md`, `membrane-webrtc-integration.md`, `iroh-room-storage-architecture.md` |
+| Planning | `CLUSTERING_PLAN.md`, `VISION.md` |
+| Features | `room-markdown-format.md`, `modal-accessibility-implementation.md`, `letsgobio.md` |
+| Infrastructure | `tidewave-production.md`, `github-agents.md` |
+
+Combined with 16 livebooks and 33 test files, the project has a mature documentation and testing foundation that continues to grow.
 
 ---
 
-#### 3. `03_room_system.livemd`
-**Purpose:** Explore room creation, membership, and Iroh persistence
+## Architecture Notes (Updated)
 
-```markdown
-# Room System Deep Dive
+### Key Changes Since Last Report
 
-## Storage Architecture
-```mermaid
-graph TB
-    subgraph "In-Memory"
-        RS[RoomStore]
-        RSS[RoomServer GenServers]
-        HR[Horde Registry]
-    end
+1. **Neo4j removed** -- No more graph database. The Graph Ash domain no longer exists.
+2. **Sensor data helper extraction** -- `SensoctoWeb.LiveHelpers.SensorData` centralizes `group_sensors_by_user/1` for LobbyLive and IndexLive.
+3. **7-Layer supervision tree** -- The application now uses a layered supervision architecture: Infrastructure, Registry, Storage, Bio, Domain, plus Endpoint and Auth layers.
+4. **Attention-aware routing** is fully operational with sharded PubSub topics (`data:attention:high`, `data:attention:medium`, `data:attention:low`).
+5. **GuestSession** added to Accounts domain (24th Ecto schema).
 
-    subgraph "Persistence"
-        IRS[Iroh.RoomStore]
-        ISync[Iroh.RoomSync]
-    end
+### Data Pipeline (Current)
 
-    subgraph "Graph"
-        N4J[Neo4j]
-        RPS[RoomPresenceServer]
-    end
-
-    RS --> RSS
-    RS --> IRS
-    IRS --> ISync
-    RPS --> N4J
+```
+SimpleSensor -> PubSub (data:attention:{level}) -> Router -> PriorityLens ETS -> flush timer -> PubSub (lens:priority:{socket_id}) -> LobbyLive
 ```
 
-## Interactive Exploration
-```elixir
-# List all rooms
-Sensocto.RoomStore.list_all_rooms()
-
-# Inspect room state
-Sensocto.RoomServer.get_view_state("room_id")
-
-# Check Iroh sync status
-Sensocto.Iroh.RoomStore.ready?()
-```
-```
-
-**Rationale:** The room system uses three storage layers (memory, Iroh, Neo4j). This complexity needs documentation.
+Hot path is GenServer-free (ETS `:public` tables for direct writes).
 
 ---
 
-### Tier 2: Operational Livebooks
+## Gamification -- Test Coverage Progress
 
-#### 4. `04_simulator_playground.livemd`
-**Purpose:** Interactive simulator control and data visualization
+### Achievements Earned
 
-```markdown
-# Simulator Playground
+| Achievement | Status | Details |
+|-------------|--------|---------|
+| **First Blood** | EARNED | Many modules now have first tests |
+| **OTP Guardian** | PARTIAL | SimpleSensor, AttentionTracker, PriorityLens tested; Router, RoomServer still missing |
+| **Room Champion** | PARTIAL | Room Ash resource tested; RoomServer, RoomStore not yet |
+| **Bio Master** | EARNED | All 5 bio modules have comprehensive tests |
+| **Accessibility Advocate** | EARNED | Modal and core component ARIA tests |
+| **E2E Pioneer** | EARNED | 4 Wallaby feature test files |
+| **Regression Sentinel** | EARNED | Contract-based regression guards |
 
-## Overview
-Control the integrated simulator and visualize generated data.
+### Remaining Challenges
 
-## Track Playback Control
-```elixir
-# Start GPS track playback
-Sensocto.Simulator.TrackPlayer.start_playback("sensor_1", mode: :walk)
+| Achievement | Criteria | Progress |
+|-------------|----------|----------|
+| **Ash Master** | Test all Ash resource actions | 1/24 schemas |
+| **Channel Surfer** | Full channel message coverage | ~10% |
+| **Call Expert** | WebRTC integration tests | 0% |
+| **Simulator Sage** | All data generators tested | 0% |
+| **LiveView Legend** | All LiveViews have tests | ~15% |
+| **Property Prover** | StreamData property tests | 0% |
 
-# Get current position
-{:ok, position} = Sensocto.Simulator.TrackPlayer.tick("sensor_1")
+### Current Coverage Estimate
 
-# Visualize track
-Kino.Mermaid.new("""
-graph LR
-    A[#{position.latitude}, #{position.longitude}]
-""")
+```
+Core OTP:        ████████░░  ~80% (SimpleSensor, AttentionTracker, PriorityLens, AttributeStoreTiered)
+Bio Layer:       ██████████  100% (All 5 modules)
+CRDT/Iroh:       ████████░░  ~80% (RoomStateCRDT, Automerge)
+Media/Object3D:  ██████████  100% (Both player servers)
+Ash Resources:   █░░░░░░░░░  ~4% (Room only)
+Channels:        █░░░░░░░░░  ~10% (Basic channel join)
+Call System:     ░░░░░░░░░░  0%
+Simulator:       ░░░░░░░░░░  0%
+LiveViews:       ██░░░░░░░░  ~15% (Components, stateful sensor)
+Web/Plugs:       ███░░░░░░░  ~30% (RateLimiter, OpenAPI, Controllers)
+E2E Features:    ████░░░░░░  ~40% (Collab demos covered)
 ```
 
-## ECG Waveform Generation
-```elixir
-# Generate ECG data
-config = %{sensor_type: "ecg", heart_rate: 72, sampling_rate: 512}
-{:ok, data} = Sensocto.Simulator.DataGenerator.fetch_sensor_data(config)
-
-# Plot waveform
-Vl.new(width: 600, height: 200)
-|> Vl.data_from_values(data)
-|> Vl.mark(:line)
-|> Vl.encode_field(:x, "timestamp", type: :quantitative)
-|> Vl.encode_field(:y, "payload", type: :quantitative)
-```
-
-## Battery Simulation
-```elixir
-# Watch battery drain
-Sensocto.Simulator.BatteryState.get_battery_data("sensor_1", %{})
-```
-```
-
-**Rationale:** The simulator has sophisticated data generation (ECG waveforms, GPS tracks, battery state). Interactive exploration aids development.
+Overall estimated module coverage: ~30-35%
 
 ---
 
-#### 5. `05_ash_resources_explorer.livemd`
-**Purpose:** Explore Ash domain resources and actions
-
-```markdown
-# Ash Resources Explorer
-
-## Sensors Domain
-```elixir
-# List all sensors
-Ash.read!(Sensocto.Sensors.Sensor, domain: Sensocto.Sensors)
-
-# Create a sensor
-Sensocto.Sensors.Sensor
-|> Ash.Changeset.for_create(:simple, %{name: "Test Sensor"})
-|> Ash.create!()
-
-# Explore available actions
-Ash.Resource.Info.actions(Sensocto.Sensors.Sensor)
-```
-
-## Accounts Domain
-```elixir
-# List users
-Ash.read!(Sensocto.Accounts.User, domain: Sensocto.Accounts)
-
-# Check authentication strategies
-AshAuthentication.Info.strategies(Sensocto.Accounts.User)
-```
-
-## Graph Domain (Neo4j)
-```elixir
-# Query room nodes
-# Note: Requires Neo4j connection
-Ash.read!(Sensocto.Graph.RoomNode, domain: Sensocto.Graph)
-```
-```
-
-**Rationale:** The existing `livebook-ash.livemd` is documentation only. An interactive version enables exploration.
-
----
-
-#### 6. `06_call_system_debug.livemd`
-**Purpose:** Debug video/voice call issues
-
-```markdown
-# Call System Debugger
-
-## Membrane RTC Engine Overview
-```elixir
-# List active calls
-Registry.select(Sensocto.CallRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
-
-# Inspect call state
-Sensocto.Calls.CallServer.get_state("room_id")
-```
-
-## Participant Flow
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant CC as CallChannel
-    participant CS as CallServer
-    participant ME as Membrane Engine
-
-    U->>CC: join("call:room_id")
-    CC->>CS: add_participant()
-    CS->>ME: Engine.add_endpoint()
-    ME-->>CS: EndpointAdded
-    CS->>CC: {:participant_joined, ...}
-```
-
-## Quality Metrics
-```elixir
-# Get quality profile
-Sensocto.Calls.QualityManager.calculate_quality(participant_count, :good)
-```
-```
-
-**Rationale:** WebRTC debugging is notoriously difficult. This livebook provides visibility into call state.
-
----
-
-### Tier 3: Bug Investigation Templates
-
-#### 7. `07_bug_template.livemd`
-**Purpose:** Standard template for reproducing bugs
-
-```markdown
-# Bug Investigation: [ISSUE_ID]
-
-## Issue Description
-[Description from issue tracker]
-
-## Reproduction Steps
-1. ...
-2. ...
-3. ...
-
-## Environment
-```elixir
-%{
-  elixir_version: System.version(),
-  otp_version: :erlang.system_info(:otp_release),
-  sensocto_version: Application.spec(:sensocto, :vsn)
-}
-```
-
-## State at Time of Bug
-```elixir
-# Capture relevant state
-state = %{
-  process_count: length(Process.list()),
-  memory: :erlang.memory(),
-  # ... specific state
-}
-```
-
-## Hypothesis 1
-[Description]
-
-### Test
-```elixir
-# Code to test hypothesis
-```
-
-### Result
-[Findings]
-
-## Root Cause
-[Identified cause]
-
-## Fix Verification
-```elixir
-# Code to verify fix
-```
-```
-
-**Rationale:** Structured bug investigation improves debugging efficiency.
-
----
-
-### Tier 4: Educational Livebooks
-
-#### 8. `08_quaternion_mathematics.livemd`
-**Purpose:** Explain quaternion math for IMU data
-
-```markdown
-# Quaternion Mathematics for Sensor Orientation
-
-## Overview
-Understanding quaternions for 3D rotation representation.
-
-## Euler to Quaternion Conversion
-```elixir
-# The Sensocto implementation
-defmodule QuaternionDemo do
-  import Nx.Defn
-
-  defn euler(roll, pitch, yaw) do
-    cr = Nx.cos(roll / 2)
-    sr = Nx.sin(roll / 2)
-    cp = Nx.cos(pitch / 2)
-    sp = Nx.sin(pitch / 2)
-    cy = Nx.cos(yaw / 2)
-    sy = Nx.sin(yaw / 2)
-
-    Nx.stack([
-      sr * cp * cy - cr * sp * sy,  # x
-      cr * sp * cy + sr * cp * sy,  # y
-      cr * cp * sy - sr * sp * cy,  # z
-      cr * cp * cy + sr * sp * sy   # w
-    ])
-  end
-end
-
-# Example
-QuaternionDemo.euler(0.1, 0.2, 0.3)
-```
-
-## Visualization
-```elixir
-# 3D visualization of orientation
-# Using VegaLite for simple viz
-```
-```
-
-**Rationale:** IMU sensor data requires quaternion understanding. Educational content aids sensor integration.
-
----
-
-## End-to-End Test Scenarios
-
-### Scenario 1: Sensor Lifecycle (Critical Path)
-
-```elixir
-defmodule Sensocto.E2E.SensorLifecycleTest do
-  use SensoctoWeb.ChannelCase
-
-  @tag :e2e
-  describe "complete sensor lifecycle" do
-    test "sensor registration -> data flow -> disconnection" do
-      # 1. Connect to channel
-      {:ok, _, socket} = socket()
-        |> subscribe_and_join(SensoctoWeb.SensorDataChannel, "sensocto:lobby", %{
-          "sensor_id" => "test_sensor_1",
-          "connector_id" => "test_connector",
-          "connector_name" => "TestConnector",
-          "sensor_name" => "Test Sensor",
-          "sensor_type" => "ecg"
-        })
-
-      # 2. Verify sensor process started
-      assert {:ok, _pid} = GenServer.whereis({:via, Registry, {Sensocto.SimpleSensorRegistry, "test_sensor_1"}})
-
-      # 3. Send measurement
-      ref = push(socket, "measurement", %{
-        "attribute_id" => "hr",
-        "timestamp" => System.system_time(:millisecond),
-        "payload" => %{"bpm" => 72}
-      })
-      assert_reply ref, :ok
-
-      # 4. Verify data stored
-      {:ok, data} = Sensocto.AttributeStore.get_attribute("test_sensor_1", "hr", 0)
-      assert length(data) == 1
-
-      # 5. Disconnect
-      Process.unlink(socket.channel_pid)
-      ref = leave(socket)
-      assert_reply ref, :ok
-
-      # 6. Verify cleanup (with timeout for async cleanup)
-      :timer.sleep(100)
-      assert Registry.lookup(Sensocto.SimpleSensorRegistry, "test_sensor_1") == []
-    end
-  end
-end
-```
-
-### Scenario 2: Room Collaboration Flow
-
-```elixir
-defmodule Sensocto.E2E.RoomCollaborationTest do
-  use SensoctoWeb.ConnCase
-
-  @tag :e2e
-  describe "room collaboration" do
-    setup do
-      user1 = create_user("user1@test.com")
-      user2 = create_user("user2@test.com")
-      {:ok, room} = Sensocto.Rooms.create_room(%{name: "Test Room", is_public: true}, user1)
-      %{user1: user1, user2: user2, room: room}
-    end
-
-    test "user joins room and shares sensors", %{user1: _user1, user2: user2, room: room} do
-      # 1. User2 joins by code
-      {:ok, _} = Sensocto.Rooms.join_by_code(room.join_code, user2)
-
-      # 2. Add sensor to room
-      :ok = Sensocto.Rooms.add_sensor_to_room(room, "sensor_1")
-
-      # 3. Verify sensor visible in room
-      {:ok, room_with_sensors} = Sensocto.Rooms.get_room_with_sensors(room.id)
-      assert "sensor_1" in get_in(room_with_sensors, [:sensor_ids])
-
-      # 4. PubSub event propagation
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "room:#{room.id}")
-      Phoenix.PubSub.broadcast(Sensocto.PubSub, "data:sensor_1", {:measurement, %{}})
-      assert_receive {:room_update, {:sensor_measurement, "sensor_1"}}, 1000
-    end
-  end
-end
-```
-
-### Scenario 3: Simulator Data Generation
-
-```elixir
-defmodule Sensocto.E2E.SimulatorTest do
-  use ExUnit.Case
-
-  @tag :e2e
-  describe "simulator data generation" do
-    test "ECG waveform has valid PQRST complex" do
-      config = %{
-        sensor_type: "ecg",
-        heart_rate: 72,
-        sampling_rate: 512,
-        duration: 5,
-        dummy_data: true
-      }
-
-      {:ok, data} = Sensocto.Simulator.DataGenerator.fetch_sensor_data(config)
-
-      # Verify data structure
-      assert is_list(data)
-      assert length(data) > 0
-
-      # Verify ECG characteristics
-      payloads = Enum.map(data, & &1.payload)
-      max_val = Enum.max(payloads)
-      min_val = Enum.min(payloads)
-
-      # R-wave should be tall positive spike
-      assert max_val > 0.5
-      # S-wave should be negative
-      assert min_val < 0
-    end
-
-    test "GPS track playback interpolates correctly" do
-      {:ok, _} = Sensocto.Simulator.TrackPlayer.start_playback("gps_test", mode: :walk)
-
-      # Get two consecutive positions
-      {:ok, pos1} = Sensocto.Simulator.TrackPlayer.tick("gps_test")
-      :timer.sleep(100)
-      {:ok, pos2} = Sensocto.Simulator.TrackPlayer.tick("gps_test")
-
-      # Verify position changed
-      assert pos1.latitude != pos2.latitude or pos1.longitude != pos2.longitude
-
-      # Verify position is valid
-      assert pos1.latitude >= -90 and pos1.latitude <= 90
-      assert pos1.longitude >= -180 and pos1.longitude <= 180
-
-      Sensocto.Simulator.TrackPlayer.stop_playback("gps_test")
-    end
-  end
-end
-```
-
-### Scenario 4: Call System Integration
-
-```elixir
-defmodule Sensocto.E2E.CallSystemTest do
-  use SensoctoWeb.ChannelCase
-
-  @tag :e2e
-  @tag :slow
-  describe "video call lifecycle" do
-    setup do
-      room_id = UUID.uuid4()
-      {:ok, _} = Sensocto.Calls.CallSupervisor.start_call(room_id)
-      %{room_id: room_id}
-    end
-
-    test "participant join/leave flow", %{room_id: room_id} do
-      # 1. Add first participant
-      {:ok, endpoint1} = Sensocto.Calls.CallServer.add_participant(room_id, "user1", %{name: "User 1"})
-      assert is_binary(endpoint1)
-
-      # 2. Verify participant count
-      {:ok, 1} = Sensocto.Calls.CallServer.participant_count(room_id)
-
-      # 3. Add second participant
-      {:ok, endpoint2} = Sensocto.Calls.CallServer.add_participant(room_id, "user2", %{name: "User 2"})
-      assert endpoint1 != endpoint2
-
-      # 4. Verify quality adjustment
-      {:ok, state} = Sensocto.Calls.CallServer.get_state(room_id)
-      assert state.participant_count == 2
-
-      # 5. Leave
-      :ok = Sensocto.Calls.CallServer.remove_participant(room_id, "user1")
-      {:ok, 1} = Sensocto.Calls.CallServer.participant_count(room_id)
-    end
-  end
-end
-```
-
----
-
-## Gamification Opportunities
-
-### Test Coverage Achievements
-
-| Achievement | Criteria | Badge |
-|-------------|----------|-------|
-| **First Blood** | Write first test for untested module | [PIONEER] |
-| **Ash Master** | 100% coverage on Ash resources | [ASH_MASTER] |
-| **OTP Guardian** | Test all GenServers handle_info clauses | [OTP_GUARDIAN] |
-| **Channel Surfer** | Full channel message coverage | [CHANNEL_SURFER] |
-| **Room Champion** | Complete room lifecycle tests | [ROOM_CHAMPION] |
-| **Simulator Sage** | All data generators tested | [SIM_SAGE] |
-| **Call Expert** | WebRTC integration tests passing | [CALL_EXPERT] |
-| **Graph Navigator** | Neo4j query tests complete | [GRAPH_NAV] |
-| **Validator Vigilante** | All validation paths tested | [VALIDATOR] |
-| **LiveView Legend** | All LiveViews have tests | [LV_LEGEND] |
-
-### Coverage Progress Tracker
-
-```markdown
-## Test Coverage Progress
-
-### Core Modules
-- [ ] Sensocto.SimpleSensor (0%)
-- [ ] Sensocto.AttributeStore (partial, broken)
-- [ ] Sensocto.RoomServer (0%)
-- [ ] Sensocto.RoomStore (0%)
-- [ ] Sensocto.Calls.CallServer (0%)
-
-### Ash Resources
-- [ ] Sensocto.Sensors.Sensor (0%)
-- [ ] Sensocto.Sensors.Room (0%)
-- [ ] Sensocto.Accounts.User (0%)
-
-### Channels
-- [ ] SensorDataChannel (basic)
-- [ ] CallChannel (0%)
-
-### LiveViews
-- [ ] RoomListLive (0%)
-- [ ] SenseLive (0%)
-
-### Simulator
-- [ ] DataGenerator (0%)
-- [ ] TrackPlayer (0%)
-- [ ] BatteryState (0%)
-
-### Validation
-- [ ] MessageValidator (0%)
-- [ ] SensorRegistry (0%)
-- [ ] SafeKeys (0%)
-
-Current Progress: 5/50 modules (10%)
-```
-
-### Testing Challenges
-
-#### Challenge 1: The Sensor Safari
-**Goal:** Test all 5 sensor types with valid/invalid payloads
-**Points:** 500
-**Requirements:**
-- ECGSensor: ecg, hr, hrv, battery
-- IMUSensor: accelerometer, gyroscope, magnetometer
-- HTML5Sensor: geolocation, devicemotion
-- ButtplugSensor: vibrate, rotate commands
-- Thingy52Sensor: all Thingy:52 characteristics
-
-#### Challenge 2: The Room Escape
-**Goal:** Test all room state transitions
-**Points:** 300
-**Requirements:**
-- Create room
-- Join by code
-- Add/remove sensors
-- Member role changes
-- Room deletion
-- Iroh sync verification
-
-#### Challenge 3: The Distributed Dance
-**Goal:** Test Horde registry behavior under failure
-**Points:** 750
-**Requirements:**
-- Register process in Horde
-- Simulate node failure
-- Verify re-registration
-- Test data consistency
-
----
-
-## Priority Recommendations
-
-### Immediate Actions (Week 1)
-
-1. **Fix broken tests** - `attribute_store_test.exs` references non-existent modules
-2. **Create test factories** - User, Room, Sensor factories for consistent test data
-3. **Add DataCase helpers** - Ash-specific test utilities
-
-### Short-term (Weeks 2-4)
-
-1. **Livebook: Architecture Overview** - Interactive supervision tree exploration
-2. **Test: MessageValidator** - Critical security boundary
-3. **Test: SimpleSensor lifecycle** - Core data flow
-4. **Test: RoomStore operations** - Room management
-
-### Medium-term (Weeks 5-8)
-
-1. **Livebook: Simulator Playground** - Data generation exploration
-2. **Test: All Ash resources** - Resource action coverage
-3. **Test: CallServer** - WebRTC integration
-4. **Livebook: Bug Investigation Template** - Standardized debugging
-
-### Long-term (Weeks 9-12)
-
-1. **Complete E2E suite** - Full user journey tests
-2. **Performance Livebooks** - Benchmarking and profiling
-3. **Test: Neo4j integration** - Graph query coverage
-4. **Educational Livebooks** - Quaternion math, ECG waveforms
-
----
-
-## Specific Code Areas Needing Interactive Exploration
-
-### 1. DataGenerator ECG Waveform
-**File:** `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/simulator/data_generator.ex`
-**Lines:** 376-416
-**Why:** The PQRST waveform generation is complex phase-based math. Interactive visualization would help validate correctness.
-
-### 2. TrackPlayer Interpolation
-**File:** `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/simulator/track_player.ex`
-**Lines:** 272-327
-**Why:** Haversine distance and heading calculations need validation against known tracks.
-
-### 3. RoomServer State Machine
-**File:** `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/otp/room_server.ex`
-**Lines:** 100-325
-**Why:** Complex state transitions with Horde distribution, timer management, and PubSub broadcasting.
-
-### 4. Iroh Document Operations
-**File:** `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/iroh/room_store.ex`
-**Lines:** 309-390
-**Why:** Native interop with Iroh docs requires careful exploration of success/failure paths.
-
-### 5. CallServer Media Events
-**File:** `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/calls/call_server.ex`
-**Lines:** 295-405
-**Why:** Membrane RTC Engine message handling is complex with many message types.
-
-### 6. Quaternion Math
-**File:** `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/quaternion.ex`
-**Why:** Nx-based numerical computing for IMU orientation needs visual verification.
-
----
-
-## Appendix: Existing Livebook Inventory
-
-| File | Status | Description |
-|------|--------|-------------|
-| `livebook-ash.livemd` | Documentation | Mermaid diagrams of Ash domains |
-| `supervisors.livemd` | Sketch | Supervision tree exploration (incomplete) |
-| `liveview-processing.livemd` | Prototype | ViewData transformation testing |
-| `livebook-phoenixclient.livemd` | Unknown | Phoenix client testing |
-| `livebook.livemd` | Unknown | General exploration |
-| `map-juggeling.livemd` | Unknown | Map manipulation |
-| `supervisor_mermaid_viz.livemd` | Unknown | Mermaid visualization |
-| `nx_demo_liveview.livemd` | Tutorial | Nx + Bumblebee integration (external) |
-| `ash_neo4j_demo.livemd` | Unknown | Neo4j integration |
-
----
-
-## Conclusion
-
-Sensocto is a sophisticated real-time sensor platform with significant testing and documentation gaps. The recommended approach is:
-
-1. **Stabilize:** Fix broken tests, establish test infrastructure
-2. **Document:** Create interactive Livebooks for complex systems
-3. **Test Critical Paths:** Sensor data flow, room operations
-4. **Gamify:** Make testing engaging with achievements and challenges
-5. **Iterate:** Expand coverage based on bug frequency
-
-The codebase has excellent architecture but needs investment in testing and documentation to support sustainable development.
-
----
-
-*Report generated: 2026-01-12*
-*Analysis by: Livebook Tester Agent*
+*Report updated: 2026-02-16*
+*Analysis by: Livebook Tester Agent (Claude Opus 4.6)*

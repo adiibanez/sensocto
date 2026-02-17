@@ -60,7 +60,8 @@
   let isLayoutRunning = $state(false);
   let isFullscreen = $state(false);
   let showExportModal = $state(false);
-  let controlsOpen = $state(false);
+  let leftBarOpen = $state(false);
+  let rightBarOpen = $state(false);
   let exportFormat = $state<"png" | "jpeg">("png");
   let exportScale = $state(2);
   let exportBackground = $state(true);
@@ -753,7 +754,8 @@
       selectedNode = null;
       selectedDetails = null;
       highlightedNodes = new Set();
-      controlsOpen = false;
+      leftBarOpen = false;
+      rightBarOpen = false;
       sigma?.refresh();
     });
 
@@ -2158,14 +2160,15 @@
   <!-- Glow overlay canvas for plasma discharge halos -->
   <canvas bind:this={glowCanvas} class="glow-overlay"></canvas>
 
-  <!-- Controls -->
-  <div class="controls" class:controls-open={controlsOpen}>
-    <button class="controls-toggle" aria-label="Toggle controls" onclick={() => controlsOpen = !controlsOpen}>
+  <!-- Right Sidebar: Tools/Controls -->
+  <div class="sidebar sidebar-right" class:sidebar-open={rightBarOpen}>
+    <button class="sidebar-trigger" aria-label="Toggle tools" onclick={() => rightBarOpen = !rightBarOpen}>
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     </button>
-    <div class="controls-panel">
+    <div class="sidebar-panel">
       <button onclick={handleZoomIn} data-tooltip="Zoom In" class="control-btn tooltip-left">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
@@ -2236,42 +2239,44 @@
     </div>
   </div>
 
-  <!-- Mode Selector -->
-  <div class="mode-selector">
-    <div class="mode-group">
-      <span class="mode-group-label">Layout</span>
-      <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-below" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Organic force-directed clustering. Nodes self-organize by connectivity.">
+  <div class="sidebar sidebar-left" class:sidebar-open={leftBarOpen}>
+    <button class="sidebar-trigger" aria-label="Toggle view modes" onclick={() => leftBarOpen = !leftBarOpen}>
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0l4.179 2.25L12 17.25 2.25 12l4.179-2.25m11.142 0l-5.571 3-5.571-3m11.142 4.5L21.75 12l-4.179 2.25m0 0l-5.571 3-5.571-3" />
+      </svg>
+    </button>
+    <div class="sidebar-panel">
+      <span class="sidebar-group-label">Layout</span>
+      <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-right" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Force-directed clustering">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
       </button>
-      <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-below" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit their owner. Each user becomes a cluster center.">
+      <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
       </button>
-      <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-below" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Vertical lanes by attribute type. See heartrate, battery, IMU etc. side by side.">
+      <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-right" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Lanes by attribute">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
       </button>
-      <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-below" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings. Users at center, sensors in middle, attributes in outer ring.">
+      <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-right" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" /><circle cx="12" cy="12" r="5" stroke-width="2" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
       </button>
-      <button onclick={() => switchViewMode("constellation")} class="mode-btn tooltip-below" class:active={viewMode === "constellation"} class:layout-active={lastLayoutMode === "constellation" && visualModes.includes(viewMode)} data-tooltip="Constellation — Each user's sensors form a geometric star pattern. Grid of constellations.">
+      <button onclick={() => switchViewMode("constellation")} class="mode-btn tooltip-right" class:active={viewMode === "constellation"} class:layout-active={lastLayoutMode === "constellation" && visualModes.includes(viewMode)} data-tooltip="Constellation — Star patterns">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
       </button>
-    </div>
-    <div class="mode-divider"></div>
-    <div class="mode-group">
-      <span class="mode-group-label">Visual</span>
-      <button onclick={() => switchViewMode("heatmap")} class="mode-btn tooltip-below" class:active={viewMode === "heatmap"} data-tooltip="Heatmap — Node color reflects data frequency. Cold (blue) to hot (red) over a 10s window.">
+      <div class="control-divider"></div>
+      <span class="sidebar-group-label">Visual</span>
+      <button onclick={() => switchViewMode("heatmap")} class="mode-btn tooltip-right" class:active={viewMode === "heatmap"} data-tooltip="Heatmap — Data frequency colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>
       </button>
-      <button onclick={() => switchViewMode("freshness")} class="mode-btn tooltip-below" class:active={viewMode === "freshness"} data-tooltip="Freshness — Nodes fade to invisible over time. Flash of light when stale sensors revive.">
+      <button onclick={() => switchViewMode("freshness")} class="mode-btn tooltip-right" class:active={viewMode === "freshness"} data-tooltip="Freshness — Fade over time">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
       </button>
-      <button onclick={() => switchViewMode("heartbeat")} class="mode-btn tooltip-below" class:active={viewMode === "heartbeat"} data-tooltip="Heartbeat — Graph breathes at average BPM. Heart-rate sensors pulse individually.">
+      <button onclick={() => switchViewMode("heartbeat")} class="mode-btn tooltip-right" class:active={viewMode === "heartbeat"} data-tooltip="Heartbeat — Pulse at BPM">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
       </button>
-      <button onclick={() => switchViewMode("river")} class="mode-btn tooltip-below" class:active={viewMode === "river"} data-tooltip="Data River — Glowing particles flow along edges when data arrives. Color matches attribute type.">
+      <button onclick={() => switchViewMode("river")} class="mode-btn tooltip-right" class:active={viewMode === "river"} data-tooltip="Data River — Flowing particles">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
       </button>
-      <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-below" class:active={viewMode === "attention"} data-tooltip="Attention — Nodes sized and colored by who's watching. High = green, none = dim.">
+      <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-right" class:active={viewMode === "attention"} data-tooltip="Attention — Who's watching">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
       </button>
     </div>
@@ -2464,8 +2469,7 @@
     height: 100%;
   }
 
-  .lobby-graph.compact .controls,
-  .lobby-graph.compact .mode-selector,
+  .lobby-graph.compact .sidebar,
   .lobby-graph.compact .legend,
   .lobby-graph.compact .stats,
   .lobby-graph.compact .export-modal {
@@ -2486,14 +2490,106 @@
     z-index: 1;
   }
 
-  .controls {
+  /* ── Sidebars ──────────────────────────────────────── */
+
+  .sidebar {
     position: absolute;
     top: 1rem;
-    right: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    align-items: center;
     z-index: 10;
+  }
+
+  .sidebar-left {
+    left: 1rem;
+  }
+
+  .sidebar-right {
+    right: 1rem;
+  }
+
+  .sidebar-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: rgba(31, 41, 55, 0.9);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 0.5rem;
+    color: #d1d5db;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+
+  .sidebar-trigger:hover {
+    background: rgba(55, 65, 81, 0.9);
+    color: #ffffff;
+  }
+
+  .sidebar-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(31, 41, 55, 0.95);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 0.625rem;
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+    position: relative;
+  }
+
+  .sidebar-panel::before {
+    content: '';
+    position: absolute;
+    top: -0.5rem;
+    left: 0;
+    right: 0;
+    height: 0.5rem;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sidebar:hover .sidebar-panel {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+  }
+
+  .sidebar.sidebar-open .sidebar-panel {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .sidebar-group-label {
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+    font-weight: 600;
+    white-space: nowrap;
+    margin-top: 0.25rem;
+    margin-bottom: 0.125rem;
+  }
+
+  .sidebar-left .mode-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .sidebar-left .mode-btn :global(svg) {
+    width: 1.125rem;
+    height: 1.125rem;
   }
 
   .control-divider {
@@ -2592,46 +2688,6 @@
 
   [data-tooltip-pos="above"][data-tooltip]:hover::after {
     transform: translateX(-50%) translateY(0);
-  }
-
-  /* ── Mode Selector ────────────────────────────────────── */
-
-  .mode-selector {
-    position: absolute;
-    top: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    background: rgba(31, 41, 55, 0.95);
-    border: 1px solid rgba(75, 85, 99, 0.5);
-    border-radius: 0.625rem;
-    z-index: 10;
-    backdrop-filter: blur(8px);
-  }
-
-  .mode-group {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-
-  .mode-group-label {
-    font-size: 0.6rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #6b7280;
-    margin-right: 0.25rem;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
-  .mode-divider {
-    width: 1px;
-    height: 1.5rem;
-    background: rgba(75, 85, 99, 0.4);
-    flex-shrink: 0;
   }
 
   .mode-btn {
@@ -3037,7 +3093,7 @@
   .recording-indicator {
     position: absolute;
     top: 1rem;
-    left: 1rem;
+    left: 4rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -3084,74 +3140,19 @@
 
   /* ── Mobile Responsive ─────────────────────────────── */
 
-  .controls-toggle {
-    display: none;
-  }
-
   @media (max-width: 767px) {
-    .controls-toggle {
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .sidebar-trigger {
+      width: 2.25rem;
+      height: 2.25rem;
+    }
+
+    .sidebar-left .mode-btn {
       width: 2.5rem;
       height: 2.5rem;
-      background: rgba(31, 41, 55, 0.9);
-      border: 1px solid rgba(75, 85, 99, 0.5);
-      border-radius: 0.5rem;
-      color: #d1d5db;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      touch-action: manipulation;
     }
 
-    .controls-toggle:hover {
-      background: rgba(55, 65, 81, 0.9);
-      color: #ffffff;
-    }
-
-    .controls-panel {
-      display: none;
-    }
-
-    .controls-open .controls-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .mode-selector {
-      top: auto;
-      bottom: 4rem;
-      left: 0.5rem;
-      right: 0.5rem;
-      transform: none;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      justify-content: flex-start;
-      padding: 0.375rem 0.5rem;
-      overscroll-behavior-x: contain;
-    }
-
-    .mode-selector::-webkit-scrollbar {
-      display: none;
-    }
-
-    .mode-group-label {
-      display: none;
-    }
-
-    .mode-divider {
-      width: 1px;
-      height: 1.5rem;
-      min-width: 1px;
-    }
-
-    .mode-btn {
-      min-width: 2.5rem;
-      min-height: 2.5rem;
-      width: 2.5rem;
-      height: 2.5rem;
+    .recording-indicator {
+      left: 3.75rem;
     }
 
     .legend {
@@ -3180,7 +3181,7 @@
     }
 
     .bottom-bar {
-      bottom: 4.5rem;
+      bottom: 3.5rem;
     }
   }
 </style>

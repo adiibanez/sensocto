@@ -143,7 +143,7 @@ config :sensocto, SensoctoWeb.Endpoint,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/sensocto_web/(controllers|live|components)/.*(ex|heex)$",
+      ~r"lib/sensocto_web/(controllers|live|components)/.*heex$",
       ~r"lib/sensocto_web/(live|components)/.*neex$",
       ~r"lib/sensocto_web/styles/.*ex$",
       ~r"priv/static/*.styles$"

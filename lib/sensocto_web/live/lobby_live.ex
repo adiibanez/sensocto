@@ -87,7 +87,7 @@ defmodule SensoctoWeb.LobbyLive do
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
     # Extract stable list of sensor IDs - only changes when sensors are added/removed
-    sensor_ids = sensors |> Map.keys() |> Enum.sort()
+    sensor_ids = sort_sensors(Map.keys(sensors), sensors, :activity)
 
     # NOTE: Direct sensor subscriptions removed - now using PriorityLens for data delivery
     # Signal subscriptions kept for attribute change notifications
@@ -153,7 +153,6 @@ defmodule SensoctoWeb.LobbyLive do
         sensors_online: %{},
         sensors_offline: %{},
         sensor_ids: sensor_ids,
-        all_sensor_ids: sensor_ids,
         global_view_mode: default_view_mode,
         grid_cols_sm: min(@grid_cols_sm_default, max(1, sensors_count)),
         grid_cols_lg: min(@grid_cols_lg_default, max(1, sensors_count)),
@@ -211,10 +210,10 @@ defmodule SensoctoWeb.LobbyLive do
           push_event_count: 0,
           last_report_time: System.monotonic_time(:millisecond)
         },
-        # Minimum attention filter (0=none, 1=low, 2=medium, 3=high)
-        min_attention: 0,
-        # Timer for debouncing attention filter updates
-        attention_filter_timer: nil,
+        # Sort mode for sensor grid (:activity, :name, :type, :battery)
+        sort_by: :activity,
+        # Timer for debouncing activity re-sort on attention changes
+        sort_timer: nil,
         # Client health monitoring for adaptive streaming
         client_health: SensoctoWeb.ClientHealth.init(),
         # PriorityLens integration for adaptive data delivery
@@ -395,7 +394,7 @@ defmodule SensoctoWeb.LobbyLive do
         :respiration -> Enum.map(socket.assigns.respiration_sensors, & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns.hrv_sensors, & &1.sensor_id)
         :gaze -> Enum.map(socket.assigns.gaze_sensors, & &1.sensor_id)
-        :graph -> socket.assigns[:all_sensor_ids] || []
+        :graph -> socket.assigns.sensor_ids
       end
 
     attr_key = "composite_#{action}"
@@ -496,26 +495,73 @@ defmodule SensoctoWeb.LobbyLive do
     |> Enum.max(fn -> 0 end)
   end
 
-  # Filter sensor IDs by minimum attention level
-  # Returns only sensors that meet or exceed the minimum attention threshold
-  defp filter_sensors_by_attention(sensor_ids, min_attention) when min_attention == 0 do
-    # No filter - return all sensors
-    sensor_ids
+  # Sort sensor IDs by the chosen strategy
+  # All modes use sensor_name as secondary sort for stability
+  defp sort_sensors(sensor_ids, sensors, sort_by) do
+    case sort_by do
+      :activity ->
+        Enum.sort_by(sensor_ids, fn sid ->
+          level = Sensocto.AttentionTracker.get_sensor_attention_level(sid)
+          pri = %{high: 0, medium: 1, low: 2, none: 3}
+          sensor = Map.get(sensors, sid, %{})
+          name = Map.get(sensor, :sensor_name, sid)
+          {Map.get(pri, level, 3), name}
+        end)
+
+      :name ->
+        Enum.sort_by(sensor_ids, fn sid ->
+          sensor = Map.get(sensors, sid, %{})
+          (Map.get(sensor, :sensor_name, sid) || sid) |> String.downcase()
+        end)
+
+      :type ->
+        Enum.sort_by(sensor_ids, fn sid ->
+          sensor = Map.get(sensors, sid, %{})
+          type = (Map.get(sensor, :sensor_type, "unknown") || "unknown") |> String.downcase()
+          name = (Map.get(sensor, :sensor_name, sid) || sid) |> String.downcase()
+          {type, name}
+        end)
+
+      :battery ->
+        Enum.sort_by(sensor_ids, fn sid ->
+          sensor = Map.get(sensors, sid, %{})
+          name = Map.get(sensor, :sensor_name, sid) || sid
+          {extract_battery_level(sensor), name}
+        end)
+
+      _ ->
+        Enum.sort(sensor_ids)
+    end
   end
 
-  defp filter_sensors_by_attention(sensor_ids, min_attention) do
-    Enum.filter(sensor_ids, fn sensor_id ->
-      level = Sensocto.AttentionTracker.get_sensor_attention_level(sensor_id)
-      attention_level_to_int(level) >= min_attention
-    end)
+  defp extract_battery_level(sensor) do
+    attrs = Map.get(sensor, :attributes, %{}) || %{}
+
+    case Enum.find(attrs, fn {_attr_id, attr} -> attr.attribute_type == "battery" end) do
+      {_attr_id, attr} ->
+        payload = attr.lastvalue && attr.lastvalue.payload
+
+        cond do
+          is_map(payload) -> payload["level"] || payload[:level] || 999
+          is_number(payload) -> payload
+          true -> 999
+        end
+
+      nil ->
+        999
+    end
   end
 
-  # Convert attention level atom to integer for comparison
-  defp attention_level_to_int(:none), do: 0
-  defp attention_level_to_int(:low), do: 1
-  defp attention_level_to_int(:medium), do: 2
-  defp attention_level_to_int(:high), do: 3
-  defp attention_level_to_int(_), do: 0
+  # Schedule a debounced re-sort when attention changes (only for :activity sort)
+  defp maybe_schedule_resort(socket) do
+    if socket.assigns[:sort_by] == :activity do
+      if timer = socket.assigns[:sort_timer], do: Process.cancel_timer(timer)
+      timer = Process.send_after(self(), :resort_sensors, 1500)
+      assign(socket, :sort_timer, timer)
+    else
+      socket
+    end
+  end
 
   # Partition sensors for virtual scroll rendering
   # Returns {rows_before, visible_ids, rows_after, sensors_remaining} for CSS spacer heights
@@ -964,17 +1010,15 @@ defmodule SensoctoWeb.LobbyLive do
             gaze_sensors
           )
 
-        # Filter sensor IDs based on current min_attention setting
-        min_attention = socket.assigns[:min_attention] || 0
-        filtered_sensor_ids = filter_sensors_by_attention(new_sensor_ids, min_attention)
+        sorted_sensor_ids =
+          sort_sensors(new_sensor_ids, sensors, socket.assigns[:sort_by] || :activity)
 
         updated_socket =
           socket
           |> assign(:sensors, sensors)
           |> assign(:sensors_online_count, sensors_count)
           |> assign(:sensors_online, sensors_online)
-          |> assign(:all_sensor_ids, new_sensor_ids)
-          |> assign(:sensor_ids, filtered_sensor_ids)
+          |> assign(:sensor_ids, sorted_sensor_ids)
           |> assign(:heartrate_sensors, heartrate_sensors)
           |> assign(:imu_sensors, imu_sensors)
           |> assign(:location_sensors, location_sensors)
@@ -1723,12 +1767,9 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
-  # Handle sensor attention changes to re-filter sensor list in realtime
-  # Debounced to avoid excessive re-renders from rapid attention changes
+  # Handle sensor attention changes — debounced re-sort for activity mode
   @impl true
   def handle_info({:attention_changed, %{sensor_id: sensor_id, level: level}}, socket) do
-    min_attention = socket.assigns[:min_attention] || 0
-
     # Push attention changes to graph view for attention radar mode
     socket =
       if socket.assigns.live_action == :graph do
@@ -1740,31 +1781,19 @@ defmodule SensoctoWeb.LobbyLive do
         socket
       end
 
-    # Only schedule re-filter if min_attention > 0 (otherwise all sensors are shown)
-    if min_attention > 0 do
-      # Cancel any pending attention filter timer
-      if socket.assigns[:attention_filter_timer] do
-        Process.cancel_timer(socket.assigns[:attention_filter_timer])
-      end
-
-      # Debounce: schedule re-filter in 500ms
-      timer = Process.send_after(self(), :refilter_by_attention, 500)
-      {:noreply, assign(socket, :attention_filter_timer, timer)}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, maybe_schedule_resort(socket)}
   end
 
   @impl true
-  def handle_info(:refilter_by_attention, socket) do
-    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
-    min_attention = socket.assigns[:min_attention] || 0
-    filtered_sensor_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+  def handle_info(:resort_sensors, socket) do
+    sorted =
+      sort_sensors(
+        socket.assigns.sensor_ids,
+        socket.assigns.sensors,
+        socket.assigns[:sort_by] || :activity
+      )
 
-    {:noreply,
-     socket
-     |> assign(:sensor_ids, filtered_sensor_ids)
-     |> assign(:attention_filter_timer, nil)}
+    {:noreply, assign(socket, sensor_ids: sorted, sort_timer: nil)}
   end
 
   # Refresh available lenses after mount to catch late-registered attributes
@@ -1812,11 +1841,8 @@ defmodule SensoctoWeb.LobbyLive do
         gaze_sensors
       )
 
-    # Re-filter sensors based on current min_attention setting
-    # This ensures sensors are removed when their attention drops below threshold
-    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
-    min_attention = socket.assigns[:min_attention] || 0
-    filtered_sensor_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+    sorted_sensor_ids =
+      sort_sensors(Map.keys(sensors), sensors, socket.assigns[:sort_by] || :activity)
 
     {:noreply,
      socket
@@ -1832,7 +1858,7 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:gaze_sensors, gaze_sensors)
      |> assign(:available_lenses, available_lenses)
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))
-     |> assign(:sensor_ids, filtered_sensor_ids)}
+     |> assign(:sensor_ids, sorted_sensor_ids)}
   end
 
   # Clear bump animations after timeout
@@ -2399,28 +2425,33 @@ defmodule SensoctoWeb.LobbyLive do
 
   # Minimum attention filter slider
   @impl true
-  def handle_event("set_min_attention", %{"min_attention" => value}, socket) do
-    min_attention = String.to_integer(value)
-    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
-    filtered_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+  def handle_event("set_sort", %{"sort" => sort_str}, socket)
+      when sort_str in ["activity", "name", "type", "battery"] do
+    sort_by = String.to_existing_atom(sort_str)
+
+    sorted =
+      sort_sensors(socket.assigns.sensor_ids, socket.assigns.sensors, sort_by)
 
     {:noreply,
      socket
-     |> assign(:min_attention, min_attention)
-     |> assign(:sensor_ids, filtered_ids)
-     |> push_event("save_min_attention", %{min_attention: min_attention})}
+     |> assign(:sort_by, sort_by)
+     |> assign(:sensor_ids, sorted)
+     |> push_event("save_sort_by", %{sort_by: sort_str})}
   end
 
-  # Restore min_attention from localStorage (via JS hook)
+  # Restore sort_by from localStorage (via JS hook)
   @impl true
-  def handle_event("restore_min_attention", %{"min_attention" => min_attention}, socket) do
-    all_sensor_ids = socket.assigns[:all_sensor_ids] || socket.assigns.sensor_ids
-    filtered_ids = filter_sensors_by_attention(all_sensor_ids, min_attention)
+  def handle_event("restore_sort_by", %{"sort_by" => sort_str}, socket)
+      when sort_str in ["activity", "name", "type", "battery"] do
+    sort_by = String.to_existing_atom(sort_str)
+
+    sorted =
+      sort_sensors(socket.assigns.sensor_ids, socket.assigns.sensors, sort_by)
 
     {:noreply,
      socket
-     |> assign(:min_attention, min_attention)
-     |> assign(:sensor_ids, filtered_ids)}
+     |> assign(:sort_by, sort_by)
+     |> assign(:sensor_ids, sorted)}
   end
 
   # Virtual scroll: handle visible range changes from JS hook
@@ -2734,7 +2765,7 @@ defmodule SensoctoWeb.LobbyLive do
         :respiration -> Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns[:hrv_sensors] || [], & &1.sensor_id)
         :gaze -> Enum.map(socket.assigns[:gaze_sensors] || [], & &1.sensor_id)
-        :graph -> socket.assigns[:all_sensor_ids] || []
+        :graph -> socket.assigns.sensor_ids
         _ -> []
       end
 
@@ -2790,6 +2821,8 @@ defmodule SensoctoWeb.LobbyLive do
 
   # Transform lens_batch to push_events for graph view
   # Pushes sensor activity events to trigger node pulsation in the graph
+  @midi_attribute_types ["respiration", "hrv", "breathing_sync", "hrv_sync", "heartrate", "hr"]
+
   defp process_lens_batch_for_graph(socket, batch_data) do
     # Rate limit: only push updates for a subset of sensors per batch
     sensors_to_update =
@@ -2800,12 +2833,43 @@ defmodule SensoctoWeb.LobbyLive do
     Enum.reduce(sensors_to_update, socket, fn sensor_id, acc ->
       attributes = Map.get(batch_data, sensor_id, %{})
 
-      # Push a graph_activity event for the sensor with its updated attributes
-      push_event(acc, "graph_activity", %{
-        sensor_id: sensor_id,
-        attribute_ids: Map.keys(attributes),
-        timestamp: System.system_time(:millisecond)
-      })
+      # Push graph_activity for the graph visualization
+      acc =
+        push_event(acc, "graph_activity", %{
+          sensor_id: sensor_id,
+          attribute_ids: Map.keys(attributes),
+          timestamp: System.system_time(:millisecond)
+        })
+
+      # Also push composite_measurement for MIDI-relevant attributes
+      Enum.reduce(attributes, acc, fn {attr_id, measurement}, inner_acc ->
+        if attr_id in @midi_attribute_types do
+          case measurement do
+            list when is_list(list) ->
+              Enum.reduce(list, inner_acc, fn item, a ->
+                push_event(a, "composite_measurement", %{
+                  sensor_id: sensor_id,
+                  attribute_id: attr_id,
+                  payload: item.payload,
+                  timestamp: item.timestamp
+                })
+              end)
+
+            single when is_map(single) ->
+              push_event(inner_acc, "composite_measurement", %{
+                sensor_id: sensor_id,
+                attribute_id: attr_id,
+                payload: single.payload,
+                timestamp: single.timestamp
+              })
+
+            _ ->
+              inner_acc
+          end
+        else
+          inner_acc
+        end
+      end)
     end)
   end
 

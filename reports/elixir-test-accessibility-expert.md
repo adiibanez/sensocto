@@ -1,114 +1,154 @@
 # Comprehensive Test Coverage and Accessibility Analysis
 ## Sensocto IoT Sensor Platform
 
-**Analysis Date:** January 12, 2026 (Updated: February 15, 2026)
+**Analysis Date:** January 12, 2026 (Updated: February 16, 2026)
 **Analyzed By:** Testing, Usability, and Accessibility Expert Agent
 **Project:** Sensocto - Elixir/Phoenix IoT Sensor Platform
 
 ---
 
-## Update: February 15, 2026
+## Update: February 16, 2026
 
 ### Executive Summary
 
-This update reflects the Sensocto codebase as of February 15, 2026. The project has **249 implementation files** in `/lib` and **32 test files** with **291 passing tests** (2 pre-existing failures, 3 skipped, 109 excluded). Recent code quality work (Feb 15) replaced all `IO.puts`/`IO.inspect` debug output with `Logger.debug` across 6 files, improving observability and log filtering. Accessibility has seen meaningful improvement in the modal component area (24 accessibility tests), but significant WCAG gaps remain across the rest of the UI.
+This update reflects the Sensocto codebase as of February 16, 2026. The project has **250 implementation files** in `/lib` and **33 test files** with **373 passing tests** (2 pre-existing failures, 3 skipped, 109 excluded). Since the last update (Feb 15), significant testing improvements have been made: a comprehensive **regression guards test suite** (49 tests, 766 lines) has been added to protect data pipeline contracts during refactoring. This is a major step forward in maintaining system stability. However, accessibility gaps remain largely unchanged, with only 1 `aria-live` region in the entire codebase and zero `aria-label` attributes in the lobby view.
 
 ### Current Metrics
 
-| Metric | Jan 20 | Feb 8 | Feb 15 | Change |
-|--------|--------|-------|--------|--------|
-| Implementation Files | ~200 | 249 | **249** | Stable |
-| Test Files | 20 | 32 | **32** | Stable |
-| Test Count (passing) | 150+ | ~400 | **291** (2 fail, 3 skip, 109 excl) | Clarified |
-| LiveView Test Files | 3 | 4 | **4** | Stable |
-| LiveView Modules | ~30 | 46 | **46** | Stable |
-| Component Files | ~10 | 13 | **13** | Stable |
-| WCAG Level A Violations | 52+ | 40+ | **40+** | Stable |
-| WCAG Level AA Violations | ~15 | 12+ | **12+** | Stable |
-| Accessibility Tests | 0 | 24 | **24** | Stable |
-| Estimated Code Coverage | ~10% | ~13% | **~13%** | Stable |
-| Structured Logging | Mixed | Mixed | **Logger-only** | IO.puts eliminated |
+| Metric | Feb 8 | Feb 15 | Feb 16 | Change |
+|--------|-------|--------|--------|--------|
+| Implementation Files | 249 | 249 | **250** | +1 |
+| Test Files | 32 | 32 | **33** | +1 |
+| Test Count (passing) | ~400 | 291 | **373** | +82 |
+| Regression Guard Tests | 0 | 0 | **49** | +49 NEW |
+| LiveView Test Files | 4 | 4 | **4** | Stable |
+| LiveView Modules | 46 | 46 | **46** | Stable |
+| Component Files | 13 | 13 | **14** | +1 |
+| WCAG Level A Violations | 40+ | 40+ | **40+** | Stable |
+| WCAG Level AA Violations | 12+ | 12+ | **12+** | Stable |
+| Accessibility Tests | 24 | 24 | **24** | Stable |
+| `aria-live` Regions | 1 | 1 | **1** | Critical gap |
+| `aria-label` in Lobby | 0 | 0 | **0** | Critical gap |
+| Estimated Code Coverage | ~13% | ~13% | **~15%** | +2% |
 
-### Key Changes Since Last Review
+### Key Changes Since Last Review (Feb 15 → Feb 16)
 
 **Positive Changes:**
-1. Modal accessibility tests added: 14 tests in `modal_accessibility_test.exs` and 10 in `core_components_test.exs` covering ARIA attributes, focus management, semantic structure, and close behaviors
-2. Core `<.modal>` component now properly implements `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-describedby`, focus_wrap, and Escape key handling
-3. Supervision tree tests expanded to 31 tests
-4. Priority lens testing at 20 tests
-5. E2E media player tests added (20 tests via Wallaby)
-6. Rate limiter plug fully tested (13 tests)
-7. Bio layer homeostatic tuner tested
-8. New StatefulSensorComponent (LiveComponent) created alongside StatefulSensorLive
-9. **(Feb 15)** IO.puts/IO.inspect replaced with Logger.debug in 6 files — structured logging improves debuggability
-10. **(Feb 15)** GenServer call timeouts added to RoomPresenceServer, RoomStore, SimpleSensor, AttentionTracker — prevents 5s default hangs under load
-11. **(Feb 15)** Email sender addresses centralized via `Application.get_env(:sensocto, :mailer_from)` with env var override
+1. **Regression Guards Test Suite Added** (766 lines, 49 tests) — Protects against silent breakage during refactoring. Tests data pipeline contracts: SimpleSensor → PubSub → Router → PriorityLens, attention topic format, batch measurement format, attention level propagation, digest format, socket ID handling, and time-series constraints.
+2. **About Content Component Enhanced** — Videos/images added to about tab (109 lines added to `about_content_component.ex`).
+3. **Sensor Data Helper Module Created** — `/lib/sensocto_web/live/helpers/sensor_data.ex` (1907 bytes) added for sensor data extraction logic.
+4. **Test Count Increased** — From 291 to 373 passing tests (+82 tests), primarily from regression guards.
+5. **4 E2E Feature Test Files** — Media player, whiteboard, 3D object viewer, collab demo (Wallaby-based).
 
 **Remaining Critical Gaps:**
-1. No tests for LobbyLive (most complex module, ~1200 lines of template)
-2. No tests for IndexLive (main dashboard)
-3. No tests for CallServer, QualityManager, SnapshotManager
-4. No tests for the adaptive video quality system
-5. No tests for the Cloudflare TURN integration
-6. Zero `aria-live` regions in the entire codebase
-7. No skip navigation link
-8. Custom modals in lobby_live.html.heex bypass the accessible `<.modal>` component
+1. **No tests for LobbyLive** (most complex module, ~1200 lines of template) — UNCHANGED
+2. **No tests for IndexLive** (main dashboard) — UNCHANGED
+3. **No tests for CallServer, QualityManager, SnapshotManager** — UNCHANGED
+4. **Zero `aria-live` regions** (except 1 in flash component) — UNCHANGED
+5. **Zero `aria-label` attributes in lobby** icon-only buttons — UNCHANGED
+6. **Custom modals in lobby_live.html.heex bypass accessible `<.modal>` component** — UNCHANGED
+7. **No skip navigation link** — UNCHANGED
 
 ---
 
 ## Testing Analysis
 
-### Test File Inventory (32 files)
+### Test File Inventory (33 files)
 
 | Category | Files | Tests | Notes |
 |----------|-------|-------|-------|
+| Regression Guards | regression_guards_test.exs | **49** | **NEW** — Contract-based tests for data pipeline |
 | OTP/Supervision | supervision_tree_test.exs | 31 | Comprehensive |
 | Lenses | priority_lens_test.exs | 20 | Good coverage |
 | E2E/Integration | media_player_feature_test.exs | 20 | Wallaby-based |
+| E2E/Integration | collab_demo_feature_test.exs | 13 | Lobby, tabs, multi-user |
+| E2E/Integration | whiteboard_feature_test.exs | ~10 | Touch & mouse events |
+| E2E/Integration | object3d_player_feature_test.exs | ~10 | 3D viewer (limited by WebGL) |
 | Plugs | rate_limiter_test.exs | 13 | Thorough |
 | Components | modal_accessibility_test.exs | 14 | Accessibility-focused |
 | Components | core_components_test.exs | 10 | Modal ARIA tests |
 | Bio Layer | homeostatic_tuner_test.exs | ~15 | GenServer tests |
 | LiveView | stateful_sensor_live_test.exs | 2 | Minimal |
-| LiveView | search_live tests | ~5 | Basic |
 | API | openapi_test.exs | 2 | Schema validation |
-| Other | ~20 files | ~268 | Various modules |
+| Other | ~20 files | ~164 | Various modules |
 
-### Critical Testing Gaps
+### Major Testing Improvement: Regression Guards
+
+**File:** `test/sensocto/regression_guards_test.exs` (49 tests, 766 lines)
+
+This is a **critical addition** that protects the core data pipeline from silent breakage during refactoring. The test suite is organized into contract-based tests covering:
+
+1. **Data Pipeline Contract** (7 tests)
+   - Router demand-driven subscription model
+   - Measurement message shape: `{:measurement, %{sensor_id:, attribute_id:, value:, timestamp:}}`
+   - Batch message shape: `{:measurements_batch, {sensor_id, [measurements]}}`
+   - Attention topic format: `"data:attention:high|medium|low"`
+
+2. **AttentionTracker Contract** (8 tests)
+   - `register_view/3`, `unregister_view/3`, `get_level/1` API
+   - Attention level values: `:high`, `:medium`, `:low`, `:none`
+   - ETS preservation across crashes
+   - Recovery mode behavior
+   - PubSub broadcast topics for re-registration
+
+3. **PriorityLens Contract** (6 tests)
+   - ETS direct-write optimization (GenServer-free hot path)
+   - Buffering, flush timers, digest generation
+   - Socket ID to sensor mappings
+   - Quality tier changes
+
+4. **Time-Series Constraints** (5 tests)
+   - Timestamp ordering, monotonicity, freshness (< 5s staleness threshold)
+   - Historical data seed ordering (most recent N entries)
+
+5. **Composite Lens Contract** (4 tests)
+   - Multi-sensor data extraction (heartrate, ECG, breathing, etc.)
+   - Tuple shape consistency
+   - Seed data event format
+
+**Why This Matters:**
+- Protects against refactoring that breaks message contracts
+- Documents expected data shapes and API contracts
+- Prevents silent failures in the data pipeline
+- Complements unit tests with integration-level contract verification
+
+### Critical Testing Gaps (UNCHANGED)
 
 #### Priority 0: No Tests At All
 
 These modules have zero test coverage and handle critical user-facing or data-integrity functionality:
 
-1. **`lib/sensocto_web/live/lobby_live.ex`** -- The most complex LiveView module. Handles virtual scrolling, composite lens views (heartrate, ECG, breathing, HRV, IMU, location, battery, skeleton, graph), PubSub subscriptions, attention tracking, sensor state management, modal dialogs (Join Room, Control Request, Media Control). No tests.
+1. **`lib/sensocto_web/live/lobby_live.ex`** (UNCHANGED) — The most complex LiveView module. Handles virtual scrolling, composite lens views (heartrate, ECG, breathing, HRV, IMU, location, battery, skeleton, graph), PubSub subscriptions, attention tracking, sensor state management, modal dialogs (Join Room, Control Request, Media Control). **No tests.**
 
-2. **`lib/sensocto_web/live/index_live.ex`** -- Main dashboard page. Sensor preview, room listing, public room listing. No tests.
+2. **`lib/sensocto_web/live/index_live.ex`** (UNCHANGED) — Main dashboard page. Sensor preview, room listing, public room listing. **No tests.**
 
-3. **`lib/sensocto/calls/call_server.ex`** (776 lines) -- Video call server with participant management, speaking detection, attention-based quality tier assignment. No tests.
+3. **`lib/sensocto/calls/call_server.ex`** (776 lines, UNCHANGED) — Video call server with participant management, speaking detection, attention-based quality tier assignment. **No tests.**
 
-4. **`lib/sensocto/calls/quality_manager.ex`** (336 lines) -- Adaptive video quality tier calculation. No tests.
+4. **`lib/sensocto/calls/quality_manager.ex`** (336 lines, UNCHANGED) — Adaptive video quality tier calculation. **No tests.**
 
-5. **`lib/sensocto/calls/snapshot_manager.ex`** (239 lines) -- ETS-based snapshot storage for idle call participants. No tests.
+5. **`lib/sensocto/calls/snapshot_manager.ex`** (239 lines, UNCHANGED) — ETS-based snapshot storage for idle call participants. **No tests.**
 
-6. **`lib/sensocto/calls/cloudflare_turn.ex`** -- TURN credential generation with caching. No tests.
+6. **`lib/sensocto/calls/cloudflare_turn.ex`** (UNCHANGED) — TURN credential generation with caching. **No tests.**
 
-7. **`lib/sensocto_web/channels/call_channel.ex`** (359 lines) -- Channel handlers for speaking state, attention state, video snapshots. No tests.
+7. **`lib/sensocto_web/channels/call_channel.ex`** (359 lines, UNCHANGED) — Channel handlers for speaking state, attention state, video snapshots. **No tests.**
 
-8. **`lib/sensocto_web/live/admin/system_status_live.ex`** -- Admin system dashboard. No tests.
+8. **`lib/sensocto_web/live/admin/system_status_live.ex`** (UNCHANGED) — Admin system dashboard. **No tests.**
 
-9. **`lib/sensocto_web/live/custom_sign_in_live.ex`** -- Authentication page. No tests.
+9. **`lib/sensocto_web/live/custom_sign_in_live.ex`** (UNCHANGED) — Authentication page. **No tests.**
 
-10. **`lib/sensocto_web/live/components/about_content_component.ex`** -- No tests.
+10. **`lib/sensocto_web/live/components/about_content_component.ex`** (UNCHANGED, now 81KB) — About page with videos. **No tests.**
 
-#### Priority 1: Insufficient Tests
+#### Priority 1: Insufficient Tests (UNCHANGED)
 
-1. **`stateful_sensor_live_test.exs`** -- Only 2 tests (render and view_enter event). Missing: measurement display, modal interactions, favorite toggle, pin/unpin, view mode changes, latency ping/pong, battery state, highlight toggle, attribute loading.
+1. **`stateful_sensor_live_test.exs`** — Only 2 tests (render and view_enter event). Missing: measurement display, modal interactions, favorite toggle, pin/unpin, view mode changes, latency ping/pong, battery state, highlight toggle, attribute loading.
 
-2. **`openapi_test.exs`** -- Only 2 tests for schema validation. Missing: endpoint-level tests for each API route.
+2. **`openapi_test.exs`** — Only 2 tests for schema validation. Missing: endpoint-level tests for each API route.
 
 ### Suggested Test Cases
 
-#### LobbyLive Mount and Navigation Tests
+The previous recommendations remain valid. Key priorities:
+
+#### 1. LobbyLive Mount and Navigation Tests (HIGHEST PRIORITY)
 
 ```elixir
 defmodule SensoctoWeb.LobbyLiveTest do
@@ -156,10 +196,18 @@ defmodule SensoctoWeb.LobbyLiveTest do
       assert html =~ "error" or html =~ "required"
     end
   end
+
+  describe "composite lens data extraction" do
+    test "extract_composite_data returns 7-element tuple", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/lobby/heartrate")
+      # This test verifies the contract tested in regression_guards_test.exs
+      # Ensure tuple shape matches expectations
+    end
+  end
 end
 ```
 
-#### CallServer Unit Tests
+#### 2. CallServer Unit Tests (HIGH PRIORITY)
 
 ```elixir
 defmodule Sensocto.Calls.CallServerTest do
@@ -211,7 +259,7 @@ defmodule Sensocto.Calls.CallServerTest do
 end
 ```
 
-#### CloudflareTurn Tests
+#### 3. CloudflareTurn Tests (MEDIUM PRIORITY)
 
 ```elixir
 defmodule Sensocto.Calls.CloudflareTurnTest do
@@ -239,7 +287,7 @@ end
 
 ## Accessibility Audit
 
-### WCAG 2.1 Compliance Summary
+### WCAG 2.1 Compliance Summary (UNCHANGED)
 
 | Level | Status | Violations | Notes |
 |-------|--------|------------|-------|
@@ -247,7 +295,16 @@ end
 | Level AA | FAIL | 12+ violations | Color contrast, status messages, focus management |
 | Level AAA | NOT ASSESSED | -- | Not targeted |
 
-### Level A Violations (Must Fix)
+### Critical Accessibility Findings
+
+#### Current State of ARIA Attributes
+
+**Grep Results:**
+- `aria-live` regions: **1** (only in flash component with `aria-live="assertive"`)
+- `aria-label` in lobby: **0** (zero icon-only buttons have accessible labels)
+- `role="dialog"`: **2** (only in core_components.ex modal, NOT in custom lobby modals)
+
+### Level A Violations (UNCHANGED — Must Fix)
 
 #### 1. [1.1.1 Non-text Content] Icon-Only Buttons Missing Accessible Names
 
@@ -300,7 +357,7 @@ end
 
 **Issue:** Three custom modal implementations (Join Room, Control Request, Media Control Request) are built with raw `<div>` elements and do NOT use the accessible `<.modal>` component from `core_components.ex`. They lack `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap, and Escape key handling.
 
-**Fix:** Migrate all three modals to use the `<.modal>` component, or add the required ARIA attributes, focus management, and keyboard handling manually.
+**Fix:** Migrate all three modals to use the `<.modal>` component, which properly implements all required ARIA attributes and behaviors documented in `/docs/modal-accessibility-implementation.md`.
 
 #### 4. [2.1.1 Keyboard] Quality Dropdown Not Keyboard Accessible
 
@@ -365,26 +422,38 @@ socket = assign(socket, :page_title, "Lobby - Sensocto")
 
 #### 8. [4.1.3 Status Messages] Zero aria-live Regions
 
-**Severity:** HIGH
+**Severity:** HIGH — **CRITICAL GAP**
 **All LiveView templates**
 
-**Issue:** A grep for `aria-live` across the entire `/lib` directory returns **zero results**. In a real-time application that constantly updates sensor readings, call status, and connection state, this means screen reader users receive no notification of any dynamic content changes.
+**Issue:** Only **1 `aria-live` region** exists in the entire codebase (flash component with `aria-live="assertive"`). In a real-time application that constantly updates sensor readings, call status, and connection state, this means screen reader users receive **no notification** of any dynamic content changes beyond flash messages.
 
 **Critical areas needing aria-live:**
-- Sensor measurement updates (sparklines, values)
-- Connection status changes (online/offline)
-- Call state changes (joining, connected, disconnected)
-- Flash messages (already have `role="alert"` but should also have `aria-live="assertive"`)
-- Virtual scroll loading states
-- Room join success/failure feedback
+- **Sensor measurement updates** (sparklines, values in lobby tiles)
+- **Connection status changes** (online/offline)
+- **Call state changes** (joining, connected, disconnected)
+- **Virtual scroll loading states** ("Loading more sensors...")
+- **Room join success/failure feedback**
+- **Attention level changes** (high/medium/low)
+- **Composite lens data updates** (heartrate, ECG, breathing waveforms)
 
-**Fix for flash component in core_components.ex:**
-```elixir
-# Add aria-live to flash container
-<div role="alert" aria-live="assertive" ...>
+**Fix for lobby sensor count:**
+```heex
+<div aria-live="polite" aria-atomic="true" class="sr-only">
+  <%= @sensor_count %> sensors connected
+</div>
 ```
 
-### Level AA Violations
+**Fix for connection status:**
+```heex
+<div aria-live="assertive" aria-atomic="true">
+  <span class="sr-only">Connection status:</span>
+  <%= @connection_status %>
+</div>
+```
+
+**Positive:** Flash component already has `aria-live="assertive"` (line 156 in core_components.ex).
+
+### Level AA Violations (UNCHANGED)
 
 #### 9. [1.4.3 Contrast (Minimum)] Insufficient Color Contrast in Dark Theme
 
@@ -430,45 +499,47 @@ socket = assign(socket, :page_title, "Lobby - Sensocto")
 
 These are already implemented correctly:
 
-1. **`<.modal>` component** (`core_components.ex` lines 83-129): Properly implements `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-describedby`, `Phoenix.LiveView.JS.focus_wrap()`, and Escape key handling.
+1. **`<.modal>` component** (`core_components.ex` lines 83-129): Properly implements `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-describedby`, `Phoenix.LiveView.JS.focus_wrap()`, and Escape key handling. **Fully documented** in `/docs/modal-accessibility-implementation.md`.
 
-2. **Search input** (`search_live.ex`): Has `role="search"` on form, `aria-label="Search sensors, rooms, and users"` on input, and keyboard handlers for ArrowUp/ArrowDown/Enter/Escape.
+2. **Flash messages** (`core_components.ex` line 156): Already have `aria-live="assertive"` for immediate announcements.
 
-3. **Join code input** (`lobby_live.html.heex` lines 942-968): Properly uses `label for`, matching `id`, and `aria-describedby` for error association.
+3. **Search input** (`search_live.ex`): Has `role="search"` on form, `aria-label="Search sensors, rooms, and users"` on input, and keyboard handlers for ArrowUp/ArrowDown/Enter/Escape.
 
-4. **Breadcrumbs** (`core_components.ex`): Uses `aria-label="Breadcrumb"`.
+4. **Join code input** (`lobby_live.html.heex` lines 942-968): Properly uses `label for`, matching `id`, and `aria-describedby` for error association.
 
-5. **Tabs** (`core_components.ex`): Uses `aria-label="Tabs"`.
+5. **Breadcrumbs** (`core_components.ex` line 740): Uses `aria-label="Breadcrumb"`.
 
-6. **Language attribute** (`root.html.heex`): Uses Gettext locale for `lang` attribute.
+6. **Tabs** (`core_components.ex` line 777): Uses `aria-label="Tabs"`.
 
-7. **Bottom navigation** (`bottom_nav.ex`): Includes visible text labels alongside icons.
+7. **Language attribute** (`root.html.heex`): Uses Gettext locale for `lang` attribute.
+
+8. **Bottom navigation** (`bottom_nav.ex`): Includes visible text labels alongside icons.
 
 ---
 
-## Usability Findings
+## Usability Findings (UNCHANGED)
 
 ### High Priority Issues
 
-1. **Form Validation Feedback Missing** -- The join room modal in lobby_live shows generic error messages. When a join code is invalid, the error should specify whether the code was not found, expired, or in the wrong format.
+1. **Form Validation Feedback Missing** — The join room modal in lobby_live shows generic error messages. When a join code is invalid, the error should specify whether the code was not found, expired, or in the wrong format.
 
-2. **Loading States Not Shown** -- Async operations (sensor data loading, room joining, historical data fetch) do not display visible loading indicators beyond the virtual scroll spinner. Users see empty areas without explanation.
+2. **Loading States Not Shown** — Async operations (sensor data loading, room joining, historical data fetch) do not display visible loading indicators beyond the virtual scroll spinner. Users see empty areas without explanation.
 
-3. **Custom Modals Lack Consistent UX** -- The three custom modals in lobby_live.html.heex (Join Room, Control Request, Media Control Request) have different behavior patterns compared to modals built with `<.modal>`. Closing behavior, animation, and keyboard handling are inconsistent.
+3. **Custom Modals Lack Consistent UX** — The three custom modals in lobby_live.html.heex (Join Room, Control Request, Media Control Request) have different behavior patterns compared to modals built with `<.modal>`. Closing behavior, animation, and keyboard handling are inconsistent.
 
 ### Medium Priority Issues
 
-4. **Empty States Lack Next Actions** -- When no sensors are connected or no rooms exist, the UI shows minimal guidance. Empty states should include clear calls to action.
+4. **Empty States Lack Next Actions** — When no sensors are connected or no rooms exist, the UI shows minimal guidance. Empty states should include clear calls to action.
 
-5. **Bottom Navigation Small Text** -- `text-[10px]` in bottom_nav.ex is very small and may be difficult to read on some devices. Consider `text-xs` (12px) minimum.
+5. **Bottom Navigation Small Text** — `text-[10px]` in bottom_nav.ex is very small and may be difficult to read on some devices. Consider `text-xs` (12px) minimum.
 
-6. **Search Listbox Missing ARIA Attributes** -- The search results dropdown in search_live.ex is missing `role="listbox"`, `aria-activedescendant`, and `aria-selected` on items.
+6. **Search Listbox Missing ARIA Attributes** — The search results dropdown in search_live.ex is missing `role="listbox"`, `aria-activedescendant`, and `aria-selected` on items.
 
 ### Low Priority Issues
 
-7. **"View all" Links Lack Context** -- In index_live.html.heex, "View all" links lack context for screen readers. Use `aria-label="View all sensors"` or visually hidden text.
+7. **"View all" Links Lack Context** — In index_live.html.heex, "View all" links lack context for screen readers. Use `aria-label="View all sensors"` or visually hidden text.
 
-8. **Admin Dashboard Color-Only Status** -- System status uses colored dots alongside text, but adding icons would provide redundant visual cues.
+8. **Admin Dashboard Color-Only Status** — System status uses colored dots alongside text, but adding icons would provide redundant visual cues.
 
 ---
 
@@ -499,18 +570,20 @@ These are already implemented correctly:
 - Table component renders
 - Input components render with labels
 
+**Comprehensive documentation:** `/docs/modal-accessibility-implementation.md` covers implementation, testing, WCAG compliance, and maintenance.
+
 ### Missing Accessibility Tests
 
-1. **Skip navigation link** -- No test verifies its existence (it does not exist yet)
-2. **Keyboard navigation flows** -- No tests verify tab order through major page flows
-3. **Dynamic content announcements** -- No tests for aria-live regions (none exist)
-4. **Color contrast** -- No automated contrast testing
-5. **Focus management** -- No tests for focus movement on modal open/close in custom modals
-6. **Sensor tile accessibility** -- No tests for StatefulSensorLive/Component ARIA attributes
-7. **Call UI accessibility** -- No tests for call-related accessibility
-8. **Search combobox pattern** -- No tests for search ARIA roles and states
-9. **Bottom navigation** -- No tests for current page indicator accessibility
-10. **Page titles** -- No tests verify dynamic page titles
+1. **Skip navigation link** — No test verifies its existence (it does not exist yet)
+2. **Keyboard navigation flows** — No tests verify tab order through major page flows
+3. **Dynamic content announcements** — No tests for aria-live regions (only 1 exists)
+4. **Color contrast** — No automated contrast testing
+5. **Focus management** — No tests for focus movement on modal open/close in custom modals
+6. **Sensor tile accessibility** — No tests for StatefulSensorLive/Component ARIA attributes
+7. **Call UI accessibility** — No tests for call-related accessibility
+8. **Search combobox pattern** — No tests for search ARIA roles and states
+9. **Bottom navigation** — No tests for current page indicator accessibility
+10. **Page titles** — No tests verify dynamic page titles
 
 ### Suggested Accessibility Tests
 
@@ -553,9 +626,23 @@ defmodule SensoctoWeb.AccessibilityTest do
   end
 
   describe "dynamic content" do
-    test "flash messages have live region", %{conn: conn} do
+    test "lobby has aria-live region for sensor count", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/lobby")
+      assert html =~ ~r/aria-live.*sensor/i or html =~ ~r/sensor.*aria-live/i
+    end
+
+    test "flash messages have aria-live", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/lobby")
+      # Flash component already has aria-live="assertive"
       assert html =~ "aria-live"
+    end
+  end
+
+  describe "icon-only buttons" do
+    test "all icon-only buttons have aria-label", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/lobby")
+      # Extract all <button> elements with SVG children
+      # Verify each has aria-label or aria-labelledby
     end
   end
 end
@@ -622,7 +709,7 @@ This section analyzes all current plan files and their implications for testing,
 
 **Accessibility Implications:**
 - **Quality tier indicators** on participant video tiles need ARIA attributes. Each badge should have `role="status"` and be part of an `aria-live="polite"` region.
-- **Speaking detection indicator** must be accessible. Use `aria-label` on the participant tile.
+- **Speaking detection indicator** must be accessible. Use `aria-label` on the participant tile: `aria-label="User name, currently speaking"`.
 - **Snapshot mode transition** replaces a `<video>` element with an `<img>` element. The `<img>` must have `alt` text and the transition should not cause focus loss.
 - **Static avatar mode** needs `alt` text on the avatar image and a visible "Away" indicator.
 
@@ -773,33 +860,33 @@ This section analyzes all current plan files and their implications for testing,
 
 ## Priority Actions
 
-### Immediate (1-2 days)
+### Immediate (1-2 days) — ACCESSIBILITY CRITICAL
 
-1. **Add `aria-label` to all icon-only buttons** across lobby_live.html.heex, stateful_sensor_live.html.heex, and stateful_sensor_component.html.heex.
+1. **Add `aria-label` to all icon-only buttons** across lobby_live.html.heex, stateful_sensor_live.html.heex, and stateful_sensor_component.html.heex. (Est: 30+ buttons)
 
 2. **Add skip navigation link** to root.html.heex targeting `<main id="main">`.
 
-3. **Add `aria-live="assertive"` to flash message component** in core_components.ex.
+3. **Add `aria-live="polite"` region to lobby** for sensor count and connection status.
 
-4. **Add `aria-live="polite"` region to lobby** for sensor count and connection status.
+4. **Add `aria-live` regions for composite lens updates** (heartrate, ECG, breathing values).
 
-### Week 1
+### Week 1 — ACCESSIBILITY + CRITICAL TESTS
 
-5. **Migrate custom modals in lobby_live.html.heex** to use the accessible `<.modal>` component.
+5. **Migrate custom modals in lobby_live.html.heex** to use the accessible `<.modal>` component (documented in `/docs/modal-accessibility-implementation.md`).
 
 6. **Fix color contrast** by replacing `text-gray-400` with `text-gray-300` on dark backgrounds.
 
-7. **Create basic LobbyLive tests** -- mount, lens navigation, join modal.
+7. **Create basic LobbyLive tests** — mount, lens navigation, join modal, composite data extraction.
 
-8. **Create CallServer unit tests** -- participant management, quality tier calculation.
+8. **Create CallServer unit tests** — participant management, quality tier calculation (complements regression_guards tests).
 
-9. **Make quality dropdown keyboard accessible** -- toggle button + `aria-expanded`.
+9. **Make quality dropdown keyboard accessible** — toggle button + `aria-expanded`.
 
-### Weeks 2-4
+### Weeks 2-4 — ACCESSIBILITY + TEST COVERAGE EXPANSION
 
 10. **Implement dynamic page titles** across all LiveView modules.
 
-11. **Add `role="dialog"` and focus management** to sensor tile modals.
+11. **Add `role="dialog"` and focus management** to sensor tile modals (Map Modal, Detail Modal).
 
 12. **Create QualityManager and SnapshotManager tests.**
 
@@ -809,15 +896,15 @@ This section analyzes all current plan files and their implications for testing,
 
 15. **Add `aria-current="page"`** to bottom navigation active item.
 
-16. **Write accessibility tests** for skip navigation, page titles, landmarks, dynamic content.
+16. **Write accessibility tests** for skip navigation, page titles, landmarks, dynamic content (using suggested test cases above).
 
-### Weeks 5-8
+### Weeks 5-8 — COMPREHENSIVE COVERAGE
 
 17. **Expand test coverage to 25%** by adding tests for IndexLive, SystemStatusLive, CustomSignInLive.
 
-18. **Create Wallaby E2E accessibility tests** for keyboard navigation flows.
+18. **Create Wallaby E2E accessibility tests** for keyboard navigation flows (extend existing E2E suite documented in `/docs/e2e-testing.md`).
 
-19. **Add automated color contrast testing** to CI pipeline.
+19. **Add automated color contrast testing** to CI pipeline (consider `ex_check` with custom contrast checker).
 
 20. **Plan accessibility audit for upcoming features** (sync matrix, phase space orbit, research-grade visualizations).
 
@@ -827,17 +914,38 @@ This section analyzes all current plan files and their implications for testing,
 
 | Area | Files | Test Files | Coverage Estimate | Priority |
 |------|-------|------------|------------------|----------|
+| **Regression Guards** | N/A | **1 (NEW)** | **N/A** | **Maintenance** |
 | OTP/Supervision | 15+ | 3 | ~25% | Medium |
-| LiveView Modules | 46 | 4 | ~5% | CRITICAL |
-| Components | 13 | 2 | ~15% | High |
-| Calls System | 6 | 0 | 0% | CRITICAL |
+| LiveView Modules | 46 | 4 | ~5% | **CRITICAL** |
+| Components | 14 | 2 | ~15% | High |
+| Calls System | 6 | 0 | **0%** | **CRITICAL** |
 | Lenses | 4 | 1 | ~30% | Medium |
-| Channels | 3 | 0 | 0% | High |
+| Channels | 3 | 0 | **0%** | High |
 | Simulator | 10+ | 2 | ~15% | Medium |
 | Bio Layer | 5 | 2 | ~40% | Low |
 | API/Plugs | 5 | 3 | ~50% | Low |
+| E2E/Integration | N/A | 4 | N/A | Good |
 | Encoding (planned) | 0 | 0 | N/A | Medium |
 | Discovery (planned) | 0 | 0 | N/A | High |
+
+---
+
+## Key Improvements Since Last Update
+
+### Testing Improvements
+- **Regression Guards Test Suite** (49 tests, 766 lines) — Major addition protecting data pipeline contracts
+- **Test count increased** from 291 to 373 (+82 tests)
+- **E2E test documentation** added (`/docs/e2e-testing.md`)
+- **Modal accessibility documentation** added (`/docs/modal-accessibility-implementation.md`)
+
+### Accessibility Status
+- **No regression** — All previous accessibility issues remain
+- **No new violations introduced** — Custom modals still bypass accessible component
+- **Documentation improved** — Modal accessibility fully documented with WCAG compliance details
+
+### Code Quality
+- **Sensor data helper** extracted to `/lib/sensocto_web/live/helpers/sensor_data.ex`
+- **About content component** enhanced with video/image content
 
 ---
 
@@ -848,6 +956,8 @@ This section analyzes all current plan files and their implications for testing,
 - `lib/sensocto_web/live/index_live.html.heex`
 - `lib/sensocto_web/live/stateful_sensor_live.html.heex`
 - `lib/sensocto_web/live/components/stateful_sensor_component.html.heex`
+- `lib/sensocto_web/live/components/about_content_component.ex`
+- `lib/sensocto_web/live/helpers/sensor_data.ex` (NEW)
 - `lib/sensocto_web/components/core_components.ex`
 - `lib/sensocto_web/components/layouts/root.html.heex`
 - `lib/sensocto_web/components/layouts/app.html.heex`
@@ -859,25 +969,46 @@ This section analyzes all current plan files and their implications for testing,
 - `lib/sensocto_web/live/admin/system_status_live.html.heex`
 
 ### Test Files Reviewed
-- `test/sensocto_web/components/modal_accessibility_test.exs`
-- `test/sensocto_web/components/core_components_test.exs`
-- `test/sensocto_web/live/stateful_sensor_live_test.exs`
-- `test/sensocto/lenses/priority_lens_test.exs`
-- `test/sensocto/supervision/supervision_tree_test.exs`
-- `test/sensocto_web/features/media_player_feature_test.exs`
-- `test/sensocto_web/plugs/rate_limiter_test.exs`
-- `test/sensocto_web/openapi_test.exs`
-- `test/sensocto/bio/homeostatic_tuner_test.exs`
+- `test/sensocto/regression_guards_test.exs` (NEW — 49 tests)
+- `test/sensocto_web/components/modal_accessibility_test.exs` (14 tests)
+- `test/sensocto_web/components/core_components_test.exs` (10 tests)
+- `test/sensocto_web/live/stateful_sensor_live_test.exs` (2 tests)
+- `test/sensocto/lenses/priority_lens_test.exs` (20 tests)
+- `test/sensocto/supervision/supervision_tree_test.exs` (31 tests)
+- `test/sensocto_web/features/media_player_feature_test.exs` (20 tests)
+- `test/sensocto_web/features/collab_demo_feature_test.exs` (13 tests)
+- `test/sensocto_web/features/whiteboard_feature_test.exs` (~10 tests)
+- `test/sensocto_web/features/object3d_player_feature_test.exs` (~10 tests)
+- `test/sensocto_web/plugs/rate_limiter_test.exs` (13 tests)
+- `test/sensocto_web/openapi_test.exs` (2 tests)
+- `test/sensocto/bio/homeostatic_tuner_test.exs` (~15 tests)
 - `test/support/feature_case.ex`
+
+### Documentation Reviewed
+- `docs/modal-accessibility-implementation.md` (NEW)
+- `docs/e2e-testing.md` (NEW)
+- `docs/architecture.md`
+- `docs/attention-system.md`
+- `docs/attributes.md`
+- `docs/supervision-tree.md`
 
 ### Plan Files Analyzed
 - `PLAN-startup-optimization.md`
 - `PLAN-sensor-component-migration.md`
 - `PLAN-adaptive-video-quality.md`
 - `PLAN-room-iroh-migration.md`
-- `plans/delta-encoding-ecg.md`
 - `plans/PLAN-cluster-sensor-visibility.md`
 - `plans/PLAN-distributed-discovery.md`
 - `plans/PLAN-sensor-scaling-refactor.md`
 - `plans/PLAN-research-grade-synchronization.md`
 - `plans/PLAN-turn-cloudflare.md`
+
+---
+
+## Summary
+
+**Testing:** Significant progress with the addition of 49 regression guard tests protecting data pipeline contracts. However, critical gaps remain: LobbyLive (0 tests), IndexLive (0 tests), CallServer (0 tests), and the entire calls system have zero test coverage.
+
+**Accessibility:** No progress since Feb 15. The codebase has only 1 `aria-live` region (flash messages) and 0 `aria-label` attributes in the lobby view. This is a **critical gap** for a real-time sensor monitoring application where dynamic content updates are central to the user experience. Screen reader users are effectively unable to use the application for its primary purpose (monitoring sensor data in real-time).
+
+**Next Steps:** Prioritize accessibility fixes (aria-live regions, aria-label on icon-only buttons, skip navigation, custom modal migration) alongside test coverage expansion for critical user-facing modules (LobbyLive, IndexLive, CallServer).

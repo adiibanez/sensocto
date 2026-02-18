@@ -1050,6 +1050,10 @@ defmodule SensoctoWeb.LobbyLive do
           Sensocto.Lenses.PriorityLens.set_sensors(updated_socket.id, new_sensor_ids)
         end
 
+        # Re-register attention for new sensors so they broadcast to data:attention:*
+        # Without this, sensors added after handle_params stay at attention_level :none
+        ensure_attention_for_composite_sensors(updated_socket, updated_socket.assigns.live_action)
+
         # Only update sensors_offline if there are actual leaves
         updated_socket =
           if map_size(payload.leaves) > 0 do

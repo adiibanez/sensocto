@@ -1,0 +1,117 @@
+<div class="max-w-2xl mx-auto px-4 py-8">
+  <.header>
+    Your Profile
+    <:subtitle>Manage your public profile and skills</:subtitle>
+  </.header>
+
+  <div class="mt-8 space-y-8">
+    <%!-- Profile Form --%>
+    <div class="bg-gray-800 rounded-lg p-6">
+      <h3 class="text-lg font-semibold text-white mb-4">Profile Information</h3>
+
+      <.simple_form for={@form} phx-change="validate" phx-submit="save_profile">
+        <.input
+          field={@form[:display_name]}
+          type="text"
+          label="Display Name"
+          placeholder="How others see you"
+        />
+        <.input
+          field={@form[:bio]}
+          type="textarea"
+          label="Bio"
+          placeholder="Tell others about yourself..."
+        />
+        <.input field={@form[:status_emoji]} type="text" label="Status Emoji" placeholder="🎵" />
+        <.input
+          field={@form[:timezone]}
+          type="select"
+          label="Timezone"
+          options={[
+            {"Europe/Berlin", "Europe/Berlin"},
+            {"Europe/London", "Europe/London"},
+            {"America/New_York", "America/New_York"},
+            {"America/Los_Angeles", "America/Los_Angeles"},
+            {"Asia/Tokyo", "Asia/Tokyo"},
+            {"UTC", "UTC"}
+          ]}
+        />
+        <.input
+          field={@form[:is_public]}
+          type="checkbox"
+          label="Public profile (visible in user directory)"
+        />
+
+        <:actions>
+          <.button type="submit" phx-disable-with="Saving...">Save Profile</.button>
+        </:actions>
+      </.simple_form>
+    </div>
+
+    <%!-- Skills Section --%>
+    <div class="bg-gray-800 rounded-lg p-6">
+      <h3 class="text-lg font-semibold text-white mb-4">Skills</h3>
+
+      <%= if @skills != [] do %>
+        <div class="flex flex-wrap gap-2 mb-4">
+          <%= for skill <- @skills do %>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm bg-gray-700 text-gray-200">
+              <span class={[
+                "w-2 h-2 rounded-full",
+                skill.level == :expert && "bg-green-400",
+                skill.level == :intermediate && "bg-yellow-400",
+                skill.level == :beginner && "bg-gray-400"
+              ]}>
+              </span>
+              {skill.skill_name}
+              <button
+                type="button"
+                phx-click="remove_skill"
+                phx-value-id={skill.id}
+                class="ml-1 text-gray-400 hover:text-red-400"
+              >
+                <.icon name="hero-x-mark" class="h-3 w-3" />
+              </button>
+            </span>
+          <% end %>
+        </div>
+      <% end %>
+
+      <form phx-submit="add_skill" class="flex gap-2 items-end">
+        <div class="flex-1">
+          <label class="block text-sm font-medium text-gray-300 mb-1">Add Skill</label>
+          <input
+            type="text"
+            name="skill_name"
+            value={@skill_form[:skill_name].value}
+            placeholder="e.g. elixir, biosignals, music"
+            class="w-full rounded-md bg-gray-700 border-gray-600 text-white text-sm"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-1">Level</label>
+          <select name="level" class="rounded-md bg-gray-700 border-gray-600 text-white text-sm">
+            <option value="beginner">Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="expert">Expert</option>
+          </select>
+        </div>
+        <.button type="submit" class="mb-0">Add</.button>
+      </form>
+    </div>
+
+    <%!-- Account Info --%>
+    <div class="bg-gray-800 rounded-lg p-6">
+      <h3 class="text-lg font-semibold text-white mb-4">Account</h3>
+      <.list>
+        <:item title="Email">{@user.email}</:item>
+        <:item title="Account ID"><code class="text-xs text-gray-400">{@user.id}</code></:item>
+      </.list>
+      <div class="mt-4">
+        <.link navigate={~p"/settings"} class="text-sm text-blue-400 hover:text-blue-300">
+          Go to Settings →
+        </.link>
+      </div>
+    </div>
+  </div>
+</div>

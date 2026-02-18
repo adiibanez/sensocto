@@ -93,6 +93,7 @@
     | "per-type"       // Column lanes per attribute type
     | "radial"         // Concentric rings
     | "constellation"  // Geometric star patterns per user
+    | "flower"         // Rose-curve petal layout
     | "heatmap"        // Activity frequency coloring
     | "freshness"      // Time-since-data fading
     | "heartbeat"      // BPM-synchronized pulsing
@@ -132,7 +133,7 @@
   // Attention tracking (attention mode)
   let sensorAttentionLevels = new Map<string, string>();
 
-  const layoutModes: ViewMode[] = ["topology", "per-user", "per-type", "radial", "constellation"];
+  const layoutModes: ViewMode[] = ["topology", "per-type", "radial", "flower", "per-user", "constellation"];
   const visualModes: ViewMode[] = ["heatmap", "freshness", "heartbeat", "river", "attention"];
 
   // Sound engine — switchable themes for graph activity sonification
@@ -147,6 +148,8 @@
     heartbeat: "💓 Heartbeat",
   };
   let soundTheme: SoundTheme = $state("off");
+  let seasonPanelOpen = $state(false);
+  let statsPanelOpen = $state(false);
   let soundEnabled = $derived(soundTheme !== "off");
   let vibrateEnabled = $state(false);
   let audioCtx: AudioContext | null = null;
@@ -162,14 +165,14 @@
     if (!audioCtx) {
       audioCtx = new AudioContext();
       const compressor = audioCtx.createDynamicsCompressor();
-      compressor.threshold.value = -30;
-      compressor.knee.value = 6;
-      compressor.ratio.value = 12;
-      compressor.attack.value = 0.001;
-      compressor.release.value = 0.1;
+      compressor.threshold.value = -12;
+      compressor.knee.value = 10;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.15;
       compressor.connect(audioCtx.destination);
       masterOut = audioCtx.createGain();
-      masterOut.gain.value = 0.4;
+      masterOut.gain.value = 0.8;
       masterOut.connect(compressor);
     }
     if (audioCtx.state === "suspended") {
@@ -211,7 +214,7 @@
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
     const duration = 0.004 + Math.random() * 0.014;
-    const volume = 0.02 + Math.random() * 0.04;
+    const volume = 0.08 + Math.random() * 0.12;
 
     const noise = ctx.createBufferSource();
     noise.buffer = noiseBuffer!;
@@ -260,7 +263,7 @@
   function playBirdChirp() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.03 + Math.random() * 0.04;
+    const volume = 0.10 + Math.random() * 0.12;
     const chirps = Math.random() < 0.3 ? (2 + Math.floor(Math.random() * 2)) : 1;
 
     for (let i = 0; i < chirps; i++) {
@@ -310,8 +313,8 @@
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, t);
-    env.gain.linearRampToValueAtTime(0.012, t + 0.005);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    env.gain.linearRampToValueAtTime(0.10, t + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.001, t + dur);
 
     osc.connect(env);
     env.connect(masterOut!);
@@ -323,7 +326,7 @@
   function playChime() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.02 + Math.random() * 0.03;
+    const volume = 0.08 + Math.random() * 0.10;
     const pentatonic = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3, 784.0, 880.0];
     const baseFreq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
     const detune = (Math.random() - 0.5) * 10;
@@ -365,7 +368,7 @@
   function playHeartbeat() {
     const ctx = ensureAudioCtx();
     const t = ctx.currentTime;
-    const volume = 0.04 + Math.random() * 0.03;
+    const volume = 0.15 + Math.random() * 0.10;
     const baseFreq = 50 + Math.random() * 20;
 
     for (let i = 0; i < 2; i++) {
@@ -419,12 +422,152 @@
     }
   }
 
-  const nodeColors = {
-    room: "#3b82f6",      // blue
-    user: "#22c55e",      // green
-    sensor: "#f97316",    // orange
-    attribute: "#8b5cf6"  // purple
+  // ── Season Color Theme System ───────────────────────────────────────
+  type Season = "spring" | "summer" | "autumn" | "winter" | "rainbow";
+
+  interface SeasonTheme {
+    name: string;
+    icon: string;
+    nodes: { room: string; user: string; sensor: string; attribute: string };
+    attrs: { heartrate: string; battery: string; location: string; imu: string };
+    glow: {
+      data: { core: [number,number,number]; mid: [number,number,number]; wisp: [number,number,number] };
+      attention: { core: [number,number,number]; mid: [number,number,number]; wisp: [number,number,number] };
+      heartbeat: { core: [number,number,number]; mid: [number,number,number]; wisp: [number,number,number] };
+      connect: { core: [number,number,number]; mid: [number,number,number]; wisp: [number,number,number] };
+      disconnect: { core: [number,number,number]; mid: [number,number,number]; wisp: [number,number,number] };
+    };
+    heatmap: [string, string, string, string, string]; // idle, low, medium, high, intense
+    attention_levels: [string, string, string, string]; // high, medium, low, none
+    selectedEdge: string;
+  }
+
+  const SEASON_THEMES: Record<Season, SeasonTheme> = {
+    spring: {
+      name: "Spring", icon: "🌸",
+      nodes: { room: "#2d8a4e", user: "#a8e6a0", sensor: "#ff69b4", attribute: "#7ecf7e" },
+      attrs: { heartrate: "#ff4d88", battery: "#ffe040", location: "#3cb371", imu: "#da70d6" },
+      glow: {
+        data:       { core: [140, 255, 160], mid: [80, 230, 110], wisp: [110, 245, 135] },
+        attention:  { core: [255, 200, 230], mid: [255, 150, 200], wisp: [255, 175, 215] },
+        heartbeat:  { core: [255, 120, 180], mid: [240, 80, 150], wisp: [250, 100, 165] },
+        connect:    { core: [100, 255, 150], mid: [50, 230, 100], wisp: [75, 245, 125] },
+        disconnect: { core: [255, 240, 100], mid: [245, 220, 60], wisp: [250, 230, 80] },
+      },
+      heatmap: ["#1a3a2a", "#2d8a4e", "#5cc870", "#ff69b4", "#ff1493"],
+      attention_levels: ["#ff69b4", "#5cc870", "#2d8a4e", "#1a3a2a"],
+      selectedEdge: "#90ee90",
+    },
+    summer: {
+      name: "Summer", icon: "☀️",
+      nodes: { room: "#2d8a8a", user: "#e8d5a0", sensor: "#f09030", attribute: "#6cb4d8" },
+      attrs: { heartrate: "#e84040", battery: "#f5c030", location: "#20b2aa", imu: "#9370db" },
+      glow: {
+        data:       { core: [255, 240, 200], mid: [250, 210, 150], wisp: [255, 225, 175] },
+        attention:  { core: [255, 250, 230], mid: [255, 235, 195], wisp: [255, 242, 210] },
+        heartbeat:  { core: [255, 140, 140], mid: [240, 90, 90],   wisp: [250, 115, 115] },
+        connect:    { core: [150, 240, 220], mid: [50, 210, 190],  wisp: [100, 225, 205] },
+        disconnect: { core: [255, 220, 130], mid: [245, 185, 60],  wisp: [250, 200, 100] },
+      },
+      heatmap: ["#334155", "#2d8a8a", "#d4a030", "#f09030", "#e84040"],
+      attention_levels: ["#f5c030", "#d4a030", "#2d8a8a", "#374151"],
+      selectedEdge: "#fcd9a0",
+    },
+    autumn: {
+      name: "Autumn", icon: "🍂",
+      nodes: { room: "#8b5e3c", user: "#d4a870", sensor: "#cc6633", attribute: "#a07050" },
+      attrs: { heartrate: "#c44040", battery: "#d4a030", location: "#6b8e6b", imu: "#8b6090" },
+      glow: {
+        data:       { core: [255, 210, 160], mid: [230, 170, 110], wisp: [245, 190, 135] },
+        attention:  { core: [255, 235, 200], mid: [240, 210, 165], wisp: [248, 222, 180] },
+        heartbeat:  { core: [230, 140, 120], mid: [210, 100, 80],  wisp: [220, 120, 100] },
+        connect:    { core: [160, 210, 160], mid: [100, 180, 110], wisp: [130, 195, 135] },
+        disconnect: { core: [230, 190, 120], mid: [210, 160, 70],  wisp: [220, 175, 95] },
+      },
+      heatmap: ["#334155", "#6b5b3c", "#a07040", "#cc6633", "#c44040"],
+      attention_levels: ["#d4a030", "#b08030", "#6b5b3c", "#374151"],
+      selectedEdge: "#e8c090",
+    },
+    winter: {
+      name: "Winter", icon: "❄️",
+      nodes: { room: "#5a7d9a", user: "#c8d8e4", sensor: "#4ca6c9", attribute: "#7b9ab8" },
+      attrs: { heartrate: "#d47090", battery: "#c8b870", location: "#50b0a0", imu: "#8080c0" },
+      glow: {
+        data:       { core: [200, 230, 255], mid: [160, 205, 250], wisp: [180, 218, 252] },
+        attention:  { core: [230, 245, 255], mid: [200, 225, 250], wisp: [215, 235, 252] },
+        heartbeat:  { core: [220, 160, 190], mid: [200, 120, 160], wisp: [210, 140, 175] },
+        connect:    { core: [170, 230, 220], mid: [110, 210, 200], wisp: [140, 220, 210] },
+        disconnect: { core: [210, 210, 230], mid: [180, 180, 210], wisp: [195, 195, 220] },
+      },
+      heatmap: ["#334155", "#4a6a8a", "#5090b0", "#4ca6c9", "#d47090"],
+      attention_levels: ["#4ca6c9", "#5a7d9a", "#4a5a6a", "#374151"],
+      selectedEdge: "#a0d0e8",
+    },
+    rainbow: {
+      name: "Rainbow", icon: "🌈",
+      nodes: { room: "#3b82f6", user: "#22c55e", sensor: "#f97316", attribute: "#8b5cf6" },
+      attrs: { heartrate: "#ef4444", battery: "#eab308", location: "#06b6d4", imu: "#a78bfa" },
+      glow: {
+        data:       { core: [180, 255, 210], mid: [34, 197, 94],   wisp: [120, 230, 170] },
+        attention:  { core: [255, 220, 180], mid: [250, 180, 120], wisp: [252, 200, 150] },
+        heartbeat:  { core: [255, 100, 100], mid: [239, 68, 68],   wisp: [248, 84, 84] },
+        connect:    { core: [100, 220, 255], mid: [6, 182, 212],   wisp: [50, 200, 235] },
+        disconnect: { core: [255, 200, 80],  mid: [234, 179, 8],   wisp: [245, 190, 44] },
+      },
+      heatmap: ["#334155", "#22c55e", "#eab308", "#f97316", "#ef4444"],
+      attention_levels: ["#ef4444", "#eab308", "#22c55e", "#374151"],
+      selectedEdge: "#34d399",
+    },
   };
+
+  function detectCETSeason(): Season {
+    // CET/CEST timezone month determines season
+    const cetDate = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
+    const month = cetDate.getMonth(); // 0-11
+    if (month >= 2 && month <= 4) return "spring";
+    if (month >= 5 && month <= 7) return "summer";
+    if (month >= 8 && month <= 10) return "autumn";
+    return "winter";
+  }
+
+  function loadSavedSeason(): Season {
+    try {
+      const saved = localStorage.getItem("sensocto_graph_season");
+      if (saved && saved in SEASON_THEMES) return saved as Season;
+    } catch (_) {}
+    return detectCETSeason();
+  }
+
+  let currentSeason = $state<Season>(loadSavedSeason());
+  function getTheme(): SeasonTheme { return SEASON_THEMES[currentSeason]; }
+
+  // Reactive nodeColors that updates with season
+  let nodeColors = $derived(getTheme().nodes);
+
+  function getAttrColor(attrType: string | undefined, attrId: string | undefined): string {
+    const t = getTheme().attrs;
+    if (attrType === "heartrate" || attrId?.includes("heart")) return t.heartrate;
+    if (attrType === "battery") return t.battery;
+    if (attrType === "location" || attrId?.includes("geo")) return t.location;
+    if (attrType === "imu" || attrId?.includes("accelero")) return t.imu;
+    return getTheme().nodes.attribute;
+  }
+
+  function switchSeason(season: Season) {
+    currentSeason = season;
+    try { localStorage.setItem("sensocto_graph_season", season); } catch (_) {}
+    // Recolor all nodes in the graph
+    if (!graph) return;
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "attribute") {
+        graph.setNodeAttribute(node, "color", getAttrColor(attrs.data?.attribute_type, attrs.data?.attribute_id));
+      } else if (attrs.nodeType) {
+        const nc = getTheme().nodes;
+        graph.setNodeAttribute(node, "color", nc[attrs.nodeType as keyof typeof nc] || "#6b7280");
+      }
+    });
+    scheduleRefresh();
+  }
 
   // Base node sizes (will be scaled based on graph size)
   const baseNodeSizes = {
@@ -532,16 +675,7 @@
         const attrLabel = attr.attribute_name || attr.attribute_id;
 
         // Color attributes by type
-        let attrColor = nodeColors.attribute;
-        if (attr.attribute_type === "heartrate" || attr.attribute_id.includes("heart")) {
-          attrColor = "#ef4444"; // red
-        } else if (attr.attribute_type === "battery") {
-          attrColor = "#eab308"; // yellow
-        } else if (attr.attribute_type === "location" || attr.attribute_id.includes("geo")) {
-          attrColor = "#06b6d4"; // cyan
-        } else if (attr.attribute_type === "imu" || attr.attribute_id.includes("accelero")) {
-          attrColor = "#a855f7"; // purple
-        }
+        const attrColor = getAttrColor(attr.attribute_type, attr.attribute_id);
 
         graph.addNode(attrNodeId, {
           label: attrLabel,
@@ -735,7 +869,7 @@
         const source = graph.source(edge);
         const target = graph.target(edge);
         if (highlightedNodes.has(source) && highlightedNodes.has(target)) {
-          return { ...data, color: "#c026d3", size: (data.size || 0.5) * 1.5, zIndex: 1 };
+          return { ...data, color: getTheme().selectedEdge, size: (data.size || 0.5) * 1.5, zIndex: 1 };
         }
         return {
           ...data,
@@ -961,11 +1095,13 @@
     const oldPositions = animate ? capturePositions() : null;
 
     switch (mode) {
-      case "topology":     runLayout(); break;
+      // Use sync layout when animating so positions are available immediately
+      case "topology":     animate ? runLayoutSync() : runLayout(); break;
       case "per-user":     layoutPerUser(); break;
       case "per-type":     layoutPerType(); break;
       case "radial":       layoutRadialTree(); break;
       case "constellation": layoutConstellation(); break;
+      case "flower":        layoutFlower(); break;
     }
 
     if (animate && oldPositions) {
@@ -1028,11 +1164,7 @@
 
   function getOriginalNodeColor(attrs: any): string {
     if (attrs.nodeType === "attribute") {
-      if (attrs.data?.attribute_type === "heartrate" || attrs.data?.attribute_id?.includes("heart")) return "#ef4444";
-      if (attrs.data?.attribute_type === "battery") return "#eab308";
-      if (attrs.data?.attribute_type === "location" || attrs.data?.attribute_id?.includes("geo")) return "#06b6d4";
-      if (attrs.data?.attribute_type === "imu" || attrs.data?.attribute_id?.includes("accelero")) return "#a855f7";
-      return nodeColors.attribute;
+      return getAttrColor(attrs.data?.attribute_type, attrs.data?.attribute_id);
     }
     return nodeColors[attrs.nodeType as keyof typeof nodeColors] || "#6b7280";
   }
@@ -1294,6 +1426,106 @@
     sigma?.refresh();
   }
 
+  // ── Layout: Flower (Rose Curve) ─────────────────────────────────
+
+  function layoutFlower() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const cx = 50, cy = 50;
+    const maxR = 42;
+
+    // Collect all nodes by type
+    const userNodes: string[] = [];
+    const sensorNodes: string[] = [];
+    const attrNodes: string[] = [];
+    const attrsBySensor = new Map<string, string[]>();
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userNodes.push(node);
+      else if (attrs.nodeType === "sensor") { sensorNodes.push(node); attrsBySensor.set(node, []); }
+      else if (attrs.nodeType === "attribute") attrNodes.push(node);
+    });
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "attribute") {
+        const sKey = `sensor:${attrs.data.sensor_id}`;
+        attrsBySensor.get(sKey)?.push(node);
+      }
+    });
+
+    // Flatten: each "item" is a sensor + its attributes (one unit per petal slot)
+    type Item = { sensor: string; attrs: string[] };
+    const items: Item[] = sensorNodes.map(s => ({ sensor: s, attrs: attrsBySensor.get(s) || [] }));
+
+    // Choose petal count: use number of users (min 5, max 12) for visual balance
+    const petalCount = Math.max(5, Math.min(12, userNodes.length || 5));
+    const petalAngle = (2 * Math.PI) / petalCount;
+
+    // Distribute items evenly across petals (round-robin)
+    const petals: Item[][] = Array.from({length: petalCount}, () => []);
+    items.forEach((item, i) => {
+      petals[i % petalCount].push(item);
+    });
+
+    // Find the max items in any petal (all petals will use this for spacing)
+    const maxPerPetal = Math.max(1, ...petals.map(p => p.length));
+
+    // Place user nodes at the flower center
+    const userR = Math.min(5, maxR * 0.1);
+    userNodes.forEach((node, i) => {
+      const a = (i / Math.max(userNodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
+      graph.setNodeAttribute(node, "x", cx + userR * Math.cos(a));
+      graph.setNodeAttribute(node, "y", cy + userR * Math.sin(a));
+    });
+
+    // Place items in each petal — identical geometry per petal
+    for (let pi = 0; pi < petalCount; pi++) {
+      const petal = petals[pi];
+      if (petal.length === 0) continue;
+
+      // Petal center angle
+      const pa = pi * petalAngle - Math.PI / 2;
+      const cosA = Math.cos(pa);
+      const sinA = Math.sin(pa);
+
+      // Place sensors along the petal spine at evenly spaced radii
+      // Use maxPerPetal for spacing so all petals have identical slot positions
+      for (let si = 0; si < petal.length; si++) {
+        const item = petal[si];
+        // t ranges from ~0.25 to ~0.9 along the petal
+        const t = (si + 1) / (maxPerPetal + 1);
+        const r = maxR * (0.18 + 0.75 * t);
+
+        // Petal width at this t: sine envelope, widest at t≈0.5
+        const width = maxR * 0.08 * Math.sin(t * Math.PI);
+        // Alternate left/right of spine for visual fullness
+        const side = si % 2 === 0 ? 1 : -1;
+        const offset = petal.length > 1 ? side * width * 0.5 : 0;
+
+        const sx = cx + r * cosA - offset * sinA;
+        const sy = cy + r * sinA + offset * cosA;
+        graph.setNodeAttribute(item.sensor, "x", sx);
+        graph.setNodeAttribute(item.sensor, "y", sy);
+
+        // Attributes: small arc pointing outward from center
+        const aCount = item.attrs.length;
+        if (aCount === 0) continue;
+        const attrR = Math.max(1.2, 1.5 * Math.sqrt(aCount));
+        for (let ai = 0; ai < aCount; ai++) {
+          // Fan in a semicircle facing outward
+          const spread = Math.min(Math.PI, (aCount / 3) * Math.PI * 0.5);
+          const baseAngle = pa;
+          const aAngle = baseAngle - spread / 2 + (aCount === 1 ? spread / 2 : (ai / (aCount - 1)) * spread);
+          graph.setNodeAttribute(item.attrs[ai], "x", sx + attrR * Math.cos(aAngle));
+          graph.setNodeAttribute(item.attrs[ai], "y", sy + attrR * Math.sin(aAngle));
+        }
+      }
+    }
+
+    isLayoutRunning = false;
+    sigma?.refresh();
+  }
+
   // ── Visual: Activity Heatmap ──────────────────────────────────
 
   function startActivityHeatmap() {
@@ -1335,11 +1567,12 @@
     const baseSize = scaledNodeSizes[attrs.nodeType as keyof typeof scaledNodeSizes] || 4;
 
     let color: string;
-    if (count === 0)      color = "#334155";    // dark slate
-    else if (count <= 2)  color = "#3b82f6";    // blue
-    else if (count <= 5)  color = "#22c55e";    // green
-    else if (count <= 10) color = "#eab308";    // yellow
-    else                  color = "#ef4444";    // red
+    const hm = getTheme().heatmap;
+    if (count === 0)      color = hm[0];
+    else if (count <= 2)  color = hm[1];
+    else if (count <= 5)  color = hm[2];
+    else if (count <= 10) color = hm[3];
+    else                  color = hm[4];
 
     const sizeMult = 1.0 + Math.min(count * 0.08, 0.8);
     graph.setNodeAttribute(nodeId, "color", color);
@@ -1532,7 +1765,7 @@
 
     if (path.length < 2) return;
 
-    const color = graph.getNodeAttribute(attrNodeId, "color") || "#8b5cf6";
+    const color = graph.getNodeAttribute(attrNodeId, "color") || getTheme().nodes.attribute;
     riverParticles.push({ path, progress: 0, speed: 0.012 + Math.random() * 0.008, color, size: 1.5 + Math.random() });
 
     if (riverParticles.length > 300) riverParticles.splice(0, riverParticles.length - 300);
@@ -1621,11 +1854,12 @@
     const baseSize = scaledNodeSizes[attrs.nodeType as keyof typeof scaledNodeSizes] || 4;
 
     let color: string, sizeMult: number;
+    const al = getTheme().attention_levels;
     switch (level) {
-      case "high":   color = "#22c55e"; sizeMult = 1.5; break;
-      case "medium": color = "#eab308"; sizeMult = 1.2; break;
-      case "low":    color = "#f97316"; sizeMult = 0.9; break;
-      default:       color = "#374151"; sizeMult = 0.6; break;
+      case "high":   color = al[0]; sizeMult = 1.5; break;
+      case "medium": color = al[1]; sizeMult = 1.2; break;
+      case "low":    color = al[2]; sizeMult = 0.9; break;
+      default:       color = al[3]; sizeMult = 0.6; break;
     }
 
     graph.setNodeAttribute(nodeId, "color", color);
@@ -1955,13 +2189,7 @@
   let glowRaf: number | null = null;
   type GlowKind = "data" | "attention" | "heartbeat" | "connect" | "disconnect";
   interface GlowColors { core: [number, number, number]; mid: [number, number, number]; wisp: [number, number, number]; }
-  const GLOW_PALETTES: Record<GlowKind, GlowColors> = {
-    data:       { core: [147, 197, 253], mid: [96, 165, 250], wisp: [120, 180, 255] },  // electric blue
-    attention:  { core: [103, 232, 249], mid: [34, 211, 238],  wisp: [80, 220, 245] },  // cyan/teal
-    heartbeat:  { core: [253, 164, 175], mid: [251, 113, 133], wisp: [255, 140, 160] }, // rose/pink
-    connect:    { core: [167, 243, 208], mid: [52, 211, 153],  wisp: [120, 230, 180] }, // emerald
-    disconnect: { core: [253, 230, 138], mid: [251, 191, 36],  wisp: [255, 210, 100] }, // amber
-  };
+  function getGlowPalettes(): Record<GlowKind, GlowColors> { return getTheme().glow; }
   interface GlowEntry { start: number; kind: GlowKind; frozenPos?: { x: number; y: number }; frozenSize?: number; }
   let activeGlows = new Map<string, GlowEntry>();
   const GLOW_DURATION_MS = 350;
@@ -2024,7 +2252,8 @@
         displaySize = (baseSize / ratio) * 2;
       }
 
-      const palette = GLOW_PALETTES[glow.kind] || GLOW_PALETTES.data;
+      const palettes = getGlowPalettes();
+      const palette = palettes[glow.kind] || palettes.data;
       const [cR, cG, cB] = palette.core;
       const [mR, mG, mB] = palette.mid;
       const [wR, wG, wB] = palette.wisp;
@@ -2421,11 +2650,7 @@
         // Attribute nodes
         for (const [attrId, attr] of Object.entries(sensor.attributes || {})) {
           const attrNodeId = `attr:${sensorId}:${attrId}`;
-          let attrColor = nodeColors.attribute;
-          if ((attr as any).attribute_type === "heartrate" || attrId.includes("heart")) attrColor = "#ef4444";
-          else if ((attr as any).attribute_type === "battery") attrColor = "#eab308";
-          else if ((attr as any).attribute_type === "location" || attrId.includes("geo")) attrColor = "#06b6d4";
-          else if ((attr as any).attribute_type === "imu" || attrId.includes("accelero")) attrColor = "#a855f7";
+          const attrColor = getAttrColor((attr as any).attribute_type, attrId);
 
           if (!graph.hasNode(attrNodeId)) {
             graph.addNode(attrNodeId, {
@@ -2500,7 +2725,9 @@
   });
 </script>
 
-<div class="lobby-graph" class:fullscreen={isFullscreen} class:compact={compact} bind:this={graphRoot}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="lobby-graph" class:fullscreen={isFullscreen} class:compact={compact} bind:this={graphRoot}
+  onclick={() => { seasonPanelOpen = false; statsPanelOpen = false; }}>
   <div bind:this={container} class="graph-container"></div>
 
   <!-- Glow overlay canvas for plasma discharge halos -->
@@ -2596,14 +2823,17 @@
       <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-right" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Force-directed clustering">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
       </button>
-      <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
-      </button>
       <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-right" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Lanes by attribute">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
       </button>
       <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-right" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" /><circle cx="12" cy="12" r="5" stroke-width="2" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("flower")} class="mode-btn tooltip-right" class:active={viewMode === "flower"} class:layout-active={lastLayoutMode === "flower" && visualModes.includes(viewMode)} data-tooltip="Flower — Rose-curve petals">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2C12 2 14.5 5.5 14.5 8.5C14.5 10.5 13.4 12 12 12C10.6 12 9.5 10.5 9.5 8.5C9.5 5.5 12 2 12 2Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 12C22 12 18.5 14.5 15.5 14.5C13.5 14.5 12 13.4 12 12C12 10.6 13.5 9.5 15.5 9.5C18.5 9.5 22 12 22 12Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 22C12 22 9.5 18.5 9.5 15.5C9.5 13.5 10.6 12 12 12C13.4 12 14.5 13.5 14.5 15.5C14.5 18.5 12 22 12 22Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2 12C2 12 5.5 9.5 8.5 9.5C10.5 9.5 12 10.6 12 12C12 13.4 10.5 14.5 8.5 14.5C5.5 14.5 2 12 2 12Z" /><circle cx="12" cy="12" r="2" fill="currentColor" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
       </button>
       <button onclick={() => switchViewMode("constellation")} class="mode-btn tooltip-right" class:active={viewMode === "constellation"} class:layout-active={lastLayoutMode === "constellation" && visualModes.includes(viewMode)} data-tooltip="Constellation — Star patterns">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
@@ -2625,6 +2855,25 @@
       <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-right" class:active={viewMode === "attention"} data-tooltip="Attention — Who's watching">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
       </button>
+    </div>
+  </div>
+
+  <!-- Season selector — bottom-left, tap/hover to expand -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="bottom-overlay bottom-left" class:open={seasonPanelOpen}
+    onclick={(e) => { e.stopPropagation(); seasonPanelOpen = !seasonPanelOpen; statsPanelOpen = false; }}>
+    <span class="bottom-trigger">{SEASON_THEMES[currentSeason].icon}</span>
+    <div class="bottom-panel">
+      {#each (["spring", "summer", "autumn", "winter", "rainbow"] as Season[]) as season}
+        <button
+          onclick={(e) => { e.stopPropagation(); switchSeason(season); seasonPanelOpen = false; }}
+          class="season-btn"
+          class:active={currentSeason === season}
+          title={SEASON_THEMES[season].name}
+        >
+          {SEASON_THEMES[season].icon}
+        </button>
+      {/each}
     </div>
   </div>
 
@@ -2695,39 +2944,6 @@
     </div>
   {/if}
 
-  <!-- Legend (mode-aware) -->
-  <div class="legend">
-    {#if viewMode === "heatmap"}
-      <div class="legend-item"><span class="legend-dot" style="background: #334155"></span><span>Idle</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #3b82f6"></span><span>Low</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #22c55e"></span><span>Medium</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #eab308"></span><span>High</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #ef4444"></span><span>Intense</span></div>
-    {:else if viewMode === "attention"}
-      <div class="legend-item"><span class="legend-dot" style="background: #22c55e"></span><span>High</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #eab308"></span><span>Medium</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #f97316"></span><span>Low</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #374151"></span><span>None</span></div>
-    {:else if viewMode === "freshness"}
-      <div class="legend-item"><span class="legend-dot" style="background: #22c55e; opacity: 1"></span><span>Fresh</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #22c55e; opacity: 0.5"></span><span>Cooling</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #22c55e; opacity: 0.2"></span><span>Stale</span></div>
-    {:else if viewMode === "heartbeat"}
-      <div class="legend-item"><span class="legend-dot" style="background: #ef4444"></span><span>HR Sensors</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #6b7280"></span><span>Other</span></div>
-      <div class="legend-item"><span class="legend-label">Avg {heartbeatBPMs.size > 0 ? Math.round(Array.from(heartbeatBPMs.values()).reduce((s,b)=>s+b,0)/heartbeatBPMs.size) : '--'} BPM</span></div>
-    {:else if viewMode === "river"}
-      <div class="legend-item"><span class="legend-dot" style="background: #ef4444"></span><span>HR</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #eab308"></span><span>Battery</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #06b6d4"></span><span>Location</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: #a855f7"></span><span>IMU</span></div>
-    {:else}
-      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.room}"></span><span>Rooms</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.user}"></span><span>Users</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.sensor}"></span><span>Sensors</span></div>
-      <div class="legend-item"><span class="legend-dot" style="background: {nodeColors.attribute}"></span><span>Attributes</span></div>
-    {/if}
-  </div>
 
   <!-- Compact Hover Tooltip (follows cursor) -->
   {#if hoverDetails && !selectedNode}
@@ -2786,11 +3002,16 @@
     </div>
   {/if}
 
-  <!-- Stats -->
-  <div class="stats">
-    <span>Nodes: {graph?.order || 0}{!lodAttributesVisible ? " (LOD)" : ""}</span>
-    <span>Edges: {graph?.size || 0}</span>
-    <span>Scale: {(scaledNodeSizes.sensor / baseNodeSizes.sensor).toFixed(2)}x</span>
+  <!-- Stats — bottom-right, tap/hover to expand -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="bottom-overlay bottom-right" class:open={statsPanelOpen}
+    onclick={(e) => { e.stopPropagation(); statsPanelOpen = !statsPanelOpen; seasonPanelOpen = false; }}>
+    <span class="bottom-trigger stats-trigger">{graph?.order || 0}</span>
+    <div class="bottom-panel">
+      <span>Nodes: {graph?.order || 0}{!lodAttributesVisible ? " (LOD)" : ""}</span>
+      <span>Edges: {graph?.size || 0}</span>
+      <span>Scale: {(scaledNodeSizes.sensor / baseNodeSizes.sensor).toFixed(2)}x</span>
+    </div>
   </div>
 </div>
 
@@ -2799,7 +3020,6 @@
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 100vh;
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   }
 
@@ -2816,8 +3036,7 @@
   }
 
   .lobby-graph.compact .sidebar,
-  .lobby-graph.compact .legend,
-  .lobby-graph.compact .stats,
+  .lobby-graph.compact .bottom-overlay,
   .lobby-graph.compact .export-modal {
     display: none;
   }
@@ -3013,6 +3232,17 @@
     transform: translateY(-50%) translateX(0);
   }
 
+  /* Right-side tooltips (for the left-side mode toolbar) */
+  .tooltip-right[data-tooltip]::after {
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-4px);
+  }
+
+  .tooltip-right[data-tooltip]:hover::after {
+    transform: translateY(-50%) translateX(0);
+  }
+
   /* Below tooltips (for the top mode selector) */
   .tooltip-below[data-tooltip]::after {
     top: calc(100% + 8px);
@@ -3075,39 +3305,82 @@
     height: 1rem;
   }
 
-  /* ── Legend ──────────────────────────────────────────── */
+  /* ── Bottom overlays (hover to expand) ─────────────── */
 
-  .legend {
+  .bottom-overlay {
     position: absolute;
     bottom: 1rem;
-    left: 1rem;
-    display: flex;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
-    background: rgba(31, 41, 55, 0.9);
-    border: 1px solid rgba(75, 85, 99, 0.5);
-    border-radius: 0.5rem;
     z-index: 10;
   }
 
-  .legend-item {
+  .bottom-left { left: 1rem; }
+  .bottom-right { right: 1rem; }
+
+  .bottom-trigger {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
+    justify-content: center;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 0.5rem;
+    background: rgba(31, 41, 55, 0.9);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 0.5rem;
     color: #d1d5db;
+    font-size: 1rem;
+    cursor: default;
   }
 
-  .legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-
-  .legend-label {
-    font-size: 0.75rem;
+  .stats-trigger {
+    font-size: 0.7rem;
     color: #9ca3af;
     font-variant-numeric: tabular-nums;
+  }
+
+  .bottom-panel {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.375rem;
+    background: rgba(31, 41, 55, 0.95);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 0.5rem;
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+    position: absolute;
+    bottom: 100%;
+    white-space: nowrap;
+    font-size: 0.7rem;
+    color: #9ca3af;
+  }
+
+  .bottom-left .bottom-panel { left: 0; }
+  .bottom-right .bottom-panel { right: 0; }
+
+  .bottom-panel::after {
+    content: '';
+    position: absolute;
+    bottom: -0.375rem;
+    left: 0;
+    right: 0;
+    height: 0.375rem;
+  }
+
+  .bottom-overlay.open .bottom-panel {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .bottom-overlay:hover .bottom-panel {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
   }
 
   /* Compact hover tooltip - follows cursor */
@@ -3240,21 +3513,6 @@
   .bottom-bar-close:hover {
     background: rgba(75, 85, 99, 0.5);
     color: #d1d5db;
-  }
-
-  .stats {
-    position: absolute;
-    bottom: 1rem;
-    right: 1rem;
-    display: flex;
-    gap: 1rem;
-    padding: 0.5rem 0.75rem;
-    background: rgba(31, 41, 55, 0.9);
-    border: 1px solid rgba(75, 85, 99, 0.5);
-    border-radius: 0.5rem;
-    font-size: 0.7rem;
-    color: #9ca3af;
-    z-index: 10;
   }
 
   /* Export modal */
@@ -3434,6 +3692,33 @@
   .control-btn.sound-active:hover {
     background: rgba(16, 185, 129, 0.35);
     border-color: rgba(52, 211, 153, 0.7);
+  }
+
+  .season-btn {
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #d1d5db;
+    opacity: 0.5;
+    transition: all 0.15s ease;
+    touch-action: manipulation;
+  }
+
+  .season-btn:hover {
+    opacity: 0.8;
+    background: rgba(55, 65, 81, 0.9);
+  }
+
+  .season-btn.active {
+    opacity: 1;
+    background: rgba(75, 85, 99, 0.5);
   }
 
   .recording-indicator {

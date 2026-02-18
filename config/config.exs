@@ -46,7 +46,7 @@ config :spark,
 config :sensocto,
   ecto_repos: [Sensocto.Repo, Sensocto.Repo.Replica],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Sensocto.Accounts, Sensocto.Sensors]
+  ash_domains: [Sensocto.Accounts, Sensocto.Sensors, Sensocto.Collaboration]
 
 # Internationalization (i18n) configuration
 config :sensocto, SensoctoWeb.Gettext,

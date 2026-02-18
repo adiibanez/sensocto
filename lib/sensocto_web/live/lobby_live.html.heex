@@ -258,6 +258,15 @@
       </span>
     </button>
 
+    <button
+      phx-click="switch_lobby_mode"
+      phx-value-mode="polls"
+      class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        if(@lobby_mode == :polls, do: "bg-purple-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+    >
+      <Heroicons.icon name="chart-bar-square" type="solid" class="h-3 w-3" /> Polls
+    </button>
+
     <%!-- Sync Status Indicator --%>
     <.live_component
       module={SensoctoWeb.Live.Components.SyncStatusComponent}
@@ -317,6 +326,15 @@
       current_user={@current_user}
       can_manage={true}
       sync_mode={@sync_mode}
+    />
+  </div>
+
+  <%!-- Polls Panel --%>
+  <div :if={@lobby_mode == :polls} class="mb-6">
+    <.live_component
+      module={SensoctoWeb.Components.PollsPanelComponent}
+      id="lobby-polls-panel"
+      current_user={@current_user}
     />
   </div>
 
@@ -454,86 +472,11 @@
         </.link>
       </div>
 
-      <%!-- Lens Dropdown for all types - only shows available lenses --%>
-      <form phx-change="select_view" class="hidden sm:block">
-        <select
-          name="view"
-          class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-orange-500 focus:border-orange-500"
-        >
-          <option value="sensors" selected={@live_action == :sensors}>All Sensors</option>
-          <optgroup label="Views">
-            <option value="users" selected={@live_action == :users}>By User</option>
-            <option value="graph" selected={@live_action == :graph}>Graph View</option>
-            <option
-              :if={@favorite_sensors != []}
-              value="favorites"
-              selected={@live_action == :favorites}
-            >
-              ⭐ Favorites
-            </option>
-          </optgroup>
-          <optgroup :if={@available_lenses != []} label="Lenses">
-            <option
-              :if={:heartrate in @available_lenses}
-              value="heartrate"
-              selected={@live_action == :heartrate}
-            >
-              Heartrate
-            </option>
-            <option :if={:imu in @available_lenses} value="imu" selected={@live_action == :imu}>
-              IMU
-            </option>
-            <option
-              :if={:location in @available_lenses}
-              value="location"
-              selected={@live_action == :location}
-            >
-              Location
-            </option>
-            <option :if={:ecg in @available_lenses} value="ecg" selected={@live_action == :ecg}>
-              ECG
-            </option>
-            <option
-              :if={:battery in @available_lenses}
-              value="battery"
-              selected={@live_action == :battery}
-            >
-              Battery
-            </option>
-            <option
-              :if={:skeleton in @available_lenses}
-              value="skeleton"
-              selected={@live_action == :skeleton}
-            >
-              Skeleton
-            </option>
-            <option
-              :if={:respiration in @available_lenses}
-              value="breathing"
-              selected={@live_action == :respiration}
-            >
-              Breathing
-            </option>
-            <option
-              :if={:hrv in @available_lenses}
-              value="hrv"
-              selected={@live_action == :hrv}
-            >
-              HRV
-            </option>
-            <option
-              :if={:gaze in @available_lenses}
-              value="gaze"
-              selected={@live_action == :gaze}
-            >
-              Gaze
-            </option>
-          </optgroup>
-        </select>
-      </form>
-
-      <%!-- Sort Controls --%>
-      <div class="flex items-center gap-1.5 ml-4">
+      <%!-- Sort Controls — only relevant for sensor list views --%>
+      <div
+        :if={@live_action in [:sensors, :users, :favorites]}
+        class="flex items-center gap-1.5 ml-4"
+      >
         <span class="text-xs text-gray-500 mr-1">Sort:</span>
         <button
           phx-click="set_sort"
@@ -697,116 +640,6 @@
       <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
       <p class="text-lg">No sensors connected</p>
       <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
-    </div>
-  </div>
-
-  <%!-- MIDI Output Panel — pure client-side, no server interaction --%>
-  <div
-    id="midi-output-panel"
-    phx-hook="MidiOutputHook"
-    phx-update="ignore"
-    class="mb-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center gap-3 flex-wrap text-xs"
-  >
-    <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
-    <button
-      id="midi-toggle-btn"
-      class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-    >
-      MIDI Off
-    </button>
-    <select
-      id="midi-device-select"
-      class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
-    >
-      <option value="">-- Select MIDI output --</option>
-    </select>
-    <span id="midi-availability" class="text-gray-500 italic"></span>
-    <%!-- Live CC value meters + status --%>
-    <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
-      <%!-- Tempo / MIDI Clock --%>
-      <div class="flex items-center gap-1" title="MIDI Clock — Group mean heart rate">
-        <span class="text-red-400 text-[10px]">BPM</span>
-        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            id="midi-bar-tempo"
-            class="h-full bg-red-500 rounded-full transition-all duration-150"
-            style="width: 0%"
-          >
-          </div>
-        </div>
-        <span id="midi-val-tempo" class="text-gray-500 w-6 tabular-nums">-</span>
-      </div>
-      <%!-- Arousal --%>
-      <div class="flex items-center gap-1" title="CC7 Volume — Collective arousal">
-        <span class="text-amber-400 text-[10px]">ARO</span>
-        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            id="midi-bar-arousal"
-            class="h-full bg-amber-500 rounded-full transition-all duration-150"
-            style="width: 0%"
-          >
-          </div>
-        </div>
-        <span id="midi-val-arousal" class="text-gray-500 w-6 tabular-nums">0</span>
-      </div>
-      <%!-- HRV --%>
-      <div class="flex items-center gap-1" title="CC1 Mod Wheel — Group HRV RMSSD">
-        <span class="text-purple-400 text-[10px]">HRV</span>
-        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            id="midi-bar-hrv"
-            class="h-full bg-purple-500 rounded-full transition-all duration-75"
-            style="width: 0%"
-          >
-          </div>
-        </div>
-        <span id="midi-val-hrv" class="text-gray-500 w-6 tabular-nums">0</span>
-      </div>
-      <%!-- Breath Phase LFO --%>
-      <div class="flex items-center gap-1" title="CC2 Breath — Group breath phase LFO">
-        <span class="text-cyan-400 text-[10px]">BRE</span>
-        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            id="midi-bar-breath"
-            class="h-full bg-cyan-500 rounded-full transition-all duration-75"
-            style="width: 0%"
-          >
-          </div>
-        </div>
-        <span id="midi-val-breath" class="text-gray-500 w-6 tabular-nums">0</span>
-      </div>
-      <%!-- Breathing Sync --%>
-      <div class="flex items-center gap-1" title="CC16 — Breathing sync (Kuramoto R)">
-        <span class="text-teal-400 text-[10px]">BSy</span>
-        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            id="midi-bar-bsync"
-            class="h-full bg-teal-500 rounded-full transition-all duration-75"
-            style="width: 0%"
-          >
-          </div>
-        </div>
-        <span id="midi-val-bsync" class="text-gray-500 w-6 tabular-nums">0</span>
-      </div>
-      <%!-- HRV Sync --%>
-      <div class="flex items-center gap-1" title="CC17 — HRV sync (Kuramoto R)">
-        <span class="text-indigo-400 text-[10px]">HSy</span>
-        <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            id="midi-bar-hsync"
-            class="h-full bg-indigo-500 rounded-full transition-all duration-75"
-            style="width: 0%"
-          >
-          </div>
-        </div>
-        <span id="midi-val-hsync" class="text-gray-500 w-6 tabular-nums">0</span>
-      </div>
-      <%!-- Sync threshold trigger flash --%>
-      <span
-        id="midi-sync-trigger"
-        class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
-      >
-      </span>
     </div>
   </div>
 
@@ -1030,6 +863,144 @@
     phx-hook="CompositeMeasurementHandler"
     class="p-4"
   >
+    <%!-- MIDI Output Panel — only on Graph tab --%>
+    <div
+      id="midi-output-panel"
+      phx-hook="MidiOutputHook"
+      phx-update="ignore"
+      class="mb-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center gap-3 flex-wrap text-xs"
+    >
+      <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
+      <button
+        id="midi-toggle-btn"
+        class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+      >
+        MIDI Off
+      </button>
+      <select
+        id="midi-device-select"
+        class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
+      >
+        <option value="">-- Select MIDI output --</option>
+      </select>
+      <button
+        id="midi-mode-btn"
+        class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
+      >
+        🌊 Abstract
+      </button>
+      <span
+        id="midi-chord-display"
+        class="text-pink-400 font-mono text-[10px]"
+        style="display:none"
+      >
+      </span>
+      <span id="midi-availability" class="text-gray-500 italic"></span>
+      <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="tempo"
+          title="Click to toggle — MIDI Clock / Group mean heart rate"
+        >
+          <span class="text-red-400 text-[10px]">BPM</span>
+          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              id="midi-bar-tempo"
+              class="h-full bg-red-500 rounded-full transition-all duration-150"
+              style="width: 0%"
+            >
+            </div>
+          </div>
+          <span id="midi-val-tempo" class="text-gray-500 w-6 tabular-nums">-</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="arousal"
+          title="Click to toggle — CC7 Volume / Collective arousal"
+        >
+          <span class="text-amber-400 text-[10px]">ARO</span>
+          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              id="midi-bar-arousal"
+              class="h-full bg-amber-500 rounded-full transition-all duration-150"
+              style="width: 0%"
+            >
+            </div>
+          </div>
+          <span id="midi-val-arousal" class="text-gray-500 w-6 tabular-nums">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="hrv"
+          title="Click to toggle — CC1 Mod Wheel / Group HRV RMSSD"
+        >
+          <span class="text-purple-400 text-[10px]">HRV</span>
+          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              id="midi-bar-hrv"
+              class="h-full bg-purple-500 rounded-full transition-all duration-75"
+              style="width: 0%"
+            >
+            </div>
+          </div>
+          <span id="midi-val-hrv" class="text-gray-500 w-6 tabular-nums">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="breath"
+          title="Click to toggle — CC2 Breath / Group breath phase LFO"
+        >
+          <span class="text-cyan-400 text-[10px]">BRE</span>
+          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              id="midi-bar-breath"
+              class="h-full bg-cyan-500 rounded-full transition-all duration-75"
+              style="width: 0%"
+            >
+            </div>
+          </div>
+          <span id="midi-val-breath" class="text-gray-500 w-6 tabular-nums">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="bsync"
+          title="Click to toggle — CC16 / Breathing sync (Kuramoto R)"
+        >
+          <span class="text-teal-400 text-[10px]">BSy</span>
+          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              id="midi-bar-bsync"
+              class="h-full bg-teal-500 rounded-full transition-all duration-75"
+              style="width: 0%"
+            >
+            </div>
+          </div>
+          <span id="midi-val-bsync" class="text-gray-500 w-6 tabular-nums">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="hsync"
+          title="Click to toggle — CC17 / HRV sync (Kuramoto R)"
+        >
+          <span class="text-indigo-400 text-[10px]">HSy</span>
+          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              id="midi-bar-hsync"
+              class="h-full bg-indigo-500 rounded-full transition-all duration-75"
+              style="width: 0%"
+            >
+            </div>
+          </div>
+          <span id="midi-val-hsync" class="text-gray-500 w-6 tabular-nums">0</span>
+        </div>
+        <span
+          id="midi-sync-trigger"
+          class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
+        >
+        </span>
+      </div>
+    </div>
+
     <.svelte
       name="LobbyGraph"
       props={

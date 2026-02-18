@@ -1,0 +1,51 @@
+<div class="max-w-2xl mx-auto px-4 py-8">
+  <.back navigate={~p"/users"}>Back to Users</.back>
+
+  <div class="mt-6 bg-gray-800 rounded-lg p-6">
+    <div class="flex items-center gap-4 mb-6">
+      <div class="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center text-2xl">
+        <%= if @user.status_emoji do %>
+          {@user.status_emoji}
+        <% else %>
+          <.icon name="hero-user" class="h-8 w-8 text-gray-400" />
+        <% end %>
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-white">
+          {@user.display_name || String.split(to_string(@user.email), "@") |> hd()}
+        </h1>
+        <%= if @user.timezone do %>
+          <p class="text-sm text-gray-400">{@user.timezone}</p>
+        <% end %>
+      </div>
+    </div>
+
+    <%= if @user.bio do %>
+      <div class="mb-6">
+        <h3 class="text-sm font-medium text-gray-400 mb-2">About</h3>
+        <p class="text-gray-200 whitespace-pre-wrap">{@user.bio}</p>
+      </div>
+    <% end %>
+
+    <%= if @skills != [] do %>
+      <div>
+        <h3 class="text-sm font-medium text-gray-400 mb-2">Skills</h3>
+        <div class="flex flex-wrap gap-2">
+          <%= for skill <- @skills do %>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm bg-gray-700 text-gray-200">
+              <span class={[
+                "w-2 h-2 rounded-full",
+                skill.level == :expert && "bg-green-400",
+                skill.level == :intermediate && "bg-yellow-400",
+                skill.level == :beginner && "bg-gray-400"
+              ]}>
+              </span>
+              {skill.skill_name}
+              <span class="text-xs text-gray-500">{skill.level}</span>
+            </span>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>

@@ -164,6 +164,16 @@ defmodule SensoctoWeb.Router do
       # Mobile device linking
       live "/mobile/link", MobileLinkLive, :index
 
+      # Profiles & Users
+      live "/profile", ProfileLive, :index
+      live "/users", UserDirectoryLive, :index
+      live "/users/:id", UserShowLive, :show
+
+      # Polls
+      live "/polls", PollsLive, :index
+      live "/polls/new", PollsLive, :new
+      live "/polls/:id", PollsLive, :show
+
       # User settings
       live "/settings", UserSettingsLive, :index
     end

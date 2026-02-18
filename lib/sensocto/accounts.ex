@@ -9,5 +9,6 @@ defmodule Sensocto.Accounts do
     resource Sensocto.Accounts.Token
     resource Sensocto.Accounts.User
     resource Sensocto.Accounts.GuestSession
+    resource Sensocto.Accounts.UserSkill
   end
 end

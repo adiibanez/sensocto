@@ -1,6 +1,10 @@
 // MidiOutputHook — bridges biometric sensor data → WebMIDI output.
 //
-// === Channel Layout (one instrument per channel) ===
+// Two modes:
+//   ABSTRACT — Raw sensor CCs. Breath phase LFO, HRV modulation, heartbeat triggers.
+//   GROOVY  — Musical engine. Chord progressions, quantized notes, bass, pads, drums.
+//
+// === Abstract Channel Layout ===
 //   Ch 1  Breath    CC2 (phase LFO), CC11 (depth), CC74 (rate)
 //   Ch 2  Heart     Note-On per heartbeat (velocity ~ BPM)
 //   Ch 3  Mind/HRV  CC1 (group RMSSD)
@@ -8,45 +12,200 @@
 //   Ch 5  Sync      CC16 (breathing sync), CC17 (HRV sync)
 //   Ch 10 Drums     Note triggers on sync threshold crossings
 //   --    Clock     MIDI Clock (0xF8) from group mean HR (channel-less)
+//
+// === Groovy Channel Layout ===
+//   Ch 1  Bass      Low root notes, driven by heartbeat
+//   Ch 2  Pad       Sustained chord tones, driven by breathing
+//   Ch 3  Lead      Melodic hits, driven by HRV/arousal
+//   Ch 4  Arp       Arpeggiated chord tones, driven by sync level
+//   Ch 10 Drums     Kick, snare, hi-hat pattern, tempo from group HR
 
 import { MidiOutput } from '../midi_output.js';
 
-// 0-indexed MIDI channels → one instrument per channel
+// ─── Abstract mode constants ────────────────────────────────────────────────
 const CH = {
-  breath: 0,    // Ch 1: Breath instrument (pad/wind)
-  heart: 1,     // Ch 2: Heart instrument (bass/kick)
-  mind: 2,      // Ch 3: Mind/HRV (texture/drone)
-  energy: 3,    // Ch 4: Collective energy (master dynamics)
-  sync: 4,      // Ch 5: Synchronization (harmony)
-  drums: 9,     // Ch 10: GM percussion (sync triggers)
+  breath: 0, heart: 1, mind: 2, energy: 3, sync: 4, drums: 9,
 };
-
-// CC numbers — semantically meaningful per channel
 const CC = {
-  breath_phase: 2,    // Ch 1: Breath phase LFO (sinusoidal 0-127)
-  breath_depth: 11,   // Ch 1: Expression / breath depth
-  breath_rate: 74,    // Ch 1: Brightness / breathing tempo
-  hrv: 1,             // Ch 3: Mod Wheel / group HRV RMSSD
-  arousal: 7,         // Ch 4: Volume / collective arousal
-  breathing_sync: 16, // Ch 5: Breathing sync (Kuramoto R)
-  hrv_sync: 17,       // Ch 5: HRV sync (Kuramoto R)
+  breath_phase: 2, breath_depth: 11, breath_rate: 74,
+  hrv: 1, arousal: 7, breathing_sync: 16, hrv_sync: 17,
 };
-
-// Sync threshold levels → drum notes (GM percussion)
 const SYNC_THRESHOLDS = [
-  { level: 30, note: 42, name: 'emerging' },   // Closed Hi-Hat
-  { level: 50, note: 38, name: 'locking' },     // Snare
-  { level: 70, note: 36, name: 'coherent' },    // Bass Drum
-  { level: 90, note: 49, name: 'deep_sync' },   // Crash Cymbal
+  { level: 30, note: 42, name: 'emerging' },
+  { level: 50, note: 38, name: 'locking' },
+  { level: 70, note: 36, name: 'coherent' },
+  { level: 90, note: 49, name: 'deep_sync' },
 ];
 
+// ─── Groovy mode constants ──────────────────────────────────────────────────
+const GROOVY_CH = {
+  bass: 0, pad: 1, lead: 2, arp: 3, drums: 9,
+};
+
+// GM drum map (extended with Latin percussion)
+const DRUM = {
+  kick: 36, snare: 38, closedHat: 42, openHat: 46, clap: 39, rimshot: 37, shaker: 70,
+  conga: 63, bongo: 62, timbale: 65, claves: 75, cowbell: 56,
+};
+
+// ─── Genre configs ────────────────────────────────────────────────────────────
+// Each genre: chords, drum patterns, play behaviors, display metadata.
+// The GroovyEngine reads from the active genre config.
+
+const GENRE_JAZZ = {
+  id: 'jazz',
+  label: '🎶 Groovy',
+  btnClass: ['bg-pink-600', 'text-white'],
+  swing: 0.33,
+  bpmFromHr: (hr) => clamp(Math.round(hr / 2) + 30, 60, 110),
+  chordBars: 2,
+  bassMode: 'walking',
+  padMode: 'sustain',
+  chords: [
+    { name: 'Cm9',   root: 48, tones: [60, 63, 67, 70, 74], arp: [60, 63, 67, 70, 74, 77] },
+    { name: 'Fm9',   root: 53, tones: [60, 65, 68, 72, 75], arp: [65, 68, 72, 75, 77, 80] },
+    { name: 'Abmaj7',root: 56, tones: [60, 63, 68, 72, 75], arp: [56, 60, 63, 68, 72, 75] },
+    { name: 'G7#9',  root: 55, tones: [59, 62, 66, 70, 74], arp: [55, 59, 62, 66, 70, 74] },
+    { name: 'Ebmaj9',root: 51, tones: [58, 63, 67, 70, 74], arp: [51, 58, 63, 67, 70, 74] },
+    { name: 'Dm7b5', root: 50, tones: [57, 62, 65, 69, 72], arp: [50, 57, 62, 65, 69, 72] },
+    { name: 'G7alt', root: 43, tones: [59, 63, 66, 70, 73], arp: [55, 59, 63, 66, 70, 73] },
+    { name: 'Cm9',   root: 48, tones: [60, 63, 67, 70, 74], arp: [60, 63, 67, 70, 74, 77] },
+  ],
+  drumPatterns: {
+    kick:      [110,0,0,0, 0,0,85,0, 110,0,0,55, 0,0,85,0],
+    snare:     [0,0,0,0, 110,0,0,0, 0,0,0,0, 110,0,0,40],
+    closedHat: [80,50,70,50, 80,50,70,50, 80,50,70,50, 80,50,70,50],
+    openHat:   [0,0,0,0, 0,0,0,70, 0,0,0,0, 0,0,0,70],
+    shaker:    [40,25,35,25, 40,25,35,25, 40,25,35,25, 40,25,35,25],
+  },
+  drumVoices: [
+    { key: 'kick',      minActivity: 0.05, durMs: 50 },
+    { key: 'snare',     minActivity: 0.2,  durMs: 50 },
+    { key: 'closedHat', minActivity: 0.1,  durMs: 30 },
+    { key: 'openHat',   minActivity: 0.35, durMs: 80 },
+    { key: 'shaker',    minActivity: 0.4,  durMs: 25, minEnergy: 0.4 },
+  ],
+};
+
+const GENRE_PERCUSSION = {
+  id: 'percussion',
+  label: '🥁 Percussion',
+  btnClass: ['bg-orange-600', 'text-white'],
+  swing: 0.0,
+  bpmFromHr: (hr) => clamp(Math.round(hr * 0.8 + 10), 80, 130),
+  chordBars: 4,
+  bassMode: 'groove',
+  padMode: 'block',
+  chords: [
+    { name: 'Cm7', root: 48, tones: [60, 63, 67, 70], arp: [60, 63, 67, 70, 72, 75] },
+    { name: 'Fm7', root: 53, tones: [60, 65, 68, 72], arp: [65, 68, 72, 75, 77, 80] },
+    { name: 'Cm7', root: 48, tones: [60, 63, 67, 70], arp: [60, 63, 67, 70, 72, 75] },
+    { name: 'Gm7', root: 55, tones: [62, 65, 67, 71], arp: [55, 62, 65, 67, 71, 74] },
+  ],
+  drumPatterns: {
+    kick:      [100,0,0,0, 0,0,0,0, 85,0,0,0, 0,0,0,0],
+    snare:     [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    closedHat: [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    openHat:   [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    claves:    [100,0,0,95, 0,0,90,0, 0,0,95,0, 90,0,0,0],
+    conga:     [0,0,80,0, 0,90,0,0, 80,0,0,85, 0,70,0,90],
+    bongo:     [95,0,70,0, 0,85,0,70, 95,0,70,0, 0,85,0,70],
+    rimshot:   [0,0,0,0, 80,0,0,0, 0,0,0,0, 80,0,0,0],
+    shaker:    [60,45,55,45, 60,45,55,45, 60,45,55,45, 60,45,55,45],
+    cowbell:   [90,0,0,0, 0,0,0,0, 85,0,0,0, 0,0,0,0],
+  },
+  drumVoices: [
+    { key: 'kick',    minActivity: 0.05, durMs: 60 },
+    { key: 'claves',  minActivity: 0.1,  durMs: 30, note: 75 },
+    { key: 'conga',   minActivity: 0.1,  durMs: 40, note: 63 },
+    { key: 'bongo',   minActivity: 0.2,  durMs: 40, note: 62 },
+    { key: 'rimshot', minActivity: 0.25, durMs: 35 },
+    { key: 'shaker',  minActivity: 0.15, durMs: 25, note: 70 },
+    { key: 'cowbell', minActivity: 0.3,  durMs: 45, note: 56 },
+  ],
+};
+
+const GENRE_REGGAE = {
+  id: 'reggae',
+  label: '🌿 Reggae',
+  btnClass: ['bg-green-600', 'text-white'],
+  swing: 0.0,
+  bpmFromHr: (hr) => clamp(Math.round(hr * 0.5 + 25), 65, 90),
+  chordBars: 4,
+  bassMode: 'one_drop',
+  padMode: 'skank',
+  chords: [
+    { name: 'Dm7',    root: 50, tones: [62, 65, 69, 72], arp: [50, 62, 65, 69, 72, 74] },
+    { name: 'Gm7',    root: 55, tones: [62, 65, 67, 70], arp: [55, 62, 65, 67, 70, 74] },
+    { name: 'Bbmaj7', root: 58, tones: [62, 65, 67, 70], arp: [58, 62, 65, 67, 70, 74] },
+    { name: 'A7',     root: 57, tones: [61, 64, 67, 69], arp: [57, 61, 64, 67, 69, 72] },
+    { name: 'Dm7',    root: 50, tones: [62, 65, 69, 72], arp: [50, 62, 65, 69, 72, 74] },
+    { name: 'Gm7',    root: 55, tones: [62, 65, 67, 70], arp: [55, 62, 65, 67, 70, 74] },
+    { name: 'C7',     root: 48, tones: [60, 64, 67, 70], arp: [48, 60, 64, 67, 70, 72] },
+    { name: 'A7',     root: 57, tones: [61, 64, 67, 69], arp: [57, 61, 64, 67, 69, 72] },
+  ],
+  drumPatterns: {
+    kick:      [0,0,0,0, 0,0,0,0, 110,0,0,0, 55,0,0,0],
+    snare:     [0,0,0,0, 0,0,0,0, 110,0,0,0, 0,0,0,50],
+    closedHat: [70,0,0,0, 70,0,0,0, 70,0,0,0, 70,0,0,0],
+    openHat:   [0,0,60,0, 0,0,60,0, 0,0,60,0, 0,0,60,0],
+    rimshot:   [0,50,0,50, 0,50,0,50, 0,50,0,50, 0,50,0,50],
+    shaker:    [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+  },
+  drumVoices: [
+    { key: 'kick',      minActivity: 0.05, durMs: 60 },
+    { key: 'snare',     minActivity: 0.15, durMs: 70 },
+    { key: 'closedHat', minActivity: 0.1,  durMs: 35 },
+    { key: 'openHat',   minActivity: 0.2,  durMs: 100 },
+    { key: 'rimshot',   minActivity: 0.3,  durMs: 40 },
+  ],
+};
+
+const GENRE_DEEPHOUSE = {
+  id: 'deephouse',
+  label: '🏠 Deep House',
+  btnClass: ['bg-violet-600', 'text-white'],
+  swing: 0.0,
+  bpmFromHr: (hr) => clamp(Math.round(hr * 0.6 + 50), 118, 128),
+  chordBars: 4,
+  bassMode: 'pulse',
+  padMode: 'filter_swell',
+  chords: [
+    { name: 'Am7',   root: 45, tones: [57, 60, 64, 67], arp: [57, 60, 64, 67, 69, 72] },
+    { name: 'Fmaj7', root: 41, tones: [53, 57, 60, 64], arp: [53, 57, 60, 64, 65, 69] },
+    { name: 'Dm9',   root: 38, tones: [50, 53, 57, 62, 64], arp: [50, 53, 57, 62, 64, 69] },
+    { name: 'Em7',   root: 40, tones: [52, 55, 59, 62], arp: [52, 55, 59, 62, 64, 67] },
+    { name: 'Am7',   root: 45, tones: [57, 60, 64, 67], arp: [57, 60, 64, 67, 69, 72] },
+    { name: 'Fmaj7', root: 41, tones: [53, 57, 60, 64], arp: [53, 57, 60, 64, 65, 69] },
+    { name: 'G7',    root: 43, tones: [55, 59, 62, 65], arp: [55, 59, 62, 65, 67, 71] },
+    { name: 'Em7',   root: 40, tones: [52, 55, 59, 62], arp: [52, 55, 59, 62, 64, 67] },
+  ],
+  drumPatterns: {
+    kick:      [110,0,0,0, 110,0,0,0, 110,0,0,0, 110,0,0,0],
+    snare:     [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    closedHat: [0,0,70,0, 0,0,70,0, 0,0,70,0, 0,0,70,0],
+    openHat:   [0,0,0,0, 0,0,0,60, 0,0,0,0, 0,0,0,60],
+    clap:      [0,0,0,0, 100,0,0,0, 0,0,0,0, 100,0,0,0],
+    shaker:    [50,30,45,30, 50,30,45,30, 50,30,45,30, 50,30,45,30],
+    rimshot:   [0,0,0,0, 0,0,0,0, 0,0,0,40, 0,0,0,0],
+  },
+  drumVoices: [
+    { key: 'kick',      minActivity: 0.02, durMs: 60 },
+    { key: 'clap',      minActivity: 0.1,  durMs: 50 },
+    { key: 'closedHat', minActivity: 0.08, durMs: 25 },
+    { key: 'openHat',   minActivity: 0.25, durMs: 90 },
+    { key: 'shaker',    minActivity: 0.15, durMs: 25, note: 70 },
+    { key: 'rimshot',   minActivity: 0.4,  durMs: 35 },
+  ],
+};
+
+const GENRES = [GENRE_JAZZ, GENRE_PERCUSSION, GENRE_REGGAE, GENRE_DEEPHOUSE];
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
 function clamp(x, lo, hi) { return Math.min(hi, Math.max(lo, x)); }
-
 function scale(value, inLo, inHi) {
-  const t = (value - inLo) / (inHi - inLo);
-  return Math.round(clamp(t, 0, 1) * 127);
+  return Math.round(clamp((value - inLo) / (inHi - inLo), 0, 1) * 127);
 }
-
 function makeSmoother(alpha) {
   let prev = null;
   return (raw) => {
@@ -55,8 +214,6 @@ function makeSmoother(alpha) {
     return Math.round(prev);
   };
 }
-
-// Extract BPM from heartrate payload (handles multiple formats)
 function extractBpm(payload) {
   if (typeof payload === 'number') return payload;
   if (typeof payload === 'object' && payload !== null) {
@@ -65,10 +222,13 @@ function extractBpm(payload) {
   const n = parseFloat(payload);
   return isNaN(n) ? 0 : n;
 }
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 
-// ---------------------------------------------------------------------------
-// MIDI Clock engine — sends 24 PPQN at the given BPM
-// ---------------------------------------------------------------------------
+// ─── MIDI Clock ─────────────────────────────────────────────────────────────
 class MidiClock {
   constructor(midiOutput) {
     this.midi = midiOutput;
@@ -76,14 +236,12 @@ class MidiClock {
     this._intervalId = null;
     this._running = false;
   }
-
   setBpm(bpm) {
-    if (bpm < 30 || bpm > 240) return; // safety bounds
-    if (Math.abs(bpm - this.bpm) < 0.5) return; // ignore tiny fluctuations
+    if (bpm < 30 || bpm > 240) return;
+    if (Math.abs(bpm - this.bpm) < 0.5) return;
     this.bpm = bpm;
     if (this._running) this._restart();
   }
-
   start() {
     if (this._running) return;
     if (this.bpm < 30) return;
@@ -91,67 +249,45 @@ class MidiClock {
     this.midi.sendStart();
     this._restart();
   }
-
   stop() {
     if (!this._running) return;
     this._running = false;
-    if (this._intervalId) {
-      clearInterval(this._intervalId);
-      this._intervalId = null;
-    }
+    if (this._intervalId) { clearInterval(this._intervalId); this._intervalId = null; }
     this.midi.sendStop();
   }
-
   _restart() {
     if (this._intervalId) clearInterval(this._intervalId);
-    // 24 PPQN: interval = (60000 / bpm) / 24 ms
     const intervalMs = (60000 / this.bpm) / 24;
-    this._intervalId = setInterval(() => {
-      this.midi.sendClock();
-    }, intervalMs);
+    this._intervalId = setInterval(() => this.midi.sendClock(), intervalMs);
   }
-
-  dispose() {
-    this.stop();
-  }
+  dispose() { this.stop(); }
 }
 
-// ---------------------------------------------------------------------------
-// Sync threshold detector — fires note events on level crossings
-// ---------------------------------------------------------------------------
+// ─── Sync Threshold Detector ────────────────────────────────────────────────
 class SyncThresholdDetector {
   constructor(midiOutput, thresholds, channel) {
     this.midi = midiOutput;
-    this.thresholds = thresholds; // sorted ascending
+    this.thresholds = thresholds;
     this.channel = channel;
-    this.currentLevel = -1; // index into thresholds, -1 = below all
+    this.currentLevel = -1;
     this.activeNotes = new Set();
-    this.onThresholdCross = null; // callback(name, direction)
+    this.onThresholdCross = null;
   }
-
   update(syncValue) {
-    // Determine which threshold level we're at
     let newLevel = -1;
     for (let i = this.thresholds.length - 1; i >= 0; i--) {
-      if (syncValue >= this.thresholds[i].level) {
-        newLevel = i;
-        break;
-      }
+      if (syncValue >= this.thresholds[i].level) { newLevel = i; break; }
     }
-
     if (newLevel === this.currentLevel) return;
-
     if (newLevel > this.currentLevel) {
-      // Crossed UP — fire note-ons for each newly crossed threshold
       for (let i = this.currentLevel + 1; i <= newLevel; i++) {
         const t = this.thresholds[i];
-        const velocity = 80 + Math.round((syncValue / 100) * 47); // 80-127
+        const velocity = 80 + Math.round((syncValue / 100) * 47);
         this.midi.sendNoteOn(this.channel, t.note, velocity);
         this.activeNotes.add(t.note);
         if (this.onThresholdCross) this.onThresholdCross(t.name, 'up');
       }
     } else {
-      // Crossed DOWN — send note-offs for thresholds we dropped below
       for (let i = this.currentLevel; i > newLevel; i--) {
         const t = this.thresholds[i];
         this.midi.sendNoteOff(this.channel, t.note, 0);
@@ -159,95 +295,569 @@ class SyncThresholdDetector {
         if (this.onThresholdCross) this.onThresholdCross(t.name, 'down');
       }
     }
-
     this.currentLevel = newLevel;
   }
-
   reset() {
-    for (const note of this.activeNotes) {
-      this.midi.sendNoteOff(this.channel, note, 0);
-    }
+    for (const note of this.activeNotes) this.midi.sendNoteOff(this.channel, note, 0);
     this.activeNotes.clear();
     this.currentLevel = -1;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Breath phase tracker — extracts sinusoidal phase from breathing waveform
-// ---------------------------------------------------------------------------
+// ─── Breath Phase Tracker ───────────────────────────────────────────────────
 class BreathPhaseTracker {
   constructor() {
-    this._values = []; // rolling window of {value, time}
-    this._maxWindow = 60; // samples
-    this._lastPhase = 0; // 0-127 (0=exhale trough, 64=peak inhale, 127=back to trough)
+    this._values = [];
+    this._maxWindow = 60;
     this._rateSmooth = makeSmoother(0.15);
     this.breathsPerMin = 0;
   }
-
   addSample(value, timestamp) {
     this._values.push({ value, time: timestamp });
-    if (this._values.length > this._maxWindow) {
-      this._values.shift();
-    }
+    if (this._values.length > this._maxWindow) this._values.shift();
   }
-
-  // Compute a 0-127 CC value representing the current breath phase position
   getPhaseCC() {
     if (this._values.length < 3) return 64;
     const vals = this._values;
-    const recent = vals.slice(-10);
-
-    // Find min/max in the window for normalization
     let min = Infinity, max = -Infinity;
-    for (const v of vals) {
-      if (v.value < min) min = v.value;
-      if (v.value > max) max = v.value;
-    }
+    for (const v of vals) { if (v.value < min) min = v.value; if (v.value > max) max = v.value; }
     const range = max - min;
-    if (range < 1) return 64; // no breathing movement detected
-
-    // Normalize latest value to 0-127
-    const latest = recent[recent.length - 1].value;
-    const normalized = ((latest - min) / range) * 127;
-    return Math.round(clamp(normalized, 0, 127));
+    if (range < 1) return 64;
+    const latest = vals[vals.length - 1].value;
+    return Math.round(clamp(((latest - min) / range) * 127, 0, 127));
   }
-
-  // Estimate breathing rate from zero-crossing analysis
   getBreathRate() {
     if (this._values.length < 10) return 0;
     const vals = this._values;
     const mean = vals.reduce((s, v) => s + v.value, 0) / vals.length;
-
-    // Count zero crossings (crossings of the mean)
     let crossings = 0;
     for (let i = 1; i < vals.length; i++) {
-      if ((vals[i].value > mean) !== (vals[i - 1].value > mean)) {
-        crossings++;
-      }
+      if ((vals[i].value > mean) !== (vals[i - 1].value > mean)) crossings++;
     }
-
-    // Time span in minutes
     const spanMs = vals[vals.length - 1].time - vals[0].time;
-    if (spanMs < 2000) return 0; // need at least 2s of data
-
-    // Each full breath cycle = 2 zero crossings
-    const cycles = crossings / 2;
-    const spanMin = spanMs / 60000;
-    const rawRate = cycles / spanMin;
+    if (spanMs < 2000) return 0;
+    const rawRate = (crossings / 2) / (spanMs / 60000);
     this.breathsPerMin = this._rateSmooth(clamp(rawRate, 4, 40));
     return this.breathsPerMin;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main hook
-// ---------------------------------------------------------------------------
+// ─── Groovy Engine ──────────────────────────────────────────────────────────
+// Turns biometric data into a musical jam with chord progressions, quantized
+// notes, walking bass, pad sustains, melodic leads, arpeggios, and drums.
+class GroovyEngine {
+  constructor(midiOutput, genreConfig = GENRE_JAZZ) {
+    this.midi = midiOutput;
+    this.genre = genreConfig;
+    this.bpm = 90;
+    this.chordIndex = 0;
+    this.step = 0;        // 0-15 (16th note position in the bar)
+    this.bar = 0;
+    this._stepTimeout = null;
+    this._running = false;
+    this._activeNotes = new Map(); // channel → Set of active notes
+    this._swingAmount = genreConfig.swing;
+
+    // Sensor-driven parameters (0-1 range)
+    this.energy = 0.5;     // drives velocity, density
+    this.breathPhase = 0.5;// modulates pad filter / expression
+    this.syncLevel = 0;    // drives arp density & drum fills
+    this.heartActivity = 0;// triggers bass accents
+
+    // Sensor → stable note index mapping
+    this._sensorSlots = new Map();
+    this._nextSlot = 0;
+
+    // Pending notes from sensor events (queued for next quantized step)
+    this._pendingLeads = [];
+    this._pendingBass = false;
+
+    // EMA smoothers
+    this._energySmooth = makeSmoother(0.12);
+    this._breathSmooth = makeSmoother(0.25);
+    this._syncSmooth = makeSmoother(0.3);
+
+    // Activity tracking — how alive is the sensor data?
+    this._lastFeedTime = 0;          // timestamp of last sensor event
+    this._activeSensors = new Set();  // sensors seen in the last window
+    this._sensorLastSeen = new Map(); // sensorId → timestamp
+    this.activity = 0;                // 0-1, decays when no data flows
+    this._activityDecayRate = 0.02;   // per step decay (reaches ~0 in ~50 steps / ~3 bars)
+
+    // Step timing diagnostics
+    this._lastStepTime = 0;
+    this._gapCount = 0;      // steps where gap > 2x expected
+    this._totalSteps = 0;
+    this._maxGapMs = 0;
+  }
+
+  setGenre(config) {
+    this.genre = config;
+    this._swingAmount = config.swing;
+    this.chordIndex = 0;
+    this.bar = 0;
+  }
+
+  get chord() { return this.genre.chords[this.chordIndex % this.genre.chords.length]; }
+
+  start() {
+    if (this._running) return;
+    this._running = true;
+    this._startStepClock();
+  }
+
+  stop() {
+    if (!this._running) return;
+    this._running = false;
+    if (this._stepTimeout) { clearTimeout(this._stepTimeout); this._stepTimeout = null; }
+    this._allNotesOff();
+  }
+
+  setBpm(bpm) {
+    bpm = clamp(bpm, 60, 180);
+    // Just update the value — the self-scheduling loop reads it each step.
+    // No timer restart needed, so no timing gaps.
+    this.bpm = bpm;
+  }
+
+  // ─── Activity tracking ────────────────────────────────────────────
+  _pulse(sensorId) {
+    const now = performance.now();
+    this._lastFeedTime = now;
+    if (sensorId) {
+      this._activeSensors.add(sensorId);
+      this._sensorLastSeen.set(sensorId, now);
+    }
+    // Boost activity based on how many sensors are feeding
+    const sensorCount = this._activeSensors.size;
+    // Scale: 1 sensor → 0.2, 5 → 0.6, 10+ → 1.0
+    const target = clamp(sensorCount / 10, 0.1, 1.0);
+    // Quick rise, slow fall (rise handled here, fall in _decayActivity)
+    this.activity = Math.max(this.activity, target);
+  }
+
+  _decayActivity() {
+    const now = performance.now();
+    // Expire sensors not seen in 5 seconds
+    for (const [id, lastSeen] of this._sensorLastSeen) {
+      if (now - lastSeen > 5000) {
+        this._activeSensors.delete(id);
+        this._sensorLastSeen.delete(id);
+      }
+    }
+    // Decay activity toward target based on current active sensor count
+    const sensorCount = this._activeSensors.size;
+    const target = sensorCount > 0 ? clamp(sensorCount / 10, 0.1, 1.0) : 0;
+    if (this.activity > target) {
+      this.activity = Math.max(target, this.activity - this._activityDecayRate);
+    }
+    // Also decay sensor parameters toward neutral when data stops
+    if (now - this._lastFeedTime > 3000) {
+      this.energy = this.energy * 0.98;
+      this.heartActivity = this.heartActivity * 0.97;
+      this.syncLevel = this.syncLevel * 0.97;
+      this.breathPhase = this.breathPhase * 0.99 + 0.5 * 0.01; // drift toward 0.5
+    }
+  }
+
+  // Feed sensor data in
+  feedHeartbeat(bpm, sensorId) {
+    this._pulse(sensorId);
+    this.heartActivity = clamp((bpm - 50) / 100, 0, 1);
+    this._pendingBass = true;
+    // HR drives tempo via genre-specific mapping
+    this.setBpm(this.genre.bpmFromHr(bpm));
+  }
+
+  feedBreathing(phase01) {
+    this._pulse();
+    this.breathPhase = this._breathSmooth(phase01);
+  }
+
+  feedHrv(normalized01) {
+    this._pulse();
+    // Low HRV = high energy, high HRV = chill
+    this.energy = this._energySmooth(1 - normalized01);
+  }
+
+  feedSync(sync01) {
+    this._pulse();
+    this.syncLevel = this._syncSmooth(sync01);
+  }
+
+  feedSensorNote(sensorId) {
+    this._pulse(sensorId);
+    // Queue a lead note for the next quantized step
+    if (!this._sensorSlots.has(sensorId)) {
+      this._sensorSlots.set(sensorId, this._nextSlot++);
+    }
+    const slot = this._sensorSlots.get(sensorId);
+    this._pendingLeads.push(slot);
+    // Cap queue
+    if (this._pendingLeads.length > 4) this._pendingLeads.shift();
+  }
+
+  // ─── Internal step clock (self-scheduling, no restart needed) ───────
+  _startStepClock() {
+    if (this._stepTimeout) clearTimeout(this._stepTimeout);
+    this._lastStepTime = performance.now();
+    this._scheduleNextStep();
+  }
+
+  _scheduleNextStep() {
+    if (!this._running) return;
+    const sixteenthMs = (60000 / this.bpm) / 4;
+    this._stepTimeout = setTimeout(() => this._onStep(), sixteenthMs);
+  }
+
+  _onStep() {
+    if (!this._running) return;
+
+    // Diagnostics: track timing gaps
+    const now = performance.now();
+    this._totalSteps++;
+    if (this._lastStepTime > 0) {
+      const expectedMs = (60000 / this.bpm) / 4;
+      const actualMs = now - this._lastStepTime;
+      if (actualMs > expectedMs * 2) {
+        this._gapCount++;
+        if (actualMs > this._maxGapMs) this._maxGapMs = actualMs;
+      }
+    }
+    this._lastStepTime = now;
+
+    // Decay activity every step
+    this._decayActivity();
+    const a = this.activity; // 0-1 activity level
+
+    // If activity is essentially zero, go silent (just keep clock ticking)
+    if (a < 0.01) {
+      // Release any sustained notes
+      if (this._activeNotes.size > 0) this._allNotesOff();
+      // Still advance step/bar for chord position
+      this.step = (this.step + 1) % 16;
+      if (this.step === 0) { this.bar++; if (this.bar % this.genre.chordBars === 0) this.chordIndex = (this.chordIndex + 1) % this.genre.chords.length; }
+      for (let i = 0; i < 6; i++) this.midi.sendClock();
+      this._scheduleNextStep();
+      return;
+    }
+
+    const chord = this.chord;
+
+    // ── Drums: thin out as activity drops ──
+    // Full kit at a > 0.5, just kick+hat at a < 0.2, nothing below 0.05
+    if (a > 0.05) this._playDrums(chord);
+
+    // ── Bass: on beats 1 and 3, or heartbeat — needs activity > 0.15 ──
+    if (a > 0.15 && (this.step === 0 || this.step === 8 || this._pendingBass)) {
+      this._playBass(chord);
+      this._pendingBass = false;
+    }
+
+    // ── Pad: behavior depends on genre padMode ──
+    if (a > 0.1) {
+      this._playPad(chord);
+    } else {
+      this._releaseChannel(GROOVY_CH.pad);
+    }
+
+    // ── Arp: needs activity > 0.3 ──
+    if (a > 0.3) this._playArp(chord);
+
+    // ── Lead: play queued sensor notes — needs activity > 0.2 ──
+    if (a > 0.2 && this.step % 2 === 0 && this._pendingLeads.length > 0) {
+      this._playLead(chord);
+    }
+
+    // Advance step
+    this.step = (this.step + 1) % 16;
+    if (this.step === 0) {
+      this.bar++;
+      if (this.bar % this.genre.chordBars === 0) {
+        this._releaseChannel(GROOVY_CH.pad);
+        this.chordIndex = (this.chordIndex + 1) % this.genre.chords.length;
+      }
+    }
+
+    // Send MIDI clock (24 ppqn = 6 per 16th note, we approximate)
+    for (let i = 0; i < 6; i++) this.midi.sendClock();
+
+    // Schedule next step (reads current this.bpm, so BPM changes are seamless)
+    this._scheduleNextStep();
+  }
+
+  _playDrums(chord) {
+    const a = this.activity;
+    const actVel = 0.5 + a * 0.5;
+    const vel = (v) => v > 0 ? clamp(Math.round(v * (0.7 + this.energy * 0.3) * actVel), 20, 127) : 0;
+
+    for (const voice of this.genre.drumVoices) {
+      if (a < voice.minActivity) continue;
+      if (voice.minEnergy && this.energy < voice.minEnergy) continue;
+      const pattern = this.genre.drumPatterns[voice.key];
+      if (!pattern) continue;
+      const v = vel(pattern[this.step]);
+      if (v > 0) {
+        const note = voice.note || DRUM[voice.key];
+        this._noteOnOff(GROOVY_CH.drums, note, v, voice.durMs);
+      }
+    }
+
+    // Ghost snares at high energy + activity
+    if (this.energy > 0.7 && a > 0.5 && this.step % 4 === 3 && Math.random() < 0.3) {
+      this._noteOnOff(GROOVY_CH.drums, DRUM.rimshot, Math.round(40 + Math.random() * 30), 40);
+    }
+
+    // Sync-driven fills
+    if (this.syncLevel > 0.5 && a > 0.5 && this.step === 15) {
+      this._noteOnOff(GROOVY_CH.drums, DRUM.snare, 90, 40);
+      if (this.syncLevel > 0.7) {
+        this._noteOnOff(GROOVY_CH.drums, DRUM.clap, 80, 40);
+      }
+    }
+  }
+
+  _playBass(chord) {
+    this._releaseChannel(GROOVY_CH.bass);
+    const actScale = 0.5 + this.activity * 0.5;
+    const velocity = clamp(Math.round((90 + this.heartActivity * 37) * actScale), 60, 127);
+    const chords = this.genre.chords;
+    const nextChord = chords[(this.chordIndex + 1) % chords.length];
+    let note = chord.root;
+    let durFraction = 0.8;
+
+    switch (this.genre.bassMode) {
+      case 'walking':
+        if (this.step === 8) note = chord.root + 7;
+        else if (this.step === 12) note = nextChord.root + (Math.random() < 0.5 ? 1 : -1);
+        break;
+      case 'one_drop':
+        // Reggae: root on beat 1, chromatic approach note before beat 3
+        if (this.step !== 0 && this.step !== 6) return;
+        if (this.step === 6) note = chord.root + (Math.random() < 0.5 ? 1 : -1);
+        durFraction = 0.9;
+        break;
+      case 'groove':
+        // Latin: root on 1, octave on the "and" of 2, 5th on 3
+        if (this.step === 0) note = chord.root;
+        else if (this.step === 6) note = chord.root + 12;
+        else if (this.step === 8) note = chord.root + 7;
+        else return;
+        break;
+      case 'pulse':
+        // Deep house: steady eighth-note root pulse, octave on beat 3
+        if (this.step % 2 !== 0) return;
+        if (this.step === 8) note = chord.root + 12;
+        else if (this.step === 12) note = chord.root + 7;
+        durFraction = 0.6;
+        break;
+    }
+
+    this.midi.sendNoteOn(GROOVY_CH.bass, note, velocity);
+    this._trackNote(GROOVY_CH.bass, note);
+
+    const dur = (60000 / this.bpm) / 2;
+    setTimeout(() => {
+      if (this.midi) this.midi.sendNoteOff(GROOVY_CH.bass, note, 0);
+    }, dur * durFraction);
+  }
+
+  _playPad(chord) {
+    const actScale = 0.4 + this.activity * 0.6;
+    const velocity = clamp(Math.round((60 + this.breathPhase * 55) * actScale), 40, 110);
+
+    switch (this.genre.padMode) {
+      case 'sustain':
+        // Jazz: lush sustained chord on beat 1 only
+        if (this.step !== 0) return;
+        this._releaseChannel(GROOVY_CH.pad);
+        for (let i = 0; i < Math.min(this.energy > 0.6 ? 4 : 3, chord.tones.length); i++) {
+          this.midi.sendNoteOn(GROOVY_CH.pad, chord.tones[i], velocity);
+          this._trackNote(GROOVY_CH.pad, chord.tones[i]);
+        }
+        break;
+
+      case 'skank': {
+        // Reggae: offbeat staccato stabs on steps 2, 6, 10, 14
+        const skankSteps = [2, 6, 10, 14];
+        if (!skankSteps.includes(this.step)) return;
+        this._releaseChannel(GROOVY_CH.pad);
+        const skankVel = clamp(Math.round(velocity * 0.85), 30, 100);
+        for (let i = 0; i < Math.min(3, chord.tones.length); i++) {
+          this.midi.sendNoteOn(GROOVY_CH.pad, chord.tones[i], skankVel);
+        }
+        // Short staccato release
+        const dur = (60000 / this.bpm) / 8;
+        const tones = chord.tones.slice(0, 3);
+        setTimeout(() => {
+          if (this.midi) tones.forEach(n => this.midi.sendNoteOff(GROOVY_CH.pad, n, 0));
+        }, dur);
+        return;
+      }
+
+      case 'block':
+        // Latin: block chord on beat 1 only
+        if (this.step !== 0) return;
+        this._releaseChannel(GROOVY_CH.pad);
+        for (let i = 0; i < Math.min(4, chord.tones.length); i++) {
+          this.midi.sendNoteOn(GROOVY_CH.pad, chord.tones[i], velocity);
+          this._trackNote(GROOVY_CH.pad, chord.tones[i]);
+        }
+        // Release after a beat
+        const blockDur = (60000 / this.bpm);
+        const blockTones = chord.tones.slice(0, 4);
+        setTimeout(() => {
+          if (this.midi) blockTones.forEach(n => this.midi.sendNoteOff(GROOVY_CH.pad, n, 0));
+        }, blockDur * 0.9);
+        return;
+
+      case 'filter_swell':
+        // Deep house: sustained chord with breath-driven filter modulation
+        if (this.step === 0) {
+          this._releaseChannel(GROOVY_CH.pad);
+          const swellVel = clamp(Math.round(velocity * 0.85), 40, 100);
+          for (let i = 0; i < Math.min(4, chord.tones.length); i++) {
+            this.midi.sendNoteOn(GROOVY_CH.pad, chord.tones[i], swellVel);
+            this._trackNote(GROOVY_CH.pad, chord.tones[i]);
+          }
+        }
+        // Continuous filter sweep driven by breath phase
+        this.midi.sendCC(GROOVY_CH.pad, 74, clamp(Math.round(30 + this.breathPhase * 97), 0, 127));
+        this.midi.sendCC(GROOVY_CH.pad, 11, clamp(Math.round(50 + this.energy * 77), 0, 127));
+        return;
+    }
+
+    // CC modulation (for sustain mode)
+    this.midi.sendCC(GROOVY_CH.pad, 74, Math.round(this.breathPhase * 127));
+    this.midi.sendCC(GROOVY_CH.pad, 11, Math.round(40 + this.energy * 87));
+  }
+
+  _playLead(chord) {
+    if (this._pendingLeads.length === 0) return;
+    const slot = this._pendingLeads.shift();
+
+    // Pick a note from chord tones based on sensor slot
+    const tones = chord.tones;
+    const noteIndex = slot % tones.length;
+    let note = tones[noteIndex];
+
+    // Octave variation based on energy
+    if (this.energy > 0.7 && Math.random() < 0.3) note += 12;
+    if (this.energy < 0.3 && Math.random() < 0.3) note -= 12;
+
+    const velocity = clamp(Math.round(75 + this.energy * 45 + Math.random() * 15), 60, 127);
+    this.midi.sendNoteOn(GROOVY_CH.lead, note, velocity);
+
+    // Short note — 16th to 8th depending on energy
+    const baseDur = (60000 / this.bpm) / 4; // 16th
+    const dur = baseDur * (1 + this.energy * 0.8);
+    setTimeout(() => {
+      if (this.midi) this.midi.sendNoteOff(GROOVY_CH.lead, note, 0);
+    }, dur * 0.9);
+  }
+
+  _playArp(chord) {
+    // Arp density: at low sync, play rarely. At high sync, constant 16ths.
+    const playProbability = this.syncLevel * 0.8;
+    if (Math.random() > playProbability) return;
+
+    const arpNotes = chord.arp;
+    const note = arpNotes[this.step % arpNotes.length];
+    const velocity = clamp(Math.round(50 + this.syncLevel * 60 + Math.random() * 20), 40, 115);
+
+    this.midi.sendNoteOn(GROOVY_CH.arp, note, velocity);
+
+    const dur = (60000 / this.bpm) / 4;
+    setTimeout(() => {
+      if (this.midi) this.midi.sendNoteOff(GROOVY_CH.arp, note, 0);
+    }, dur * 0.6); // staccato arps
+  }
+
+  _noteOnOff(ch, note, vel, durMs) {
+    this.midi.sendNoteOn(ch, note, vel);
+    setTimeout(() => {
+      if (this.midi) this.midi.sendNoteOff(ch, note, 0);
+    }, durMs);
+  }
+
+  _trackNote(ch, note) {
+    if (!this._activeNotes.has(ch)) this._activeNotes.set(ch, new Set());
+    this._activeNotes.get(ch).add(note);
+  }
+
+  _releaseChannel(ch) {
+    const notes = this._activeNotes.get(ch);
+    if (!notes) return;
+    for (const n of notes) this.midi.sendNoteOff(ch, n, 0);
+    notes.clear();
+  }
+
+  _allNotesOff() {
+    for (const [ch, notes] of this._activeNotes) {
+      for (const n of notes) this.midi.sendNoteOff(ch, n, 0);
+      notes.clear();
+    }
+    // Also send All Notes Off CC on each groovy channel
+    for (const ch of Object.values(GROOVY_CH)) {
+      this.midi.sendCC(ch, 123, 0); // All Notes Off
+    }
+  }
+
+  getStats() {
+    return {
+      genre: this.genre.id,
+      totalSteps: this._totalSteps,
+      gapCount: this._gapCount,
+      maxGapMs: Math.round(this._maxGapMs),
+      gapRate: this._totalSteps > 0 ? (this._gapCount / this._totalSteps * 100).toFixed(1) + '%' : '0%',
+      bpm: this.bpm,
+      chordIndex: this.chordIndex,
+      chord: this.chord.name,
+      bar: this.bar,
+      step: this.step,
+      running: this._running,
+      activity: Math.round(this.activity * 100) / 100,
+      activeSensors: this._activeSensors.size,
+      energy: Math.round(this.energy * 100) / 100,
+      syncLevel: Math.round(this.syncLevel * 100) / 100,
+      heartActivity: Math.round(this.heartActivity * 100) / 100,
+    };
+  }
+
+  resetStats() {
+    this._gapCount = 0;
+    this._totalSteps = 0;
+    this._maxGapMs = 0;
+  }
+
+  dispose() {
+    this.stop();
+  }
+}
+
+// ─── Main hook ──────────────────────────────────────────────────────────────
 const MidiOutputHook = {
   mounted() {
     this.midi = new MidiOutput();
     this.clock = new MidiClock(this.midi);
     this.syncDetector = new SyncThresholdDetector(this.midi, SYNC_THRESHOLDS, CH.drums);
     this.breathTracker = new BreathPhaseTracker();
+    this.groovy = new GroovyEngine(this.midi);
+
+    // Mode: 'abstract' or 'groovy'
+    this._mode = 'abstract';
+    this._genreIndex = 0; // index into GENRES array
+
+    // Muted attributes — meter IDs that are toggled off
+    // Maps meter id → attribute_ids that get silenced
+    this._mutedAttrs = new Set(); // e.g. {'tempo', 'hrv', 'breath', ...}
+    this._attrToMeter = {
+      heartrate: 'tempo', hr: 'tempo',
+      hrv: 'hrv',
+      respiration: 'breath',
+      breathing_sync: 'bsync',
+      hrv_sync: 'hsync',
+    };
 
     this.smoothers = {
       respiration: makeSmoother(0.3),
@@ -258,25 +868,18 @@ const MidiOutputHook = {
       breath_rate: makeSmoother(0.2),
     };
 
-    // Heartrate tracking (per-sensor → group average)
-    this._hrMap = new Map(); // sensor_id → latest BPM
+    this._hrMap = new Map();
     this._hrCleanupInterval = setInterval(() => {
-      // Prune sensors not seen in 10s
       const now = Date.now();
       for (const [id, entry] of this._hrMap) {
         if (now - entry.time > 10000) this._hrMap.delete(id);
       }
     }, 5000);
 
-    // Group HRV tracking
-    this._hrvMap = new Map(); // sensor_id → latest RMSSD
+    this._hrvMap = new Map();
 
-    // Sync threshold callback for UI
-    this.syncDetector.onThresholdCross = (name, dir) => {
-      this._flashSyncIndicator(name, dir);
-    };
+    this.syncDetector.onThresholdCross = (name, dir) => this._flashSyncIndicator(name, dir);
 
-    // Cache meter DOM refs
     this._meters = {};
     const meterIds = ['hrv', 'breath', 'bsync', 'hsync', 'tempo', 'arousal'];
     for (const id of meterIds) {
@@ -296,12 +899,19 @@ const MidiOutputHook = {
 
     this._restoreState();
     this._setupUI();
+
+    // Expose diagnostics on window for console access
+    window.__midiGroovy = {
+      stats: () => this.groovy.getStats(),
+      resetStats: () => this.groovy.resetStats(),
+    };
   },
 
   destroyed() {
     window.removeEventListener('composite-measurement-event', this._onMeasurement);
     if (this._hrCleanupInterval) clearInterval(this._hrCleanupInterval);
     this.syncDetector.reset();
+    this.groovy.dispose();
     this.clock.dispose();
     if (this.midi) this.midi.dispose();
     this.midi = null;
@@ -312,120 +922,144 @@ const MidiOutputHook = {
     try {
       const { sensor_id, attribute_id, payload, timestamp } = event.detail;
 
-      switch (attribute_id) {
-        case 'respiration': {
-          const value = typeof payload === 'number' ? payload : parseFloat(payload);
-          if (isNaN(value)) return;
+      // Check if this attribute's meter is muted
+      const meterId = this._attrToMeter[attribute_id];
+      if (meterId && this._mutedAttrs.has(meterId)) return;
 
-          // Individual breath depth → Ch1 CC11
-          const depthVal = this.smoothers.respiration(scale(value, 50, 100));
-          this.midi.sendCC(CH.breath, CC.breath_depth, depthVal);
-
-          // Feed breath phase tracker
-          this.breathTracker.addSample(value, timestamp || Date.now());
-
-          // Group breath phase LFO → Ch1 CC2
-          const phaseCC = this.breathTracker.getPhaseCC();
-          this.midi.sendCC(CH.breath, CC.breath_phase, phaseCC);
-          this._updateMeter('breath', phaseCC);
-
-          // Breathing rate → Ch1 CC74 (brightness/filter)
-          const rate = this.breathTracker.getBreathRate();
-          if (rate > 0) {
-            const rateCC = this.smoothers.breath_rate(scale(rate, 8, 24));
-            this.midi.sendCC(CH.breath, CC.breath_rate, rateCC);
-          }
-          break;
-        }
-
-        case 'hrv': {
-          const value = typeof payload === 'number' ? payload : parseFloat(payload);
-          if (isNaN(value)) return;
-          this._hrvMap.set(sensor_id, { value, time: Date.now() });
-
-          // Group mean HRV → Ch3 CC1
-          const meanHrv = this._computeGroupMean(this._hrvMap);
-          const hrvVal = this.smoothers.hrv(scale(meanHrv, 5, 80));
-          this.midi.sendCC(CH.mind, CC.hrv, hrvVal);
-          this._updateMeter('hrv', hrvVal);
-
-          // Update arousal
-          this._updateArousal();
-          break;
-        }
-
-        case 'heartrate':
-        case 'hr': {
-          const bpm = extractBpm(payload);
-          if (bpm < 30 || bpm > 240) return;
-          this._hrMap.set(sensor_id, { value: bpm, time: Date.now() });
-
-          // Group mean HR → MIDI Clock tempo
-          const meanHr = this._computeGroupMean(this._hrMap);
-          this.clock.setBpm(meanHr);
-
-          // Start clock if not running
-          if (!this.clock._running && meanHr >= 30) {
-            this.clock.start();
-          }
-
-          // Update tempo meter
-          this._updateMeter('tempo', Math.round(meanHr));
-
-          // Heartbeat note trigger → Ch2
-          // Velocity scales with BPM intensity (60=pp, 120=ff)
-          const velocity = scale(bpm, 50, 140);
-          this.midi.sendNoteOn(CH.heart, 60, velocity); // Middle C
-          // Short note — auto-off after ~50ms
-          setTimeout(() => {
-            if (this.midi) this.midi.sendNoteOff(CH.heart, 60, 0);
-          }, 50);
-
-          // Update arousal
-          this._updateArousal();
-          break;
-        }
-
-        case 'breathing_sync': {
-          const value = typeof payload === 'number' ? payload : parseFloat(payload);
-          if (isNaN(value)) return;
-          const syncVal = this.smoothers.breathing_sync(scale(value, 0, 100));
-          this.midi.sendCC(CH.sync, CC.breathing_sync, syncVal);
-          this._updateMeter('bsync', syncVal);
-
-          // Feed sync threshold detector
-          this.syncDetector.update(value);
-          break;
-        }
-
-        case 'hrv_sync': {
-          const value = typeof payload === 'number' ? payload : parseFloat(payload);
-          if (isNaN(value)) return;
-          const syncVal = this.smoothers.hrv_sync(scale(value, 0, 100));
-          this.midi.sendCC(CH.sync, CC.hrv_sync, syncVal);
-          this._updateMeter('hsync', syncVal);
-          break;
-        }
+      if (this._mode === 'groovy') {
+        this._handleGroovyMeasurement(sensor_id, attribute_id, payload, timestamp);
+      } else {
+        this._handleAbstractMeasurement(sensor_id, attribute_id, payload, timestamp);
       }
     } catch (err) {
       console.warn('[MidiOutputHook] Error:', err.message);
     }
   },
 
-  // Collective arousal = f(HR, HRV, breath rate)
+  // ─── Abstract mode handler (original behavior) ─────────────────────
+  _handleAbstractMeasurement(sensor_id, attribute_id, payload, timestamp) {
+    switch (attribute_id) {
+      case 'respiration': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        const depthVal = this.smoothers.respiration(scale(value, 50, 100));
+        this.midi.sendCC(CH.breath, CC.breath_depth, depthVal);
+        this.breathTracker.addSample(value, timestamp || Date.now());
+        const phaseCC = this.breathTracker.getPhaseCC();
+        this.midi.sendCC(CH.breath, CC.breath_phase, phaseCC);
+        this._updateMeter('breath', phaseCC);
+        const rate = this.breathTracker.getBreathRate();
+        if (rate > 0) {
+          const rateCC = this.smoothers.breath_rate(scale(rate, 8, 24));
+          this.midi.sendCC(CH.breath, CC.breath_rate, rateCC);
+        }
+        break;
+      }
+      case 'hrv': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this._hrvMap.set(sensor_id, { value, time: Date.now() });
+        const meanHrv = this._computeGroupMean(this._hrvMap);
+        const hrvVal = this.smoothers.hrv(scale(meanHrv, 5, 80));
+        this.midi.sendCC(CH.mind, CC.hrv, hrvVal);
+        this._updateMeter('hrv', hrvVal);
+        this._updateArousal();
+        break;
+      }
+      case 'heartrate':
+      case 'hr': {
+        const bpm = extractBpm(payload);
+        if (bpm < 30 || bpm > 240) return;
+        this._hrMap.set(sensor_id, { value: bpm, time: Date.now() });
+        const meanHr = this._computeGroupMean(this._hrMap);
+        this.clock.setBpm(meanHr);
+        if (!this.clock._running && meanHr >= 30) this.clock.start();
+        this._updateMeter('tempo', Math.round(meanHr));
+        const velocity = scale(bpm, 50, 140);
+        this.midi.sendNoteOn(CH.heart, 60, velocity);
+        setTimeout(() => { if (this.midi) this.midi.sendNoteOff(CH.heart, 60, 0); }, 50);
+        this._updateArousal();
+        break;
+      }
+      case 'breathing_sync': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        const syncVal = this.smoothers.breathing_sync(scale(value, 0, 100));
+        this.midi.sendCC(CH.sync, CC.breathing_sync, syncVal);
+        this._updateMeter('bsync', syncVal);
+        this.syncDetector.update(value);
+        break;
+      }
+      case 'hrv_sync': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        const syncVal = this.smoothers.hrv_sync(scale(value, 0, 100));
+        this.midi.sendCC(CH.sync, CC.hrv_sync, syncVal);
+        this._updateMeter('hsync', syncVal);
+        break;
+      }
+    }
+  },
+
+  // ─── Groovy mode handler ───────────────────────────────────────────
+  _handleGroovyMeasurement(sensor_id, attribute_id, payload, timestamp) {
+    switch (attribute_id) {
+      case 'respiration': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this.breathTracker.addSample(value, timestamp || Date.now());
+        const phase01 = this.breathTracker.getPhaseCC() / 127;
+        this.groovy.feedBreathing(phase01);
+        this._updateMeter('breath', Math.round(phase01 * 127));
+        break;
+      }
+      case 'hrv': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this._hrvMap.set(sensor_id, { value, time: Date.now() });
+        const meanHrv = this._computeGroupMean(this._hrvMap);
+        const normalized = clamp((meanHrv - 5) / 75, 0, 1); // 5-80ms → 0-1
+        this.groovy.feedHrv(normalized);
+        this._updateMeter('hrv', Math.round(normalized * 127));
+        break;
+      }
+      case 'heartrate':
+      case 'hr': {
+        const bpm = extractBpm(payload);
+        if (bpm < 30 || bpm > 240) return;
+        this._hrMap.set(sensor_id, { value: bpm, time: Date.now() });
+        const meanHr = this._computeGroupMean(this._hrMap);
+        this.groovy.feedHeartbeat(meanHr, sensor_id);
+        this._updateMeter('tempo', Math.round(meanHr));
+        // Also queue a lead note for this sensor
+        this.groovy.feedSensorNote(sensor_id);
+        break;
+      }
+      case 'breathing_sync': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this.groovy.feedSync(value / 100);
+        this._updateMeter('bsync', Math.round((value / 100) * 127));
+        break;
+      }
+      case 'hrv_sync': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this._updateMeter('hsync', scale(value, 0, 100));
+        break;
+      }
+    }
+  },
+
   _updateArousal() {
+    if (this._mutedAttrs.has('arousal')) return;
     const meanHr = this._computeGroupMean(this._hrMap);
     const meanHrv = this._computeGroupMean(this._hrvMap);
     const breathRate = this.breathTracker.breathsPerMin;
-
-    if (meanHr < 30) return; // no HR data yet
-
-    // Arousal increases with HR and breath rate, decreases with HRV
-    // Normalized: HR 60-140 → 0-1, HRV inverted 80-5 → 0-1, breath rate 8-24 → 0-1
+    if (meanHr < 30) return;
     const hrComponent = clamp((meanHr - 60) / 80, 0, 1);
     const hrvComponent = clamp((80 - meanHrv) / 75, 0, 1);
     const brComponent = breathRate > 0 ? clamp((breathRate - 8) / 16, 0, 1) : 0.5;
-
     const rawArousal = (hrComponent * 0.4 + hrvComponent * 0.35 + brComponent * 0.25);
     const arousalCC = this.smoothers.arousal(Math.round(rawArousal * 127));
     this.midi.sendCC(CH.energy, CC.arousal, arousalCC);
@@ -442,7 +1076,6 @@ const MidiOutputHook = {
   _updateMeter(id, value) {
     const m = this._meters[id];
     if (!m) return;
-    // For tempo meter, show BPM directly (not percentage)
     if (id === 'tempo') {
       if (m.bar) m.bar.style.width = Math.round(clamp((value - 40) / 160, 0, 1) * 100) + '%';
       if (m.val) m.val.textContent = value > 0 ? value : '-';
@@ -467,11 +1100,8 @@ const MidiOutputHook = {
 
   _showMeters(show) {
     if (!this._metersContainer) return;
-    if (show) {
-      this._metersContainer.classList.remove('hidden');
-    } else {
-      this._metersContainer.classList.add('hidden');
-    }
+    if (show) this._metersContainer.classList.remove('hidden');
+    else this._metersContainer.classList.add('hidden');
   },
 
   _setupUI() {
@@ -488,6 +1118,123 @@ const MidiOutputHook = {
         this._updateStatusText();
       });
     }
+
+    const modeBtn = this.el.querySelector('#midi-mode-btn');
+    if (modeBtn) {
+      modeBtn.addEventListener('click', () => this._toggleMode());
+    }
+
+    // Meter click-to-mute handlers
+    const meters = this.el.querySelectorAll('.midi-meter[data-midi-attr]');
+    for (const meter of meters) {
+      meter.addEventListener('click', () => {
+        const attr = meter.dataset.midiAttr;
+        if (this._mutedAttrs.has(attr)) {
+          this._mutedAttrs.delete(attr);
+          meter.style.opacity = '1';
+        } else {
+          this._mutedAttrs.add(attr);
+          meter.style.opacity = '0.3';
+        }
+        try { localStorage.setItem('sensocto_midi_muted', JSON.stringify([...this._mutedAttrs])); } catch (_) {}
+      });
+    }
+
+    // Restore muted state
+    try {
+      const saved = localStorage.getItem('sensocto_midi_muted');
+      if (saved) {
+        const arr = JSON.parse(saved);
+        for (const attr of arr) {
+          this._mutedAttrs.add(attr);
+          const el = this.el.querySelector(`.midi-meter[data-midi-attr="${attr}"]`);
+          if (el) el.style.opacity = '0.3';
+        }
+      }
+    } catch (_) {}
+  },
+
+  _toggleMode() {
+    // Stop current engines
+    if (this._mode === 'groovy') {
+      this.groovy.stop();
+    } else {
+      this.clock.stop();
+      this.syncDetector.reset();
+    }
+
+    // Cycle: abstract → jazz → percussion → reggae → abstract → ...
+    if (this._mode === 'abstract') {
+      this._mode = 'groovy';
+      this._genreIndex = 0;
+    } else {
+      this._genreIndex++;
+      if (this._genreIndex >= GENRES.length) {
+        this._mode = 'abstract';
+        this._genreIndex = 0;
+      }
+    }
+
+    // Apply genre config
+    if (this._mode === 'groovy') {
+      this.groovy.setGenre(GENRES[this._genreIndex]);
+      if (this.midi.enabled) {
+        this._initChannelVolumes();
+        this.groovy.start();
+      }
+    } else if (this.midi.enabled) {
+      this._initChannelVolumes();
+    }
+
+    this._updateModeUI();
+    try {
+      localStorage.setItem('sensocto_midi_mode', this._mode);
+      localStorage.setItem('sensocto_midi_genre', this._genreIndex);
+    } catch (_) {}
+  },
+
+  _updateModeUI() {
+    const btn = this.el.querySelector('#midi-mode-btn');
+    if (!btn) return;
+    // Remove all possible genre button classes
+    const allBtnClasses = ['bg-gray-600', 'text-gray-400', 'bg-pink-600', 'bg-orange-600', 'bg-green-600', 'bg-violet-600', 'text-white'];
+    btn.classList.remove(...allBtnClasses);
+
+    if (this._mode === 'groovy') {
+      const genre = GENRES[this._genreIndex];
+      btn.textContent = genre.label;
+      btn.classList.add(...genre.btnClass);
+    } else {
+      btn.textContent = '🌊 Abstract';
+      btn.classList.add('bg-gray-600', 'text-gray-400');
+    }
+    const chordEl = this.el.querySelector('#midi-chord-display');
+    if (chordEl) {
+      chordEl.style.display = this._mode === 'groovy' ? 'inline' : 'none';
+    }
+  },
+
+  _initChannelVolumes() {
+    // GarageBand and many DAWs start channels at zero volume.
+    // Send full initialization on all channels we use.
+    const allChannels = this._mode === 'groovy'
+      ? Object.values(GROOVY_CH)
+      : Object.values(CH);
+    // Deduplicate (drums ch 9 appears in both layouts)
+    const channels = [...new Set(allChannels)];
+    for (const ch of channels) {
+      // Reset All Controllers (CC 121) — clears stuck notes, pitch bend, mod
+      this.midi.sendCC(ch, 121, 0);
+      // Channel Volume — LOUD (100/127 gives headroom for expression)
+      this.midi.sendCC(ch, 7, 100);
+      // Pan center
+      this.midi.sendCC(ch, 10, 64);
+      // Expression full
+      this.midi.sendCC(ch, 11, 127);
+      // Mod wheel off
+      this.midi.sendCC(ch, 1, 0);
+    }
+    console.info('[MidiOutputHook] Channel volumes initialized on', channels.length, 'channels');
   },
 
   _handleToggle() {
@@ -496,9 +1243,13 @@ const MidiOutputHook = {
     this._updateToggleUI(newEnabled);
     this._showMeters(newEnabled);
 
-    if (!newEnabled) {
+    if (newEnabled) {
+      this._initChannelVolumes();
+      if (this._mode === 'groovy') this.groovy.start();
+    } else {
       this.clock.stop();
       this.syncDetector.reset();
+      this.groovy.stop();
     }
 
     this.pushEvent("midi_toggled", { enabled: newEnabled });
@@ -509,14 +1260,27 @@ const MidiOutputHook = {
     try {
       const enabled = localStorage.getItem('sensocto_midi_enabled') === 'true';
       const deviceId = localStorage.getItem('sensocto_midi_device');
+      const mode = localStorage.getItem('sensocto_midi_mode');
+      const genreIdx = parseInt(localStorage.getItem('sensocto_midi_genre'), 10);
+
+      if (mode === 'groovy' || mode === 'abstract') this._mode = mode;
+      if (!isNaN(genreIdx) && genreIdx >= 0 && genreIdx < GENRES.length) {
+        this._genreIndex = genreIdx;
+      }
+      if (this._mode === 'groovy') {
+        this.groovy.setGenre(GENRES[this._genreIndex]);
+      }
+      this._updateModeUI();
 
       if (enabled) {
         this.midi._ready.then(() => {
           if (!this.midi) return;
           if (deviceId) this.midi.selectOutput(deviceId);
           this.midi.setEnabled(true);
+          this._initChannelVolumes();
           this._updateToggleUI(true);
           this._showMeters(true);
+          if (this._mode === 'groovy') this.groovy.start();
           this.pushEvent("midi_toggled", { enabled: true });
         });
       }
@@ -526,7 +1290,6 @@ const MidiOutputHook = {
   _updateToggleUI(enabled) {
     const btn = this.el.querySelector('#midi-toggle-btn');
     const dot = this.el.querySelector('#midi-status-dot');
-
     if (btn) {
       btn.textContent = enabled ? 'MIDI On' : 'MIDI Off';
       if (enabled) {
@@ -537,7 +1300,6 @@ const MidiOutputHook = {
         btn.classList.add('bg-gray-700', 'hover:bg-gray-600', 'text-gray-300');
       }
     }
-
     if (dot) {
       if (enabled) {
         dot.classList.remove('bg-gray-500');
@@ -547,20 +1309,15 @@ const MidiOutputHook = {
         dot.classList.add('bg-gray-500');
       }
     }
-
     this._updateStatusText();
   },
 
   _updateStatusText() {
     const avail = this.el.querySelector('#midi-availability');
     if (!avail) return;
-    if (!this.midi.enabled) {
-      avail.textContent = '';
-    } else if (!this.midi.selectedOutput) {
-      avail.textContent = 'No device selected';
-    } else {
-      avail.textContent = '';
-    }
+    if (!this.midi.enabled) avail.textContent = '';
+    else if (!this.midi.selectedOutput) avail.textContent = 'No device selected';
+    else avail.textContent = '';
   },
 
   _updateDeviceSelect(devices) {
@@ -569,7 +1326,6 @@ const MidiOutputHook = {
     const current = sel.value;
     let savedId = null;
     try { savedId = localStorage.getItem('sensocto_midi_device'); } catch (_) {}
-
     sel.innerHTML = '<option value="">-- Select MIDI output --</option>';
     devices.forEach(({ id, name }) => {
       const opt = document.createElement('option');
@@ -578,17 +1334,12 @@ const MidiOutputHook = {
       if (id === current || (!current && id === savedId)) opt.selected = true;
       sel.appendChild(opt);
     });
-
     if (!current && savedId && devices.some(d => d.id === savedId)) {
       sel.value = savedId;
       this.midi.selectOutput(savedId);
     }
-
     const avail = this.el.querySelector('#midi-availability');
-    if (avail) {
-      avail.textContent = devices.length > 0 ? '' : 'No MIDI outputs detected';
-    }
-
+    if (avail) avail.textContent = devices.length > 0 ? '' : 'No MIDI outputs detected';
     this._updateStatusText();
   },
 };

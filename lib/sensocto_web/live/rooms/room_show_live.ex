@@ -193,6 +193,9 @@ defmodule SensoctoWeb.RoomShowLive do
         "sensors" ->
           :sensors
 
+        "polls" ->
+          :polls
+
         nil ->
           # Try user preference, then room default
           if user_id do
@@ -2592,74 +2595,80 @@ defmodule SensoctoWeb.RoomShowLive do
         </div>
       <% end %>
 
-      <%!-- Mode Switcher Tabs - only show if any collaboration feature is enabled --%>
-      <%= if Map.get(@room, :media_playback_enabled, true) or Map.get(@room, :object_3d_enabled, false) or Map.get(@room, :whiteboard_enabled, false) do %>
-        <div class="flex items-center justify-start gap-2 mb-6 flex-wrap">
-          <%= if Map.get(@room, :media_playback_enabled, true) do %>
-            <button
-              phx-click="switch_room_mode"
-              phx-value-mode="media"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
-                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
-                if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
-            >
-              <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
-              <span
-                :if={@media_viewers > 0}
-                class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"
-              >
-                {@media_viewers}
-              </span>
-            </button>
-          <% end %>
-          <%= if Map.get(@room, :object_3d_enabled, false) do %>
-            <button
-              phx-click="switch_room_mode"
-              phx-value-mode="object3d"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
-                if(@room_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
-                if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
-            >
-              <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
-              <span
-                :if={@object3d_viewers > 0}
-                class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"
-              >
-                {@object3d_viewers}
-              </span>
-            </button>
-          <% end %>
-          <%= if Map.get(@room, :whiteboard_enabled, false) do %>
-            <button
-              phx-click="switch_room_mode"
-              phx-value-mode="whiteboard"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
-                if(@room_mode == :whiteboard, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
-                if(@whiteboard_bump, do: " animate-bump ring-1 ring-green-300/50", else: "")}
-            >
-              <Heroicons.icon name="pencil-square" type="solid" class="h-4 w-4" /> Whiteboard
-            </button>
-          <% end %>
-          <%= if @in_call do %>
-            <button
-              phx-click="switch_room_mode"
-              phx-value-mode="call"
-              class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
-                if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Call View
-            </button>
-          <% end %>
+      <%!-- Mode Switcher Tabs --%>
+      <div class="flex items-center justify-start gap-2 mb-6 flex-wrap">
+        <%= if Map.get(@room, :media_playback_enabled, true) do %>
           <button
             phx-click="switch_room_mode"
-            phx-value-mode="sensors"
-            class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
-              if(@room_mode == :sensors, do: "bg-orange-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            phx-value-mode="media"
+            class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+                if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
           >
-            <Heroicons.icon name="cpu-chip" type="solid" class="h-4 w-4" /> Sensors
+            <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
+            <span
+              :if={@media_viewers > 0}
+              class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"
+            >
+              {@media_viewers}
+            </span>
           </button>
-        </div>
-      <% end %>
+        <% end %>
+        <%= if Map.get(@room, :object_3d_enabled, false) do %>
+          <button
+            phx-click="switch_room_mode"
+            phx-value-mode="object3d"
+            class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+                if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
+          >
+            <Heroicons.icon name="cube-transparent" type="solid" class="h-4 w-4" /> 3D Object
+            <span
+              :if={@object3d_viewers > 0}
+              class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"
+            >
+              {@object3d_viewers}
+            </span>
+          </button>
+        <% end %>
+        <%= if Map.get(@room, :whiteboard_enabled, false) do %>
+          <button
+            phx-click="switch_room_mode"
+            phx-value-mode="whiteboard"
+            class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :whiteboard, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
+                if(@whiteboard_bump, do: " animate-bump ring-1 ring-green-300/50", else: "")}
+          >
+            <Heroicons.icon name="pencil-square" type="solid" class="h-4 w-4" /> Whiteboard
+          </button>
+        <% end %>
+        <%= if @in_call do %>
+          <button
+            phx-click="switch_room_mode"
+            phx-value-mode="call"
+            class={"px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 " <>
+                if(@room_mode == :call, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+          >
+            <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" /> Call View
+          </button>
+        <% end %>
+        <button
+          phx-click="switch_room_mode"
+          phx-value-mode="sensors"
+          class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+              if(@room_mode == :sensors, do: "bg-orange-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="cpu-chip" type="solid" class="h-4 w-4" /> Sensors
+        </button>
+        <button
+          phx-click="switch_room_mode"
+          phx-value-mode="polls"
+          class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 " <>
+              if(@room_mode == :polls, do: "bg-purple-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="chart-bar-square" type="solid" class="h-4 w-4" /> Polls
+        </button>
+      </div>
 
       <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
       <div
@@ -2732,6 +2741,16 @@ defmodule SensoctoWeb.RoomShowLive do
           current_user={@current_user}
           can_manage={@can_manage}
           sync_mode={@sync_mode}
+        />
+      </div>
+
+      <%!-- Polls Panel - shown when in polls mode --%>
+      <div :if={@room_mode == :polls} class="mb-6">
+        <.live_component
+          module={SensoctoWeb.Components.PollsPanelComponent}
+          id={"room-polls-panel-#{@room.id}"}
+          room_id={@room.id}
+          current_user={@current_user}
         />
       </div>
 

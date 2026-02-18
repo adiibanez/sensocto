@@ -406,10 +406,29 @@ defmodule Sensocto.Accounts.User do
       # Auto-confirm test users
       change set_attribute(:confirmed_at, &DateTime.utc_now/0)
     end
+
+    update :update_profile do
+      description "Update user profile information"
+      accept [:display_name, :avatar_url, :bio, :status_emoji, :timezone, :is_public]
+      require_atomic? false
+    end
+
+    read :list_public do
+      description "List publicly visible users for directory"
+      filter expr(is_public == true and not is_nil(confirmed_at))
+    end
   end
 
   policies do
     bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+      authorize_if always()
+    end
+
+    policy action(:update_profile) do
+      authorize_if expr(id == ^actor(:id))
+    end
+
+    policy action(:list_public) do
       authorize_if always()
     end
 
@@ -431,11 +450,41 @@ defmodule Sensocto.Accounts.User do
       allow_nil? true
       sensitive? true
     end
+
+    attribute :display_name, :string do
+      allow_nil? true
+      public? true
+      constraints max_length: 50
+    end
+
+    attribute :avatar_url, :string do
+      allow_nil? true
+      public? true
+    end
+
+    attribute :bio, :string do
+      allow_nil? true
+      constraints max_length: 500
+    end
+
+    attribute :status_emoji, :string do
+      allow_nil? true
+      constraints max_length: 10
+    end
+
+    attribute :timezone, :string do
+      allow_nil? true
+      default "Europe/Berlin"
+    end
+
+    attribute :is_public, :boolean do
+      allow_nil? false
+      default true
+    end
   end
 
   relationships do
-    # Connectors are stored in ETS, not Postgres, so no direct relationship
-    # Use Sensocto.Sensors.Connector.list_for_user(user.id) to get user's connectors
+    has_many :skills, Sensocto.Accounts.UserSkill
   end
 
   identities do

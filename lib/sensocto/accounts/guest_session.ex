@@ -41,7 +41,7 @@ defmodule Sensocto.Accounts.GuestSession do
 
     destroy :cleanup_expired do
       argument :before, :utc_datetime, allow_nil?: false
-      change filter(expr(last_active_at < ^arg(:before)))
+      change filter expr(last_active_at < ^arg(:before))
     end
   end
 

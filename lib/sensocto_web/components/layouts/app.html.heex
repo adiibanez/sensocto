@@ -233,7 +233,7 @@
 </header>
 <main
   id="main"
-  class="px-2 py-2 pb-32 md:pb-20 flex-grow"
+  class="px-2 py-2 pb-16 md:pb-4 flex-grow"
   phx-hook="ResizeDetection"
 >
   {@inner_content}
@@ -257,7 +257,7 @@
   session: SensoctoWeb.Layouts.chat_session(@socket)
 )}
 
-<%!-- Speed dial positioned above footer: mobile 24 (96px), desktop 36 (144px) --%>
+<%!-- Speed dial: mobile above nav bar (14=56px), desktop bottom-right corner --%>
 <SensoctoWeb.Components.SpeedDial.speed_dial
   id="quick-actions"
   icon="hero-plus"
@@ -266,7 +266,7 @@
   color="primary"
   variant="default"
   action_position="bottom-end"
-  position_size="bottom-24 md:bottom-36 end-4 z-[60]"
+  position_size="bottom-14 md:bottom-4 end-4 z-[60]"
   wrapper_position="top"
   clickable
 >
@@ -280,21 +280,33 @@
   </:item>
 </SensoctoWeb.Components.SpeedDial.speed_dial>
 
-<%!-- Desktop Footer Toolbar (hidden on mobile - TabbedFooterLive handles mobile) --%>
+<%!-- Sensor Controls Pill (both mobile and desktop) --%>
 <div
   id="footer-toolbar"
-  class="hidden md:block fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 z-50"
+  class="fixed z-50"
+  style="bottom: 4rem; left: 0.5rem;"
   phx-hook="FooterToolbar"
 >
-  <div class="max-w-7xl mx-auto px-4 py-2">
-    <div class="flex items-center justify-center">
-      <div class="overflow-x-auto">
-        {live_render(@socket, SensoctoWeb.SenseLive,
-          id: "bluetooth",
-          sticky: true,
-          session: SensoctoWeb.Layouts.sense_session(@socket)
-        )}
-      </div>
+  <%!-- Collapsed pill button --%>
+  <button
+    id="footer-pill-toggle"
+    class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 border border-gray-600 text-gray-400 hover:text-white hover:bg-gray-700 shadow-lg transition-all cursor-pointer"
+    aria-label="Toggle sensor controls"
+  >
+    <Heroicons.icon name="signal" type="outline" class="h-5 w-5" />
+  </button>
+  <%!-- Expanded popover panel --%>
+  <div
+    id="footer-popover"
+    class="hidden absolute left-0 max-h-[60vh] overflow-y-auto bg-gray-800 border border-gray-600 rounded-lg shadow-2xl w-[420px] max-w-[calc(100vw-1rem)]"
+    style="bottom: calc(100% + 0.5rem);"
+  >
+    <div class="p-3">
+      {live_render(@socket, SensoctoWeb.SenseLive,
+        id: "bluetooth",
+        sticky: true,
+        session: SensoctoWeb.Layouts.sense_session(@socket)
+      )}
     </div>
   </div>
 </div>

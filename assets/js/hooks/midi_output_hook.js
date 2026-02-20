@@ -20,7 +20,9 @@
 //   Ch 4  Arp       Arpeggiated chord tones, driven by sync level
 //   Ch 10 Drums     Kick, snare, hi-hat pattern, tempo from group HR
 
-import { MidiOutput } from '../midi_output.js';
+import { AudioOutputRouter } from '../audio_output_router.js';
+import { VOICE_INSTRUMENTS } from '../tone_output.js';
+import { MagentaEngine } from '../magenta_engine.js';
 
 // ─── Abstract mode constants ────────────────────────────────────────────────
 const CH = {
@@ -838,13 +840,14 @@ class GroovyEngine {
 // ─── Main hook ──────────────────────────────────────────────────────────────
 const MidiOutputHook = {
   mounted() {
-    this.midi = new MidiOutput();
+    this.midi = new AudioOutputRouter();
     this.clock = new MidiClock(this.midi);
     this.syncDetector = new SyncThresholdDetector(this.midi, SYNC_THRESHOLDS, CH.drums);
     this.breathTracker = new BreathPhaseTracker();
     this.groovy = new GroovyEngine(this.midi);
+    this.magenta = new MagentaEngine(this.midi);
 
-    // Mode: 'abstract' or 'groovy'
+    // Mode: 'abstract', 'groovy', or 'magenta'
     this._mode = 'abstract';
     this._genreIndex = 0; // index into GENRES array
 
@@ -905,15 +908,23 @@ const MidiOutputHook = {
       stats: () => this.groovy.getStats(),
       resetStats: () => this.groovy.resetStats(),
     };
+    window.__audioRouter = { backend: () => this.midi._backend, toneGenre: () => this.midi.tone._genreId };
+    window.__magenta = { stats: () => this.magenta.getStats() };
   },
 
   destroyed() {
     window.removeEventListener('composite-measurement-event', this._onMeasurement);
     if (this._hrCleanupInterval) clearInterval(this._hrCleanupInterval);
     this.syncDetector.reset();
+    // Stop engines first so their noteOff messages reach Tone.js
+    // synths while they still exist, then dispose everything.
     this.groovy.dispose();
+    this.magenta.dispose();
     this.clock.dispose();
-    if (this.midi) this.midi.dispose();
+    if (this.midi) {
+      this.midi.setEnabled(false);
+      this.midi.dispose();
+    }
     this.midi = null;
   },
 
@@ -928,6 +939,8 @@ const MidiOutputHook = {
 
       if (this._mode === 'groovy') {
         this._handleGroovyMeasurement(sensor_id, attribute_id, payload, timestamp);
+      } else if (this._mode === 'magenta') {
+        this._handleMagentaMeasurement(sensor_id, attribute_id, payload, timestamp);
       } else {
         this._handleAbstractMeasurement(sensor_id, attribute_id, payload, timestamp);
       }
@@ -1051,6 +1064,55 @@ const MidiOutputHook = {
     }
   },
 
+  // ─── Magenta AI mode handler ─────────────────────────────────────────
+  _handleMagentaMeasurement(sensor_id, attribute_id, payload, timestamp) {
+    switch (attribute_id) {
+      case 'respiration': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this.breathTracker.addSample(value, timestamp || Date.now());
+        const phase01 = this.breathTracker.getPhaseCC() / 127;
+        this.magenta.feedBreathing(phase01);
+        this._updateMeter('breath', Math.round(phase01 * 127));
+        break;
+      }
+      case 'hrv': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this._hrvMap.set(sensor_id, { value, time: Date.now() });
+        const meanHrv = this._computeGroupMean(this._hrvMap);
+        const normalized = clamp((meanHrv - 5) / 75, 0, 1);
+        this.magenta.feedHrv(normalized);
+        this._updateMeter('hrv', Math.round(normalized * 127));
+        break;
+      }
+      case 'heartrate':
+      case 'hr': {
+        const bpm = extractBpm(payload);
+        if (bpm < 30 || bpm > 240) return;
+        this._hrMap.set(sensor_id, { value: bpm, time: Date.now() });
+        const meanHr = this._computeGroupMean(this._hrMap);
+        this.magenta.feedHeartbeat(meanHr, sensor_id);
+        this._updateMeter('tempo', Math.round(meanHr));
+        this.magenta.feedSensorNote(sensor_id);
+        break;
+      }
+      case 'breathing_sync': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this.magenta.feedSync(value / 100);
+        this._updateMeter('bsync', Math.round((value / 100) * 127));
+        break;
+      }
+      case 'hrv_sync': {
+        const value = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (isNaN(value)) return;
+        this._updateMeter('hsync', scale(value, 0, 100));
+        break;
+      }
+    }
+  },
+
   _updateArousal() {
     if (this._mutedAttrs.has('arousal')) return;
     const meanHr = this._computeGroupMean(this._hrMap);
@@ -1119,6 +1181,27 @@ const MidiOutputHook = {
       });
     }
 
+    const backendSelect = this.el.querySelector('#midi-backend-select');
+    if (backendSelect) {
+      backendSelect.addEventListener('change', (e) => {
+        const backend = e.target.value;
+        this.midi.setBackend(backend);
+        const deviceSel = this.el.querySelector('#midi-device-select');
+        if (deviceSel) deviceSel.style.display = (backend === 'tone') ? 'none' : '';
+        const instPanel = this.el.querySelector('#tone-instruments');
+        if (instPanel) instPanel.classList.toggle('hidden', backend === 'midi');
+        if (this.midi.enabled && (backend === 'tone' || backend === 'both')) {
+          this.midi.tone.requestAccess().then(() => {
+            if (this._mode === 'groovy') {
+              this.midi.tone.setGenre(GENRES[this._genreIndex].id);
+            }
+          });
+        }
+        this._updateToggleUI(this.midi.enabled);
+        try { localStorage.setItem('sensocto_audio_backend', backend); } catch (_) {}
+      });
+    }
+
     const modeBtn = this.el.querySelector('#midi-mode-btn');
     if (modeBtn) {
       modeBtn.addEventListener('click', () => this._toggleMode());
@@ -1152,35 +1235,270 @@ const MidiOutputHook = {
         }
       }
     } catch (_) {}
+
+    // Populate and wire Tone.js instrument selectors
+    const roles = ['bass', 'pad', 'lead', 'arp'];
+    const savedInstruments = {};
+    try {
+      const s = localStorage.getItem('sensocto_tone_instruments');
+      if (s) Object.assign(savedInstruments, JSON.parse(s));
+    } catch (_) {}
+
+    for (const role of roles) {
+      const sel = this.el.querySelector(`#tone-inst-${role}`);
+      if (!sel) continue;
+      const instruments = VOICE_INSTRUMENTS[role] || [];
+      sel.innerHTML = '';
+      for (const inst of instruments) {
+        const opt = document.createElement('option');
+        opt.value = inst.id;
+        opt.textContent = inst.label;
+        sel.appendChild(opt);
+      }
+      // Restore saved instrument
+      const savedId = savedInstruments[role];
+      if (savedId) {
+        sel.value = savedId;
+        this.midi.tone.setInstrument(role, savedId);
+      }
+      sel.addEventListener('change', (e) => {
+        this.midi.tone.setInstrument(role, e.target.value);
+        try {
+          const all = {};
+          for (const r of roles) {
+            all[r] = this.midi.tone.getInstrument(r);
+          }
+          localStorage.setItem('sensocto_tone_instruments', JSON.stringify(all));
+        } catch (_) {}
+      });
+    }
+
+    // Show instrument panel if backend is tone/both
+    const instPanel = this.el.querySelector('#tone-instruments');
+    const currentBackend = this.midi.getBackend ? this.midi.getBackend() : 'midi';
+    if (instPanel) instPanel.classList.toggle('hidden', currentBackend === 'midi');
+
+    // ─── AI Settings Modal ────────────────────────────────────────
+    this._setupAIModal();
+  },
+
+  _setupAIModal() {
+    const el = this.el;
+    const modal = el.querySelector('#ai-settings-modal');
+    const openBtn = el.querySelector('#midi-ai-settings-btn');
+    const closeBtn = el.querySelector('#ai-settings-close');
+    const applyBtn = el.querySelector('#ai-settings-apply');
+    const chordsInput = el.querySelector('#ai-chords-input');
+    const keyRoot = el.querySelector('#ai-key-root');
+    const keyQuality = el.querySelector('#ai-key-quality');
+    const creativitySlider = el.querySelector('#ai-creativity-slider');
+    const creativityAuto = el.querySelector('#ai-creativity-auto');
+    const creativityLabel = el.querySelector('#ai-creativity-label');
+
+    if (!modal || !openBtn) return;
+
+    // Open/close modal
+    openBtn.addEventListener('click', () => {
+      this._restoreAISettings();
+      modal.classList.remove('hidden');
+    });
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+    }
+    // Click backdrop to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.add('hidden');
+    });
+
+    // Chord preset buttons
+    const presetBtns = el.querySelectorAll('.ai-preset-btn');
+    for (const btn of presetBtns) {
+      btn.addEventListener('click', () => {
+        if (chordsInput) chordsInput.value = btn.dataset.chords;
+        // Highlight active preset
+        for (const b of presetBtns) {
+          b.style.background = '#2d2845';
+          b.style.borderColor = '#3b3556';
+        }
+        btn.style.background = '#4c1d95';
+        btn.style.borderColor = '#7c3aed';
+      });
+    }
+
+    // Creativity slider ↔ auto checkbox
+    if (creativitySlider && creativityAuto && creativityLabel) {
+      creativityAuto.addEventListener('change', () => {
+        const isAuto = creativityAuto.checked;
+        creativitySlider.disabled = isAuto;
+        creativitySlider.style.opacity = isAuto ? '0.4' : '1';
+        creativityLabel.textContent = isAuto ? '— Auto (from breathing)' : `— ${creativitySlider.value}%`;
+      });
+      creativitySlider.addEventListener('input', () => {
+        creativityLabel.textContent = `— ${creativitySlider.value}%`;
+      });
+    }
+
+    // Mood buttons
+    const moodBtns = el.querySelectorAll('.ai-mood-btn');
+    for (const btn of moodBtns) {
+      btn.addEventListener('click', () => {
+        for (const b of moodBtns) {
+          b.style.background = '#2d2845';
+          b.style.borderColor = '#3b3556';
+        }
+        btn.style.background = '#4c1d95';
+        btn.style.borderColor = '#7c3aed';
+        btn.dataset.selected = 'true';
+        // Deselect others
+        for (const b of moodBtns) {
+          if (b !== btn) delete b.dataset.selected;
+        }
+      });
+    }
+
+    // Apply button
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => {
+        // Gather settings
+        const chords = chordsInput ? chordsInput.value : '';
+        const transpose = keyRoot ? parseInt(keyRoot.value, 10) : 0;
+        const isAutoTemp = creativityAuto ? creativityAuto.checked : true;
+        const tempValue = creativitySlider ? parseInt(creativitySlider.value, 10) : 50;
+        let mood = 'auto';
+        for (const btn of moodBtns) {
+          if (btn.dataset.selected) mood = btn.dataset.mood;
+        }
+
+        // Apply to engine
+        this.magenta.setKeyTranspose(transpose);
+        this.magenta.setChords(chords);
+        this.magenta.setTemperatureOverride(isAutoTemp ? null : tempValue);
+        this.magenta.setMoodOverride(mood);
+        this.magenta.applySettings();
+
+        // Save to localStorage
+        try {
+          localStorage.setItem('sensocto_ai_settings', JSON.stringify({
+            chords, transpose, isAutoTemp, tempValue, mood,
+          }));
+        } catch (_) {}
+
+        // Close modal
+        modal.classList.add('hidden');
+
+        // Update chord display
+        const chordEl = this.el.querySelector('#midi-chord-display');
+        if (chordEl && chords) {
+          chordEl.textContent = chords;
+          chordEl.style.display = 'inline';
+        }
+      });
+    }
+  },
+
+  _restoreAISettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sensocto_ai_settings') || '{}');
+
+      const chordsInput = this.el.querySelector('#ai-chords-input');
+      const keyRoot = this.el.querySelector('#ai-key-root');
+      const creativitySlider = this.el.querySelector('#ai-creativity-slider');
+      const creativityAuto = this.el.querySelector('#ai-creativity-auto');
+      const creativityLabel = this.el.querySelector('#ai-creativity-label');
+
+      if (chordsInput && saved.chords) chordsInput.value = saved.chords;
+      if (keyRoot && saved.transpose !== undefined) keyRoot.value = saved.transpose;
+      if (creativityAuto && saved.isAutoTemp !== undefined) {
+        creativityAuto.checked = saved.isAutoTemp;
+        if (creativitySlider) {
+          creativitySlider.disabled = saved.isAutoTemp;
+          creativitySlider.style.opacity = saved.isAutoTemp ? '0.4' : '1';
+        }
+      }
+      if (creativitySlider && saved.tempValue !== undefined) {
+        creativitySlider.value = saved.tempValue;
+      }
+      if (creativityLabel) {
+        creativityLabel.textContent = (saved.isAutoTemp !== false) ? '— Auto (from breathing)' : `— ${saved.tempValue || 50}%`;
+      }
+
+      // Highlight active preset if chords match
+      const presetBtns = this.el.querySelectorAll('.ai-preset-btn');
+      for (const btn of presetBtns) {
+        if (saved.chords && btn.dataset.chords === saved.chords) {
+          btn.style.background = '#4c1d95';
+          btn.style.borderColor = '#7c3aed';
+        } else {
+          btn.style.background = '#2d2845';
+          btn.style.borderColor = '#3b3556';
+        }
+      }
+
+      // Highlight active mood
+      const moodBtns = this.el.querySelectorAll('.ai-mood-btn');
+      for (const btn of moodBtns) {
+        if (btn.dataset.mood === (saved.mood || 'auto')) {
+          btn.style.background = '#4c1d95';
+          btn.style.borderColor = '#7c3aed';
+          btn.dataset.selected = 'true';
+        } else {
+          btn.style.background = '#2d2845';
+          btn.style.borderColor = '#3b3556';
+          delete btn.dataset.selected;
+        }
+      }
+    } catch (_) {}
+  },
+
+  _applyStoredAISettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sensocto_ai_settings') || '{}');
+      if (saved.transpose !== undefined) this.magenta.setKeyTranspose(saved.transpose);
+      if (saved.chords) this.magenta.setChords(saved.chords);
+      this.magenta.setTemperatureOverride(saved.isAutoTemp !== false ? null : (saved.tempValue || 50));
+      this.magenta.setMoodOverride(saved.mood || 'auto');
+    } catch (_) {}
   },
 
   _toggleMode() {
     // Stop current engines
     if (this._mode === 'groovy') {
       this.groovy.stop();
+    } else if (this._mode === 'magenta') {
+      this.magenta.stop();
     } else {
       this.clock.stop();
       this.syncDetector.reset();
     }
 
-    // Cycle: abstract → jazz → percussion → reggae → abstract → ...
+    // Cycle: abstract → jazz → percussion → reggae → deephouse → magenta AI → abstract
     if (this._mode === 'abstract') {
       this._mode = 'groovy';
       this._genreIndex = 0;
-    } else {
+    } else if (this._mode === 'groovy') {
       this._genreIndex++;
       if (this._genreIndex >= GENRES.length) {
-        this._mode = 'abstract';
+        this._mode = 'magenta';
         this._genreIndex = 0;
       }
+    } else {
+      // magenta → abstract
+      this._mode = 'abstract';
+      this._genreIndex = 0;
     }
 
     // Apply genre config
     if (this._mode === 'groovy') {
       this.groovy.setGenre(GENRES[this._genreIndex]);
+      this.midi.tone.setGenre(GENRES[this._genreIndex].id);
       if (this.midi.enabled) {
         this._initChannelVolumes();
         this.groovy.start();
+      }
+    } else if (this._mode === 'magenta') {
+      if (this.midi.enabled) {
+        this._initChannelVolumes();
+        this.magenta.start();
       }
     } else if (this.midi.enabled) {
       this._initChannelVolumes();
@@ -1197,27 +1515,35 @@ const MidiOutputHook = {
     const btn = this.el.querySelector('#midi-mode-btn');
     if (!btn) return;
     // Remove all possible genre button classes
-    const allBtnClasses = ['bg-gray-600', 'text-gray-400', 'bg-pink-600', 'bg-orange-600', 'bg-green-600', 'bg-violet-600', 'text-white'];
+    const allBtnClasses = ['bg-gray-600', 'text-gray-400', 'bg-pink-600', 'bg-orange-600', 'bg-green-600', 'bg-violet-600', 'bg-indigo-600', 'text-white'];
     btn.classList.remove(...allBtnClasses);
 
     if (this._mode === 'groovy') {
       const genre = GENRES[this._genreIndex];
       btn.textContent = genre.label;
       btn.classList.add(...genre.btnClass);
+    } else if (this._mode === 'magenta') {
+      btn.textContent = '🧠 Local AI';
+      btn.classList.add('bg-violet-600', 'text-white');
     } else {
       btn.textContent = '🌊 Abstract';
       btn.classList.add('bg-gray-600', 'text-gray-400');
     }
     const chordEl = this.el.querySelector('#midi-chord-display');
     if (chordEl) {
-      chordEl.style.display = this._mode === 'groovy' ? 'inline' : 'none';
+      chordEl.style.display = (this._mode === 'groovy' || this._mode === 'magenta') ? 'inline' : 'none';
+    }
+    // Show/hide AI settings gear button
+    const aiSettingsBtn = this.el.querySelector('#midi-ai-settings-btn');
+    if (aiSettingsBtn) {
+      aiSettingsBtn.classList.toggle('hidden', this._mode !== 'magenta');
     }
   },
 
   _initChannelVolumes() {
     // GarageBand and many DAWs start channels at zero volume.
     // Send full initialization on all channels we use.
-    const allChannels = this._mode === 'groovy'
+    const allChannels = (this._mode === 'groovy' || this._mode === 'magenta')
       ? Object.values(GROOVY_CH)
       : Object.values(CH);
     // Deduplicate (drums ch 9 appears in both layouts)
@@ -1239,21 +1565,35 @@ const MidiOutputHook = {
 
   _handleToggle() {
     const newEnabled = !this.midi.enabled;
-    this.midi.setEnabled(newEnabled);
-    this._updateToggleUI(newEnabled);
-    this._showMeters(newEnabled);
 
     if (newEnabled) {
-      this._initChannelVolumes();
-      if (this._mode === 'groovy') this.groovy.start();
-    } else {
-      this.clock.stop();
-      this.syncDetector.reset();
-      this.groovy.stop();
+      // Request MIDI access on first enable (deferred from page load)
+      this.midi.requestAccess().then(() => {
+        if (!this.midi) return;
+        this.midi.setEnabled(true);
+        this._updateToggleUI(true);
+        this._showMeters(true);
+        this._initChannelVolumes();
+        if (this._mode === 'groovy') this.groovy.start();
+        else if (this._mode === 'magenta') this.magenta.start();
+        this.pushEvent("midi_toggled", { enabled: true });
+        try { localStorage.setItem('sensocto_midi_enabled', 'true'); } catch (_) {}
+      });
+      return;
     }
 
-    this.pushEvent("midi_toggled", { enabled: newEnabled });
-    try { localStorage.setItem('sensocto_midi_enabled', newEnabled); } catch (_) {}
+    // Stop engines BEFORE disabling the router, so their noteOff
+    // messages reach the Tone.js synths while they're still active.
+    this.groovy.stop();
+    this.magenta.stop();
+    this.clock.stop();
+    this.syncDetector.reset();
+    this.midi.setEnabled(false);
+    this._updateToggleUI(false);
+    this._showMeters(false);
+
+    this.pushEvent("midi_toggled", { enabled: false });
+    try { localStorage.setItem('sensocto_midi_enabled', 'false'); } catch (_) {}
   },
 
   _restoreState() {
@@ -1262,18 +1602,31 @@ const MidiOutputHook = {
       const deviceId = localStorage.getItem('sensocto_midi_device');
       const mode = localStorage.getItem('sensocto_midi_mode');
       const genreIdx = parseInt(localStorage.getItem('sensocto_midi_genre'), 10);
+      const backend = localStorage.getItem('sensocto_audio_backend') || 'midi';
 
-      if (mode === 'groovy' || mode === 'abstract') this._mode = mode;
+      // Restore audio backend
+      if (['midi', 'tone', 'both'].includes(backend)) {
+        this.midi.setBackend(backend);
+        const backendSelect = this.el.querySelector('#midi-backend-select');
+        if (backendSelect) backendSelect.value = backend;
+        const deviceSel = this.el.querySelector('#midi-device-select');
+        if (deviceSel) deviceSel.style.display = (backend === 'tone') ? 'none' : '';
+      }
+
+      if (mode === 'groovy' || mode === 'abstract' || mode === 'magenta') this._mode = mode;
       if (!isNaN(genreIdx) && genreIdx >= 0 && genreIdx < GENRES.length) {
         this._genreIndex = genreIdx;
       }
       if (this._mode === 'groovy') {
         this.groovy.setGenre(GENRES[this._genreIndex]);
+        this.midi.tone.setGenre(GENRES[this._genreIndex].id);
+      } else if (this._mode === 'magenta') {
+        this._applyStoredAISettings();
       }
       this._updateModeUI();
 
       if (enabled) {
-        this.midi._ready.then(() => {
+        this.midi.requestAccess().then(() => {
           if (!this.midi) return;
           if (deviceId) this.midi.selectOutput(deviceId);
           this.midi.setEnabled(true);
@@ -1281,6 +1634,7 @@ const MidiOutputHook = {
           this._updateToggleUI(true);
           this._showMeters(true);
           if (this._mode === 'groovy') this.groovy.start();
+          else if (this._mode === 'magenta') this.magenta.start();
           this.pushEvent("midi_toggled", { enabled: true });
         });
       }
@@ -1291,7 +1645,9 @@ const MidiOutputHook = {
     const btn = this.el.querySelector('#midi-toggle-btn');
     const dot = this.el.querySelector('#midi-status-dot');
     if (btn) {
-      btn.textContent = enabled ? 'MIDI On' : 'MIDI Off';
+      const backend = this.midi.getBackend ? this.midi.getBackend() : 'midi';
+      const label = backend === 'midi' ? 'MIDI' : backend === 'tone' ? 'Synth' : 'Audio';
+      btn.textContent = enabled ? `${label} On` : `${label} Off`;
       if (enabled) {
         btn.classList.remove('bg-gray-700', 'hover:bg-gray-600', 'text-gray-300');
         btn.classList.add('bg-purple-600', 'hover:bg-purple-500', 'text-white');

@@ -2170,6 +2170,78 @@ Hooks.CountdownTimer = {
 
     updateDisplay() {
         this.el.textContent = `${this.remaining}s`;
+        this.el.setAttribute('aria-label', `${this.remaining} seconds remaining`);
+
+        if ([30, 15, 5, 0].includes(this.remaining)) {
+            this.announceToScreenReader(
+                this.remaining === 0
+                    ? 'Time expired'
+                    : `${this.remaining} seconds remaining`
+            );
+        }
+    },
+
+    announceToScreenReader(message) {
+        let announcer = document.getElementById('sr-announcer');
+        if (!announcer) {
+            announcer = document.createElement('div');
+            announcer.id = 'sr-announcer';
+            announcer.setAttribute('role', 'status');
+            announcer.setAttribute('aria-live', 'assertive');
+            announcer.className = 'sr-only';
+            document.body.appendChild(announcer);
+        }
+        announcer.textContent = '';
+        requestAnimationFrame(() => { announcer.textContent = message; });
+    }
+};
+
+// FocusTrap hook - traps focus within an element (for modals/dialogs)
+Hooks.FocusTrap = {
+    mounted() {
+        this.trapFocus();
+    },
+
+    updated() {
+        this.trapFocus();
+    },
+
+    trapFocus() {
+        const focusable = this.el.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+
+        this.firstEl = focusable[0];
+        this.lastEl = focusable[focusable.length - 1];
+
+        if (this._handleKeydown) {
+            this.el.removeEventListener('keydown', this._handleKeydown);
+        }
+
+        this._handleKeydown = (e) => {
+            if (e.key !== 'Tab') return;
+            if (e.shiftKey) {
+                if (document.activeElement === this.firstEl) {
+                    e.preventDefault();
+                    this.lastEl.focus();
+                }
+            } else {
+                if (document.activeElement === this.lastEl) {
+                    e.preventDefault();
+                    this.firstEl.focus();
+                }
+            }
+        };
+
+        this.el.addEventListener('keydown', this._handleKeydown);
+        this.firstEl.focus();
+    },
+
+    destroyed() {
+        if (this._handleKeydown) {
+            this.el.removeEventListener('keydown', this._handleKeydown);
+        }
     }
 };
 

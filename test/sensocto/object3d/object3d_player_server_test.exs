@@ -532,6 +532,158 @@ defmodule Sensocto.Object3D.Object3DPlayerServerTest do
     end
   end
 
+  describe "multi-tab sync (socket_id filtering)" do
+    test "take_control with socket_id is reflected in controller_changed broadcast" do
+      {:ok, room_id} = create_test_room()
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+      user_id = Ecto.UUID.generate()
+      socket_id = "phx-tab-123"
+
+      assert :ok = Object3DPlayerServer.take_control(room_id, user_id, "User", socket_id)
+
+      assert_receive {:object3d_controller_changed, payload}, 500
+      assert payload.controller_socket_id == socket_id
+      assert payload.controller_user_id == user_id
+    end
+
+    test "take_control without socket_id broadcasts nil socket_id" do
+      {:ok, room_id} = create_test_room()
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+      user_id = Ecto.UUID.generate()
+
+      assert :ok = Object3DPlayerServer.take_control(room_id, user_id, "User")
+
+      assert_receive {:object3d_controller_changed, payload}, 500
+      assert is_nil(payload.controller_socket_id)
+    end
+
+    test "camera sync broadcast includes controller_socket_id" do
+      {:ok, room_id} = create_test_room()
+      {:ok, playlist} = create_playlist_for_room(room_id)
+      {:ok, _item} = add_playlist_item(playlist.id)
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+      user_id = Ecto.UUID.generate()
+      socket_id = "phx-tab-456"
+
+      Object3DPlayerServer.take_control(room_id, user_id, "Controller", socket_id)
+
+      flush_messages()
+
+      Object3DPlayerServer.sync_camera(
+        room_id,
+        %{x: 1, y: 2, z: 3},
+        %{x: 0, y: 0, z: 0},
+        user_id
+      )
+
+      assert_receive {:object3d_camera_synced, payload}, 500
+      assert payload.controller_socket_id == socket_id
+    end
+
+    test "release_control broadcasts nil socket_id" do
+      {:ok, room_id} = create_test_room()
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+      user_id = Ecto.UUID.generate()
+      socket_id = "phx-tab-abc"
+
+      Object3DPlayerServer.take_control(room_id, user_id, "User", socket_id)
+      flush_messages()
+
+      Object3DPlayerServer.release_control(room_id, user_id)
+
+      assert_receive {:object3d_controller_changed, payload}, 500
+      assert is_nil(payload.controller_socket_id)
+      assert is_nil(payload.controller_user_id)
+    end
+
+    test "request_control creates pending request" do
+      {:ok, room_id} = create_test_room()
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      user1_id = Ecto.UUID.generate()
+      Object3DPlayerServer.take_control(room_id, user1_id, "User1", "tab-1")
+
+      user2_id = Ecto.UUID.generate()
+      result = Object3DPlayerServer.request_control(room_id, user2_id, "User2", "tab-2")
+
+      assert result == {:ok, :request_pending}
+    end
+
+    test "retaking control from different tab updates socket_id in broadcast" do
+      {:ok, room_id} = create_test_room()
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+      user_id = Ecto.UUID.generate()
+
+      # Take control from tab 1
+      Object3DPlayerServer.take_control(room_id, user_id, "User", "tab-1")
+      assert_receive {:object3d_controller_changed, payload1}, 500
+      assert payload1.controller_socket_id == "tab-1"
+
+      # Same user takes control from tab 2
+      Object3DPlayerServer.take_control(room_id, user_id, "User", "tab-2")
+      assert_receive {:object3d_controller_changed, payload2}, 500
+      assert payload2.controller_socket_id == "tab-2"
+    end
+
+    test "camera sync from different tabs only works for controller" do
+      {:ok, room_id} = create_test_room()
+      {:ok, playlist} = create_playlist_for_room(room_id)
+      {:ok, _item} = add_playlist_item(playlist.id)
+      on_exit(fn -> stop_player(room_id) end)
+      {:ok, _pid} = start_player(room_id)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:#{room_id}")
+
+      controller_id = Ecto.UUID.generate()
+      other_id = Ecto.UUID.generate()
+
+      Object3DPlayerServer.take_control(room_id, controller_id, "Controller", "tab-ctrl")
+      flush_messages()
+
+      # Non-controller sync should be ignored (no broadcast)
+      Object3DPlayerServer.sync_camera(
+        room_id,
+        %{x: 99, y: 99, z: 99},
+        %{x: 0, y: 0, z: 0},
+        other_id
+      )
+
+      refute_receive {:object3d_camera_synced, _}, 100
+
+      # Controller sync should broadcast with socket_id
+      Object3DPlayerServer.sync_camera(
+        room_id,
+        %{x: 1, y: 2, z: 3},
+        %{x: 0, y: 0, z: 0},
+        controller_id
+      )
+
+      assert_receive {:object3d_camera_synced, payload}, 500
+      assert payload.controller_socket_id == "tab-ctrl"
+    end
+  end
+
   # Helper to flush mailbox
   defp flush_messages do
     receive do

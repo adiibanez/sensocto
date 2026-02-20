@@ -229,7 +229,7 @@ defmodule SensoctoWeb.StatefulSensorLive do
      |> assign(:user_id, user_id)
      |> assign(:is_favorite, is_favorite)
      # Pin state
-     |> assign(:is_pinned, is_pinned)}
+     |> assign(:is_pinned, is_pinned), layout: false}
   end
 
   # def _render(assigns) do

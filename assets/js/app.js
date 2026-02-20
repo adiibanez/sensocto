@@ -43,6 +43,9 @@ import {
 // Connection monitor for offline resilience
 import connectionMonitor from './connection-monitor.js';
 
+// Delta encoding decoder for high-frequency ECG data
+import { decodeECG, isDeltaEncoded } from './encoding/delta_decoder.js';
+
 // Room-related hooks
 import { RoomStorage, CopyToClipboard, QRCode } from './hooks/room_storage.js';
 
@@ -274,6 +277,7 @@ Hooks.NotificationSound = {
 
 // CountdownTimer hook - displays a countdown from data-seconds
 // Used for control request modals to show time remaining before auto-transfer
+// NOTE: hooks.js has a more robust version that overrides this one at runtime
 Hooks.CountdownTimer = {
   mounted() {
     const seconds = parseInt(this.el.dataset.seconds) || 30;
@@ -285,6 +289,7 @@ Hooks.CountdownTimer = {
       if (this.display) {
         this.display.textContent = this.remaining;
       }
+      this.el.setAttribute('aria-label', `${this.remaining} seconds remaining`);
       if (this.remaining <= 0) {
         clearInterval(this.interval);
       }
@@ -399,6 +404,21 @@ Hooks.CompositeMeasurementHandler = {
       window.dispatchEvent(customEvent);
     });
 
+    // Handle delta-encoded high-frequency data (ECG)
+    this.handleEvent("composite_measurement_encoded", (event) => {
+      const { sensor_id, attribute_id, encoded } = event;
+      if (isDeltaEncoded(encoded)) {
+        const measurements = decodeECG(encoded.data);
+        if (measurements) {
+          for (const m of measurements) {
+            window.dispatchEvent(new CustomEvent('composite-measurement-event', {
+              detail: { sensor_id, attribute_id, payload: m.payload, timestamp: m.timestamp }
+            }));
+          }
+        }
+      }
+    });
+
     // Handle seed data for composite views - pushes historical data on view entry
     // Buffer seed events for Svelte components that may not have mounted yet
     window.__compositeSeedBuffer = [];
@@ -466,82 +486,55 @@ Hooks.CompositeMeasurementHandler = {
   }
 }
 
-// FooterToolbar hook - handles mobile collapsible footer
+// FooterToolbar hook - floating pill with popover for desktop sensor controls
 Hooks.FooterToolbar = {
   mounted() {
-    this.setupElements();
     this.isExpanded = false;
-    this.setupEventListeners();
-  },
+    this.pillBtn = document.getElementById('footer-pill-toggle');
+    this.popover = document.getElementById('footer-popover');
 
-  // Re-query elements - needed after LiveView DOM patches
-  setupElements() {
-    this.toggleBtn = document.getElementById('footer-toggle');
-    this.content = document.getElementById('footer-content-mobile');
-    this.chevron = this.el.querySelector('.footer-chevron');
-  },
-
-  setupEventListeners() {
-    if (this.toggleBtn && !this.listenersAttached) {
-      // Use both click and touchend for better mobile support
-      this.handleToggle = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggle();
+    if (this.pillBtn) {
+      this._handlePillClick = () => {
+        this.isExpanded = !this.isExpanded;
+        this.applyState();
       };
-
-      this.toggleBtn.addEventListener('click', this.handleToggle);
-      // Add touchend for mobile devices that may not fire click reliably
-      this.toggleBtn.addEventListener('touchend', this.handleToggle, { passive: false });
-      this.listenersAttached = true;
+      this.pillBtn.addEventListener('click', this._handlePillClick);
     }
+
+    // Close popover when clicking outside
+    this._handleOutsideClick = (e) => {
+      if (this.isExpanded && !this.el.contains(e.target)) {
+        this.isExpanded = false;
+        this.applyState();
+      }
+    };
+    document.addEventListener('click', this._handleOutsideClick);
   },
 
-  // Called by LiveView after DOM patches - crucial for state synchronization
   updated() {
-    // Re-query elements in case they were re-rendered
-    this.setupElements();
-
-    // Restore visual state to match our tracked isExpanded state
-    // This fixes the issue where LiveView patches reset the DOM but our state is stale
-    this.applyState();
-
-    // Re-attach listeners if needed (in case button was re-rendered)
-    this.setupEventListeners();
-  },
-
-  toggle() {
-    this.isExpanded = !this.isExpanded;
+    this.pillBtn = document.getElementById('footer-pill-toggle');
+    this.popover = document.getElementById('footer-popover');
     this.applyState();
   },
 
-  // Apply the current isExpanded state to the DOM
   applyState() {
-    if (!this.content || !this.toggleBtn) {
-      return;
-    }
-
+    if (!this.popover || !this.pillBtn) return;
     if (this.isExpanded) {
-      this.content.classList.remove('hidden');
-      this.toggleBtn.setAttribute('aria-expanded', 'true');
-      if (this.chevron) {
-        this.chevron.style.transform = 'rotate(180deg)';
-      }
+      this.popover.classList.remove('hidden');
+      this.pillBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-500');
+      this.pillBtn.classList.remove('bg-gray-800', 'text-gray-400', 'border-gray-600');
     } else {
-      this.content.classList.add('hidden');
-      this.toggleBtn.setAttribute('aria-expanded', 'false');
-      if (this.chevron) {
-        this.chevron.style.transform = 'rotate(0deg)';
-      }
+      this.popover.classList.add('hidden');
+      this.pillBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-500');
+      this.pillBtn.classList.add('bg-gray-800', 'text-gray-400', 'border-gray-600');
     }
   },
 
   destroyed() {
-    if (this.toggleBtn && this.handleToggle) {
-      this.toggleBtn.removeEventListener('click', this.handleToggle);
-      this.toggleBtn.removeEventListener('touchend', this.handleToggle);
+    if (this.pillBtn && this._handlePillClick) {
+      this.pillBtn.removeEventListener('click', this._handlePillClick);
     }
-    this.listenersAttached = false;
+    document.removeEventListener('click', this._handleOutsideClick);
   }
 }
 

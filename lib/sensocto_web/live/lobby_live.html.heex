@@ -342,9 +342,11 @@
   <div class="flex items-center mb-2">
     <div class="flex flex-col sm:flex-row sm:items-center gap-3">
       <%!-- Quick lens chips - only show lenses with actual sensor data --%>
-      <div class="flex flex-wrap items-center gap-2">
+      <nav aria-label="Lobby view modes" class="flex flex-wrap items-center gap-2" role="tablist">
         <.link
           patch={~p"/lobby"}
+          role="tab"
+          aria-selected={to_string(@live_action == :sensors)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :sensors,
               do: "bg-orange text-white",
@@ -354,6 +356,8 @@
         </.link>
         <.link
           patch={~p"/lobby/users"}
+          role="tab"
+          aria-selected={to_string(@live_action == :users)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :users,
               do: "bg-orange text-white",
@@ -364,6 +368,8 @@
         <.link
           :if={@favorite_sensors != []}
           patch={~p"/lobby/favorites"}
+          role="tab"
+          aria-selected={to_string(@live_action == :favorites)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :favorites,
               do: "bg-yellow-500 text-white",
@@ -374,6 +380,8 @@
         <.link
           :if={:heartrate in @available_lenses}
           patch={~p"/lobby/heartrate"}
+          role="tab"
+          aria-selected={to_string(@live_action == :heartrate)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :heartrate,
               do: "bg-orange text-white",
@@ -384,6 +392,8 @@
         <.link
           :if={:ecg in @available_lenses}
           patch={~p"/lobby/ecg"}
+          role="tab"
+          aria-selected={to_string(@live_action == :ecg)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :ecg,
               do: "bg-orange text-white",
@@ -394,6 +404,8 @@
         <.link
           :if={:battery in @available_lenses}
           patch={~p"/lobby/battery"}
+          role="tab"
+          aria-selected={to_string(@live_action == :battery)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :battery,
               do: "bg-orange text-white",
@@ -404,6 +416,8 @@
         <.link
           :if={:imu in @available_lenses}
           patch={~p"/lobby/imu"}
+          role="tab"
+          aria-selected={to_string(@live_action == :imu)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :imu,
               do: "bg-orange text-white",
@@ -414,6 +428,8 @@
         <.link
           :if={:location in @available_lenses}
           patch={~p"/lobby/location"}
+          role="tab"
+          aria-selected={to_string(@live_action == :location)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :location,
               do: "bg-orange text-white",
@@ -424,6 +440,8 @@
         <.link
           :if={:skeleton in @available_lenses}
           patch={~p"/lobby/skeleton"}
+          role="tab"
+          aria-selected={to_string(@live_action == :skeleton)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :skeleton,
               do: "bg-purple-500 text-white",
@@ -434,6 +452,8 @@
         <.link
           :if={:respiration in @available_lenses}
           patch={~p"/lobby/breathing"}
+          role="tab"
+          aria-selected={to_string(@live_action == :respiration)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :respiration,
               do: "bg-cyan-500 text-white",
@@ -444,6 +464,8 @@
         <.link
           :if={:hrv in @available_lenses}
           patch={~p"/lobby/hrv"}
+          role="tab"
+          aria-selected={to_string(@live_action == :hrv)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :hrv,
               do: "bg-cyan-500 text-white",
@@ -454,6 +476,8 @@
         <.link
           :if={:gaze in @available_lenses}
           patch={~p"/lobby/gaze"}
+          role="tab"
+          aria-selected={to_string(@live_action == :gaze)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :gaze,
               do: "bg-cyan-500 text-white",
@@ -463,6 +487,8 @@
         </.link>
         <.link
           patch={~p"/lobby/graph"}
+          role="tab"
+          aria-selected={to_string(@live_action == :graph)}
           class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph,
               do: "bg-cyan-500 text-white",
@@ -470,7 +496,7 @@
         >
           <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
         </.link>
-      </div>
+      </nav>
 
       <%!-- Sort Controls — only relevant for sensor list views --%>
       <div
@@ -863,144 +889,6 @@
     phx-hook="CompositeMeasurementHandler"
     class="p-4"
   >
-    <%!-- MIDI Output Panel — only on Graph tab --%>
-    <div
-      id="midi-output-panel"
-      phx-hook="MidiOutputHook"
-      phx-update="ignore"
-      class="mb-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center gap-3 flex-wrap text-xs"
-    >
-      <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
-      <button
-        id="midi-toggle-btn"
-        class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-      >
-        MIDI Off
-      </button>
-      <select
-        id="midi-device-select"
-        class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
-      >
-        <option value="">-- Select MIDI output --</option>
-      </select>
-      <button
-        id="midi-mode-btn"
-        class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
-      >
-        🌊 Abstract
-      </button>
-      <span
-        id="midi-chord-display"
-        class="text-pink-400 font-mono text-[10px]"
-        style="display:none"
-      >
-      </span>
-      <span id="midi-availability" class="text-gray-500 italic"></span>
-      <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="tempo"
-          title="Click to toggle — MIDI Clock / Group mean heart rate"
-        >
-          <span class="text-red-400 text-[10px]">BPM</span>
-          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              id="midi-bar-tempo"
-              class="h-full bg-red-500 rounded-full transition-all duration-150"
-              style="width: 0%"
-            >
-            </div>
-          </div>
-          <span id="midi-val-tempo" class="text-gray-500 w-6 tabular-nums">-</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="arousal"
-          title="Click to toggle — CC7 Volume / Collective arousal"
-        >
-          <span class="text-amber-400 text-[10px]">ARO</span>
-          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              id="midi-bar-arousal"
-              class="h-full bg-amber-500 rounded-full transition-all duration-150"
-              style="width: 0%"
-            >
-            </div>
-          </div>
-          <span id="midi-val-arousal" class="text-gray-500 w-6 tabular-nums">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="hrv"
-          title="Click to toggle — CC1 Mod Wheel / Group HRV RMSSD"
-        >
-          <span class="text-purple-400 text-[10px]">HRV</span>
-          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              id="midi-bar-hrv"
-              class="h-full bg-purple-500 rounded-full transition-all duration-75"
-              style="width: 0%"
-            >
-            </div>
-          </div>
-          <span id="midi-val-hrv" class="text-gray-500 w-6 tabular-nums">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="breath"
-          title="Click to toggle — CC2 Breath / Group breath phase LFO"
-        >
-          <span class="text-cyan-400 text-[10px]">BRE</span>
-          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              id="midi-bar-breath"
-              class="h-full bg-cyan-500 rounded-full transition-all duration-75"
-              style="width: 0%"
-            >
-            </div>
-          </div>
-          <span id="midi-val-breath" class="text-gray-500 w-6 tabular-nums">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="bsync"
-          title="Click to toggle — CC16 / Breathing sync (Kuramoto R)"
-        >
-          <span class="text-teal-400 text-[10px]">BSy</span>
-          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              id="midi-bar-bsync"
-              class="h-full bg-teal-500 rounded-full transition-all duration-75"
-              style="width: 0%"
-            >
-            </div>
-          </div>
-          <span id="midi-val-bsync" class="text-gray-500 w-6 tabular-nums">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="hsync"
-          title="Click to toggle — CC17 / HRV sync (Kuramoto R)"
-        >
-          <span class="text-indigo-400 text-[10px]">HSy</span>
-          <div class="w-16 h-3 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              id="midi-bar-hsync"
-              class="h-full bg-indigo-500 rounded-full transition-all duration-75"
-              style="width: 0%"
-            >
-            </div>
-          </div>
-          <span id="midi-val-hsync" class="text-gray-500 w-6 tabular-nums">0</span>
-        </div>
-        <span
-          id="midi-sync-trigger"
-          class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
-        >
-        </span>
-      </div>
-    </div>
-
     <.svelte
       name="LobbyGraph"
       props={
@@ -1013,6 +901,449 @@
       socket={@socket}
       class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
     />
+
+    <%!-- MIDI Output Panel — below graph --%>
+    <div
+      id="midi-output-panel"
+      phx-hook="MidiOutputHook"
+      phx-update="ignore"
+      class="mt-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center gap-3 flex-wrap text-xs"
+    >
+      <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
+      <button
+        id="midi-toggle-btn"
+        class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+      >
+        Audio Off
+      </button>
+      <select
+        id="midi-backend-select"
+        class="rounded px-2 py-1 text-xs focus:outline-none"
+        style="background: #374151; border: 1px solid #4b5563; color: #d1d5db;"
+      >
+        <option value="midi">MIDI</option>
+        <option value="tone">Synth</option>
+        <option value="both">Both</option>
+      </select>
+      <select
+        id="midi-device-select"
+        class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
+      >
+        <option value="">-- Select MIDI output --</option>
+      </select>
+      <button
+        id="midi-mode-btn"
+        class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
+      >
+        🌊 Abstract
+      </button>
+      <button
+        id="midi-ai-settings-btn"
+        class="hidden px-1.5 py-1 rounded text-xs hover:bg-gray-600 transition-colors"
+        style="color: #c4b5fd;"
+        title="AI Settings"
+      >
+        ⚙
+      </button>
+      <span
+        id="midi-chord-display"
+        class="text-pink-400 font-mono text-[10px]"
+        style="display:none"
+      >
+      </span>
+
+      <div
+        id="tone-instruments"
+        class="hidden w-full flex items-center gap-2 flex-wrap text-[10px]"
+      >
+        <span style="color: #9ca3af;">Voices:</span>
+        <label class="flex items-center gap-1" style="color: #d1d5db;">
+          <span style="color: #f87171;">Bass</span>
+          <select
+            id="tone-inst-bass"
+            class="rounded px-1 py-0.5 text-[10px]"
+            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+          >
+            <option value="default">Genre</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1" style="color: #d1d5db;">
+          <span style="color: #a78bfa;">Pad</span>
+          <select
+            id="tone-inst-pad"
+            class="rounded px-1 py-0.5 text-[10px]"
+            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+          >
+            <option value="default">Genre</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1" style="color: #d1d5db;">
+          <span style="color: #34d399;">Lead</span>
+          <select
+            id="tone-inst-lead"
+            class="rounded px-1 py-0.5 text-[10px]"
+            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+          >
+            <option value="default">Genre</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1" style="color: #d1d5db;">
+          <span style="color: #38bdf8;">Arp</span>
+          <select
+            id="tone-inst-arp"
+            class="rounded px-1 py-0.5 text-[10px]"
+            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+          >
+            <option value="default">Genre</option>
+          </select>
+        </label>
+      </div>
+      <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="tempo"
+          title="Click to toggle — MIDI Clock / Group mean heart rate"
+        >
+          <span class="text-[10px]" style="color: #f87171;">BPM</span>
+          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+            <div
+              id="midi-bar-tempo"
+              class="h-full rounded-full transition-all duration-150"
+              style="width: 0%; background: #ef4444;"
+            >
+            </div>
+          </div>
+          <span id="midi-val-tempo" class="w-6 tabular-nums" style="color: #d1d5db;">-</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="arousal"
+          title="Click to toggle — CC7 Volume / Collective arousal"
+        >
+          <span class="text-[10px]" style="color: #fbbf24;">ARO</span>
+          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+            <div
+              id="midi-bar-arousal"
+              class="h-full rounded-full transition-all duration-150"
+              style="width: 0%; background: #f59e0b;"
+            >
+            </div>
+          </div>
+          <span id="midi-val-arousal" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="hrv"
+          title="Click to toggle — CC1 Mod Wheel / Group HRV RMSSD"
+        >
+          <span class="text-[10px]" style="color: #c084fc;">HRV</span>
+          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+            <div
+              id="midi-bar-hrv"
+              class="h-full rounded-full transition-all duration-75"
+              style="width: 0%; background: #a855f7;"
+            >
+            </div>
+          </div>
+          <span id="midi-val-hrv" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="breath"
+          title="Click to toggle — CC2 Breath / Group breath phase LFO"
+        >
+          <span class="text-[10px]" style="color: #22d3ee;">BRE</span>
+          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+            <div
+              id="midi-bar-breath"
+              class="h-full rounded-full transition-all duration-75"
+              style="width: 0%; background: #06b6d4;"
+            >
+            </div>
+          </div>
+          <span id="midi-val-breath" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="bsync"
+          title="Click to toggle — CC16 / Breathing sync (Kuramoto R)"
+        >
+          <span class="text-[10px]" style="color: #2dd4bf;">BSy</span>
+          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+            <div
+              id="midi-bar-bsync"
+              class="h-full rounded-full transition-all duration-75"
+              style="width: 0%; background: #14b8a6;"
+            >
+            </div>
+          </div>
+          <span id="midi-val-bsync" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+        </div>
+        <div
+          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+          data-midi-attr="hsync"
+          title="Click to toggle — CC17 / HRV sync (Kuramoto R)"
+        >
+          <span class="text-[10px]" style="color: #818cf8;">HSy</span>
+          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+            <div
+              id="midi-bar-hsync"
+              class="h-full rounded-full transition-all duration-75"
+              style="width: 0%; background: #6366f1;"
+            >
+            </div>
+          </div>
+          <span id="midi-val-hsync" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+        </div>
+        <span
+          id="midi-sync-trigger"
+          class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
+        >
+        </span>
+      </div>
+      <%!-- AI Settings Modal (inside phx-update="ignore" zone) --%>
+      <div
+        id="ai-settings-modal"
+        class="hidden fixed inset-0 z-50 flex items-center justify-center"
+        style="background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);"
+      >
+        <div
+          class="rounded-xl p-5 w-full max-w-md mx-4 shadow-2xl"
+          style="background: #1e1b2e; border: 1px solid #3b3556;"
+        >
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold" style="color: #c4b5fd;">AI Music Settings</h3>
+            <button
+              id="ai-settings-close"
+              class="text-lg leading-none px-2 py-1 rounded hover:bg-gray-700 transition-colors"
+              style="color: #9ca3af;"
+            >
+              &times;
+            </button>
+          </div>
+          <%!-- Chord Progression --%>
+          <div class="mb-4">
+            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+              Chord Progression
+            </label>
+            <input
+              id="ai-chords-input"
+              type="text"
+              placeholder="e.g. Am7 Dm7 G7 Cmaj7"
+              class="w-full rounded-lg px-3 py-2 text-xs focus:outline-none"
+              style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
+            />
+            <div id="ai-chord-presets" class="flex flex-wrap gap-1.5 mt-2">
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Dm7 G7 Cmaj7 Am7"
+              >
+                Jazz ii-V-I
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Fmaj7 Em7 Dm7 Cmaj7"
+              >
+                Neo Soul
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Am Fmaj7 C G"
+              >
+                Lo-fi Chill
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Cm Fm Abmaj7 G7"
+              >
+                Dark Cinema
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="C7 F7 C7 G7"
+              >
+                Blues
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Dm7 G7 Cmaj7 A7"
+              >
+                Bossa Nova
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Cmaj7 Am7 Fmaj7 G"
+              >
+                Dreamy Pop
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Em Bm C D"
+              >
+                Indie Rock
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Bbmaj7 Cm7 Fm7 Gm7"
+              >
+                Reggae
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="C F G F"
+              >
+                Ska
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="E A B A"
+              >
+                Punk
+              </button>
+              <button
+                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-chords="Em G D C"
+              >
+                Grunge
+              </button>
+            </div>
+          </div>
+          <%!-- Key Selector --%>
+          <div class="mb-4">
+            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+              Key
+            </label>
+            <div class="flex gap-2">
+              <select
+                id="ai-key-root"
+                class="rounded-lg px-3 py-1.5 text-xs flex-1 focus:outline-none"
+                style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
+              >
+                <option value="0">C</option>
+                <option value="1">C# / Db</option>
+                <option value="2">D</option>
+                <option value="3">Eb</option>
+                <option value="4">E</option>
+                <option value="5">F</option>
+                <option value="6">F# / Gb</option>
+                <option value="7">G</option>
+                <option value="8">Ab</option>
+                <option value="9">A</option>
+                <option value="10">Bb</option>
+                <option value="11">B</option>
+              </select>
+              <select
+                id="ai-key-quality"
+                class="rounded-lg px-3 py-1.5 text-xs flex-1 focus:outline-none"
+                style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
+              >
+                <option value="major">Major</option>
+                <option value="minor" selected>Minor</option>
+              </select>
+            </div>
+          </div>
+          <%!-- Creativity Slider --%>
+          <div class="mb-4">
+            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+              Creativity
+              <span id="ai-creativity-label" class="font-normal" style="color: #9ca3af;">
+                — Auto (from breathing)
+              </span>
+            </label>
+            <div class="flex items-center gap-3">
+              <span class="text-[10px]" style="color: #6b7280;">Tight</span>
+              <input
+                id="ai-creativity-slider"
+                type="range"
+                min="0"
+                max="100"
+                value="50"
+                class="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                style="accent-color: #a78bfa; background: #2d2845;"
+              />
+              <span class="text-[10px]" style="color: #6b7280;">Wild</span>
+            </div>
+            <div class="flex items-center gap-2 mt-1.5">
+              <label
+                class="flex items-center gap-1 text-[10px] cursor-pointer"
+                style="color: #9ca3af;"
+              >
+                <input
+                  id="ai-creativity-auto"
+                  type="checkbox"
+                  checked
+                  class="rounded"
+                  style="accent-color: #a78bfa;"
+                /> Auto (breathing controls creativity)
+              </label>
+            </div>
+          </div>
+          <%!-- Mood Override --%>
+          <div class="mb-5">
+            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+              Mood
+            </label>
+            <div class="flex gap-1.5" id="ai-mood-buttons">
+              <button
+                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-mood="auto"
+              >
+                Auto
+              </button>
+              <button
+                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-mood="calm"
+              >
+                Calm
+              </button>
+              <button
+                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-mood="warm"
+              >
+                Warm
+              </button>
+              <button
+                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-mood="tense"
+              >
+                Tense
+              </button>
+              <button
+                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                data-mood="intense"
+              >
+                Intense
+              </button>
+            </div>
+          </div>
+          <%!-- Apply --%>
+          <button
+            id="ai-settings-apply"
+            class="w-full py-2 rounded-lg text-xs font-semibold transition-colors"
+            style="background: #7c3aed; color: white;"
+          >
+            Apply &amp; Generate
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1179,6 +1510,9 @@
         <div
           id="object3d-control-countdown"
           phx-hook="CountdownTimer"
+          role="timer"
+          aria-live="polite"
+          aria-atomic="true"
           data-seconds="30"
           class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
         >
@@ -1290,6 +1624,9 @@
         <div
           id="media-control-countdown"
           phx-hook="CountdownTimer"
+          role="timer"
+          aria-live="polite"
+          aria-atomic="true"
           data-seconds="30"
           class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
         >

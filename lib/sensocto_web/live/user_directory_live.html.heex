@@ -1,48 +1,76 @@
-<div class="max-w-4xl mx-auto px-4 py-8">
-  <.header>
-    Users
-    <:subtitle>Public user directory</:subtitle>
-  </.header>
+<div class={if @live_action == :graph, do: "px-4 py-4", else: "max-w-4xl mx-auto px-4 py-8"}>
+  <div class="flex items-center justify-between mb-4">
+    <.header>
+      Users
+      <:subtitle>Public user directory</:subtitle>
+    </.header>
 
-  <div class="mt-6">
-    <form phx-change="search" phx-submit="search">
-      <input
-        type="text"
-        name="search"
-        value={@search}
-        placeholder="Search users..."
-        phx-debounce="300"
-        class="w-full rounded-md bg-gray-800 border-gray-600 text-white placeholder-gray-500"
-      />
-    </form>
+    <div class="flex gap-1 bg-gray-800 rounded-lg p-1">
+      <.link
+        navigate={~p"/users"}
+        class={"px-3 py-1.5 rounded-md text-sm font-medium transition-colors #{if @live_action == :index, do: "bg-gray-700 text-white", else: "text-gray-400 hover:text-white"}"}
+      >
+        <.icon name="hero-list-bullet" class="h-4 w-4 inline -mt-0.5" /> List
+      </.link>
+      <.link
+        navigate={~p"/users/graph"}
+        class={"px-3 py-1.5 rounded-md text-sm font-medium transition-colors #{if @live_action == :graph, do: "bg-gray-700 text-white", else: "text-gray-400 hover:text-white"}"}
+      >
+        <.icon name="hero-circle-stack" class="h-4 w-4 inline -mt-0.5" /> Graph
+      </.link>
+    </div>
   </div>
 
-  <div class="mt-6 grid gap-3">
-    <%= if @users == [] do %>
-      <p class="text-gray-400 text-center py-8">No users found</p>
-    <% else %>
-      <%= for user <- @users do %>
-        <.link
-          navigate={~p"/users/#{user.id}"}
-          class="flex items-center gap-4 p-4 bg-gray-800 rounded-lg hover:bg-gray-750 transition-colors"
-        >
-          <div class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-lg shrink-0">
-            <%= if user.status_emoji do %>
-              {user.status_emoji}
-            <% else %>
-              <.icon name="hero-user" class="h-5 w-5 text-gray-400" />
-            <% end %>
-          </div>
-          <div class="min-w-0">
-            <p class="text-white font-medium truncate">
-              {user.display_name || String.split(to_string(user.email), "@") |> hd()}
-            </p>
-            <%= if user.bio do %>
-              <p class="text-sm text-gray-400 truncate">{user.bio}</p>
-            <% end %>
-          </div>
-        </.link>
+  <%= if @live_action == :index do %>
+    <div class="mt-2">
+      <form phx-change="search" phx-submit="search">
+        <input
+          type="text"
+          name="search"
+          value={@search}
+          placeholder="Search users..."
+          phx-debounce="300"
+          class="w-full rounded-md bg-gray-800 border-gray-600 text-white placeholder-gray-500"
+        />
+      </form>
+    </div>
+
+    <div class="mt-6 grid gap-3">
+      <%= if @users == [] do %>
+        <p class="text-gray-400 text-center py-8">No users found</p>
+      <% else %>
+        <%= for user <- @users do %>
+          <.link
+            navigate={~p"/users/#{user.id}"}
+            class="flex items-center gap-4 p-4 bg-gray-800 rounded-lg hover:bg-gray-750 transition-colors"
+          >
+            <div class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-lg shrink-0">
+              <%= if user.status_emoji do %>
+                {user.status_emoji}
+              <% else %>
+                <.icon name="hero-user" class="h-5 w-5 text-gray-400" />
+              <% end %>
+            </div>
+            <div class="min-w-0">
+              <p class="text-white font-medium truncate">
+                {user.display_name || String.split(to_string(user.email), "@") |> hd()}
+              </p>
+              <%= if user.bio do %>
+                <p class="text-sm text-gray-400 truncate">{user.bio}</p>
+              <% end %>
+            </div>
+          </.link>
+        <% end %>
       <% end %>
-    <% end %>
-  </div>
+    </div>
+  <% else %>
+    <div class="w-full h-[calc(100vh-180px)] min-h-[500px]">
+      <.svelte
+        name="UserGraph"
+        props={%{users: @graph_users, connections: @graph_connections}}
+        socket={@socket}
+        class="w-full h-full rounded-lg overflow-hidden"
+      />
+    </div>
+  <% end %>
 </div>

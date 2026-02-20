@@ -167,6 +167,7 @@ defmodule SensoctoWeb.Router do
       # Profiles & Users
       live "/profile", ProfileLive, :index
       live "/users", UserDirectoryLive, :index
+      live "/users/graph", UserDirectoryLive, :graph
       live "/users/:id", UserShowLive, :show
 
       # Polls

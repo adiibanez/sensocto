@@ -10,7 +10,17 @@ export class MidiOutput {
     this.enabled = false;
     this.onDeviceListChange = null;
     this._destroyed = false;
+    this._ready = Promise.resolve(); // no-op until requestAccess()
+  }
+
+  // Call this when the user first enables MIDI.
+  // Returns a promise that resolves when access is granted (or denied).
+  // Safe to call multiple times — only requests once.
+  requestAccess() {
+    if (this.midiAccess || this._accessRequested) return this._ready;
+    this._accessRequested = true;
     this._ready = this._init();
+    return this._ready;
   }
 
   async _init() {

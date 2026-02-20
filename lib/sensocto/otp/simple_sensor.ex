@@ -20,6 +20,7 @@ defmodule Sensocto.SimpleSensor do
 
     GenServer.start_link(__MODULE__, configuration,
       name: via_tuple(sensor_id),
+      hibernate_after: 15_000,
       spawn_opt: [fullsweep_after: 10]
     )
   end
@@ -393,11 +394,15 @@ defmodule Sensocto.SimpleSensor do
       {:measurement, enriched_attribute}
     )
 
-    # Broadcast to attention-sharded topic when there are viewers
-    if state.attention_level != :none do
+    # Broadcast to attention-sharded topic when there are viewers.
+    # Priority attributes (button) always broadcast on :high to ensure delivery
+    # even when the sensor has no active viewers (attention_level == :none).
+    attention_topic = attention_topic_for(state.attention_level, attribute)
+
+    if attention_topic do
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
-        "data:attention:#{state.attention_level}",
+        attention_topic,
         {:measurement, enriched_attribute}
       )
     end
@@ -437,11 +442,15 @@ defmodule Sensocto.SimpleSensor do
       {:measurements_batch, {sensor_id, broadcast_messages_list}}
     )
 
-    # Broadcast to attention-sharded topic when there are viewers
-    if state.attention_level != :none do
+    # Broadcast to attention-sharded topic when there are viewers.
+    # Check if any attribute in the batch is a priority attribute.
+    has_priority_attr = Enum.any?(broadcast_messages_list, &priority_attribute?/1)
+    attention_topic = attention_topic_for_batch(state.attention_level, has_priority_attr)
+
+    if attention_topic do
       Phoenix.PubSub.broadcast(
         Sensocto.PubSub,
-        "data:attention:#{state.attention_level}",
+        attention_topic,
         {:measurements_batch, {sensor_id, broadcast_messages_list}}
       )
     end
@@ -533,6 +542,26 @@ defmodule Sensocto.SimpleSensor do
   defp schedule_idle_check do
     Process.send_after(self(), :check_idle, @idle_check_interval)
   end
+
+  # Priority attributes always broadcast on data:attention:high regardless of
+  # the sensor's current attention level. This ensures interactive signals like
+  # button presses are never silently dropped when no one has the sensor open.
+  @priority_attribute_ids ~w(button buttons)
+
+  defp priority_attribute?(%{attribute_id: attr_id}) when attr_id in @priority_attribute_ids,
+    do: true
+
+  defp priority_attribute?(_), do: false
+
+  defp attention_topic_for(:none, attribute) do
+    if priority_attribute?(attribute), do: "data:attention:high", else: nil
+  end
+
+  defp attention_topic_for(level, _attribute), do: "data:attention:#{level}"
+
+  defp attention_topic_for_batch(:none, true = _has_priority), do: "data:attention:high"
+  defp attention_topic_for_batch(:none, false), do: nil
+  defp attention_topic_for_batch(level, _has_priority), do: "data:attention:#{level}"
 
   # Infer attribute type from attribute_id and payload structure
   defp infer_attribute_type(attribute_id, payload) do

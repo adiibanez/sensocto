@@ -1,12 +1,10 @@
 defmodule SensoctoWeb.TabbedFooterLive do
   @moduledoc """
-  Mobile tabbed footer navigation LiveView.
+  Mobile bottom navigation bar LiveView.
 
-  Provides a tabbed interface at the bottom of the screen for mobile devices,
-  switching between:
-  - Navigation (5-item bottom nav)
-  - Chat (inline chat interface)
-  - Controls (placeholder for future sensor controls)
+  Provides a compact single-row navigation at the bottom of the screen for mobile devices.
+  Sensor controls are accessed via the floating pill (shared with desktop).
+  Chat is accessed via the sidebar.
   """
   use SensoctoWeb, :live_view
 
@@ -55,125 +53,81 @@ defmodule SensoctoWeb.TabbedFooterLive do
           class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg touch-manipulation"
         >
           <Heroicons.icon name="chevron-up" type="outline" class="h-4 w-4" />
-          <Heroicons.icon name="signal" type="outline" class="h-4 w-4" />
+          <Heroicons.icon name="bars-3" type="outline" class="h-4 w-4" />
         </button>
       </div>
 
-      <%!-- Full footer: shown on primary pages always, or when manually expanded --%>
+      <%!-- Full nav bar: shown on primary pages always, or when manually expanded --%>
       <div
         :if={!@should_collapse || !@collapsed}
         class="bg-gray-900 border-t border-gray-700"
       >
-        <%!-- Collapse button on non-primary pages --%>
+        <%!-- Collapse handle on non-primary pages --%>
         <button
           :if={@should_collapse}
           phx-click="collapse_footer"
-          class="w-full flex justify-center py-1 text-gray-500 hover:text-gray-300 transition-colors touch-manipulation"
+          class="w-full flex justify-center py-0.5 text-gray-500 hover:text-gray-300 transition-colors touch-manipulation"
         >
-          <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4" />
+          <Heroicons.icon name="chevron-down" type="outline" class="h-3 w-3" />
         </button>
-        <%!-- Tab content area --%>
-        <div class="relative">
-          <%!-- Navigation Tab Content --%>
-          <div :if={@active_tab == :nav} class="bg-gray-800">
-            <div class="grid grid-cols-5 h-14">
-              <.nav_item
-                navigate={~p"/"}
-                icon="home"
-                label="Home"
-                active={@current_path == "/"}
-              />
-              <.nav_item
-                navigate={~p"/lobby"}
-                icon="squares-2x2"
-                label="Lobby"
-                active={String.starts_with?(@current_path, "/lobby")}
-              />
-              <.nav_item
-                navigate={~p"/rooms"}
-                icon="building-office"
-                label="Rooms"
-                active={String.starts_with?(@current_path, "/rooms")}
-              />
-              <.nav_item
-                navigate={~p"/sensors"}
-                icon="signal"
-                label="Sensors"
-                active={String.starts_with?(@current_path, "/sensors")}
-              />
-              <.nav_item
-                navigate={~p"/simulator"}
-                icon="cpu-chip"
-                label="Sim"
-                active={String.starts_with?(@current_path, "/simulator")}
-              />
-            </div>
-          </div>
 
-          <%!-- Chat Tab Content (only if chat is enabled) --%>
-          <div :if={@chat_enabled && @active_tab == :chat} class="h-[50vh] max-h-[400px]">
-            <.live_component
-              module={SensoctoWeb.Components.ChatComponent}
-              id="mobile-chat"
-              room_id={@room_id}
-              current_user={@current_user}
-              mode={:inline}
-            />
-          </div>
-
-          <%!-- Controls Tab Content --%>
-          <div :if={@active_tab == :controls} class="px-3 py-2 bg-gray-800">
-            {live_render(@socket, SensoctoWeb.SenseLive,
-              id: "bluetooth-mobile-tabbed",
-              sticky: true,
-              session: %{"parent_id" => self(), "mobile" => true}
-            )}
-          </div>
+        <%!-- Slide-up panel for chat --%>
+        <div :if={@chat_enabled && @active_tab == :chat} class="h-[50vh] max-h-[400px]">
+          <.live_component
+            module={SensoctoWeb.Components.ChatComponent}
+            id="mobile-chat"
+            room_id={@room_id}
+            current_user={@current_user}
+            mode={:inline}
+          />
         </div>
 
-        <%!-- Tab bar --%>
+        <%!-- Single compact nav row --%>
         <div class={[
-          "grid bg-gray-900 border-t border-gray-800",
-          if(@chat_enabled, do: "grid-cols-3", else: "grid-cols-2")
+          "grid bg-gray-900 h-12",
+          if(@chat_enabled, do: "grid-cols-6", else: "grid-cols-5")
         ]}>
-          <button
-            phx-click="switch_tab"
-            phx-value-tab="nav"
-            class={[
-              "flex flex-col items-center justify-center py-2 transition-colors touch-manipulation",
-              if(@active_tab == :nav, do: "text-blue-400", else: "text-gray-400 hover:text-gray-200")
-            ]}
-          >
-            <Heroicons.icon name="squares-2x2" type="outline" class="h-5 w-5" />
-            <span class="text-[10px] font-medium mt-0.5">Navigate</span>
-          </button>
-
+          <.nav_item
+            navigate={~p"/"}
+            icon="home"
+            label="Home"
+            active={@current_path == "/"}
+          />
+          <.nav_item
+            navigate={~p"/lobby"}
+            icon="squares-2x2"
+            label="Lobby"
+            active={String.starts_with?(@current_path, "/lobby")}
+          />
+          <.nav_item
+            navigate={~p"/rooms"}
+            icon="building-office"
+            label="Rooms"
+            active={String.starts_with?(@current_path, "/rooms")}
+          />
+          <.nav_item
+            navigate={~p"/sensors"}
+            icon="signal"
+            label="Sensors"
+            active={String.starts_with?(@current_path, "/sensors")}
+          />
+          <.nav_item
+            navigate={~p"/simulator"}
+            icon="cpu-chip"
+            label="Sim"
+            active={String.starts_with?(@current_path, "/simulator")}
+          />
+          <%!-- Chat toggle (only if enabled) --%>
           <button
             :if={@chat_enabled}
-            phx-click="switch_tab"
-            phx-value-tab="chat"
+            phx-click="toggle_chat"
             class={[
-              "flex flex-col items-center justify-center py-2 transition-colors touch-manipulation relative",
+              "flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation",
               if(@active_tab == :chat, do: "text-blue-400", else: "text-gray-400 hover:text-gray-200")
             ]}
           >
-            <Heroicons.icon name="chat-bubble-left-right" type="outline" class="h-5 w-5" />
-            <span class="text-[10px] font-medium mt-0.5">Chat</span>
-          </button>
-
-          <button
-            phx-click="switch_tab"
-            phx-value-tab="controls"
-            class={[
-              "flex flex-col items-center justify-center py-2 transition-colors touch-manipulation",
-              if(@active_tab == :controls,
-                do: "text-blue-400",
-                else: "text-gray-400 hover:text-gray-200"
-              )
-            ]}
-          >
-            <Heroicons.icon name="signal" type="outline" class="h-5 w-5" />
-            <span class="text-[10px] font-medium mt-0.5">Sensors</span>
+            <Heroicons.icon name="chat-bubble-left-right" type="outline" class="w-5 h-5" />
+            <span class="text-[10px] font-medium">Chat</span>
           </button>
         </div>
       </div>
@@ -193,7 +147,6 @@ defmodule SensoctoWeb.TabbedFooterLive do
       navigate={@navigate}
       class={[
         "flex flex-col items-center justify-center gap-0.5 transition-colors touch-manipulation",
-        "min-h-[44px]",
         @active && "text-blue-400",
         !@active && "text-gray-400 hover:text-gray-200 active:text-blue-400"
       ]}
@@ -206,7 +159,6 @@ defmodule SensoctoWeb.TabbedFooterLive do
 
   @impl true
   def handle_event("path_changed", %{"path" => path}, socket) do
-    # Auto-collapse when navigating away from primary pages, expand when arriving
     collapsed = if primary_page?(path), do: false, else: true
     {:noreply, socket |> assign(:current_path, path) |> assign(:collapsed, collapsed)}
   end
@@ -219,6 +171,16 @@ defmodule SensoctoWeb.TabbedFooterLive do
   @impl true
   def handle_event("collapse_footer", _params, socket) do
     {:noreply, assign(socket, :collapsed, true)}
+  end
+
+  @impl true
+  def handle_event("toggle_chat", _params, socket) do
+    new_tab = if socket.assigns.active_tab == :chat, do: :nav, else: :chat
+
+    {:noreply,
+     socket
+     |> assign(:active_tab, new_tab)
+     |> push_event("save_active_tab", %{tab: Atom.to_string(new_tab)})}
   end
 
   @impl true

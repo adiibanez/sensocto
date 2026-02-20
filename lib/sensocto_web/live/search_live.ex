@@ -136,18 +136,24 @@ defmodule SensoctoWeb.SearchLive do
       <div
         :if={@open}
         class="fixed inset-0 z-[100] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
         phx-window-keydown="keydown"
       >
         <div
           class="fixed inset-0 bg-black/60 backdrop-blur-sm"
           phx-click="close"
+          aria-hidden="true"
         >
         </div>
 
         <div class="relative min-h-screen flex items-start justify-center pt-16 sm:pt-24 px-4">
           <div
+            id="search-palette-dialog"
             class="relative w-full max-w-xl bg-gray-800 rounded-xl shadow-2xl border border-gray-700 overflow-hidden"
             phx-click-away="close"
+            phx-hook="FocusTrap"
           >
             <div class="flex items-center px-4 py-3 border-b border-gray-700">
               <Heroicons.icon

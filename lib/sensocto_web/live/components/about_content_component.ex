@@ -1401,6 +1401,54 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
           </p>
 
           <div class="space-y-8">
+            <%!-- Multi-Sensor Graph with Real Sensors --%>
+            <div class="bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-gray-700/50 overflow-hidden">
+              <div class="aspect-video relative">
+                <%!-- Desktop video for md+ screens --%>
+                <video
+                  id="video-graph-sensors"
+                  controls
+                  playsinline
+                  class="w-full h-full object-cover hidden md:block"
+                >
+                  <source src={~p"/videos/sensocto-graph-sensors.mp4"} type="video/mp4" />
+                </video>
+                <%!-- Mobile video for small screens --%>
+                <video
+                  id="video-graph-sensors-mobile"
+                  controls
+                  playsinline
+                  class="w-full h-full object-cover md:hidden"
+                >
+                  <source src={~p"/videos/sensocto-graph-sensors-mobile.mp4"} type="video/mp4" />
+                </video>
+              </div>
+              <div class="p-5">
+                <h3 class="text-lg font-semibold text-white mb-1">
+                  {gettext("Live Sensor Graph — Real Movesense Data")}
+                </h3>
+                <p class="text-gray-400 text-sm">
+                  {gettext(
+                    "Multiple Movesense sensors streaming ECG, heart rate, and IMU data simultaneously. The force-directed graph visualizes connections between participants in real-time."
+                  )}
+                </p>
+                <div class="flex items-center gap-3 mt-3">
+                  <span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded text-xs">
+                    {gettext("ECG")}
+                  </span>
+                  <span class="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-xs">
+                    {gettext("Heart Rate")}
+                  </span>
+                  <span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded text-xs">
+                    {gettext("IMU")}
+                  </span>
+                  <span class="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-xs">
+                    {gettext("Movesense")}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <%!-- Graph Demo Recording --%>
             <div class="bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-gray-700/50 overflow-hidden">
               <div class="aspect-video relative">

@@ -695,6 +695,9 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                     <div
                       id={"media-request-countdown-#{@room_id}"}
                       phx-hook="CountdownTimer"
+                      role="timer"
+                      aria-live="polite"
+                      aria-atomic="true"
                       data-seconds="30"
                       class="flex items-center gap-2"
                     >
@@ -954,6 +957,9 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
           <div
             id={"media-control-request-modal-#{@room_id}"}
             phx-hook="CountdownTimer"
+            role="timer"
+            aria-live="polite"
+            aria-atomic="true"
             data-seconds="30"
             class="bg-gray-800 rounded-lg p-6 max-w-sm w-full shadow-xl border border-amber-500/50"
             phx-click-away="dismiss_request_modal"

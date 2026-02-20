@@ -19,7 +19,7 @@ defmodule SensoctoWeb.Endpoint do
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
+    websocket: [connect_info: [session: @session_options], compress: true],
     longpoll: [connect_info: [session: @session_options]]
 
   socket "/socket", SensoctoWeb.UserSocket,
@@ -43,7 +43,9 @@ defmodule SensoctoWeb.Endpoint do
     at: "/",
     from: :sensocto,
     gzip: Mix.env() == :prod,
-    only: SensoctoWeb.static_paths()
+    only: SensoctoWeb.static_paths(),
+    cache_control_for_etags:
+      if(Mix.env() == :prod, do: "public, max-age=31536000", else: "public, max-age=0")
 
   # Tidewave AI debugging
   # In dev: enabled by default (no auth required for localhost)

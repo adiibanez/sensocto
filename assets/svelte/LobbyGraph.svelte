@@ -104,6 +104,50 @@
   let isTransitioning = $state(false);
   let lastLayoutMode = $state<ViewMode>("topology");
 
+  // Auto-cycle layout mode
+  let cycleEnabled = $state(false);
+  let cycleTimer: ReturnType<typeof setInterval> | null = null;
+  const CYCLE_INTERVAL_MS = 30_000;
+
+  const SEASONS: Season[] = ["spring", "summer", "autumn", "winter", "rainbow"];
+
+  function startCycleTimer() {
+    stopCycleTimer();
+    cycleTimer = setInterval(() => {
+      const currentIdx = layoutModes.indexOf(viewMode as ViewMode);
+      const baseIdx = layoutModes.indexOf(lastLayoutMode);
+      const nextIdx = (currentIdx >= 0 ? currentIdx : baseIdx) + 1;
+      const nextMode = layoutModes[nextIdx % layoutModes.length];
+      switchViewMode(nextMode);
+
+      // Also cycle season theme with each layout change
+      const seasonIdx = SEASONS.indexOf(currentSeason);
+      switchSeason(SEASONS[(seasonIdx + 1) % SEASONS.length]);
+    }, CYCLE_INTERVAL_MS);
+  }
+
+  function stopCycleTimer() {
+    if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
+  }
+
+  function toggleCycle() {
+    cycleEnabled = !cycleEnabled;
+    if (cycleEnabled) {
+      // Immediately switch to next layout + season for instant feedback
+      const currentIdx = layoutModes.indexOf(viewMode as ViewMode);
+      const baseIdx = layoutModes.indexOf(lastLayoutMode);
+      const nextIdx = (currentIdx >= 0 ? currentIdx : baseIdx) + 1;
+      const nextMode = layoutModes[nextIdx % layoutModes.length];
+      switchViewMode(nextMode);
+      const seasonIdx = SEASONS.indexOf(currentSeason);
+      switchSeason(SEASONS[(seasonIdx + 1) % SEASONS.length]);
+      startCycleTimer();
+    } else {
+      stopCycleTimer();
+    }
+    try { localStorage.setItem('sensocto_graph_cycle', cycleEnabled ? 'true' : 'false'); } catch (_) {}
+  }
+
   // Activity tracking (heatmap mode)
   let activityCounts = new Map<string, number>();
   let activityDecayTimers: ReturnType<typeof setTimeout>[] = [];
@@ -151,7 +195,7 @@
   let seasonPanelOpen = $state(false);
   let statsPanelOpen = $state(false);
   let soundEnabled = $derived(soundTheme !== "off");
-  let vibrateEnabled = $state(false);
+  let vibrateEnabled = $state(true);
   let audioCtx: AudioContext | null = null;
   let masterOut: GainNode | null = null;
   let recDest: MediaStreamAudioDestinationNode | null = null;
@@ -440,6 +484,8 @@
     heatmap: [string, string, string, string, string]; // idle, low, medium, high, intense
     attention_levels: [string, string, string, string]; // high, medium, low, none
     selectedEdge: string;
+    edge: string;     // opaque hex for user→sensor edges (subtle, near-background)
+    edgeDim: string;  // even subtler hex for sensor→attribute edges
   }
 
   const SEASON_THEMES: Record<Season, SeasonTheme> = {
@@ -457,6 +503,7 @@
       heatmap: ["#1a3a2a", "#2d8a4e", "#5cc870", "#ff69b4", "#ff1493"],
       attention_levels: ["#ff69b4", "#5cc870", "#2d8a4e", "#1a3a2a"],
       selectedEdge: "#90ee90",
+      edge: "#2d6850", edgeDim: "#255842",
     },
     summer: {
       name: "Summer", icon: "☀️",
@@ -472,6 +519,7 @@
       heatmap: ["#334155", "#2d8a8a", "#d4a030", "#f09030", "#e84040"],
       attention_levels: ["#f5c030", "#d4a030", "#2d8a8a", "#374151"],
       selectedEdge: "#fcd9a0",
+      edge: "#424555", edgeDim: "#383a4a",
     },
     autumn: {
       name: "Autumn", icon: "🍂",
@@ -487,6 +535,7 @@
       heatmap: ["#334155", "#6b5b3c", "#a07040", "#cc6633", "#c44040"],
       attention_levels: ["#d4a030", "#b08030", "#6b5b3c", "#374151"],
       selectedEdge: "#e8c090",
+      edge: "#4a3c2c", edgeDim: "#403424",
     },
     winter: {
       name: "Winter", icon: "❄️",
@@ -502,6 +551,7 @@
       heatmap: ["#334155", "#4a6a8a", "#5090b0", "#4ca6c9", "#d47090"],
       attention_levels: ["#4ca6c9", "#5a7d9a", "#4a5a6a", "#374151"],
       selectedEdge: "#a0d0e8",
+      edge: "#2e4562", edgeDim: "#263a55",
     },
     rainbow: {
       name: "Rainbow", icon: "🌈",
@@ -517,6 +567,7 @@
       heatmap: ["#334155", "#22c55e", "#eab308", "#f97316", "#ef4444"],
       attention_levels: ["#ef4444", "#eab308", "#22c55e", "#374151"],
       selectedEdge: "#34d399",
+      edge: "#305555", edgeDim: "#284848",
     },
   };
 
@@ -540,6 +591,16 @@
 
   let currentSeason = $state<Season>(loadSavedSeason());
   function getTheme(): SeasonTheme { return SEASON_THEMES[currentSeason]; }
+  function themeEdge(): string { return getTheme().edge; }
+  function themeEdgeDim(): string { return getTheme().edgeDim; }
+  function varyEdge(hex: string, spread: number = 18): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const jitter = () => Math.round((Math.random() - 0.5) * spread);
+    const clamp = (v: number) => Math.max(10, Math.min(120, v + jitter()));
+    return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+  }
 
   // Reactive nodeColors that updates with season
   let nodeColors = $derived(getTheme().nodes);
@@ -566,6 +627,17 @@
         graph.setNodeAttribute(node, "color", nc[attrs.nodeType as keyof typeof nc] || "#6b7280");
       }
     });
+    graph.forEachEdge((edge, attrs) => {
+      const src = graph.source(edge);
+      const tgt = graph.target(edge);
+      const srcType = graph.getNodeAttribute(src, "nodeType");
+      const tgtType = graph.getNodeAttribute(tgt, "nodeType");
+      const isAttrEdge = srcType === "attribute" || tgtType === "attribute";
+      graph.setEdgeAttribute(edge, "color", isAttrEdge ? varyEdge(themeEdgeDim()) : varyEdge(themeEdge()));
+    });
+    if (sigma) {
+      sigma.setSetting("defaultEdgeColor", themeEdge());
+    }
     scheduleRefresh();
   }
 
@@ -664,7 +736,7 @@
       if (graph.hasNode(userNodeId)) {
         graph.addEdge(userNodeId, sensorNodeId, {
           size: Math.max(0.3, 0.7 * scale),
-          color: "rgba(55, 65, 81, 0.35)",
+          color: varyEdge(themeEdge()),
           curvature: randomCurvature()
         });
       }
@@ -689,7 +761,7 @@
 
         graph.addEdge(sensorNodeId, attrNodeId, {
           size: Math.max(0.2, 0.4 * scale),
-          color: "rgba(55, 65, 81, 0.25)",
+          color: varyEdge(themeEdgeDim()),
           curvature: randomCurvature()
         });
       }
@@ -767,6 +839,33 @@
     }
   }
 
+  // Quick sync pass (few iterations) for morph animation targets,
+  // then async worker refines. Avoids blocking the main thread.
+  function runLayoutQuick() {
+    if (!graph || graph.order === 0) return;
+
+    const nodeCount = graph.order;
+    const quickIterations = Math.min(20, Math.max(8, Math.floor(nodeCount / 10)));
+
+    forceAtlas2.assign(graph, {
+      iterations: quickIterations,
+      settings: {
+        gravity: 0.3,
+        scalingRatio: nodeCount > 300 ? 20 : 12,
+        strongGravityMode: false,
+        barnesHutOptimize: nodeCount > 100,
+        barnesHutTheta: 0.6,
+        linLogMode: true,
+        adjustSizes: true,
+        edgeWeightInfluence: 1,
+        slowDown: 2,
+      },
+    });
+
+    // After the morph animation completes (~500ms), start async worker to refine
+    setTimeout(() => runLayout(), 550);
+  }
+
   // Synchronous fallback for small graphs or when worker fails
   function runLayoutSync() {
     if (!graph || graph.order === 0) return;
@@ -827,12 +926,13 @@
       labelWeight: "500",
       labelColor: { color: "#e5e7eb" },
       defaultNodeColor: "#6b7280",
-      defaultEdgeColor: "rgba(55, 65, 81, 0.3)",
+      defaultEdgeColor: themeEdge(),
       defaultEdgeType: "curved",
       edgeProgramClasses: {
         curved: EdgeCurveProgram
       },
       allowInvalidContainer: true,
+      zIndex: true,
       labelDensity: scale < 0.7 ? 0.5 : 1,
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
@@ -863,17 +963,19 @@
             return { ...data, hidden: true };
           }
         }
-        if (highlightedNodes.size === 0) {
-          return data;
-        }
         const source = graph.source(edge);
         const target = graph.target(edge);
+        const srcType = graph.getNodeAttribute(source, "nodeType");
+        const tgtType = graph.getNodeAttribute(target, "nodeType");
+        if (highlightedNodes.size === 0) {
+          return { ...data, color: data.color || themeEdge() };
+        }
         if (highlightedNodes.has(source) && highlightedNodes.has(target)) {
           return { ...data, color: getTheme().selectedEdge, size: (data.size || 0.5) * 1.5, zIndex: 1 };
         }
         return {
           ...data,
-          color: "rgba(55, 65, 81, 0.4)",
+          color: themeEdgeDim(),
           zIndex: 0
         };
       }
@@ -1095,8 +1197,7 @@
     const oldPositions = animate ? capturePositions() : null;
 
     switch (mode) {
-      // Use sync layout when animating so positions are available immediately
-      case "topology":     animate ? runLayoutSync() : runLayout(); break;
+      case "topology":     animate ? runLayoutQuick() : runLayout(); break;
       case "per-user":     layoutPerUser(); break;
       case "per-type":     layoutPerType(); break;
       case "radial":       layoutRadialTree(); break;
@@ -2642,7 +2743,7 @@
         if (graph.hasNode(userNodeId) && !graph.hasEdge(userNodeId, sensorNodeId)) {
           graph.addEdge(userNodeId, sensorNodeId, {
             size: Math.max(0.3, 0.7 * scale),
-            color: "rgba(55, 65, 81, 0.35)",
+            color: varyEdge(themeEdge()),
             curvature: randomCurvature()
           });
         }
@@ -2667,7 +2768,7 @@
           if (!graph.hasEdge(sensorNodeId, attrNodeId)) {
             graph.addEdge(sensorNodeId, attrNodeId, {
               size: Math.max(0.2, 0.4 * scale),
-              color: "rgba(55, 65, 81, 0.25)",
+              color: varyEdge(themeEdgeDim()),
               curvature: randomCurvature()
             });
           }
@@ -2689,9 +2790,20 @@
     window.addEventListener("graph-activity-event", handleGraphActivity as EventListener);
     window.addEventListener("attention-changed-event", handleAttentionChanged as EventListener);
     window.addEventListener("keydown", onKeydown);
+
+    // Restore persisted settings
+    try {
+      if (localStorage.getItem('sensocto_graph_cycle') === 'true') {
+        cycleEnabled = true;
+        startCycleTimer();
+      }
+      const savedVibrate = localStorage.getItem('sensocto_graph_vibrate');
+      if (savedVibrate === 'false') vibrateEnabled = false;
+    } catch (_) {}
   });
 
   onDestroy(() => {
+    stopCycleTimer();
     if (isRecording) stopRecording();
     if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }
     activeGlows.clear();
@@ -2798,7 +2910,7 @@
           </svg>
         {/if}
       </button>
-      <button onclick={() => vibrateEnabled = !vibrateEnabled} data-tooltip={vibrateEnabled ? "Vibrate On" : "Vibrate Off"} class="control-btn tooltip-left" class:sound-active={vibrateEnabled}>
+      <button onclick={() => { vibrateEnabled = !vibrateEnabled; try { localStorage.setItem('sensocto_graph_vibrate', vibrateEnabled ? 'true' : 'false'); } catch (_) {} }} data-tooltip={vibrateEnabled ? "Vibrate On" : "Vibrate Off"} class="control-btn tooltip-left" class:sound-active={vibrateEnabled}>
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           {#if vibrateEnabled}
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
@@ -2837,6 +2949,11 @@
       </button>
       <button onclick={() => switchViewMode("constellation")} class="mode-btn tooltip-right" class:active={viewMode === "constellation"} class:layout-active={lastLayoutMode === "constellation" && visualModes.includes(viewMode)} data-tooltip="Constellation — Star patterns">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
+      </button>
+      <button onclick={toggleCycle} class="mode-btn tooltip-right" class:active={cycleEnabled} data-tooltip={cycleEnabled ? "Stop auto-cycle (30s)" : "Auto-cycle layouts + seasons (30s)"}>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+        </svg>
       </button>
       <div class="control-divider"></div>
       <span class="sidebar-group-label">Visual</span>
@@ -3186,6 +3303,12 @@
   .control-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .control-btn.active {
+    background: rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.5);
   }
 
   /* ── CSS Tooltips ─────────────────────────────────────── */

@@ -24,6 +24,22 @@ const threeExternalPlugin = {
     }
 };
 
+// Plugin to externalize Tone.js and use global Tone from CDN (lazy-loaded)
+const toneExternalPlugin = {
+    name: 'tone-external',
+    setup(build) {
+        build.onResolve({ filter: /^tone$/ }, args => ({
+            path: args.path,
+            namespace: 'tone-external'
+        }));
+
+        build.onLoad({ filter: /.*/, namespace: 'tone-external' }, () => ({
+            contents: 'module.exports = window.Tone;',
+            loader: 'js'
+        }));
+    }
+};
+
 const args = process.argv.slice(2);
 const watch = args.includes("--watch");
 const deploy = args.includes("--deploy");
@@ -63,6 +79,9 @@ let optsClient = {
     plugins: [
         // Three.js external plugin - uses global THREE from CDN (~2MB bundle savings)
         threeExternalPlugin,
+
+        // Tone.js external plugin - loaded lazily from CDN when user enables synth output
+        toneExternalPlugin,
 
         importGlobPlugin(),
 

@@ -78,7 +78,7 @@ defmodule Sensocto.Lenses.PriorityLens do
   # Degradation only occurs based on actual backpressure (mailbox depth).
 
   # High-frequency attributes that need all samples preserved
-  @high_frequency_attributes ~w(ecg)
+  @high_frequency_attributes ~w(ecg button buttons)
 
   # Dead socket cleanup interval (1 minute)
   @gc_interval_ms :timer.minutes(1)
@@ -672,6 +672,9 @@ defmodule Sensocto.Lenses.PriorityLens do
           Map.put(acc, sensor_id, sensor_data)
         end)
 
+      # Optionally delta-encode high-frequency attributes (ECG)
+      batch = maybe_delta_encode_batch(batch)
+
       if map_size(batch) > 0 do
         Phoenix.PubSub.broadcast(
           Sensocto.PubSub,
@@ -682,6 +685,38 @@ defmodule Sensocto.Lenses.PriorityLens do
 
       # Clear buffer entries for this socket
       :ets.match_delete(@buffer_table, pattern)
+    end
+  end
+
+  defp maybe_delta_encode_batch(batch) do
+    if Sensocto.Encoding.DeltaEncoder.enabled?() do
+      supported = Sensocto.Encoding.DeltaEncoder.supported_attributes()
+
+      Map.new(batch, fn {sensor_id, attributes} ->
+        encoded_attrs =
+          Map.new(attributes, fn {attr_id, data} ->
+            if attr_id in supported and is_list(data) and length(data) >= 2 do
+              case Sensocto.Encoding.DeltaEncoder.encode(data) do
+                {:ok, binary} ->
+                  {attr_id,
+                   %{
+                     __delta_encoded__: true,
+                     data: Base.encode64(binary),
+                     sample_count: length(data)
+                   }}
+
+                {:error, _} ->
+                  {attr_id, data}
+              end
+            else
+              {attr_id, data}
+            end
+          end)
+
+        {sensor_id, encoded_attrs}
+      end)
+    else
+      batch
     end
   end
 

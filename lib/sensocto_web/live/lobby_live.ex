@@ -1122,9 +1122,23 @@ defmodule SensoctoWeb.LobbyLive do
     # Check mailbox depth - apply backpressure if overwhelmed
     {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
 
+    # Proactive quality downgrade: when system load is elevated/critical,
+    # lower thresholds so degradation kicks in before mailbox fills up
+    {backpressure_threshold, critical_threshold} =
+      case Sensocto.SystemLoadMonitor.get_load_level() do
+        :critical ->
+          {div(@mailbox_backpressure_threshold, 4), div(@mailbox_critical_threshold, 4)}
+
+        :elevated ->
+          {div(@mailbox_backpressure_threshold, 2), div(@mailbox_critical_threshold, 2)}
+
+        :normal ->
+          {@mailbox_backpressure_threshold, @mailbox_critical_threshold}
+      end
+
     cond do
       # CRITICAL: Queue is severely backed up - pause entirely
-      queue_len > @mailbox_critical_threshold ->
+      queue_len > critical_threshold ->
         Logger.warning(
           "LobbyLive #{socket.id}: CRITICAL backpressure (#{queue_len} msgs), pausing data"
         )
@@ -1150,7 +1164,7 @@ defmodule SensoctoWeb.LobbyLive do
         {:noreply, socket}
 
       # WARNING: Queue is growing - aggressive downgrade
-      queue_len > @mailbox_backpressure_threshold ->
+      queue_len > backpressure_threshold ->
         Logger.warning(
           "LobbyLive #{socket.id}: mailbox backpressure (#{queue_len} msgs), dropping batch"
         )
@@ -2909,6 +2923,13 @@ defmodule SensoctoWeb.LobbyLive do
       Enum.reduce(attributes, acc, fn {attr_id, measurement}, inner_acc ->
         if attr_id in @midi_attribute_types do
           case measurement do
+            %{__delta_encoded__: true} = encoded ->
+              push_event(inner_acc, "composite_measurement_encoded", %{
+                sensor_id: sensor_id,
+                attribute_id: attr_id,
+                encoded: encoded
+              })
+
             list when is_list(list) ->
               Enum.reduce(list, inner_acc, fn item, a ->
                 push_event(a, "composite_measurement", %{
@@ -2996,8 +3017,20 @@ defmodule SensoctoWeb.LobbyLive do
 
       measurements =
         Enum.flat_map(attributes, fn {attr_id, m} ->
-          # Handle both single measurements and lists (for high-frequency data like ECG)
+          # Handle delta-encoded, list, and single measurements
           case m do
+            %{__delta_encoded__: true, data: base64} ->
+              # Decode delta-encoded data back to measurements for LiveComponent
+              case Sensocto.Encoding.DeltaEncoder.decode(Base.decode64!(base64)) do
+                {:ok, decoded} ->
+                  Enum.map(decoded, fn item ->
+                    %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
+                  end)
+
+                {:error, _} ->
+                  []
+              end
+
             list when is_list(list) ->
               Enum.map(list, fn item ->
                 %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
@@ -3065,8 +3098,16 @@ defmodule SensoctoWeb.LobbyLive do
         end)
 
       Enum.reduce(relevant ++ midi_extra, acc, fn {attr_id, m}, sock ->
-        # Handle both single measurements and lists (for high-frequency data like ECG)
+        # Handle delta-encoded, list, and single measurements
         case m do
+          %{__delta_encoded__: true} = encoded ->
+            # Delta-encoded high-frequency data — send as single event, decode on client
+            push_event(sock, "composite_measurement_encoded", %{
+              sensor_id: sensor_id,
+              attribute_id: attr_id,
+              encoded: encoded
+            })
+
           list when is_list(list) ->
             # Push each measurement in the list
             Enum.reduce(list, sock, fn item, inner_sock ->

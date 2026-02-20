@@ -3030,6 +3030,9 @@ defmodule SensoctoWeb.RoomShowLive do
               <div
                 id="room-object3d-control-countdown"
                 phx-hook="CountdownTimer"
+                role="timer"
+                aria-live="polite"
+                aria-atomic="true"
                 data-seconds="30"
                 class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
               >
@@ -3146,6 +3149,9 @@ defmodule SensoctoWeb.RoomShowLive do
               <div
                 id="room-media-control-countdown"
                 phx-hook="CountdownTimer"
+                role="timer"
+                aria-live="polite"
+                aria-atomic="true"
                 data-seconds="30"
                 class="mb-6 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg"
               >

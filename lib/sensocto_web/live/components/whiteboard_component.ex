@@ -624,6 +624,9 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
             <div
               id={"whiteboard-control-request-modal-#{@room_id}"}
               phx-hook="CountdownTimer"
+              role="timer"
+              aria-live="polite"
+              aria-atomic="true"
               data-seconds="30"
               phx-click-away="dismiss_request_modal"
               phx-target={@myself}

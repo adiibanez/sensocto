@@ -62,7 +62,8 @@ defmodule SensoctoWeb.StatefulSensorLiveTest do
           session: %{
             "parent_pid" => self(),
             "sensor_id" => sensor_id
-          }
+          },
+          layout: false
         )
 
       # The view should render with sensor data
@@ -75,7 +76,8 @@ defmodule SensoctoWeb.StatefulSensorLiveTest do
           session: %{
             "parent_pid" => self(),
             "sensor_id" => sensor_id
-          }
+          },
+          layout: false
         )
 
       # Send view_enter event (simulating user scrolling sensor into view)

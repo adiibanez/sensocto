@@ -633,6 +633,9 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                         <span
                           id={"countdown-requester-#{@room_id}"}
                           phx-hook="CountdownTimer"
+                          role="timer"
+                          aria-live="polite"
+                          aria-atomic="true"
                           data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
                           class="font-mono font-bold tabular-nums"
                         >
@@ -680,6 +683,9 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
                 <span
                   id={"countdown-controller-#{@room_id}"}
                   phx-hook="CountdownTimer"
+                  role="timer"
+                  aria-live="polite"
+                  aria-atomic="true"
                   data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
                   class="font-mono text-amber-300 font-bold tabular-nums"
                 >
@@ -872,6 +878,9 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
           <div
             id={"object3d-control-request-modal-#{@room_id}"}
             phx-hook="CountdownTimer"
+            role="timer"
+            aria-live="polite"
+            aria-atomic="true"
             data-seconds="30"
             class="bg-gray-800 rounded-lg p-6 max-w-sm w-full shadow-xl border border-amber-500/50"
             phx-click-away="dismiss_request_modal"

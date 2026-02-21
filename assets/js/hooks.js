@@ -1013,137 +1013,107 @@ Hooks.BottomNav = {
     }
 };
 
-Hooks.FooterToolbar = {
+Hooks.MobileMenu = {
     mounted() {
-        const toggle = this.el.querySelector('#footer-toggle');
-        const content = this.el.querySelector('#footer-content-mobile');
-        const chevron = this.el.querySelector('.footer-chevron');
+        this.isOpen = false;
+        this._setup();
+    },
 
-        if (toggle && content) {
-            toggle.addEventListener('click', () => {
-                const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
-                toggle.setAttribute('aria-expanded', !isExpanded);
-                content.classList.toggle('hidden');
-                if (chevron) {
-                    chevron.classList.toggle('rotate-180');
+    updated() {
+        this._setup();
+        this._applyState();
+    },
+
+    _setup() {
+        this.button = this.el.querySelector('#mobile-menu-button');
+        this.dropdown = this.el.querySelector('#mobile-menu-dropdown');
+
+        if (this.button && !this.button._mmBound) {
+            this.button._mmBound = true;
+            this.button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.isOpen = !this.isOpen;
+                this._applyState();
+            });
+        }
+
+        if (!this._docBound) {
+            this._docBound = true;
+            document.addEventListener('click', (e) => {
+                if (this.isOpen && !this.el.contains(e.target)) {
+                    this.isOpen = false;
+                    this._applyState();
                 }
             });
         }
-    }
-};
+    },
 
-Hooks.MobileMenu = {
-    mounted() {
-        const button = this.el.querySelector('#mobile-menu-button');
-        const dropdown = this.el.querySelector('#mobile-menu-dropdown');
-
-        if (button && dropdown) {
-            this.isOpen = false;
-            this.justOpened = false;
-
-            this.handleButtonClick = (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                this.isOpen = !this.isOpen;
-                if (this.isOpen) {
-                    dropdown.classList.remove('hidden');
-                    this.justOpened = true;
-                    setTimeout(() => { this.justOpened = false; }, 100);
-                } else {
-                    dropdown.classList.add('hidden');
-                }
-            };
-
-            this.handleDocumentClick = (e) => {
-                if (this.justOpened) return;
-                if (this.isOpen && !this.el.contains(e.target)) {
-                    this.isOpen = false;
-                    dropdown.classList.add('hidden');
-                }
-            };
-
-            this.handleTouchEnd = (e) => {
-                if (this.isOpen && !this.el.contains(e.target)) {
-                    setTimeout(() => {
-                        if (this.isOpen && !this.el.contains(document.activeElement)) {
-                            this.isOpen = false;
-                            dropdown.classList.add('hidden');
-                        }
-                    }, 50);
-                }
-            };
-
-            button.addEventListener('click', this.handleButtonClick);
-            document.addEventListener('click', this.handleDocumentClick);
-            document.addEventListener('touchend', this.handleTouchEnd);
+    _applyState() {
+        if (!this.dropdown) return;
+        if (this.isOpen) {
+            this.dropdown.classList.remove('hidden');
+        } else {
+            this.dropdown.classList.add('hidden');
         }
     },
 
     destroyed() {
-        if (this.handleDocumentClick) {
-            document.removeEventListener('click', this.handleDocumentClick);
-        }
-        if (this.handleTouchEnd) {
-            document.removeEventListener('touchend', this.handleTouchEnd);
-        }
+        this.isOpen = false;
     }
 };
 
 function createDropdownHook() {
     return {
         mounted() {
-            const button = this.el.querySelector('[data-dropdown-toggle]');
-            const dropdown = this.el.querySelector('[data-dropdown-menu]');
-
-            if (!button || !dropdown) return;
-
             this.isOpen = false;
-            this.justOpened = false;
+            this._setup();
+        },
 
-            this.handleButtonClick = (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                this.isOpen = !this.isOpen;
-                if (this.isOpen) {
-                    dropdown.classList.remove('hidden');
-                    this.justOpened = true;
-                    setTimeout(() => { this.justOpened = false; }, 100);
-                } else {
-                    dropdown.classList.add('hidden');
-                }
-            };
+        updated() {
+            this._setup();
+            this._applyState();
+        },
 
-            this.handleDocumentClick = (e) => {
-                if (this.justOpened) return;
-                if (this.isOpen && !this.el.contains(e.target)) {
-                    this.isOpen = false;
-                    dropdown.classList.add('hidden');
-                }
-            };
+        _setup() {
+            this.button = this.el.querySelector('[data-dropdown-toggle]');
+            this.dropdown = this.el.querySelector('[data-dropdown-menu]');
 
-            this.handleTouchEnd = (e) => {
-                if (this.isOpen && !this.el.contains(e.target)) {
-                    setTimeout(() => {
-                        if (this.isOpen && !this.el.contains(document.activeElement)) {
-                            this.isOpen = false;
-                            dropdown.classList.add('hidden');
-                        }
-                    }, 50);
-                }
-            };
+            if (!this.button || !this.dropdown) return;
 
-            button.addEventListener('click', this.handleButtonClick);
-            document.addEventListener('click', this.handleDocumentClick);
-            document.addEventListener('touchend', this.handleTouchEnd);
+            if (!this.button._ddBound) {
+                this.button._ddBound = true;
+                this.button.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                    this.isOpen = !this.isOpen;
+                    this._applyState();
+                });
+            }
+
+            if (!this._docBound) {
+                this._docBound = true;
+                document.addEventListener('click', (e) => {
+                    if (this.isOpen && !this.el.contains(e.target)) {
+                        this.isOpen = false;
+                        this._applyState();
+                    }
+                });
+            }
+        },
+
+        _applyState() {
+            if (!this.dropdown) return;
+            if (this.isOpen) {
+                this.dropdown.classList.remove('hidden');
+            } else {
+                this.dropdown.classList.add('hidden');
+            }
         },
 
         destroyed() {
-            if (this.handleDocumentClick) {
-                document.removeEventListener('click', this.handleDocumentClick);
-            }
-            if (this.handleTouchEnd) {
-                document.removeEventListener('touchend', this.handleTouchEnd);
-            }
+            this.isOpen = false;
         }
     };
 }

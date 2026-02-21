@@ -8,7 +8,12 @@ defmodule SensoctoWeb.SenseLive do
 
   @impl true
   def mount(_params, session, socket) do
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
+    # Defer signal subscription — SenseLive is sticky and spawned for every user,
+    # but signal events are only relevant when bluetooth is actively in use.
+    # This avoids N users × M sensors fan-out for messages that are just logged.
+    if connected?(socket) do
+      send(self(), :subscribe_signal)
+    end
 
     # Get bearer token from session
     # For regular users: use user_token (JWT from Ash Authentication)
@@ -79,6 +84,12 @@ defmodule SensoctoWeb.SenseLive do
   defp send_test_event() do
     # push_event(socket, "test_event", %{points: 100, user: "josé"})
     Process.send_after(self(), :test_event, 1000)
+  end
+
+  @impl true
+  def handle_info(:subscribe_signal, socket) do
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
+    {:noreply, socket}
   end
 
   @impl true

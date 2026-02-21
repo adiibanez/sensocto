@@ -56,39 +56,15 @@ defmodule SensoctoWeb.LobbyLive do
   def mount(_params, _session, socket) do
     start = System.monotonic_time()
 
+    # Essential subscriptions only — needed before first render
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "media:lobby")
-    # Subscribe to lobby call events
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
-    # Subscribe to 3D object player events
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:lobby")
-    # Subscribe to whiteboard events
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
-    # Subscribe to global attention changes to re-filter sensor list in realtime
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
-    # Subscribe to favorite toggle events from child sensor LiveViews
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
-    # Subscribe to chat messages for the lobby
-    Sensocto.Chat.ChatStore.subscribe("lobby")
-
-    # Subscribe to user-specific attention level updates for webcam backpressure
-    user = socket.assigns[:current_user]
-
-    if user do
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
-    end
 
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
     # Extract stable list of sensor IDs - only changes when sensors are added/removed
     sensor_ids = sort_sensors(Map.keys(sensors), sensors, :activity)
-
-    # NOTE: Direct sensor subscriptions removed - now using PriorityLens for data delivery
-    # Signal subscriptions kept for attribute change notifications
-    Enum.each(sensor_ids, fn sensor_id ->
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
-    end)
 
     # Calculate max attributes across all sensors for view mode decision
     max_attributes = calculate_max_attributes(sensors)
@@ -300,6 +276,9 @@ defmodule SensoctoWeb.LobbyLive do
       %{duration: System.monotonic_time() - start},
       %{}
     )
+
+    # Defer non-essential subscriptions to after first render
+    send(self(), :deferred_subscriptions)
 
     {:ok, new_socket}
   end
@@ -1100,8 +1079,8 @@ defmodule SensoctoWeb.LobbyLive do
   # Delay before checking if we can recover from paused state
   @recovery_check_delay_ms 3_000
   # Delay between progressive quality upgrade attempts (when mailbox is healthy)
-  # Increased from 5s to 15s to prevent rapid oscillation
-  @upgrade_check_delay_ms 15_000
+  # Reduced from 15s to 8s — 15s was overly conservative, 8s still prevents oscillation
+  @upgrade_check_delay_ms 8_000
   # Threshold for considering mailbox healthy enough to upgrade
   @mailbox_healthy_threshold 10
   # Number of consecutive healthy checks required before upgrading
@@ -1129,10 +1108,13 @@ defmodule SensoctoWeb.LobbyLive do
         :critical ->
           {div(@mailbox_backpressure_threshold, 4), div(@mailbox_critical_threshold, 4)}
 
+        :high ->
+          {div(@mailbox_backpressure_threshold, 3), div(@mailbox_critical_threshold, 3)}
+
         :elevated ->
           {div(@mailbox_backpressure_threshold, 2), div(@mailbox_critical_threshold, 2)}
 
-        :normal ->
+        _ ->
           {@mailbox_backpressure_threshold, @mailbox_critical_threshold}
       end
 
@@ -1851,6 +1833,31 @@ defmodule SensoctoWeb.LobbyLive do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_info(:deferred_subscriptions, socket) do
+    # These subscriptions are deferred from mount to speed up first render.
+    # They handle mode-specific features (media, calls, 3D, whiteboard),
+    # per-sensor signals, and chat — none needed for the initial render.
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "media:lobby")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:lobby")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
+    Sensocto.Chat.ChatStore.subscribe("lobby")
+
+    user = socket.assigns[:current_user]
+
+    if user do
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
+    end
+
+    # Per-sensor signal subscriptions (attribute schema change notifications)
+    Enum.each(socket.assigns.sensor_ids, fn sensor_id ->
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
+    end)
+
+    {:noreply, socket}
   end
 
   def handle_info(:refresh_available_lenses, socket) do

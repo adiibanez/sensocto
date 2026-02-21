@@ -49,7 +49,7 @@ msgstr "Öppis isch schiefgloffe!"
 #: lib/sensocto_web/components/core_components.ex:190
 #, elixir-autogen, elixir-format
 msgid "Success!"
-msgstr "Erfolg!"
+msgstr "Super!"
 
 #: lib/sensocto_web/components/core_components.ex:195
 #, elixir-autogen, elixir-format
@@ -62,8 +62,8 @@ msgstr "Mir finde s Internet nöd"
 msgid "close"
 msgstr "zuemache"
 
-msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgid "If this user exists in our database you will be contacted with a sign-in link shortly."
+msgstr "Wenn das Konto existiert, überchunsch du gli en Amäldelink per E-Mail."
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:145
@@ -303,7 +303,7 @@ msgstr "Churz (~300 Wörter)"
 #: lib/sensocto_web/live/components/about_content_component.ex:1182
 #, elixir-autogen, elixir-format
 msgid "Built with"
-msgstr "Baut mit"
+msgstr "Gmacht mit"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:23
 #, elixir-autogen, elixir-format
@@ -326,7 +326,7 @@ msgstr "Pflege-Netzwärk"
 #: lib/sensocto_web/live/components/about_content_component.ex:1130
 #, elixir-autogen, elixir-format
 msgid "Centralized Problem"
-msgstr "Zentralisiertes Problem"
+msgstr "S zentralisierte Problem"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:43
 #, elixir-autogen, elixir-format
@@ -1438,31 +1438,31 @@ msgid "your gameplay with live biometrics overlay"
 msgstr "dis Gameplay mit Live-Biometrik-Overlay"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:839
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Built for humans who want to **truly** connect"
-msgstr "Baut für Mänsche wo wänd"
+msgstr "Baut für Mänsche wo sich **echt** verbinde wänd"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1050
 #, elixir-autogen, elixir-format
 msgid "Connection measured in **heartbeats**, not dopamine hits."
-msgstr ""
+msgstr "Verbindig gmässe in **Härzschläg**, nöd in Dopamin-Kicks."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1077
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Every technical decision is a **moral statement**"
-msgstr "Jedi technischi Entscheidig isch e"
+msgstr "Jedi technischi Entscheidig isch es **moralischi Statemänt**"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1197
 #, elixir-autogen, elixir-format
 msgid "Scientific **foundations** for human connection"
-msgstr ""
+msgstr "Wüsseschaftlichi **Grundlage** für mänschlechi Verbindig"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:708
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Technology promised connection and delivered **performance**."
-msgstr "Technologii het Verbindig verspoche und gliferet"
+msgstr "Technologii het Verbindig verspoche und **Performance** gliferet."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1055
 #, elixir-autogen, elixir-format
 msgid "Technology that **amplifies empathy** instead of exploiting attention."
-msgstr ""
+msgstr "Technologii wo **Empathie verstärkt** anstatt Ufmerksamkeit usnützt."

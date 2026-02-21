@@ -1,5 +1,5 @@
 # Iroh Integration -- Team Report
-*Last updated: 2026-02-16*
+*Last updated: 2026-02-20*
 
 ## Goals
 
@@ -13,9 +13,9 @@
 
 ## Current Status (2026-02-16)
 
-### What Has Changed Since 2026-02-08
+### What Has Changed Since 2026-02-16
 
-The iroh modules themselves have **not changed** since the Feb 8 implementation session. No commits have touched `lib/sensocto/iroh/`, `lib/sensocto/storage/`, `lib/sensocto/p2p/`, or iroh-related tests since then.
+The iroh modules have **not changed** since the Feb 8 implementation session. Commits 12841b8 through 9207440 (Feb 16-20) added audio/MIDI (client-side), collaboration domain (polls), user profiles/social graph, and delta encoding -- none of which touch iroh code or create P2P opportunities.
 
 However, the surrounding architecture has evolved significantly:
 
@@ -121,14 +121,14 @@ This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the ri
 
 **Honest assessment:** This is a significant engineering effort with a dependency chain: it needs identity persistence (#3), a Linux NIF (#5), and a native client with iroh support. The payoff is real but distant. For web-only users (LiveView), this provides zero benefit. Only matters if you have native clients consuming sensor data directly.
 
-### Opportunity 5: Delta Encoding for ECG Data (NOT iroh -- Pure Server)
+### Opportunity 5: Delta Encoding for ECG Data (NOT iroh -- Pure Server) -- PARTIALLY DONE
 **Impact: HIGH for interactive experience**
-**Effort: 2-3 days**
+**Effort: 1-2 days remaining** (encoder implemented, JS decoder + integration pending)
 **Needs Linux NIF: No (not iroh-related)**
 
 **What:** Implement the delta encoding plan at `plans/delta-encoding-ecg.md`. Reduces ECG WebSocket bandwidth by ~84%.
 
-**Honest assessment:** This is better done with server-side encoding + client-side decoding via the existing Phoenix pipeline. iroh adds no value here. The plan is excellent and should be implemented as-is.
+**Status (Feb 20):** The Elixir encoder module exists at `lib/sensocto/encoding/delta_encoder.ex` (148 lines). Feature-flagged off. Binary protocol with version byte and reset markers. Remaining work: JS decoder implementation, integration into the LiveView push path, and feature flag activation. **Note:** `enabled?/0` calls `Application.get_env` on every invocation -- should migrate to `:persistent_term` before enabling on hot path.
 
 ### Opportunity 6: Research-Grade Sync Visualizations (Partially iroh-adjacent)
 **Impact: HIGH for differentiation**
@@ -161,7 +161,7 @@ This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the ri
 | 2 | Complete Bridge bidirectional sync | 2-4 hours | HIGH | No | **DONE** |
 | 3 | Persist node identity/namespaces | 4-6 hours | HIGH | No | **BLOCKED** (iroh_ex needs secret_key) |
 | 4 | Sensor data gossip bridge | 2-3 days | HIGH (native only) | Yes (prod) | Planned |
-| 5 | Delta encoding for ECG | 2-3 days | HIGH (all users) | No | Planned (not iroh) |
+| 5 | Delta encoding for ECG | 1-2 days remaining | HIGH (all users) | No | Encoder done, JS decoder pending |
 | 6 | Research-grade sync visualizations | 5-10 days | HIGH (differentiation) | No | Planned (not iroh) |
 | 7 | Historical data as blobs | 3-5 days | MEDIUM | Yes (P2P) | Planned |
 | 8 | Room markdown CRDT sync | 1-2 days | MEDIUM | No | Planned |
@@ -271,7 +271,7 @@ At 10,000 sensors: 62% savings from delta encoding + 75% savings from gossip for
 ## Roadmap
 
 ### Phase 0: Non-iroh Wins (NOW)
-- [ ] Implement delta encoding (`plans/delta-encoding-ecg.md`)
+- [x] Implement delta encoding -- encoder done (`lib/sensocto/encoding/delta_encoder.ex`), JS decoder + integration pending
 - [ ] Research-grade sync visualizations P1 tier (`plans/PLAN-research-grade-synchronization.md`)
 - [ ] Sensor component migration: LiveView to LiveComponent (`PLAN-sensor-component-migration.md`) -- reduces server process count for lobby
 
@@ -363,6 +363,13 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 ---
 
 ## Changelog
+
+### 2026-02-20: Report Refresh
+- No iroh code changes since 2026-02-08; all iroh modules remain unchanged
+- Recent commits (12841b8-9207440): audio/MIDI, polls, user profiles, delta encoding -- none touch iroh
+- Delta encoding encoder module now exists (`lib/sensocto/encoding/delta_encoder.ex`), upgraded Opportunity #5 to "partially done"
+- Updated cost model: delta encoding + attention routing push iroh breakpoint from ~1,000 to ~10,000 sensors ($57/month at that scale)
+- New features (polls, user graph, audio/MIDI) do NOT create P2P opportunities -- iroh timeline unchanged
 
 ### 2026-02-16: Report Refresh and Context Update
 - No iroh code changes since 2026-02-08; all iroh modules remain unchanged

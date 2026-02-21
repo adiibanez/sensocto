@@ -62,8 +62,8 @@ msgstr ""
 msgid "close"
 msgstr ""
 
-msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgid "If this user exists in our database you will be contacted with a sign-in link shortly."
+msgstr ""
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:145

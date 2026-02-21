@@ -845,7 +845,8 @@
     if (!graph || graph.order === 0) return;
 
     const nodeCount = graph.order;
-    const quickIterations = Math.min(20, Math.max(8, Math.floor(nodeCount / 10)));
+    // More iterations for a closer-to-final result, reducing visible post-animation drift
+    const quickIterations = Math.min(80, Math.max(30, Math.floor(nodeCount / 4)));
 
     forceAtlas2.assign(graph, {
       iterations: quickIterations,
@@ -862,8 +863,81 @@
       },
     });
 
-    // After the morph animation completes (~500ms), start async worker to refine
-    setTimeout(() => runLayout(), 550);
+    // After the morph animation completes (~500ms), start a gentle refinement pass
+    setTimeout(() => runLayoutRefine(), 550);
+  }
+
+  // Gentle refinement after morph — higher slowDown so adjustments are subtle
+  function runLayoutRefine() {
+    if (!graph || graph.order === 0) return;
+
+    const nodeCount = graph.order;
+
+    if (nodeCount < 50) {
+      // Small graphs: just do a quick sync refinement
+      forceAtlas2.assign(graph, {
+        iterations: 30,
+        settings: {
+          gravity: 0.3,
+          scalingRatio: nodeCount > 300 ? 20 : 12,
+          strongGravityMode: false,
+          linLogMode: true,
+          adjustSizes: true,
+          edgeWeightInfluence: 1,
+          slowDown: 8,
+        },
+      });
+      sigma?.refresh();
+      return;
+    }
+
+    if (fa2Worker) {
+      fa2Worker.stop();
+      fa2Worker.kill();
+      fa2Worker = null;
+    }
+
+    isLayoutRunning = true;
+
+    try {
+      fa2Worker = new FA2Layout(graph, {
+        settings: {
+          gravity: 0.3,
+          scalingRatio: nodeCount > 300 ? 20 : 12,
+          strongGravityMode: false,
+          barnesHutOptimize: nodeCount > 100,
+          barnesHutTheta: 0.6,
+          linLogMode: true,
+          adjustSizes: true,
+          edgeWeightInfluence: 1,
+          slowDown: 8,
+        }
+      });
+
+      fa2Worker.start();
+
+      const duration = nodeCount > 500 ? 2000 : nodeCount > 200 ? 1500 : 1000;
+      setTimeout(() => {
+        if (fa2Worker) {
+          fa2Worker.stop();
+          fa2Worker.kill();
+          fa2Worker = null;
+        }
+        isLayoutRunning = false;
+        sigma?.refresh();
+      }, duration);
+    } catch (e) {
+      // Fallback to sync
+      forceAtlas2.assign(graph, {
+        iterations: 50,
+        settings: {
+          gravity: 0.3, scalingRatio: 12, linLogMode: true,
+          adjustSizes: true, slowDown: 8,
+        },
+      });
+      isLayoutRunning = false;
+      sigma?.refresh();
+    }
   }
 
   // Synchronous fallback for small graphs or when worker fails
@@ -1215,6 +1289,8 @@
         }
       }
       animateNodePositions(targetPositions, 500);
+    } else {
+      sigma?.refresh();
     }
   }
 
@@ -1332,7 +1408,6 @@
     });
 
     isLayoutRunning = false;
-    sigma?.refresh();
   }
 
   // ── Layout: Per Attribute Type ────────────────────────────────
@@ -1384,7 +1459,6 @@
     });
 
     isLayoutRunning = false;
-    sigma?.refresh();
   }
 
   // ── Layout: Radial Tree ───────────────────────────────────────
@@ -1461,7 +1535,6 @@
     });
 
     isLayoutRunning = false;
-    sigma?.refresh();
   }
 
   // ── Layout: Constellation ─────────────────────────────────────
@@ -1524,7 +1597,6 @@
     });
 
     isLayoutRunning = false;
-    sigma?.refresh();
   }
 
   // ── Layout: Flower (Rose Curve) ─────────────────────────────────
@@ -1624,7 +1696,6 @@
     }
 
     isLayoutRunning = false;
-    sigma?.refresh();
   }
 
   // ── Visual: Activity Heatmap ──────────────────────────────────

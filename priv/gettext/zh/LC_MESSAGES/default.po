@@ -62,8 +62,8 @@ msgstr "无法连接到互联网"
 msgid "close"
 msgstr "关闭"
 
-msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgid "If this user exists in our database you will be contacted with a sign-in link shortly."
+msgstr "如果该账户存在，您将很快收到一封包含登录链接的电子邮件。"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:145
@@ -1502,31 +1502,31 @@ msgid "your gameplay with live biometrics overlay"
 msgstr "用实时生物特征叠加层传输你的游戏画面"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:839
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Built for humans who want to **truly** connect"
-msgstr "为渴望以下体验的人而打造"
+msgstr "为想要**真正**连接的人而打造"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1050
 #, elixir-autogen, elixir-format
 msgid "Connection measured in **heartbeats**, not dopamine hits."
-msgstr ""
+msgstr "用**心跳**衡量连接，而非多巴胺刺激。"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1077
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Every technical decision is a **moral statement**"
-msgstr "每一个技术决策都是一个"
+msgstr "每一个技术决策都是一个**道德声明**"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1197
 #, elixir-autogen, elixir-format
 msgid "Scientific **foundations** for human connection"
-msgstr ""
+msgstr "人类连接的科学**基础**"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:708
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Technology promised connection and delivered **performance**."
-msgstr "技术承诺了连接，却带来了"
+msgstr "技术承诺了连接，却带来了**表演**。"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1055
 #, elixir-autogen, elixir-format
 msgid "Technology that **amplifies empathy** instead of exploiting attention."
-msgstr ""
+msgstr "**放大共情**而非利用注意力的技术。"

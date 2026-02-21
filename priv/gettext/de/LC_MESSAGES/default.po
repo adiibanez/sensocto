@@ -24,7 +24,7 @@ msgstr "Verbindung wird wiederhergestellt"
 #: lib/sensocto_web/components/sidebar.ex:95
 #, elixir-autogen, elixir-format
 msgid "Close menu"
-msgstr "Menü schliessen"
+msgstr "Menü schließen"
 
 #: lib/sensocto_web/components/core_components.ex:191
 #, elixir-autogen, elixir-format
@@ -60,10 +60,10 @@ msgstr "Keine Internetverbindung"
 #: lib/sensocto_web/components/core_components.ex:170
 #, elixir-autogen, elixir-format
 msgid "close"
-msgstr "schliessen"
+msgstr "schließen"
 
-msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgid "If this user exists in our database you will be contacted with a sign-in link shortly."
+msgstr "Wenn dieses Konto existiert, erhältst du in Kürze einen Anmeldelink per E-Mail."
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:145

@@ -59,7 +59,14 @@ config :sensocto, SensoctoWeb.Gettext,
 # Total capacity per attribute = hot_limit + warm_limit
 config :sensocto,
   attribute_store_hot_limit: 500,
-  attribute_store_warm_limit: 10_000
+  attribute_store_warm_limit: 3_000
+
+# Delta encoding for high-frequency sensor data (ECG)
+# Reduces WebSocket bandwidth ~90% for encoded attributes
+config :sensocto, :delta_encoding,
+  enabled: false,
+  quantization_step: 0.01,
+  supported_attributes: ["ecg"]
 
 # System pulse (load monitoring) weights configuration
 # These weights determine how much each factor contributes to overall system load.
@@ -124,7 +131,7 @@ config :sensocto, SensoctoWeb.Endpoint,
 # For multi-node production, this enables distributed PubSub across cluster
 config :sensocto, Sensocto.PubSub,
   adapter: Phoenix.PubSub.PG2,
-  pool_size: 16
+  pool_size: 32
 
 # Configures the mailer
 #

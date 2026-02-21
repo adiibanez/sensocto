@@ -62,8 +62,8 @@ msgstr "インターネットに接続できません"
 msgid "close"
 msgstr "閉じる"
 
-msgid "If this user exists in our database you will contacted with a sign-in link shortly."
-msgstr "Pls check your inbox and click on the magic link."
+msgid "If this user exists in our database you will be contacted with a sign-in link shortly."
+msgstr "このアカウントが存在する場合、まもなくサインインリンクがメールで届きます。"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:35
 #: lib/sensocto_web/components/layouts/app.html.heex:145
@@ -1502,31 +1502,31 @@ msgid "your gameplay with live biometrics overlay"
 msgstr "ライブバイオメトリクスオーバーレイでゲームプレイを"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:839
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Built for humans who want to **truly** connect"
-msgstr "こうしたいと願う人のために作られました"
+msgstr "**本当に**つながりたいと願う人のために"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1050
 #, elixir-autogen, elixir-format
 msgid "Connection measured in **heartbeats**, not dopamine hits."
-msgstr ""
+msgstr "ドーパミンではなく、**心拍**でつながりを測る。"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1077
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Every technical decision is a **moral statement**"
-msgstr "すべての技術的決定は"
+msgstr "すべての技術的決定は**道徳的な声明**である"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1197
 #, elixir-autogen, elixir-format
 msgid "Scientific **foundations** for human connection"
-msgstr ""
+msgstr "人と人のつながりの科学的**基盤**"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:708
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Technology promised connection and delivered **performance**."
-msgstr "テクノロジーはつながりを約束して届けたのは"
+msgstr "テクノロジーはつながりを約束し、**パフォーマンス**を届けた。"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1055
 #, elixir-autogen, elixir-format
 msgid "Technology that **amplifies empathy** instead of exploiting attention."
-msgstr ""
+msgstr "注意力を搾取するのではなく、**共感を増幅する**テクノロジー。"

@@ -490,34 +490,40 @@ Hooks.CompositeMeasurementHandler = {
 Hooks.FooterToolbar = {
   mounted() {
     this.isExpanded = false;
-    this.pillBtn = document.getElementById('footer-pill-toggle');
-    this.popover = document.getElementById('footer-popover');
-
-    if (this.pillBtn) {
-      this._handlePillClick = () => {
-        this.isExpanded = !this.isExpanded;
-        this.applyState();
-      };
-      this.pillBtn.addEventListener('click', this._handlePillClick);
-    }
-
-    // Close popover when clicking outside
-    this._handleOutsideClick = (e) => {
-      if (this.isExpanded && !this.el.contains(e.target)) {
-        this.isExpanded = false;
-        this.applyState();
-      }
-    };
-    document.addEventListener('click', this._handleOutsideClick);
+    this._setup();
   },
 
   updated() {
-    this.pillBtn = document.getElementById('footer-pill-toggle');
-    this.popover = document.getElementById('footer-popover');
-    this.applyState();
+    this._setup();
+    this._applyState();
   },
 
-  applyState() {
+  _setup() {
+    this.pillBtn = this.el.querySelector('#footer-pill-toggle');
+    this.popover = this.el.querySelector('#footer-popover');
+
+    if (this.pillBtn && !this.pillBtn._ftBound) {
+      this.pillBtn._ftBound = true;
+      this.pillBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        this.isExpanded = !this.isExpanded;
+        this._applyState();
+      });
+    }
+
+    if (!this._docBound) {
+      this._docBound = true;
+      document.addEventListener('click', (e) => {
+        if (this.isExpanded && !this.el.contains(e.target)) {
+          this.isExpanded = false;
+          this._applyState();
+        }
+      });
+    }
+  },
+
+  _applyState() {
     if (!this.popover || !this.pillBtn) return;
     if (this.isExpanded) {
       this.popover.classList.remove('hidden');
@@ -531,10 +537,7 @@ Hooks.FooterToolbar = {
   },
 
   destroyed() {
-    if (this.pillBtn && this._handlePillClick) {
-      this.pillBtn.removeEventListener('click', this._handlePillClick);
-    }
-    document.removeEventListener('click', this._handleOutsideClick);
+    this.isExpanded = false;
   }
 }
 

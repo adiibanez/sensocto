@@ -11,17 +11,59 @@ Sensocto is a sophisticated real-time sensor platform built on Phoenix/LiveView 
 - Nx/numerical computing for quaternion calculations
 - Collaborative whiteboard, media player, and 3D object viewer
 
-**Current Testing Status:** Substantial and growing -- **33 test files** with **456 test cases** across unit, integration, E2E (Wallaby), and regression guard tests.
+**Current Testing Status:** Substantial and growing -- **51 test files** with approximately **732 test definitions** across unit, integration, E2E (Wallaby), and regression guard tests.
 
-**Livebook Status:** 16 livebooks totaling 8,713 lines, covering architecture, security, resilience, API developer experience, biomimetic patterns, and accessibility.
+**Livebook Status:** 16 livebooks totaling 8,713 lines, covering architecture, security, resilience, API developer experience, biomimetic patterns, and accessibility. Livebook count is stagnant since Feb 16.
 
-**Priority Recommendation:** Expand Ash resource test coverage (only Room tested so far), add property-based testing for sensor payloads, create QualityManager tests, and consolidate the data pipeline / lobby lens testing.
+**Priority Recommendation:** Expand test coverage for Calls system (CallServer, QualityManager, SnapshotManager -- 0% coverage), add event handler tests for LobbyLive and new LiveViews (PollsLive, ProfileLive), and create livebooks for new features (audio/MIDI, collaboration, delta encoding).
 
 ---
 
-## Update: February 16, 2026
+## Update: February 20, 2026
 
-### Testing Status -- Significant Growth Since January
+### Testing Status -- Continued Strong Growth
+
+| Metric | Feb 16 | Feb 20 | Change |
+|--------|--------|--------|--------|
+| Test Files | 33 | **51** | +18 (+55%) |
+| Test Definitions | ~373 | **~732** | +359 (+96%) |
+| Implementation Files | 250 | **280** | +30 |
+| LiveView Modules | 46 | **52+** | +6 |
+| Livebook Count | 16 | **16** | Stagnant |
+| Estimated Code Coverage | ~15% | **~22%** | +7% |
+
+### New Test Files (Feb 16 -> Feb 20)
+
+- `lobby_graph_regression_test.exs` (229 lines) -- Verifies all 13 lobby routes mount without crashing
+- `midi_output_regression_test.exs` (219 lines) -- MIDI push_event contract verification
+- `accounts_test.exs` (316 lines) -- Full Ash coverage: User, UserSkill, UserConnection, GuestSession
+- `collaboration_test.exs` (192 lines) -- Poll, PollOption, Vote Ash resource tests
+- `delta_encoder_test.exs` (149 lines) -- Round-trip encoding, overflow, precision tests
+- `attention_tracker_test.exs` (147 lines), `attribute_store_tiered_test.exs` (133 lines), `room_server_test.exs` (330 lines)
+- `circuit_breaker_test.exs`, `sensor_test.exs`, `search_index_test.exs`, `sync_computer_test.exs`, `chat_store_test.exs`, `object3d_player_server_test.exs`
+- `search_live_test.exs`, `user_directory_live_test.exs` -- Basic LiveView mount/render
+- `sensor_data_channel_test.exs` -- Channel broadcast and ping/reply
+
+### Remaining Test Gaps
+
+1. **Calls system at 0%**: CallServer, QualityManager, SnapshotManager, CallChannel
+2. **LobbyLive event handlers**: Mount regression covered, but no event handler tests
+3. **IndexLive**: Main dashboard has no tests
+4. **New LiveView event handlers**: PollsLive, ProfileLive not tested beyond mount
+
+### Livebook Status (Stagnant)
+
+16 livebooks unchanged since Feb 16. No new livebooks created for:
+- Audio/MIDI system exploration
+- Delta encoding round-trip demo
+- Collaboration (Poll) interactive testing
+- User profiles/social graph exploration
+
+---
+
+## Previous Update: February 16, 2026
+
+### Testing Growth Since January
 
 | Metric | Jan 20, 2026 | Feb 16, 2026 | Change |
 |--------|-------------|-------------|--------|

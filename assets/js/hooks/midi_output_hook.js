@@ -900,6 +900,10 @@ const MidiOutputHook = {
     this._onMeasurement = (e) => this._handleMeasurement(e);
     window.addEventListener('composite-measurement-event', this._onMeasurement);
 
+    // Stop audio immediately when LiveView navigates away (before destroyed() fires)
+    this._onBeforeNav = () => this._teardownAudio();
+    window.addEventListener('phx:page-loading-start', this._onBeforeNav);
+
     this._restoreState();
     this._setupUI();
 
@@ -912,20 +916,22 @@ const MidiOutputHook = {
     window.__magenta = { stats: () => this.magenta.getStats() };
   },
 
+  _teardownAudio() {
+    if (!this.midi) return;
+    this.groovy.stop();
+    this.magenta.stop();
+    this.clock.stop();
+    this.midi.setEnabled(false);
+    this.midi.dispose();
+    this.midi = null;
+  },
+
   destroyed() {
     window.removeEventListener('composite-measurement-event', this._onMeasurement);
+    window.removeEventListener('phx:page-loading-start', this._onBeforeNav);
     if (this._hrCleanupInterval) clearInterval(this._hrCleanupInterval);
     this.syncDetector.reset();
-    // Stop engines first so their noteOff messages reach Tone.js
-    // synths while they still exist, then dispose everything.
-    this.groovy.dispose();
-    this.magenta.dispose();
-    this.clock.dispose();
-    if (this.midi) {
-      this.midi.setEnabled(false);
-      this.midi.dispose();
-    }
-    this.midi = null;
+    this._teardownAudio();
   },
 
   _handleMeasurement(event) {

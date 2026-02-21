@@ -1,9 +1,9 @@
 # Sensocto OTP Architecture and Resilience Assessment
 
-**Generated:** 2026-02-08, **Updated:** 2026-02-17 (scalability revision with live measurement data)
+**Generated:** 2026-02-08, **Updated:** 2026-02-20
 **Author:** Resilient Systems Architect Agent
-**Codebase Version:** Based on commit 853f702 (main branch)
-**Previous Report:** 2026-02-15
+**Codebase Version:** Based on commit 9207440 (main branch)
+**Previous Report:** 2026-02-17
 
 ---
 
@@ -13,9 +13,11 @@ Sensocto is a real-time sensor platform built on Phoenix/LiveView with a sophist
 
 Several structural issues have been identified and progressively addressed. Recent work (Feb 2026) resolved the sensor registry mismatch (migrating from Horde to `:pg` + local Registry), sharded PubSub topics by attention level, optimized the data pipeline with ETS direct-writes bypassing GenServer mailboxes, and added connector "honey badger" resilience (hydration gates, health checks, room deletion detection). The Distributed Discovery system (DiscoveryCache + SyncWorker) has been implemented and integrated into Domain.Supervisor. A ChatStore (ETS-backed, in-memory) has been added for lobby/room chat and AI agent conversations. The AttentionTracker gained bulk registration/unregistration APIs to prevent thundering herd on graph views.
 
-**Overall Resilience Grade: A-** (maintained from prior assessment)
+**Overall Resilience Grade: A-** (maintained)
 
 The system is well above average for Elixir applications. The attention-aware routing, five-layer backpressure system, and ETS direct-write optimization are genuinely innovative. Live measurements with 152 sensors revealed that the SimpleSensor GC fix reduced per-sensor process memory from 2.1 MB to 175 KB (12x improvement), but ETS warm store is now the dominant memory consumer at 3.6 MB/sensor. A single node can support ~1,400 sensors with current caps, or ~4,000 with the recommended warm store cap reduction. Remaining gaps: ETS warm store scaling, Domain.Supervisor strategy mismatch, absence of `code_change/3`, and database retention policy.
+
+**Feb 20 Update:** No new server-side resilience risks introduced. Recent commits (9207440 through 12841b8) added: Audio/MIDI system (~3,485 lines JS, entirely client-side), Collaboration domain (Poll/PollOption/Vote Ash resources, database-backed), User Profiles/Social Graph (UserConnection/UserSkill resources), Delta Encoding module (feature-flagged off), and a Health Check endpoint (resolving recommendation 10.9). Test suite expanded by 20+ files. Developers showed good architectural instinct by keeping audio client-side and using Ash resources for collaboration/profiles instead of new GenServers.
 
 ---
 
@@ -557,7 +559,7 @@ The `write_concurrency: true` flag on AttributeStoreTiered tables enables concur
 | `code_change/3` | Completely absent | Blocks safe hot code upgrades |
 | Distributed sensor supervision | Local only | Sensors lost on node crash (by design) |
 | Circuit breaker failure decay | No decay -- counter only resets on success | Permanent half-open state possible |
-| Health check endpoint | Not found in analysis | Operational blind spot |
+| Health check endpoint | **RESOLVED** (Feb 2026) | `/health/live` + `/health/ready` |
 | Bulkhead pattern | Absent | No isolation between sensor types |
 | Rate limiting | Absent at PubSub level | Fast producer can flood topics |
 
@@ -774,14 +776,12 @@ Consider separate TaskSupervisors or DynamicSupervisors for different sensor cat
 
 Evaluate `BleConnectorGenServer`, `SensorsStateAgent`, and `Connector`. If they are unused, remove them. If they serve a purpose, document it.
 
-**10.9 Add Health Check Endpoint**
+**10.9 Add Health Check Endpoint** -- **RESOLVED**
 
-Create a `/health` endpoint that checks:
-- Database connectivity (Repo ping)
-- PubSub responsiveness (self-broadcast roundtrip)
-- Key GenServer liveness (AttentionTracker, SystemLoadMonitor)
-- ETS table existence
-- Horde cluster membership
+Health check endpoint implemented at `lib/sensocto_web/controllers/health_controller.ex` (183 lines):
+- `/health/live` -- shallow liveness probe
+- `/health/ready` -- deep readiness probe checking: database connectivity with latency, PubSub roundtrip, supervisor liveness, system load, Iroh readiness, ETS table existence
+- All checks use defensive error handling
 
 **10.10 Consider SyncComputer Phase Quality Filter**
 
@@ -958,6 +958,64 @@ Added AshAuthentication's `remember_me` strategy for persistent sessions:
 **Resilience implication:** Re-authentication failures (e.g., token signing key rotation during deployments) are surfaced silently to the plug layer rather than forcing LiveView connections to terminate. The 365-day cookie has a separate rotation cycle from session tokens, reducing the blast radius of signing key changes. From an availability perspective, users survive rolling deployments without manual re-login.
 
 **Security note:** Long-lived tokens require the associated AshAuthentication token table to be pruned of expired entries. Ensure the token cleanup job (if any) does not aggressively prune tokens younger than 365 days.
+
+### 12.19 Health Check Endpoint (Feb 2026)
+
+**New file:** `lib/sensocto_web/controllers/health_controller.ex` (183 lines)
+
+- `/health/live` (shallow liveness): returns 200 immediately
+- `/health/ready` (deep readiness): validates database with latency measurement, PubSub roundtrip, supervisor liveness, system load, Iroh readiness, ETS table existence
+- All checks use defensive error handling -- individual failures degrade gracefully
+- Resolves recommendation 10.9 from prior report
+
+**Resilience implication:** Enables Kubernetes/Fly.io health probes for automated restart and load balancer integration. The deep readiness check provides operational visibility into subsystem health without requiring log analysis.
+
+### 12.20 Audio/MIDI System (Feb 2026)
+
+**New files:** ~3,485 lines of JavaScript across 6 files in `assets/js/audio/`
+
+- Entirely client-side. Two modes: Abstract sensor CCs, Groovy musical engine
+- Six genres, three output backends (WebMIDI, Tone.js, Magenta/TensorFlow.js)
+- Consumes SyncComputer data via the existing demand-driven PubSub pipeline
+- Zero server-side process footprint
+- Clean teardown via `dispose()` and All Notes Off on disconnect
+
+**Resilience implication:** None -- adding user experience without adding system load. This is architecturally correct.
+
+### 12.21 Collaboration Domain (Feb 2026)
+
+**New files:** `lib/sensocto/collaboration/poll.ex`, `poll_option.ex`, `vote.ex`
+
+- New Ash resources (Poll, PollOption, Vote) with PubSub real-time updates
+- Database-backed, no new GenServers
+- `String.to_existing_atom/1` used safely (no atom exhaustion risk)
+
+**Resilience implication:** Ash resources add zero process overhead. PubSub broadcasts for vote updates are low-frequency.
+
+### 12.22 User Profiles/Social Graph (Feb 2026)
+
+**New files:** `lib/sensocto/accounts/user_connection.ex`, `user_skill.ex`, new LiveViews
+
+- New Ash resources (UserConnection, UserSkill) with proper identity constraints
+- New LiveViews (ProfileLive, UserDirectoryLive, UserShowLive)
+- UserGraph Svelte component (358 lines)
+- No new server-side processes
+
+### 12.23 Delta Encoding Module (Feb 2026)
+
+**New file:** `lib/sensocto/encoding/delta_encoder.ex` (148 lines)
+
+- Feature-flagged off via `Application.get_env`
+- Well-designed binary protocol with version byte and reset markers
+- **Note:** `enabled?/0` calls `Application.get_env` on every invocation -- should use `:persistent_term` before enabling on hot path
+
+**Resilience implication:** When enabled, reduces WebSocket bandwidth by ~84% for ECG data. Binary protocol version byte ensures forward compatibility.
+
+### 12.24 Test Suite Expansion (Feb 2026)
+
+- 20+ new test files including a 766-line regression guards suite
+- Covers accounts, sync_computer, chat_store, collaboration, delta_encoder, attention_tracker, circuit_breaker, and more
+- Regression guards protect data pipeline contracts during refactoring
 
 ### 12.18 Bio Factor Error Logging (Feb 17, 2026)
 
@@ -1401,7 +1459,7 @@ Remaining risks (ordered by impact):
 3. Domain.Supervisor has 22 children under `:one_for_one` -- needs sub-supervisors
 4. `sensors_attribute_data` has no retention policy -- unbounded database growth
 5. Circuit breaker lacks failure decay -- permanent half-open state possible
-6. No health check endpoint for operational monitoring
+6. ~~No health check endpoint for operational monitoring~~ **RESOLVED** -- `/health/live` and `/health/ready` implemented
 
 **Scalability headline (revised with live data):** The SimpleSensor GC fix (`fullsweep_after: 10`) reclaimed 296 MB from 152 sensors -- a 12x per-process memory reduction (2.1 MB to 175 KB). This moved the per-sensor bottleneck from process heap to ETS warm store. A single 8 GB node can support ~1,400 sensors with current ETS caps, or ~4,000 sensors with the recommended warm store cap reduction to 2,500 entries. Multi-node clusters scale linearly thanks to the `:pg` + local Registry architecture and attention-aware PubSub gating.
 

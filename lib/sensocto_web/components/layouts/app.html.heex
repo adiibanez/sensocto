@@ -1,4 +1,4 @@
-{live_render(@socket, SensoctoWeb.SearchLive, id: "global-search")}
+{live_render(@socket, SensoctoWeb.SearchLive, id: "global-search", sticky: true)}
 
 <%!-- Offline overlay banner - controlled by connection-monitor.js, works without LiveView --%>
 <div
@@ -290,7 +290,7 @@
   <%!-- Collapsed pill button --%>
   <button
     id="footer-pill-toggle"
-    class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 border border-gray-600 text-gray-400 hover:text-white hover:bg-gray-700 shadow-lg transition-all cursor-pointer"
+    class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 border border-gray-600 text-gray-400 hover:text-white hover:bg-gray-700 shadow-lg transition-all cursor-pointer touch-manipulation"
     aria-label="Toggle sensor controls"
   >
     <Heroicons.icon name="signal" type="outline" class="h-5 w-5" />

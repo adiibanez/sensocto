@@ -50,7 +50,7 @@ defmodule SensoctoWeb.TabbedFooterLive do
       >
         <button
           phx-click="expand_footer"
-          class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg touch-manipulation"
+          class="flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-gray-800 border border-gray-700 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg touch-manipulation"
         >
           <Heroicons.icon name="chevron-up" type="outline" class="h-4 w-4" />
           <Heroicons.icon name="bars-3" type="outline" class="h-4 w-4" />

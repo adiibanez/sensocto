@@ -28,6 +28,11 @@ if System.get_env("PHX_SERVER") do
   config :sensocto, SensoctoWeb.Endpoint, server: true
 end
 
+# Delta encoding for high-frequency data — enable via env var
+if System.get_env("DELTA_ENCODING_ENABLED") in ~w(true 1) do
+  config :sensocto, :delta_encoding, enabled: true
+end
+
 # Tidewave AI debugging - can be enabled in production via environment variable
 # Requires TIDEWAVE_USER and TIDEWAVE_PASS for authentication
 # Access at https://your-app.fly.dev/tidewave

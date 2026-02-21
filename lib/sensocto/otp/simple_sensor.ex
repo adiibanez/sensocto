@@ -13,6 +13,33 @@ defmodule Sensocto.SimpleSensor do
   @idle_check_interval :timer.minutes(1)
   @idle_threshold_ms :timer.minutes(5)
 
+  # Source-side batch throttling under system load
+  # Under :normal load, broadcasts are immediate (0ms). Under elevated+ load,
+  # measurements are buffered and flushed as batches to reduce PubSub message volume.
+  # Keyed by {load_level, attention_level} → flush interval in ms
+  @broadcast_intervals %{
+    # Normal load: always immediate (zero overhead)
+    {:normal, :high} => 0,
+    {:normal, :medium} => 0,
+    {:normal, :low} => 0,
+    {:normal, :none} => 0,
+    # Elevated load: mild batching
+    {:elevated, :high} => 16,
+    {:elevated, :medium} => 32,
+    {:elevated, :low} => 64,
+    {:elevated, :none} => 0,
+    # High load: moderate batching
+    {:high, :high} => 32,
+    {:high, :medium} => 64,
+    {:high, :low} => 128,
+    {:high, :none} => 0,
+    # Critical load: aggressive batching
+    {:critical, :high} => 64,
+    {:critical, :medium} => 128,
+    {:critical, :low} => 256,
+    {:critical, :none} => 0
+  }
+
   @spec start_link(%{:sensor_id => any(), optional(any()) => any()}) ::
           :ignore | {:error, any()} | {:ok, pid()}
   def start_link(%{:sensor_id => sensor_id} = configuration) do
@@ -38,6 +65,9 @@ defmodule Sensocto.SimpleSensor do
     # Schedule periodic idle check for hibernation
     schedule_idle_check()
 
+    # Subscribe to system load changes for source-side throttling
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "system:load")
+
     final_state =
       state
       |> Map.put(:attributes, state.attributes || %{})
@@ -46,6 +76,9 @@ defmodule Sensocto.SimpleSensor do
       |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))
       |> Map.put(:attention_level, :none)
       |> Map.put(:initialized, false)
+      |> Map.put(:load_level, :normal)
+      |> Map.put(:broadcast_buffer, [])
+      |> Map.put(:broadcast_timer, nil)
 
     # Defer blocking operations (DB write, replicator, broadcast) to handle_continue
     {:ok, final_state, {:continue, :post_init}}
@@ -387,25 +420,16 @@ defmodule Sensocto.SimpleSensor do
     now = System.system_time(:millisecond)
     enriched_attribute = Map.put(attribute, :sensor_id, sensor_id)
 
-    # Broadcast to per-sensor topic (always - for direct subscribers)
+    # Broadcast to per-sensor topic (always - for direct subscribers like room views)
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "data:#{sensor_id}",
       {:measurement, enriched_attribute}
     )
 
-    # Broadcast to attention-sharded topic when there are viewers.
-    # Priority attributes (button) always broadcast on :high to ensure delivery
-    # even when the sensor has no active viewers (attention_level == :none).
-    attention_topic = attention_topic_for(state.attention_level, attribute)
-
-    if attention_topic do
-      Phoenix.PubSub.broadcast(
-        Sensocto.PubSub,
-        attention_topic,
-        {:measurement, enriched_attribute}
-      )
-    end
+    # Broadcast to attention-sharded topic — either immediately or buffered
+    # depending on system load. Under :normal load this is zero-overhead (immediate).
+    state = broadcast_or_buffer(state, enriched_attribute)
 
     {:noreply,
      state
@@ -435,25 +459,15 @@ defmodule Sensocto.SimpleSensor do
 
     now = System.system_time(:millisecond)
 
-    # Broadcast to per-sensor topic (always - for direct subscribers)
+    # Broadcast to per-sensor topic (always - for direct subscribers like room views)
     Phoenix.PubSub.broadcast(
       Sensocto.PubSub,
       "data:#{sensor_id}",
       {:measurements_batch, {sensor_id, broadcast_messages_list}}
     )
 
-    # Broadcast to attention-sharded topic when there are viewers.
-    # Check if any attribute in the batch is a priority attribute.
-    has_priority_attr = Enum.any?(broadcast_messages_list, &priority_attribute?/1)
-    attention_topic = attention_topic_for_batch(state.attention_level, has_priority_attr)
-
-    if attention_topic do
-      Phoenix.PubSub.broadcast(
-        Sensocto.PubSub,
-        attention_topic,
-        {:measurements_batch, {sensor_id, broadcast_messages_list}}
-      )
-    end
+    # Broadcast to attention-sharded topic — either immediately or buffered
+    state = broadcast_batch_or_buffer(state, broadcast_messages_list)
 
     {:noreply,
      state
@@ -509,6 +523,38 @@ defmodule Sensocto.SimpleSensor do
     end
   end
 
+  # Handle system load level changes — update broadcast interval for source-side throttling
+  @impl true
+  def handle_info({:system_load_changed, %{level: new_level}}, state) do
+    old_level = state.load_level
+
+    if new_level != old_level do
+      state = %{state | load_level: new_level}
+
+      # If load dropped to :normal, flush any pending buffer immediately
+      state =
+        if new_level == :normal and state.broadcast_buffer != [] do
+          flush_broadcast_buffer(state)
+        else
+          state
+        end
+
+      {:noreply, state}
+    else
+      {:noreply, state}
+    end
+  end
+
+  # Ignore memory protection changes (handled via load level)
+  @impl true
+  def handle_info({:memory_protection_changed, _}, state), do: {:noreply, state}
+
+  # Flush buffered attention-sharded broadcasts as a batch
+  @impl true
+  def handle_info(:flush_broadcast_buffer, state) do
+    {:noreply, flush_broadcast_buffer(%{state | broadcast_timer: nil})}
+  end
+
   # Periodic idle check - hibernate if low attention and idle
   @impl true
   def handle_info(:check_idle, state) do
@@ -541,6 +587,100 @@ defmodule Sensocto.SimpleSensor do
 
   defp schedule_idle_check do
     Process.send_after(self(), :check_idle, @idle_check_interval)
+  end
+
+  # Source-side batch throttling: under normal load, broadcast immediately.
+  # Under elevated+ load, buffer measurements and flush as a batch.
+  defp broadcast_or_buffer(state, enriched_attribute) do
+    attention_topic = attention_topic_for(state.attention_level, enriched_attribute)
+
+    # Nothing to broadcast if attention-gated (no viewers, non-priority attribute)
+    if attention_topic == nil do
+      state
+    else
+      interval = Map.get(@broadcast_intervals, {state.load_level, state.attention_level}, 0)
+
+      if interval == 0 do
+        # Normal load: broadcast immediately (zero overhead path)
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          attention_topic,
+          {:measurement, enriched_attribute}
+        )
+
+        state
+      else
+        # Elevated+ load: buffer for batched broadcast
+        new_buffer = [enriched_attribute | state.broadcast_buffer]
+
+        # Schedule flush timer if not already running
+        timer =
+          if state.broadcast_timer do
+            state.broadcast_timer
+          else
+            Process.send_after(self(), :flush_broadcast_buffer, interval)
+          end
+
+        %{state | broadcast_buffer: new_buffer, broadcast_timer: timer}
+      end
+    end
+  end
+
+  defp broadcast_batch_or_buffer(state, measurements) when is_list(measurements) do
+    has_priority = Enum.any?(measurements, &priority_attribute?/1)
+    attention_topic = attention_topic_for_batch(state.attention_level, has_priority)
+
+    if attention_topic == nil do
+      state
+    else
+      interval = Map.get(@broadcast_intervals, {state.load_level, state.attention_level}, 0)
+
+      if interval == 0 do
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          attention_topic,
+          {:measurements_batch, {state.sensor_id, measurements}}
+        )
+
+        state
+      else
+        new_buffer = Enum.reverse(measurements) ++ state.broadcast_buffer
+
+        timer =
+          if state.broadcast_timer do
+            state.broadcast_timer
+          else
+            Process.send_after(self(), :flush_broadcast_buffer, interval)
+          end
+
+        %{state | broadcast_buffer: new_buffer, broadcast_timer: timer}
+      end
+    end
+  end
+
+  # Flush accumulated broadcast buffer as a single batch message
+  defp flush_broadcast_buffer(%{broadcast_buffer: []} = state), do: state
+
+  defp flush_broadcast_buffer(%{sensor_id: sensor_id, broadcast_buffer: buffer} = state) do
+    # Cancel pending timer if still active
+    if state.broadcast_timer, do: Process.cancel_timer(state.broadcast_timer)
+
+    # Reverse to restore chronological order
+    measurements = Enum.reverse(buffer)
+
+    # Determine attention topic from current level
+    has_priority = Enum.any?(measurements, &priority_attribute?/1)
+    attention_topic = attention_topic_for_batch(state.attention_level, has_priority)
+
+    if attention_topic do
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        attention_topic,
+        {:measurements_batch, {sensor_id, measurements}}
+      )
+    end
+
+    %{state | broadcast_buffer: [], broadcast_timer: nil}
   end
 
   # Priority attributes always broadcast on data:attention:high regardless of

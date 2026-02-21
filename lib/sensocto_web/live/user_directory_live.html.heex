@@ -24,7 +24,9 @@
   <%= if @live_action == :index do %>
     <div class="mt-2">
       <form phx-change="search" phx-submit="search">
+        <label for="user-search" class="sr-only">Search users</label>
         <input
+          id="user-search"
           type="text"
           name="search"
           value={@search}

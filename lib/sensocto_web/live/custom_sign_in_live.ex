@@ -27,6 +27,7 @@ defmodule SensoctoWeb.CustomSignInLive do
 
       socket =
         socket
+        |> assign(:page_title, "Sign In")
         |> assign(:show_about, true)
         # Ball presence state
         |> assign(:balls, %{})

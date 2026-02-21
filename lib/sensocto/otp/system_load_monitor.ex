@@ -32,19 +32,19 @@ defmodule Sensocto.SystemLoadMonitor do
   # Default weights for system pulse calculation (can be overridden in config)
   # Biased towards CPU and PubSub IO
   @default_weights %{
-    cpu_weight: 0.45,
-    pubsub_weight: 0.30,
-    queue_weight: 0.15,
-    memory_weight: 0.10
+    cpu_weight: 0.30,
+    pubsub_weight: 0.20,
+    queue_weight: 0.30,
+    memory_weight: 0.20
   }
 
   # Default load thresholds (scheduler utilization 0.0 - 1.0)
   # These can be overridden via config :sensocto, :load_thresholds
   @default_load_thresholds %{
-    normal: 0.5,
-    elevated: 0.7,
-    high: 0.85,
-    critical: 0.95
+    normal: 0.3,
+    elevated: 0.5,
+    high: 0.7,
+    critical: 0.85
   }
 
   # Default memory pressure thresholds - separate from overall load thresholds
@@ -428,7 +428,9 @@ defmodule Sensocto.SystemLoadMonitor do
     key_processes = [
       Sensocto.AttentionTracker,
       Sensocto.SensorsDynamicSupervisor,
-      SensoctoWeb.Endpoint
+      SensoctoWeb.Endpoint,
+      Sensocto.Lenses.Router,
+      Sensocto.Lenses.PriorityLens
     ]
 
     queue_lengths =
@@ -461,14 +463,16 @@ defmodule Sensocto.SystemLoadMonitor do
     max_queue = Enum.max(all_lengths, fn -> 0 end)
     avg_queue = Enum.sum(all_lengths) / max(length(all_lengths), 1)
 
-    # Normalize: queue > 1000 is critical, > 500 is high, > 100 is elevated
+    # Normalize: lower thresholds to detect backpressure earlier
+    # LobbyLive backpressure triggers at 50 msgs, so any key process with
+    # 50+ msgs means the system is under real pressure
     cond do
-      max_queue > 1000 -> 1.0
-      max_queue > 500 -> 0.9
-      max_queue > 100 -> 0.75
-      avg_queue > 50 -> 0.6
-      avg_queue > 20 -> 0.4
-      true -> avg_queue / 100
+      max_queue > 200 -> 1.0
+      max_queue > 100 -> 0.9
+      max_queue > 50 -> 0.8
+      max_queue > 20 -> 0.6
+      avg_queue > 10 -> 0.4
+      true -> avg_queue / 50
     end
   end
 

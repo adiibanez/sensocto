@@ -39,6 +39,19 @@ Hooks.LobbyPreferences = {
         this.handleEvent('save_sort_by', ({ sort_by }) => {
             localStorage.setItem('lobby_sort_by', sort_by);
         });
+
+        // Restore saved layout or auto-detect from screen width
+        const savedLayout = localStorage.getItem('lobby_layout');
+        if (savedLayout && ['stacked', 'side_by_side'].includes(savedLayout)) {
+            this.pushEvent('restore_lobby_layout', { layout: savedLayout });
+        } else if (window.innerWidth >= 2000) {
+            this.pushEvent('restore_lobby_layout', { layout: 'side_by_side' });
+        }
+
+        // Listen for layout changes to save them
+        this.handleEvent('save_lobby_layout', ({ layout }) => {
+            localStorage.setItem('lobby_layout', layout);
+        });
     }
 };
 

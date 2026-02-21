@@ -17,8 +17,30 @@
   <div class="flex items-center justify-between mb-4">
     <div class="flex items-center gap-3 text-xs text-gray-500"></div>
     <div class="flex items-center gap-4">
+      <%!-- Layout toggle: stacked ↔ side-by-side --%>
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-gray-500">Layout</span>
+        <button
+          phx-click="toggle_lobby_layout"
+          title={
+            if(@lobby_layout == :side_by_side,
+              do: "Switch to stacked layout",
+              else: "Switch to side-by-side layout"
+            )
+          }
+          class="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
+        >
+          <Heroicons.icon
+            name={if(@lobby_layout == :side_by_side, do: "bars-3", else: "view-columns")}
+            type="outline"
+            class="h-4 w-4"
+          />
+        </button>
+      </div>
+
       <%!-- Quality Indicator & Override --%>
       <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-500">Data Quality</span>
         <div class={"flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium " <>
           case @current_quality do
             :high -> "bg-green-600/20 text-green-400 border border-green-600/30"
@@ -210,1153 +232,1164 @@
   </div>
 
   <%!-- ================================================================== --%>
-  <%!-- CONTENT TABS - Media, 3D Object --%>
+  <%!-- CONTENT TABS + SENSOR LENSES — toggleable side-by-side layout --%>
   <%!-- ================================================================== --%>
-  <div class="flex items-center justify-center gap-1.5 mb-3">
-    <button
-      phx-click="switch_lobby_mode"
-      phx-value-mode="media"
-      class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+  <div class={[
+    "flex",
+    if(@lobby_layout == :side_by_side, do: "flex-row gap-6 items-start", else: "flex-col")
+  ]}>
+    <%!-- Left column: Media / 3D / Whiteboard / Polls --%>
+    <div class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}>
+      <div class="flex items-center justify-center gap-1.5 mb-3">
+        <button
+          phx-click="switch_lobby_mode"
+          phx-value-mode="media"
+          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
-    >
-      <Heroicons.icon name="play" type="solid" class="h-3 w-3" /> Media
-      <span :if={@media_viewers > 0} class="px-1 py-0.5 text-[10px] rounded-full bg-white/20">
-        {@media_viewers}
-      </span>
-    </button>
+        >
+          <Heroicons.icon name="play" type="solid" class="h-3 w-3" /> Media
+          <span :if={@media_viewers > 0} class="px-1 py-0.5 text-[10px] rounded-full bg-white/20">
+            {@media_viewers}
+          </span>
+        </button>
 
-    <button
-      phx-click="switch_lobby_mode"
-      phx-value-mode="object3d"
-      class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        <button
+          phx-click="switch_lobby_mode"
+          phx-value-mode="object3d"
+          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
-    >
-      <Heroicons.icon name="cube-transparent" type="solid" class="h-3 w-3" /> 3D Object
-      <span
-        :if={@object3d_viewers > 0}
-        class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
-      >
-        {@object3d_viewers}
-      </span>
-    </button>
+        >
+          <Heroicons.icon name="cube-transparent" type="solid" class="h-3 w-3" /> 3D Object
+          <span
+            :if={@object3d_viewers > 0}
+            class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+          >
+            {@object3d_viewers}
+          </span>
+        </button>
 
-    <button
-      phx-click="switch_lobby_mode"
-      phx-value-mode="whiteboard"
-      class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        <button
+          phx-click="switch_lobby_mode"
+          phx-value-mode="whiteboard"
+          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :whiteboard, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@whiteboard_bump, do: " animate-bump ring-1 ring-green-300/50", else: "")}
-    >
-      <Heroicons.icon name="pencil-square" type="solid" class="h-3 w-3" /> Whiteboard
-      <span
-        :if={@whiteboard_viewers > 0}
-        class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
-      >
-        {@whiteboard_viewers}
-      </span>
-    </button>
+        >
+          <Heroicons.icon name="pencil-square" type="solid" class="h-3 w-3" /> Whiteboard
+          <span
+            :if={@whiteboard_viewers > 0}
+            class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+          >
+            {@whiteboard_viewers}
+          </span>
+        </button>
 
-    <button
-      phx-click="switch_lobby_mode"
-      phx-value-mode="polls"
-      class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        <button
+          phx-click="switch_lobby_mode"
+          phx-value-mode="polls"
+          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :polls, do: "bg-purple-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-    >
-      <Heroicons.icon name="chart-bar-square" type="solid" class="h-3 w-3" /> Polls
-    </button>
+        >
+          <Heroicons.icon name="chart-bar-square" type="solid" class="h-3 w-3" /> Polls
+        </button>
 
-    <%!-- Sync Status Indicator --%>
-    <.live_component
-      module={SensoctoWeb.Live.Components.SyncStatusComponent}
-      id="lobby-sync-status"
-      synced_users={@synced_users}
-      solo_users={@solo_users}
-      controller_user_id={@media_controller_user_id}
-      current_user={@current_user}
-    />
-  </div>
+        <%!-- Sync Status Indicator --%>
+        <.live_component
+          module={SensoctoWeb.Live.Components.SyncStatusComponent}
+          id="lobby-sync-status"
+          synced_users={@synced_users}
+          solo_users={@solo_users}
+          controller_user_id={@media_controller_user_id}
+          current_user={@current_user}
+        />
+      </div>
 
-  <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
-  <div
-    id="call-hook-persistent"
-    phx-hook="CallHook"
-    data-room-id="lobby"
-    data-user-id={@current_user.id}
-    data-user-name={
-      Map.get(@current_user, :email) || Map.get(@current_user, :display_name) |> to_string()
-    }
-    data-in-call={to_string(@in_call)}
-    class="hidden"
-  >
-  </div>
+      <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
+      <div
+        id="call-hook-persistent"
+        phx-hook="CallHook"
+        data-room-id="lobby"
+        data-user-id={@current_user.id}
+        data-user-name={
+          Map.get(@current_user, :email) || Map.get(@current_user, :display_name) |> to_string()
+        }
+        data-in-call={to_string(@in_call)}
+        class="hidden"
+      >
+      </div>
 
-  <%!-- Media Player Panel --%>
-  <div :if={@lobby_mode == :media} class="mb-6">
-    <.live_component
-      module={SensoctoWeb.Live.Components.MediaPlayerComponent}
-      id="lobby-media-player"
-      is_lobby={true}
-      current_user={@current_user}
-      can_manage={true}
-      sync_mode={@sync_mode}
-    />
-  </div>
+      <%!-- Media Player Panel --%>
+      <div :if={@lobby_mode == :media} class="mb-6">
+        <.live_component
+          module={SensoctoWeb.Live.Components.MediaPlayerComponent}
+          id="lobby-media-player"
+          is_lobby={true}
+          current_user={@current_user}
+          can_manage={true}
+          sync_mode={@sync_mode}
+        />
+      </div>
 
-  <%!-- 3D Object Viewer Panel --%>
-  <div :if={@lobby_mode == :object3d} class="mb-6">
-    <.live_component
-      module={SensoctoWeb.Live.Components.Object3DPlayerComponent}
-      id="lobby-object3d-player"
-      is_lobby={true}
-      current_user={@current_user}
-      can_manage={true}
-      sync_mode={@sync_mode}
-      socket_id={@socket_id}
-    />
-  </div>
+      <%!-- 3D Object Viewer Panel --%>
+      <div :if={@lobby_mode == :object3d} class="mb-6">
+        <.live_component
+          module={SensoctoWeb.Live.Components.Object3DPlayerComponent}
+          id="lobby-object3d-player"
+          is_lobby={true}
+          current_user={@current_user}
+          can_manage={true}
+          sync_mode={@sync_mode}
+          socket_id={@socket_id}
+        />
+      </div>
 
-  <%!-- Whiteboard Panel --%>
-  <div :if={@lobby_mode == :whiteboard} class="mb-6">
-    <.live_component
-      module={SensoctoWeb.Live.Components.WhiteboardComponent}
-      id="lobby-whiteboard"
-      is_lobby={true}
-      current_user={@current_user}
-      can_manage={true}
-      sync_mode={@sync_mode}
-    />
-  </div>
+      <%!-- Whiteboard Panel --%>
+      <div :if={@lobby_mode == :whiteboard} class="mb-6">
+        <.live_component
+          module={SensoctoWeb.Live.Components.WhiteboardComponent}
+          id="lobby-whiteboard"
+          is_lobby={true}
+          current_user={@current_user}
+          can_manage={true}
+          sync_mode={@sync_mode}
+        />
+      </div>
 
-  <%!-- Polls Panel --%>
-  <div :if={@lobby_mode == :polls} class="mb-6">
-    <.live_component
-      module={SensoctoWeb.Components.PollsPanelComponent}
-      id="lobby-polls-panel"
-      current_user={@current_user}
-    />
-  </div>
-
-  <%!-- Lens Selector - styled like rooms --%>
-  <div class="flex items-center mb-2">
-    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-      <%!-- Quick lens chips - only show lenses with actual sensor data --%>
-      <nav aria-label="Lobby view modes" class="flex flex-wrap items-center gap-2" role="tablist">
-        <.link
-          patch={~p"/lobby"}
-          role="tab"
-          aria-selected={to_string(@live_action == :sensors)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+      <%!-- Polls Panel --%>
+      <div :if={@lobby_mode == :polls} class="mb-6">
+        <.live_component
+          module={SensoctoWeb.Components.PollsPanelComponent}
+          id="lobby-polls-panel"
+          current_user={@current_user}
+        />
+      </div>
+    </div>
+    <%!-- Right column: Sensor lenses --%>
+    <div class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}>
+      <%!-- Lens Selector - styled like rooms --%>
+      <div class="flex items-center mb-2">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <%!-- Quick lens chips - only show lenses with actual sensor data --%>
+          <nav
+            aria-label="Lobby view modes"
+            class="flex flex-wrap items-center gap-2"
+            role="tablist"
+          >
+            <.link
+              patch={~p"/lobby"}
+              role="tab"
+              aria-selected={to_string(@live_action == :sensors)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :sensors,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
-        </.link>
-        <.link
-          patch={~p"/lobby/users"}
-          role="tab"
-          aria-selected={to_string(@live_action == :users)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
+            </.link>
+            <.link
+              patch={~p"/lobby/users"}
+              role="tab"
+              aria-selected={to_string(@live_action == :users)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :users,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
-        </.link>
-        <.link
-          :if={@favorite_sensors != []}
-          patch={~p"/lobby/favorites"}
-          role="tab"
-          aria-selected={to_string(@live_action == :favorites)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
+            </.link>
+            <.link
+              :if={@favorite_sensors != []}
+              patch={~p"/lobby/favorites"}
+              role="tab"
+              aria-selected={to_string(@live_action == :favorites)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :favorites,
               do: "bg-yellow-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
-        </.link>
-        <.link
-          :if={:heartrate in @available_lenses}
-          patch={~p"/lobby/heartrate"}
-          role="tab"
-          aria-selected={to_string(@live_action == :heartrate)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
+            </.link>
+            <.link
+              :if={:heartrate in @available_lenses}
+              patch={~p"/lobby/heartrate"}
+              role="tab"
+              aria-selected={to_string(@live_action == :heartrate)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :heartrate,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
-        </.link>
-        <.link
-          :if={:ecg in @available_lenses}
-          patch={~p"/lobby/ecg"}
-          role="tab"
-          aria-selected={to_string(@live_action == :ecg)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
+            </.link>
+            <.link
+              :if={:ecg in @available_lenses}
+              patch={~p"/lobby/ecg"}
+              role="tab"
+              aria-selected={to_string(@live_action == :ecg)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :ecg,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
-        </.link>
-        <.link
-          :if={:battery in @available_lenses}
-          patch={~p"/lobby/battery"}
-          role="tab"
-          aria-selected={to_string(@live_action == :battery)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
+            </.link>
+            <.link
+              :if={:battery in @available_lenses}
+              patch={~p"/lobby/battery"}
+              role="tab"
+              aria-selected={to_string(@live_action == :battery)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :battery,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
-        </.link>
-        <.link
-          :if={:imu in @available_lenses}
-          patch={~p"/lobby/imu"}
-          role="tab"
-          aria-selected={to_string(@live_action == :imu)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
+            </.link>
+            <.link
+              :if={:imu in @available_lenses}
+              patch={~p"/lobby/imu"}
+              role="tab"
+              aria-selected={to_string(@live_action == :imu)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :imu,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="cube" type="outline" class="h-3 w-3" /> IMU
-        </.link>
-        <.link
-          :if={:location in @available_lenses}
-          patch={~p"/lobby/location"}
-          role="tab"
-          aria-selected={to_string(@live_action == :location)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="cube" type="outline" class="h-3 w-3" /> IMU
+            </.link>
+            <.link
+              :if={:location in @available_lenses}
+              patch={~p"/lobby/location"}
+              role="tab"
+              aria-selected={to_string(@live_action == :location)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :location,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
-        </.link>
-        <.link
-          :if={:skeleton in @available_lenses}
-          patch={~p"/lobby/skeleton"}
-          role="tab"
-          aria-selected={to_string(@live_action == :skeleton)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
+            </.link>
+            <.link
+              :if={:skeleton in @available_lenses}
+              patch={~p"/lobby/skeleton"}
+              role="tab"
+              aria-selected={to_string(@live_action == :skeleton)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :skeleton,
               do: "bg-purple-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
-        </.link>
-        <.link
-          :if={:respiration in @available_lenses}
-          patch={~p"/lobby/breathing"}
-          role="tab"
-          aria-selected={to_string(@live_action == :respiration)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
+            </.link>
+            <.link
+              :if={:respiration in @available_lenses}
+              patch={~p"/lobby/breathing"}
+              role="tab"
+              aria-selected={to_string(@live_action == :respiration)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :respiration,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
-        </.link>
-        <.link
-          :if={:hrv in @available_lenses}
-          patch={~p"/lobby/hrv"}
-          role="tab"
-          aria-selected={to_string(@live_action == :hrv)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
+            </.link>
+            <.link
+              :if={:hrv in @available_lenses}
+              patch={~p"/lobby/hrv"}
+              role="tab"
+              aria-selected={to_string(@live_action == :hrv)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :hrv,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
-        </.link>
-        <.link
-          :if={:gaze in @available_lenses}
-          patch={~p"/lobby/gaze"}
-          role="tab"
-          aria-selected={to_string(@live_action == :gaze)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
+            </.link>
+            <.link
+              :if={:gaze in @available_lenses}
+              patch={~p"/lobby/gaze"}
+              role="tab"
+              aria-selected={to_string(@live_action == :gaze)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :gaze,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="eye" type="outline" class="h-3 w-3" /> Gaze
-        </.link>
-        <.link
-          patch={~p"/lobby/graph"}
-          role="tab"
-          aria-selected={to_string(@live_action == :graph)}
-          class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            >
+              <Heroicons.icon name="eye" type="outline" class="h-3 w-3" /> Gaze
+            </.link>
+            <.link
+              patch={~p"/lobby/graph"}
+              role="tab"
+              aria-selected={to_string(@live_action == :graph)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
-        </.link>
-      </nav>
+            >
+              <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
+            </.link>
+          </nav>
 
-      <%!-- Sort Controls — only relevant for sensor list views --%>
-      <div
-        :if={@live_action in [:sensors, :users, :favorites]}
-        class="flex items-center gap-1.5 ml-4"
-      >
-        <span class="text-xs text-gray-500 mr-1">Sort:</span>
-        <button
-          phx-click="set_sort"
-          phx-value-sort="activity"
-          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+          <%!-- Sort Controls — only relevant for sensor list views --%>
+          <div
+            :if={@live_action in [:sensors, :users, :favorites]}
+            class="flex items-center gap-1.5 ml-4"
+          >
+            <span class="text-xs text-gray-500 mr-1">Sort:</span>
+            <button
+              phx-click="set_sort"
+              phx-value-sort="activity"
+              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :activity,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          Activity
-        </button>
-        <button
-          phx-click="set_sort"
-          phx-value-sort="name"
-          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            >
+              Activity
+            </button>
+            <button
+              phx-click="set_sort"
+              phx-value-sort="name"
+              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :name,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          Name
-        </button>
-        <button
-          phx-click="set_sort"
-          phx-value-sort="type"
-          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            >
+              Name
+            </button>
+            <button
+              phx-click="set_sort"
+              phx-value-sort="type"
+              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :type,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          Type
-        </button>
-        <button
-          :if={:battery in @available_lenses}
-          phx-click="set_sort"
-          phx-value-sort="battery"
-          class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+            >
+              Type
+            </button>
+            <button
+              :if={:battery in @available_lenses}
+              phx-click="set_sort"
+              phx-value-sort="battery"
+              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :battery,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          Battery
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div :if={@live_action == :sensors}>
-    <%!-- Virtual scroll sensor grid --%>
-    <% {rows_before, visible_sensor_ids, rows_after, sensors_remaining} =
-      partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
-
-    <div
-      id="sensor-virtual-scroll"
-      phx-hook="VirtualScrollHook"
-      data-total-sensors={length(@sensor_ids)}
-      data-row-height={@row_height}
-      class={[
-        "grid grid-cols-1",
-        if(@global_view_mode == :summary,
-          do:
-            "gap-1.5 sm:gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
-          else: "gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-        )
-      ]}
-    >
-      <%!-- Top spacer for sensors above viewport --%>
-      <div
-        :if={rows_before > 0}
-        id="virtual-scroll-top-spacer"
-        style={"height: #{rows_before * @row_height}px"}
-        class="col-span-full"
-        aria-hidden="true"
-      />
-
-      <%!-- Visible sensors - rendered as LiveComponents for efficient virtual scrolling --%>
-      <div
-        :for={sensor_id <- visible_sensor_ids}
-        id={"sensor_container_#{sensor_id}"}
-      >
-        <.live_component
-          module={StatefulSensorComponent}
-          id={"sensor_#{sensor_id}"}
-          sensor_id={sensor_id}
-          sensor={
-            Map.get(@sensors, sensor_id, %{
-              sensor_id: sensor_id,
-              sensor_name: sensor_id,
-              sensor_type: "unknown",
-              attributes: %{}
-            })
-          }
-          view_mode={@global_view_mode}
-          user_id={@current_user && @current_user.id}
-          is_favorite={sensor_id in @favorite_sensors}
-        />
-      </div>
-
-      <%!-- Bottom spacer for sensors below viewport --%>
-      <div
-        :if={rows_after > 0}
-        id="virtual-scroll-bottom-spacer"
-        style={"height: #{rows_after * @row_height}px"}
-        class="col-span-full"
-        aria-hidden="true"
-      />
-
-      <%!-- Scroll/loading indicator - always present so JS can control it --%>
-      <div
-        id="virtual-scroll-indicator"
-        class="col-span-full flex items-center justify-center py-4 text-gray-300"
-      >
-        <%!-- Loading spinner (shown by JS when loading, or server-rendered during initial load) --%>
-        <div class={[
-          "loading-spinner flex items-center gap-2",
-          if(@virtual_scroll_loading, do: "", else: "hidden")
-        ]}>
-          <svg
-            class="animate-spin h-5 w-5 text-orange-400"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
             >
-            </circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            >
-            </path>
-          </svg>
-          <span class="text-sm">Loading sensors...</span>
-        </div>
-        <%!-- "More below" indicator (shown when there are sensors remaining and not loading) --%>
-        <div
-          :if={sensors_remaining > 0}
-          class={[
-            "more-text flex items-center gap-2 text-xs text-gray-500",
-            if(@virtual_scroll_loading, do: "hidden", else: "")
-          ]}
-        >
-          <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4 animate-bounce" />
-          <span>
-            {sensors_remaining} more sensor{if sensors_remaining > 1, do: "s", else: ""} below
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <div
-      :if={@sensor_ids == []}
-      class="text-center py-12 text-gray-300"
-    >
-      <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
-    </div>
-  </div>
-
-  <div
-    :if={@live_action == :heartrate}
-    id="composite-heartrate"
-    phx-hook="CompositeMeasurementHandler"
-  >
-    <.svelte
-      name="CompositeHeartrate"
-      props={%{sensors: @heartrate_sensors}}
-      socket={@socket}
-      class="w-full"
-    />
-    <div :if={@heartrate_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="heart" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No heartrate sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with heartrate capability</p>
-    </div>
-  </div>
-
-  <div :if={@live_action == :imu} id="composite-imu" phx-hook="CompositeMeasurementHandler">
-    <.svelte
-      name="CompositeIMU"
-      props={%{sensors: @imu_sensors}}
-      socket={@socket}
-      class="w-full"
-    />
-    <div :if={@imu_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="cube" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No IMU sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with IMU capability</p>
-    </div>
-  </div>
-
-  <div
-    :if={@live_action == :location}
-    id="composite-location"
-    phx-hook="CompositeMeasurementHandler"
-  >
-    <.svelte
-      name="CompositeMap"
-      props={%{positions: @location_sensors}}
-      socket={@socket}
-      class="w-full h-96"
-    />
-    <div :if={@location_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="map-pin" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No location sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with geolocation capability</p>
-    </div>
-  </div>
-
-  <div :if={@live_action == :ecg} id="composite-ecg" phx-hook="CompositeMeasurementHandler">
-    <.svelte
-      name="CompositeECG"
-      props={%{sensors: @ecg_sensors}}
-      socket={@socket}
-      class="w-full"
-    />
-    <div :if={@ecg_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="chart-bar" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No ECG sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with ECG capability</p>
-    </div>
-  </div>
-
-  <div
-    :if={@live_action == :battery}
-    id="composite-battery"
-    phx-hook="CompositeMeasurementHandler"
-  >
-    <.svelte
-      name="CompositeBattery"
-      props={%{sensors: @battery_sensors}}
-      socket={@socket}
-      class="w-full"
-    />
-    <div :if={@battery_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="battery-50" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No battery sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with battery monitoring</p>
-    </div>
-  </div>
-
-  <div
-    :if={@live_action == :skeleton}
-    id="composite-skeleton"
-    phx-hook="CompositeMeasurementHandler"
-    class="h-[min(70vh,600px)] min-h-[250px]"
-  >
-    <.svelte
-      name="CompositeSkeletons"
-      props={%{sensors: @skeleton_sensors}}
-      socket={@socket}
-      class="w-full h-full"
-    />
-    <div :if={@skeleton_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="user" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No skeleton/pose sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with pose detection enabled</p>
-    </div>
-  </div>
-
-  <%!-- Breathing/Respiration Composite View --%>
-  <div
-    :if={@live_action == :respiration}
-    id="composite-breathing"
-    phx-hook="CompositeMeasurementHandler"
-    class="h-[min(70vh,600px)] min-h-[250px]"
-  >
-    <.svelte
-      name="CompositeBreathing"
-      props={%{sensors: @respiration_sensors}}
-      socket={@socket}
-      class="w-full h-full"
-    />
-    <div :if={@respiration_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="signal" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No breathing sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with respiration/breathing data</p>
-    </div>
-  </div>
-
-  <%!-- HRV Composite View --%>
-  <div
-    :if={@live_action == :hrv}
-    id="composite-hrv"
-    phx-hook="CompositeMeasurementHandler"
-    class="h-[min(70vh,600px)] min-h-[250px]"
-  >
-    <.svelte
-      name="CompositeHRV"
-      props={%{sensors: @hrv_sensors}}
-      socket={@socket}
-      class="w-full h-full"
-    />
-    <div :if={@hrv_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="chart-bar-square" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No HRV sensors connected</p>
-      <p class="text-sm mt-2">Connect a sensor with HRV data</p>
-    </div>
-  </div>
-
-  <%!-- Gaze Composite View --%>
-  <div
-    :if={@live_action == :gaze}
-    id="composite-gaze"
-    phx-hook="CompositeMeasurementHandler"
-    class="w-full"
-  >
-    <.svelte
-      name="CompositeGaze"
-      props={%{sensors: @gaze_sensors}}
-      socket={@socket}
-      class="w-full"
-    />
-    <div :if={@gaze_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="eye" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No eye tracking sensors connected</p>
-      <p class="text-sm mt-2">Connect a Pupil Neon or similar eye tracker</p>
-    </div>
-  </div>
-
-  <%!-- Favorites View --%>
-  <div :if={@live_action == :favorites}>
-    <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="star" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No favorite sensors</p>
-      <p class="text-sm mt-2">Click the star icon on any sensor to add it to favorites</p>
-    </div>
-    <div
-      :if={@favorite_sensors != []}
-      id="favorites-grid"
-      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-    >
-      <div
-        :for={sensor_id <- @favorite_sensors}
-        :if={sensor_id in @sensor_ids}
-        id={"sensor_fav_container_#{sensor_id}"}
-      >
-        {live_render(@socket, StatefulSensorLive,
-          id: "stateful_sensor_fav_#{sensor_id}",
-          session: %{
-            "parent_pid" => self(),
-            "sensor_id" => sensor_id,
-            "user_id" => @current_user && @current_user.id,
-            "is_favorite" => true
-          }
-        )}
-      </div>
-    </div>
-  </div>
-
-  <%!-- Users/Connectors Summary View with Video Presence --%>
-  <div :if={@live_action == :users}>
-    <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
-      <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
-      <p class="text-lg">No users connected</p>
-      <p class="text-sm mt-2">Connect a sensor to see user summaries</p>
-    </div>
-
-    <div :if={@sensors_by_user != []} class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-      <%= for user <- @sensors_by_user do %>
-        <.live_component
-          module={SensoctoWeb.Live.Components.UserVideoCardComponent}
-          id={"user-video-card-#{user.connector_id}"}
-          user={user}
-          in_call={user_in_call?(@call_participants, user.connector_id)}
-          video_tier={get_user_video_tier(@call_participants, user.connector_id)}
-          speaking={user_speaking?(@call_participants, user.connector_id)}
-        />
-      <% end %>
-    </div>
-  </div>
-
-  <%!-- Graph Visualization --%>
-  <div
-    :if={@live_action == :graph}
-    id="lobby-graph-view"
-    phx-hook="CompositeMeasurementHandler"
-    class="p-4"
-  >
-    <.svelte
-      name="LobbyGraph"
-      props={
-        %{
-          rooms: [],
-          users: @sensors_by_user,
-          sensors: enrich_sensors_with_attention(@sensors)
-        }
-      }
-      socket={@socket}
-      class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
-    />
-
-    <%!-- MIDI Output Panel — below graph --%>
-    <div
-      id="midi-output-panel"
-      phx-hook="MidiOutputHook"
-      phx-update="ignore"
-      class="mt-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center justify-center gap-3 flex-wrap text-xs"
-    >
-      <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
-      <button
-        id="midi-toggle-btn"
-        class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-      >
-        Audio Off
-      </button>
-      <select
-        id="midi-backend-select"
-        class="rounded px-2 py-1 text-xs focus:outline-none"
-        style="background: #374151; border: 1px solid #4b5563; color: #d1d5db;"
-      >
-        <option value="midi">MIDI</option>
-        <option value="tone">Synth</option>
-        <option value="both">Both</option>
-      </select>
-      <select
-        id="midi-device-select"
-        class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
-      >
-        <option value="">-- Select MIDI output --</option>
-      </select>
-      <button
-        id="midi-mode-btn"
-        class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
-      >
-        🌊 Abstract
-      </button>
-      <button
-        id="midi-ai-settings-btn"
-        class="hidden px-1.5 py-1 rounded text-xs hover:bg-gray-600 transition-colors"
-        style="color: #c4b5fd;"
-        title="AI Settings"
-      >
-        ⚙
-      </button>
-      <span
-        id="midi-chord-display"
-        class="text-pink-400 font-mono text-[10px]"
-        style="display:none"
-      >
-      </span>
-
-      <div
-        id="tone-instruments"
-        class="hidden w-full flex items-center gap-2 flex-wrap text-[10px]"
-      >
-        <span style="color: #9ca3af;">Voices:</span>
-        <label class="flex items-center gap-1" style="color: #d1d5db;">
-          <span style="color: #f87171;">Bass</span>
-          <select
-            id="tone-inst-bass"
-            class="rounded px-1 py-0.5 text-[10px]"
-            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
-          >
-            <option value="default">Genre</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-1" style="color: #d1d5db;">
-          <span style="color: #a78bfa;">Pad</span>
-          <select
-            id="tone-inst-pad"
-            class="rounded px-1 py-0.5 text-[10px]"
-            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
-          >
-            <option value="default">Genre</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-1" style="color: #d1d5db;">
-          <span style="color: #34d399;">Lead</span>
-          <select
-            id="tone-inst-lead"
-            class="rounded px-1 py-0.5 text-[10px]"
-            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
-          >
-            <option value="default">Genre</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-1" style="color: #d1d5db;">
-          <span style="color: #38bdf8;">Arp</span>
-          <select
-            id="tone-inst-arp"
-            class="rounded px-1 py-0.5 text-[10px]"
-            style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
-          >
-            <option value="default">Genre</option>
-          </select>
-        </label>
-      </div>
-      <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="tempo"
-          title="Click to toggle — MIDI Clock / Group mean heart rate"
-        >
-          <span class="text-[10px]" style="color: #f87171;">BPM</span>
-          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
-            <div
-              id="midi-bar-tempo"
-              class="h-full rounded-full transition-all duration-150"
-              style="width: 0%; background: #ef4444;"
-            >
-            </div>
-          </div>
-          <span id="midi-val-tempo" class="w-6 tabular-nums" style="color: #d1d5db;">-</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="arousal"
-          title="Click to toggle — CC7 Volume / Collective arousal"
-        >
-          <span class="text-[10px]" style="color: #fbbf24;">ARO</span>
-          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
-            <div
-              id="midi-bar-arousal"
-              class="h-full rounded-full transition-all duration-150"
-              style="width: 0%; background: #f59e0b;"
-            >
-            </div>
-          </div>
-          <span id="midi-val-arousal" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="hrv"
-          title="Click to toggle — CC1 Mod Wheel / Group HRV RMSSD"
-        >
-          <span class="text-[10px]" style="color: #c084fc;">HRV</span>
-          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
-            <div
-              id="midi-bar-hrv"
-              class="h-full rounded-full transition-all duration-75"
-              style="width: 0%; background: #a855f7;"
-            >
-            </div>
-          </div>
-          <span id="midi-val-hrv" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="breath"
-          title="Click to toggle — CC2 Breath / Group breath phase LFO"
-        >
-          <span class="text-[10px]" style="color: #22d3ee;">BRE</span>
-          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
-            <div
-              id="midi-bar-breath"
-              class="h-full rounded-full transition-all duration-75"
-              style="width: 0%; background: #06b6d4;"
-            >
-            </div>
-          </div>
-          <span id="midi-val-breath" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="bsync"
-          title="Click to toggle — CC16 / Breathing sync (Kuramoto R)"
-        >
-          <span class="text-[10px]" style="color: #2dd4bf;">BSy</span>
-          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
-            <div
-              id="midi-bar-bsync"
-              class="h-full rounded-full transition-all duration-75"
-              style="width: 0%; background: #14b8a6;"
-            >
-            </div>
-          </div>
-          <span id="midi-val-bsync" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
-        </div>
-        <div
-          class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
-          data-midi-attr="hsync"
-          title="Click to toggle — CC17 / HRV sync (Kuramoto R)"
-        >
-          <span class="text-[10px]" style="color: #818cf8;">HSy</span>
-          <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
-            <div
-              id="midi-bar-hsync"
-              class="h-full rounded-full transition-all duration-75"
-              style="width: 0%; background: #6366f1;"
-            >
-            </div>
-          </div>
-          <span id="midi-val-hsync" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
-        </div>
-        <span
-          id="midi-sync-trigger"
-          class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
-        >
-        </span>
-      </div>
-      <%!-- AI Settings Modal (inside phx-update="ignore" zone) --%>
-      <div
-        id="ai-settings-modal"
-        class="hidden fixed inset-0 z-50 flex items-center justify-center"
-        style="background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);"
-      >
-        <div
-          class="rounded-xl p-5 w-full max-w-md mx-4 shadow-2xl"
-          style="background: #1e1b2e; border: 1px solid #3b3556;"
-        >
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-semibold" style="color: #c4b5fd;">AI Music Settings</h3>
-            <button
-              id="ai-settings-close"
-              class="text-lg leading-none px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-              style="color: #9ca3af;"
-            >
-              &times;
+              Battery
             </button>
           </div>
-          <%!-- Chord Progression --%>
-          <div class="mb-4">
-            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
-              Chord Progression
-            </label>
-            <input
-              id="ai-chords-input"
-              type="text"
-              placeholder="e.g. Am7 Dm7 G7 Cmaj7"
-              class="w-full rounded-lg px-3 py-2 text-xs focus:outline-none"
-              style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
-            />
-            <div id="ai-chord-presets" class="flex flex-wrap gap-1.5 mt-2">
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Dm7 G7 Cmaj7 Am7"
-              >
-                Jazz ii-V-I
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Fmaj7 Em7 Dm7 Cmaj7"
-              >
-                Neo Soul
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Am Fmaj7 C G"
-              >
-                Lo-fi Chill
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Cm Fm Abmaj7 G7"
-              >
-                Dark Cinema
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="C7 F7 C7 G7"
-              >
-                Blues
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Dm7 G7 Cmaj7 A7"
-              >
-                Bossa Nova
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Cmaj7 Am7 Fmaj7 G"
-              >
-                Dreamy Pop
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Em Bm C D"
-              >
-                Indie Rock
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Bbmaj7 Cm7 Fm7 Gm7"
-              >
-                Reggae
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="C F G F"
-              >
-                Ska
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="E A B A"
-              >
-                Punk
-              </button>
-              <button
-                class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-chords="Em G D C"
-              >
-                Grunge
-              </button>
-            </div>
-          </div>
-          <%!-- Key Selector --%>
-          <div class="mb-4">
-            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
-              Key
-            </label>
-            <div class="flex gap-2">
-              <select
-                id="ai-key-root"
-                class="rounded-lg px-3 py-1.5 text-xs flex-1 focus:outline-none"
-                style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
-              >
-                <option value="0">C</option>
-                <option value="1">C# / Db</option>
-                <option value="2">D</option>
-                <option value="3">Eb</option>
-                <option value="4">E</option>
-                <option value="5">F</option>
-                <option value="6">F# / Gb</option>
-                <option value="7">G</option>
-                <option value="8">Ab</option>
-                <option value="9">A</option>
-                <option value="10">Bb</option>
-                <option value="11">B</option>
-              </select>
-              <select
-                id="ai-key-quality"
-                class="rounded-lg px-3 py-1.5 text-xs flex-1 focus:outline-none"
-                style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
-              >
-                <option value="major">Major</option>
-                <option value="minor" selected>Minor</option>
-              </select>
-            </div>
-          </div>
-          <%!-- Creativity Slider --%>
-          <div class="mb-4">
-            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
-              Creativity
-              <span id="ai-creativity-label" class="font-normal" style="color: #9ca3af;">
-                — Auto (from breathing)
-              </span>
-            </label>
-            <div class="flex items-center gap-3">
-              <span class="text-[10px]" style="color: #6b7280;">Tight</span>
-              <input
-                id="ai-creativity-slider"
-                type="range"
-                min="0"
-                max="100"
-                value="50"
-                class="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
-                style="accent-color: #a78bfa; background: #2d2845;"
-              />
-              <span class="text-[10px]" style="color: #6b7280;">Wild</span>
-            </div>
-            <div class="flex items-center gap-2 mt-1.5">
-              <label
-                class="flex items-center gap-1 text-[10px] cursor-pointer"
-                style="color: #9ca3af;"
-              >
-                <input
-                  id="ai-creativity-auto"
-                  type="checkbox"
-                  checked
-                  class="rounded"
-                  style="accent-color: #a78bfa;"
-                /> Auto (breathing controls creativity)
-              </label>
-            </div>
-          </div>
-          <%!-- Mood Override --%>
-          <div class="mb-5">
-            <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
-              Mood
-            </label>
-            <div class="flex gap-1.5" id="ai-mood-buttons">
-              <button
-                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-mood="auto"
-              >
-                Auto
-              </button>
-              <button
-                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-mood="calm"
-              >
-                Calm
-              </button>
-              <button
-                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-mood="warm"
-              >
-                Warm
-              </button>
-              <button
-                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-mood="tense"
-              >
-                Tense
-              </button>
-              <button
-                class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
-                style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
-                data-mood="intense"
-              >
-                Intense
-              </button>
-            </div>
-          </div>
-          <%!-- Apply --%>
-          <button
-            id="ai-settings-apply"
-            class="w-full py-2 rounded-lg text-xs font-semibold transition-colors"
-            style="background: #7c3aed; color: white;"
+        </div>
+      </div>
+
+      <div :if={@live_action == :sensors}>
+        <%!-- Virtual scroll sensor grid --%>
+        <% {rows_before, visible_sensor_ids, rows_after, sensors_remaining} =
+          partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
+
+        <div
+          id="sensor-virtual-scroll"
+          phx-hook="VirtualScrollHook"
+          data-total-sensors={length(@sensor_ids)}
+          data-row-height={@row_height}
+          class={[
+            "grid grid-cols-1",
+            if(@global_view_mode == :summary,
+              do:
+                "gap-1.5 sm:gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+              else: "gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+            )
+          ]}
+        >
+          <%!-- Top spacer for sensors above viewport --%>
+          <div
+            :if={rows_before > 0}
+            id="virtual-scroll-top-spacer"
+            style={"height: #{rows_before * @row_height}px"}
+            class="col-span-full"
+            aria-hidden="true"
+          />
+
+          <%!-- Visible sensors - rendered as LiveComponents for efficient virtual scrolling --%>
+          <div
+            :for={sensor_id <- visible_sensor_ids}
+            id={"sensor_container_#{sensor_id}"}
           >
-            Apply &amp; Generate
+            <.live_component
+              module={StatefulSensorComponent}
+              id={"sensor_#{sensor_id}"}
+              sensor_id={sensor_id}
+              sensor={
+                Map.get(@sensors, sensor_id, %{
+                  sensor_id: sensor_id,
+                  sensor_name: sensor_id,
+                  sensor_type: "unknown",
+                  attributes: %{}
+                })
+              }
+              view_mode={@global_view_mode}
+              user_id={@current_user && @current_user.id}
+              is_favorite={sensor_id in @favorite_sensors}
+            />
+          </div>
+
+          <%!-- Bottom spacer for sensors below viewport --%>
+          <div
+            :if={rows_after > 0}
+            id="virtual-scroll-bottom-spacer"
+            style={"height: #{rows_after * @row_height}px"}
+            class="col-span-full"
+            aria-hidden="true"
+          />
+
+          <%!-- Scroll/loading indicator - always present so JS can control it --%>
+          <div
+            id="virtual-scroll-indicator"
+            class="col-span-full flex items-center justify-center py-4 text-gray-300"
+          >
+            <%!-- Loading spinner (shown by JS when loading, or server-rendered during initial load) --%>
+            <div class={[
+              "loading-spinner flex items-center gap-2",
+              if(@virtual_scroll_loading, do: "", else: "hidden")
+            ]}>
+              <svg
+                class="animate-spin h-5 w-5 text-orange-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                >
+                </circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                >
+                </path>
+              </svg>
+              <span class="text-sm">Loading sensors...</span>
+            </div>
+            <%!-- "More below" indicator (shown when there are sensors remaining and not loading) --%>
+            <div
+              :if={sensors_remaining > 0}
+              class={[
+                "more-text flex items-center gap-2 text-xs text-gray-500",
+                if(@virtual_scroll_loading, do: "hidden", else: "")
+              ]}
+            >
+              <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4 animate-bounce" />
+              <span>
+                {sensors_remaining} more sensor{if sensors_remaining > 1, do: "s", else: ""} below
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          :if={@sensor_ids == []}
+          class="text-center py-12 text-gray-300"
+        >
+          <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
+        </div>
+      </div>
+
+      <div
+        :if={@live_action == :heartrate}
+        id="composite-heartrate"
+        phx-hook="CompositeMeasurementHandler"
+      >
+        <.svelte
+          name="CompositeHeartrate"
+          props={%{sensors: @heartrate_sensors}}
+          socket={@socket}
+          class="w-full"
+        />
+        <div :if={@heartrate_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="heart" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No heartrate sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with heartrate capability</p>
+        </div>
+      </div>
+
+      <div :if={@live_action == :imu} id="composite-imu" phx-hook="CompositeMeasurementHandler">
+        <.svelte
+          name="CompositeIMU"
+          props={%{sensors: @imu_sensors}}
+          socket={@socket}
+          class="w-full"
+        />
+        <div :if={@imu_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="cube" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No IMU sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with IMU capability</p>
+        </div>
+      </div>
+
+      <div
+        :if={@live_action == :location}
+        id="composite-location"
+        phx-hook="CompositeMeasurementHandler"
+      >
+        <.svelte
+          name="CompositeMap"
+          props={%{positions: @location_sensors}}
+          socket={@socket}
+          class="w-full h-96"
+        />
+        <div :if={@location_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="map-pin" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No location sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with geolocation capability</p>
+        </div>
+      </div>
+
+      <div :if={@live_action == :ecg} id="composite-ecg" phx-hook="CompositeMeasurementHandler">
+        <.svelte
+          name="CompositeECG"
+          props={%{sensors: @ecg_sensors}}
+          socket={@socket}
+          class="w-full"
+        />
+        <div :if={@ecg_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="chart-bar" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No ECG sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with ECG capability</p>
+        </div>
+      </div>
+
+      <div
+        :if={@live_action == :battery}
+        id="composite-battery"
+        phx-hook="CompositeMeasurementHandler"
+      >
+        <.svelte
+          name="CompositeBattery"
+          props={%{sensors: @battery_sensors}}
+          socket={@socket}
+          class="w-full"
+        />
+        <div :if={@battery_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="battery-50" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No battery sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with battery monitoring</p>
+        </div>
+      </div>
+
+      <div
+        :if={@live_action == :skeleton}
+        id="composite-skeleton"
+        phx-hook="CompositeMeasurementHandler"
+        class="h-[min(70vh,600px)] min-h-[250px]"
+      >
+        <.svelte
+          name="CompositeSkeletons"
+          props={%{sensors: @skeleton_sensors}}
+          socket={@socket}
+          class="w-full h-full"
+        />
+        <div :if={@skeleton_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="user" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No skeleton/pose sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with pose detection enabled</p>
+        </div>
+      </div>
+
+      <%!-- Breathing/Respiration Composite View --%>
+      <div
+        :if={@live_action == :respiration}
+        id="composite-breathing"
+        phx-hook="CompositeMeasurementHandler"
+        class="h-[min(70vh,600px)] min-h-[250px]"
+      >
+        <.svelte
+          name="CompositeBreathing"
+          props={%{sensors: @respiration_sensors}}
+          socket={@socket}
+          class="w-full h-full"
+        />
+        <div :if={@respiration_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="signal" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No breathing sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with respiration/breathing data</p>
+        </div>
+      </div>
+
+      <%!-- HRV Composite View --%>
+      <div
+        :if={@live_action == :hrv}
+        id="composite-hrv"
+        phx-hook="CompositeMeasurementHandler"
+        class="h-[min(70vh,600px)] min-h-[250px]"
+      >
+        <.svelte
+          name="CompositeHRV"
+          props={%{sensors: @hrv_sensors}}
+          socket={@socket}
+          class="w-full h-full"
+        />
+        <div :if={@hrv_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="chart-bar-square" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No HRV sensors connected</p>
+          <p class="text-sm mt-2">Connect a sensor with HRV data</p>
+        </div>
+      </div>
+
+      <%!-- Gaze Composite View --%>
+      <div
+        :if={@live_action == :gaze}
+        id="composite-gaze"
+        phx-hook="CompositeMeasurementHandler"
+        class="w-full"
+      >
+        <.svelte
+          name="CompositeGaze"
+          props={%{sensors: @gaze_sensors}}
+          socket={@socket}
+          class="w-full"
+        />
+        <div :if={@gaze_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="eye" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No eye tracking sensors connected</p>
+          <p class="text-sm mt-2">Connect a Pupil Neon or similar eye tracker</p>
+        </div>
+      </div>
+
+      <%!-- Favorites View --%>
+      <div :if={@live_action == :favorites}>
+        <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="star" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No favorite sensors</p>
+          <p class="text-sm mt-2">Click the star icon on any sensor to add it to favorites</p>
+        </div>
+        <div
+          :if={@favorite_sensors != []}
+          id="favorites-grid"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+        >
+          <div
+            :for={sensor_id <- @favorite_sensors}
+            :if={sensor_id in @sensor_ids}
+            id={"sensor_fav_container_#{sensor_id}"}
+          >
+            {live_render(@socket, StatefulSensorLive,
+              id: "stateful_sensor_fav_#{sensor_id}",
+              session: %{
+                "parent_pid" => self(),
+                "sensor_id" => sensor_id,
+                "user_id" => @current_user && @current_user.id,
+                "is_favorite" => true
+              }
+            )}
+          </div>
+        </div>
+      </div>
+
+      <%!-- Users/Connectors Summary View with Video Presence --%>
+      <div :if={@live_action == :users}>
+        <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
+          <p class="text-lg">No users connected</p>
+          <p class="text-sm mt-2">Connect a sensor to see user summaries</p>
+        </div>
+
+        <div
+          :if={@sensors_by_user != []}
+          class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+        >
+          <%= for user <- @sensors_by_user do %>
+            <.live_component
+              module={SensoctoWeb.Live.Components.UserVideoCardComponent}
+              id={"user-video-card-#{user.connector_id}"}
+              user={user}
+              in_call={user_in_call?(@call_participants, user.connector_id)}
+              video_tier={get_user_video_tier(@call_participants, user.connector_id)}
+              speaking={user_speaking?(@call_participants, user.connector_id)}
+            />
+          <% end %>
+        </div>
+      </div>
+
+      <%!-- Graph Visualization --%>
+      <div
+        :if={@live_action == :graph}
+        id="lobby-graph-view"
+        phx-hook="CompositeMeasurementHandler"
+        class="p-4"
+      >
+        <.svelte
+          name="LobbyGraph"
+          props={
+            %{
+              rooms: [],
+              users: @sensors_by_user,
+              sensors: enrich_sensors_with_attention(@sensors)
+            }
+          }
+          socket={@socket}
+          class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
+        />
+
+        <%!-- MIDI Output Panel — below graph --%>
+        <div
+          id="midi-output-panel"
+          phx-hook="MidiOutputHook"
+          phx-update="ignore"
+          class="mt-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center justify-center gap-3 flex-wrap text-xs"
+        >
+          <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0">
+          </span>
+          <button
+            id="midi-toggle-btn"
+            class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+          >
+            Audio Off
           </button>
+          <select
+            id="midi-backend-select"
+            class="rounded px-2 py-1 text-xs focus:outline-none"
+            style="background: #374151; border: 1px solid #4b5563; color: #d1d5db;"
+          >
+            <option value="midi">MIDI</option>
+            <option value="tone">Synth</option>
+            <option value="both">Both</option>
+          </select>
+          <select
+            id="midi-device-select"
+            class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-purple-500 min-w-[140px]"
+          >
+            <option value="">-- Select MIDI output --</option>
+          </select>
+          <button
+            id="midi-mode-btn"
+            class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
+          >
+            🌊 Abstract
+          </button>
+          <button
+            id="midi-ai-settings-btn"
+            class="hidden px-1.5 py-1 rounded text-xs hover:bg-gray-600 transition-colors"
+            style="color: #c4b5fd;"
+            title="AI Settings"
+          >
+            ⚙
+          </button>
+          <span
+            id="midi-chord-display"
+            class="text-pink-400 font-mono text-[10px]"
+            style="display:none"
+          >
+          </span>
+
+          <div
+            id="tone-instruments"
+            class="hidden w-full flex items-center gap-2 flex-wrap text-[10px]"
+          >
+            <span style="color: #9ca3af;">Voices:</span>
+            <label class="flex items-center gap-1" style="color: #d1d5db;">
+              <span style="color: #f87171;">Bass</span>
+              <select
+                id="tone-inst-bass"
+                class="rounded px-1 py-0.5 text-[10px]"
+                style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+              >
+                <option value="default">Genre</option>
+              </select>
+            </label>
+            <label class="flex items-center gap-1" style="color: #d1d5db;">
+              <span style="color: #a78bfa;">Pad</span>
+              <select
+                id="tone-inst-pad"
+                class="rounded px-1 py-0.5 text-[10px]"
+                style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+              >
+                <option value="default">Genre</option>
+              </select>
+            </label>
+            <label class="flex items-center gap-1" style="color: #d1d5db;">
+              <span style="color: #34d399;">Lead</span>
+              <select
+                id="tone-inst-lead"
+                class="rounded px-1 py-0.5 text-[10px]"
+                style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+              >
+                <option value="default">Genre</option>
+              </select>
+            </label>
+            <label class="flex items-center gap-1" style="color: #d1d5db;">
+              <span style="color: #38bdf8;">Arp</span>
+              <select
+                id="tone-inst-arp"
+                class="rounded px-1 py-0.5 text-[10px]"
+                style="background: #1f2937; border: 1px solid #4b5563; color: #d1d5db;"
+              >
+                <option value="default">Genre</option>
+              </select>
+            </label>
+          </div>
+          <div id="midi-meters" class="hidden ml-auto flex items-center gap-2.5 flex-wrap">
+            <div
+              class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+              data-midi-attr="tempo"
+              title="Click to toggle — MIDI Clock / Group mean heart rate"
+            >
+              <span class="text-[10px]" style="color: #f87171;">BPM</span>
+              <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+                <div
+                  id="midi-bar-tempo"
+                  class="h-full rounded-full transition-all duration-150"
+                  style="width: 0%; background: #ef4444;"
+                >
+                </div>
+              </div>
+              <span id="midi-val-tempo" class="w-6 tabular-nums" style="color: #d1d5db;">-</span>
+            </div>
+            <div
+              class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+              data-midi-attr="arousal"
+              title="Click to toggle — CC7 Volume / Collective arousal"
+            >
+              <span class="text-[10px]" style="color: #fbbf24;">ARO</span>
+              <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+                <div
+                  id="midi-bar-arousal"
+                  class="h-full rounded-full transition-all duration-150"
+                  style="width: 0%; background: #f59e0b;"
+                >
+                </div>
+              </div>
+              <span id="midi-val-arousal" class="w-6 tabular-nums" style="color: #d1d5db;">
+                0
+              </span>
+            </div>
+            <div
+              class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+              data-midi-attr="hrv"
+              title="Click to toggle — CC1 Mod Wheel / Group HRV RMSSD"
+            >
+              <span class="text-[10px]" style="color: #c084fc;">HRV</span>
+              <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+                <div
+                  id="midi-bar-hrv"
+                  class="h-full rounded-full transition-all duration-75"
+                  style="width: 0%; background: #a855f7;"
+                >
+                </div>
+              </div>
+              <span id="midi-val-hrv" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+            </div>
+            <div
+              class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+              data-midi-attr="breath"
+              title="Click to toggle — CC2 Breath / Group breath phase LFO"
+            >
+              <span class="text-[10px]" style="color: #22d3ee;">BRE</span>
+              <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+                <div
+                  id="midi-bar-breath"
+                  class="h-full rounded-full transition-all duration-75"
+                  style="width: 0%; background: #06b6d4;"
+                >
+                </div>
+              </div>
+              <span id="midi-val-breath" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+            </div>
+            <div
+              class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+              data-midi-attr="bsync"
+              title="Click to toggle — CC16 / Breathing sync (Kuramoto R)"
+            >
+              <span class="text-[10px]" style="color: #2dd4bf;">BSy</span>
+              <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+                <div
+                  id="midi-bar-bsync"
+                  class="h-full rounded-full transition-all duration-75"
+                  style="width: 0%; background: #14b8a6;"
+                >
+                </div>
+              </div>
+              <span id="midi-val-bsync" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+            </div>
+            <div
+              class="midi-meter flex items-center gap-1 cursor-pointer select-none rounded px-1 hover:bg-gray-700/50 transition-colors"
+              data-midi-attr="hsync"
+              title="Click to toggle — CC17 / HRV sync (Kuramoto R)"
+            >
+              <span class="text-[10px]" style="color: #818cf8;">HSy</span>
+              <div class="w-16 h-3 rounded-full overflow-hidden" style="background: #374151;">
+                <div
+                  id="midi-bar-hsync"
+                  class="h-full rounded-full transition-all duration-75"
+                  style="width: 0%; background: #6366f1;"
+                >
+                </div>
+              </div>
+              <span id="midi-val-hsync" class="w-6 tabular-nums" style="color: #d1d5db;">0</span>
+            </div>
+            <span
+              id="midi-sync-trigger"
+              class="text-yellow-400 font-bold opacity-0 transition-opacity duration-500 min-w-[70px]"
+            >
+            </span>
+          </div>
+          <%!-- AI Settings Modal (inside phx-update="ignore" zone) --%>
+          <div
+            id="ai-settings-modal"
+            class="hidden fixed inset-0 z-50 flex items-center justify-center"
+            style="background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);"
+          >
+            <div
+              class="rounded-xl p-5 w-full max-w-md mx-4 shadow-2xl"
+              style="background: #1e1b2e; border: 1px solid #3b3556;"
+            >
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold" style="color: #c4b5fd;">AI Music Settings</h3>
+                <button
+                  id="ai-settings-close"
+                  class="text-lg leading-none px-2 py-1 rounded hover:bg-gray-700 transition-colors"
+                  style="color: #9ca3af;"
+                >
+                  &times;
+                </button>
+              </div>
+              <%!-- Chord Progression --%>
+              <div class="mb-4">
+                <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+                  Chord Progression
+                </label>
+                <input
+                  id="ai-chords-input"
+                  type="text"
+                  placeholder="e.g. Am7 Dm7 G7 Cmaj7"
+                  class="w-full rounded-lg px-3 py-2 text-xs focus:outline-none"
+                  style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
+                />
+                <div id="ai-chord-presets" class="flex flex-wrap gap-1.5 mt-2">
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Dm7 G7 Cmaj7 Am7"
+                  >
+                    Jazz ii-V-I
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Fmaj7 Em7 Dm7 Cmaj7"
+                  >
+                    Neo Soul
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Am Fmaj7 C G"
+                  >
+                    Lo-fi Chill
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Cm Fm Abmaj7 G7"
+                  >
+                    Dark Cinema
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="C7 F7 C7 G7"
+                  >
+                    Blues
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Dm7 G7 Cmaj7 A7"
+                  >
+                    Bossa Nova
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Cmaj7 Am7 Fmaj7 G"
+                  >
+                    Dreamy Pop
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Em Bm C D"
+                  >
+                    Indie Rock
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Bbmaj7 Cm7 Fm7 Gm7"
+                  >
+                    Reggae
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="C F G F"
+                  >
+                    Ska
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="E A B A"
+                  >
+                    Punk
+                  </button>
+                  <button
+                    class="ai-preset-btn px-2 py-1 rounded text-[10px] transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-chords="Em G D C"
+                  >
+                    Grunge
+                  </button>
+                </div>
+              </div>
+              <%!-- Key Selector --%>
+              <div class="mb-4">
+                <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+                  Key
+                </label>
+                <div class="flex gap-2">
+                  <select
+                    id="ai-key-root"
+                    class="rounded-lg px-3 py-1.5 text-xs flex-1 focus:outline-none"
+                    style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
+                  >
+                    <option value="0">C</option>
+                    <option value="1">C# / Db</option>
+                    <option value="2">D</option>
+                    <option value="3">Eb</option>
+                    <option value="4">E</option>
+                    <option value="5">F</option>
+                    <option value="6">F# / Gb</option>
+                    <option value="7">G</option>
+                    <option value="8">Ab</option>
+                    <option value="9">A</option>
+                    <option value="10">Bb</option>
+                    <option value="11">B</option>
+                  </select>
+                  <select
+                    id="ai-key-quality"
+                    class="rounded-lg px-3 py-1.5 text-xs flex-1 focus:outline-none"
+                    style="background: #0f0d1a; border: 1px solid #3b3556; color: #e2e0f0;"
+                  >
+                    <option value="major">Major</option>
+                    <option value="minor" selected>Minor</option>
+                  </select>
+                </div>
+              </div>
+              <%!-- Creativity Slider --%>
+              <div class="mb-4">
+                <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+                  Creativity
+                  <span id="ai-creativity-label" class="font-normal" style="color: #9ca3af;">
+                    — Auto (from breathing)
+                  </span>
+                </label>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px]" style="color: #6b7280;">Tight</span>
+                  <input
+                    id="ai-creativity-slider"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value="50"
+                    class="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                    style="accent-color: #a78bfa; background: #2d2845;"
+                  />
+                  <span class="text-[10px]" style="color: #6b7280;">Wild</span>
+                </div>
+                <div class="flex items-center gap-2 mt-1.5">
+                  <label
+                    class="flex items-center gap-1 text-[10px] cursor-pointer"
+                    style="color: #9ca3af;"
+                  >
+                    <input
+                      id="ai-creativity-auto"
+                      type="checkbox"
+                      checked
+                      class="rounded"
+                      style="accent-color: #a78bfa;"
+                    /> Auto (breathing controls creativity)
+                  </label>
+                </div>
+              </div>
+              <%!-- Mood Override --%>
+              <div class="mb-5">
+                <label class="block text-[11px] mb-1.5 font-medium" style="color: #a78bfa;">
+                  Mood
+                </label>
+                <div class="flex gap-1.5" id="ai-mood-buttons">
+                  <button
+                    class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-mood="auto"
+                  >
+                    Auto
+                  </button>
+                  <button
+                    class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-mood="calm"
+                  >
+                    Calm
+                  </button>
+                  <button
+                    class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-mood="warm"
+                  >
+                    Warm
+                  </button>
+                  <button
+                    class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-mood="tense"
+                  >
+                    Tense
+                  </button>
+                  <button
+                    class="ai-mood-btn flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                    style="background: #2d2845; color: #c4b5fd; border: 1px solid #3b3556;"
+                    data-mood="intense"
+                  >
+                    Intense
+                  </button>
+                </div>
+              </div>
+              <%!-- Apply --%>
+              <button
+                id="ai-settings-apply"
+                class="w-full py-2 rounded-lg text-xs font-semibold transition-colors"
+                style="background: #7c3aed; color: white;"
+              >
+                Apply &amp; Generate
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+  <%!-- /Right column --%>
 </div>
-
-<%= if @sensors_offline != %{} do %>
-  <div class="pb-40 sm:pb-32">
-    <p class="text font-bold mt-8 mb-2">Recently disconnected sensors</p>
-    <ul class="list-disc list-inside ml-4">
-      <%= for sensor_id <- Map.keys(@sensors_offline) do %>
-        <li>{sensor_id}</li>
-      <% end %>
-    </ul>
-  </div>
-<% end %>
+<%!-- /Side-by-side wrapper --%>
 
 <%!-- Join Room Modal --%>
 <%= if @show_join_modal do %>

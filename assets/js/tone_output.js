@@ -317,6 +317,18 @@ export class ToneOutput {
     this.enabled = !!val;
     if (!val && this._initialized) {
       this._allNotesOff();
+      // Immediately mute master gain so long-release envelopes (pads)
+      // don't linger audibly after the user toggles off.
+      if (this._masterGain) {
+        try { this._masterGain.gain.setValueAtTime(0, window.Tone.now()); } catch (_) {}
+      }
+    } else if (val && this._initialized && this._masterGain) {
+      // Restore master gain when re-enabling
+      try {
+        this._masterGain.gain.setValueAtTime(
+          window.Tone.dbToGain(this._volume), window.Tone.now()
+        );
+      } catch (_) {}
     }
   }
 

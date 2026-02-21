@@ -507,6 +507,7 @@ Hooks.FooterToolbar = {
       this.pillBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
+        this._lastToggle = Date.now();
         this.isExpanded = !this.isExpanded;
         this._applyState();
       });
@@ -515,6 +516,9 @@ Hooks.FooterToolbar = {
     if (!this._docBound) {
       this._docBound = true;
       document.addEventListener('click', (e) => {
+        // Guard: on Android touch devices, the document click can fire
+        // in the same frame as the button click. Skip if < 100ms since toggle.
+        if (this._lastToggle && Date.now() - this._lastToggle < 100) return;
         if (this.isExpanded && !this.el.contains(e.target)) {
           this.isExpanded = false;
           this._applyState();

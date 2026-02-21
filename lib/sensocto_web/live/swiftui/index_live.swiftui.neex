@@ -19,12 +19,5 @@
     </Group>
   </Group>
 
-  <%= if @sensors_offline != %{} do %>
-    <VStack class="list-disc list-inside ml-4">
-      <%= for sensor_id <- Map.keys(@sensors_offline) do %>
-        <Text>{sensor_id}</Text>
-      <% end %>
-    </VStack>
-  <% end %>
 </Group>
 <CustomURLOpener/>

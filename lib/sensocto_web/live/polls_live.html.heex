@@ -52,8 +52,11 @@
       <div class="mt-6 bg-gray-800 rounded-lg p-6">
         <form phx-submit="create_poll" phx-change="validate_poll" class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-300 mb-1">Title</label>
+            <label for="poll-title" class="block text-sm font-medium text-gray-300 mb-1">
+              Title
+            </label>
             <input
+              id="poll-title"
               type="text"
               name="title"
               required
@@ -63,10 +66,11 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-300 mb-1">
+            <label for="poll-description" class="block text-sm font-medium text-gray-300 mb-1">
               Description (optional)
             </label>
             <textarea
+              id="poll-description"
               name="description"
               rows="2"
               placeholder="Add context..."
@@ -75,8 +79,14 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-300 mb-1">Type</label>
-            <select name="poll_type" class="rounded-md bg-gray-700 border-gray-600 text-white">
+            <label for="poll-type" class="block text-sm font-medium text-gray-300 mb-1">
+              Type
+            </label>
+            <select
+              id="poll-type"
+              name="poll_type"
+              class="rounded-md bg-gray-700 border-gray-600 text-white"
+            >
               <option value="single_choice">Single Choice</option>
               <option value="multiple_choice">Multiple Choice</option>
             </select>

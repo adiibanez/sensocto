@@ -41,6 +41,7 @@ defmodule SensoctoWeb.IndexLive do
 
     socket =
       assign(socket,
+        page_title: "Home",
         current_path: "/",
         sensors_online_count: map_size(sensors),
         my_rooms: my_rooms,

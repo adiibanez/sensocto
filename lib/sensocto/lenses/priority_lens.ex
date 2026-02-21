@@ -14,10 +14,10 @@ defmodule Sensocto.Lenses.PriorityLens do
 
   ## Quality Levels
 
-  - `:high` - ~30fps, full sensor set, maximum throughput
-  - `:medium` - ~20fps, full sensor set, slight batching
-  - `:low` - ~10fps, full sensor set (slower flush only)
-  - `:minimal` - ~5fps, full sensor set (slowest flush)
+  - `:high` - ~16fps, full sensor set, maximum throughput
+  - `:medium` - ~8fps, full sensor set, moderate batching
+  - `:low` - ~4fps, full sensor set (throttled)
+  - `:minimal` - ~2fps, full sensor set (emergency)
 
   ## Topics
 
@@ -61,14 +61,14 @@ defmodule Sensocto.Lenses.PriorityLens do
   # by slowing the flush interval. Dropping sensors causes composite views
   # (gaze, ecg, etc.) to show stale/grey faces, which is worse than slower updates.
   @quality_configs %{
-    # High throughput - ~30fps, sustainable for large sensor counts
-    high: %{flush_interval_ms: 32, max_sensors: :unlimited, mode: :batch},
-    # Still realtime, batched (~20fps)
-    medium: %{flush_interval_ms: 50, max_sensors: :unlimited, mode: :batch},
-    # First level of throttling - slower flush rate only
-    low: %{flush_interval_ms: 100, max_sensors: :unlimited, mode: :batch},
-    # Emergency mode - slowest flush rate, still sends all sensors
-    minimal: %{flush_interval_ms: 200, max_sensors: :unlimited, mode: :batch},
+    # High throughput - ~16fps, widened from 32ms to reduce LobbyLive mailbox pressure
+    high: %{flush_interval_ms: 64, max_sensors: :unlimited, mode: :batch},
+    # Moderate realtime (~8fps)
+    medium: %{flush_interval_ms: 128, max_sensors: :unlimited, mode: :batch},
+    # Throttled (~4fps) - sustainable under load
+    low: %{flush_interval_ms: 250, max_sensors: :unlimited, mode: :batch},
+    # Emergency mode - (~2fps), still sends all sensors
+    minimal: %{flush_interval_ms: 500, max_sensors: :unlimited, mode: :batch},
     # Paused - stop sending data entirely (critical backpressure)
     paused: %{flush_interval_ms: :infinity, max_sensors: 0, mode: :paused}
   }

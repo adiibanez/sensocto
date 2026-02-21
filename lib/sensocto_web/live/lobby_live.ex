@@ -122,7 +122,6 @@ defmodule SensoctoWeb.LobbyLive do
         sensors: sensors,
         sensors_online_count: sensors_count,
         sensors_online: %{},
-        sensors_offline: %{},
         sensor_ids: sensor_ids,
         global_view_mode: default_view_mode,
         grid_cols_sm: min(@grid_cols_sm_default, max(1, sensors_count)),
@@ -145,6 +144,7 @@ defmodule SensoctoWeb.LobbyLive do
         show_join_modal: false,
         join_code: "",
         # Call-related assigns
+        lobby_layout: :stacked,
         lobby_mode: :media,
         call_active: call_active,
         in_call: false,
@@ -1033,18 +1033,10 @@ defmodule SensoctoWeb.LobbyLive do
         # Without this, sensors added after handle_params stay at attention_level :none
         ensure_attention_for_composite_sensors(updated_socket, updated_socket.assigns.live_action)
 
-        # Only update sensors_offline if there are actual leaves
-        updated_socket =
-          if map_size(payload.leaves) > 0 do
-            assign(updated_socket, :sensors_offline, payload.leaves)
-          else
-            updated_socket
-          end
-
         {:noreply, updated_socket}
       else
         # Sensor list unchanged - only update count if it actually changed
-        # Avoid updating sensors_online/sensors_offline maps to prevent template re-evaluation
+        # Avoid updating sensors_online map to prevent template re-evaluation
         if sensors_count != socket.assigns.sensors_online_count do
           {:noreply, assign(socket, :sensors_online_count, sensors_count)}
         else
@@ -1145,10 +1137,15 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      # WARNING: Queue is growing - aggressive downgrade
+      # WARNING: Queue is growing - drain ALL pending batches at once (honey badger)
       queue_len > backpressure_threshold ->
+        # Drain every pending {:lens_batch, _} and {:lens_digest, _} from mailbox
+        # This is the key fix: instead of processing each message individually
+        # (each hitting the backpressure check and wasting cycles), we flush them all
+        drained = drain_lens_messages()
+
         Logger.warning(
-          "LobbyLive #{socket.id}: mailbox backpressure (#{queue_len} msgs), dropping batch"
+          "LobbyLive #{socket.id}: mailbox backpressure (#{queue_len} msgs), drained #{drained} batches"
         )
 
         # Auto-downgrade quality aggressively if we have a registered lens
@@ -1173,7 +1170,7 @@ defmodule SensoctoWeb.LobbyLive do
               |> assign(:current_quality, new_quality)
               |> push_event("quality_changed", %{
                 level: new_quality,
-                reason: "Backpressure: mailbox queue depth #{queue_len}"
+                reason: "Backpressure: drained #{drained} batches, queue was #{queue_len}"
               })
             else
               socket
@@ -1300,6 +1297,20 @@ defmodule SensoctoWeb.LobbyLive do
     # Get client health recommended quality (advisory ceiling)
     client_health = socket.assigns[:client_health]
     client_recommended = if client_health, do: client_health.current_quality, else: :high
+
+    # Sensor-count-based quality ceiling — honey badger: don't even try :high with many sensors
+    sensor_count = length(:pg.get_members(:sensocto_sensors, "sensors"))
+
+    sensor_ceiling =
+      cond do
+        sensor_count >= 40 -> :minimal
+        sensor_count >= 20 -> :low
+        sensor_count >= 10 -> :medium
+        true -> :high
+      end
+
+    client_recommended =
+      Sensocto.Lenses.PriorityLens.min_quality(client_recommended, sensor_ceiling)
 
     socket =
       cond do
@@ -2418,6 +2429,20 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :lobby_mode, new_mode)}
   end
 
+  def handle_event("toggle_lobby_layout", _params, socket) do
+    new_layout = if socket.assigns.lobby_layout == :stacked, do: :side_by_side, else: :stacked
+
+    {:noreply,
+     socket
+     |> assign(:lobby_layout, new_layout)
+     |> push_event("save_lobby_layout", %{layout: Atom.to_string(new_layout)})}
+  end
+
+  def handle_event("restore_lobby_layout", %{"layout" => layout}, socket) do
+    new_layout = if layout == "side_by_side", do: :side_by_side, else: :stacked
+    {:noreply, assign(socket, :lobby_layout, new_layout)}
+  end
+
   # Control request modal handlers
   @impl true
   def handle_event("dismiss_control_request", _, socket) do
@@ -2883,6 +2908,20 @@ defmodule SensoctoWeb.LobbyLive do
   defp downgrade_quality(:low), do: :minimal
   defp downgrade_quality(:minimal), do: :minimal
   defp downgrade_quality(:paused), do: :paused
+
+  # Drain all pending lens batch/digest messages from the mailbox in one shot.
+  # Returns count of drained messages. This prevents each queued message from
+  # individually hitting the backpressure check (wasting CPU on 90+ no-op cycles).
+  defp drain_lens_messages, do: drain_lens_messages(0)
+
+  defp drain_lens_messages(count) do
+    receive do
+      {:lens_batch, _} -> drain_lens_messages(count + 1)
+      {:lens_digest, _} -> drain_lens_messages(count + 1)
+    after
+      0 -> count
+    end
+  end
 
   # Upgrade quality one level during recovery (inverse of downgrade)
   defp upgrade_quality(:paused), do: :minimal

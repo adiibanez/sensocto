@@ -92,8 +92,12 @@
     | "per-user"       // Circular clusters per user
     | "per-type"       // Column lanes per attribute type
     | "radial"         // Concentric rings
-    | "constellation"  // Geometric star patterns per user
+
     | "flower"         // Rose-curve petal layout
+    | "octopus"        // Central head + curving tentacles
+    | "mushroom"       // Dome cap + stem
+    | "jellyfish"      // Bell + trailing tentacles
+    | "dna"            // Double helix spiral
     | "heatmap"        // Activity frequency coloring
     | "freshness"      // Time-since-data fading
     | "heartbeat"      // BPM-synchronized pulsing
@@ -177,7 +181,7 @@
   // Attention tracking (attention mode)
   let sensorAttentionLevels = new Map<string, string>();
 
-  const layoutModes: ViewMode[] = ["topology", "per-type", "radial", "flower", "per-user", "constellation"];
+  const layoutModes: ViewMode[] = ["topology", "per-type", "radial", "flower", "per-user", "octopus", "mushroom", "jellyfish", "dna"];
   const visualModes: ViewMode[] = ["heatmap", "freshness", "heartbeat", "river", "attention"];
 
   // Sound engine — switchable themes for graph activity sonification
@@ -1275,8 +1279,12 @@
       case "per-user":     layoutPerUser(); break;
       case "per-type":     layoutPerType(); break;
       case "radial":       layoutRadialTree(); break;
-      case "constellation": layoutConstellation(); break;
+
       case "flower":        layoutFlower(); break;
+      case "octopus":       layoutOctopus(); break;
+      case "mushroom":      layoutMushroom(); break;
+      case "jellyfish":     layoutJellyfish(); break;
+      case "dna":           layoutDNA(); break;
     }
 
     if (animate && oldPositions) {
@@ -1537,67 +1545,7 @@
     isLayoutRunning = false;
   }
 
-  // ── Layout: Constellation ─────────────────────────────────────
 
-  function layoutConstellation() {
-    if (!graph || graph.order === 0) return;
-    isLayoutRunning = true;
-
-    const userEntries: Array<{node: string; sensors: string[]}> = [];
-    const attrsBySensor = new Map<string, string[]>();
-
-    graph.forEachNode((node, attrs) => {
-      if (attrs.nodeType === "user") userEntries.push({node, sensors: []});
-    });
-    graph.forEachNode((node, attrs) => {
-      if (attrs.nodeType === "sensor") {
-        const entry = userEntries.find(u => u.node === `user:${attrs.data.connector_id}`);
-        if (entry) entry.sensors.push(node);
-        attrsBySensor.set(node, []);
-      }
-    });
-    graph.forEachNode((node, attrs) => {
-      if (attrs.nodeType === "attribute") {
-        const sNode = `sensor:${attrs.data.sensor_id}`;
-        attrsBySensor.get(sNode)?.push(node);
-      }
-    });
-
-    const gridSize = Math.max(1, Math.ceil(Math.sqrt(userEntries.length)));
-    const cellW = 100 / gridSize;
-    const cellH = 100 / gridSize;
-
-    userEntries.forEach((entry, idx) => {
-      const row = Math.floor(idx / gridSize);
-      const col = idx % gridSize;
-      const cx = (col + 0.5) * cellW;
-      const cy = (row + 0.5) * cellH;
-
-      graph.setNodeAttribute(entry.node, "x", cx);
-      graph.setNodeAttribute(entry.node, "y", cy);
-
-      const sCount = Math.max(entry.sensors.length, 1);
-      const polyR = Math.min(cellW, cellH) * 0.3;
-
-      entry.sensors.forEach((sNode, si) => {
-        const angle = (si / sCount) * 2 * Math.PI - Math.PI / 2;
-        const sx = cx + polyR * Math.cos(angle);
-        const sy = cy + polyR * Math.sin(angle);
-        graph.setNodeAttribute(sNode, "x", sx);
-        graph.setNodeAttribute(sNode, "y", sy);
-
-        const attrs = attrsBySensor.get(sNode) || [];
-        const aR = polyR * 0.25;
-        attrs.forEach((aNode, ai) => {
-          const aAngle = (ai / Math.max(attrs.length, 1)) * 2 * Math.PI;
-          graph.setNodeAttribute(aNode, "x", sx + aR * Math.cos(aAngle));
-          graph.setNodeAttribute(aNode, "y", sy + aR * Math.sin(aAngle));
-        });
-      });
-    });
-
-    isLayoutRunning = false;
-  }
 
   // ── Layout: Flower (Rose Curve) ─────────────────────────────────
 
@@ -1695,6 +1643,331 @@
       }
     }
 
+    isLayoutRunning = false;
+  }
+
+  // ── Rotation helper ──────────────────────────────────────────
+  function rotateLayout(angleDeg: number) {
+    if (!graph || graph.order === 0) return;
+    const rad = angleDeg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    let sx = 0, sy = 0, n = 0;
+    graph.forEachNode((node) => {
+      sx += graph.getNodeAttribute(node, "x") as number;
+      sy += graph.getNodeAttribute(node, "y") as number;
+      n++;
+    });
+    const cx = sx / n, cy = sy / n;
+    graph.forEachNode((node) => {
+      const dx = (graph.getNodeAttribute(node, "x") as number) - cx;
+      const dy = (graph.getNodeAttribute(node, "y") as number) - cy;
+      graph.setNodeAttribute(node, "x", cx + dx * cos - dy * sin);
+      graph.setNodeAttribute(node, "y", cy + dx * sin + dy * cos);
+    });
+  }
+
+  // ── Layout: Octopus ──────────────────────────────────────────
+  // Bulbous head (users), 8 elegantly curling tentacles with suckers
+  function layoutOctopus() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const cx = 50, cy = 28;
+    const headRx = 10, headRy = 8;
+    const tentacleCount = 8;
+
+    const userNodes: string[] = [];
+    const sensorNodes: string[] = [];
+    const attrsBySensor = new Map<string, string[]>();
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userNodes.push(node);
+      else if (attrs.nodeType === "sensor") { sensorNodes.push(node); attrsBySensor.set(node, []); }
+      else if (attrs.nodeType === "attribute") {
+        const sKey = `sensor:${attrs.data.sensor_id}`;
+        attrsBySensor.get(sKey)?.push(node);
+      }
+    });
+
+    // Bulbous head: users arranged in an oval with slight randomness
+    userNodes.forEach((node, i) => {
+      const a = (i / Math.max(userNodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
+      const r = 0.3 + Math.random() * 0.4;
+      graph.setNodeAttribute(node, "x", cx + headRx * r * Math.cos(a));
+      graph.setNodeAttribute(node, "y", cy + headRy * r * Math.sin(a) - 2);
+    });
+
+    // Distribute sensors + attrs across tentacles
+    type TItem = { sensor: string; attrs: string[] };
+    const tentacles: TItem[][] = Array.from({length: tentacleCount}, () => []);
+    sensorNodes.forEach((s, i) => {
+      tentacles[i % tentacleCount].push({ sensor: s, attrs: attrsBySensor.get(s) || [] });
+    });
+
+    const maxItems = Math.max(1, ...tentacles.map(t => t.length));
+
+    for (let ti = 0; ti < tentacleCount; ti++) {
+      const tentacle = tentacles[ti];
+      if (tentacle.length === 0) continue;
+
+      // Tentacles emerge from bottom of head, spread ~240° (leaving top open)
+      const spreadStart = Math.PI * 0.15;
+      const spreadEnd = Math.PI * 0.85;
+      const baseAngle = spreadStart + (ti / (tentacleCount - 1)) * (spreadEnd - spreadStart) + Math.PI * 0.5;
+
+      // Each tentacle curls: cubic bezier-like path
+      // Direction: alternating curl for organic feel
+      const curlDir = ti % 2 === 0 ? 1 : -1;
+      const curlStrength = 0.6 + (ti % 3) * 0.15;
+
+      for (let si = 0; si < tentacle.length; si++) {
+        // t: 0 = base of tentacle (at head), 1 = tip
+        const t = (si + 1) / (maxItems + 1);
+        const reach = 10 + t * 38;
+
+        // S-curve: angle changes along the tentacle creating a curl
+        const curl = curlDir * curlStrength * Math.sin(t * Math.PI * 1.2) * t;
+        const angle = baseAngle + curl;
+
+        // Tapered: tentacles get thinner toward the tip
+        const tx = cx + reach * Math.cos(angle);
+        const ty = cy + reach * Math.sin(angle);
+
+        graph.setNodeAttribute(tentacle[si].sensor, "x", tx);
+        graph.setNodeAttribute(tentacle[si].sensor, "y", ty);
+
+        // Suckers: pairs along the tentacle, perpendicular, shrinking toward tip
+        const tangent = angle + Math.PI / 2;
+        const suckerScale = 1.0 - t * 0.5; // smaller toward tip
+        tentacle[si].attrs.forEach((attr, ai) => {
+          const side = ai % 2 === 0 ? 1 : -1;
+          const rank = Math.floor(ai / 2);
+          const dist = (1.8 + rank * 0.8) * suckerScale;
+          graph.setNodeAttribute(attr, "x", tx + side * dist * Math.cos(tangent));
+          graph.setNodeAttribute(attr, "y", ty + side * dist * Math.sin(tangent));
+        });
+      }
+    }
+
+    rotateLayout(90); // 90° CW (head left, tentacles right)
+    isLayoutRunning = false;
+  }
+
+  // ── Layout: Mushroom ──────────────────────────────────────────
+  // Layered dome cap, radiating gills, organic curved stem with root base
+  function layoutMushroom() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const cx = 50, capCenterY = 25;
+    const capRx = 32, capRy = 16;
+
+    const userNodes: string[] = [];
+    const sensorNodes: string[] = [];
+    const attrsBySensor = new Map<string, string[]>();
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userNodes.push(node);
+      else if (attrs.nodeType === "sensor") { sensorNodes.push(node); attrsBySensor.set(node, []); }
+      else if (attrs.nodeType === "attribute") {
+        const sKey = `sensor:${attrs.data.sensor_id}`;
+        attrsBySensor.get(sKey)?.push(node);
+      }
+    });
+
+    // Cap: sensors fill the dome in concentric arcs
+    // Outer ring: main cap edge. Inner rings: cap surface detail
+    const n = sensorNodes.length;
+    const rings = Math.max(1, Math.ceil(Math.sqrt(n / 3)));
+    let placed = 0;
+
+    for (let ring = 0; ring < rings && placed < n; ring++) {
+      const ringT = (ring + 1) / (rings + 0.5); // 0→1 from center to edge
+      const rx = capRx * ringT;
+      const ry = capRy * ringT;
+      // How many nodes fit on this ring arc (semicircle, more on outer rings)
+      const arcLen = Math.PI * rx;
+      const nodesOnRing = Math.min(n - placed, Math.max(2, Math.round(arcLen / 4)));
+
+      for (let ni = 0; ni < nodesOnRing && placed < n; ni++) {
+        const a = Math.PI + (ni / Math.max(nodesOnRing - 1, 1)) * Math.PI;
+        graph.setNodeAttribute(sensorNodes[placed], "x", cx + rx * Math.cos(a));
+        graph.setNodeAttribute(sensorNodes[placed], "y", capCenterY + ry * Math.sin(a) * 0.85);
+        placed++;
+      }
+    }
+
+    // Gills: attributes radiate downward from the cap underside like spokes
+    const gillBaseY = capCenterY + capRy * 0.3;
+    const gillSpread = capRx * 0.75;
+    const allAttrs: string[] = [];
+    sensorNodes.forEach(sNode => {
+      (attrsBySensor.get(sNode) || []).forEach(a => allAttrs.push(a));
+    });
+
+    allAttrs.forEach((attr, i) => {
+      // Radial gill lines fanning from center outward under cap
+      const t = (i + 0.5) / allAttrs.length;
+      const angle = Math.PI * 0.15 + t * Math.PI * 0.7; // fan ~130°
+      const depth = 3 + (i % 4) * 2.5; // staggered depth for layered gill look
+      const gx = cx + gillSpread * Math.cos(angle) * (depth / 12);
+      const gy = gillBaseY + depth;
+      graph.setNodeAttribute(attr, "x", gx);
+      graph.setNodeAttribute(attr, "y", gy);
+    });
+
+    // Stem: users form a slightly curved trunk tapering to roots
+    const stemTop = gillBaseY + 10;
+    const stemBottom = 92;
+    userNodes.forEach((node, i) => {
+      const t = (i + 1) / (userNodes.length + 1);
+      const y = stemTop + t * (stemBottom - stemTop);
+      // Gentle S-curve for organic stem
+      const sway = 3 * Math.sin(t * Math.PI * 1.5);
+      // Wider at base (root flare)
+      const baseFlare = t > 0.8 ? (t - 0.8) * 25 * (i % 2 === 0 ? 1 : -1) : 0;
+      graph.setNodeAttribute(node, "x", cx + sway + baseFlare);
+      graph.setNodeAttribute(node, "y", y);
+    });
+
+    rotateLayout(180); // flip upside down
+    isLayoutRunning = false;
+  }
+
+  // ── Layout: Jellyfish ──────────────────────────────────────────
+  // Smooth parabolic bell, oral arms, and long trailing tentacles with undulation
+  function layoutJellyfish() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const cx = 50, bellApex = 12;
+    const bellWidth = 28, bellDepth = 18;
+
+    const userNodes: string[] = [];
+    const sensorNodes: string[] = [];
+    const attrsBySensor = new Map<string, string[]>();
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userNodes.push(node);
+      else if (attrs.nodeType === "sensor") { sensorNodes.push(node); attrsBySensor.set(node, []); }
+      else if (attrs.nodeType === "attribute") {
+        const sKey = `sensor:${attrs.data.sensor_id}`;
+        attrsBySensor.get(sKey)?.push(node);
+      }
+    });
+
+    // Bell: single row of sensors along a parabolic curve
+    const n = sensorNodes.length;
+    sensorNodes.forEach((node, i) => {
+      const u = -1 + (2 * i) / Math.max(n - 1, 1);
+      const x = cx + bellWidth * u;
+      const bellShape = bellApex + bellDepth * u * u;
+      graph.setNodeAttribute(node, "x", x);
+      graph.setNodeAttribute(node, "y", bellShape);
+    });
+
+    // Users: clustered inside the bell (the "stomach" / oral region)
+    const bellInnerY = bellApex + bellDepth * 0.3;
+    userNodes.forEach((node, i) => {
+      const a = (i / Math.max(userNodes.length, 1)) * 2 * Math.PI;
+      const r = 3 + Math.random() * 3;
+      graph.setNodeAttribute(node, "x", cx + r * Math.cos(a));
+      graph.setNodeAttribute(node, "y", bellInnerY + r * 0.5 * Math.sin(a));
+    });
+
+    // Tentacles: trail from each sensor's position downward
+    // Each tentacle has unique frequency/amplitude for organic undulation
+    const bellBottom = bellApex + bellDepth;
+    sensorNodes.forEach((sNode, si) => {
+      const attrs = attrsBySensor.get(sNode) || [];
+      if (attrs.length === 0) return;
+
+      const sx = graph.getNodeAttribute(sNode, "x") as number;
+
+      // Mostly long tentacles — only the 2 innermost sensors get short oral arms
+      const distFromCenter = Math.abs(sx - cx) / bellWidth;
+      const isOralArm = distFromCenter < 0.12;
+
+      // Unique wave parameters per tentacle — active undulation
+      const freq = 0.7 + (si * 0.23) % 0.8;
+      const freq2 = 1.4 + (si * 0.31) % 1.0;
+      const amp = isOralArm ? 3 + si % 3 : 7 + (si % 5) * 3;
+      const amp2 = amp * 0.4;
+      const phase = si * 1.3;
+      const segmentLen = isOralArm ? 3.5 : 6.5;
+
+      attrs.forEach((attr, ai) => {
+        const depth = bellBottom + (ai + 1) * segmentLen;
+        // Undulating sine wave that grows in amplitude with depth
+        const depthFactor = Math.min(1, (depth - bellBottom) / 40);
+        const wave = amp * depthFactor * Math.sin(freq * ai + phase)
+                   + amp2 * depthFactor * Math.sin(freq2 * ai + phase * 0.7);
+        // Drift toward center slightly (natural tentacle drape)
+        const drift = (cx - sx) * 0.008 * ai;
+        graph.setNodeAttribute(attr, "x", sx + wave + drift);
+        graph.setNodeAttribute(attr, "y", depth);
+      });
+    });
+
+    rotateLayout(180); // flip upside down
+    isLayoutRunning = false;
+  }
+
+  // ── Layout: DNA Double Helix ──────────────────────────────────
+  // Two intertwined spirals running vertically, rungs connecting them
+  function layoutDNA() {
+    if (!graph || graph.order === 0) return;
+    isLayoutRunning = true;
+
+    const cx = 50, topY = 5, bottomY = 95;
+    const helixR = 18;
+    const turns = 2.5;
+
+    const userNodes: string[] = [];
+    const sensorNodes: string[] = [];
+    const attrNodes: string[] = [];
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.nodeType === "user") userNodes.push(node);
+      else if (attrs.nodeType === "sensor") sensorNodes.push(node);
+      else if (attrs.nodeType === "attribute") attrNodes.push(node);
+    });
+
+    // All positioned nodes: sensors on strand A, attributes on strand B, users as rungs
+    const totalHeight = bottomY - topY;
+
+    // Strand A: sensors spiral down
+    sensorNodes.forEach((node, i) => {
+      const t = i / Math.max(sensorNodes.length - 1, 1);
+      const y = topY + t * totalHeight;
+      const angle = t * turns * 2 * Math.PI;
+      const x = cx + helixR * Math.sin(angle);
+      graph.setNodeAttribute(node, "x", x);
+      graph.setNodeAttribute(node, "y", y);
+    });
+
+    // Strand B: attributes spiral down (phase-shifted by π)
+    attrNodes.forEach((node, i) => {
+      const t = i / Math.max(attrNodes.length - 1, 1);
+      const y = topY + t * totalHeight;
+      const angle = t * turns * 2 * Math.PI + Math.PI;
+      const x = cx + helixR * Math.sin(angle);
+      graph.setNodeAttribute(node, "x", x);
+      graph.setNodeAttribute(node, "y", y);
+    });
+
+    // Users: placed along the center axis (the "rungs" of the ladder)
+    userNodes.forEach((node, i) => {
+      const t = (i + 1) / (userNodes.length + 1);
+      const y = topY + t * totalHeight;
+      const angle = t * turns * 2 * Math.PI;
+      // Slight offset based on the helix phase for visual interest
+      const x = cx + helixR * 0.2 * Math.sin(angle + Math.PI / 2);
+      graph.setNodeAttribute(node, "x", x);
+      graph.setNodeAttribute(node, "y", y);
+    });
+
+    rotateLayout(-80); // mostly horizontal, slightly diagonal
     isLayoutRunning = false;
   }
 
@@ -3018,8 +3291,18 @@
       <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
       </button>
-      <button onclick={() => switchViewMode("constellation")} class="mode-btn tooltip-right" class:active={viewMode === "constellation"} class:layout-active={lastLayoutMode === "constellation" && visualModes.includes(viewMode)} data-tooltip="Constellation — Star patterns">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
+
+      <button onclick={() => switchViewMode("octopus")} class="mode-btn tooltip-right" class:active={viewMode === "octopus"} class:layout-active={lastLayoutMode === "octopus" && visualModes.includes(viewMode)} data-tooltip="Octopus — Head + tentacles">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="7" r="5" /><path d="M4 12c-1 4-2 8 0 9s2-3 3-5" /><path d="M7 12c0 4-1 9 1 9s1-5 1-7" /><path d="M15 12c0 4 1 9-1 9s-1-5-1-7" /><path d="M20 12c1 4 2 8 0 9s-2-3-3-5" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("mushroom")} class="mode-btn tooltip-right" class:active={viewMode === "mushroom"} class:layout-active={lastLayoutMode === "mushroom" && visualModes.includes(viewMode)} data-tooltip="Mushroom — Cap + stem">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14c0-5.5 3.6-10 8-10s8 4.5 8 10H4z" /><path d="M9 14v7h6v-7" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("jellyfish")} class="mode-btn tooltip-right" class:active={viewMode === "jellyfish"} class:layout-active={lastLayoutMode === "jellyfish" && visualModes.includes(viewMode)} data-tooltip="Jellyfish — Bell + tentacles">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 11c0-4.4 3.1-8 7-8s7 3.6 7 8" /><path d="M7 11c-.5 3-1 6-.5 8s1-3 1.5-5" /><path d="M10 11c0 3-.5 7 .5 8s.5-4 .5-6" /><path d="M14 11c0 3 .5 7-.5 8s-.5-4-.5-6" /><path d="M17 11c.5 3 1 6 .5 8s-1-3-1.5-5" /></svg>
+      </button>
+      <button onclick={() => switchViewMode("dna")} class="mode-btn tooltip-right" class:active={viewMode === "dna"} class:layout-active={lastLayoutMode === "dna" && visualModes.includes(viewMode)} data-tooltip="DNA — Double helix">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3c0 4 12 4 12 8s-12 4-12 8" /><path d="M18 3c0 4-12 4-12 8s12 4 12 8" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="17" x2="16" y2="17" /><line x1="7" y1="12" x2="17" y2="12" /></svg>
       </button>
       <button onclick={toggleCycle} class="mode-btn tooltip-right" class:active={cycleEnabled} data-tooltip={cycleEnabled ? "Stop auto-cycle (30s)" : "Auto-cycle layouts + seasons (30s)"}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

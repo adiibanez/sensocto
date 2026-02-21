@@ -52,6 +52,9 @@ module.exports = {
   ],*/
   theme: {
     extend: {
+      screens: {
+        'ultrawide': '2000px',
+      },
       colors: {
         brand: "#FD4F00",
         primary: {

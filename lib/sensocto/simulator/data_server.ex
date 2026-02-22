@@ -22,16 +22,8 @@ defmodule Sensocto.Simulator.DataServer do
 
   @impl true
   def handle_info({:get_data, caller_pid, config}, state) do
-    GenServer.cast(self(), {:get_data, caller_pid, config})
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast({:get_data, caller_pid, config}, state) do
     {:ok, data} = DataGenerator.fetch_sensor_data(config)
-    Logger.debug("DataServer #{state.worker_id}: Generated #{length(data)} data points")
     send(caller_pid, {:get_data_result, data})
-
     {:noreply, state}
   end
 end

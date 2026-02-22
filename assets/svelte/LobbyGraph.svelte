@@ -1754,13 +1754,13 @@
   }
 
   // ── Layout: Mushroom ──────────────────────────────────────────
-  // Layered dome cap, radiating gills, organic curved stem with root base
+  // Clean dome cap (single arc of sensors), gill spokes per sensor, straight stem
   function layoutMushroom() {
     if (!graph || graph.order === 0) return;
     isLayoutRunning = true;
 
-    const cx = 50, capCenterY = 25;
-    const capRx = 32, capRy = 16;
+    const cx = 50, capTopY = 15;
+    const capWidth = 34, capHeight = 14;
 
     const userNodes: string[] = [];
     const sensorNodes: string[] = [];
@@ -1775,62 +1775,45 @@
       }
     });
 
-    // Cap: sensors fill the dome in concentric arcs
-    // Outer ring: main cap edge. Inner rings: cap surface detail
     const n = sensorNodes.length;
-    const rings = Math.max(1, Math.ceil(Math.sqrt(n / 3)));
-    let placed = 0;
 
-    for (let ring = 0; ring < rings && placed < n; ring++) {
-      const ringT = (ring + 1) / (rings + 0.5); // 0→1 from center to edge
-      const rx = capRx * ringT;
-      const ry = capRy * ringT;
-      // How many nodes fit on this ring arc (semicircle, more on outer rings)
-      const arcLen = Math.PI * rx;
-      const nodesOnRing = Math.min(n - placed, Math.max(2, Math.round(arcLen / 4)));
-
-      for (let ni = 0; ni < nodesOnRing && placed < n; ni++) {
-        const a = Math.PI + (ni / Math.max(nodesOnRing - 1, 1)) * Math.PI;
-        graph.setNodeAttribute(sensorNodes[placed], "x", cx + rx * Math.cos(a));
-        graph.setNodeAttribute(sensorNodes[placed], "y", capCenterY + ry * Math.sin(a) * 0.85);
-        placed++;
-      }
-    }
-
-    // Gills: attributes radiate downward from the cap underside like spokes
-    const gillBaseY = capCenterY + capRy * 0.3;
-    const gillSpread = capRx * 0.75;
-    const allAttrs: string[] = [];
-    sensorNodes.forEach(sNode => {
-      (attrsBySensor.get(sNode) || []).forEach(a => allAttrs.push(a));
+    // Cap: single smooth dome arc of sensors (semicircle, open at bottom)
+    sensorNodes.forEach((node, i) => {
+      const a = Math.PI + (i / Math.max(n - 1, 1)) * Math.PI;
+      graph.setNodeAttribute(node, "x", cx + capWidth * Math.cos(a));
+      graph.setNodeAttribute(node, "y", capTopY + capHeight * Math.sin(a));
     });
 
-    allAttrs.forEach((attr, i) => {
-      // Radial gill lines fanning from center outward under cap
-      const t = (i + 0.5) / allAttrs.length;
-      const angle = Math.PI * 0.15 + t * Math.PI * 0.7; // fan ~130°
-      const depth = 3 + (i % 4) * 2.5; // staggered depth for layered gill look
-      const gx = cx + gillSpread * Math.cos(angle) * (depth / 12);
-      const gy = gillBaseY + depth;
-      graph.setNodeAttribute(attr, "x", gx);
-      graph.setNodeAttribute(attr, "y", gy);
+    // Gills: each sensor's attributes drop straight down as a short spoke
+    const gillTop = capTopY + capHeight + 2;
+    sensorNodes.forEach((sNode, si) => {
+      const sx = graph.getNodeAttribute(sNode, "x") as number;
+      const attrs = attrsBySensor.get(sNode) || [];
+      attrs.forEach((attr, ai) => {
+        const depth = gillTop + (ai + 1) * 2.5;
+        // Slight inward lean toward center for gill shape
+        const lean = (cx - sx) * 0.02 * (ai + 1);
+        graph.setNodeAttribute(attr, "x", sx + lean);
+        graph.setNodeAttribute(attr, "y", depth);
+      });
     });
 
-    // Stem: users form a slightly curved trunk tapering to roots
-    const stemTop = gillBaseY + 10;
-    const stemBottom = 92;
+    // Stem: users form a straight trunk with gentle taper
+    const stemTop = gillTop + 12;
+    const stemBottom = 90;
+    const stemWidth = 3;
     userNodes.forEach((node, i) => {
       const t = (i + 1) / (userNodes.length + 1);
       const y = stemTop + t * (stemBottom - stemTop);
-      // Gentle S-curve for organic stem
-      const sway = 3 * Math.sin(t * Math.PI * 1.5);
-      // Wider at base (root flare)
-      const baseFlare = t > 0.8 ? (t - 0.8) * 25 * (i % 2 === 0 ? 1 : -1) : 0;
-      graph.setNodeAttribute(node, "x", cx + sway + baseFlare);
+      // Alternate left/right within a narrow column, widening slightly at base
+      const side = i % 2 === 0 ? 1 : -1;
+      const taper = 1 + t * 0.5; // slightly wider at bottom
+      const x = cx + side * stemWidth * taper * ((Math.floor(i / 2) % 2) * 0.5 + 0.5);
+      graph.setNodeAttribute(node, "x", x);
       graph.setNodeAttribute(node, "y", y);
     });
 
-    rotateLayout(180); // flip upside down
+    rotateLayout(180); // cap at bottom, stem grows up
     isLayoutRunning = false;
   }
 
@@ -3274,58 +3257,60 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0l4.179 2.25L12 17.25 2.25 12l4.179-2.25m11.142 0l-5.571 3-5.571-3m11.142 4.5L21.75 12l-4.179 2.25m0 0l-5.571 3-5.571-3" />
       </svg>
     </button>
-    <div class="sidebar-panel">
-      <span class="sidebar-group-label">Layout</span>
-      <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-right" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Force-directed clustering">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-right" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Lanes by attribute">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-right" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" /><circle cx="12" cy="12" r="5" stroke-width="2" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("flower")} class="mode-btn tooltip-right" class:active={viewMode === "flower"} class:layout-active={lastLayoutMode === "flower" && visualModes.includes(viewMode)} data-tooltip="Flower — Rose-curve petals">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2C12 2 14.5 5.5 14.5 8.5C14.5 10.5 13.4 12 12 12C10.6 12 9.5 10.5 9.5 8.5C9.5 5.5 12 2 12 2Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 12C22 12 18.5 14.5 15.5 14.5C13.5 14.5 12 13.4 12 12C12 10.6 13.5 9.5 15.5 9.5C18.5 9.5 22 12 22 12Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 22C12 22 9.5 18.5 9.5 15.5C9.5 13.5 10.6 12 12 12C13.4 12 14.5 13.5 14.5 15.5C14.5 18.5 12 22 12 22Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2 12C2 12 5.5 9.5 8.5 9.5C10.5 9.5 12 10.6 12 12C12 13.4 10.5 14.5 8.5 14.5C5.5 14.5 2 12 2 12Z" /><circle cx="12" cy="12" r="2" fill="currentColor" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
-      </button>
-
-      <button onclick={() => switchViewMode("octopus")} class="mode-btn tooltip-right" class:active={viewMode === "octopus"} class:layout-active={lastLayoutMode === "octopus" && visualModes.includes(viewMode)} data-tooltip="Octopus — Head + tentacles">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="7" r="5" /><path d="M4 12c-1 4-2 8 0 9s2-3 3-5" /><path d="M7 12c0 4-1 9 1 9s1-5 1-7" /><path d="M15 12c0 4 1 9-1 9s-1-5-1-7" /><path d="M20 12c1 4 2 8 0 9s-2-3-3-5" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("mushroom")} class="mode-btn tooltip-right" class:active={viewMode === "mushroom"} class:layout-active={lastLayoutMode === "mushroom" && visualModes.includes(viewMode)} data-tooltip="Mushroom — Cap + stem">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14c0-5.5 3.6-10 8-10s8 4.5 8 10H4z" /><path d="M9 14v7h6v-7" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("jellyfish")} class="mode-btn tooltip-right" class:active={viewMode === "jellyfish"} class:layout-active={lastLayoutMode === "jellyfish" && visualModes.includes(viewMode)} data-tooltip="Jellyfish — Bell + tentacles">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 11c0-4.4 3.1-8 7-8s7 3.6 7 8" /><path d="M7 11c-.5 3-1 6-.5 8s1-3 1.5-5" /><path d="M10 11c0 3-.5 7 .5 8s.5-4 .5-6" /><path d="M14 11c0 3 .5 7-.5 8s-.5-4-.5-6" /><path d="M17 11c.5 3 1 6 .5 8s-1-3-1.5-5" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("dna")} class="mode-btn tooltip-right" class:active={viewMode === "dna"} class:layout-active={lastLayoutMode === "dna" && visualModes.includes(viewMode)} data-tooltip="DNA — Double helix">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3c0 4 12 4 12 8s-12 4-12 8" /><path d="M18 3c0 4-12 4-12 8s12 4 12 8" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="17" x2="16" y2="17" /><line x1="7" y1="12" x2="17" y2="12" /></svg>
-      </button>
-      <button onclick={toggleCycle} class="mode-btn tooltip-right" class:active={cycleEnabled} data-tooltip={cycleEnabled ? "Stop auto-cycle (30s)" : "Auto-cycle layouts + seasons (30s)"}>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-        </svg>
-      </button>
-      <div class="control-divider"></div>
-      <span class="sidebar-group-label">Visual</span>
-      <button onclick={() => switchViewMode("heatmap")} class="mode-btn tooltip-right" class:active={viewMode === "heatmap"} data-tooltip="Heatmap — Data frequency colors">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("freshness")} class="mode-btn tooltip-right" class:active={viewMode === "freshness"} data-tooltip="Freshness — Fade over time">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("heartbeat")} class="mode-btn tooltip-right" class:active={viewMode === "heartbeat"} data-tooltip="Heartbeat — Pulse at BPM">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("river")} class="mode-btn tooltip-right" class:active={viewMode === "river"} data-tooltip="Data River — Flowing particles">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
-      </button>
-      <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-right" class:active={viewMode === "attention"} data-tooltip="Attention — Who's watching">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-      </button>
+    <div class="sidebar-panel sidebar-two-col">
+      <div class="sidebar-col">
+        <span class="sidebar-group-label">Layout</span>
+        <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-right" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Force-directed clustering">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-right" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Lanes by attribute">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-right" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" /><circle cx="12" cy="12" r="5" stroke-width="2" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("flower")} class="mode-btn tooltip-right" class:active={viewMode === "flower"} class:layout-active={lastLayoutMode === "flower" && visualModes.includes(viewMode)} data-tooltip="Flower — Rose-curve petals">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2C12 2 14.5 5.5 14.5 8.5C14.5 10.5 13.4 12 12 12C10.6 12 9.5 10.5 9.5 8.5C9.5 5.5 12 2 12 2Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 12C22 12 18.5 14.5 15.5 14.5C13.5 14.5 12 13.4 12 12C12 10.6 13.5 9.5 15.5 9.5C18.5 9.5 22 12 22 12Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 22C12 22 9.5 18.5 9.5 15.5C9.5 13.5 10.6 12 12 12C13.4 12 14.5 13.5 14.5 15.5C14.5 18.5 12 22 12 22Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2 12C2 12 5.5 9.5 8.5 9.5C10.5 9.5 12 10.6 12 12C12 13.4 10.5 14.5 8.5 14.5C5.5 14.5 2 12 2 12Z" /><circle cx="12" cy="12" r="2" fill="currentColor" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("octopus")} class="mode-btn tooltip-right" class:active={viewMode === "octopus"} class:layout-active={lastLayoutMode === "octopus" && visualModes.includes(viewMode)} data-tooltip="Octopus — Head + tentacles">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="7" r="5" /><path d="M4 12c-1 4-2 8 0 9s2-3 3-5" /><path d="M7 12c0 4-1 9 1 9s1-5 1-7" /><path d="M15 12c0 4 1 9-1 9s-1-5-1-7" /><path d="M20 12c1 4 2 8 0 9s-2-3-3-5" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("mushroom")} class="mode-btn tooltip-right" class:active={viewMode === "mushroom"} class:layout-active={lastLayoutMode === "mushroom" && visualModes.includes(viewMode)} data-tooltip="Mushroom — Cap + stem">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14c0-5.5 3.6-10 8-10s8 4.5 8 10H4z" /><path d="M9 14v7h6v-7" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("jellyfish")} class="mode-btn tooltip-right" class:active={viewMode === "jellyfish"} class:layout-active={lastLayoutMode === "jellyfish" && visualModes.includes(viewMode)} data-tooltip="Jellyfish — Bell + tentacles">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 11c0-4.4 3.1-8 7-8s7 3.6 7 8" /><path d="M7 11c-.5 3-1 6-.5 8s1-3 1.5-5" /><path d="M10 11c0 3-.5 7 .5 8s.5-4 .5-6" /><path d="M14 11c0 3 .5 7-.5 8s-.5-4-.5-6" /><path d="M17 11c.5 3 1 6 .5 8s-1-3-1.5-5" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("dna")} class="mode-btn tooltip-right" class:active={viewMode === "dna"} class:layout-active={lastLayoutMode === "dna" && visualModes.includes(viewMode)} data-tooltip="DNA — Double helix">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3c0 4 12 4 12 8s-12 4-12 8" /><path d="M18 3c0 4-12 4-12 8s12 4 12 8" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="17" x2="16" y2="17" /><line x1="7" y1="12" x2="17" y2="12" /></svg>
+        </button>
+        <button onclick={toggleCycle} class="mode-btn tooltip-right" class:active={cycleEnabled} data-tooltip={cycleEnabled ? "Stop auto-cycle (30s)" : "Auto-cycle layouts + seasons (30s)"}>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+          </svg>
+        </button>
+      </div>
+      <div class="sidebar-col">
+        <span class="sidebar-group-label">Visual</span>
+        <button onclick={() => switchViewMode("heatmap")} class="mode-btn tooltip-right" class:active={viewMode === "heatmap"} data-tooltip="Heatmap — Data frequency colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("freshness")} class="mode-btn tooltip-right" class:active={viewMode === "freshness"} data-tooltip="Freshness — Fade over time">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("heartbeat")} class="mode-btn tooltip-right" class:active={viewMode === "heartbeat"} data-tooltip="Heartbeat — Pulse at BPM">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("river")} class="mode-btn tooltip-right" class:active={viewMode === "river"} data-tooltip="Data River — Flowing particles">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
+        </button>
+        <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-right" class:active={viewMode === "attention"} data-tooltip="Attention — Who's watching">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -3605,6 +3590,19 @@
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
+  }
+
+  .sidebar-two-col {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+  }
+
+  .sidebar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.375rem;
   }
 
   .sidebar-group-label {

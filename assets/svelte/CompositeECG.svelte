@@ -38,9 +38,9 @@
 
   // Time window options in milliseconds
   const TIME_WINDOWS = [
+    { label: '3s', ms: 3 * 1000 },
     { label: '10s', ms: 10 * 1000 },
-    { label: '2min', ms: 2 * 60 * 1000 },
-    { label: '10min', ms: 10 * 60 * 1000 }
+    { label: '30s', ms: 30 * 1000 }
   ];
 
   let selectedWindowMs = $state(TIME_WINDOWS[0].ms);
@@ -107,6 +107,7 @@
 
     const series: Highcharts.SeriesOptionsType[] = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
       type: 'line' as const,
+      id: `sensor-${sensorId}`,
       name: sensorId.length > 12 ? sensorId.slice(-8) : sensorId,
       data: data.map(d => [d.x, d.y]),
       color: sensorColors.get(sensorId) || '#00ff00',
@@ -190,6 +191,12 @@
         floating: false,
         backgroundColor: 'transparent',
         borderWidth: 0,
+        maxHeight: 40,
+        navigation: {
+          activeColor: '#4ade80',
+          inactiveColor: '#4a5568',
+          style: { color: '#9ca3af', fontSize: '9px' }
+        },
         itemStyle: {
           color: '#9ca3af',
           fontSize: '9px'
@@ -270,17 +277,18 @@
     let needsRedraw = false;
 
     Array.from(sensorData.entries()).forEach(([sensorId, data], index) => {
-      const displayName = sensorId.length > 12 ? sensorId.slice(-8) : sensorId;
-      const existingSeries = chart!.series.find(s => s.name === displayName);
+      const seriesId = `sensor-${sensorId}`;
+      const existingSeries = chart!.get(seriesId) as Highcharts.Series | null;
       const filteredData = getFilteredData(data, cutoff);
 
       if (existingSeries) {
         existingSeries.setData(filteredData, false, false, false);
         needsRedraw = true;
-      } else if (filteredData.length > 0) {
+      } else {
         chart!.addSeries({
           type: 'line',
-          name: displayName,
+          id: seriesId,
+          name: sensorId.length > 12 ? sensorId.slice(-8) : sensorId,
           data: filteredData,
           color: sensorColors.get(sensorId) || COLORS[index % COLORS.length],
           lineWidth: 1,
@@ -493,7 +501,7 @@
 
   .chart-wrapper {
     height: calc(100% - 2.5rem);
-    min-height: 200px;
+    min-height: 300px;
     background:
       repeating-linear-gradient(
         0deg,

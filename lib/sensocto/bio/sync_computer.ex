@@ -59,6 +59,8 @@ defmodule Sensocto.Bio.SyncComputer do
             last_broadcast: %{},
             pending_checks: MapSet.new(),
             viewer_count: 0,
+            # Track viewer PIDs to auto-cleanup on crash and prevent double-registration
+            viewer_pids: %{},
             active: false
 
   # --- Client API ---
@@ -93,7 +95,7 @@ defmodule Sensocto.Bio.SyncComputer do
   Buffers and smoothed values are preserved for fast reactivation.
   """
   def unregister_viewer do
-    GenServer.cast(__MODULE__, :unregister_viewer)
+    GenServer.cast(__MODULE__, {:unregister_viewer, self()})
   end
 
   # --- Server Callbacks ---
@@ -113,18 +115,25 @@ defmodule Sensocto.Bio.SyncComputer do
   # --- GenServer Calls ---
 
   @impl true
-  def handle_call(:register_viewer, _from, state) do
-    new_count = state.viewer_count + 1
+  def handle_call(:register_viewer, {caller_pid, _}, state) do
+    if Map.has_key?(state.viewer_pids, caller_pid) do
+      # Already registered — idempotent, don't increment count
+      {:reply, :ok, state}
+    else
+      ref = Process.monitor(caller_pid)
+      new_pids = Map.put(state.viewer_pids, caller_pid, ref)
+      new_count = map_size(new_pids)
 
-    state =
-      if state.viewer_count == 0 and new_count > 0 do
-        Logger.info("[Bio.SyncComputer] Activating (first viewer registered)")
-        activate(state)
-      else
-        state
-      end
+      state =
+        if state.viewer_count == 0 do
+          Logger.info("[Bio.SyncComputer] Activating (first viewer registered)")
+          activate(state)
+        else
+          state
+        end
 
-    {:reply, :ok, %{state | viewer_count: new_count}}
+      {:reply, :ok, %{state | viewer_count: new_count, viewer_pids: new_pids}}
+    end
   end
 
   def handle_call({:get_sync, group}, _from, state) do
@@ -142,18 +151,8 @@ defmodule Sensocto.Bio.SyncComputer do
   # --- Viewer Management (cast) ---
 
   @impl true
-  def handle_cast(:unregister_viewer, state) do
-    new_count = max(0, state.viewer_count - 1)
-
-    state =
-      if state.viewer_count > 0 and new_count == 0 do
-        Logger.info("[Bio.SyncComputer] Deactivating (no more viewers)")
-        deactivate(state)
-      else
-        state
-      end
-
-    {:noreply, %{state | viewer_count: new_count}}
+  def handle_cast({:unregister_viewer, caller_pid}, state) do
+    {:noreply, remove_viewer(state, caller_pid)}
   end
 
   # --- Sensor Discovery ---
@@ -399,9 +398,38 @@ defmodule Sensocto.Bio.SyncComputer do
     {:noreply, state}
   end
 
+  # Auto-cleanup when a viewer process dies
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    {:noreply, remove_viewer(state, pid)}
+  end
+
   # Catch-all for unknown messages
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # --- Viewer Cleanup ---
+
+  defp remove_viewer(state, pid) do
+    case Map.pop(state.viewer_pids, pid) do
+      {nil, _} ->
+        state
+
+      {ref, new_pids} ->
+        Process.demonitor(ref, [:flush])
+        new_count = map_size(new_pids)
+
+        state =
+          if new_count == 0 and state.viewer_count > 0 do
+            Logger.info("[Bio.SyncComputer] Deactivating (no more viewers)")
+            deactivate(state)
+          else
+            state
+          end
+
+        %{state | viewer_count: new_count, viewer_pids: new_pids}
+    end
+  end
 
   # --- Activation / Deactivation ---
 

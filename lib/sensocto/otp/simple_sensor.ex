@@ -9,6 +9,9 @@ defmodule Sensocto.SimpleSensor do
   # 1 second
   @mps_interval 1_000
 
+  # Mailbox self-protection: drop incoming data when queue exceeds this threshold
+  @mailbox_pressure_threshold 500
+
   # Hibernation config - hibernate after 5 minutes of low/no attention
   @idle_check_interval :timer.minutes(1)
   @idle_threshold_ms :timer.minutes(5)
@@ -43,8 +46,6 @@ defmodule Sensocto.SimpleSensor do
   @spec start_link(%{:sensor_id => any(), optional(any()) => any()}) ::
           :ignore | {:error, any()} | {:ok, pid()}
   def start_link(%{:sensor_id => sensor_id} = configuration) do
-    Logger.debug("SimpleSensor start_link: #{inspect(configuration)}")
-
     GenServer.start_link(__MODULE__, configuration,
       name: via_tuple(sensor_id),
       hibernate_after: 15_000,
@@ -55,7 +56,9 @@ defmodule Sensocto.SimpleSensor do
   @impl true
   @spec init(map()) :: {:ok, %{:message_timestamps => [], optional(any()) => any()}}
   def init(%{:sensor_id => sensor_id, :sensor_name => _sensor_name} = state) do
-    Logger.debug("SimpleSensor state: #{inspect(state)}")
+    # Trap exits so terminate/2 runs on supervisor shutdown,
+    # ensuring clean :pg.leave and discovery broadcast
+    Process.flag(:trap_exit, true)
 
     schedule_mps_calculation()
 
@@ -200,10 +203,6 @@ defmodule Sensocto.SimpleSensor do
         attribute_id,
         metadata
       ) do
-    Logger.debug(
-      "Client: update_attribute_registry #{inspect(sensor_id)} #{inspect(action)} #{inspect(attribute_id)} #{inspect(metadata)} "
-    )
-
     GenServer.cast(
       via_tuple(sensor_id),
       {:update_attribute_registry, action, attribute_id, metadata}
@@ -214,8 +213,6 @@ defmodule Sensocto.SimpleSensor do
   Updates the connector name for a sensor. Broadcasts change via PubSub.
   """
   def update_connector_name(sensor_id, new_name) do
-    Logger.debug("Client: update_connector_name #{inspect(sensor_id)} to #{inspect(new_name)}")
-
     GenServer.cast(
       via_tuple(sensor_id),
       {:update_connector_name, new_name}
@@ -295,10 +292,6 @@ defmodule Sensocto.SimpleSensor do
           []
       end
 
-    Logger.debug(
-      "Server: :get_attribute (attribute_id, limit)  #{attribute_id}  with limit #{limit}  from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
-    )
-
     {:reply, attributes, state}
   end
 
@@ -323,10 +316,6 @@ defmodule Sensocto.SimpleSensor do
           []
       end
 
-    Logger.debug(
-      "Server: :get_attribute (attribute_id, from, to, limit)  #{attribute_id} from: #{from} to: #{to} limit: #{limit} from : #{inspect(sensor_id)}, payloads: #{inspect(attributes)}"
-    )
-
     {:reply, attributes, state}
   end
 
@@ -335,10 +324,6 @@ defmodule Sensocto.SimpleSensor do
         {:update_attribute_registry, action, attribute_id, metadata},
         %{sensor_id: sensor_id} = state
       ) do
-    Logger.debug(
-      "Server: :update_attribute_registry sensor_id: #{sensor_id} action: #{action} attribute_id:  #{attribute_id}"
-    )
-
     new_attributes =
       case action do
         :register ->
@@ -367,8 +352,6 @@ defmodule Sensocto.SimpleSensor do
         {:update_connector_name, new_name},
         %{sensor_id: sensor_id} = state
       ) do
-    Logger.debug("Server: :update_connector_name #{sensor_id} to #{new_name}")
-
     new_state = Map.put(state, :connector_name, new_name)
 
     # Broadcast the connector name change so LiveViews update in realtime
@@ -388,53 +371,58 @@ defmodule Sensocto.SimpleSensor do
            attribute},
         %{sensor_id: sensor_id} = state
       ) do
-    Logger.debug("Server: :put_attribute #{inspect(attribute)} state: #{inspect(state)}")
+    # Mailbox self-protection: drop measurement if mailbox is too deep
+    {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
 
-    AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
+    if queue_len > @mailbox_pressure_threshold do
+      {:noreply, state}
+    else
+      AttributeStore.put_attribute(sensor_id, attribute_id, timestamp, payload)
 
-    # Auto-register attribute if not already registered
-    state =
-      if not Map.has_key?(state.attributes, attribute_id) do
-        inferred_type = infer_attribute_type(attribute_id, payload)
-        Logger.debug("Auto-registering attribute #{attribute_id} as type #{inferred_type}")
+      # Auto-register attribute if not already registered
+      state =
+        if not Map.has_key?(state.attributes, attribute_id) do
+          inferred_type = infer_attribute_type(attribute_id, payload)
+          Logger.debug("Auto-registering attribute #{attribute_id} as type #{inferred_type}")
 
-        new_attributes =
-          Map.put(state.attributes, attribute_id, %{
-            attribute_type: inferred_type,
-            attribute_id: attribute_id,
-            sampling_rate: 1
-          })
+          new_attributes =
+            Map.put(state.attributes, attribute_id, %{
+              attribute_type: inferred_type,
+              attribute_id: attribute_id,
+              sampling_rate: 1
+            })
 
-        # Broadcast state change so LiveViews refresh
-        Phoenix.PubSub.broadcast(
-          Sensocto.PubSub,
-          "signal:#{sensor_id}",
-          {:new_state, sensor_id}
-        )
+          # Broadcast state change so LiveViews refresh
+          Phoenix.PubSub.broadcast(
+            Sensocto.PubSub,
+            "signal:#{sensor_id}",
+            {:new_state, sensor_id}
+          )
 
-        %{state | attributes: new_attributes}
-      else
-        state
-      end
+          %{state | attributes: new_attributes}
+        else
+          state
+        end
 
-    now = System.system_time(:millisecond)
-    enriched_attribute = Map.put(attribute, :sensor_id, sensor_id)
+      now = System.system_time(:millisecond)
+      enriched_attribute = Map.put(attribute, :sensor_id, sensor_id)
 
-    # Broadcast to per-sensor topic (always - for direct subscribers like room views)
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      "data:#{sensor_id}",
-      {:measurement, enriched_attribute}
-    )
+      # Broadcast to per-sensor topic (always - for direct subscribers like room views)
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "data:#{sensor_id}",
+        {:measurement, enriched_attribute}
+      )
 
-    # Broadcast to attention-sharded topic — either immediately or buffered
-    # depending on system load. Under :normal load this is zero-overhead (immediate).
-    state = broadcast_or_buffer(state, enriched_attribute)
+      # Broadcast to attention-sharded topic — either immediately or buffered
+      # depending on system load. Under :normal load this is zero-overhead (immediate).
+      state = broadcast_or_buffer(state, enriched_attribute)
 
-    {:noreply,
-     state
-     |> Map.update!(:message_timestamps, &[now | &1])
-     |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))}
+      {:noreply,
+       state
+       |> Map.update!(:message_timestamps, &[now | &1])
+       |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))}
+    end
   end
 
   @impl true
@@ -442,37 +430,39 @@ defmodule Sensocto.SimpleSensor do
         {:put_batch_attributes, attributes},
         %{sensor_id: sensor_id} = state
       ) do
-    Logger.debug("Server: :put_batch_attributes #{length(attributes)} state: #{inspect(state)}")
+    # Mailbox self-protection: drop batch if mailbox is too deep
+    {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
 
-    broadcast_messages_list =
-      Enum.map(attributes, fn attribute ->
-        AttributeStore.put_attribute(
-          sensor_id,
-          attribute.attribute_id,
-          attribute.timestamp,
-          attribute.payload
-        )
+    if queue_len > @mailbox_pressure_threshold do
+      {:noreply, state}
+    else
+      broadcast_messages_list =
+        Enum.map(attributes, fn attribute ->
+          AttributeStore.put_attribute(
+            sensor_id,
+            attribute.attribute_id,
+            attribute.timestamp,
+            attribute.payload
+          )
 
-        attribute
-        |> Map.put(:sensor_id, sensor_id)
-      end)
+          Map.put(attribute, :sensor_id, sensor_id)
+        end)
 
-    now = System.system_time(:millisecond)
+      now = System.system_time(:millisecond)
 
-    # Broadcast to per-sensor topic (always - for direct subscribers like room views)
-    Phoenix.PubSub.broadcast(
-      Sensocto.PubSub,
-      "data:#{sensor_id}",
-      {:measurements_batch, {sensor_id, broadcast_messages_list}}
-    )
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "data:#{sensor_id}",
+        {:measurements_batch, {sensor_id, broadcast_messages_list}}
+      )
 
-    # Broadcast to attention-sharded topic — either immediately or buffered
-    state = broadcast_batch_or_buffer(state, broadcast_messages_list)
+      state = broadcast_batch_or_buffer(state, broadcast_messages_list)
 
-    {:noreply,
-     state
-     |> Map.update!(:message_timestamps, &[now | &1])
-     |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))}
+      {:noreply,
+       state
+       |> Map.update!(:message_timestamps, &[now | &1])
+       |> Map.put(:last_activity_at, System.monotonic_time(:millisecond))}
+    end
   end
 
   @impl true
@@ -480,7 +470,6 @@ defmodule Sensocto.SimpleSensor do
         {:clear_attribute, attribute_id},
         %{sensor_id: sensor_id} = state
       ) do
-    Logger.debug("Server: :clear_attribute #{sensor_id}:#{attribute_id} state: #{inspect(state)}")
     AttributeStore.remove_attribute(sensor_id, attribute_id)
     {:noreply, state}
   end
@@ -516,7 +505,6 @@ defmodule Sensocto.SimpleSensor do
   @impl true
   def handle_info({:attention_changed, %{sensor_id: sensor_id, level: new_level}}, state) do
     if state.sensor_id == sensor_id do
-      Logger.debug("SimpleSensor #{sensor_id} attention changed to #{new_level}")
       {:noreply, %{state | attention_level: new_level}}
     else
       {:noreply, state}
@@ -723,6 +711,15 @@ defmodule Sensocto.SimpleSensor do
 
       attribute_id in ["imu", "accelerometer", "gyroscope", "motion"] ->
         "imu"
+
+      attribute_id in ["respiration", "breathing", "breath"] ->
+        "respiration"
+
+      attribute_id in ["hrv", "heart_rate_variability"] ->
+        "hrv"
+
+      attribute_id in ["eye_gaze", "gaze"] ->
+        "eye_gaze"
 
       attribute_id in ["temperature", "temp"] ->
         "temperature"

@@ -234,6 +234,7 @@
 
     const series: Highcharts.SeriesOptionsType[] = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
       type: 'line' as const,
+      id: `sensor-${sensorId}`,
       name: getDisplayName(sensorId),
       data: data.map(d => [d.x, d.y]),
       color: sensorColors.get(sensorId) || '#f97316',
@@ -449,17 +450,18 @@
     let needsRedraw = false;
 
     Array.from(sensorData.entries()).forEach(([sensorId, data], index) => {
-      const displayName = getDisplayName(sensorId);
-      const existingSeries = chart!.series.find(s => s.name === displayName);
+      const seriesId = `sensor-${sensorId}`;
+      const existingSeries = chart!.get(seriesId) as Highcharts.Series | null;
       const filteredData = getFilteredData(data, cutoff);
 
       if (existingSeries) {
         existingSeries.setData(filteredData, false, false, false);
         needsRedraw = true;
-      } else if (filteredData.length > 0) {
+      } else {
         chart!.addSeries({
           type: 'line',
-          name: displayName,
+          id: seriesId,
+          name: getDisplayName(sensorId),
           data: filteredData,
           yAxis: 0,
           color: sensorColors.get(sensorId) || COLORS[index % COLORS.length],

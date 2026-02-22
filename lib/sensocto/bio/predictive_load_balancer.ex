@@ -43,8 +43,24 @@ defmodule Sensocto.Bio.PredictiveLoadBalancer do
   @doc """
   Get predictive adjustment factor for a sensor.
   Returns multiplier (< 1.0 = pre-boost, > 1.0 = post-peak slowdown).
+
+  Also checks Hebbian correlations: if a correlated sensor is being boosted,
+  this sensor gets a weaker sympathetic boost.
   """
   def get_predictive_factor(sensor_id) do
+    direct_factor = get_direct_factor(sensor_id)
+
+    # Apply correlation-based sympathetic boosting
+    if direct_factor == 1.0 do
+      apply_correlation_boost(sensor_id)
+    else
+      direct_factor
+    end
+  rescue
+    ArgumentError -> 1.0
+  end
+
+  defp get_direct_factor(sensor_id) do
     case :ets.lookup(:bio_predictions, sensor_id) do
       [{_, {:pre_boost, seconds_until}}] ->
         boost = 0.95 - (1 - seconds_until / @prediction_window) * 0.2
@@ -59,6 +75,38 @@ defmodule Sensocto.Bio.PredictiveLoadBalancer do
     end
   rescue
     ArgumentError -> 1.0
+  end
+
+  # If a correlated sensor is being pre-boosted, apply a weaker sympathetic boost.
+  # The boost is proportional to the correlation strength.
+  defp apply_correlation_boost(sensor_id) do
+    correlated = Sensocto.Bio.CorrelationTracker.get_correlated(sensor_id)
+
+    case correlated do
+      [] ->
+        1.0
+
+      peers ->
+        # Find the strongest pre-boost among correlated sensors
+        best_boost =
+          peers
+          |> Enum.reduce(1.0, fn {peer_id, strength}, acc ->
+            peer_factor = get_direct_factor(peer_id)
+
+            if peer_factor < 1.0 do
+              # Sympathetic boost: weaker version of the peer's boost
+              sympathetic = 1.0 - (1.0 - peer_factor) * strength * 0.5
+              min(acc, sympathetic)
+            else
+              acc
+            end
+          end)
+
+        # Don't boost below 0.9 from correlations alone
+        max(0.9, best_boost)
+    end
+  rescue
+    _ -> 1.0
   end
 
   @doc """

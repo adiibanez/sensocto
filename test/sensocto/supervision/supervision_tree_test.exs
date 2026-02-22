@@ -180,13 +180,14 @@ defmodule Sensocto.Supervision.SupervisionTreeTest do
       assert Sensocto.Domain.Supervisor in child_modules
     end
 
-    test "root has exactly 7 or 8 children (depending on simulator config)" do
+    test "root has exactly 9 or 10 children (depending on simulator config)" do
       root_pid = Process.whereis(Sensocto.Supervisor)
       children = Supervisor.which_children(root_pid)
 
-      # 7 children minimum: Infrastructure, Registry, Storage, Bio, Domain, Endpoint, AshAuth
-      # 8 if simulator is enabled
-      assert length(children) in [7, 8]
+      # 9 children minimum: Infrastructure, Registry, Storage, Bio, Session.Registry,
+      #   Session.Supervisor, Domain, Endpoint, AshAuth
+      # 10 if simulator is enabled
+      assert length(children) in [9, 10]
     end
   end
 end

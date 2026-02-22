@@ -138,8 +138,8 @@ defmodule SensoctoWeb.LobbyGraphRegressionTest do
       assert html =~ "Rooms"
     end
 
-    test "switch_tab changes active tab", %{conn: conn} do
-      {:ok, view, _html} =
+    test "footer renders navigation links", %{conn: conn} do
+      {:ok, _view, html} =
         live_isolated(conn, SensoctoWeb.TabbedFooterLive,
           session: %{
             "current_user" => nil,
@@ -148,17 +148,11 @@ defmodule SensoctoWeb.LobbyGraphRegressionTest do
           }
         )
 
-      # Default tab is :nav
-      html = render(view)
-      assert html =~ "Navigate"
-
-      # Switch to controls tab
-      view
-      |> element("button[phx-click=switch_tab][phx-value-tab=controls]")
-      |> render_click()
-
-      html = render(view)
-      assert html =~ "bluetooth-mobile-tabbed"
+      # Footer should show nav items: Home, Lobby, Rooms, Sensors
+      assert html =~ "Home"
+      assert html =~ "Lobby"
+      assert html =~ "Rooms"
+      assert html =~ "Sensors"
     end
 
     test "path_changed event updates collapse state", %{conn: conn} do

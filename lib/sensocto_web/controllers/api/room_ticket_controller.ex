@@ -6,10 +6,68 @@ defmodule SensoctoWeb.Api.RoomTicketController do
   rooms via P2P (Iroh gossip + docs).
   """
   use SensoctoWeb, :controller
+  use OpenApiSpex.ControllerSpecs
   require Logger
 
   alias Sensocto.Rooms
   alias Sensocto.P2P.RoomTicket
+  alias SensoctoWeb.Schemas.Common
+  alias SensoctoWeb.Schemas.RoomTicket, as: RoomTicketSchemas
+
+  tags(["Room Tickets"])
+
+  operation(:show,
+    summary: "Generate room ticket by ID",
+    description:
+      "Generates a room ticket for P2P connection bootstrap via Iroh. Requires authentication and room membership.",
+    security: [%{"bearerAuth" => []}],
+    parameters: [
+      id: [in: :path, description: "Room UUID", type: :string, required: true],
+      include_secret: [
+        in: :query,
+        description: "Include write secret (owner/admin only)",
+        type: :boolean,
+        required: false
+      ],
+      expires_in: [
+        in: :query,
+        description: "Seconds until expiry (default: 86400, max: 604800)",
+        type: :integer,
+        required: false
+      ]
+    ],
+    responses: [
+      ok: {"Room ticket", "application/json", RoomTicketSchemas.TicketResponse},
+      unauthorized: {"Invalid or missing token", "application/json", Common.Error},
+      forbidden: {"Not a member of this room", "application/json", Common.Error},
+      not_found: {"Room not found", "application/json", Common.Error}
+    ]
+  )
+
+  operation(:show_by_code,
+    summary: "Generate room ticket by join code",
+    description: "Generates a room ticket using a join code. Does not require authentication.",
+    security: [],
+    parameters: [
+      code: [in: :path, description: "Room join code", type: :string, required: true]
+    ],
+    responses: [
+      ok: {"Room ticket", "application/json", RoomTicketSchemas.TicketResponse},
+      not_found: {"Room not found", "application/json", Common.Error}
+    ]
+  )
+
+  operation(:verify,
+    summary: "Verify and decode a ticket",
+    description: "Verifies a room ticket and returns its decoded contents.",
+    security: [],
+    request_body: {"Ticket to verify", "application/json", RoomTicketSchemas.VerifyTicketRequest},
+    responses: [
+      ok:
+        {"Ticket verification result", "application/json", RoomTicketSchemas.VerifyTicketResponse},
+      bad_request: {"Invalid ticket format", "application/json", Common.Error}
+    ]
+  )
 
   @doc """
   Generate a room ticket by room ID.

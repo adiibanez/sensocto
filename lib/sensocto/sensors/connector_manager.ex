@@ -11,27 +11,18 @@ defmodule Sensocto.Sensors.ConnectorManager do
   ## Architecture
 
   Each node runs one ConnectorManager process. When a connector registers:
-  1. The local Ash ETS resource stores the connector data
-  2. The connector's handling process joins the `:connectors` pg group
-  3. The manager broadcasts the registration to all nodes via PubSub
+  1. The Ash Postgres resource stores the connector data persistently
+  2. Runtime state (pid, node) is tracked in GenServer state (not in DB)
+  3. The connector's handling process joins the `:connectors` pg group
+  4. The manager broadcasts the registration to all nodes via PubSub
 
-  When a node goes down:
-  1. The pg group automatically removes processes from that node
-  2. Other managers receive :nodedown and clean up ETS entries
+  When a client disconnects:
+  1. The connector is soft-unregistered (status set to :offline)
+  2. The pid/node entry is removed from GenServer state
+  3. The connector persists in DB for the user's "My Devices" view
 
-  ## Usage
-
-      # Register a connector (called by socket/channel)
-      ConnectorManager.register(connector_id, name, type, user_id, self())
-
-      # List all connectors cluster-wide
-      ConnectorManager.list_all()
-
-      # List connectors for a specific user
-      ConnectorManager.list_for_user(user_id)
-
-      # Unregister on disconnect
-      ConnectorManager.unregister(connector_id)
+  On startup:
+  1. All connectors on this node are marked :offline (stale cleanup)
   """
 
   use GenServer
@@ -52,22 +43,26 @@ defmodule Sensocto.Sensors.ConnectorManager do
   @doc """
   Register a new connector when a client connects.
 
+  Creates (or re-onlines) a persistent connector record and tracks the
+  runtime pid/node in GenServer state.
+
   ## Parameters
-  - `id` - Unique connector ID (usually socket ID)
+  - `id` - Unique connector ID (usually socket ID). If nil, a new UUID is generated.
   - `name` - Human-readable name
   - `connector_type` - One of :web, :native, :iot, :simulator
   - `user_id` - Optional user ID if authenticated
   - `pid` - The process handling this connector
   - `opts` - Additional options (configuration map)
   """
-  @spec register(String.t(), String.t(), atom(), String.t() | nil, pid(), keyword()) ::
+  @spec register(String.t() | nil, String.t(), atom(), String.t() | nil, pid(), keyword()) ::
           {:ok, Connector.t()} | {:error, term()}
   def register(id, name, connector_type, user_id, pid, opts \\ []) do
     GenServer.call(__MODULE__, {:register, id, name, connector_type, user_id, pid, opts})
   end
 
   @doc """
-  Unregister a connector when client disconnects.
+  Soft-unregister a connector when client disconnects.
+  Sets status to :offline but keeps the record for "My Devices".
   """
   @spec unregister(String.t()) :: :ok | {:error, term()}
   def unregister(id) do
@@ -123,6 +118,22 @@ defmodule Sensocto.Sensors.ConnectorManager do
   end
 
   @doc """
+  Get the runtime pid for a connector (from GenServer state, not DB).
+  """
+  @spec get_pid(String.t()) :: pid() | nil
+  def get_pid(id) do
+    GenServer.call(__MODULE__, {:get_pid, id})
+  end
+
+  @doc """
+  Get the runtime node for a connector (from GenServer state, not DB).
+  """
+  @spec get_node(String.t()) :: node() | nil
+  def get_node(id) do
+    GenServer.call(__MODULE__, {:get_node, id})
+  end
+
+  @doc """
   Get connector count for a user.
   """
   @spec count_for_user(String.t()) :: non_neg_integer()
@@ -154,62 +165,126 @@ defmodule Sensocto.Sensors.ConnectorManager do
     :pg.start_link()
     :pg.join(@pg_group, self())
 
+    # Mark all connectors as offline on startup (stale cleanup)
+    send(self(), :mark_stale_connectors)
+
     Logger.info("ConnectorManager started on #{node()}")
 
-    {:ok, %{node: node()}}
+    # runtime_state: %{connector_id => %{pid: pid, node: node, monitor_ref: ref}}
+    {:ok, %{node: node(), runtime_state: %{}}}
   end
 
   @impl true
   def handle_call({:register, id, name, connector_type, user_id, pid, opts}, _from, state) do
     configuration = Keyword.get(opts, :configuration, %{})
 
-    attrs = %{
-      id: id,
-      name: name,
-      connector_type: connector_type,
-      user_id: user_id,
-      configuration: configuration,
-      node: node(),
-      pid: pid
-    }
+    result =
+      if id do
+        # Try to find existing connector and re-online it
+        case get_connector(id) do
+          {:ok, connector} ->
+            connector
+            |> Ash.Changeset.for_update(:set_online, %{})
+            |> Ash.update()
 
-    case Connector
-         |> Ash.Changeset.for_create(:register, attrs)
-         |> Ash.create() do
+          {:error, :not_found} ->
+            # Create new with specific ID
+            attrs = %{
+              name: name,
+              connector_type: connector_type,
+              user_id: user_id,
+              configuration: configuration
+            }
+
+            Connector
+            |> Ash.Changeset.for_create(:register, attrs)
+            |> Ash.Changeset.force_change_attribute(:id, id)
+            |> Ash.create()
+        end
+      else
+        attrs = %{
+          name: name,
+          connector_type: connector_type,
+          user_id: user_id,
+          configuration: configuration
+        }
+
+        Connector
+        |> Ash.Changeset.for_create(:register, attrs)
+        |> Ash.create()
+      end
+
+    case result do
       {:ok, connector} ->
+        # Track runtime state
+        monitor_ref = Process.monitor(pid)
+
+        runtime_entry = %{pid: pid, node: node(), monitor_ref: monitor_ref}
+
+        new_runtime =
+          Map.put(state.runtime_state, to_string(connector.id), runtime_entry)
+
         # Join the pid to pg group for cluster tracking
         :pg.join(@pg_group, pid)
-
-        # Monitor the process for automatic cleanup
-        Process.monitor(pid)
 
         # Broadcast to cluster
         broadcast_event(:connector_registered, connector)
 
-        Logger.debug("Registered connector #{id} (#{connector_type}) on #{node()}")
-        {:reply, {:ok, connector}, state}
+        # Broadcast user-scoped event
+        if user_id do
+          broadcast_user_event(user_id, :connector_online, %{
+            id: connector.id,
+            name: connector.name,
+            connector_type: connector.connector_type
+          })
+        end
+
+        Logger.debug("Registered connector #{connector.id} (#{connector_type}) on #{node()}")
+        {:reply, {:ok, connector}, %{state | runtime_state: new_runtime}}
 
       {:error, error} ->
-        Logger.warning("Failed to register connector #{id}: #{inspect(error)}")
+        Logger.warning("Failed to register connector: #{inspect(error)}")
         {:reply, {:error, error}, state}
     end
   end
 
   @impl true
   def handle_call({:unregister, id}, _from, state) do
+    id_str = to_string(id)
+
     case get_connector(id) do
       {:ok, connector} ->
         # Leave pg group if pid is still alive
-        if connector.pid && Process.alive?(connector.pid) do
-          :pg.leave(@pg_group, connector.pid)
+        case Map.get(state.runtime_state, id_str) do
+          %{pid: pid, monitor_ref: ref} ->
+            Process.demonitor(ref, [:flush])
+
+            if Process.alive?(pid) do
+              :pg.leave(@pg_group, pid)
+            end
+
+          _ ->
+            :ok
         end
 
-        # Destroy from ETS
-        case Ash.destroy(connector) do
-          :ok ->
+        # Soft-unregister: set offline instead of destroying
+        case connector
+             |> Ash.Changeset.for_update(:set_offline, %{})
+             |> Ash.update() do
+          {:ok, _updated} ->
+            new_runtime = Map.delete(state.runtime_state, id_str)
+
             broadcast_event(:connector_unregistered, %{id: id, node: node()})
-            Logger.debug("Unregistered connector #{id}")
-            {:reply, :ok, state}
+
+            if connector.user_id do
+              broadcast_user_event(connector.user_id, :connector_offline, %{
+                id: connector.id,
+                name: connector.name
+              })
+            end
+
+            Logger.debug("Soft-unregistered connector #{id}")
+            {:reply, :ok, %{state | runtime_state: new_runtime}}
 
           {:error, error} ->
             {:reply, {:error, error}, state}
@@ -249,7 +324,7 @@ defmodule Sensocto.Sensors.ConnectorManager do
 
   @impl true
   def handle_call(:list_all, _from, state) do
-    connectors = list_local_connectors()
+    connectors = list_connectors()
     {:reply, connectors, state}
   end
 
@@ -279,6 +354,28 @@ defmodule Sensocto.Sensors.ConnectorManager do
   end
 
   @impl true
+  def handle_call({:get_pid, id}, _from, state) do
+    pid =
+      case Map.get(state.runtime_state, to_string(id)) do
+        %{pid: pid} -> pid
+        _ -> nil
+      end
+
+    {:reply, pid, state}
+  end
+
+  @impl true
+  def handle_call({:get_node, id}, _from, state) do
+    node_val =
+      case Map.get(state.runtime_state, to_string(id)) do
+        %{node: n} -> n
+        _ -> nil
+      end
+
+    {:reply, node_val, state}
+  end
+
+  @impl true
   def handle_cast({:heartbeat, id}, state) do
     case get_connector(id) do
       {:ok, connector} ->
@@ -294,17 +391,83 @@ defmodule Sensocto.Sensors.ConnectorManager do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    # Process died, clean up its connector
-    cleanup_connector_by_pid(pid)
+  def handle_info(:mark_stale_connectors, state) do
+    # On startup, mark all connectors as offline since we lost runtime state
+    case Connector |> Ash.Query.for_read(:list_online, %{}) |> Ash.read() do
+      {:ok, online_connectors} ->
+        Enum.each(online_connectors, fn connector ->
+          connector
+          |> Ash.Changeset.for_update(:set_offline, %{})
+          |> Ash.update()
+        end)
+
+        if length(online_connectors) > 0 do
+          Logger.info(
+            "Marked #{length(online_connectors)} stale connectors as offline on startup"
+          )
+        end
+
+      {:error, error} ->
+        Logger.warning("Failed to mark stale connectors: #{inspect(error)}")
+    end
+
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
+    # Process died, clean up its connector
+    case find_connector_by_ref(state.runtime_state, ref) do
+      {id, _entry} ->
+        Logger.debug("Cleaning up connector #{id} (process died)")
+
+        case get_connector(id) do
+          {:ok, connector} ->
+            connector
+            |> Ash.Changeset.for_update(:set_offline, %{})
+            |> Ash.update()
+
+            if connector.user_id do
+              broadcast_user_event(connector.user_id, :connector_offline, %{
+                id: connector.id,
+                name: connector.name
+              })
+            end
+
+          _ ->
+            :ok
+        end
+
+        :pg.leave(@pg_group, pid)
+        broadcast_event(:connector_unregistered, %{id: id, node: node()})
+        {:noreply, %{state | runtime_state: Map.delete(state.runtime_state, id)}}
+
+      nil ->
+        {:noreply, state}
+    end
   end
 
   @impl true
   def handle_info({:nodedown, down_node}, state) do
     Logger.info("Node #{down_node} went down, cleaning up connectors")
-    cleanup_connectors_for_node(down_node)
-    {:noreply, state}
+
+    # Remove runtime entries for the down node
+    {removed, kept} =
+      Enum.split_with(state.runtime_state, fn {_id, entry} -> entry.node == down_node end)
+
+    Enum.each(removed, fn {id, _entry} ->
+      case get_connector(id) do
+        {:ok, connector} ->
+          connector
+          |> Ash.Changeset.for_update(:set_offline, %{})
+          |> Ash.update()
+
+        _ ->
+          :ok
+      end
+    end)
+
+    {:noreply, %{state | runtime_state: Map.new(kept)}}
   end
 
   @impl true
@@ -337,44 +500,29 @@ defmodule Sensocto.Sensors.ConnectorManager do
     end
   end
 
-  defp list_local_connectors do
-    Connector
-    |> Ash.read!()
+  defp list_connectors do
+    Connector |> Ash.read!()
   end
 
-  defp cleanup_connector_by_pid(pid) do
-    # Find and remove connector with this pid
-    list_local_connectors()
-    |> Enum.find(fn c -> c.pid == pid end)
-    |> case do
-      nil ->
-        :ok
-
-      connector ->
-        Logger.debug("Cleaning up connector #{connector.id} (process died)")
-        Ash.destroy(connector)
-        broadcast_event(:connector_unregistered, %{id: connector.id, node: node()})
-    end
-  end
-
-  defp cleanup_connectors_for_node(down_node) do
-    # Remove all connectors that were on the down node
-    list_local_connectors()
-    |> Enum.filter(fn c -> c.node == down_node end)
-    |> Enum.each(fn connector ->
-      Logger.debug("Cleaning up connector #{connector.id} (node down: #{down_node})")
-      Ash.destroy(connector)
-    end)
+  defp find_connector_by_ref(runtime_state, ref) do
+    Enum.find(runtime_state, fn {_id, entry} -> entry.monitor_ref == ref end)
   end
 
   defp broadcast_event(event, data) do
     Phoenix.PubSub.broadcast(@pubsub, @pubsub_topic, {:connector_event, event, data})
   end
 
+  @doc false
+  def broadcast_user_event(user_id, event, data) do
+    Phoenix.PubSub.broadcast(
+      @pubsub,
+      "user:#{user_id}:connectors",
+      {:connector_event, event, data}
+    )
+  end
+
   defp handle_remote_event(:connector_registered, connector, _state) do
-    # Another node registered a connector - we might want to cache it locally
-    # For now, just log it
-    Logger.debug("Remote connector registered: #{connector.id} on #{connector.node}")
+    Logger.debug("Remote connector registered: #{connector.id}")
   end
 
   defp handle_remote_event(:connector_unregistered, %{id: id, node: remote_node}, _state) do

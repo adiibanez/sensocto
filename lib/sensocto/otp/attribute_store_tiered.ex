@@ -19,10 +19,11 @@ defmodule Sensocto.AttributeStoreTiered do
 
   ## Memory Budget
 
-  With default limits (500 hot + 10,000 warm = 10,500 per attribute):
-  - 1000 sensors × 5 attributes × 10,500 entries × 200 bytes ≈ 10 GB
-
-  Adjust @hot_limit and @warm_limit based on available memory.
+  Type-specific limits keep memory proportional to visualization needs:
+  - Waveform (ecg/respiration): 500 hot + 1,000 warm = 1,500/attr
+  - Scalar (battery/button/etc): 20 hot + 0 warm = 20/attr
+  - Realtime (skeleton/pose): 1 hot + 0 warm = 1/attr
+  - 1000 sensors × 5 mixed attrs × ~500 avg entries × 200 bytes ≈ 500 MB
 
   ## Usage
 
@@ -31,13 +32,13 @@ defmodule Sensocto.AttributeStoreTiered do
   require Logger
 
   # Tier limits - all in-memory (configurable via application env)
-  # These are the "relaxed" limits used when system is idle (~10min at 100Hz)
-  @default_hot_limit 1_000
-  @default_warm_limit 60_000
+  # Default is conservative; type-specific overrides below handle most attributes
+  @default_hot_limit 200
+  @default_warm_limit 500
   @default_query_limit 500
 
   # Adaptive limit multipliers based on system load
-  # Retention targets at 100Hz: normal=~10min, elevated=~5min, high=~2min, critical=~30sec
+  # Under pressure, warm tiers shrink aggressively (biggest memory consumer)
   @adaptive_limits %{
     normal: %{hot_mult: 1.0, warm_mult: 1.0},
     elevated: %{hot_mult: 0.8, warm_mult: 0.5},
@@ -45,7 +46,65 @@ defmodule Sensocto.AttributeStoreTiered do
     critical: %{hot_mult: 0.2, warm_mult: 0.05}
   }
 
-  # Type-specific limits for large payload types that only need recent data
+  # Type-specific storage limits based on actual visualization needs.
+  # Key insight: only persist what visualizations actually consume.
+  #
+  # Waveform types need history for composite views (seed data fetches up to 500)
+  @waveform_types %{
+    "ecg" => %{hot: 500, warm: 1_000},
+    "respiration" => %{hot: 500, warm: 1_000},
+    "hrv" => %{hot: 300, warm: 500},
+    "heartrate" => %{hot: 300, warm: 500},
+    "hr" => %{hot: 300, warm: 500}
+  }
+
+  # Eye tracking composite view needs moderate history
+  @eye_types %{
+    "eye_gaze" => %{hot: 200, warm: 300},
+    "eye_aperture" => %{hot: 200, warm: 300},
+    "eye_blink" => %{hot: 100, warm: 200},
+    "eye_worn" => %{hot: 50, warm: 0}
+  }
+
+  # Spatial types — need some trail for map/motion display
+  @spatial_types %{
+    "geolocation" => %{hot: 100, warm: 200},
+    "imu" => %{hot: 100, warm: 200},
+    "quaternion" => %{hot: 50, warm: 0},
+    "euler" => %{hot: 50, warm: 0},
+    "heading" => %{hot: 50, warm: 0},
+    "orientation" => %{hot: 50, warm: 0},
+    "accelerometer" => %{hot: 100, warm: 0},
+    "accelerometer_x" => %{hot: 100, warm: 0},
+    "accelerometer_y" => %{hot: 100, warm: 0},
+    "accelerometer_z" => %{hot: 100, warm: 0},
+    "gyroscope" => %{hot: 100, warm: 0}
+  }
+
+  # Scalar/event types — only need latest value(s), no warm store
+  @scalar_types [
+    "battery",
+    "button",
+    "temperature",
+    "humidity",
+    "pressure",
+    "gas",
+    "air_quality",
+    "steps",
+    "breathing_sync",
+    "hrv_sync",
+    "rsa_coherence",
+    "tap",
+    "led",
+    "speaker",
+    "microphone",
+    "color",
+    "body_location",
+    "rich_presence",
+    "spo2"
+  ]
+
+  # Large payload types — realtime only, discard immediately
   @realtime_only_types [
     "skeleton",
     "pose",
@@ -102,12 +161,41 @@ defmodule Sensocto.AttributeStoreTiered do
   defp hot_limit_for_type(attribute_type) when attribute_type in @realtime_only_types,
     do: @realtime_hot_limit
 
-  defp hot_limit_for_type(_), do: hot_limit()
+  defp hot_limit_for_type(attribute_type) when attribute_type in @scalar_types,
+    do: max(round(20 * adaptive_multiplier().hot_mult), 5)
+
+  defp hot_limit_for_type(attribute_type) do
+    mult = adaptive_multiplier()
+
+    base =
+      cond do
+        Map.has_key?(@waveform_types, attribute_type) -> @waveform_types[attribute_type].hot
+        Map.has_key?(@eye_types, attribute_type) -> @eye_types[attribute_type].hot
+        Map.has_key?(@spatial_types, attribute_type) -> @spatial_types[attribute_type].hot
+        true -> base_hot_limit()
+      end
+
+    max(round(base * mult.hot_mult), 10)
+  end
 
   defp warm_limit_for_type(attribute_type) when attribute_type in @realtime_only_types,
     do: @realtime_warm_limit
 
-  defp warm_limit_for_type(_), do: warm_limit()
+  defp warm_limit_for_type(attribute_type) when attribute_type in @scalar_types, do: 0
+
+  defp warm_limit_for_type(attribute_type) do
+    mult = adaptive_multiplier()
+
+    base =
+      cond do
+        Map.has_key?(@waveform_types, attribute_type) -> @waveform_types[attribute_type].warm
+        Map.has_key?(@eye_types, attribute_type) -> @eye_types[attribute_type].warm
+        Map.has_key?(@spatial_types, attribute_type) -> @spatial_types[attribute_type].warm
+        true -> base_warm_limit()
+      end
+
+    max(round(base * mult.warm_mult), 0)
+  end
 
   @doc """
   Starts a SensorStub process for supervisor compatibility.
@@ -391,12 +479,20 @@ defmodule Sensocto.AttributeStoreTiered do
 
   ## Private functions
 
+  @all_known_types Map.keys(@waveform_types) ++
+                     Map.keys(@eye_types) ++
+                     Map.keys(@spatial_types) ++
+                     @scalar_types ++
+                     @realtime_only_types
+
   defp infer_attribute_type(attribute_id) do
+    id_str = to_string(attribute_id)
+
     cond do
-      attribute_id in @realtime_only_types -> attribute_id
-      String.contains?(to_string(attribute_id), "skeleton") -> "skeleton"
-      String.contains?(to_string(attribute_id), "pose") -> "pose"
-      String.contains?(to_string(attribute_id), "depth") -> "depth_map"
+      id_str in @all_known_types -> id_str
+      String.contains?(id_str, "skeleton") -> "skeleton"
+      String.contains?(id_str, "pose") -> "pose"
+      String.contains?(id_str, "depth") -> "depth_map"
       true -> "default"
     end
   end

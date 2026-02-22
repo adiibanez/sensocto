@@ -33,6 +33,7 @@ defmodule SensoctoWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug SensoctoWeb.Plugs.ApiCookieAuth
     plug :load_from_bearer
   end
 
@@ -142,6 +143,10 @@ defmodule SensoctoWeb.Router do
       live "/lobby/favorites", LobbyLive, :favorites
       live "/lobby/users", LobbyLive, :users
       live "/lobby/graph", LobbyLive, :graph
+      live "/lobby/graph3d", LobbyLive, :graph3d
+      live "/lobby/hierarchy", LobbyLive, :hierarchy
+      # My Devices page (standalone)
+      live "/devices", DevicesLive, :index
       # Single sensor detail view (full-page, from lobby context)
       live "/lobby/sensors/:sensor_id", LobbyLive.SensorDetailLive, :show
       live "/lobby/sensors/:sensor_id/:lens", LobbyLive.SensorDetailLive, :lens
@@ -205,6 +210,7 @@ defmodule SensoctoWeb.Router do
     get "/auth/verify", MobileAuthController, :verify
     post "/auth/verify", MobileAuthController, :verify
     get "/me", MobileAuthController, :me
+    post "/auth/refresh", MobileAuthController, :refresh
   end
 
   # Debug endpoint - development only (exposes user IDs)
@@ -236,6 +242,12 @@ defmodule SensoctoWeb.Router do
 
     # POST /api/rooms/verify-ticket - verify and decode a ticket
     post "/rooms/verify-ticket", RoomTicketController, :verify
+
+    # Connector management API endpoints
+    get "/connectors", ConnectorController, :index
+    get "/connectors/:id", ConnectorController, :show
+    put "/connectors/:id", ConnectorController, :update
+    delete "/connectors/:id", ConnectorController, :delete
   end
 
   # Enable Swoosh mailbox preview in development only

@@ -485,6 +485,7 @@ defmodule Sensocto.Accounts.User do
 
   relationships do
     has_many :skills, Sensocto.Accounts.UserSkill
+    has_many :connectors, Sensocto.Sensors.Connector
   end
 
   identities do

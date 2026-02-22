@@ -400,6 +400,17 @@
               <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
             </.link>
             <.link
+              patch={~p"/lobby/hierarchy"}
+              role="tab"
+              aria-selected={to_string(@live_action == :hierarchy)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :hierarchy,
+              do: "bg-purple-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="rectangle-group" type="outline" class="h-3 w-3" /> Hierarchy
+            </.link>
+            <.link
               :if={@favorite_sensors != []}
               patch={~p"/lobby/favorites"}
               role="tab"
@@ -529,6 +540,17 @@
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
             >
               <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
+            </.link>
+            <.link
+              patch={~p"/lobby/graph3d"}
+              role="tab"
+              aria-selected={to_string(@live_action == :graph3d)}
+              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :graph3d,
+              do: "bg-blue-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="cube-transparent" type="outline" class="h-3 w-3" /> 3D Graph
             </.link>
           </nav>
 
@@ -919,6 +941,50 @@
         </div>
       </div>
 
+      <%!-- Hierarchy View: User > Connector > Sensor tree --%>
+      <div :if={@live_action == :hierarchy} class="p-4 space-y-3">
+        <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
+          <Heroicons.icon
+            name="rectangle-group"
+            type="outline"
+            class="h-12 w-12 mx-auto mb-4"
+          />
+          <p class="text-lg">No sensors connected</p>
+          <p class="text-sm mt-2">Connect sensors to see the hierarchy</p>
+        </div>
+
+        <div :for={user <- @sensors_by_user} class="bg-gray-800 rounded-lg border border-gray-700">
+          <details open class="group">
+            <summary class="flex items-center gap-3 p-3 cursor-pointer select-none hover:bg-gray-750">
+              <Heroicons.icon
+                name="chevron-right"
+                type="solid"
+                class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-90"
+              />
+              <Heroicons.icon name="user" type="solid" class="h-5 w-5 text-purple-400" />
+              <span class="text-white font-medium">{user.connector_name}</span>
+              <span class="text-xs text-gray-500">
+                {length(user.sensors)} sensor{if length(user.sensors) != 1,
+                  do: "s"}
+              </span>
+            </summary>
+
+            <div class="pl-8 pr-3 pb-3 space-y-2">
+              <div
+                :for={sensor <- user.sensors}
+                class="flex items-center gap-2 p-2 bg-gray-700/50 rounded"
+              >
+                <div class="w-2 h-2 rounded-full bg-green-500" />
+                <span class="text-sm text-gray-300">{sensor.sensor_name}</span>
+                <span :if={sensor[:sensor_type]} class="text-xs text-gray-500 ml-auto">
+                  {sensor[:sensor_type]}
+                </span>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
       <%!-- Graph Visualization --%>
       <div
         :if={@live_action == :graph}
@@ -938,8 +1004,35 @@
           socket={@socket}
           class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
         />
+      </div>
 
-        <%!-- MIDI Output Panel — below graph --%>
+      <%!-- 3D Graph Visualization --%>
+      <div
+        :if={@live_action == :graph3d}
+        id="lobby-graph3d-view"
+        phx-hook="CompositeMeasurementHandler"
+        class="p-4"
+      >
+        <.svelte
+          name="Composite3DGraph"
+          props={
+            %{
+              rooms: [],
+              users: @sensors_by_user,
+              sensors: enrich_sensors_with_attention(@sensors)
+            }
+          }
+          socket={@socket}
+          class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
+        />
+      </div>
+
+      <%!-- MIDI Output Panel — shared between graph and graph3d --%>
+      <div
+        :if={@live_action in [:graph, :graph3d]}
+        id="midi-output-wrapper"
+        class="px-4"
+      >
         <div
           id="midi-output-panel"
           phx-hook="MidiOutputHook"

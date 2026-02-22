@@ -173,11 +173,16 @@ defmodule Sensocto.ButtonStateVisualizationTest do
         assert Map.has_key?(batch_data, sensor_id)
         sensor_data = batch_data[sensor_id]
         assert Map.has_key?(sensor_data, "button")
-        button_measurement = sensor_data["button"]
+        button_data = sensor_data["button"]
+        # button_data may be a list of measurements or a single map
+        button_measurement =
+          if is_list(button_data), do: List.first(button_data), else: button_data
+
         assert button_measurement.event == "press"
       else
         # Verify buffer entry has event field
         [{_key, measurement}] = button_entries
+        measurement = if is_list(measurement), do: List.first(measurement), else: measurement
         assert measurement.event == "press"
         assert measurement.payload == "5"
       end
@@ -215,7 +220,11 @@ defmodule Sensocto.ButtonStateVisualizationTest do
             sensor_data = batch_data[sensor_id]
 
             if Map.has_key?(sensor_data, "button") do
-              button_measurement = sensor_data["button"]
+              button_data = sensor_data["button"]
+
+              button_measurement =
+                if is_list(button_data), do: List.last(button_data), else: button_data
+
               # Latest measurement should be release (overwrites press in buffer)
               assert button_measurement.event == "release"
             end

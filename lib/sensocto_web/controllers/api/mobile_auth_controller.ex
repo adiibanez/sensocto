@@ -57,6 +57,75 @@ defmodule SensoctoWeb.Api.MobileAuthController do
     ]
   )
 
+  operation(:refresh,
+    summary: "Refresh authentication token",
+    description: """
+    Issues a new JWT token using the current valid token.
+    Also sets an HttpOnly cookie with the new token for browser clients.
+    """,
+    responses: [
+      ok: {"New token issued", "application/json", Auth.VerifyResponse},
+      unauthorized: {"Invalid or expired token", "application/json", Common.Error}
+    ]
+  )
+
+  @doc """
+  POST /api/auth/refresh
+
+  Refreshes the current JWT token. Returns a new token and sets HttpOnly cookie.
+  """
+  def refresh(conn, _params) do
+    case conn.assigns[:current_user] do
+      nil ->
+        # Try manual token extraction
+        auth_header = Plug.Conn.get_req_header(conn, "authorization")
+
+        token =
+          case auth_header do
+            [header] -> extract_bearer_token(header)
+            _ -> nil
+          end
+
+        case token && verify_token_and_load_user(token) do
+          {:ok, user} ->
+            issue_refreshed_token(conn, user)
+
+          _ ->
+            conn
+            |> put_status(:unauthorized)
+            |> json(%{ok: false, error: "Invalid or expired token"})
+        end
+
+      user ->
+        issue_refreshed_token(conn, user)
+    end
+  end
+
+  defp issue_refreshed_token(conn, user) do
+    case AshAuthentication.Jwt.token_for_user(user) do
+      {:ok, token, _claims} ->
+        conn
+        |> SensoctoWeb.Plugs.ApiCookieAuth.set_token_cookie(token)
+        |> put_status(:ok)
+        |> json(%{
+          ok: true,
+          token: token,
+          user: %{
+            id: user.id,
+            email: user.email,
+            display_name: Map.get(user, :display_name) || user.email
+          }
+        })
+
+      {:error, reason} ->
+        Logger.warning("Token refresh failed: #{inspect(reason)}")
+
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{ok: false, error: "Failed to issue new token"})
+    end
+  end
+
   # Catch any crashes and return a proper error
   def call(conn, opts) do
     super(conn, opts)

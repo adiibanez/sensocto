@@ -310,6 +310,8 @@ defmodule SensoctoWeb.LobbyLive do
   defp lens_page_title(:skeleton), do: "Skeleton"
   defp lens_page_title(:gaze), do: "Gaze"
   defp lens_page_title(:graph), do: "Graph"
+  defp lens_page_title(:graph3d), do: "3D Graph"
+  defp lens_page_title(:hierarchy), do: "Hierarchy"
   defp lens_page_title(_), do: "Lobby"
 
   # Set focused sensor for PriorityLens based on current live_action
@@ -336,7 +338,7 @@ defmodule SensoctoWeb.LobbyLive do
           Sensocto.Lenses.PriorityLens.set_focused_sensor(socket.id, nil)
           Sensocto.Lenses.PriorityLens.set_quality(socket.id, :medium)
 
-        :graph ->
+        action when action in [:graph, :graph3d] ->
           # Graph only needs activity indicators, not waveform data.
           # Medium quality (50ms flush) saves ~40% PriorityLens load per viewer
           # vs high (32ms flush) with no visible difference in pulsation.
@@ -370,7 +372,8 @@ defmodule SensoctoWeb.LobbyLive do
               :respiration,
               :hrv,
               :gaze,
-              :graph
+              :graph,
+              :graph3d
             ] do
     viewer_id = socket.id
 
@@ -385,14 +388,14 @@ defmodule SensoctoWeb.LobbyLive do
         :respiration -> Enum.map(socket.assigns.respiration_sensors, & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns.hrv_sensors, & &1.sensor_id)
         :gaze -> Enum.map(socket.assigns.gaze_sensors, & &1.sensor_id)
-        :graph -> socket.assigns.sensor_ids
+        action when action in [:graph, :graph3d] -> socket.assigns.sensor_ids
       end
 
     attr_key = "composite_#{action}"
 
     # Use bulk registration for graph (all sensors) to avoid thundering herd.
     # Single cast vs N individual casts — critical when N > 50 sensors.
-    if action == :graph do
+    if action in [:graph, :graph3d] do
       Sensocto.AttentionTracker.register_views_bulk(sensor_ids, attr_key, viewer_id)
     else
       Enum.each(sensor_ids, fn sensor_id ->
@@ -1205,7 +1208,7 @@ defmodule SensoctoWeb.LobbyLive do
             socket = process_lens_batch_for_composite(socket, batch_data, action)
             {:noreply, socket}
 
-          :graph ->
+          action when action in [:graph, :graph3d] ->
             socket = process_lens_batch_for_graph(socket, batch_data)
             {:noreply, socket}
 
@@ -1797,7 +1800,7 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_info({:attention_changed, %{sensor_id: sensor_id, level: level}}, socket) do
     # Push attention changes to graph view for attention radar mode
     socket =
-      if socket.assigns.live_action == :graph do
+      if socket.assigns.live_action in [:graph, :graph3d] do
         push_event(socket, "attention_changed", %{
           sensor_id: sensor_id,
           level: to_string(level)
@@ -2870,7 +2873,7 @@ defmodule SensoctoWeb.LobbyLive do
         :respiration -> Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
         :hrv -> Enum.map(socket.assigns[:hrv_sensors] || [], & &1.sensor_id)
         :gaze -> Enum.map(socket.assigns[:gaze_sensors] || [], & &1.sensor_id)
-        :graph -> socket.assigns.sensor_ids
+        action when action in [:graph, :graph3d] -> socket.assigns.sensor_ids
         _ -> []
       end
 
@@ -2878,7 +2881,7 @@ defmodule SensoctoWeb.LobbyLive do
       attr_key = "composite_#{action}"
 
       # Use bulk unregistration for graph to match bulk registration
-      if action == :graph do
+      if action in [:graph, :graph3d] do
         Sensocto.AttentionTracker.unregister_views_bulk(sensor_ids, attr_key, viewer_id)
       else
         Enum.each(sensor_ids, fn sensor_id ->

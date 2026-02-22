@@ -169,32 +169,24 @@ defmodule Sensocto.Simulator.AttributeServer do
     {:noreply, %{state | paused: false}}
   end
 
-  # Process queue when empty - fetch more data
-  @impl true
-  def handle_cast(:process_queue, %{messages_queue: [], paused: false} = state) do
-    Process.send_after(self(), :get_data, 0)
-    {:noreply, state}
+  # Process queue — called directly or via :process_queue message
+  defp do_process_queue(%{paused: true} = state), do: state
+
+  defp do_process_queue(%{messages_queue: [], paused: false} = state) do
+    # Generate data inline — no DataServer bottleneck
+    {:ok, data} = Sensocto.Simulator.DataGenerator.fetch_sensor_data(state.config)
+    %{state | messages_queue: data} |> do_process_queue()
   end
 
-  # Process queue with messages
-  @impl true
-  def handle_cast(:process_queue, %{messages_queue: [head | tail], paused: false} = state) do
-    Process.send_after(self(), {:push_message, head}, 0)
-    {:noreply, %{state | messages_queue: tail}}
+  defp do_process_queue(%{messages_queue: [head | tail], paused: false} = state) do
+    state = %{state | messages_queue: tail}
+    do_push_message(head, state)
   end
 
-  @impl true
-  def handle_cast(:process_queue, %{paused: true} = state), do: {:noreply, state}
-
-  # Push message to batch
-  # Applies backpressure by adjusting delay based on attention level
-  @impl true
-  def handle_cast({:push_message, message}, state) do
+  # Push message to batch — applies backpressure delay
+  defp do_push_message(message, state) do
     {delay_s, _} = Float.parse("#{message.delay}")
     base_delay_ms = round(delay_s * 1000.0)
-
-    # Apply backpressure: multiply delay by attention-based factor
-    # This slows down data generation when no one is watching
     effective_delay_ms = apply_backpressure_delay(base_delay_ms, state.attention_level)
 
     timestamp = :os.system_time(:millisecond)
@@ -207,20 +199,19 @@ defmodule Sensocto.Simulator.AttributeServer do
     Process.send_after(self(), :process_queue, effective_delay_ms)
 
     if length(new_batch) >= batch_size do
-      GenServer.cast(self(), {:push_batch, new_batch})
-      {:noreply, %{state | batch_push_messages: []}}
+      do_push_batch(new_batch, %{state | batch_push_messages: []})
     else
-      {:noreply, %{state | batch_push_messages: new_batch}}
+      %{state | batch_push_messages: new_batch}
     end
   end
 
   # Push batch to sensor
-  # Note: Uses attribute_id_str (string) for consistency with SimpleSensor/AttributeStore
-  @impl true
-  def handle_cast({:push_batch, messages}, state) when length(messages) > 0 do
+  defp do_push_batch([], state), do: state
+
+  defp do_push_batch(messages, state) do
     cond do
       state.paused ->
-        {:noreply, state}
+        state
 
       not is_pid(state.sensor_pid) ->
         Logger.warning(
@@ -228,7 +219,7 @@ defmodule Sensocto.Simulator.AttributeServer do
             "no sensor_pid, terminating"
         )
 
-        {:stop, :no_sensor_pid, state}
+        throw({:stop, :no_sensor_pid, state})
 
       not Process.alive?(state.sensor_pid) ->
         Logger.warning(
@@ -236,7 +227,7 @@ defmodule Sensocto.Simulator.AttributeServer do
             "sensor_pid is dead, terminating"
         )
 
-        {:stop, :sensor_dead, state}
+        throw({:stop, :sensor_dead, state})
 
       true ->
         push_messages =
@@ -249,46 +240,17 @@ defmodule Sensocto.Simulator.AttributeServer do
           end)
 
         send(state.sensor_pid, {:push_batch, state.attribute_id_str, push_messages})
-        {:noreply, state}
+        state
     end
   end
 
   @impl true
-  def handle_cast({:push_batch, _}, state), do: {:noreply, state}
-
-  # Fetch data from data server
-  @impl true
-  def handle_info(:get_data, state) do
-    worker_id = :rand.uniform(5)
-    worker_name = :"sim_data_server_#{worker_id}"
-
-    send(worker_name, {:get_data, self(), state.config})
-    {:noreply, state}
-  end
-
-  # Receive data from data server
-  @impl true
-  def handle_info({:get_data_result, data}, state) do
-    Logger.debug(
-      "#{state.connector_id}/#{state.sensor_id}/#{state.attribute_id} got #{length(data)} data points"
-    )
-
-    new_queue = state.messages_queue ++ data
-    Process.send_after(self(), :process_queue, 0)
-
-    {:noreply, %{state | messages_queue: new_queue}}
-  end
-
-  @impl true
   def handle_info(:process_queue, state) do
-    GenServer.cast(self(), :process_queue)
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:push_message, message}, state) do
-    GenServer.cast(self(), {:push_message, message})
-    {:noreply, state}
+    try do
+      {:noreply, do_process_queue(state)}
+    catch
+      {:stop, reason, state} -> {:stop, reason, state}
+    end
   end
 
   # Batch window timeout - push whatever is in the batch
@@ -298,12 +260,16 @@ defmodule Sensocto.Simulator.AttributeServer do
         %{batch_push_messages: messages, current_batch_window: batch_window} = state
       ) do
     batch_timer_ref = Process.send_after(self(), :batch_window, batch_window)
+    state = %{state | batch_timer_ref: batch_timer_ref}
 
     if length(messages) > 0 do
-      GenServer.cast(self(), {:push_batch, messages})
-      {:noreply, %{state | batch_push_messages: [], batch_timer_ref: batch_timer_ref}}
+      try do
+        {:noreply, do_push_batch(messages, %{state | batch_push_messages: []})}
+      catch
+        {:stop, reason, state} -> {:stop, reason, state}
+      end
     else
-      {:noreply, %{state | batch_timer_ref: batch_timer_ref}}
+      {:noreply, state}
     end
   end
 
@@ -317,12 +283,6 @@ defmodule Sensocto.Simulator.AttributeServer do
     new_batch_window =
       AttentionTracker.calculate_batch_window(state.base_batch_window, sensor_id, attr_id)
 
-    if new_level != state.attention_level do
-      Logger.debug(
-        "AttributeServer #{sensor_id}/#{attr_id} attention changed: #{state.attention_level} -> #{new_level}, batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms"
-      )
-    end
-
     state = maybe_reschedule_batch_timer(state, new_batch_window)
     {:noreply, %{state | attention_level: new_level, current_batch_window: new_batch_window}}
   end
@@ -330,10 +290,9 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Handle sensor-level attention changes (for pinning)
   @impl true
   def handle_info(
-        {:attention_changed, %{sensor_id: sensor_id, level: new_level}},
+        {:attention_changed, %{sensor_id: sensor_id, level: _new_level}},
         %{sensor_id: sensor_id} = state
       ) do
-    # Recalculate based on attribute-specific attention (which considers sensor pins)
     new_batch_window =
       AttentionTracker.calculate_batch_window(
         state.base_batch_window,
@@ -342,12 +301,6 @@ defmodule Sensocto.Simulator.AttributeServer do
       )
 
     new_attention = AttentionTracker.get_attention_level(sensor_id, state.attribute_id_str)
-
-    if new_attention != state.attention_level do
-      Logger.debug(
-        "AttributeServer #{sensor_id}/#{state.attribute_id_str} sensor attention changed to #{new_level}, effective: #{new_attention}, batch_window: #{new_batch_window}ms"
-      )
-    end
 
     state = maybe_reschedule_batch_timer(state, new_batch_window)
     {:noreply, %{state | attention_level: new_attention, current_batch_window: new_batch_window}}
@@ -389,25 +342,15 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Handle system load changes from SystemLoadMonitor
   @impl true
   def handle_info(
-        {:system_load_changed, %{level: new_level, multiplier: _multiplier} = load_info},
+        {:system_load_changed, %{level: new_level, multiplier: _multiplier}},
         state
       ) do
-    # Recalculate batch window with new system load
     new_batch_window =
       AttentionTracker.calculate_batch_window(
         state.base_batch_window,
         state.sensor_id,
         state.attribute_id_str
       )
-
-    if new_level != state.system_load_level do
-      Logger.debug(
-        "AttributeServer #{state.sensor_id}/#{state.attribute_id_str} system load changed: " <>
-          "#{state.system_load_level} -> #{new_level}, " <>
-          "batch_window: #{state.current_batch_window}ms -> #{new_batch_window}ms " <>
-          "(scheduler: #{Float.round(load_info.scheduler_utilization * 100, 1)}%)"
-      )
-    end
 
     state = maybe_reschedule_batch_timer(state, new_batch_window)
     {:noreply, %{state | system_load_level: new_level, current_batch_window: new_batch_window}}

@@ -8,10 +8,47 @@ defmodule SensoctoWeb.Api.RoomController do
   - GET /api/rooms/:id - get room details
   """
   use SensoctoWeb, :controller
+  use OpenApiSpex.ControllerSpecs
   require Logger
 
   alias Sensocto.Rooms
   alias Sensocto.RoomStore
+  alias SensoctoWeb.Schemas.{Common, Room}
+
+  tags(["Rooms"])
+  security([%{"bearerAuth" => []}])
+
+  operation(:index,
+    summary: "List user's rooms",
+    description: "Lists all rooms the authenticated user is a member of.",
+    responses: [
+      ok: {"List of rooms", "application/json", Room.RoomListResponse},
+      unauthorized: {"Invalid or missing token", "application/json", Common.Error}
+    ]
+  )
+
+  operation(:public,
+    summary: "List public rooms",
+    description: "Lists all public rooms available on the platform.",
+    responses: [
+      ok: {"List of public rooms", "application/json", Room.RoomListResponse},
+      unauthorized: {"Invalid or missing token", "application/json", Common.Error}
+    ]
+  )
+
+  operation(:show,
+    summary: "Get room details",
+    description: "Gets details for a specific room. Requires authentication and room membership.",
+    parameters: [
+      id: [in: :path, description: "Room UUID", type: :string, required: true]
+    ],
+    responses: [
+      ok: {"Room details", "application/json", Room.RoomResponse},
+      unauthorized: {"Invalid or missing token", "application/json", Common.Error},
+      forbidden: {"Not a member of this room", "application/json", Common.Error},
+      not_found: {"Room not found", "application/json", Common.Error}
+    ]
+  )
 
   @doc """
   GET /api/rooms

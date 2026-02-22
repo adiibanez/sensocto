@@ -9,6 +9,7 @@ defmodule Sensocto.Bio.Supervisor do
   - ResourceArbiter (Lateral Inhibition)
   - CircadianScheduler (SCN)
   - SyncComputer (Phase Synchronization)
+  - CorrelationTracker (Hebbian Learning)
   """
 
   use Supervisor
@@ -20,6 +21,7 @@ defmodule Sensocto.Bio.Supervisor do
   @impl true
   def init(_opts) do
     children = [
+      Sensocto.Bio.CorrelationTracker,
       Sensocto.Bio.NoveltyDetector,
       Sensocto.Bio.PredictiveLoadBalancer,
       Sensocto.Bio.HomeostaticTuner,

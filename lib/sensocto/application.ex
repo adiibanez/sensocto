@@ -82,6 +82,10 @@ defmodule Sensocto.Application do
       # But Bio.Supervisor is independent - it observes, doesn't control
       Sensocto.Bio.Supervisor,
 
+      # Layer 4b: Session state (CRDT per-user session sync)
+      {Registry, keys: :unique, name: Sensocto.Session.Registry},
+      Sensocto.Session.Supervisor,
+
       # Layer 5: Domain logic and dynamic process management
       # Depends on registries (Layer 2) and storage (Layer 3)
       Sensocto.Domain.Supervisor,

@@ -43,7 +43,8 @@ defmodule Sensocto.Simulator.SensorServer do
     # Trap exits so terminate/2 is called when process is stopped
     Process.flag(:trap_exit, true)
 
-    {:ok, supervisor} = DynamicSupervisor.start_link(strategy: :one_for_one)
+    {:ok, supervisor} =
+      DynamicSupervisor.start_link(strategy: :one_for_one, max_restarts: 10, max_seconds: 5)
 
     state = %State{
       sensor_id: config.sensor_id,
@@ -151,11 +152,13 @@ defmodule Sensocto.Simulator.SensorServer do
   end
 
   @impl true
-  def handle_info({:push_batch, attribute_id, messages}, state) do
-    Logger.debug(
-      "Pushing batch of #{length(messages)} messages for #{state.sensor_id}/#{attribute_id}"
-    )
+  def handle_info({:push_batch, _attribute_id, _messages}, %{real_sensor_started: false} = state) do
+    Logger.warning("Real sensor not started yet for #{state.sensor_id}")
+    {:noreply, state}
+  end
 
+  @impl true
+  def handle_info({:push_batch, attribute_id, messages}, state) do
     # Convert messages to format expected by SimpleSensor
     formatted_messages =
       Enum.map(messages, fn msg ->
@@ -166,25 +169,8 @@ defmodule Sensocto.Simulator.SensorServer do
         }
       end)
 
-    cond do
-      not state.real_sensor_started ->
-        Logger.warning("Real sensor not started yet for #{state.sensor_id}")
-        {:noreply, state}
-
-      not SimpleSensor.alive?(state.sensor_id) ->
-        # SimpleSensor is dead - log warning and attempt to re-create it
-        Logger.warning(
-          "SensorServer #{state.sensor_id}: SimpleSensor is not alive, scheduling restart"
-        )
-
-        # Mark as not started and schedule recreation
-        Process.send_after(self(), :recreate_simple_sensor, 1_000)
-        {:noreply, %{state | real_sensor_started: false}}
-
-      true ->
-        SimpleSensor.put_batch_attributes(state.sensor_id, formatted_messages)
-        {:noreply, state}
-    end
+    SimpleSensor.put_batch_attributes(state.sensor_id, formatted_messages)
+    {:noreply, state}
   end
 
   @impl true
@@ -288,8 +274,7 @@ defmodule Sensocto.Simulator.SensorServer do
 
   # Catch-all for any unexpected messages
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("SensorServer #{state.sensor_id}: Ignoring unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

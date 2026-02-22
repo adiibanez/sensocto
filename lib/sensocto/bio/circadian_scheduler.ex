@@ -24,10 +24,14 @@ defmodule Sensocto.Bio.CircadianScheduler do
 
   @phase_check_interval :timer.minutes(10)
   @profile_learning_interval :timer.hours(6)
+  # Basic Rest-Activity Cycle: ~90 minute ultradian rhythm
+  @ultradian_period_minutes 90
+  @ultradian_amplitude 0.08
 
   defstruct hourly_profile: %{},
             current_phase: :unknown,
             phase_adjustment: 1.0,
+            ultradian_adjustment: 1.0,
             load_history: []
 
   # ============================================================================
@@ -39,13 +43,17 @@ defmodule Sensocto.Bio.CircadianScheduler do
   end
 
   @doc """
-  Get current circadian phase adjustment.
+  Get current circadian phase adjustment (includes ultradian modulation).
   """
   def get_phase_adjustment do
-    case :ets.lookup(:bio_circadian_state, :adjustment) do
-      [{_, adj}] -> adj
-      [] -> 1.0
-    end
+    base =
+      case :ets.lookup(:bio_circadian_state, :adjustment) do
+        [{_, adj}] -> adj
+        [] -> 1.0
+      end
+
+    ultradian = ultradian_modulation()
+    base * ultradian
   rescue
     ArgumentError -> 1.0
   end
@@ -60,6 +68,22 @@ defmodule Sensocto.Bio.CircadianScheduler do
     end
   rescue
     ArgumentError -> :unknown
+  end
+
+  @doc """
+  Get current ultradian rhythm modulation factor.
+
+  Models the ~90-minute Basic Rest-Activity Cycle (BRAC) that modulates
+  alertness and cognitive performance within the day.
+  Returns a value oscillating around 1.0 with amplitude @ultradian_amplitude.
+  """
+  def ultradian_modulation do
+    now = DateTime.utc_now()
+    minutes_since_midnight = now.hour * 60 + now.minute
+
+    # Sine wave with ~90 minute period
+    phase = 2 * :math.pi() * minutes_since_midnight / @ultradian_period_minutes
+    1.0 + @ultradian_amplitude * :math.sin(phase)
   end
 
   @doc """

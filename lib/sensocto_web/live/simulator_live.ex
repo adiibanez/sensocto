@@ -24,6 +24,7 @@ defmodule SensoctoWeb.SimulatorLive do
      |> assign(:current_path, "/simulator")
      |> assign(:selected_scenario, nil)
      |> assign(:selected_room_id, nil)
+     |> assign(:show_start_modal, nil)
      |> assign_status()
      |> assign_rooms()}
   end
@@ -105,8 +106,27 @@ defmodule SensoctoWeb.SimulatorLive do
 
   @impl true
   def handle_event("select_scenario", %{"scenario" => scenario_name}, socket) do
-    # Just select the scenario without starting it
-    {:noreply, assign(socket, :selected_scenario, scenario_name)}
+    if Map.has_key?(socket.assigns.running_scenarios, scenario_name) do
+      # Running scenario → stop it directly
+      handle_event("stop_scenario", %{"scenario" => scenario_name}, socket)
+    else
+      # Not running → open start modal
+      {:noreply,
+       socket
+       |> assign(:selected_scenario, scenario_name)
+       |> assign(:show_start_modal, scenario_name)}
+    end
+  end
+
+  @impl true
+  def handle_event("noop", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("close_start_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_start_modal, nil)
+     |> assign(:selected_scenario, nil)}
   end
 
   @impl true
@@ -129,6 +149,7 @@ defmodule SensoctoWeb.SimulatorLive do
            socket
            |> put_flash(:info, "Started scenario: #{scenario_name}#{room_info}")
            |> assign(:selected_scenario, nil)
+           |> assign(:show_start_modal, nil)
            |> assign_status()}
 
         {:error, :already_running} ->
@@ -235,17 +256,8 @@ defmodule SensoctoWeb.SimulatorLive do
     ~H"""
     <div class="min-h-screen bg-gray-900 text-white p-6">
       <div class="max-w-6xl mx-auto">
-        <div class="flex items-center justify-between mb-8">
+        <div class="mb-8">
           <h1 class="text-3xl font-bold text-orange-400">Simulator Control</h1>
-          <div class="flex items-center gap-3">
-            <span class={[
-              "px-3 py-1 rounded-full text-sm font-medium",
-              @running_count > 0 && "bg-green-600",
-              @running_count == 0 && "bg-gray-600"
-            ]}>
-              {if @running_count > 0, do: "#{@running_count} Running", else: "Stopped"}
-            </span>
-          </div>
         </div>
 
         <%= if @startup_phase != :ready do %>
@@ -269,248 +281,137 @@ defmodule SensoctoWeb.SimulatorLive do
             </span>
           </div>
         <% end %>
-        
-    <!-- Running Scenarios -->
-        <%= if map_size(@running_scenarios) > 0 do %>
-          <div class="bg-gray-800 rounded-lg p-6 mb-6">
-            <h2 class="text-xl font-semibold text-orange-300 mb-4">Running Scenarios</h2>
-            <div class="grid gap-3">
-              <%= for {scenario_name, info} <- @running_scenarios do %>
-                <div class="bg-gray-700 rounded-lg p-4 flex items-center justify-between">
-                  <div>
-                    <h3 class="text-lg font-medium text-white capitalize">
-                      {String.replace(scenario_name, "_", " ")}
-                    </h3>
-                    <div class="flex items-center gap-4 mt-1 text-sm text-gray-400">
-                      <span>{length(info.connector_ids)} connectors</span>
-                      <%= if info.room_name do %>
-                        <span class="flex items-center gap-1">
-                          <span class="text-blue-400">Room:</span>
-                          <span class="text-blue-300">{info.room_name}</span>
-                        </span>
-                      <% else %>
-                        <span class="text-gray-500">No room assigned</span>
+
+        <%= if length(@scenarios) > 0 do %>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <%= for scenario <- @scenarios do %>
+              <% is_running = Map.has_key?(@running_scenarios, scenario.name) %>
+              <% running_info = Map.get(@running_scenarios, scenario.name) %>
+              <div
+                class={[
+                  "rounded-lg p-4 border-2 cursor-pointer transition-all",
+                  is_running && "border-green-500 bg-gray-700 hover:border-red-400",
+                  !is_running && "border-gray-600 bg-gray-700/50 hover:border-orange-400"
+                ]}
+                phx-click="select_scenario"
+                phx-value-scenario={scenario.name}
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-lg font-medium text-white capitalize">
+                    {String.replace(scenario.name, "_", " ")}
+                  </h3>
+                  <%= if is_running do %>
+                    <span class="px-2 py-1 bg-green-600 rounded text-xs font-medium">
+                      Running
+                    </span>
+                  <% end %>
+                </div>
+                <p class="text-sm text-gray-300 mb-2">{scenario.description}</p>
+                <div class="flex gap-4 text-xs text-gray-400">
+                  <span>{scenario.sensor_count} sensors</span>
+                  <span>{scenario.attribute_count} attributes</span>
+                </div>
+                <%= if is_running && running_info do %>
+                  <div class="mt-3 pt-3 border-t border-gray-600 flex items-center justify-between">
+                    <div class="text-xs text-gray-400">
+                      <span>{length(running_info.connector_ids)} connectors</span>
+                      <%= if running_info.room_name do %>
+                        <span class="ml-2 text-blue-400">Room: {running_info.room_name}</span>
                       <% end %>
                     </div>
+                    <button
+                      phx-click="stop_scenario"
+                      phx-value-scenario={scenario.name}
+                      class="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs font-medium transition-colors"
+                    >
+                      Stop
+                    </button>
                   </div>
-                  <button
-                    phx-click="stop_scenario"
-                    phx-value-scenario={scenario_name}
-                    class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Stop
-                  </button>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        <% end %>
-        
-    <!-- Scenario Selection -->
-        <div class="bg-gray-800 rounded-lg p-6 mb-6">
-          <div class="flex flex-col gap-4 mb-4">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h2 class="text-xl font-semibold text-orange-300">Available Scenarios</h2>
-                <p class="text-sm text-gray-400 mt-1">
-                  Select a scenario and optionally assign sensors to a room. You can run multiple scenarios simultaneously.
-                </p>
+                <% end %>
               </div>
-              <form
-                phx-change="select_room"
-                phx-submit="start_scenario"
-                class="flex flex-wrap items-center gap-3"
+            <% end %>
+          </div>
+        <% else %>
+          <p class="text-gray-400">No scenarios found in config/simulator_scenarios/</p>
+        <% end %>
+      </div>
+    </div>
+
+    <%= if @show_start_modal do %>
+      <% modal_scenario = Enum.find(@scenarios, &(&1.name == @show_start_modal)) %>
+      <%= if modal_scenario do %>
+        <div
+          class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          phx-click="close_start_modal"
+          phx-window-keydown="close_start_modal"
+          phx-key="Escape"
+        >
+          <div
+            class="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-md w-full shadow-2xl"
+            phx-click="noop"
+          >
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-semibold text-white capitalize">
+                {String.replace(modal_scenario.name, "_", " ")}
+              </h3>
+              <button
+                phx-click="close_start_modal"
+                class="text-gray-400 hover:text-white transition-colors"
               >
-                <div class="flex items-center gap-2">
-                  <label class="text-sm text-gray-400">Room:</label>
-                  <select
-                    name="room_id"
-                    class="bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-orange-500 focus:border-orange-500"
-                  >
-                    <option value="">No Room</option>
-                    <%= for room <- @rooms do %>
-                      <option value={room.id} selected={@selected_room_id == room.id}>
-                        {room.name}
-                      </option>
-                    <% end %>
-                  </select>
-                </div>
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <p class="text-sm text-gray-300 mb-4">{modal_scenario.description}</p>
+
+            <div class="flex gap-4 text-sm text-gray-400 mb-6">
+              <span>{modal_scenario.sensor_count} sensors</span>
+              <span>{modal_scenario.attribute_count} attributes</span>
+            </div>
+
+            <form phx-submit="start_scenario" phx-change="select_room">
+              <div class="mb-4">
+                <label class="block text-sm text-gray-400 mb-2">Assign to Room (optional)</label>
+                <select
+                  name="room_id"
+                  class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="">No Room</option>
+                  <%= for room <- @rooms do %>
+                    <option value={room.id} selected={@selected_room_id == room.id}>
+                      {room.name}
+                    </option>
+                  <% end %>
+                </select>
+              </div>
+
+              <div class="flex gap-3">
                 <button
                   type="submit"
-                  disabled={is_nil(@selected_scenario)}
-                  class={[
-                    "px-4 py-2 rounded-lg transition-colors font-medium whitespace-nowrap",
-                    @selected_scenario && "bg-green-600 hover:bg-green-700 cursor-pointer",
-                    is_nil(@selected_scenario) && "bg-gray-600 cursor-not-allowed opacity-50"
-                  ]}
+                  class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors"
                 >
                   Start Scenario
                 </button>
-              </form>
-            </div>
-          </div>
-
-          <%= if length(@scenarios) > 0 do %>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <%= for scenario <- @scenarios do %>
-                <% is_running = Map.has_key?(@running_scenarios, scenario.name) %>
-                <% running_info = Map.get(@running_scenarios, scenario.name) %>
-                <div
-                  class={[
-                    "rounded-lg p-4 border-2 cursor-pointer transition-all hover:border-orange-400",
-                    is_running && "border-green-500 bg-gray-700",
-                    @selected_scenario == scenario.name && !is_running &&
-                      "border-orange-500 bg-gray-700",
-                    @selected_scenario != scenario.name && !is_running &&
-                      "border-gray-600 bg-gray-700/50"
-                  ]}
-                  phx-click="select_scenario"
-                  phx-value-scenario={scenario.name}
+                <button
+                  type="button"
+                  phx-click="close_start_modal"
+                  class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg font-medium transition-colors"
                 >
-                  <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-lg font-medium text-white capitalize">
-                      {String.replace(scenario.name, "_", " ")}
-                    </h3>
-                    <div class="flex gap-1">
-                      <%= if @selected_scenario == scenario.name && !is_running do %>
-                        <span class="px-2 py-1 bg-orange rounded text-xs font-medium">Selected</span>
-                      <% end %>
-                      <%= if is_running do %>
-                        <span class="px-2 py-1 bg-green-600 rounded text-xs font-medium">
-                          Running
-                        </span>
-                      <% end %>
-                    </div>
-                  </div>
-                  <p class="text-sm text-gray-300 mb-2">{scenario.description}</p>
-                  <div class="flex gap-4 text-xs text-gray-400">
-                    <span>{scenario.sensor_count} sensors</span>
-                    <span>{scenario.attribute_count} attributes</span>
-                  </div>
-                  <%= if is_running && running_info && running_info.room_name do %>
-                    <div class="mt-2 text-xs text-blue-400">
-                      Room: {running_info.room_name}
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          <% else %>
-            <p class="text-gray-400">No scenarios found in config/simulator_scenarios/</p>
-          <% end %>
-        </div>
-
-        <div class="mb-6 flex gap-4">
-          <button
-            phx-click="reload_config"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-          >
-            Reload Config
-          </button>
-          <button
-            phx-click="start_all"
-            class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-          >
-            Start All
-          </button>
-          <button
-            phx-click="stop_all"
-            class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-          >
-            Stop All
-          </button>
-        </div>
-
-        <div class="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 class="text-xl font-semibold mb-4 text-orange-300">Connectors</h2>
-
-          <%= if map_size(@connectors) == 0 do %>
-            <p class="text-gray-400">No connectors configured. Start a scenario above.</p>
-          <% else %>
-            <div class="grid gap-4">
-              <%= for {connector_id, connector} <- @connectors do %>
-                <div class="bg-gray-700 rounded-lg p-4">
-                  <div class="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 class="text-lg font-medium text-white">{connector.name || connector_id}</h3>
-                      <div class="flex items-center gap-3 mt-1 text-sm">
-                        <span class="text-gray-400">ID: {connector_id}</span>
-                        <%= if connector.scenario do %>
-                          <span class="text-purple-400">Scenario: {connector.scenario}</span>
-                        <% end %>
-                        <%= if connector.room_name do %>
-                          <span class="text-blue-400">Room: {connector.room_name}</span>
-                        <% end %>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                      <span class={[
-                        "px-2 py-1 rounded text-xs font-medium",
-                        connector.status == :running && "bg-green-600",
-                        connector.status == :stopped && "bg-gray-600",
-                        connector.status not in [:running, :stopped] && "bg-yellow-600"
-                      ]}>
-                        {connector.status || :unknown}
-                      </span>
-                      <%= if connector.status == :running do %>
-                        <button
-                          phx-click="stop_connector"
-                          phx-value-id={connector_id}
-                          class="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition-colors"
-                        >
-                          Stop
-                        </button>
-                      <% else %>
-                        <button
-                          phx-click="start_connector"
-                          phx-value-id={connector_id}
-                          class="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm transition-colors"
-                        >
-                          Start
-                        </button>
-                      <% end %>
-                    </div>
-                  </div>
-
-                  <%= if Map.has_key?(connector, :sensors) and map_size(connector.sensors) > 0 do %>
-                    <div class="mt-3 border-t border-gray-600 pt-3">
-                      <h4 class="text-sm font-medium text-gray-300 mb-2">
-                        Sensors ({map_size(connector.sensors)})
-                      </h4>
-                      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                        <%= for {sensor_id, sensor} <- connector.sensors do %>
-                          <div class="bg-gray-800 rounded px-3 py-2">
-                            <p class="text-sm font-medium text-white truncate">
-                              {sensor.name || sensor_id}
-                            </p>
-                            <p class="text-xs text-gray-400">{sensor_id}</p>
-                            <%= if Map.has_key?(sensor, :attributes) do %>
-                              <p class="text-xs text-gray-500 mt-1">
-                                {map_size(sensor.attributes)} attributes
-                              </p>
-                            <% end %>
-                          </div>
-                        <% end %>
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-        </div>
-
-        <div class="bg-gray-800 rounded-lg p-6">
-          <h2 class="text-xl font-semibold mb-4 text-orange-300">Configuration</h2>
-          <div class="bg-gray-900 rounded p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-300"><code>{inspect(@config, pretty: true, limit: :infinity)}</code></pre>
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
-          <p class="text-sm text-gray-500 mt-2">
-            Config file: config/simulators.yaml
-          </p>
         </div>
-      </div>
-    </div>
+      <% end %>
+    <% end %>
     """
   end
 end

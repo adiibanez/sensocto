@@ -1,0 +1,98 @@
+<div class="max-w-4xl mx-auto p-6">
+  <h1 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+    <Heroicons.icon name="device-phone-mobile" type="outline" class="h-7 w-7" /> My Devices
+  </h1>
+
+  <div :if={@connectors == []} class="text-center py-16 text-gray-400">
+    <Heroicons.icon name="device-phone-mobile" type="outline" class="h-16 w-16 mx-auto mb-4" />
+    <p class="text-lg">No devices yet</p>
+    <p class="text-sm mt-2">Connect a sensor from the lobby to see your devices here</p>
+  </div>
+
+  <div class="space-y-4">
+    <div
+      :for={connector <- @connectors}
+      class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden"
+    >
+      <%!-- Connector Header --%>
+      <div class="p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class={"w-3 h-3 rounded-full #{status_color(connector.status)}"} />
+          <Heroicons.icon
+            name={type_icon(connector.connector_type)}
+            type="outline"
+            class="h-5 w-5 text-gray-400"
+          />
+          <%= if @editing_id == to_string(connector.id) do %>
+            <form phx-submit="save_rename" class="flex items-center gap-2">
+              <input
+                type="text"
+                name="name"
+                value={@edit_name}
+                class="bg-gray-700 text-white px-2 py-1 rounded text-sm border border-gray-600 focus:border-orange focus:outline-none"
+                autofocus
+                phx-keydown="cancel_rename"
+                phx-key="Escape"
+              />
+              <button type="submit" class="text-green-400 hover:text-green-300">
+                <Heroicons.icon name="check" type="solid" class="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                phx-click="cancel_rename"
+                class="text-gray-400 hover:text-gray-300"
+              >
+                <Heroicons.icon name="x-mark" type="solid" class="h-4 w-4" />
+              </button>
+            </form>
+          <% else %>
+            <span class="text-white font-medium">{connector.name}</span>
+            <span class="text-xs text-gray-500 px-2 py-0.5 bg-gray-700 rounded">
+              {status_text(connector.status)}
+            </span>
+          <% end %>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-500">
+            Last seen: {time_ago(connector.last_seen_at)}
+          </span>
+          <button
+            phx-click="start_rename"
+            phx-value-id={connector.id}
+            class="p-1 text-gray-400 hover:text-white transition-colors"
+            title="Rename"
+          >
+            <Heroicons.icon name="pencil" type="outline" class="h-4 w-4" />
+          </button>
+          <button
+            phx-click="forget_connector"
+            phx-value-id={connector.id}
+            data-confirm="Are you sure you want to forget this device? This cannot be undone."
+            class="p-1 text-gray-400 hover:text-red-400 transition-colors"
+            title="Forget device"
+          >
+            <Heroicons.icon name="trash" type="outline" class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <%!-- Sensors List --%>
+      <div
+        :if={match?([_ | _], Map.get(connector, :sensors, []))}
+        class="border-t border-gray-700 px-4 py-3"
+      >
+        <p class="text-xs text-gray-500 mb-2">
+          Attached sensors ({length(connector.sensors)})
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <span
+            :for={sensor <- connector.sensors}
+            class="text-xs px-2 py-1 bg-gray-700 rounded text-gray-300"
+          >
+            {sensor.sensor_name || sensor.sensor_id}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

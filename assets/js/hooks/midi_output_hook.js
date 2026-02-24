@@ -260,9 +260,14 @@ class MidiClock {
   _restart() {
     if (this._intervalId) clearInterval(this._intervalId);
     const intervalMs = (60000 / this.bpm) / 24;
-    this._intervalId = setInterval(() => this.midi.sendClock(), intervalMs);
+    this._intervalId = setInterval(() => {
+      if (this.midi) this.midi.sendClock();
+    }, intervalMs);
   }
-  dispose() { this.stop(); }
+  dispose() {
+    this.stop();
+    this.midi = null;
+  }
 }
 
 // ─── Sync Threshold Detector ────────────────────────────────────────────────
@@ -509,7 +514,15 @@ class GroovyEngine {
   _scheduleNextStep() {
     if (!this._running) return;
     const sixteenthMs = (60000 / this.bpm) / 4;
-    this._stepTimeout = setTimeout(() => this._onStep(), sixteenthMs);
+    // Apply swing: delay every other 16th note (odd steps) by swing amount
+    // swing 0 = straight, 0.33 = triplet feel, 0.5 = heavy shuffle
+    let delay = sixteenthMs;
+    if (this._swingAmount > 0 && this.step % 2 === 1) {
+      delay = sixteenthMs * (1 + this._swingAmount);
+    } else if (this._swingAmount > 0 && this.step % 2 === 0) {
+      delay = sixteenthMs * (1 - this._swingAmount * 0.5);
+    }
+    this._stepTimeout = setTimeout(() => this._onStep(), delay);
   }
 
   _onStep() {
@@ -591,7 +604,10 @@ class GroovyEngine {
   _playDrums(chord) {
     const a = this.activity;
     const actVel = 0.5 + a * 0.5;
-    const vel = (v) => v > 0 ? clamp(Math.round(v * (0.7 + this.energy * 0.3) * actVel), 20, 127) : 0;
+    // Humanize: subtle random velocity variation + accent on downbeats
+    const humanize = () => (Math.random() - 0.5) * 12;
+    const accentBias = (this.step % 4 === 0) ? 8 : (this.step % 4 === 2) ? 3 : 0;
+    const vel = (v) => v > 0 ? clamp(Math.round((v + humanize() + accentBias) * (0.7 + this.energy * 0.3) * actVel), 25, 127) : 0;
 
     for (const voice of this.genre.drumVoices) {
       if (a < voice.minActivity) continue;
@@ -622,7 +638,8 @@ class GroovyEngine {
   _playBass(chord) {
     this._releaseChannel(GROOVY_CH.bass);
     const actScale = 0.5 + this.activity * 0.5;
-    const velocity = clamp(Math.round((90 + this.heartActivity * 37) * actScale), 60, 127);
+    const humanize = (Math.random() - 0.5) * 8;
+    const velocity = clamp(Math.round((90 + this.heartActivity * 37 + humanize) * actScale), 60, 127);
     const chords = this.genre.chords;
     const nextChord = chords[(this.chordIndex + 1) % chords.length];
     let note = chord.root;
@@ -834,6 +851,7 @@ class GroovyEngine {
 
   dispose() {
     this.stop();
+    this.midi = null;
   }
 }
 
@@ -912,15 +930,18 @@ const MidiOutputHook = {
       stats: () => this.groovy.getStats(),
       resetStats: () => this.groovy.resetStats(),
     };
-    window.__audioRouter = { backend: () => this.midi._backend, toneGenre: () => this.midi.tone._genreId };
+    window.__audioRouter = { backend: () => this.midi._backend, toneGenre: () => this.midi.tone._genreId, tone: () => this.midi.tone, router: () => this.midi };
     window.__magenta = { stats: () => this.magenta.getStats() };
   },
 
   _teardownAudio() {
     if (!this.midi) return;
-    this.groovy.stop();
-    this.magenta.stop();
-    this.clock.stop();
+    // Dispose engines first — this nulls their midi reference,
+    // preventing stray setTimeout noteOff callbacks from reaching
+    // the disposed router/synths.
+    this.groovy.dispose();
+    this.magenta.dispose();
+    this.clock.dispose();
     this.midi.setEnabled(false);
     this.midi.dispose();
     this.midi = null;
@@ -930,7 +951,8 @@ const MidiOutputHook = {
     window.removeEventListener('composite-measurement-event', this._onMeasurement);
     window.removeEventListener('phx:page-loading-start', this._onBeforeNav);
     if (this._hrCleanupInterval) clearInterval(this._hrCleanupInterval);
-    this.syncDetector.reset();
+    // Reset sync detector BEFORE teardown (it sends noteOff via this.midi)
+    if (this.midi) this.syncDetector.reset();
     this._teardownAudio();
   },
 
@@ -1284,6 +1306,41 @@ const MidiOutputHook = {
     const currentBackend = this.midi.getBackend ? this.midi.getBackend() : 'midi';
     if (instPanel) instPanel.classList.toggle('hidden', currentBackend === 'midi');
 
+    // ─── Voice mute toggles ──────────────────────────────────────
+    const muteRoles = { bass: 0, pad: 1, lead: 2, arp: 3 };
+    let savedMuted = [];
+    try {
+      const s = localStorage.getItem('sensocto_tone_muted_voices');
+      if (s) savedMuted = JSON.parse(s);
+    } catch (_) {}
+
+    for (const [role, ch] of Object.entries(muteRoles)) {
+      const cb = this.el.querySelector(`#tone-mute-${role}`);
+      if (!cb) continue;
+      // Restore saved mute state
+      if (savedMuted.includes(role)) {
+        cb.checked = false;
+        this.midi.tone.setChannelMute(ch, true);
+        // Dim the label
+        const label = cb.closest('label');
+        if (label) label.style.opacity = '0.4';
+      }
+      cb.addEventListener('change', () => {
+        const muted = !cb.checked;
+        this.midi.tone.setChannelMute(ch, muted);
+        const label = cb.closest('label');
+        if (label) label.style.opacity = muted ? '0.4' : '1';
+        // Persist
+        try {
+          const mutedList = [];
+          for (const [r, c] of Object.entries(muteRoles)) {
+            if (this.midi.tone.isChannelMuted(c)) mutedList.push(r);
+          }
+          localStorage.setItem('sensocto_tone_muted_voices', JSON.stringify(mutedList));
+        } catch (_) {}
+      });
+    }
+
     // ─── AI Settings Modal ────────────────────────────────────────
     this._setupAIModal();
   },
@@ -1494,20 +1551,24 @@ const MidiOutputHook = {
     }
 
     // Apply genre config
-    if (this._mode === 'groovy') {
-      this.groovy.setGenre(GENRES[this._genreIndex]);
-      this.midi.tone.setGenre(GENRES[this._genreIndex].id);
-      if (this.midi.enabled) {
+    try {
+      if (this._mode === 'groovy') {
+        this.groovy.setGenre(GENRES[this._genreIndex]);
+        this.midi.tone.setGenre(GENRES[this._genreIndex].id);
+        if (this.midi.enabled) {
+          this._initChannelVolumes();
+          this.groovy.start();
+        }
+      } else if (this._mode === 'magenta') {
+        if (this.midi.enabled) {
+          this._initChannelVolumes();
+          this.magenta.start();
+        }
+      } else if (this.midi.enabled) {
         this._initChannelVolumes();
-        this.groovy.start();
       }
-    } else if (this._mode === 'magenta') {
-      if (this.midi.enabled) {
-        this._initChannelVolumes();
-        this.magenta.start();
-      }
-    } else if (this.midi.enabled) {
-      this._initChannelVolumes();
+    } catch (err) {
+      console.error('[MidiOutputHook] Error applying mode:', err);
     }
 
     this._updateModeUI();
@@ -1535,6 +1596,43 @@ const MidiOutputHook = {
       btn.textContent = '🌊 Abstract';
       btn.classList.add('bg-gray-600', 'text-gray-400');
     }
+
+    // Update tooltip content to match current mode
+    const tooltipContent = this.el.querySelector('#midi-mode-tooltip-content');
+    if (tooltipContent) {
+      if (this._mode === 'magenta') {
+        tooltipContent.innerHTML =
+          '<b style="color:#c4b5fd;">🧠 Local AI (Magenta)</b><br />' +
+          'On-device neural net generates melodies, bass lines &amp; drums from your sensor data.<br /><br />' +
+          'Click <b style="color:#c4b5fd;">⚙</b> to configure:<br />' +
+          '• <b style="color:#a5b4fc;">Key &amp; chords</b> — set the harmonic framework<br />' +
+          '• <b style="color:#a5b4fc;">Creativity</b> — auto (from breathing) or manual<br />' +
+          '• <b style="color:#a5b4fc;">Mood</b> — calm, energetic, melancholic, or auto<br /><br />' +
+          '<span style="color:#9ca3af;">Click button to switch to Abstract mode.</span>';
+      } else if (this._mode === 'groovy') {
+        const genre = GENRES[this._genreIndex];
+        tooltipContent.innerHTML =
+          '<b style="color:#c4b5fd;">' + genre.label + '</b><br />' +
+          'Musical engine with chords, bass, drums &amp; arps driven by biometrics.<br /><br />' +
+          '• Heartbeats drive tempo &amp; bass<br />' +
+          '• Breathing modulates pads &amp; filters<br />' +
+          '• HRV controls energy &amp; density<br />' +
+          '• Sync level drives arps &amp; fills<br /><br />' +
+          '<span style="color:#9ca3af;">Click to cycle: ' +
+          GENRES.map((g, i) => i === this._genreIndex ? '<b style="color:#e9d5ff;">' + g.label + '</b>' : g.label).join(' → ') +
+          ' → 🧠 Local AI</span>';
+      } else {
+        tooltipContent.innerHTML =
+          '<b style="color:#c4b5fd;">🌊 Abstract</b><br />' +
+          'Raw sensor data mapped directly to MIDI CCs &amp; note triggers.<br /><br />' +
+          '• Breath → phase LFO, depth, rate<br />' +
+          '• Heartbeat → note-on per beat<br />' +
+          '• HRV → mod wheel<br />' +
+          '• Sync → threshold triggers on drums<br /><br />' +
+          '<span style="color:#9ca3af;">Click to switch to Groovy mode.</span>';
+      }
+    }
+
     const chordEl = this.el.querySelector('#midi-chord-display');
     if (chordEl) {
       chordEl.style.display = (this._mode === 'groovy' || this._mode === 'magenta') ? 'inline' : 'none';

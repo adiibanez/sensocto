@@ -1,9 +1,838 @@
 # Comprehensive Test Coverage and Accessibility Analysis
 ## Sensocto IoT Sensor Platform
 
-**Analysis Date:** January 12, 2026 (Updated: February 20, 2026)
+**Analysis Date:** January 12, 2026 (Updated: February 24, 2026)
 **Analyzed By:** Testing, Usability, and Accessibility Expert Agent
 **Project:** Sensocto - Elixir/Phoenix IoT Sensor Platform
+
+---
+
+## Update: February 24, 2026
+
+### Changes Since Last Review (Feb 22 -> Feb 24, 2026): Guided Session Feature
+
+Six new files were added for the "Guided Session" feature. None have test coverage yet. Two of the
+six introduce UI accessible from every lobby page (floating badge, suggestion toast, guide panel in
+`lobby_live.html.heex`), and one is a standalone LiveView (`GuidedSessionJoinLive`).
+
+| New File | Type | Coverage Status |
+|---|---|---|
+| `lib/sensocto/guidance.ex` | Ash Domain | 0% — trivial wrapper, no direct tests needed |
+| `lib/sensocto/guidance/guided_session.ex` | Ash Resource | 0% — actions, constraints, `generate_invite_code/1` untested |
+| `lib/sensocto/guidance/session_server.ex` | GenServer | 0% — drift-back timer, role enforcement, PubSub broadcasts, idle timeout all untested |
+| `lib/sensocto/guidance/session_supervisor.ex` | DynamicSupervisor | 0% — start/stop/lookup untested |
+| `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView | 0% — all three mount paths and `accept` event untested |
+| `lib/sensocto_web/live/lobby_live.html.heex` | Template (additions) | 0% — floating badge, suggestion toast, guide panel not covered by existing lobby tests |
+
+**Critical Bugs Found During Review:**
+
+1. `GuidedSessionJoinLive.handle_event("accept")` calls `Ash.update(session, %{follower_user_id: user_id}, action: :create, ...)` — the `:create` atom is wrong; this should use a custom `:set_follower` update action or directly use `:accept` after setting the attribute through a combined action. The `:create` action on an `update/4` call will produce a runtime error or unexpected behavior.
+
+2. The `session_server.ex` struct exposes `drift_back_timer_ref` in process state but `get_state/1` intentionally omits it from the public map. This is correct for security but means the only way to observe timer behavior in tests is via PubSub messages or by inspecting the raw process state with `:sys.get_state/1`.
+
+3. The follower floating badge uses `phx-click="guide_end_session"` for the dismiss button (the `&times;` button at the end of the badge). This is the same event used in the guide panel to end the session entirely. A follower clicking the `&times;` to dismiss their badge would end the entire session rather than just collapsing the badge. This is a significant UX and logic bug.
+
+### Testing Recommendations: Guided Session (Feb 24, 2026)
+
+#### Missing Test Coverage
+
+**SessionServer (GenServer)**
+
+- Drift-back timer fires after `drift_back_seconds` and sets `following: true`
+- `report_activity` resets the drift-back timer (cancels old timer, starts new one)
+- Calling `report_activity` when already following does not start a timer
+- `break_away` by a non-follower returns `{:error, :not_follower}`
+- `set_lens` by a non-guide returns `{:error, :not_guide}`
+- `end_session` by either participant broadcasts `{:guided_ended, ...}` and stops the process
+- `end_session` by a non-participant returns `{:error, :not_participant}`
+- `rejoin` returns the current guide state (`current_lens`, `focused_sensor_id`)
+- `rejoin` cancels the drift-back timer
+- Guide disconnect starts idle timer; guide reconnect cancels it
+- Idle timeout fires and stops the process with `{:guided_ended, %{ended_by: :idle_timeout}}`
+- Annotations accumulate in order and get a UUID assigned
+- `add_annotation` by a non-guide returns `{:error, :not_guide}`
+- `is_follower?` returns false when `follower_user_id` is nil
+- `is_guide?`/`is_follower?` perform string comparison (handles binary vs. string UUID mismatch)
+
+**GuidedSession Ash Resource**
+
+- `generate_invite_code/1` returns only characters from the unambiguous alphabet (no `0`, `O`, `I`, `1`)
+- `generate_invite_code/1` default length is 6 characters
+- `generate_invite_code/2` respects custom length argument
+- `:create` action sets `status: :pending` and generates `invite_code`
+- `:accept` action sets `status: :active` and populates `started_at`
+- `:decline` action sets `status: :declined` and populates `ended_at`
+- `:end_session` action sets `status: :ended` and populates `ended_at`
+- `:by_invite_code` read only returns sessions with `status in [:pending, :active]`
+- `:by_invite_code` returns `nil` for a code with `status: :ended`
+- `:active_for_user` returns sessions where user is guide or follower
+- `drift_back_seconds` rejects values below 5 or above 120
+- `invite_code` identity constraint prevents duplicate codes
+
+**GuidedSessionJoinLive**
+
+- Mount with valid pending invite code assigns `session` and no `error`
+- Mount with expired/ended invite code assigns `error: "This invitation is no longer valid."`
+- Mount with no code param assigns `error: "No invitation code provided."`
+- Mount with DB error assigns `error: "Something went wrong."`
+- `accept` event when `current_user` is nil puts a flash error and does not navigate
+- `accept` event with valid session sets follower, starts SessionServer, broadcasts to guide topic, navigates to `/lobby`
+- `accept` event when Ash update fails puts a flash error
+
+**SessionSupervisor**
+
+- `start_session` starts a new process and registers it
+- `start_session` called again with the same ID returns `{:ok, pid}` (idempotent)
+- `stop_session` terminates the process
+- `stop_session` returns `{:error, :not_found}` for unknown session
+- `session_exists?` returns true/false correctly
+- `list_active_sessions` returns session IDs currently running
+- `count` reflects the number of active sessions
+
+#### Suggested Test Cases
+
+```elixir
+# test/sensocto/guidance/session_server_test.exs
+
+defmodule Sensocto.Guidance.SessionServerTest do
+  use Sensocto.DataCase, async: false
+
+  alias Sensocto.Guidance.SessionServer
+
+  @moduletag :integration
+
+  defp unique_id, do: Ash.UUID.generate()
+
+  defp start_server(opts \\ []) do
+    session_id = Keyword.get_lazy(opts, :session_id, &unique_id/0)
+    guide_id = Keyword.get_lazy(opts, :guide_user_id, &unique_id/0)
+    follower_id = Keyword.get_lazy(opts, :follower_user_id, &unique_id/0)
+
+    all_opts =
+      [
+        session_id: session_id,
+        guide_user_id: guide_id,
+        guide_user_name: "Guide",
+        follower_user_id: follower_id,
+        follower_user_name: "Follower",
+        drift_back_seconds: 1
+      ] ++ opts
+
+    {:ok, pid} = SessionServer.start_link(all_opts)
+
+    on_exit(fn ->
+      if Process.alive?(pid), do: GenServer.stop(pid, :normal)
+    end)
+
+    {:ok,
+     %{
+       pid: pid,
+       session_id: session_id,
+       guide_id: guide_id,
+       follower_id: follower_id
+     }}
+  end
+
+  describe "role enforcement" do
+    test "set_lens by guide succeeds" do
+      {:ok, %{session_id: sid, guide_id: gid}} = start_server()
+      assert :ok = SessionServer.set_lens(sid, gid, :ecg)
+    end
+
+    test "set_lens by non-guide returns :not_guide" do
+      {:ok, %{session_id: sid, follower_id: fid}} = start_server()
+      assert {:error, :not_guide} = SessionServer.set_lens(sid, fid, :ecg)
+    end
+
+    test "break_away by non-follower returns :not_follower" do
+      {:ok, %{session_id: sid, guide_id: gid}} = start_server()
+      assert {:error, :not_follower} = SessionServer.break_away(sid, gid)
+    end
+
+    test "end_session by non-participant returns :not_participant" do
+      {:ok, %{session_id: sid}} = start_server()
+      stranger_id = unique_id()
+      assert {:error, :not_participant} = SessionServer.end_session(sid, stranger_id)
+    end
+
+    test "is_follower? returns false when follower_user_id is nil" do
+      guide_id = unique_id()
+      session_id = unique_id()
+
+      {:ok, _pid} =
+        SessionServer.start_link(
+          session_id: session_id,
+          guide_user_id: guide_id,
+          follower_user_id: nil
+        )
+
+      on_exit(fn ->
+        case Registry.lookup(Sensocto.GuidanceRegistry, session_id) do
+          [{pid, _}] -> GenServer.stop(pid, :normal)
+          [] -> :ok
+        end
+      end)
+
+      assert {:error, :not_follower} = SessionServer.break_away(session_id, guide_id)
+    end
+  end
+
+  describe "break_away and drift-back timer" do
+    test "break_away sets following: false" do
+      {:ok, %{session_id: sid, follower_id: fid}} = start_server()
+      :ok = SessionServer.break_away(sid, fid)
+      {:ok, state} = SessionServer.get_state(sid)
+      refute state.following
+    end
+
+    test "drift-back timer fires and resets following: true" do
+      {:ok, %{session_id: sid, follower_id: fid}} = start_server(drift_back_seconds: 0)
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      :ok = SessionServer.break_away(sid, fid)
+
+      assert_receive {:guided_drift_back, %{lens: :sensors, focused_sensor_id: nil}}, 500
+
+      {:ok, state} = SessionServer.get_state(sid)
+      assert state.following
+    end
+
+    test "report_activity resets the drift-back timer" do
+      {:ok, %{session_id: sid, follower_id: fid}} = start_server(drift_back_seconds: 1)
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      :ok = SessionServer.break_away(sid, fid)
+      # Activity reported at ~900ms, so timer resets; drift_back should not arrive for another second
+      Process.sleep(400)
+      SessionServer.report_activity(sid, fid)
+      # Should NOT receive drift_back within the original 1s window
+      refute_receive {:guided_drift_back, _}, 700
+      # But eventually it does drift back after the fresh 1s window
+      assert_receive {:guided_drift_back, _}, 1200
+    end
+
+    test "rejoin cancels drift-back timer" do
+      {:ok, %{session_id: sid, follower_id: fid}} = start_server(drift_back_seconds: 1)
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      :ok = SessionServer.break_away(sid, fid)
+      {:ok, _guide_state} = SessionServer.rejoin(sid, fid)
+
+      # No drift_back message should arrive after rejoin cancels the timer
+      refute_receive {:guided_drift_back, _}, 1500
+    end
+
+    test "rejoin returns current guide navigation state" do
+      {:ok, %{session_id: sid, guide_id: gid, follower_id: fid}} = start_server()
+      :ok = SessionServer.set_lens(sid, gid, :ecg)
+      :ok = SessionServer.break_away(sid, fid)
+      {:ok, state} = SessionServer.rejoin(sid, fid)
+      assert state.lens == :ecg
+    end
+  end
+
+  describe "idle timeout" do
+    test "guide disconnect starts idle timer; idle_timeout stops server" do
+      {:ok, %{session_id: sid, guide_id: gid}} = start_server()
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      # Override the idle timeout to a very short value for testing
+      pid = GenServer.whereis(SessionServer.via_tuple(sid))
+      # Send the idle_timeout message directly to bypass the 5-minute wait
+      send(pid, :idle_timeout)
+
+      assert_receive {:guided_ended, %{ended_by: :idle_timeout}}, 1000
+      refute Process.alive?(pid)
+    end
+
+    test "guide reconnect before idle timeout cancels the shutdown" do
+      {:ok, %{session_id: sid, guide_id: gid, pid: pid}} = start_server()
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      SessionServer.disconnect(sid, gid)
+      Process.sleep(50)
+      SessionServer.connect(sid, gid)
+      # Server should still be alive after reconnection
+      assert Process.alive?(pid)
+    end
+  end
+
+  describe "end_session" do
+    test "guide ending session broadcasts :guided_ended and stops process" do
+      {:ok, %{session_id: sid, guide_id: gid, pid: pid}} = start_server()
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      :ok = SessionServer.end_session(sid, gid)
+      assert_receive {:guided_ended, %{ended_by: ^gid}}, 500
+      refute Process.alive?(pid)
+    end
+
+    test "follower ending session broadcasts :guided_ended and stops process" do
+      {:ok, %{session_id: sid, follower_id: fid, pid: pid}} = start_server()
+
+      topic = "guidance:#{sid}"
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+
+      :ok = SessionServer.end_session(sid, fid)
+      assert_receive {:guided_ended, %{ended_by: ^fid}}, 500
+      refute Process.alive?(pid)
+    end
+  end
+
+  describe "annotations" do
+    test "guide can add an annotation and it accumulates" do
+      {:ok, %{session_id: sid, guide_id: gid}} = start_server()
+      annotation = %{text: "Check the spike here", timestamp: DateTime.utc_now()}
+      :ok = SessionServer.add_annotation(sid, gid, annotation)
+      {:ok, state} = SessionServer.get_state(sid)
+      assert length(state.annotations) == 1
+      [stored] = state.annotations
+      assert Map.has_key?(stored, :id), "annotation should have a UUID :id assigned"
+    end
+
+    test "annotations accumulate in insertion order" do
+      {:ok, %{session_id: sid, guide_id: gid}} = start_server()
+      :ok = SessionServer.add_annotation(sid, gid, %{text: "First"})
+      :ok = SessionServer.add_annotation(sid, gid, %{text: "Second"})
+      {:ok, state} = SessionServer.get_state(sid)
+      [first, second] = state.annotations
+      assert first.text == "First"
+      assert second.text == "Second"
+    end
+  end
+end
+```
+
+```elixir
+# test/sensocto/guidance/guided_session_resource_test.exs
+
+defmodule Sensocto.Guidance.GuidedSessionResourceTest do
+  use Sensocto.DataCase, async: true
+
+  alias Sensocto.Guidance.GuidedSession
+
+  @guide_id Ash.UUID.generate()
+
+  defp create_session(attrs \\ %{}) do
+    Ash.create!(GuidedSession, Map.merge(%{guide_user_id: @guide_id}, attrs),
+      action: :create,
+      authorize?: false
+    )
+  end
+
+  describe "generate_invite_code/1" do
+    test "default length is 6" do
+      code = GuidedSession.generate_invite_code()
+      assert String.length(code) == 6
+    end
+
+    test "only contains characters from the unambiguous alphabet" do
+      ambiguous = ~w(0 O I 1)
+      for _i <- 1..50 do
+        code = GuidedSession.generate_invite_code()
+        Enum.each(ambiguous, fn char ->
+          refute String.contains?(code, char),
+            "Expected code #{code} to not contain ambiguous character #{char}"
+        end)
+      end
+    end
+
+    test "respects custom length" do
+      assert String.length(GuidedSession.generate_invite_code(8)) == 8
+      assert String.length(GuidedSession.generate_invite_code(4)) == 4
+    end
+  end
+
+  describe ":create action" do
+    test "sets status to :pending" do
+      session = create_session()
+      assert session.status == :pending
+    end
+
+    test "auto-generates a non-nil invite_code" do
+      session = create_session()
+      assert is_binary(session.invite_code)
+      assert String.length(session.invite_code) == 6
+    end
+
+    test "sets guide_user_id from argument" do
+      session = create_session()
+      assert to_string(session.guide_user_id) == to_string(@guide_id)
+    end
+
+    test "rejects drift_back_seconds below 5" do
+      assert_raise Ash.Error.Invalid, fn ->
+        create_session(%{drift_back_seconds: 4})
+      end
+    end
+
+    test "rejects drift_back_seconds above 120" do
+      assert_raise Ash.Error.Invalid, fn ->
+        create_session(%{drift_back_seconds: 121})
+      end
+    end
+  end
+
+  describe ":accept action" do
+    test "sets status to :active and populates started_at" do
+      session = create_session()
+      {:ok, accepted} = Ash.update(session, %{}, action: :accept, authorize?: false)
+      assert accepted.status == :active
+      assert %DateTime{} = accepted.started_at
+    end
+  end
+
+  describe ":decline action" do
+    test "sets status to :declined and populates ended_at" do
+      session = create_session()
+      {:ok, declined} = Ash.update(session, %{}, action: :decline, authorize?: false)
+      assert declined.status == :declined
+      assert %DateTime{} = declined.ended_at
+    end
+  end
+
+  describe ":end_session action" do
+    test "sets status to :ended and populates ended_at" do
+      session = create_session()
+      {:ok, session} = Ash.update(session, %{}, action: :accept, authorize?: false)
+      {:ok, ended} = Ash.update(session, %{}, action: :end_session, authorize?: false)
+      assert ended.status == :ended
+      assert %DateTime{} = ended.ended_at
+    end
+  end
+
+  describe ":by_invite_code read" do
+    test "returns pending session for valid code" do
+      session = create_session()
+      {:ok, found} =
+        Ash.read_one(GuidedSession,
+          action: :by_invite_code,
+          args: [invite_code: session.invite_code],
+          authorize?: false
+        )
+      assert found.id == session.id
+    end
+
+    test "returns nil for a code belonging to an ended session" do
+      session = create_session()
+      {:ok, session} = Ash.update(session, %{}, action: :accept, authorize?: false)
+      {:ok, session} = Ash.update(session, %{}, action: :end_session, authorize?: false)
+      {:ok, result} =
+        Ash.read_one(GuidedSession,
+          action: :by_invite_code,
+          args: [invite_code: session.invite_code],
+          authorize?: false
+        )
+      assert is_nil(result)
+    end
+
+    test "returns nil for a declined session" do
+      session = create_session()
+      {:ok, session} = Ash.update(session, %{}, action: :decline, authorize?: false)
+      {:ok, result} =
+        Ash.read_one(GuidedSession,
+          action: :by_invite_code,
+          args: [invite_code: session.invite_code],
+          authorize?: false
+        )
+      assert is_nil(result)
+    end
+  end
+end
+```
+
+```elixir
+# test/sensocto_web/live/guided_session_join_live_test.exs
+
+defmodule SensoctoWeb.GuidedSessionJoinLiveTest do
+  @moduledoc """
+  Tests for the GuidedSessionJoinLive invite code join page.
+  """
+  use SensoctoWeb.ConnCase, async: false
+  import Phoenix.LiveViewTest
+
+  alias Sensocto.Guidance.GuidedSession
+
+  @guide_id Ash.UUID.generate()
+
+  defp create_pending_session do
+    Ash.create!(GuidedSession, %{guide_user_id: @guide_id},
+      action: :create,
+      authorize?: false
+    )
+  end
+
+  defp authenticated_conn(conn) do
+    user =
+      Ash.Seed.seed!(Sensocto.Accounts.User, %{
+        email: "join_test_#{System.unique_integer([:positive])}@example.com",
+        confirmed_at: DateTime.utc_now()
+      })
+
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> AshAuthentication.Plug.Helpers.store_in_session(user)
+    |> Map.put(:assigns, %{current_user: user})
+  end
+
+  describe "mount with valid invite code" do
+    test "assigns session and no error", %{conn: conn} do
+      session = create_pending_session()
+      {:ok, _view, html} = live(conn, "/join/#{session.invite_code}")
+      refute html =~ "no longer valid"
+      assert html =~ "Accept &amp; Join"
+    end
+
+    test "sets page_title to 'Join Guided Session'", %{conn: conn} do
+      session = create_pending_session()
+      {:ok, _view, html} = live(conn, "/join/#{session.invite_code}")
+      assert html =~ "Join Guided Session"
+    end
+  end
+
+  describe "mount with invalid or expired invite code" do
+    test "shows 'no longer valid' for an ended session", %{conn: conn} do
+      session = create_pending_session()
+      {:ok, session} = Ash.update(session, %{}, action: :accept, authorize?: false)
+      {:ok, _} = Ash.update(session, %{}, action: :end_session, authorize?: false)
+
+      {:ok, _view, html} = live(conn, "/join/#{session.invite_code}")
+      assert html =~ "no longer valid"
+      refute html =~ "Accept &amp; Join"
+    end
+
+    test "shows error when no code param is provided", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/join")
+      assert html =~ "No invitation code provided"
+    end
+
+    test "shows error for a completely unknown code", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/join/XXXXXX")
+      assert html =~ "no longer valid"
+    end
+  end
+
+  describe "accept event" do
+    test "rejects when user is not signed in", %{conn: conn} do
+      session = create_pending_session()
+      {:ok, view, _html} = live(conn, "/join/#{session.invite_code}")
+      html = render_click(view, "accept")
+      assert html =~ "signed in" or html =~ "sign in"
+    end
+
+    test "navigates to /lobby and starts session server on success", %{conn: conn} do
+      session = create_pending_session()
+      conn = authenticated_conn(conn)
+      {:ok, view, _html} = live(conn, "/join/#{session.invite_code}")
+
+      assert {:error, {:live_redirect, %{to: "/lobby"}}} =
+               render_click(view, "accept")
+    end
+
+    test "broadcasts guidance_invitation_accepted to guide topic on accept", %{conn: conn} do
+      session = create_pending_session()
+      conn = authenticated_conn(conn)
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "user:#{@guide_id}:guidance")
+
+      {:ok, view, _html} = live(conn, "/join/#{session.invite_code}")
+
+      catch_exit do
+        render_click(view, "accept")
+      end
+
+      assert_receive {:guidance_invitation_accepted, %{session_id: _, follower_name: _}}, 1000
+    end
+  end
+end
+```
+
+#### Critical Bug Fix Required: Wrong Action on `accept` Event
+
+In `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/live/guided_session_join_live.ex` line 61:
+
+```elixir
+# WRONG — :create is not a valid update action and will error at runtime:
+with {:ok, session} <-
+       Ash.update(session, %{follower_user_id: user_id}, action: :create, authorize?: false),
+```
+
+The `:create` action is not callable via `Ash.update/4`. The `GuidedSession` resource has no update action that accepts `follower_user_id`. Two options:
+
+Option A — Add a dedicated `:set_follower` update action to the resource and call it:
+
+```elixir
+# In guided_session.ex actions block:
+update :set_follower do
+  accept [:follower_user_id]
+end
+
+# In guided_session_join_live.ex:
+with {:ok, session} <-
+       Ash.update(session, %{follower_user_id: user_id}, action: :set_follower, authorize?: false),
+     {:ok, session} <- Ash.update(session, %{}, action: :accept, authorize?: false) do
+```
+
+Option B — Accept `follower_user_id` in the `:accept` action directly:
+
+```elixir
+# In guided_session.ex:
+update :accept do
+  accept [:follower_user_id]
+  change set_attribute(:status, :active)
+  change set_attribute(:started_at, &DateTime.utc_now/0)
+end
+
+# In guided_session_join_live.ex:
+with {:ok, session} <-
+       Ash.update(session, %{follower_user_id: user_id}, action: :accept, authorize?: false) do
+```
+
+#### Critical UX Bug: Follower Badge Uses Wrong Event to Dismiss
+
+In `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/live/lobby_live.html.heex` around line 1537, the `&times;` dismiss button on the follower floating badge fires `guide_end_session`, which ends the entire guided session. A follower should be able to minimize or leave the session without destroying it for the guide.
+
+The fix requires either:
+
+1. A separate `"follower_leave_session"` event that ends the session from the follower's perspective only (calls `SessionServer.end_session/2` which stops the server), or
+2. A `"dismiss_session_badge"` event that just hides the UI (sets `@guided_session` to nil locally) if the intent is that the follower can leave without ending the guide's ability to resume.
+
+### Accessibility Audit: Guided Session UI (Feb 24, 2026)
+
+#### WCAG Violations in New UI Elements
+
+**Violation GS-1 — [1.1.1 Non-text Content] Floating Badge Dismiss Button Has No Accessible Name**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` approximately line 1537
+
+The `&times;` character is not a reliable accessible name. The button has a `title="End session"` attribute, which some screen readers announce as a tooltip on hover but is not a reliable accessible name for interactive elements.
+
+Fix:
+
+```heex
+<button
+  phx-click="guide_end_session"
+  class="ml-2 text-xs text-error/60 hover:text-error"
+  aria-label="End guided session"
+>
+  <span aria-hidden="true">&times;</span>
+</button>
+```
+
+**Violation GS-2 — [1.4.1 Use of Color] Guide/Follower Presence Dot Relies Solely on Color**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` approximately lines 1514-1517 and 1571-1573
+
+Both the follower badge and the guide panel use a small colored dot (`bg-green-500` vs `bg-gray-400`) as the sole indicator of guide/follower connection status. Users with color blindness or low vision cannot distinguish the dot colors. The dot element is an empty `<span>` with no text content and no `aria-label`.
+
+Fix:
+
+```heex
+<%!-- Replace the bare colored span with a labeled indicator --%>
+<span
+  class={["w-2 h-2 rounded-full", if(@guided_presence.guide_connected, do: "bg-green-500", else: "bg-gray-400")]}
+  aria-label={if @guided_presence.guide_connected, do: "Guide is online", else: "Guide is offline"}
+  role="img"
+>
+</span>
+```
+
+**Violation GS-3 — [4.1.3 Status Messages] Guided Session State Changes Not Announced**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 1510-1544
+
+When a follower breaks away or drifts back, the badge text changes between "Following guide" and "Exploring on your own". These dynamic content changes are not in an `aria-live` region, so screen reader users receive no announcement when the mode changes.
+
+Fix: Wrap the badge status text in a live region.
+
+```heex
+<div
+  class="bg-base-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-2 text-sm"
+  role="status"
+  aria-live="polite"
+  aria-atomic="true"
+>
+  <%!-- existing badge content --%>
+</div>
+```
+
+**Violation GS-4 — [4.1.3 Status Messages] Suggestion Toast Not Announced**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` approximately lines 1547-1562
+
+The suggestion toast (`@guided_suggestion`) appears via a conditional `<%= if ... %>` block. When the content renders, a screen reader user receives no announcement. The toast contains guidance from the guide (e.g., "Try breathing at 6 breaths/min") which is important information to convey.
+
+Fix: Add `role="alert"` and `aria-live="assertive"` because suggestion toasts are action-relevant information that needs immediate attention. Alternatively, use `aria-live="polite"` if the suggestion is not time-critical.
+
+```heex
+<%= if @guided_suggestion do %>
+  <div
+    class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4"
+    role="alert"
+    aria-live="assertive"
+    aria-atomic="true"
+  >
+    <div class="bg-base-200 rounded-xl shadow-xl p-4 flex items-start gap-3">
+      <div class="flex-1">
+        <p class="text-sm font-medium">{@guided_suggestion.text}</p>
+      </div>
+      <button
+        phx-click="dismiss_suggestion"
+        class="text-base-content/40 hover:text-base-content text-lg leading-none"
+        aria-label="Dismiss suggestion"
+      >
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  </div>
+<% end %>
+```
+
+**Violation GS-5 — [2.4.3 Focus Order] Floating Badge and Toast Have No Focus Management**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 1510-1562
+
+Both the floating badge and the suggestion toast use `fixed` positioning and appear dynamically. When the toast appears, keyboard focus remains wherever it was. Users who navigate by keyboard have no indication that new content has appeared unless they tab through the page. The toast in particular contains an interactive dismiss button that keyboard users may never find.
+
+Fix: When a suggestion toast appears, use `Phoenix.LiveView.push_event` with a JS hook to focus the toast's dismiss button. When the toast is dismissed, return focus to a stable landmark.
+
+```elixir
+# In the handle_info for :guided_suggestion in lobby_live.ex:
+{:noreply, socket |> assign(:guided_suggestion, suggestion) |> push_event("focus", %{"id" => "suggestion-dismiss-btn"})}
+```
+
+```heex
+<button
+  id="suggestion-dismiss-btn"
+  phx-click="dismiss_suggestion"
+  aria-label="Dismiss suggestion"
+>
+```
+
+**Violation GS-6 — [1.3.1 Info and Relationships] Guide Panel Suggestion Buttons Lack Context**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/lobby_live.html.heex` approximately lines 1582-1617
+
+The guide panel renders two "suggest" buttons labeled "Breathing" and "Break". Without additional context, a screen reader user on the guide panel hears only "Breathing, button" and "Break, button" with no indication these are actions to send suggestions to the follower.
+
+Fix:
+
+```heex
+<button
+  phx-click="guide_suggest"
+  phx-value-type="breathing_rhythm"
+  phx-value-text="Try breathing at 6 breaths/min"
+  class="btn btn-xs btn-outline"
+  aria-label="Suggest breathing exercise to follower"
+>
+  Breathing
+</button>
+<button
+  phx-click="guide_suggest"
+  phx-value-type="take_break"
+  phx-value-text="Take a short break"
+  class="btn btn-xs btn-outline"
+  aria-label="Suggest taking a break to follower"
+>
+  Break
+</button>
+```
+
+**Violation GS-7 — [2.4.2 Page Titled] GuidedSessionJoinLive Missing `page_title` on Error State**
+
+Severity: LOW-MEDIUM
+File: `lib/sensocto_web/live/guided_session_join_live.ex` lines 13-35
+
+All mount branches set `page_title: "Join Guided Session"` including error states. This is correct. However, the error-state content ("This invitation is no longer valid.") is rendered in a `<p class="text-error">` without any ARIA role to distinguish it from regular content. A screen reader user lands on the join page and hears the heading "Guided Session" followed by the error text with no indication it is an error message.
+
+Fix: Add `role="alert"` to the error paragraph so screen readers announce it immediately on page load.
+
+```heex
+<%= if @error do %>
+  <p class="text-error mt-4" role="alert">{@error}</p>
+```
+
+**Violation GS-8 — [4.1.2 Name, Role, Value] "Accept & Join" Button Has No Disabled State**
+
+Severity: LOW
+File: `lib/sensocto_web/live/guided_session_join_live.ex` line 115
+
+The accept button has no `phx-disable-with` attribute, which means double-clicks can fire the `accept` event twice. The second `Ash.update` call would fail (session already active), but the user would see no feedback. The button also has no loading indicator.
+
+Fix:
+
+```heex
+<button
+  phx-click="accept"
+  class="btn btn-primary btn-lg"
+  phx-disable-with="Joining..."
+>
+  Accept &amp; Join
+</button>
+```
+
+#### Accessibility Enhancements for Guided Session (Not Violations, But Recommended)
+
+**GS-E1 — Guide Panel Should Use `role="region"` with `aria-label`**
+
+The guide panel div at line 1566 is a significant UI area but has no landmark role. Screen reader users cannot navigate to it quickly.
+
+```heex
+<div
+  class="fixed top-16 right-4 z-50"
+  role="region"
+  aria-label="Guide controls"
+>
+```
+
+**GS-E2 — Follower Badge Should Use `role="region"` with `aria-label`**
+
+Same reasoning as GS-E1 for the follower badge at line 1512.
+
+```heex
+<div
+  class="fixed top-16 right-4 z-50"
+  role="region"
+  aria-label="Guided session status"
+>
+```
+
+**GS-E3 — Keyboard Shortcut for Rejoin/Break Away**
+
+Power users and users who rely on keyboard navigation would benefit from a keyboard shortcut (e.g., `Escape` to break away, `G` to rejoin guide) when in a guided session. This is an enhancement for a future iteration but worth logging now.
+
+---
+
+## Update: February 22, 2026
+
+### Changes Since Last Review (Feb 20 -> Feb 22, 2026)
+
+| Change | Impact |
+|--------|--------|
+| E2E Tests (#35): 3 new Wallaby feature test files -- `auth_flow_feature_test.exs`, `room_feature_test.exs`, `lobby_navigation_feature_test.exs` | **Total 7 feature test files** (up from 4). Auth flow test covers login/logout/redirect pipeline. Room test covers room creation and navigation. Lobby navigation test covers lens switching and route stability. |
+| Hierarchy View (#41): `/lobby/hierarchy` with collapsible User > Sensor tree | **ACCESSIBILITY REVIEW NEEDED**: Collapsible tree structures require `aria-expanded` on toggle buttons, `role="tree"`/`role="treeitem"` semantics, and keyboard arrow-key navigation per WAI-ARIA TreeView pattern. |
+| My Devices View (#42): `/devices` with device cards, inline rename, forget with confirmation | **ACCESSIBILITY REVIEW NEEDED**: Inline rename requires focus management (focus input on edit mode entry). Forget confirmation dialog must use `<.modal>` component (not raw div). Device status indicators must not rely solely on color -- use text labels or `aria-label`. |
+| Connector REST API (#40): New OpenApiSpex-annotated controller | `openapi_test.exs` should be expanded to validate connector schemas in the OpenAPI spec. Currently only 2 schema validation tests. |
+| CRDT Sessions (#36): document_worker.ex with multi-device tracking | No direct accessibility impact. Consider testing that multi-device state sync does not cause unexpected UI updates without `aria-live` announcements. |
+| Token Refresh (#37): POST `/api/auth/refresh` endpoint | No direct accessibility impact. Auth flow E2E test should cover token expiry and silent refresh behavior. |
 
 ---
 
@@ -869,30 +1698,49 @@ Social features (follows, connections, direct messages) will require:
 
 ## Priority Actions
 
-### Immediate (Block on next release)
-1. **Fix polls form labels** — Add `for=` and `id=` to all 4 label/input pairs in `polls_live.html.heex`. 30-minute fix.
-2. **Fix user directory search label** — Add `aria-label="Search users"` to search input. 5-minute fix.
-3. **Fix profile remove-skill button** — Add `aria-label={"Remove skill: " <> skill.name}` to each button. 15-minute fix.
-4. **Fix search_live_test false-green** — Replace `if search_view do ... end` with `assert search_view` + unconditional body. 5-minute fix.
+### Immediate (Block on next release — NEW from Feb 24)
+1. **Fix runtime bug: `Ash.update` with `action: :create` in `guided_session_join_live.ex` line 61** — This will crash at runtime. Add a `:set_follower` update action to `GuidedSession` or combine the follower assignment into the `:accept` action. 30-minute fix. See "Critical Bug Fix Required" section above.
+2. **Fix UX bug: Follower badge dismiss button fires `guide_end_session`** — The `&times;` button on the follower floating badge ends the entire session. Introduce a `"follower_leave_session"` event or a `"dismiss_session_badge"` event with the appropriate semantics. 20-minute fix.
+3. **Add `aria-live="polite"` to the guided session badge status region** — Without it, mode switches (Following / Exploring) are invisible to screen reader users (Violation GS-3). 10-minute fix.
+4. **Add `role="alert" aria-live="assertive"` to the suggestion toast** — Guide suggestions to the follower are time-sensitive and must be announced (Violation GS-4). 5-minute fix.
+5. **Add `aria-label="End guided session"` to the badge dismiss button** — `title` attribute alone does not provide an accessible name (Violation GS-1). 5-minute fix.
+6. **Add `aria-label` to the guide/follower presence dot** — Color alone fails WCAG 1.4.1 (Violation GS-2). 5-minute fix.
 
-### Short-term (Next sprint)
-5. **Add `aria-expanded` to app layout menus** — User menu, language switcher, mobile hamburger. Update JS hooks to maintain `aria-expanded`. 2-hour fix.
-6. **Fix IndexLive page title** — Add `assign(:page_title, "Home")` in `index_live.ex`. 5-minute fix.
-7. **Add `aria-current` to user directory nav** — 10-minute fix.
-8. **Fix vote count aria-live** — Wrap vote count display in `<span aria-live="polite">`. 15-minute fix.
-9. **Add `phx-disable-with` to poll submit button** — 5-minute fix.
-10. **Investigate `refute_push_event/4` arity** in `midi_output_regression_test.exs` — Verify 4-argument call is valid for the installed Phoenix version.
+### Immediate (Carried over from Feb 22)
+7. **Fix polls form labels** — Add `for=` and `id=` to all 4 label/input pairs in `polls_live.html.heex`. 30-minute fix.
+8. **Fix user directory search label** — Add `aria-label="Search users"` to search input. 5-minute fix.
+9. **Fix profile remove-skill button** — Add `aria-label={"Remove skill: " <> skill.name}` to each button. 15-minute fix.
+10. **Fix search_live_test false-green** — Replace `if search_view do ... end` with `assert search_view` + unconditional body. 5-minute fix.
+
+### Short-term (Next sprint — NEW from Feb 24)
+11. **Write `SessionServerTest`** — Focus on drift-back timer, break_away/rejoin cycle, idle timeout, and role enforcement. Use `assert_receive`/`refute_receive` with PubSub. ~3 hours.
+12. **Write `GuidedSessionResourceTest`** — Cover all 4 actions, `generate_invite_code/1` alphabet validation, and constraint enforcement. ~2 hours.
+13. **Write `GuidedSessionJoinLiveTest`** — All mount paths plus the accept event (authenticated and unauthenticated). ~2 hours.
+14. **Add `role="region" aria-label` to guide panel and follower badge** — Landmarks enable screen reader navigation (Violations GS-E1, GS-E2). 10-minute fix.
+15. **Add `aria-label` to suggestion toast dismiss button** — `&times;` has no accessible name (Violation GS-4 dismiss button). 5-minute fix.
+16. **Add `role="alert"` to join page error text** — Violations GS-7. 5-minute fix.
+17. **Add `phx-disable-with="Joining..."` to Accept button** — Prevents double-submit (Violation GS-8). 5-minute fix.
+18. **Add `aria-label` to guide panel suggestion buttons** — "Breathing" and "Break" lack context out of tree order (Violation GS-6). 10-minute fix.
+
+### Short-term (Carried over from Feb 22)
+19. **Add `aria-expanded` to app layout menus** — User menu, language switcher, mobile hamburger. Update JS hooks to maintain `aria-expanded`. 2-hour fix.
+20. **Fix IndexLive page title** — Add `assign(:page_title, "Home")` in `index_live.ex`. 5-minute fix.
+21. **Add `aria-current` to user directory nav** — 10-minute fix.
+22. **Fix vote count aria-live** — Wrap vote count display in `<span aria-live="polite">`. 15-minute fix.
+23. **Add `phx-disable-with` to poll submit button** — 5-minute fix.
+24. **Investigate `refute_push_event/4` arity** in `midi_output_regression_test.exs` — Verify 4-argument call is valid for the installed Phoenix version.
 
 ### Medium-term (Next month)
-11. **Migrate lobby custom modals to `<.modal>` component** — Join Room, Control Request, Media Control Request modals. Highest effort (~4 hours) but critical for keyboard accessibility.
-12. **Add Floki-based accessibility regression tests** — Create `test/sensocto_web/accessibility/` with form label, aria-live, and icon-button tests.
-13. **Add `phx-change="validate_poll"` real-time validation** — Prevents disruptive submit-to-discover error cycle.
-14. **Deduplicate redundant lobby_graph_regression tests** — Remove the 3 identical describe blocks, or split into 3 named tests.
+25. **Migrate lobby custom modals to `<.modal>` component** — Join Room, Control Request, Media Control Request modals. Highest effort (~4 hours) but critical for keyboard accessibility.
+26. **Add Floki-based accessibility regression tests** — Create `test/sensocto_web/accessibility/` with form label, aria-live, and icon-button tests.
+27. **Add `phx-change="validate_poll"` real-time validation** — Prevents disruptive submit-to-discover error cycle.
+28. **Deduplicate redundant lobby_graph_regression tests** — Remove the 3 identical describe blocks, or split into 3 named tests.
+29. **Add focus management for suggestion toast** — Use a `push_event`/JS hook to focus the dismiss button when the toast appears (Violation GS-5).
 
 ### Ongoing
-15. **Audit each new LiveView for WCAG 1.3.1 compliance** — Every new form must have label/input associations before merging.
-16. **Review adaptive video quality controls for `aria-pressed`** — When PLAN-adaptive-video-quality features land.
-17. **Review Iroh connection status for `aria-live` announcements** — When PLAN-room-iroh-migration lands.
+30. **Audit each new LiveView for WCAG 1.3.1 compliance** — Every new form must have label/input associations before merging.
+31. **Review adaptive video quality controls for `aria-pressed`** — When PLAN-adaptive-video-quality features land.
+32. **Review Iroh connection status for `aria-live` announcements** — When PLAN-room-iroh-migration lands.
 
 ---
 
@@ -902,20 +1750,21 @@ Social features (follows, connections, direct messages) will require:
 |---|---|---|---|
 | Accounts (Users, Tokens) | 2 | ~48 | New: accounts_test.exs |
 | Collaboration (Polls) | 1 | ~32 | New: collaboration_test.exs |
+| Guidance (GuidedSession) | 0 | 0 | NEW — 3 test files needed, ~70 tests |
 | Sensors (core) | 6 | ~89 | Existing, no changes |
 | OTP (AttentionTracker, AttributeStore, RoomServer) | 3 | ~71 | All new |
 | Encoding (DeltaEncoder) | 1 | ~18 | New |
 | Resilience (CircuitBreaker) | 1 | ~22 | New |
 | Simulator | 4 | ~51 | No changes |
-| LiveView (Lobby, MIDI, Search, Room, etc.) | 14 | ~189 | 4 new regression tests |
+| LiveView (Lobby, MIDI, Search, Room, GuidedJoin) | 14 | ~189 | GuidedSessionJoinLive has 0 coverage |
 | Channel / Presence | 2 | ~29 | No changes |
 | Misc (Router, ErrorHTML) | 2 | ~8 | No changes |
 | Integration (Wallaby) | 1 | ~12 | No changes |
 | Performance / Stress | 5 | ~53 | No changes |
 | Data Layer / Ash | 9 | ~110 | No changes |
-| **Total** | **51** | **~732** | **Up from 33/~373** |
+| **Total** | **51** | **~732** | **Guidance domain at 0%** |
 
-Coverage estimate: **~61% of application code** (up from ~44%). The largest uncovered areas remain: Phoenix channel error paths, Simulator edge cases (startup failure, timeout), and MIDI hardware abstraction layer.
+Coverage estimate: **~58% of application code** (down from ~61% due to new untest Guidance domain adding approximately 500 lines). The Guidance domain is the largest new uncovered area. Priority is `SessionServerTest` (timer behavior), `GuidedSessionResourceTest` (constraint and action coverage), and `GuidedSessionJoinLiveTest` (all mount paths and accept event).
 
 ---
 
@@ -941,16 +1790,36 @@ Coverage estimate: **~61% of application code** (up from ~44%). The largest unco
 - `lib/sensocto_web/live/index_live.ex`
 - `git diff HEAD~10 --stat` (116 files changed, 17663 insertions)
 
+- `lib/sensocto/guidance.ex`
+- `lib/sensocto/guidance/guided_session.ex`
+- `lib/sensocto/guidance/session_server.ex`
+- `lib/sensocto/guidance/session_supervisor.ex`
+- `lib/sensocto_web/live/guided_session_join_live.ex`
+- `lib/sensocto_web/live/lobby_live.html.heex` (lines 1510-1624, guided session additions)
+
 ---
 
 ## Summary
 
-The Sensocto project has made substantial testing and accessibility progress since the February 16 review. Test file count grew from 33 to 51, test count from ~373 to ~732, and three longstanding accessibility violations (skip navigation, live title, lobby tablist) have been resolved.
+### February 24, 2026
 
-The new Collaboration and Accounts domains are well-covered by their new test files. The OTP layer now has meaningful regression coverage for AttentionTracker, AttributeStoreTiered, and RoomServer. The lobby regression test suite covers all 13 routes and the composite MIDI push event contract.
+The Guided Session feature was shipped across six new files with zero test coverage and eight new accessibility violations. Two bugs were discovered that would affect users in production immediately:
 
-However, the rapid addition of the Polls, UserDirectory, and Profile features introduced four new HIGH-severity WCAG violations and two test quality issues that must be addressed before these features ship to production. The `polls_live.html.heex` form label association failures and the `search_live_test.exs` false-green pattern are the most urgent items.
+1. `GuidedSessionJoinLive.handle_event("accept")` calls `Ash.update` with `action: :create`, which is a runtime error. The `GuidedSession` resource has no update action named `:create`. This must be fixed before the feature is accessible to any user.
 
-The three custom modals in `lobby_live.html.heex` remain the project's most significant accessibility debt. Migrating them to the `<.modal>` core component should be scheduled as a focused sprint task.
+2. The follower floating badge dismiss button (`&times;`) fires `guide_end_session`, which ends the entire session for both participants. A follower clicking it to close their status badge will terminate the session unexpectedly. A separate event is needed.
 
-*Last updated: 2026-02-20 by elixir-test-accessibility-expert agent.*
+On the accessibility side, the new UI introduces five HIGH-severity violations: no live region for session state changes (Following / Exploring), no live region for guide suggestions (the toast appears silently for screen reader users), presence dots that rely solely on color, icon-only buttons without accessible names, and error text on the join page that is not announced on load.
+
+Three test files are needed (approximately 70 tests total):
+- `test/sensocto/guidance/session_server_test.exs` — GenServer behavior, timer correctness, role enforcement, PubSub contracts
+- `test/sensocto/guidance/guided_session_resource_test.exs` — Ash resource actions, constraints, invite code alphabet
+- `test/sensocto_web/live/guided_session_join_live_test.exs` — All mount paths, accept event, unauthenticated rejection
+
+### February 22, 2026
+
+The project made substantial testing and accessibility progress since the February 16 review. Test file count grew from 33 to 51, test count from ~373 to ~732, and three longstanding accessibility violations (skip navigation, live title, lobby tablist) have been resolved.
+
+The three custom modals in `lobby_live.html.heex` remain the project's most significant pre-existing accessibility debt. The new Guidance feature has added to that debt with 8 new violations, 2 of which (the live region for state changes and the suggestion toast announcement) are HIGH severity and directly affect the core user experience of the feature.
+
+*Last updated: 2026-02-24 by elixir-test-accessibility-expert agent.*

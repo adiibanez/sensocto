@@ -1062,15 +1062,34 @@
           >
             <option value="">-- Select MIDI output --</option>
           </select>
-          <button
-            id="midi-mode-btn"
-            class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
-          >
-            🌊 Abstract
-          </button>
+          <span style="position:relative;display:inline-block;" id="midi-mode-wrap">
+            <button
+              id="midi-mode-btn"
+              class="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-gray-400 hover:bg-gray-500 transition-colors"
+            >
+              🌊 Abstract
+            </button>
+            <span
+              id="midi-mode-tooltip"
+              style="display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);width:280px;padding:10px 12px;background:rgba(17,12,34,0.96);border:1px solid rgba(139,92,246,0.35);border-radius:8px;color:#d1d5db;font-size:11px;line-height:1.5;text-align:left;white-space:normal;z-index:50;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.5);"
+            >
+              <span id="midi-mode-tooltip-content">
+                Click to cycle modes: Abstract → Groovy genres → Local AI.<br />
+                <b style="color:#c4b5fd;">Abstract</b>
+                — raw sensor data as MIDI CCs &amp; note triggers.<br />
+                <b style="color:#c4b5fd;">Groovy</b>
+                — musical engine with chords, bass, drums &amp; arps driven by biometrics. 4 genre styles.<br />
+                <b style="color:#c4b5fd;">Local AI</b>
+                — on-device neural net (Magenta) generates melodies from sensor input. Use ⚙ to set key, chords &amp; creativity.
+              </span>
+            </span>
+            <style>
+              #midi-mode-wrap:hover #midi-mode-tooltip { display: block !important; }
+            </style>
+          </span>
           <button
             id="midi-ai-settings-btn"
-            class="hidden px-1.5 py-1 rounded text-xs hover:bg-gray-600 transition-colors"
+            class="hidden px-2.5 py-1.5 rounded text-base hover:bg-gray-600 transition-colors"
             style="color: #c4b5fd;"
             title="AI Settings"
           >
@@ -1088,7 +1107,13 @@
             class="hidden w-full flex items-center gap-2 flex-wrap text-[10px]"
           >
             <span style="color: #9ca3af;">Voices:</span>
-            <label class="flex items-center gap-1" style="color: #d1d5db;">
+            <label class="flex items-center gap-1 cursor-pointer" style="color: #d1d5db;">
+              <input
+                type="checkbox"
+                id="tone-mute-bass"
+                checked
+                class="w-3 h-3 accent-red-400 cursor-pointer"
+              />
               <span style="color: #f87171;">Bass</span>
               <select
                 id="tone-inst-bass"
@@ -1098,7 +1123,13 @@
                 <option value="default">Genre</option>
               </select>
             </label>
-            <label class="flex items-center gap-1" style="color: #d1d5db;">
+            <label class="flex items-center gap-1 cursor-pointer" style="color: #d1d5db;">
+              <input
+                type="checkbox"
+                id="tone-mute-pad"
+                checked
+                class="w-3 h-3 accent-violet-400 cursor-pointer"
+              />
               <span style="color: #a78bfa;">Pad</span>
               <select
                 id="tone-inst-pad"
@@ -1108,7 +1139,13 @@
                 <option value="default">Genre</option>
               </select>
             </label>
-            <label class="flex items-center gap-1" style="color: #d1d5db;">
+            <label class="flex items-center gap-1 cursor-pointer" style="color: #d1d5db;">
+              <input
+                type="checkbox"
+                id="tone-mute-lead"
+                checked
+                class="w-3 h-3 accent-emerald-400 cursor-pointer"
+              />
               <span style="color: #34d399;">Lead</span>
               <select
                 id="tone-inst-lead"
@@ -1118,7 +1155,13 @@
                 <option value="default">Genre</option>
               </select>
             </label>
-            <label class="flex items-center gap-1" style="color: #d1d5db;">
+            <label class="flex items-center gap-1 cursor-pointer" style="color: #d1d5db;">
+              <input
+                type="checkbox"
+                id="tone-mute-arp"
+                checked
+                class="w-3 h-3 accent-sky-400 cursor-pointer"
+              />
               <span style="color: #38bdf8;">Arp</span>
               <select
                 id="tone-inst-arp"
@@ -1483,6 +1526,102 @@
   <%!-- /Right column --%>
 </div>
 <%!-- /Side-by-side wrapper --%>
+
+<%!-- Guided Session: Follower floating badge --%>
+<%= if @guided_session do %>
+  <div class="fixed top-16 right-4 z-50">
+    <div class="bg-base-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-2 text-sm">
+      <span class={[
+        "w-2 h-2 rounded-full",
+        if(@guided_presence.guide_connected, do: "bg-green-500", else: "bg-gray-400")
+      ]}>
+      </span>
+      <%= if @guided_following do %>
+        <span>Following guide</span>
+        <button
+          phx-click="follower_break_away"
+          class="ml-1 text-xs text-base-content/50 hover:text-base-content underline"
+        >
+          Explore
+        </button>
+      <% else %>
+        <span class="text-base-content/70">Exploring on your own</span>
+        <button
+          phx-click="follower_rejoin"
+          class="ml-1 text-xs text-primary hover:text-primary-focus underline"
+        >
+          Return
+        </button>
+      <% end %>
+      <button
+        phx-click="guide_end_session"
+        class="ml-2 text-xs text-error/60 hover:text-error"
+        title="End session"
+      >
+        &times;
+      </button>
+    </div>
+  </div>
+<% end %>
+
+<%!-- Guided Session: Follower suggestion toast --%>
+<%= if @guided_suggestion do %>
+  <div class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+    <div class="bg-base-200 rounded-xl shadow-xl p-4 flex items-start gap-3">
+      <div class="flex-1">
+        <p class="text-sm font-medium">{@guided_suggestion.text}</p>
+      </div>
+      <button
+        phx-click="dismiss_suggestion"
+        class="text-base-content/40 hover:text-base-content text-lg leading-none"
+      >
+        &times;
+      </button>
+    </div>
+  </div>
+<% end %>
+
+<%!-- Guided Session: Guide panel --%>
+<%= if @guiding_session do %>
+  <div class="fixed top-16 right-4 z-50">
+    <div class="bg-base-200 rounded-xl shadow-lg p-3 w-64">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium">Guiding</span>
+        <div class="flex items-center gap-1.5">
+          <span class={[
+            "w-2 h-2 rounded-full",
+            if(@guided_presence.follower_connected, do: "bg-green-500", else: "bg-gray-400")
+          ]}>
+          </span>
+          <span class="text-xs text-base-content/60">
+            {if @guided_following, do: "Following", else: "Exploring"}
+          </span>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1.5 mb-2">
+        <button
+          phx-click="guide_suggest"
+          phx-value-type="breathing_rhythm"
+          phx-value-text="Try breathing at 6 breaths/min"
+          class="btn btn-xs btn-outline"
+        >
+          Breathing
+        </button>
+        <button
+          phx-click="guide_suggest"
+          phx-value-type="take_break"
+          phx-value-text="Take a short break"
+          class="btn btn-xs btn-outline"
+        >
+          Break
+        </button>
+      </div>
+      <button phx-click="guide_end_session" class="btn btn-xs btn-error btn-outline w-full">
+        End Session
+      </button>
+    </div>
+  </div>
+<% end %>
 
 <%!-- Join Room Modal --%>
 <%= if @show_join_modal do %>

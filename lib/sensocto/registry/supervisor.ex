@@ -86,7 +86,8 @@ defmodule Sensocto.Registry.Supervisor do
       {Registry, keys: :unique, name: Sensocto.CallRegistry},
       {Registry, keys: :unique, name: Sensocto.MediaRegistry},
       {Registry, keys: :unique, name: Sensocto.Object3DRegistry},
-      {Registry, keys: :unique, name: Sensocto.WhiteboardRegistry}
+      {Registry, keys: :unique, name: Sensocto.WhiteboardRegistry},
+      {Registry, keys: :unique, name: Sensocto.GuidanceRegistry}
     ]
 
     # one_for_one: registries are independent

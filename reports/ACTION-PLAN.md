@@ -1,6 +1,6 @@
 # Sensocto Action Plan
 
-**Generated:** January 12, 2026 | **Updated:** February 15, 2026
+**Generated:** January 12, 2026 | **Updated:** February 22, 2026
 **Based on:** Security, Resilience, Testing, and Accessibility Agent Reports
 
 ---
@@ -70,6 +70,21 @@
 | R-009 | DONE | Bio.Supervisor explicit restart limits (max_restarts: 10, max_seconds: 60) |
 | R-010 | DONE | Adaptive attention decay (load-correlated thresholds, two-tier cleanup) |
 | R-011 | DONE | Honey badger AttentionTracker (crash-resilient restart, ETS preservation, re-register broadcast) |
+
+### GitHub Issues Batch (Feb 22, 2026)
+
+| Issue | Status | Description |
+|-------|--------|-------------|
+| #39 | DONE | Persist connectors to Postgres with user ownership (ETS → AshPostgres) |
+| #32 | DONE | OpenAPI spec — controller specs on all API controllers, Paths.from_router/1 |
+| #35 | DONE | E2E browser tests — 3 new feature test files (auth, room, lobby navigation) |
+| #43 | DONE | Broadcast connector status via user-scoped PubSub |
+| #40 | DONE | Connector management REST API (CRUD + OpenApiSpex) |
+| #37 | DONE | Token refresh endpoint + HttpOnly cookie auth plug |
+| #41 | DONE | Hierarchy view in lobby (/lobby/hierarchy) |
+| #42 | DONE | My Devices standalone view (/devices) |
+| #34 | DONE | Bio-layer: Hebbian correlation tracker, ultradian rhythms, sympathetic boosting |
+| #36 | DONE | CRDT session state: LWW document worker, DynamicSupervisor, multi-device tracking |
 
 ---
 

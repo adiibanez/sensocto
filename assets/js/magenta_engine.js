@@ -446,6 +446,7 @@ export class MagentaEngine {
   dispose() {
     this.stop();
     this._disposed = true;
+    this.midi = null;
     if (this._melodyRnn) {
       this._melodyRnn.dispose();
       this._melodyRnn = null;

@@ -11,11 +11,166 @@ Sensocto is a sophisticated real-time sensor platform built on Phoenix/LiveView 
 - Nx/numerical computing for quaternion calculations
 - Collaborative whiteboard, media player, and 3D object viewer
 
-**Current Testing Status:** Substantial and growing -- **51 test files** with approximately **732 test definitions** across unit, integration, E2E (Wallaby), and regression guard tests.
+**Current Testing Status:** Substantial and growing -- **65 test files** across unit, integration, E2E (Wallaby), and regression guard tests.
 
-**Livebook Status:** 16 livebooks totaling 8,713 lines, covering architecture, security, resilience, API developer experience, biomimetic patterns, and accessibility. Livebook count is stagnant since Feb 16.
+**Livebook Status:** 16 livebooks totaling 8,713 lines. Livebook count stagnant since Feb 16. New Guided Session feature presents a strong livebook opportunity.
 
-**Priority Recommendation:** Expand test coverage for Calls system (CallServer, QualityManager, SnapshotManager -- 0% coverage), add event handler tests for LobbyLive and new LiveViews (PollsLive, ProfileLive), and create livebooks for new features (audio/MIDI, collaboration, delta encoding).
+**Priority Recommendation:** Test the new Guided Session feature (SessionServer, GuidedSession resource, SessionSupervisor, JoinLive), expand Calls system coverage (0%), and create interactive livebooks for Guidance lifecycle exploration and drift-back timer experimentation.
+
+---
+
+## Update: February 24, 2026
+
+### New Feature: Guided Session System
+
+A new **Guidance** domain has been added with the following components:
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `Sensocto.Guidance` | `lib/sensocto/guidance.ex` | Ash domain with AshAdmin |
+| `Sensocto.Guidance.GuidedSession` | `lib/sensocto/guidance/guided_session.ex` | Ash resource (DB-backed, 8 actions, invite code generation) |
+| `Sensocto.Guidance.SessionServer` | `lib/sensocto/guidance/session_server.ex` | GenServer: lens sync, drift-back timer, annotations, idle timeout |
+| `Sensocto.Guidance.SessionSupervisor` | `lib/sensocto/guidance/session_supervisor.ex` | DynamicSupervisor, one SessionServer per active session |
+| `SensoctoWeb.GuidedSessionJoinLive` | `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView for accepting/declining invitations via invite code |
+
+**Ecto Schema Count:** 30 (up from 24). New: GuidedSession, plus UserConnection, UserSkill, Poll, PollOption, Vote added since last schema count.
+
+**Test File Count:** 65 (up from 54).
+
+**Current Guided Session Test Coverage: 0%.** No test files exist for any guidance module.
+
+### Architecture Analysis: Guided Session
+
+The system follows a guide/follower pattern (similar to MediaPlayerServer's take_control/release_control):
+
+1. **Session lifecycle:** pending -> active -> ended/declined (Ash state machine via actions)
+2. **Invite code:** 6-char alphanumeric from unambiguous alphabet (no O/0/I/1), unique identity constraint
+3. **Drift-back timer:** Configurable 5-120s (default 15s). When follower breaks away, timer fires `:drift_back` message to auto-rejoin guide's view
+4. **Idle timeout:** 5-minute timer starts when guide disconnects; ends session on expiry
+5. **PubSub broadcasting:** All state changes broadcast to `"guidance:#{session_id}"` topic
+6. **Registry:** Uses `Sensocto.GuidanceRegistry` (local Elixir Registry) for process lookup
+
+**Key Design Observations:**
+
+- `is_guide?/2` and `is_follower?/2` compare with `to_string/1`, safely handling both binary and UUID types
+- `cancel_idle_timeout/1` in `handle_call({:end_session, ...})` does not return the updated state (the `state` var is not reassigned). This is benign because the process stops immediately after, but is inconsistent with `cancel_drift_back_timer/1` usage
+- `annotations` list grows unboundedly via `state.annotations ++ [annotation]` -- potential memory concern for very long sessions
+- The `handle_event("accept", ...)` in JoinLive uses `:create` action to set `follower_user_id`, but this is an update on an existing record. This looks like it should be a custom `:accept` action that also accepts `follower_user_id`, or a separate `:assign_follower` action
+- No route for the JoinLive is visible in router.ex -- may need to be added
+
+### Recommended Tests for Guided Session
+
+#### 1. Ash Resource Tests (`test/sensocto/guidance/guided_session_test.exs`)
+
+```elixir
+# Test all 6 actions: create, accept, decline, end_session, by_invite_code, active_for_user
+# Test invite_code uniqueness identity constraint
+# Test drift_back_seconds min/max constraints (5..120)
+# Test status transitions: pending->active, pending->declined, active->ended
+# Test generate_invite_code/1 produces expected length and alphabet
+```
+
+#### 2. SessionServer Unit Tests (`test/sensocto/guidance/session_server_test.exs`)
+
+```elixir
+# Guide actions: set_lens, set_focused_sensor, add_annotation, suggest_action
+# Non-guide rejection: all guide actions return {:error, :not_guide} for follower
+# Follower actions: break_away starts drift-back timer, rejoin cancels it
+# Non-follower rejection: break_away/rejoin return {:error, :not_follower}
+# Drift-back timer: fires after configured seconds, resets following to true
+# report_activity resets the drift-back timer
+# Idle timeout: guide disconnect starts 5-min timer, reconnect cancels it
+# end_session: updates Ash resource, broadcasts :guided_ended, stops process
+# PubSub: verify all broadcast messages reach subscribers
+# Connect/disconnect presence tracking
+```
+
+#### 3. SessionSupervisor Tests (`test/sensocto/guidance/session_supervisor_test.exs`)
+
+```elixir
+# start_session creates a process findable via Registry
+# start_session with duplicate session_id returns {:ok, existing_pid}
+# stop_session terminates the process
+# get_or_start_session idempotency
+# list_active_sessions returns all running session IDs
+# count returns correct active count
+```
+
+#### 4. JoinLive Tests (`test/sensocto_web/live/guided_session_join_live_test.exs`)
+
+```elixir
+# Mount with valid invite code shows session details and Accept button
+# Mount with invalid/expired code shows error message
+# Mount without code shows error message
+# Accept event with signed-in user activates session and redirects to /lobby
+# Accept event without signed-in user shows flash error
+```
+
+### Recommended Livebook Experiments
+
+#### Livebook 1: Guided Session Lifecycle (`livebooks/guided-session-lifecycle.livemd`)
+
+Full lifecycle exploration:
+- Create a GuidedSession via Ash, inspect the generated invite code
+- Start a SessionServer via SessionSupervisor
+- Simulate guide actions (set_lens, set_focused_sensor, add_annotation)
+- Subscribe to PubSub topic and observe all broadcast messages
+- Simulate follower break_away, observe drift-back timer firing
+- End session and verify Ash resource status update
+
+#### Livebook 2: Drift-Back Timer Experimentation (`livebooks/drift-back-timer.livemd`)
+
+Interactive timer exploration:
+- Start SessionServer with various drift_back_seconds values (5, 15, 60, 120)
+- Break away and watch real-time countdown via Kino frame updates
+- Test report_activity resets: break away, report activity every N seconds, verify timer resets
+- Test edge case: break away then immediately rejoin -- verify timer cancellation
+- Visualize timer behavior with VegaLite timeline chart showing break_away/activity/drift_back events
+
+#### Livebook 3: Concurrent Guide/Follower PubSub Testing (`livebooks/guidance-pubsub.livemd`)
+
+Multi-process interaction:
+- Spawn guide and follower "actors" as separate processes
+- Subscribe both to the guidance PubSub topic
+- Have guide change lenses rapidly, verify follower receives all updates in order
+- Test break_away/rejoin cycle while guide is actively changing state
+- Measure PubSub delivery latency under varying message rates
+
+#### Livebook 4: Load Testing Multiple Sessions (`livebooks/guidance-load-test.livemd`)
+
+Scalability exploration:
+- Start 10/50/100 concurrent SessionServers via SessionSupervisor
+- Measure memory per session (`:erlang.process_info(pid, :memory)`)
+- Simultaneous guide actions across all sessions
+- Verify Registry lookup performance at scale
+- DynamicSupervisor.count_children overhead measurement
+- Mermaid diagram showing supervision tree with N active sessions
+
+### Updated Metrics
+
+| Metric | Feb 22 | Feb 24 | Change |
+|--------|--------|--------|--------|
+| Test Files | ~54 | **65** | +11 (+20%) |
+| Ecto Schemas | 24 | **30** | +6 |
+| Ash Domains | 5+ | **6** (new: Guidance) | +1 |
+| Livebook Count | 16 | **16** | Stagnant |
+| Guidance Test Coverage | N/A | **0%** | NEW feature, untested |
+
+---
+
+## Update: February 22, 2026
+
+### Changes Since Last Review (Feb 20 -> Feb 22, 2026)
+
+| Change | Impact |
+|--------|--------|
+| E2E Tests (#35): 3 new Wallaby feature test files -- `auth_flow_feature_test.exs`, `room_feature_test.exs`, `lobby_navigation_feature_test.exs` | **Total 7 feature test files** (up from 4). E2E Pioneer achievement extended. Auth flow coverage is a major addition -- tests login/logout/redirect pipeline end-to-end. |
+| OpenAPI Spec (#32): Controller specs added to RoomController, RoomTicketController, ConnectorController | `openapi_test.exs` should be expanded to validate new connector schemas. Currently only 2 tests. |
+| Connector REST API (#40): New controller at `/api/connectors` | New API endpoint needs controller tests (index/show/update/delete). No test file yet for ConnectorController. |
+| Hierarchy View (#41) + My Devices View (#42): New LiveViews at `/lobby/hierarchy` and `/devices` | Two new LiveView modules need mount + event handler tests. DevicesLive has inline rename and forget-with-confirmation that are good candidates for LiveView event testing. |
+| CRDT Sessions (#36): document_worker.ex GenServer | New GenServer needs unit tests for LWW merge semantics, multi-device tracking, and auto-shutdown on idle. |
+| Bio-Layer (#34): correlation_tracker.ex, ultradian modulation | CorrelationTracker needs tests for co-activation weight accumulation and decay. Extends bio test suite (currently at 100% for existing 5 modules). |
+| Updated test counts: ~54 test files, ~780+ test definitions. E2E feature files: 7. |
 
 ---
 
@@ -192,11 +347,13 @@ mix test test/sensocto_web/features/      # Feature tests only
 - `test-accessibility-assessment.livemd` (1,088 lines) -- Testing coverage and accessibility audit
 - `resilience-assessment.livemd` (811 lines) -- Live supervision tree visualization and resilience metrics
 
-### Ecto Schemas (24 Total)
+### Ecto Schemas (30 Total)
 
-The project now has 24 Ecto schemas across domains:
-- **Accounts (4):** User, Token, UserPreference, GuestSession
-- **Sensors (14):** Sensor, SensorType, SensorAttribute, SensorAttributeData, Room, RoomMembership, RoomSensorType, Connector, ConnectorSensorType, SensorConnection, SensorSensorConnection, SensorManager, SimulatorBatteryState, SimulatorConnector, SimulatorScenario, SimulatorTrackPosition
+The project now has 30 Ecto schemas across domains:
+- **Accounts (6):** User, Token, UserPreference, GuestSession, UserConnection, UserSkill
+- **Sensors (16):** Sensor, SensorType, SensorAttribute, SensorAttributeData, Room, RoomMembership, RoomSensorType, Connector, ConnectorSensorType, SensorConnection, SensorSensorConnection, SensorManager, SimulatorBatteryState, SimulatorConnector, SimulatorScenario, SimulatorTrackPosition
+- **Collaboration (3):** Poll, PollOption, Vote
+- **Guidance (1):** GuidedSession
 - **Media (2):** Playlist, PlaylistItem
 - **Object3D (2):** Object3DPlaylist, Object3DPlaylistItem
 
@@ -264,10 +421,11 @@ The new `SensoctoWeb.LiveHelpers.SensorData` module also lacks tests.
 
 **Immediate (This Sprint):**
 
-1. **Test `SensoctoWeb.LiveHelpers.SensorData`** -- New shared helper module, pure functions, easy to test
-2. **Create QualityManager tests** -- Pure function module in the call system
-3. **Archive or delete `ash_neo4j_demo.livemd`** -- References removed Neo4j dependency
-4. **Expand regression guards** -- Add contracts for attention level changes, composite lens data shapes, PubSub topic formats
+1. **Test Guided Session feature** -- SessionServer unit tests (drift-back timer, guide/follower authorization, PubSub broadcasts), GuidedSession Ash resource tests (all 6 actions, invite code generation, status transitions), SessionSupervisor tests (start/stop/idempotency), JoinLive tests (mount with valid/invalid codes, accept flow)
+2. **Create `guided-session-lifecycle.livemd`** -- Interactive exploration of the full session lifecycle with PubSub observation
+3. **Test `SensoctoWeb.LiveHelpers.SensorData`** -- New shared helper module, pure functions, easy to test
+4. **Create QualityManager tests** -- Pure function module in the call system
+5. **Archive or delete `ash_neo4j_demo.livemd`** -- References removed Neo4j dependency
 
 **Short-term (2-4 Weeks):**
 
@@ -359,7 +517,8 @@ Hot path is GenServer-free (ETS `:public` tables for direct writes).
 
 | Achievement | Criteria | Progress |
 |-------------|----------|----------|
-| **Ash Master** | Test all Ash resource actions | 1/24 schemas |
+| **Ash Master** | Test all Ash resource actions | 1/30 schemas |
+| **Guidance Guardian** | Full Guided Session lifecycle tests | 0% (NEW) |
 | **Channel Surfer** | Full channel message coverage | ~10% |
 | **Call Expert** | WebRTC integration tests | 0% |
 | **Simulator Sage** | All data generators tested | 0% |
@@ -373,12 +532,13 @@ Core OTP:        ████████░░  ~80% (SimpleSensor, AttentionTr
 Bio Layer:       ██████████  100% (All 5 modules)
 CRDT/Iroh:       ████████░░  ~80% (RoomStateCRDT, Automerge)
 Media/Object3D:  ██████████  100% (Both player servers)
-Ash Resources:   █░░░░░░░░░  ~4% (Room only)
+Ash Resources:   █░░░░░░░░░  ~3% (Room only, 1/30 schemas)
 Channels:        █░░░░░░░░░  ~10% (Basic channel join)
 Call System:     ░░░░░░░░░░  0%
 Simulator:       ░░░░░░░░░░  0%
 LiveViews:       ██░░░░░░░░  ~15% (Components, stateful sensor)
 Web/Plugs:       ███░░░░░░░  ~30% (RateLimiter, OpenAPI, Controllers)
+Guidance:        ░░░░░░░░░░  0% (NEW -- SessionServer, GuidedSession, Supervisor, JoinLive)
 E2E Features:    ████░░░░░░  ~40% (Collab demos covered)
 ```
 
@@ -386,5 +546,5 @@ Overall estimated module coverage: ~30-35%
 
 ---
 
-*Report updated: 2026-02-16*
+*Report updated: 2026-02-24*
 *Analysis by: Livebook Tester Agent (Claude Opus 4.6)*

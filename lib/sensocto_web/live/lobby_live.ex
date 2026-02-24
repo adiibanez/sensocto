@@ -203,7 +203,15 @@ defmodule SensoctoWeb.LobbyLive do
         row_height: @default_row_height,
         cols: 4,
         # Show loading indicator during initial sensor population
-        virtual_scroll_loading: true
+        virtual_scroll_loading: true,
+        # Guided session state (nil when no active session)
+        guided_session: nil,
+        guiding_session: nil,
+        guided_following: true,
+        guided_presence: %{guide_connected: false, follower_connected: false},
+        guided_annotations: [],
+        guided_suggestion: nil,
+        guided_focused_sensor_id: nil
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -1862,9 +1870,16 @@ defmodule SensoctoWeb.LobbyLive do
 
     user = socket.assigns[:current_user]
 
-    if user do
-      Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
-    end
+    socket =
+      if user do
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "user:#{user.id}:guidance")
+
+        # Check for active guided sessions and subscribe
+        subscribe_to_guided_session(socket, user)
+      else
+        socket
+      end
 
     # Per-sensor signal subscriptions (attribute schema change notifications)
     Enum.each(socket.assigns.sensor_ids, fn sensor_id ->
@@ -2159,6 +2174,84 @@ defmodule SensoctoWeb.LobbyLive do
       })
 
     {:noreply, socket}
+  end
+
+  # ============================================================================
+  # Guided Session Events
+  # ============================================================================
+
+  def handle_info({:guided_lens_changed, %{lens: lens}}, socket) do
+    if socket.assigns.guided_session && socket.assigns.guided_following do
+      {:noreply, push_patch(socket, to: lens_to_path(lens))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:guided_sensor_focused, %{sensor_id: sensor_id}}, socket) do
+    {:noreply, assign(socket, :guided_focused_sensor_id, sensor_id)}
+  end
+
+  def handle_info({:guided_annotation, %{annotation: annotation}}, socket) do
+    annotations = socket.assigns.guided_annotations ++ [annotation]
+    {:noreply, assign(socket, :guided_annotations, annotations)}
+  end
+
+  def handle_info({:guided_suggestion, %{action: action}}, socket) do
+    {:noreply, assign(socket, :guided_suggestion, action)}
+  end
+
+  def handle_info({:guided_break_away, _payload}, socket) do
+    if socket.assigns.guiding_session do
+      {:noreply, assign(socket, :guided_following, false)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:guided_drift_back, %{lens: lens}}, socket) do
+    socket = assign(socket, :guided_following, true)
+
+    if socket.assigns.guided_session do
+      {:noreply, push_patch(socket, to: lens_to_path(lens))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:guided_rejoin, _payload}, socket) do
+    {:noreply, assign(socket, :guided_following, true)}
+  end
+
+  def handle_info({:guided_presence, presence}, socket) do
+    {:noreply, assign(socket, :guided_presence, presence)}
+  end
+
+  def handle_info({:guided_ended, _payload}, socket) do
+    {:noreply,
+     socket
+     |> assign(:guided_session, nil)
+     |> assign(:guiding_session, nil)
+     |> assign(:guided_following, true)
+     |> assign(:guided_annotations, [])
+     |> assign(:guided_suggestion, nil)
+     |> assign(:guided_focused_sensor_id, nil)
+     |> assign(:guided_presence, %{guide_connected: false, follower_connected: false})
+     |> put_flash(:info, "Guided session ended.")}
+  end
+
+  def handle_info(
+        {:guidance_invitation_accepted, %{session_id: session_id, follower_name: name}},
+        socket
+      ) do
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session_id}")
+    Sensocto.Guidance.SessionServer.connect(session_id, socket.assigns.current_user.id)
+
+    {:noreply,
+     socket
+     |> assign(:guiding_session, session_id)
+     |> assign(:guided_following, true)
+     |> put_flash(:info, "#{name} joined your guided session.")}
   end
 
   @impl true
@@ -2839,6 +2932,81 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  # ============================================================================
+  # Guided Session Events (from UI)
+  # ============================================================================
+
+  def handle_event("guide_set_lens", %{"lens" => lens_str}, socket) do
+    if session_id = socket.assigns.guiding_session do
+      lens = String.to_existing_atom(lens_str)
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_lens(session_id, user_id, lens)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("guide_focus_sensor", %{"sensor_id" => sensor_id}, socket) do
+    if session_id = socket.assigns.guiding_session do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_focused_sensor(session_id, user_id, sensor_id)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("guide_suggest", %{"type" => type, "text" => text} = params, socket) do
+    if session_id = socket.assigns.guiding_session do
+      user_id = socket.assigns.current_user.id
+      action = %{type: String.to_existing_atom(type), text: text, data: params["data"] || %{}}
+      Sensocto.Guidance.SessionServer.suggest_action(session_id, user_id, action)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("guide_end_session", _params, socket) do
+    session_id = socket.assigns.guiding_session || socket.assigns.guided_session
+
+    if session_id do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.end_session(session_id, user_id)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("follower_break_away", _params, socket) do
+    if session_id = socket.assigns.guided_session do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.break_away(session_id, user_id)
+      {:noreply, assign(socket, :guided_following, false)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("follower_rejoin", _params, socket) do
+    if session_id = socket.assigns.guided_session do
+      user_id = socket.assigns.current_user.id
+
+      case Sensocto.Guidance.SessionServer.rejoin(session_id, user_id) do
+        {:ok, %{lens: lens}} ->
+          socket = assign(socket, :guided_following, true)
+          {:noreply, push_patch(socket, to: lens_to_path(lens))}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("dismiss_suggestion", _params, socket) do
+    {:noreply, assign(socket, :guided_suggestion, nil)}
+  end
+
   @impl true
   def handle_event(type, params, socket) do
     Logger.debug("Lobby Unknown event: #{type} #{inspect(params)}")
@@ -2853,6 +3021,13 @@ defmodule SensoctoWeb.LobbyLive do
     # Unregister from PriorityLens to clean up per-socket state
     if socket.assigns[:priority_lens_registered] do
       Sensocto.Lenses.PriorityLens.unregister_socket(socket.id)
+    end
+
+    # Disconnect from guided session
+    session_id = socket.assigns[:guiding_session] || socket.assigns[:guided_session]
+
+    if session_id do
+      Sensocto.Guidance.SessionServer.disconnect(session_id, socket.assigns.current_user.id)
     end
 
     :ok
@@ -3234,4 +3409,46 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   defp release_control_for_mode(_mode, _user_id), do: :ok
+
+  # ============================================================================
+  # Guided Session Helpers
+  # ============================================================================
+
+  defp subscribe_to_guided_session(socket, user) do
+    case Ash.read(Sensocto.Guidance.GuidedSession,
+           action: :active_for_user,
+           args: [user_id: user.id],
+           authorize?: false
+         ) do
+      {:ok, [session | _]} ->
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session.id}")
+        Sensocto.Guidance.SessionServer.connect(session.id, user.id)
+
+        if to_string(session.guide_user_id) == to_string(user.id) do
+          assign(socket, :guiding_session, session.id)
+        else
+          assign(socket, :guided_session, session.id)
+        end
+
+      _ ->
+        socket
+    end
+  end
+
+  defp lens_to_path(:sensors), do: ~p"/lobby"
+  defp lens_to_path(:heartrate), do: ~p"/lobby/heartrate"
+  defp lens_to_path(:imu), do: ~p"/lobby/imu"
+  defp lens_to_path(:location), do: ~p"/lobby/location"
+  defp lens_to_path(:ecg), do: ~p"/lobby/ecg"
+  defp lens_to_path(:battery), do: ~p"/lobby/battery"
+  defp lens_to_path(:skeleton), do: ~p"/lobby/skeleton"
+  defp lens_to_path(:respiration), do: ~p"/lobby/breathing"
+  defp lens_to_path(:hrv), do: ~p"/lobby/hrv"
+  defp lens_to_path(:gaze), do: ~p"/lobby/gaze"
+  defp lens_to_path(:favorites), do: ~p"/lobby/favorites"
+  defp lens_to_path(:users), do: ~p"/lobby/users"
+  defp lens_to_path(:graph), do: ~p"/lobby/graph"
+  defp lens_to_path(:graph3d), do: ~p"/lobby/graph3d"
+  defp lens_to_path(:hierarchy), do: ~p"/lobby/hierarchy"
+  defp lens_to_path(_), do: ~p"/lobby"
 end

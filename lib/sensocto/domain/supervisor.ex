@@ -104,6 +104,9 @@ defmodule Sensocto.Domain.Supervisor do
       # Whiteboard domain - collaborative drawing
       Sensocto.Whiteboard.WhiteboardSupervisor,
 
+      # Guidance domain - therapeutic guided sessions
+      Sensocto.Guidance.SessionSupervisor,
+
       # Database replication pool - scalable sync operations
       {Sensocto.Otp.RepoReplicatorPool, pool_size: 8},
 

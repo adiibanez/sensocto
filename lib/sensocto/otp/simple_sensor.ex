@@ -83,6 +83,11 @@ defmodule Sensocto.SimpleSensor do
       |> Map.put(:broadcast_buffer, [])
       |> Map.put(:broadcast_timer, nil)
 
+    # Join :pg immediately so sensor is discoverable before handle_continue runs.
+    # This prevents a race where Presence.track fires before :pg.join,
+    # causing the lobby to miss the sensor in get_all_sensors_state.
+    :pg.join(:sensocto_sensors, sensor_id, self())
+
     # Defer blocking operations (DB write, replicator, broadcast) to handle_continue
     {:ok, final_state, {:continue, :post_init}}
   end
@@ -99,8 +104,6 @@ defmodule Sensocto.SimpleSensor do
           "[SimpleSensor] Failed to create DB record for #{sensor_id}: #{inspect(e)}"
         )
     end
-
-    :pg.join(:sensocto_sensors, sensor_id, self())
 
     RepoReplicatorPool.sensor_up(sensor_id)
     broadcast_sensor_registered(state)

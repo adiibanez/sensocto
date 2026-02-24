@@ -175,6 +175,9 @@ defmodule SensoctoWeb.Router do
       live "/users/graph", UserDirectoryLive, :graph
       live "/users/:id", UserShowLive, :show
 
+      # Guided sessions
+      live "/guide/join", GuidedSessionJoinLive, :join
+
       # Polls
       live "/polls", PollsLive, :index
       live "/polls/new", PollsLive, :new

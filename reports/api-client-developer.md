@@ -1,8 +1,8 @@
 # Sensocto API Client Development Report
 
 **Generated:** 2026-01-24
-**Last Updated:** 2026-02-20
-**Status:** Comprehensive Review with DX Deep Dive, Cross-SDK Audit, and New Attribute Types
+**Last Updated:** 2026-02-24
+**Status:** Comprehensive Review with DX Deep Dive, Cross-SDK Audit, New Attribute Types, and Guided Sessions
 
 ---
 
@@ -10,7 +10,7 @@
 
 The Sensocto platform provides four client SDKs (Unity/C#, Rust, Python, TypeScript/Three.js) for connecting to the sensor streaming platform. All SDKs are functionally complete for core use cases including sensor data streaming, video/voice calls, and backpressure handling. However, a critical cross-SDK model mismatch remains: the server sends `backpressure_config` events with 8 fields, but only Rust and TypeScript SDKs model all key fields. Unity and Python SDKs are missing critical fields (`paused`, `system_load`, `load_multiplier`), and ALL SDKs are missing `memory_protection_active`.
 
-Since the last review (2026-02-08), the platform has added new attribute types (eye tracking: `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture`; pose: `skeleton`), new composite lenses (gaze, skeleton, HRV, breathing), a new lobby graph view with server-side Kuramoto phase synchronization (SyncComputer), new lobby routes (`/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users`), a shared `SensorData` helper module, and significant resilience improvements. No breaking API or WebSocket protocol changes were made.
+Since the last review (2026-02-08), the platform has added new attribute types (eye tracking: `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture`; pose: `skeleton`), new composite lenses (gaze, skeleton, HRV, breathing), a new lobby graph view with server-side Kuramoto phase synchronization (SyncComputer), new lobby routes (`/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users`), a shared `SensorData` helper module, and significant resilience improvements. A new **Guided Session** feature has been added (Ash domain `Sensocto.Guidance`, GenServer `SessionServer`, DynamicSupervisor `SessionSupervisor`) enabling a guide to lead a follower through sensor views in real time. No REST API endpoints exist for this feature yet; it is currently LiveView-only with PubSub broadcast on `guidance:{session_id}`. Mobile SDK support will require new REST endpoints and a WebSocket channel or PubSub subscription mechanism.
 
 ### Key Findings (2026-02-16)
 
@@ -27,7 +27,33 @@ Since the last review (2026-02-08), the platform has added new attribute types (
 | Test Coverage | Python SDK tests still empty | Medium |
 | Python Reconnection Logic | Config exists but not implemented | Medium |
 | `request_quality_tier` event | Undocumented in SDKs | Medium |
+| Guided Sessions -- No REST API | New feature, LiveView-only, no mobile SDK access | **High** |
 | Package Publishing | Not published to registries | Low |
+
+### Changes Since Last Review (2026-02-22 to 2026-02-24)
+
+| Change | Impact |
+|--------|--------|
+| Guided Sessions Feature: New `Sensocto.Guidance` Ash domain with `GuidedSession` resource (create, accept, decline, end_session, by_invite_code, active_for_user actions) | **HIGH SDK IMPACT** -- New feature needs REST API endpoints for mobile clients to create, join, and participate in guided sessions |
+| `SessionServer` GenServer: Client API for set_lens, set_focused_sensor, add_annotation, suggest_action, break_away, report_activity, rejoin, end_session, connect, disconnect | Real-time guided navigation state management; mobile clients need a way to call these operations (REST or WebSocket channel) |
+| `SessionSupervisor` DynamicSupervisor: Manages SessionServer lifecycle with Registry-based lookup | Infrastructure for session process management; no direct SDK impact |
+| `GuidedSessionJoinLive`: LiveView for accepting invite codes, sets follower and starts SessionServer | Currently browser-only; mobile needs equivalent REST endpoint for invite code acceptance |
+| PubSub topic `guidance:{session_id}`: Broadcasts guided_lens_changed, guided_sensor_focused, guided_annotation, guided_suggestion, guided_break_away, guided_drift_back, guided_rejoin, guided_presence, guided_ended | Mobile followers need real-time event delivery; requires a new WebSocket channel or SSE endpoint |
+| PubSub topic `user:{user_id}:guidance`: Broadcasts guidance_invitation_accepted | Guide notification when follower joins; mobile guides need this notification |
+
+### Changes Since Last Review (2026-02-20 to 2026-02-22)
+
+| Change | Impact |
+|--------|--------|
+| Connector Persistence (#39): Migrated from ETS to Postgres (AshPostgres.DataLayer) with user ownership | Connector model now database-backed; SDKs sending connector data will benefit from persistence across restarts |
+| OpenAPI Spec (#32): Added OpenApiSpex controller specs to RoomController, RoomTicketController, ConnectorController; `Paths.from_router/1` in api_spec.ex | Connector schemas now in OpenAPI spec; SDK code generators can produce typed connector models |
+| Connector REST API (#40): New controller with index/show/update/delete, routes GET/PUT/DELETE `/api/connectors(/:id)` | **HIGH SDK IMPACT** -- All SDKs should add connector CRUD methods. New endpoints: `GET /api/connectors`, `GET /api/connectors/:id`, `PUT /api/connectors/:id`, `DELETE /api/connectors/:id` |
+| Connector Broadcasts (#43): User-scoped PubSub on `user:#{user_id}:connectors` with events connector_online/offline, sensor_attached/detached | SDKs subscribing to user-scoped topics can receive real-time connector status changes |
+| Token Refresh (#37): HttpOnly cookie auth plug, POST `/api/auth/refresh` endpoint | SDKs should implement token refresh flow via POST `/api/auth/refresh`; mobile SDKs benefit from cookie-based auth |
+| Hierarchy View (#41): `/lobby/hierarchy` route with collapsible User > Sensor tree | No direct SDK impact -- LiveView-only feature |
+| My Devices View (#42): `/devices` route with device cards, inline rename, forget with confirmation | No direct SDK impact -- LiveView-only feature, but consumes Connector API |
+| CRDT Sessions (#36): LWW CRDT document_worker.ex with per-user GenServer, multi-device tracking | No SDK impact currently -- internal session state management |
+| E2E Tests (#35): 3 new feature test files (auth_flow, room, lobby_navigation); total 7 feature test files | No SDK impact -- test infrastructure |
 
 ### Changes Since Last Review (2026-02-16 to 2026-02-20)
 
@@ -184,6 +210,292 @@ A new `Sensocto.Bio.SyncComputer` GenServer computes real-time interpersonal phy
 **SDK Impact:** Currently internal only, exposed via LiveView composite events. If REST endpoints are added for sync data, SDKs will need new models.
 
 **Recommendation:** When sync metrics become available via API, add a `SyncMetrics` model with `order_parameter` (0.0-1.0) to the Python SDK (primary research audience).
+
+---
+
+## NEW FINDING: Guided Sessions -- API Surface for Mobile Clients
+
+### Overview
+
+The Guided Sessions feature enables a **guide** to lead a **follower** through the sensor lobby in real time. The guide's navigation actions (lens changes, sensor focus, annotations, suggested actions) are broadcast to the follower via PubSub. The follower can temporarily "break away" to explore independently, then either manually rejoin or be automatically drifted back after a configurable timeout (5-120 seconds, default 15).
+
+### Architecture Components
+
+| Component | Location | Role |
+|-----------|----------|------|
+| `Sensocto.Guidance` | `lib/sensocto/guidance.ex` | Ash domain (with AshAdmin) |
+| `GuidedSession` | `lib/sensocto/guidance/guided_session.ex` | Ash resource (PostgreSQL-backed) |
+| `SessionServer` | `lib/sensocto/guidance/session_server.ex` | GenServer managing real-time state |
+| `SessionSupervisor` | `lib/sensocto/guidance/session_supervisor.ex` | DynamicSupervisor with Registry lookup |
+| `GuidedSessionJoinLive` | `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView for accepting invites |
+| `GuidanceRegistry` | Elixir Registry | Process lookup by session_id |
+
+### Ash Resource: GuidedSession
+
+**Table:** `guided_sessions`
+
+| Attribute | Type | Constraints | Notes |
+|-----------|------|-------------|-------|
+| `id` | UUID | PK | Auto-generated |
+| `status` | atom | `:pending`, `:active`, `:ended`, `:declined` | Starts as `:pending` |
+| `guide_user_id` | UUID | required | Set via argument on `:create` |
+| `follower_user_id` | UUID | nullable, public | Set when follower accepts |
+| `room_id` | UUID | nullable, public | Optional room scope |
+| `invite_code` | string | required, unique | 6-char alphanumeric (no ambiguous chars: O/0/I/1 excluded) |
+| `drift_back_seconds` | integer | 5-120, default 15 | How long before follower auto-rejoins |
+| `started_at` | utc_datetime_usec | nullable | Set on `:accept` |
+| `ended_at` | utc_datetime_usec | nullable | Set on `:decline` or `:end_session` |
+
+**Actions:**
+
+| Action | Type | Accepts | Effect |
+|--------|------|---------|--------|
+| `:create` | create | `follower_user_id`, `room_id`, `drift_back_seconds` + arg `guide_user_id` | Creates session with status `:pending`, generates invite code |
+| `:accept` | update | (none) | Sets status `:active`, sets `started_at` |
+| `:decline` | update | (none) | Sets status `:declined`, sets `ended_at` |
+| `:end_session` | update | (none) | Sets status `:ended`, sets `ended_at` |
+| `:by_invite_code` | read | arg `invite_code` | Finds pending/active session by code (get?) |
+| `:active_for_user` | read | arg `user_id` | Lists active sessions where user is guide or follower |
+
+### SessionServer: Real-Time State
+
+The SessionServer GenServer manages the live state of an active session. It is registered via `Sensocto.GuidanceRegistry` and started by `SessionSupervisor`.
+
+**Client API (GenServer calls/casts):**
+
+| Function | Role | Type | Returns |
+|----------|------|------|---------|
+| `get_state(session_id)` | Any | call | `{:ok, state_map}` or `{:error, :not_found}` |
+| `set_lens(session_id, user_id, lens)` | Guide | call | `:ok` or `{:error, :not_guide}` |
+| `set_focused_sensor(session_id, user_id, sensor_id)` | Guide | call | `:ok` or `{:error, :not_guide}` |
+| `add_annotation(session_id, user_id, annotation)` | Guide | call | `:ok` or `{:error, :not_guide}` |
+| `suggest_action(session_id, user_id, action)` | Guide | call | `:ok` or `{:error, :not_guide}` |
+| `break_away(session_id, user_id)` | Follower | call | `:ok` or `{:error, :not_follower}` |
+| `report_activity(session_id, user_id)` | Follower | cast | (fire-and-forget, resets drift timer) |
+| `rejoin(session_id, user_id)` | Follower | call | `{:ok, %{lens, focused_sensor_id}}` or `{:error, :not_follower}` |
+| `end_session(session_id, user_id)` | Either | call | `:ok` (stops GenServer) |
+| `connect(session_id, user_id)` | Either | cast | (marks user connected, broadcasts presence) |
+| `disconnect(session_id, user_id)` | Either | cast | (marks disconnected, starts idle timeout for guide) |
+
+**PubSub Events (broadcast on `guidance:{session_id}`):**
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `{:guided_lens_changed, %{lens: atom}}` | Lens atom | Guide calls `set_lens` |
+| `{:guided_sensor_focused, %{sensor_id: string}}` | Sensor ID | Guide calls `set_focused_sensor` |
+| `{:guided_annotation, %{annotation: map}}` | Annotation with auto-generated `:id` | Guide calls `add_annotation` |
+| `{:guided_suggestion, %{action: any}}` | Suggested action | Guide calls `suggest_action` |
+| `{:guided_break_away, %{follower_user_id: uuid}}` | Follower ID | Follower calls `break_away` |
+| `{:guided_drift_back, %{lens: atom, focused_sensor_id: any}}` | Current guide state | Drift-back timer fires |
+| `{:guided_rejoin, %{follower_user_id: uuid}}` | Follower ID | Follower calls `rejoin` |
+| `{:guided_presence, %{guide_connected: bool, follower_connected: bool, following: bool}}` | Presence state | `connect` or `disconnect` |
+| `{:guided_ended, %{ended_by: uuid or :idle_timeout}}` | Who ended it | `end_session` or 5-min idle timeout |
+
+### Current Gap: No REST or WebSocket API for Mobile
+
+The Guided Session feature is currently accessible only through:
+1. **LiveView** (browser) -- LobbyLive handles all guide/follower interactions via `handle_event` and PubSub
+2. **LiveView** (browser) -- GuidedSessionJoinLive handles invite code acceptance
+
+There are **no REST endpoints** and **no dedicated WebSocket channel** for guided sessions. The router has no `/api/guidance/*` routes.
+
+### Recommended REST API Endpoints for Mobile SDKs
+
+The following endpoints would enable full mobile participation in guided sessions:
+
+#### Session Lifecycle (Guide)
+
+| Method | Path | Purpose | Maps To |
+|--------|------|---------|---------|
+| POST | `/api/guidance/sessions` | Create a new guided session | `GuidedSession` `:create` action |
+| GET | `/api/guidance/sessions/:id` | Get session details + state | `Ash.get` + `SessionServer.get_state` |
+| GET | `/api/guidance/sessions/active` | List active sessions for current user | `GuidedSession` `:active_for_user` action |
+| DELETE | `/api/guidance/sessions/:id` | End a session | `SessionServer.end_session` |
+
+**POST `/api/guidance/sessions` request:**
+```json
+{
+  "room_id": "optional-uuid",
+  "drift_back_seconds": 15
+}
+```
+
+**POST `/api/guidance/sessions` response:**
+```json
+{
+  "id": "session-uuid",
+  "status": "pending",
+  "invite_code": "X7K9M2",
+  "guide_user_id": "current-user-uuid",
+  "drift_back_seconds": 15,
+  "created_at": "2026-02-24T10:00:00Z"
+}
+```
+
+#### Session Lifecycle (Follower)
+
+| Method | Path | Purpose | Maps To |
+|--------|------|---------|---------|
+| GET | `/api/guidance/sessions/by-code/:code` | Look up session by invite code | `GuidedSession` `:by_invite_code` action |
+| POST | `/api/guidance/sessions/:id/accept` | Accept invitation and join | `Ash.update` `:accept` + start SessionServer |
+| POST | `/api/guidance/sessions/:id/decline` | Decline invitation | `Ash.update` `:decline` |
+
+#### Real-Time Guide Actions
+
+| Method | Path | Purpose | Maps To |
+|--------|------|---------|---------|
+| POST | `/api/guidance/sessions/:id/lens` | Set current lens | `SessionServer.set_lens` |
+| POST | `/api/guidance/sessions/:id/focus` | Focus on a sensor | `SessionServer.set_focused_sensor` |
+| POST | `/api/guidance/sessions/:id/annotate` | Add annotation | `SessionServer.add_annotation` |
+| POST | `/api/guidance/sessions/:id/suggest` | Suggest action to follower | `SessionServer.suggest_action` |
+
+#### Real-Time Follower Actions
+
+| Method | Path | Purpose | Maps To |
+|--------|------|---------|---------|
+| POST | `/api/guidance/sessions/:id/break-away` | Stop following temporarily | `SessionServer.break_away` |
+| POST | `/api/guidance/sessions/:id/rejoin` | Resume following | `SessionServer.rejoin` |
+| POST | `/api/guidance/sessions/:id/activity` | Report activity (reset drift timer) | `SessionServer.report_activity` |
+
+### Recommended WebSocket Channel for Real-Time Events
+
+REST endpoints alone are insufficient for the follower experience. The follower needs to receive real-time push events (lens changes, annotations, drift-back, presence). Two options:
+
+**Option A: Dedicated Guidance Channel (Recommended)**
+
+Add a new Phoenix channel topic `guidance:{session_id}` on the existing UserSocket. This mirrors how `call:{room_id}` works for WebRTC signaling.
+
+```elixir
+# In user_socket.ex
+channel "guidance:*", SensoctoWeb.GuidanceChannel
+```
+
+Channel events would map directly to existing PubSub events:
+
+| Server-to-Client Event | Payload | Source PubSub Event |
+|------------------------|---------|---------------------|
+| `lens_changed` | `{lens: string}` | `:guided_lens_changed` |
+| `sensor_focused` | `{sensor_id: string}` | `:guided_sensor_focused` |
+| `annotation` | `{id, text, ...}` | `:guided_annotation` |
+| `suggestion` | `{action: string}` | `:guided_suggestion` |
+| `break_away` | `{follower_user_id: string}` | `:guided_break_away` |
+| `drift_back` | `{lens: string, focused_sensor_id: string}` | `:guided_drift_back` |
+| `rejoin` | `{follower_user_id: string}` | `:guided_rejoin` |
+| `presence` | `{guide_connected, follower_connected, following}` | `:guided_presence` |
+| `ended` | `{ended_by: string}` | `:guided_ended` |
+
+Client-to-server events could also be routed through the channel, making the REST action endpoints optional:
+
+| Client-to-Server Event | Role | Payload |
+|------------------------|------|---------|
+| `set_lens` | Guide | `{lens: string}` |
+| `set_focused_sensor` | Guide | `{sensor_id: string}` |
+| `add_annotation` | Guide | `{text: string, ...}` |
+| `suggest_action` | Guide | `{action: string}` |
+| `break_away` | Follower | (empty) |
+| `report_activity` | Follower | (empty) |
+| `rejoin` | Follower | (empty) |
+| `end_session` | Either | (empty) |
+
+**Option B: Bridge Channel with guidance topic**
+
+Use the existing BridgeChannel to subscribe to `guidance:{session_id}` PubSub topic. Simpler but less structured -- events arrive as raw PubSub tuples rather than typed channel messages.
+
+### SDK Implementation Recommendations
+
+#### All SDKs: GuidedSession Model
+
+```typescript
+// TypeScript example -- adapt for each language
+interface GuidedSession {
+  id: string;
+  status: "pending" | "active" | "ended" | "declined";
+  guide_user_id: string;
+  follower_user_id: string | null;
+  room_id: string | null;
+  invite_code: string;
+  drift_back_seconds: number;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+interface GuidedSessionState {
+  session_id: string;
+  guide_user_id: string;
+  guide_user_name: string;
+  follower_user_id: string | null;
+  follower_user_name: string;
+  room_id: string | null;
+  current_lens: string;
+  focused_sensor_id: string | null;
+  annotations: Annotation[];
+  suggested_action: any | null;
+  follower_connected: boolean;
+  following: boolean;
+  guide_connected: boolean;
+}
+
+interface Annotation {
+  id: string;
+  text?: string;
+  [key: string]: any;
+}
+```
+
+#### SDK Priority for Guided Sessions
+
+| SDK | Priority | Rationale |
+|-----|----------|-----------|
+| Unity/C# | **High** | Primary mobile client for guided sensor experiences |
+| TypeScript | **High** | Web companion app, could act as guide while Unity follower is on mobile |
+| Python | Medium | Research tooling; guides may use Python scripts to programmatically lead sessions |
+| Rust | Low | Embedded/IoT clients unlikely to participate in guided sessions |
+
+#### Minimum Viable SDK Methods (Guide)
+
+```
+createGuidedSession(roomId?, driftBackSeconds?) -> GuidedSession
+getActiveGuidedSessions() -> GuidedSession[]
+setGuidedLens(sessionId, lens) -> void
+setGuidedFocus(sessionId, sensorId) -> void
+addGuidedAnnotation(sessionId, annotation) -> void
+suggestGuidedAction(sessionId, action) -> void
+endGuidedSession(sessionId) -> void
+onGuidedPresenceChanged(callback) -> unsubscribe
+onGuidedFollowerBreakAway(callback) -> unsubscribe
+onGuidedFollowerRejoin(callback) -> unsubscribe
+```
+
+#### Minimum Viable SDK Methods (Follower)
+
+```
+lookupGuidedSession(inviteCode) -> GuidedSession
+acceptGuidedSession(sessionId) -> GuidedSessionState
+declineGuidedSession(sessionId) -> void
+breakAway(sessionId) -> void
+rejoin(sessionId) -> GuidedSessionState (with current lens + focus)
+reportActivity(sessionId) -> void (fire-and-forget, resets drift timer)
+endGuidedSession(sessionId) -> void
+onGuidedLensChanged(callback) -> unsubscribe
+onGuidedSensorFocused(callback) -> unsubscribe
+onGuidedAnnotation(callback) -> unsubscribe
+onGuidedSuggestion(callback) -> unsubscribe
+onGuidedDriftBack(callback) -> unsubscribe
+onGuidedSessionEnded(callback) -> unsubscribe
+onGuidedPresenceChanged(callback) -> unsubscribe
+```
+
+### Mobile UX Considerations
+
+1. **Invite Code Entry**: The 6-character code uses an unambiguous alphabet (no O/0/I/1). Mobile SDKs should provide a dedicated invite code input with uppercase filtering and validation.
+
+2. **Drift-Back Timer**: When the follower breaks away, they have `drift_back_seconds` (default 15s) before being pulled back to the guide's view. Mobile SDKs should expose this countdown so the UI can show a timer.
+
+3. **Idle Timeout**: If the guide disconnects for 5 minutes, the session auto-ends. Mobile clients should handle this gracefully, especially on poor network connections where the guide may appear to disconnect briefly.
+
+4. **Presence Tracking**: The `connect`/`disconnect` cast calls should be sent on app foreground/background transitions, not just on socket connect/disconnect, to give accurate presence on mobile.
+
+5. **Offline Resilience**: If the follower loses connectivity briefly, they should rejoin the guidance channel on reconnect and request the current state via `get_state` to resynchronize.
 
 ---
 
@@ -493,6 +805,7 @@ Call join response now includes 7 STUN + optional Cloudflare TURN servers. SDKs 
 | Sensor Scaling Refactor | Add subscribe/history | Add subscribe/history | Add subscribe/history | Add subscribe/history | Medium |
 | Research Sync Metrics | None | Add report viewer | None | Add analysis API | Medium |
 | TURN/Cloudflare | Verify ICE config | Verify ICE config | Verify ICE config | Verify ICE config | Low |
+| Guided Sessions | Add guide+follower API | Add guide+follower API | Add guide+follower API | Add programmatic guide API | High |
 
 ---
 
@@ -579,6 +892,7 @@ Sensocto provides multiple API entry points for external clients to interact wit
 | `sensocto:lvntest:{connector_id}` | SensorDataChannel | LiveView Native test connector |
 | `call:{room_id}` | CallChannel | WebRTC signaling for video/voice calls |
 | `hydration:room:{room_id}` | HydrationChannel | Client-side room snapshot storage |
+| `guidance:{session_id}` | *(not yet implemented)* | Guided session real-time events (proposed) |
 
 #### Bridge Socket (`/bridge/websocket`)
 
@@ -842,14 +1156,16 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ### Short-term Actions (Priority: High)
 
-5. **Add eye tracking attribute models** (`EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`) to all SDKs
-6. **Add skeleton/pose attribute model** (`Skeleton` with `landmarks` field) to all SDKs
-7. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
-8. **Add Python SDK tests** -- Currently empty directory
-9. **Expose `update_connector` event in SDKs**
-10. **Document HydrationChannel protocol**
-11. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
-12. **Document adaptive video quality events** in SDK call session classes
+5. **Add Guided Sessions REST API + WebSocket channel** -- Create `/api/guidance/*` endpoints and `guidance:*` channel on UserSocket so mobile clients can participate as guide or follower
+6. **Add GuidedSession and GuidedSessionState models** to Unity and TypeScript SDKs (primary mobile platforms)
+7. **Add eye tracking attribute models** (`EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`) to all SDKs
+8. **Add skeleton/pose attribute model** (`Skeleton` with `landmarks` field) to all SDKs
+9. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
+10. **Add Python SDK tests** -- Currently empty directory
+11. **Expose `update_connector` event in SDKs**
+12. **Document HydrationChannel protocol**
+13. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
+14. **Document adaptive video quality events** in SDK call session classes
 
 ### Medium-term Actions (Priority: Medium)
 
@@ -975,6 +1291,11 @@ interface HydrationJoinParams {
 | CircuitBreaker | `lib/sensocto/resilience/circuit_breaker.ex` | Fault isolation |
 | AttentionTracker.TableOwner | `lib/sensocto/otp/attention_tracker/table_owner.ex` | ETS table ownership |
 | SensorData Helper | `lib/sensocto_web/live/helpers/sensor_data.ex` | Shared sensor data helpers |
+| Guidance Domain | `lib/sensocto/guidance.ex` | Ash domain for guided sessions |
+| GuidedSession | `lib/sensocto/guidance/guided_session.ex` | Ash resource: session lifecycle + invite codes |
+| SessionServer | `lib/sensocto/guidance/session_server.ex` | GenServer: real-time guide/follower state |
+| SessionSupervisor | `lib/sensocto/guidance/session_supervisor.ex` | DynamicSupervisor for SessionServer processes |
+| GuidedSessionJoinLive | `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView for invite code acceptance |
 
 ### Documentation
 
@@ -994,4 +1315,4 @@ interface HydrationJoinParams {
 ---
 
 *Report generated by api-client-developer agent*
-*Last review: 2026-02-20*
+*Last review: 2026-02-24*

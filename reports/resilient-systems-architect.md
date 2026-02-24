@@ -1,9 +1,9 @@
 # Sensocto OTP Architecture and Resilience Assessment
 
-**Generated:** 2026-02-08, **Updated:** 2026-02-20
+**Generated:** 2026-02-08, **Updated:** 2026-02-24
 **Author:** Resilient Systems Architect Agent
-**Codebase Version:** Based on commit 9207440 (main branch)
-**Previous Report:** 2026-02-17
+**Codebase Version:** Based on commit 7e1e5c3 (main branch)
+**Previous Report:** 2026-02-22
 
 ---
 
@@ -16,6 +16,10 @@ Several structural issues have been identified and progressively addressed. Rece
 **Overall Resilience Grade: A-** (maintained)
 
 The system is well above average for Elixir applications. The attention-aware routing, five-layer backpressure system, and ETS direct-write optimization are genuinely innovative. Live measurements with 152 sensors revealed that the SimpleSensor GC fix reduced per-sensor process memory from 2.1 MB to 175 KB (12x improvement), but ETS warm store is now the dominant memory consumer at 3.6 MB/sensor. A single node can support ~1,400 sensors with current caps, or ~4,000 with the recommended warm store cap reduction. Remaining gaps: ETS warm store scaling, Domain.Supervisor strategy mismatch, absence of `code_change/3`, and database retention policy.
+
+**Feb 24 Update:** Guided Session feature added -- Ash domain (`Sensocto.Guidance`), `GuidedSession` resource (Postgres-backed), `SessionServer` GenServer (one per active session), `SessionSupervisor` DynamicSupervisor, `GuidanceRegistry` (local Registry). Proper supervision, idle timeout, drift-back timer, PubSub-based coordination. Domain.Supervisor now has 23 children. See Section 12.28 for detailed analysis.
+
+**Feb 22 Update:** Connector persistence migrated from ETS to Postgres with runtime pid/node tracking in ConnectorManager GenServer state (soft-unregister pattern). CRDT session state added via LWW document_worker.ex with per-user GenServer and DynamicSupervisor. New hierarchy and devices views consume connector data. See Section 12.25-12.27 for details.
 
 **Feb 20 Update:** No new server-side resilience risks introduced. Recent commits (9207440 through 12841b8) added: Audio/MIDI system (~3,485 lines JS, entirely client-side), Collaboration domain (Poll/PollOption/Vote Ash resources, database-backed), User Profiles/Social Graph (UserConnection/UserSkill resources), Delta Encoding module (feature-flagged off), and a Health Check endpoint (resolving recommendation 10.9). Test suite expanded by 20+ files. Developers showed good architectural instinct by keeping audio client-side and using Ash resources for collaboration/profiles instead of new GenServers.
 
@@ -66,12 +70,12 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
   |     |     |-- DistributedRoomRegistry
   |     |     |-- DistributedJoinCodeRegistry
   |     |     |-- DistributedConnectorRegistry
-  |     |-- 12x Registry (local)
+  |     |-- 13x Registry (local)
   |           |-- SimpleSensorRegistry (sensor process lookup)
   |           |-- SensorPairRegistry, SensorsRegistry, SensorRegistry,
   |           |-- SimpleAttributeRegistry, RoomRegistry, RoomJoinCodeRegistry,
   |           |-- CallRegistry, MediaRegistry, Object3DRegistry,
-  |           |-- WhiteboardRegistry, TestRegistry
+  |           |-- WhiteboardRegistry, GuidanceRegistry, TestRegistry
   |
   |-- L3: Storage.Supervisor           (:rest_for_one, 3/5s)
   |     |-- Iroh.ConnectionManager (shared iroh node -- MUST start first)
@@ -107,6 +111,7 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
   |     |-- MediaPlayerSupervisor
   |     |-- Object3DPlayerSupervisor
   |     |-- WhiteboardSupervisor
+  |     |-- SessionSupervisor (DynamicSupervisor -- guided sessions)
   |     |-- RepoReplicatorPool (8 workers)
   |     |-- SearchIndex
   |     |-- GuestUserStore (NEW -- 2h TTL guest sessions)
@@ -130,7 +135,7 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
 |-----------|----------|--------|-------------|------------|
 | Root | :rest_for_one | 5 | 10s | Appropriate -- 5 cascading failures before total stop |
 | Infrastructure | :one_for_one | 3 | 5s | Tight -- PubSub or Repo flapping 3x in 5s kills Infra |
-| Registry | :one_for_one | 5 | 5s | Appropriate -- registries rarely crash |
+| Registry | :one_for_one | 5 | 5s | Appropriate -- registries rarely crash (17 children) |
 | Storage | :rest_for_one | 3 | 5s | Correct -- storage has ordering dependencies |
 | Bio | :one_for_one | 10 | 60s | Good -- generous budget appropriate for non-critical bio components |
 | Domain | :one_for_one | 5 | 10s | **Concern: wrong strategy** (see Section 8) |
@@ -145,9 +150,9 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
 - Bio.Supervisor has explicit `max_restarts: 10, max_seconds: 60` -- generous and appropriate for non-critical observers.
 
 **Concerns:**
-- **Domain.Supervisor uses `:one_for_one` but has ordering dependencies** (see Section 8.1). Now has 22 children -- this is growing unwieldy.
+- **Domain.Supervisor uses `:one_for_one` but has ordering dependencies** (see Section 8.1). Now has 23 children -- this is growing unwieldy.
 - **SensoctoWeb.Telemetry lives in Infrastructure.Supervisor** -- a web module in a core supervisor creates a coupling that complicates any future separation.
-- **Domain.Supervisor child count is increasing**: DiscoveryCache, SyncWorker, GuestUserStore, and ChatStore have been added since initial design. 22 children under one supervisor is approaching the point where sub-supervisors become necessary for comprehensibility and failure isolation.
+- **Domain.Supervisor child count is increasing**: DiscoveryCache, SyncWorker, GuestUserStore, ChatStore, and SessionSupervisor have been added since initial design. 23 children under one supervisor has crossed the threshold where sub-supervisors are necessary for comprehensibility and failure isolation.
 
 ---
 
@@ -360,6 +365,7 @@ This is a remarkably sophisticated backpressure system. The key insight is that 
 | SyncWorker | 1 | Map (pending_updates + timer) | Low | No |
 | ChatStore | 1 | Minimal (1 ETS table) | Bounded (100 msgs/room, 24h TTL) | No |
 | GuestUserStore | 1 | Minimal (1 ETS table) | Bounded (2h TTL) | No |
+| SessionServer | N (per guided session) | Struct (16 fields) | Low | No |
 | Iroh.ConnectionManager | 1 | Struct (4 fields) | Very Low | No |
 
 ### 4.2 code_change/3 Status
@@ -584,7 +590,7 @@ SyncWorker                   <-- requires DiscoveryCache
 
 With `:one_for_one`, if `AttentionTracker` crashes and restarts, `SensorsDynamicSupervisor` and its sensors are NOT restarted. However, the honey badger resilience pattern mitigates this: ETS tables survive via TableOwner, and the recovery broadcast causes LiveViews to re-register. The net effect is a brief pause in attention-aware routing rather than data loss.
 
-**The concern is now reduced from "High Risk" to "Medium Risk"** due to the honey badger pattern, but the architectural mismatch remains. With 22 children, the need for sub-supervisors is becoming acute.
+**The concern is now reduced from "High Risk" to "Medium Risk"** due to the honey badger pattern, but the architectural mismatch remains. With 23 children, the need for sub-supervisors is acute.
 
 **Recommended fix:**
 1. Introduce sub-supervisors to group related children (see Section 10.4)
@@ -592,19 +598,19 @@ With `:one_for_one`, if `AttentionTracker` crashes and restarts, `SensorsDynamic
 
 ### 8.2 Domain.Supervisor Growing Unwieldy (Medium Risk)
 
-Domain.Supervisor now has 22 children:
+Domain.Supervisor now has 23 children:
 - 3 legacy (BleConnectorGenServer, SensorsStateAgent, Connector)
 - 2 ETS table owners
 - 3 singletons (AttentionTracker, SystemLoadMonitor, Lenses.Supervisor)
 - 1 attribute storage
 - 2 discovery (DiscoveryCache, SyncWorker)
 - 1 connector (ConnectorManager)
-- 6 dynamic supervisors (Sensors, Rooms, Call, Media, Object3D, Whiteboard)
+- 7 dynamic supervisors (Sensors, Rooms, Call, Media, Object3D, Whiteboard, SessionSupervisor)
 - 1 replication pool
 - 1 search index
 - 2 stores (GuestUserStore, ChatStore)
 
-22 children sharing a restart budget of 5/10s means a flapping ChatStore could exhaust the budget and take down all sensors and rooms. These are completely unrelated failure domains.
+23 children sharing a restart budget of 5/10s means a flapping ChatStore or SessionSupervisor could exhaust the budget and take down all sensors and rooms. These are completely unrelated failure domains.
 
 ### 8.3 Legacy Processes in Domain.Supervisor (Low Risk)
 
@@ -701,7 +707,7 @@ end
 
 **10.2 Fix Domain.Supervisor Strategy**
 
-Change from `:one_for_one` to `:rest_for_one`, or (preferred) introduce sub-supervisors. The honey badger pattern mitigates the worst effects, but the underlying architectural mismatch remains. With 22 children, sub-supervisors are now necessary for comprehensibility and failure isolation.
+Change from `:one_for_one` to `:rest_for_one`, or (preferred) introduce sub-supervisors. The honey badger pattern mitigates the worst effects, but the underlying architectural mismatch remains. With 23 children, sub-supervisors are now necessary for comprehensibility and failure isolation.
 
 **10.3 Add Failure Decay to Circuit Breaker**
 
@@ -712,7 +718,7 @@ effective_failures = failure_count * :math.pow(0.5, elapsed / decay_period)
 
 **10.4 Refactor Domain.Supervisor into Sub-Supervisors**
 
-The current 22-child flat structure needs to be decomposed:
+The current 23-child flat structure needs to be decomposed:
 
 ```
 Domain.Supervisor (:rest_for_one)
@@ -735,6 +741,7 @@ Domain.Supervisor (:rest_for_one)
   |     |-- MediaPlayerSupervisor
   |     |-- WhiteboardSupervisor
   |     |-- Object3DPlayerSupervisor
+  |     |-- SessionSupervisor (guided sessions)
   |     |-- ChatStore
   |
   |-- Services.Supervisor (:one_for_one)
@@ -748,7 +755,7 @@ Domain.Supervisor (:rest_for_one)
         |-- Connector
 ```
 
-This gives each domain its own restart budget, isolates failure domains, and makes the system comprehensible as it grows. A flapping ChatStore no longer affects sensor processing.
+This gives each domain its own restart budget, isolates failure domains, and makes the system comprehensible as it grows. A flapping ChatStore or SessionSupervisor no longer affects sensor processing.
 
 ### Medium Priority
 
@@ -1016,6 +1023,79 @@ Added AshAuthentication's `remember_me` strategy for persistent sessions:
 - 20+ new test files including a 766-line regression guards suite
 - Covers accounts, sync_computer, chat_store, collaboration, delta_encoder, attention_tracker, circuit_breaker, and more
 - Regression guards protect data pipeline contracts during refactoring
+
+### Changes Since Last Review (Feb 20 -> Feb 22, 2026)
+
+| Change | Impact |
+|--------|--------|
+| Connector Persistence (#39): ETS to Postgres (AshPostgres.DataLayer), runtime pid/node in ConnectorManager state | Connectors now survive restarts. Soft-unregister (set offline instead of destroy) eliminates data loss on disconnect. ConnectorManager GenServer state grows with active connectors but pid/node tracking is lightweight. |
+| CRDT Sessions (#36): LWW document_worker.ex with per-user GenServer, DynamicSupervisor, auto-shutdown on idle | New supervision subtree: DynamicSupervisor spawns per-user document workers. Auto-shutdown prevents unbounded process growth. PubSub sync between devices adds modest PubSub traffic. |
+| Connector Broadcasts (#43): User-scoped PubSub on `user:#{user_id}:connectors` | Adds per-user PubSub topics. Low broadcast frequency (connect/disconnect events only). No backpressure concerns. |
+| Connector REST API (#40) + OpenAPI (#32) | New controller adds HTTP request handling but no new GenServers. Database queries for connector CRUD are lightweight. |
+| Hierarchy View (#41) + My Devices View (#42) | New LiveViews consuming existing connector data. DevicesLive subscribes to user-scoped PubSub for real-time updates. No new supervision tree changes. |
+| Token Refresh (#37): HttpOnly cookie auth plug | New plug in request pipeline adds minimal overhead (cookie parsing). No new GenServers. |
+| Bio-Layer (#34): Hebbian correlation tracker, ultradian rhythm modulation, correlation-based sympathetic boosting | Extends existing Bio.Supervisor children. CorrelationTracker adds ETS-backed co-activation tracking. Ultradian modulation in CircadianScheduler adds periodic computation (~every few minutes). |
+
+### 12.28 Guided Session Feature (Feb 24, 2026)
+
+**New files:**
+- `lib/sensocto/guidance.ex` -- Ash domain (with AshAdmin)
+- `lib/sensocto/guidance/guided_session.ex` -- Ash resource (Postgres-backed)
+- `lib/sensocto/guidance/session_server.ex` -- GenServer, one per active session
+- `lib/sensocto/guidance/session_supervisor.ex` -- DynamicSupervisor
+- `lib/sensocto_web/live/guided_session_join_live.ex` -- invite code join page
+
+**Modified files:**
+- `lib/sensocto/registry/supervisor.ex` -- added `Sensocto.GuidanceRegistry` (local Registry)
+- `lib/sensocto/domain/supervisor.ex` -- added `Sensocto.Guidance.SessionSupervisor`
+- `config/config.exs` -- added `Sensocto.Guidance` to `ash_domains`
+- `lib/sensocto_web/live/lobby_live.ex` -- guide/follower PubSub integration, drift-back handling
+- `lib/sensocto_web/live/lobby_live.html.heex` -- follower badge, guide panel, suggestion toast
+
+**Architecture:**
+
+```
+SessionSupervisor (DynamicSupervisor, :one_for_one)
+  |-- SessionServer(session_1) -- registered via GuidanceRegistry
+  |-- SessionServer(session_2)
+  |-- ...
+```
+
+Guide creates a `GuidedSession` Ash resource (Postgres), generates a 6-character invite code. Follower visits `/join/:code`, accepts the invitation. The accept flow starts a `SessionServer` via `SessionSupervisor.get_or_start_session/2`. The guide's LobbyLive subscribes to `"user:#{user_id}:guidance"` for invitation acceptance notifications, then subscribes to `"guidance:#{session_id}"` for session events. The follower's LobbyLive subscribes to `"guidance:#{session_id}"` on mount if an active session exists.
+
+SessionServer maintains: current lens, focused sensor, annotations, suggested action, drift-back timer, idle timeout. Guide actions broadcast via PubSub to the follower's LobbyLive, which auto-navigates (`push_patch`) when following.
+
+**Resilience Assessment:**
+
+Strengths:
+1. **Proper DynamicSupervisor pattern.** SessionSupervisor manages SessionServer lifecycle. Crashed session servers restart cleanly. The `get_or_start_session/2` idempotent start pattern handles the `{:error, {:already_started, pid}}` case correctly.
+2. **Registry-based lookup.** Uses `{:via, Registry, {Sensocto.GuidanceRegistry, session_id}}` for process naming. Fast local lookup, no distributed overhead (guided sessions are inherently single-node since both participants connect to the same Phoenix endpoint).
+3. **Defensive client API.** All public `GenServer.call` wrappers use `catch :exit, _ -> {:error, :not_found}`. This prevents caller crashes when the session server has died between lookup and call -- a common race condition.
+4. **Idle timeout.** 5-minute guide disconnect triggers automatic session termination. Prevents orphaned SessionServer processes from accumulating indefinitely. The timer is properly cancelled on reconnect and re-armed on disconnect.
+5. **Timer lifecycle management.** Both `drift_back_timer_ref` and `idle_timeout_ref` are properly cancelled via `Process.cancel_timer/1` before replacement. No timer leak.
+6. **PubSub-based coordination.** Guide and follower communicate through PubSub (topic: `"guidance:#{session_id}"`), not direct GenServer calls from LiveView. This decouples the LiveView processes from the SessionServer process lifecycle.
+7. **Clean session end.** `{:stop, :normal, :ok, state}` on end_session correctly terminates the GenServer. The Ash resource is updated to `:ended` status before stop.
+8. **LobbyLive terminate cleanup.** `terminate/2` calls `SessionServer.disconnect/2` to signal the session server that a participant has disconnected. This triggers the idle timeout if the guide disconnects.
+
+Concerns and Recommendations:
+
+1. **No `trap_exit` on SessionServer.** If the DynamicSupervisor terminates a SessionServer (e.g., during shutdown or restart budget exhaustion), `terminate/2` will not run. The Ash resource will remain in `:active` status in the database with no corresponding process. **Mitigation:** On `subscribe_to_guided_session/2` mount, LobbyLive calls `SessionServer.connect/2` -- if the server is not running, the cast is silently dropped. The session appears "disconnected" to the follower. **Recommendation:** Add `Process.flag(:trap_exit, true)` to SessionServer.init/1 so the Ash resource status is updated on forced termination.
+
+2. **Annotations list grows unboundedly.** `state.annotations ++ [annotation]` appends without bound. A long session with many annotations will cause the GenServer state to grow. The `++` append is also O(n) on each addition. **Recommendation:** Cap annotations at a reasonable limit (e.g., 50) and use `:queue` or prepend + reverse for O(1) append.
+
+3. **`String.to_existing_atom/1` in guide_suggest event handler.** `lobby_live.ex:2961` calls `String.to_existing_atom(type)` on user-provided input from `params["type"]`. While `String.to_existing_atom/1` does not create new atoms, it will raise `ArgumentError` if the atom does not exist. This is the correct behavior (prevents atom exhaustion), but the exception is unhandled -- it would crash the LobbyLive process. **Recommendation:** Wrap in a try/rescue or validate against a whitelist.
+
+4. **No session recovery after node restart.** SessionServer state is ephemeral (in-memory). If the node restarts, all active SessionServer processes are lost. The Ash resource in Postgres still has `status: :active`, but no process exists. The `subscribe_to_guided_session/2` function queries for active sessions on mount but only calls `SessionServer.connect/2` (a cast) -- it does not restart the SessionServer. **Recommendation:** In `subscribe_to_guided_session/2`, after finding an active session with no running SessionServer, call `SessionSupervisor.get_or_start_session/2` to resurrect the process from the database record. This would make guided sessions survive node restarts.
+
+5. **Race condition in GuidedSessionJoinLive accept flow.** The accept handler (line 60-62) performs two sequential Ash updates (set follower, then accept) without a transaction. If the process crashes between the two updates, the session will have a `follower_user_id` set but still be in `:pending` status. **Recommendation:** Use `Ash.bulk_update` or wrap in an Ecto transaction.
+
+6. **No process count limit on SessionSupervisor.** DynamicSupervisor has no `max_children` configured. A malicious or buggy client could create unlimited guided sessions, each spawning a SessionServer. **Recommendation:** Add `max_children: 100` (or appropriate limit) to the DynamicSupervisor init, or enforce a per-user session limit in the Ash resource create action.
+
+7. **`subscribe_to_guided_session/2` takes first match.** Line 3423: `{:ok, [session | _]}` discards additional active sessions for the same user. If a user somehow has multiple active sessions (e.g., race condition), only the first is subscribed. This is likely fine for the current use case but worth noting.
+
+**Blast radius:** A SessionServer crash affects only one guided session (two users). DynamicSupervisor restarts the server, but in-memory state (current lens, annotations, drift-back timer) is lost. The follower's LobbyLive will receive no more PubSub events until the server restarts. The `catch :exit` wrappers in the client API prevent the guide's LobbyLive from crashing. The session degrades to "both parties navigating independently" -- a safe failure mode.
+
+**Process footprint:** Minimal. One SessionServer per active guided session. SessionServer state is a 16-field struct with no ETS tables and no subscriptions. Expected session count is low (single digits to tens). No backpressure concerns.
 
 ### 12.18 Bio Factor Error Logging (Feb 17, 2026)
 
@@ -1306,6 +1386,17 @@ These projections assume the warm store cap is reduced to 2,500 (~1.5 MB/sensor 
 
 **Blast radius:** Room operations temporarily unavailable (seconds). Sensor data pipeline unaffected (different supervisor tree).
 
+### Scenario 7: SessionServer Crash
+
+**What happens:**
+1. SessionServer process crashes (e.g., bad annotation data, unexpected message)
+2. SessionSupervisor (DynamicSupervisor, `:one_for_one`) restarts the process -- but wait: the restart creates a new process via `start_link`, which requires the original `opts`. DynamicSupervisor does NOT restart children by default for `:temporary` restart strategy. Since SessionServer uses the default `restart: :permanent` from GenServer, it WILL be restarted.
+3. However, the restarted process has no state -- the `init/1` opts come from the original `start_child` spec, so session_id, guide_user_id, etc. are preserved. But in-memory state (current_lens, annotations, drift_back_timer_ref, following status) resets to defaults.
+4. Guide and follower LobbyLive processes continue receiving PubSub events from the restarted server (same topic `"guidance:#{session_id}"`).
+5. Follower sees default lens (`:sensors`) and loses annotations. Guide can continue sending commands normally.
+
+**Blast radius:** One guided session loses ephemeral navigation state. Guide and follower remain connected via PubSub. No impact on other sessions, sensors, or rooms. The failure mode degrades to "both parties see default view" -- safe and recoverable by the guide re-navigating.
+
 ---
 
 ## Appendix B: Key File References
@@ -1314,10 +1405,10 @@ These projections assume the warm store cap is reduced to 2,500 (~1.5 MB/sensor 
 |------|-------|---------|
 | `lib/sensocto/application.ex` | ~127 | Root supervision tree |
 | `lib/sensocto/infrastructure/supervisor.ex` | ~77 | Infrastructure layer |
-| `lib/sensocto/registry/supervisor.ex` | ~97 | 16 registries |
+| `lib/sensocto/registry/supervisor.ex` | ~97 | 17 registries |
 | `lib/sensocto/storage/supervisor.ex` | ~75 | Storage chain with ConnectionManager |
 | `lib/sensocto/bio/supervisor.ex` | ~33 | Biomimetic layer |
-| `lib/sensocto/domain/supervisor.ex` | ~125 | Domain processes (22 children) |
+| `lib/sensocto/domain/supervisor.ex` | ~128 | Domain processes (23 children) |
 | `lib/sensocto/lenses/supervisor.ex` | ~25 | Lens pipeline |
 | `lib/sensocto/otp/simple_sensor.ex` | ~685 | Core sensor process |
 | `lib/sensocto/lenses/priority_lens.ex` | ~831 | Per-socket adaptive streaming |
@@ -1337,6 +1428,11 @@ These projections assume the warm store cap is reduced to 2,500 (~1.5 MB/sensor 
 | `lib/sensocto/discovery/discovery_cache.ex` | ~120 | ETS-backed sensor discovery cache |
 | `lib/sensocto/discovery/sync_worker.ex` | ~205 | Event-driven cluster sync |
 | `lib/sensocto/chat/chat_store.ex` | ~165 | ETS-backed chat messages |
+| `lib/sensocto/guidance.ex` | ~12 | Guidance Ash domain |
+| `lib/sensocto/guidance/guided_session.ex` | ~123 | Guided session Ash resource |
+| `lib/sensocto/guidance/session_server.ex` | ~417 | Per-session GenServer |
+| `lib/sensocto/guidance/session_supervisor.ex` | ~107 | DynamicSupervisor for sessions |
+| `lib/sensocto_web/live/guided_session_join_live.ex` | ~125 | Invite code join page |
 | `lib/sensocto/simulator/connector_server.ex` | ~180 | Simulated connectors |
 | `lib/sensocto/simulator/supervisor.ex` | ~45 | Simulator infrastructure |
 
@@ -1349,7 +1445,7 @@ These projections assume the warm store cap is reduced to 2,500 (~1.5 MB/sensor 
 - **Total:** 248 files
 - **Named ETS tables:** ~25
 - **Horde registries:** 3 (rooms, join codes, connectors)
-- **Local registries:** 12
+- **Local registries:** 13
 - **:pg scopes:** 1 (`:sensocto_sensors`)
 - **GenServer processes (singletons):** ~20
 - **GenServer processes (dynamic):** 6 per sensor (1 SimpleSensor + 4 AttributeServer + 1 SensorStub) + N rooms + N calls
@@ -1456,7 +1552,7 @@ Resolved:
 Remaining risks (ordered by impact):
 1. **ETS warm store is the scaling ceiling.** At 3.6 MB/sensor (10,000 entry cap), ETS consumes 95% of per-sensor memory. Reducing the cap to 2,500 would triple single-node capacity from ~1,400 to ~4,000 sensors.
 2. The absence of `code_change/3` blocks safe hot code upgrades
-3. Domain.Supervisor has 22 children under `:one_for_one` -- needs sub-supervisors
+3. Domain.Supervisor has 23 children under `:one_for_one` -- needs sub-supervisors
 4. `sensors_attribute_data` has no retention policy -- unbounded database growth
 5. Circuit breaker lacks failure decay -- permanent half-open state possible
 6. ~~No health check endpoint for operational monitoring~~ **RESOLVED** -- `/health/live` and `/health/ready` implemented

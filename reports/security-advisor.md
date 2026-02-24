@@ -1,7 +1,7 @@
 # Security Assessment Report: Sensocto Platform
 
-**Assessment Date:** 2026-02-08 | **Updated:** 2026-02-20
-**Previous Assessment:** 2026-02-17
+**Assessment Date:** 2026-02-08 | **Updated:** 2026-02-24
+**Previous Assessment:** 2026-02-22
 **Assessor:** Security Advisor Agent (Claude Opus 4.6)
 **Platform Version:** Current main branch
 **Risk Framework:** OWASP Top 10 2021 + Elixir/Phoenix Best Practices
@@ -13,6 +13,37 @@
 The Sensocto platform demonstrates a **mature security posture** with well-implemented security controls. This assessment identifies several areas requiring attention while acknowledging significant improvements since previous reviews.
 
 **Overall Security Grade: B+ (Good)**
+
+### Key Changes Since Last Assessment (2026-02-22 to 2026-02-24)
+
+| Change | Impact |
+|--------|--------|
+| Guided Session feature: New `Sensocto.Guidance` domain with invite-code-based session joining, SessionServer GenServer, DynamicSupervisor, and join LiveView | **REVIEW NEEDED**: New feature introduces invite code brute-force surface, PubSub topic access control questions, and authorization checks in SessionServer. See Section 14 for detailed analysis. |
+
+**New findings from this review:**
+
+| ID | Severity | Finding | Status |
+|----|----------|---------|--------|
+| M-009 | MEDIUM | Invite code brute-force: no rate limiting on join page lookups | Open |
+| M-010 | MEDIUM | `authorize?: false` on all Guidance Ash operations bypasses policy layer | Open |
+| M-011 | MEDIUM | `String.to_existing_atom` in guide events can crash on unknown atoms | Open |
+| L-004 | LOW | Invite codes never expire (pending codes valid indefinitely) | Open |
+| L-005 | LOW | No limit on concurrent active sessions per guide | Open |
+| L-006 | LOW | Annotations list unbounded (memory growth in SessionServer) | Open |
+| I-001 | INFO | PubSub topic `guidance:#{session_id}` uses UUID -- low enumeration risk | Acceptable |
+| I-002 | INFO | Privacy: guide cannot see follower view when broken away -- correctly implemented | Verified Good |
+
+### Key Changes Since Last Assessment (2026-02-20 to 2026-02-22)
+
+| Change | Impact |
+|--------|--------|
+| Token Refresh (#37): HttpOnly cookie auth plug (`api_cookie_auth.ex`), POST `/api/auth/refresh` endpoint | **POSITIVE**: HttpOnly cookies prevent XSS-based token theft. Refresh endpoint enables short-lived access tokens with longer-lived refresh cookies. Verify `Secure` and `SameSite=Strict` flags are set on the cookie. |
+| Connector Persistence (#39): Migrated to AshPostgres with Ash policies for user-scoped access | **POSITIVE**: Ash policies enforce user ownership on connector CRUD. Replaces ETS (no access control) with database-backed authorization. Verify policies deny cross-user connector access. |
+| Connector REST API (#40): New controller with OpenApiSpex operation macros, routes at `/api/connectors(/:id)` | **REVIEW NEEDED**: Verify connector controller uses proper auth pipeline (not the unauthenticated room API pattern from H-003). Ensure rate limiting applies to connector endpoints. |
+| Connector Broadcasts (#43): User-scoped PubSub on `user:#{user_id}:connectors` | **LOW RISK**: User-scoped topics prevent cross-user data leakage. Verify `user_id` in topic name comes from authenticated session, not client input. |
+| CRDT Sessions (#36): LWW CRDT document_worker.ex with per-user GenServer, DynamicSupervisor | **LOW RISK**: Per-user isolation via DynamicSupervisor. Auto-shutdown on idle prevents resource exhaustion. Verify no cross-user document access is possible. |
+| E2E Tests (#35): Auth flow feature test verifies authentication pipeline end-to-end | **POSITIVE**: Browser-based auth flow testing catches regressions in the authentication pipeline. |
+| Phase 3 of security roadmap partially addressed: Refresh token pattern now implemented (was in Phase 3 recommendations). H-003 (API room endpoints missing auth) status should be re-checked for connector endpoints. |
 
 ### Key Changes Since Last Assessment (2026-02-16 to 2026-02-17)
 
@@ -50,6 +81,12 @@ The Sensocto platform demonstrates a **mature security posture** with well-imple
 | L-001 | LOW | No force_ssl / HSTS | Open |
 | L-002 | LOW | `create_test_user` action accessible via Ash policies bypass | Open (low risk) |
 | L-003 | LOW | No `Plug.Parsers` body size limit configured | Open (low risk) |
+| M-009 | MEDIUM | Guided Session: no rate limiting on invite code lookups | Open |
+| M-010 | MEDIUM | Guided Session: `authorize?: false` on all Ash operations | Open |
+| M-011 | MEDIUM | Guided Session: `String.to_existing_atom` crash risk in guide events | Open |
+| L-004 | LOW | Guided Session: invite codes never expire | Open |
+| L-005 | LOW | Guided Session: no limit on concurrent sessions per guide | Open |
+| L-006 | LOW | Guided Session: unbounded annotations list in SessionServer | Open |
 
 ---
 
@@ -565,6 +602,214 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 
 ---
 
+## 14. Guided Session Feature -- Security Analysis (Feb 24, 2026)
+
+### 14.1 Feature Overview
+
+The Guided Session feature enables a "guide" user to share their navigation state (lens view, focused sensor, annotations, suggested actions) with a "follower" user in real time. The guide creates a session, receives a 6-character invite code, and shares it with the follower. The follower visits `/guide/join?code=ABCDEF`, accepts the invitation, and their lobby view begins mirroring the guide's navigation.
+
+**Files analyzed:**
+- `lib/sensocto/guidance.ex` -- Ash domain
+- `lib/sensocto/guidance/guided_session.ex` -- Ash resource (invite codes, session status)
+- `lib/sensocto/guidance/session_server.ex` -- GenServer managing guide/follower state
+- `lib/sensocto/guidance/session_supervisor.ex` -- DynamicSupervisor
+- `lib/sensocto_web/live/guided_session_join_live.ex` -- Join page LiveView
+- `lib/sensocto_web/router.ex` -- Route at `/guide/join`
+- `lib/sensocto_web/live/lobby_live.ex` -- Guidance event handling and PubSub subscriptions
+
+### 14.2 Invite Code Brute-Force Resistance
+
+**Alphabet:** 31 characters (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` -- no I, O, 0, 1)
+**Code length:** 6 characters
+**Total keyspace:** 31^6 = ~887 million combinations
+
+**Risk assessment:** With a single active invite code, the probability of a correct guess per attempt is ~1 in 887 million. This is adequate for a low-value target. However:
+
+- The join page (`GuidedSessionJoinLive.mount/3`) performs a database lookup on every page load with the provided code. There is no rate limiting on this lookup because the page is a GET request and the existing rate limiter only covers POST requests (see M-007).
+- An attacker could enumerate codes by scripting GET requests to `/guide/join?code=XXXXXX` and observing whether the response contains the error message or the accept button.
+- If multiple sessions are active simultaneously, the probability of hitting any valid code increases proportionally.
+
+**Finding M-009: MEDIUM -- No rate limiting on invite code lookups**
+
+**Recommendation:** Add rate limiting to the join page, either by:
+1. Moving the code validation to a POST action (submit a form with the code) so the existing rate limiter applies
+2. Adding a dedicated rate limit check in the LiveView mount for the join page
+3. Using Paraxial.io to detect automated enumeration patterns
+
+Additionally, consider adding a short delay or requiring the user to be authenticated before the code is looked up.
+
+### 14.3 Authorization Model
+
+**Finding M-010: MEDIUM -- `authorize?: false` on all Guidance Ash operations**
+
+Every Ash operation in the Guidance domain uses `authorize?: false`:
+
+```elixir
+# guided_session_join_live.ex
+Ash.read_one(GuidedSession, action: :by_invite_code, ..., authorize?: false)
+Ash.update(session, ..., action: :create, authorize?: false)
+Ash.update(session, ..., action: :accept, authorize?: false)
+
+# session_server.ex
+Ash.get(Sensocto.Guidance.GuidedSession, state.session_id, authorize?: false)
+Ash.update(session, %{}, action: :end_session, authorize?: false)
+
+# lobby_live.ex
+Ash.read(Sensocto.Guidance.GuidedSession, action: :active_for_user, ..., authorize?: false)
+```
+
+The GuidedSession resource has no `policies` block defined. This means:
+- Any code path with `authorize?: false` can read, create, update, or destroy any guided session
+- There is no Ash-level enforcement that only the guide can modify guide-only fields or that only participants can end sessions
+
+**Current mitigation:** The SessionServer GenServer performs its own `is_guide?`/`is_follower?` checks on every call, which provides runtime authorization. This is effective for the GenServer-mediated operations. However, the Ash resource itself is unprotected -- any code that directly calls `Ash.update(session, ...)` without going through the SessionServer bypasses these checks.
+
+**Recommendation:** Add Ash policies to the GuidedSession resource:
+```elixir
+policies do
+  policy action_type(:read) do
+    authorize_if always()  # Read is acceptable for code lookup
+  end
+
+  policy action(:accept) do
+    authorize_if expr(status == :pending)
+  end
+
+  policy action(:end_session) do
+    authorize_if actor_attribute_equals(:id, :guide_user_id)
+    authorize_if actor_attribute_equals(:id, :follower_user_id)
+  end
+end
+```
+
+### 14.4 SessionServer Authorization Checks
+
+The SessionServer uses `is_guide?/2` and `is_follower?/2` to gate operations:
+
+```elixir
+defp is_guide?(%{guide_user_id: guide_id}, user_id) do
+  to_string(guide_id) == to_string(user_id)
+end
+
+defp is_follower?(%{follower_user_id: follower_id}, user_id) do
+  to_string(follower_id) == to_string(user_id)
+end
+```
+
+**Assessment: Good.** The `to_string/1` comparison handles the UUID type mismatch (binary vs string) safely. Every guide-only action (`set_lens`, `set_focused_sensor`, `add_annotation`, `suggest_action`) checks `is_guide?`. Every follower-only action (`break_away`, `rejoin`, `report_activity`) checks `is_follower?`. The `end_session` action correctly allows either party. The `get_state` action returns state to any caller -- this is acceptable since the PubSub topic is already scoped to participants.
+
+**One concern:** The `connect` and `disconnect` casts silently ignore unknown `user_id` values (the `true` branch in the `cond`). This is fine -- no state mutation occurs for unknown users.
+
+### 14.5 Atom Exhaustion Risk in Guide Events
+
+**Finding M-011: MEDIUM -- `String.to_existing_atom` in guide events can crash on unknown atoms**
+
+```elixir
+# lobby_live.ex line 2941
+def handle_event("guide_set_lens", %{"lens" => lens_str}, socket) do
+  lens = String.to_existing_atom(lens_str)
+  ...
+end
+
+# lobby_live.ex line 2961
+def handle_event("guide_suggest", %{"type" => type, ...}, socket) do
+  action = %{type: String.to_existing_atom(type), ...}
+  ...
+end
+```
+
+`String.to_existing_atom/1` raises `ArgumentError` if the atom does not exist. While this prevents atom table exhaustion (which is good -- the correct function to use over `String.to_atom/1`), an attacker sending a crafted event with an unknown string will crash the LiveView process. LiveView will reconnect, but repeated crashes could degrade the user experience.
+
+**Recommendation:** Wrap in a try/rescue or use a whitelist:
+```elixir
+defp safe_to_lens(lens_str) do
+  case lens_str do
+    "sensors" -> :sensors
+    "heartrate" -> :heartrate
+    "ecg" -> :ecg
+    # ... all known lenses
+    _ -> nil
+  end
+end
+```
+
+### 14.6 PubSub Topic Access Control
+
+**Topics used:**
+- `"guidance:#{session_id}"` -- session events (lens changes, annotations, presence, etc.)
+- `"user:#{user_id}:guidance"` -- per-user notification when an invitation is accepted
+
+**Assessment: Acceptable (I-001).** The session_id is a UUID, making topic enumeration impractical. PubSub subscription happens server-side in `subscribe_to_guided_session/2` and the `handle_info` for `:guidance_invitation_accepted`, both of which validate participation. A client cannot subscribe to arbitrary PubSub topics -- subscription is controlled entirely by server-side LiveView code.
+
+**Privacy verification (I-002):** When the follower breaks away, the guide receives a `{:guided_break_away, %{follower_user_id: user_id}}` event. The guide knows the follower broke away but cannot see what the follower is viewing. The follower's independent navigation does not broadcast to the guidance topic. When the follower drifts back or rejoins, the guide is notified. This is the correct privacy boundary.
+
+### 14.7 Join Flow Validation
+
+The join flow in `GuidedSessionJoinLive`:
+
+1. **Mount:** Looks up session by invite code (no auth required for the page load)
+2. **Accept:** Checks `current_user` is not nil before proceeding
+3. **Update:** Sets `follower_user_id` and transitions to `:active` status
+4. **Start server:** Creates/gets SessionServer with follower info
+5. **Notify guide:** Broadcasts acceptance on user-scoped topic
+
+**Concerns:**
+- The route is in the `live_user_optional` scope. An unauthenticated user will see the invite page but get a flash error when clicking Accept. This is acceptable UX -- they can see the invitation exists before signing in.
+- However, this means an unauthenticated user can confirm whether an invite code is valid by observing the page response (error message vs. accept button). Combined with no rate limiting (M-009), this makes enumeration slightly easier.
+- The `Ash.update(session, %{follower_user_id: user_id}, action: :create, ...)` on line 61 uses `action: :create` which is a create action being called on an update. This appears to be a bug -- it should likely use a dedicated `:join` or `:set_follower` update action. As written, it may fail or behave unexpectedly since `:create` is a create action, not an update action.
+
+**Recommendation:** Fix the action name on the follower assignment update. Add a dedicated update action like `:join` that accepts `follower_user_id`.
+
+### 14.8 Resource Exhaustion Vectors
+
+**Finding L-005: LOW -- No limit on concurrent active sessions per guide**
+
+A malicious guide could create many pending sessions, each consuming a database row and (upon acceptance) a GenServer process. The SessionServer has a 5-minute idle timeout, which provides some natural cleanup.
+
+**Recommendation:** Add a check before session creation that limits active/pending sessions per guide (e.g., max 5).
+
+**Finding L-006: LOW -- Unbounded annotations list in SessionServer**
+
+The `add_annotation` handler appends to the annotations list indefinitely:
+```elixir
+new_state = %{state | annotations: state.annotations ++ [annotation]}
+```
+
+In a long session, this could grow unbounded. The `++` operator also has O(n) performance on each append.
+
+**Recommendation:** Cap annotations at a reasonable limit (e.g., 100) and use a prepend + reverse pattern or a queue data structure.
+
+### 14.9 Invite Code Expiration
+
+**Finding L-004: LOW -- Invite codes never expire**
+
+The `by_invite_code` read action filters for `status in [:pending, :active]` but has no time-based expiration. A pending invite code remains valid indefinitely until manually cancelled.
+
+**Recommendation:** Add an `expires_at` attribute (e.g., `inserted_at + 1 hour` for pending sessions) and filter on it in the `by_invite_code` action:
+```elixir
+filter expr(
+  invite_code == ^arg(:invite_code) and
+  status in [:pending, :active] and
+  (status == :active or inserted_at > ago(1, :hour))
+)
+```
+
+### 14.10 Summary: Guided Session Security Grade
+
+| Aspect | Grade | Notes |
+|--------|-------|-------|
+| Authorization (SessionServer) | B+ | Proper is_guide?/is_follower? checks on all actions |
+| Authorization (Ash layer) | D | No policies, all `authorize?: false` |
+| Invite Code Strength | B | ~887M keyspace adequate; lacks rate limiting and expiration |
+| PubSub Access Control | A | Server-side subscription, UUID-based topics |
+| Privacy (break-away) | A | Guide cannot see follower's independent navigation |
+| Input Validation | C+ | `String.to_existing_atom` can crash; no annotation limits |
+| Resource Management | B | Idle timeout good; missing session count limits |
+
+**Overall feature security: B-** -- Functional authorization is sound, but lacks defense-in-depth at the Ash policy layer and needs rate limiting on the join flow.
+
+---
+
 ## 11. Implementation Roadmap
 
 ### Phase 1: Immediate (1-2 days)
@@ -584,6 +829,10 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 - [ ] Fix rate limiter to cover GET-based auth routes (M-007)
 - [ ] Integrate Paraxial.io for bot protection (H-005)
 - [ ] Add Content-Security-Policy headers
+- [ ] Add rate limiting to guided session join page (M-009)
+- [ ] Add Ash policies to GuidedSession resource (M-010)
+- [ ] Replace `String.to_existing_atom` with whitelist in guide events (M-011)
+- [ ] Add invite code expiration (L-004)
 
 ### Phase 3: Medium-term (2-4 weeks)
 - [ ] Implement refresh token pattern
@@ -672,4 +921,4 @@ Review of commits 12841b8 through 9207440. No new security-relevant server-side 
 
 ---
 
-*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-20*
+*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-24*

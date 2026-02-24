@@ -61,6 +61,7 @@ export class AudioOutputRouter {
   // --- Core senders (delegate to active backend(s)) ---
 
   sendNoteOn(channel, note, velocity) {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendNoteOn(channel, note, velocity);
     if (this._backend === 'tone' || this._backend === 'both')
@@ -68,6 +69,7 @@ export class AudioOutputRouter {
   }
 
   sendNoteOff(channel, note, velocity) {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendNoteOff(channel, note, velocity);
     if (this._backend === 'tone' || this._backend === 'both')
@@ -75,6 +77,7 @@ export class AudioOutputRouter {
   }
 
   sendCC(channel, cc, value) {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendCC(channel, cc, value);
     if (this._backend === 'tone' || this._backend === 'both')
@@ -82,14 +85,15 @@ export class AudioOutputRouter {
   }
 
   sendClock() {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendClock();
-    // ToneOutput.sendClock() is a no-op but call for consistency
     if (this._backend === 'tone' || this._backend === 'both')
       this.tone.sendClock();
   }
 
   sendStart() {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendStart();
     if (this._backend === 'tone' || this._backend === 'both')
@@ -97,6 +101,7 @@ export class AudioOutputRouter {
   }
 
   sendStop() {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendStop();
     if (this._backend === 'tone' || this._backend === 'both')
@@ -104,6 +109,7 @@ export class AudioOutputRouter {
   }
 
   sendPitchBend(channel, value) {
+    if (this._destroyed) return;
     if (this._backend === 'midi' || this._backend === 'both')
       this.midi.sendPitchBend(channel, value);
     if (this._backend === 'tone' || this._backend === 'both')
@@ -111,13 +117,14 @@ export class AudioOutputRouter {
   }
 
   _silenceAll() {
+    if (this._destroyed) return;
     // Send All Notes Off CC (123) on all used channels via both backends
     for (const ch of [0, 1, 2, 3, 9]) {
       this.tone.sendCC(ch, 123, 0);
       this.midi.sendCC(ch, 123, 0);
     }
     // Also explicitly release all active Tone notes
-    if (this.tone._initialized) this.tone._allNotesOff();
+    if (this.tone._initialized && !this.tone._destroyed) this.tone._allNotesOff();
   }
 
   dispose() {

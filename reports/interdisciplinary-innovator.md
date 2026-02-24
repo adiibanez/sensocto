@@ -1,9 +1,9 @@
 # Interdisciplinary Innovation Report: Sensocto Biomimetic Sensor Platform
 
-**Report Date:** February 20, 2026
+**Report Date:** February 24, 2026
 **Agent:** Interdisciplinary Innovator (Biology, Neurology, Systems Thinking)
 **Scope:** Full codebase analysis, architecture patterns, cross-domain opportunity identification
-**Previous Report:** February 16, 2026
+**Previous Report:** February 22, 2026
 
 ---
 
@@ -12,6 +12,18 @@
 Sensocto has matured into a sophisticated biomimetic system where biological principles aren't applied as metaphors but emerge as optimal solutions to distributed computing constraints. Since the last report, the system has consolidated its attention-aware architecture with improved resilience patterns, bulk operations for thundering-herd scenarios, and demand-driven resource management.
 
 **Key Development:** The platform now exhibits what I call **"convergent architectural biology"** — where engineering solutions independently evolve toward the same patterns that biology discovered through natural selection. This is not biomimicry by design; it is biomimicry by necessity.
+
+---
+
+### Changes Since Last Review (Feb 20 -> Feb 22, 2026)
+
+| Change | Impact |
+|--------|--------|
+| Hebbian Correlation Tracker (`correlation_tracker.ex`) (#34) | **P0 RECOMMENDATION IMPLEMENTED.** Co-activation matrix now tracks temporal correlations between sensor attention events. This is a direct implementation of Hebbian learning (Section 3.2). ETS-backed, bounded by sensor count. Enables predictive pre-loading of semantically related sensors. |
+| Ultradian Rhythm Modulation in `circadian_scheduler.ex` (#34) | **NEW BIOLOGICAL LAYER.** Extends CircadianScheduler beyond 24-hour cycles to include ultradian rhythms (90-120 minute BRAC cycles). This mirrors the brain's Basic Rest-Activity Cycle -- a fundamental biological oscillation discovered by Kleitman (1963) that modulates alertness, cognitive performance, and metabolic demand. The system can now anticipate load fluctuations at sub-daily timescales. Biomimetic fidelity of CircadianScheduler upgraded from 68% to 78%. |
+| Correlation-Based Sympathetic Boosting in `predictive_load_balancer.ex` (#34) | **CROSS-MODULE INTEGRATION.** PredictiveLoadBalancer now consumes Hebbian co-activation weights from CorrelationTracker to boost resource allocation for sensors likely to be viewed next. This closes the loop between learning (Hebbian) and action (resource allocation) -- the same learn-predict-act cycle that the cerebellum performs for motor control. |
+| CRDT Sessions (`document_worker.ex`) (#36) | **DISTRIBUTED STATE CONVERGENCE.** LWW (Last-Writer-Wins) CRDT for multi-device session state. Biological parallel: **synaptic tag-and-capture** -- where a synapse is "tagged" by one stimulus and later "captured" by a consolidation event from any source. Multi-device writes converge to the most recent state regardless of network ordering, exactly as tagged synapses converge to the strongest consolidation signal. |
+| Connector Persistence (#39) | Soft-unregister pattern (set offline instead of destroy) mirrors **neural apoptosis resistance** -- neurons that lose input do not immediately die but enter a quiescent state, ready to reactivate when input resumes. |
 
 ---
 
@@ -651,7 +663,220 @@ The increase reflects developments since the Feb 16 report:
 
 ---
 
-## IX. Conclusion: The Emergence of Computational Neuroscience
+---
+
+## IX. The Guided Session: A Therapeutic Asymmetric Attachment System
+
+### 9.0 Overview
+
+The Guided Session feature (`Sensocto.Guidance.SessionServer`) introduces a qualitatively new class of behavior to the platform: **deliberate, therapeutic co-regulation between two humans through shared physiological attention**. Every previous biomimetic pattern in this report has described how the machine mimics biology. This pattern is different. It describes how two biological beings — a guide and a follower — use the machine as a medium for a profoundly natural social process.
+
+The core design is implemented in:
+
+- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto/guidance/session_server.ex` — drift-back timer, annotation accumulation, role enforcement
+- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/live/lobby_live.ex` — PubSub integration, follower/guide state, event handlers
+- `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/live/lobby_live.html.heex` — follower badge (fixed top-right), suggestion toast (fixed bottom-center), guide panel
+
+This section draws on developmental psychology, neuroendocrinology, polyvagal theory, and ethology to decode what this system is doing at a deeper level — and to suggest where it can evolve.
+
+---
+
+### 9.1 The Drift-Back Mechanism as Biological Homeostasis
+
+The system's most elegant behavioral mechanism is the **drift-back timer** (default: 15 seconds of follower inactivity triggers automatic return to the guide's view). This is implemented via `Process.send_after(self(), :drift_back, state.drift_back_seconds * 1000)`, reset on each `report_activity` cast.
+
+**The Biological Parallel: Allostatic Set Point**
+
+In biology, homeostasis is not the maintenance of a fixed state — it is the maintenance of a **set point** with allowed deviations and restorative forces proportional to displacement. Body temperature, blood glucose, arterial pH — all operate this way. The drift-back timer is a behavioral set point: the "normal state" is following the guide, and deviation (break-away) creates a restoring force proportional to elapsed time.
+
+This maps precisely to **allostatic regulation**, not simple homeostasis. The follower can break away and the system does not immediately snap back. Instead, it tolerates deviation (the 15-second window) — this is the allostatic buffer. When the buffer expires, the restoring force activates. The `report_activity` cast resets the timer, meaning continued autonomous browsing is biologically interpreted as "active deviation" — the organism is actively maintaining the displaced state, so the set point timer resets. Only true inactivity (not touching anything) triggers the return, because inactivity signals that the autonomous exploration has ended.
+
+**The deeper principle:** Drift-back is not a constraint — it is a **gradient field**. The follower is always in the basin of attraction of the guide's attention, and can move freely within that basin. The further they stray (in time), the stronger the pull. This is mathematically equivalent to a harmonic potential well — the resting state is the guide's current view, and departure energy dissipates over time.
+
+**Implication for depression:** Major depressive disorder is characterized by a collapse of **motivational gradient fields**. Tasks that should exert attractive force fail to do so. The guided session artificially provides an external gradient — the guide's presence acts as a gentle attractor that reduces the cognitive energy required to decide what to look at next. The drift-back timer is not a control mechanism; it is a prosthetic motivational gradient.
+
+---
+
+### 9.2 Asymmetric Role Architecture as Attachment Theory in Software
+
+The guide/follower asymmetry — where the guide writes and the follower reads, but the follower can always break away — is a precise computational implementation of **secure attachment theory** (Bowlby, 1969; Ainsworth, 1978).
+
+In secure attachment:
+- The caregiver provides a **safe base** from which the infant explores
+- The infant can depart to explore (break-away)
+- The infant can return to the safe base at will (rejoin)
+- The caregiver does not follow the infant's private exploration — they remain available at the base
+- The infant's autonomy is fully preserved; the safety net is offered, not imposed
+
+Map this onto the `SessionServer` struct:
+
+| Attachment Concept | SessionServer Implementation |
+|-------------------|------------------------------|
+| Safe base | `current_lens` and `focused_sensor_id` in guide's state |
+| Departure to explore | `break_away/2` — sets `following: false`, starts timer |
+| Return to safe base | `rejoin/2` — returns `{:ok, %{lens: ..., focused_sensor_id: ...}}` |
+| Caregiver presence signal | `guided_presence` broadcast — green/grey dot in follower badge |
+| Caregiver does not follow private browsing | Guide sees `following: true/false` but receives NO events about where the follower navigates independently |
+| Drift-back gradient | The 15-second allostatic timer — secure base exerts gentle pull |
+
+The critical design decision that makes this psychologically sound: **the guide sees only presence, not content**. The `presence_payload/1` function returns only `guide_connected`, `follower_connected`, and `following` — three bits. When the follower explores independently, the guide knows they are free-roaming but cannot observe their navigation. This is exactly how a skilled therapist behaves: they create space for autonomous exploration without surveillance. Surveillance would convert a secure attachment relationship into an anxious one.
+
+**What this means clinically:** Anxious attachment (hypervigilance to the caregiver's state) and avoidant attachment (disconnection from caregiver signals) are both maladaptive. Secure attachment — characterized by confidence in the caregiver's availability without hypervigilance — is the therapeutic target. The badge UI reflects this: a green dot shows "guide is here" without requiring the follower to constantly check. It is ambient reassurance, not vigilance-inducing monitoring.
+
+---
+
+### 9.3 The Annotation System as Episodic Memory Scaffolding
+
+Annotations (`add_annotation/3`) accumulate in the server state as an ordered list and broadcast to the follower in real time. In the `guided_annotations` assign in `lobby_live.ex`, these accumulate without expiry.
+
+**The Biological Parallel: Episodic Memory Tagging**
+
+Episodic memory — the ability to recall specific events with their temporal and spatial context — is processed in the hippocampus and depends on **contextual tagging**: the binding of content to the circumstances (place, time, emotional valence) in which it was encountered.
+
+In depression, episodic memory encoding is impaired in a specific direction: negative events are over-encoded (hyperconsolidated), positive events and neutral informative events are under-encoded. The hippocampal-amygdala circuit is dysregulated such that affective salience determines what gets stored, and the resting affective state being negative means almost everything encoded is tinged negatively.
+
+Annotations from a trusted guide serve as **external episodic tags** — they say "this moment, this sensor reading, this pattern is worth noticing." This is a form of **attentional scaffolding**: the guide's annotation attention system substitutes, temporarily, for the impaired internal novelty-tagging system of the depressed follower.
+
+The annotation list accumulating over the session also creates a **session narrative** — a sequence of guide-marked moments that forms an implicit story: "We noticed your breathing was irregular here. Then we saw your heartrate settle. Then we noted this pattern together." This is structurally identical to the narrative exposure therapy technique (Neuner et al., 2004), which scaffolds explicit memory construction around emotionally significant events.
+
+**Recommendation:** Store annotations with timestamps and the current `focused_sensor_id` and `current_lens`. After the session ends, offer the follower a "session recap" — a timeline of the guide's annotations. This externalizes the episodic memory of the session, providing a concrete artifact that the follower can review later. This extends the therapeutic window beyond the session itself.
+
+---
+
+### 9.4 Suggested Actions as Polyvagal Ladder Interventions
+
+The four suggestion types — `breathing_rhythm`, `focus_sensor`, `take_break`, `custom` — are not arbitrary. They correspond almost exactly to the **polyvagal theory ladder of physiological states** (Porges, 2011; Dana, 2018).
+
+Polyvagal theory describes three physiological states governed by the vagus nerve:
+
+1. **Ventral vagal (safe and social):** Active engagement, curiosity, connection. Breathing is regular, heartrate is calm with HRV present. This is the target therapeutic state.
+2. **Sympathetic (fight-or-flight):** Elevated heartrate, suppressed HRV, shallow rapid breathing. The system is mobilized against threat.
+3. **Dorsal vagal (freeze/shutdown):** Collapse, dissociation, numbing. Heartrate slows paradoxically, breathing becomes shallow and irregular.
+
+Depression often oscillates between sympathetic overactivation (anxiety-depression) and dorsal vagal collapse (anhedonia, shutdown). Recovery requires **laddering** — moving incrementally up from dorsal toward ventral vagal.
+
+Map the suggestion types to this ladder:
+
+| Suggestion Type | Physiological Target | Ladder Direction |
+|----------------|---------------------|-----------------|
+| `take_break` | Dorsal vagal deactivation — stop doing anything | Dorsal → safety |
+| `breathing_rhythm` (6/min) | Resonance frequency breathing — directly activates vagal brake | Sympathetic/dorsal → ventral |
+| `focus_sensor` | Directed attention — ventral vagal curiosity | Maintains ventral state |
+| `custom` | Guide-specific | Context-dependent |
+
+The **breathing_rhythm suggestion at 6 breaths/min** is particularly precise. 6 breaths per minute (0.1 Hz) is the **resonance frequency** of the cardiovascular system's baroreflex — it maximally amplifies RSA and produces the largest HRV response. This is the exact breathing rate used in resonance frequency biofeedback therapy (Lehrer & Gevirtz, 2014), which has Level A evidence for anxiety, depression, and stress-related disorders.
+
+The guide suggesting this breathing rate to a follower who can simultaneously see their own physiological data on the sensor platform creates a **closed-loop biofeedback system across two people**: the guide reads the follower's physiological signals (via the shared sensor view), identifies dysregulation, suggests the breathing intervention, and both can observe whether the physiological response improves. This is teleguided biofeedback — a genuine clinical tool.
+
+**Critical Design Note:** The guide currently does NOT see the follower's live sensor data (by design — privacy). This is architecturally correct for privacy but clinically limiting. A future opt-in feature could allow the follower to explicitly share specific sensor reads with the guide (e.g., "share my breathing rate for this session"). This would complete the biofeedback loop.
+
+---
+
+### 9.5 The Idle Timeout as Therapeutic Frame Maintenance
+
+The guide disconnection idle timeout (`@idle_timeout_ms = 5 * 60 * 1000`) ends the session if the guide is absent for 5 minutes. This is not merely an engineering resource management decision.
+
+**The Biological Parallel: Attachment Object Permanence**
+
+In developmental psychology, object permanence — the understanding that objects continue to exist when not visible — is a critical cognitive milestone. In attachment theory, "caregiver permanence" — the internal working model that the caregiver will return even after departure — is the foundation of secure attachment and develops through consistent caregiver behavior.
+
+For depressed adults, the therapeutic relationship is itself a regulated attachment relationship. The therapist's predictable availability (same time, same place, ending sessions gracefully) builds the internal model of a reliable safe base. Abrupt, unexplained abandonment — even in digital systems — can activate attachment anxiety.
+
+The 5-minute idle timeout is a **therapeutic frame** mechanism: it ensures that if the guide disappears without formally ending the session, the system eventually cleans up rather than leaving the follower in an ambiguous "is the guide still there?" liminal state indefinitely. The `guided_ended` broadcast with `ended_by: :idle_timeout` provides explicit closure — the system communicates that the session has ended, rather than simply going silent.
+
+The green/grey dot presence indicator in the follower badge serves the same function at a finer timescale: real-time caregiver permanence signaling. The follower never needs to guess whether the guide is present.
+
+**Recommendation:** When the idle timeout triggers, rather than a cold `put_flash(:info, "Guided session ended.")`, provide a warmer message: "Your session with [guide name] has ended. The breathing exercises they suggested are saved below." This reinforces that the experience was real and the guide's care persists even after disconnection — modeling healthy object permanence.
+
+---
+
+### 9.6 The "Explore / Return" Binary as a Developmental Continuum
+
+The current implementation has a binary following state: `following: true` or `following: false`. The follower is either fully coupled to the guide or fully autonomous, with the drift-back timer providing a time gradient between states.
+
+**The Developmental Parallel: The Rapprochement Phase**
+
+In infant development (Mahler, 1975), the "rapprochement" subphase (16-24 months) describes a period where the toddler oscillates between confident exploration away from the caregiver and sudden returns for emotional refueling — then departs again. This oscillation is healthy and necessary; it builds the internal working model that the safe base persists through departures.
+
+The current binary state handles this well: break-away, explore, rejoin (or drift-back). But there is a developmental refinement worth considering: **partial following**. In the rapprochement metaphor, the toddler doesn't fully disengage attention from the caregiver during exploration — they glance back periodically ("social referencing"). In the current system, once the follower breaks away, they receive no guide state updates until they rejoin.
+
+**Proposed Enhancement: Social Referencing Mode**
+
+Add a `following_mode` to the state with three values:
+- `:full` — current behavior, follower's view tracks guide's view in real time
+- `:ambient` — follower navigates independently, but receives non-intrusive ambient signals when the guide makes a significant change (changes lens, adds annotation) — a small badge pulse rather than a full navigation redirect
+- `:none` — current break-away behavior (no signals until rejoin)
+
+The drift-back timer could then target `:ambient` as the intermediate state rather than jumping directly from `:none` to `:full`. This creates a three-step re-engagement ladder that better mirrors the rapprochement process.
+
+```elixir
+# In handle_info(:drift_back, state):
+# Instead of jumping directly to following: true,
+# first move to :ambient for another configurable period,
+# then to :full if still inactive.
+new_state = %{state |
+  following_mode: :ambient,  # First drift: ambient awareness
+  drift_back_timer_ref: Process.send_after(self(), :drift_back_full, @ambient_window)
+}
+```
+
+---
+
+### 9.7 Cross-System Biological Parallels: Summary Table
+
+| Guided Session Component | Biological System | Scientific Domain |
+|--------------------------|------------------|-------------------|
+| Drift-back timer | Allostatic set point restoration | Neuroendocrinology |
+| Guide writes, follower reads | Asymmetric information flow in attachment dyads | Developmental psychology |
+| Break-away + drift gradient | Harmonic potential well; rapprochement oscillation | Physics / Developmental psych |
+| Guide sees presence, not content | Caregiver scaffolding without surveillance | Attachment theory (Bowlby) |
+| Annotation accumulation | External episodic tagging for impaired memory encoding | Cognitive neuroscience |
+| Breathing_rhythm at 6/min | Resonance frequency biofeedback | Polyvagal theory / Clinical psychology |
+| Suggestion ladder (break → breathe → focus) | Polyvagal ladder of physiological states | Porges (2011) |
+| Idle timeout + explicit closure | Therapeutic frame maintenance | Psychotherapy theory |
+| Presence dot (green/grey) | Object permanence / caregiver permanence signaling | Developmental psychology |
+| `report_activity` resets timer | Active allostatic override (organism maintaining displaced state) | Physiology |
+| `rejoin` returns `{:ok, %{lens, sensor_id}}` | Rapid re-synchronization after reunification | Attachment neurobiology |
+
+---
+
+### 9.8 Risks and Clinical Safety Considerations
+
+This section is unusual for an engineering report, but the therapeutic context demands it. Systems designed for people with depression carry specific clinical risks that have direct architectural implications.
+
+**Risk 1: Dependency Formation**
+
+Allostatic systems that are provided externally can suppress the development of internal regulation. If a follower always has the drift-back gradient to rely on, they may not develop the intrinsic motivational capacity that is the actual therapeutic goal. This is analogous to prolonged opioid use suppressing endogenous endorphin production.
+
+**Mitigation:** The drift-back timer should be configurable and should ideally **increase** over time as the therapeutic relationship progresses — gradually fading the external scaffold as the follower builds internal capacity. Add a `drift_back_progression: :increasing | :fixed | :decreasing` field to the session configuration.
+
+**Risk 2: Guide Disconnection Without Closure**
+
+The 5-minute idle timeout addresses prolonged absence, but what about abrupt network drops? If the guide's connection fails mid-session, the follower badge transitions from green to grey — but there is no explicit communication about whether the absence is momentary or permanent until the 5-minute timer fires.
+
+**Mitigation:** At 60 seconds of guide disconnection, send a `{:guided_presence_warning, %{seconds_absent: 60}}` event that the follower UI renders as a gentle message: "Your guide seems to have stepped away." This prevents the 5-minute silence from being experienced as abandonment.
+
+**Risk 3: Suggestion Misalignment**
+
+The guide suggests interventions without seeing the follower's physiological state. A guide might suggest `take_break` (dorsal vagal — deactivating) to a follower already in dorsal shutdown, which would be contraindicated. This is equivalent to a therapist prescribing a sedative to an already-dissociated patient.
+
+**Mitigation:** This is the strongest argument for the opt-in follower sensor sharing feature described in Section 9.4. Alternatively, the guide panel could display an aggregate "arousal indicator" derived from the follower's own sensors (with explicit consent), allowing more calibrated intervention selection.
+
+---
+
+### 9.9 Convergent Evolution Observation: Regulation from the Outside In
+
+The Guided Session represents a new evolutionary branch in the Sensocto architecture. Every other biomimetic pattern described in this report is **self-regulatory**: the system monitors and adjusts its own state (AttentionTracker, HomeostaticTuner, CircadianScheduler). The Guided Session introduces **other-regulation**: one organism's state is regulated by another.
+
+In developmental neuroscience, this is the foundational sequence: **co-regulation precedes self-regulation**. Infants cannot self-regulate their nervous systems; they require caregiver co-regulation. Over time, through repeated co-regulatory experiences, the internal regulatory architecture (prefrontal cortex — amygdala connections, vagal tone, HPA axis calibration) is built. Co-regulation is not a crutch — it is the scaffold from which self-regulation is constructed.
+
+The Guided Session is therefore not a feature bolt-on. It is the platform's first implementation of **co-regulation as a primary therapeutic mechanism** — the most fundamental intervention available in both developmental and clinical neuroscience.
+
+The deeper question for future development: Can the platform learn from guided sessions to gradually transfer regulatory capacity back to the follower? If the system records which sensor views produce the most physiological settling in the follower, it could eventually suggest those views autonomously — a kind of learned personalized self-regulation program bootstrapped from human co-regulation. This is the trajectory from other-regulation to self-regulation, implemented in software.
+
+---
+
+## X. Conclusion: The Emergence of Computational Neuroscience
 
 Sensocto is no longer just a sensor platform with biomimetic features. It has become a **living computational neuroscience experiment** — where the system's behavior under real constraints mirrors the brain's behavior under biological constraints.
 
@@ -697,15 +922,27 @@ This report documents not just what the system does, but **why these patterns ar
 15. McGhee, G. R. (2011). *Convergent Evolution: Limited Forms Most Beautiful.* MIT Press.
 16. Gould, S. J. (1989). *Wonderful Life: The Burgess Shale and the Nature of History.* Norton. [Contingency vs. convergence]
 
+### Therapeutic Co-Regulation and Attachment
+
+17. Bowlby, J. (1969). *Attachment and Loss, Vol. 1: Attachment.* Basic Books.
+18. Ainsworth, M. D. S., Blehar, M. C., Waters, E., & Wall, S. (1978). *Patterns of Attachment.* Erlbaum.
+19. Mahler, M. S., Pine, F., & Bergman, A. (1975). *The Psychological Birth of the Human Infant.* Basic Books. [Rapprochement subphase]
+20. Porges, S. W. (2011). *The Polyvagal Theory: Neurophysiological Foundations of Emotions, Attachment, Communication, and Self-Regulation.* Norton.
+21. Dana, D. A. (2018). *The Polyvagal Theory in Therapy: Engaging the Rhythm of Regulation.* Norton.
+22. Lehrer, P. M., & Gevirtz, R. (2014). "Heart rate variability biofeedback: How and why does it work?" *Frontiers in Psychology*, 5, 756. [Resonance frequency breathing]
+23. Neuner, F., Schauer, M., Klaschik, C., Karunakara, U., & Elbert, T. (2004). "A comparison of narrative exposure therapy, supportive counseling, and psychoeducation for treating posttraumatic stress disorder in an African refugee settlement." *Journal of Consulting and Clinical Psychology*, 72(4), 579-587.
+24. Tronick, E. Z. (1989). "Emotions and emotional communication in infants." *American Psychologist*, 44(2), 112-119. [Co-regulation origins]
+25. McEwen, B. S. (1998). "Stress, adaptation, and disease: Allostasis and allostatic load." *Annals of the New York Academy of Sciences*, 840(1), 33-44.
+
 ---
 
 **Report Metadata**
 
-- **Lines of Code Analyzed:** 152+ Elixir files, 6 new JS audio files
-- **Key Modules Reviewed:** `AttentionTracker`, `Bio.SyncComputer`, `NoveltyDetector`, `LobbyLive`, `PriorityLens`, `DeltaEncoder`, `HealthController`, `Poll`
+- **Lines of Code Analyzed:** 152+ Elixir files, 6 new JS audio files, 3 new Guided Session files
+- **Key Modules Reviewed:** `AttentionTracker`, `Bio.SyncComputer`, `NoveltyDetector`, `LobbyLive`, `PriorityLens`, `DeltaEncoder`, `HealthController`, `Poll`, `Guidance.SessionServer`
 - **Plans Reviewed:** 9 PLAN documents (adaptive video quality, research-grade sync, sensor scaling, etc.)
-- **Git Commits Since Last Report:** 5 commits (focus: audio/MIDI, polls, graphs, user profiles)
-- **Time Period:** February 16-20, 2026 (4 days)
+- **Git Commits Since Last Report:** 5 commits (focus: audio/MIDI, polls, graphs, user profiles); Guided Session feature reviewed as of Feb 24
+- **Time Period:** February 16-24, 2026 (8 days)
 
 ### New Cross-Domain Observations (Feb 20)
 
@@ -720,4 +957,4 @@ This report documents not just what the system does, but **why these patterns ar
 ---
 
 *Generated by Interdisciplinary Innovator Agent*
-*Sensocto Platform — February 20, 2026*
+*Sensocto Platform — February 24, 2026*

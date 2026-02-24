@@ -76,6 +76,15 @@
   let recordingCanvas: HTMLCanvasElement | null = null;
   let graphRoot: HTMLDivElement;
 
+  // ── Persist export settings ─────────────────────────────────────────
+  $effect(() => {
+    try {
+      localStorage.setItem('sensocto_graph_export', JSON.stringify({
+        format: exportFormat, scale: exportScale, background: exportBackground,
+      }));
+    } catch (_) {}
+  });
+
   // ── Level-of-Detail (LOD) ──────────────────────────────────────────
   // Hide attribute nodes only on very large graphs when fully zoomed out.
   // Threshold scales with graph size: small graphs never trigger LOD.
@@ -440,6 +449,7 @@
     const idx = SOUND_THEMES.indexOf(soundTheme);
     soundTheme = SOUND_THEMES[(idx + 1) % SOUND_THEMES.length];
     if (soundTheme !== "off") ensureAudioCtx();
+    try { localStorage.setItem('sensocto_graph_sound', soundTheme); } catch (_) {}
   }
 
   // Set of nodes to highlight (hovered node + all connected neighbors)
@@ -984,7 +994,9 @@
 
     // Calculate scale-aware settings
     const scale = scaledNodeSizes.sensor / baseNodeSizes.sensor;
-    const labelThreshold = Math.max(2, 4 * scale);
+    const nodeCount = graph.order;
+    // Hide labels by default when many sensors; they appear on zoom
+    const labelThreshold = nodeCount > 20 ? Math.max(12, 18 * scale) : Math.max(2, 4 * scale);
     const labelSize = Math.max(8, Math.round(12 * scale));
 
     // Temporarily inject preserveDrawingBuffer:true for export support
@@ -1011,7 +1023,7 @@
       },
       allowInvalidContainer: true,
       zIndex: true,
-      labelDensity: scale < 0.7 ? 0.5 : 1,
+      labelDensity: nodeCount > 20 ? 0.3 : scale < 0.7 ? 0.5 : 1,
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
       // Node reducer: LOD + highlight dimming
@@ -1267,6 +1279,7 @@
     }
 
     setTimeout(() => { isTransitioning = false; }, 600);
+    try { localStorage.setItem('sensocto_graph_viewmode', newMode); } catch (_) {}
   }
 
   function applyLayout(mode: ViewMode, animate: boolean = false) {
@@ -3126,6 +3139,26 @@
       }
       const savedVibrate = localStorage.getItem('sensocto_graph_vibrate');
       if (savedVibrate === 'false') vibrateEnabled = false;
+
+      const savedSound = localStorage.getItem('sensocto_graph_sound') as SoundTheme | null;
+      if (savedSound && SOUND_THEMES.includes(savedSound)) {
+        soundTheme = savedSound;
+        if (soundTheme !== "off") ensureAudioCtx();
+      }
+
+      const savedViewMode = localStorage.getItem('sensocto_graph_viewmode') as ViewMode | null;
+      if (savedViewMode && [...layoutModes, ...visualModes].includes(savedViewMode)) {
+        // Defer so the graph is built first
+        setTimeout(() => switchViewMode(savedViewMode), 200);
+      }
+
+      const savedExport = localStorage.getItem('sensocto_graph_export');
+      if (savedExport) {
+        const ex = JSON.parse(savedExport);
+        if (ex.format === 'png' || ex.format === 'jpeg') exportFormat = ex.format;
+        if ([1, 2, 4, 8].includes(ex.scale)) exportScale = ex.scale;
+        if (typeof ex.background === 'boolean') exportBackground = ex.background;
+      }
     } catch (_) {}
   });
 
@@ -3524,10 +3557,12 @@
 
   .sidebar-left {
     left: 1rem;
+    align-items: flex-start;
   }
 
   .sidebar-right {
     right: 1rem;
+    align-items: flex-end;
   }
 
   .sidebar-trigger {

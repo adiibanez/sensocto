@@ -49,6 +49,7 @@
   let pendingUpdates: Map<string, Array<{ x: number; y: number }>> = new Map();
   let rafId: number | null = null;
   let lastUpdateTime = 0;
+  let latestDataTimestamp = 0;
 
   // Breathing state counts - updated imperatively in the RAF loop
   let latestValues: Map<string, number> = new Map();
@@ -189,9 +190,11 @@
   }
 
   function addDataPoint(sensorId: string, value: number, timestamp?: number) {
+    const ts = timestamp || Date.now();
     const pending = pendingUpdates.get(sensorId) || [];
-    pending.push({ x: timestamp || Date.now(), y: value });
+    pending.push({ x: ts, y: value });
     pendingUpdates.set(sensorId, pending);
+    if (ts > latestDataTimestamp) latestDataTimestamp = ts;
     latestValues.set(sensorId, value);
     addToPhaseBuffer(sensorId, value);
   }
@@ -445,7 +448,7 @@
       return;
     }
 
-    const now = Date.now();
+    const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
     const cutoff = now - selectedWindowMs;
     let needsRedraw = false;
 

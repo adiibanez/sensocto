@@ -116,6 +116,12 @@ defmodule SensoctoWeb.CustomSignInLive do
     {:noreply, socket}
   end
 
+  # Handle flash messages from AshAuthentication (e.g., magic link sent)
+  @impl true
+  def handle_info({:put_flash, kind, message}, socket) do
+    {:noreply, put_flash(socket, kind, message)}
+  end
+
   # Handle vibration broadcast from any dragging ball
   @impl true
   def handle_info({:vibrate, _ball_id}, socket) do

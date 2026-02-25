@@ -27,6 +27,11 @@ defmodule Sensocto.Guidance.SessionServer do
     focused_sensor_id: nil,
     annotations: [],
     suggested_action: nil,
+    # Guide's lobby settings (synced to follower)
+    current_layout: :stacked,
+    current_quality: :auto,
+    current_sort: :activity,
+    current_lobby_mode: :media,
     # Follower state
     follower_connected: false,
     following: true,
@@ -82,6 +87,34 @@ defmodule Sensocto.Guidance.SessionServer do
   @doc "Guide: suggest an action to the follower."
   def suggest_action(session_id, user_id, action) do
     GenServer.call(via_tuple(session_id), {:suggest_action, user_id, action})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc "Guide: change the lobby layout."
+  def set_layout(session_id, user_id, layout) do
+    GenServer.call(via_tuple(session_id), {:set_layout, user_id, layout})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc "Guide: change the data quality setting."
+  def set_quality(session_id, user_id, quality) do
+    GenServer.call(via_tuple(session_id), {:set_quality, user_id, quality})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc "Guide: change the sensor sort order."
+  def set_sort(session_id, user_id, sort_by) do
+    GenServer.call(via_tuple(session_id), {:set_sort, user_id, sort_by})
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc "Guide: change the lobby content mode."
+  def set_lobby_mode(session_id, user_id, mode) do
+    GenServer.call(via_tuple(session_id), {:set_lobby_mode, user_id, mode})
   catch
     :exit, _ -> {:error, :not_found}
   end
@@ -166,7 +199,11 @@ defmodule Sensocto.Guidance.SessionServer do
       suggested_action: state.suggested_action,
       follower_connected: state.follower_connected,
       following: state.following,
-      guide_connected: state.guide_connected
+      guide_connected: state.guide_connected,
+      layout: state.current_layout,
+      quality: state.current_quality,
+      sort_by: state.current_sort,
+      lobby_mode: state.current_lobby_mode
     }
 
     {:reply, {:ok, response}, state}
@@ -218,6 +255,50 @@ defmodule Sensocto.Guidance.SessionServer do
   end
 
   @impl true
+  def handle_call({:set_layout, user_id, layout}, _from, state) do
+    if is_guide?(state, user_id) do
+      new_state = %{state | current_layout: layout}
+      broadcast(state, {:guided_layout_changed, %{layout: layout}})
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_guide}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:set_quality, user_id, quality}, _from, state) do
+    if is_guide?(state, user_id) do
+      new_state = %{state | current_quality: quality}
+      broadcast(state, {:guided_quality_changed, %{quality: quality}})
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_guide}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:set_sort, user_id, sort_by}, _from, state) do
+    if is_guide?(state, user_id) do
+      new_state = %{state | current_sort: sort_by}
+      broadcast(state, {:guided_sort_changed, %{sort_by: sort_by}})
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_guide}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:set_lobby_mode, user_id, mode}, _from, state) do
+    if is_guide?(state, user_id) do
+      new_state = %{state | current_lobby_mode: mode}
+      broadcast(state, {:guided_mode_changed, %{mode: mode}})
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_guide}, state}
+    end
+  end
+
+  @impl true
   def handle_call({:break_away, user_id}, _from, state) do
     if is_follower?(state, user_id) do
       state = cancel_drift_back_timer(state)
@@ -252,8 +333,16 @@ defmodule Sensocto.Guidance.SessionServer do
 
       broadcast(state, {:guided_rejoin, %{follower_user_id: user_id}})
 
-      {:reply, {:ok, %{lens: state.current_lens, focused_sensor_id: state.focused_sensor_id}},
-       new_state}
+      {:reply,
+       {:ok,
+        %{
+          lens: state.current_lens,
+          focused_sensor_id: state.focused_sensor_id,
+          layout: state.current_layout,
+          quality: state.current_quality,
+          sort_by: state.current_sort,
+          lobby_mode: state.current_lobby_mode
+        }}, new_state}
     else
       {:reply, {:error, :not_follower}, state}
     end
@@ -348,7 +437,14 @@ defmodule Sensocto.Guidance.SessionServer do
       broadcast(
         new_state,
         {:guided_drift_back,
-         %{lens: state.current_lens, focused_sensor_id: state.focused_sensor_id}}
+         %{
+           lens: state.current_lens,
+           focused_sensor_id: state.focused_sensor_id,
+           layout: state.current_layout,
+           quality: state.current_quality,
+           sort_by: state.current_sort,
+           lobby_mode: state.current_lobby_mode
+         }}
       )
 
       {:noreply, new_state}

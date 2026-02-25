@@ -50,6 +50,7 @@
   let updateTimer: ReturnType<typeof setInterval> | null = null;
   let rafId: number | null = null;
   let lastUpdateTime = 0;
+  let latestDataTimestamp = 0;
 
   function initializeSensorData() {
     sensors.forEach((sensor, index) => {
@@ -61,9 +62,11 @@
   }
 
   function addDataPoint(sensorId: string, value: number, timestamp?: number) {
+    const ts = timestamp || Date.now();
     const pending = pendingUpdates.get(sensorId) || [];
-    pending.push({ x: timestamp || Date.now(), y: value });
+    pending.push({ x: ts, y: value });
     pendingUpdates.set(sensorId, pending);
+    if (ts > latestDataTimestamp) latestDataTimestamp = ts;
   }
 
   function processPendingUpdates() {
@@ -272,7 +275,9 @@
       return;
     }
 
-    const now = Date.now();
+    // Use data timestamps as the time reference so the chart scrolls at realtime pace.
+    // Falls back to Date.now() when no data has arrived yet.
+    const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
     const cutoff = now - selectedWindowMs;
     let needsRedraw = false;
 

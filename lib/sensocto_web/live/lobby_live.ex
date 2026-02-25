@@ -207,11 +207,15 @@ defmodule SensoctoWeb.LobbyLive do
         # Guided session state (nil when no active session)
         guided_session: nil,
         guiding_session: nil,
+        show_guide_modal: false,
+        guide_invite_code: nil,
+        guide_share_url: nil,
         guided_following: true,
         guided_presence: %{guide_connected: false, follower_connected: false},
         guided_annotations: [],
         guided_suggestion: nil,
-        guided_focused_sensor_id: nil
+        guided_focused_sensor_id: nil,
+        guide_panel_expanded: true
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -2201,6 +2205,73 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, assign(socket, :guided_suggestion, action)}
   end
 
+  def handle_info({:guided_layout_changed, %{layout: layout}}, socket) do
+    if socket.assigns.guided_session && socket.assigns.guided_following do
+      {:noreply,
+       socket
+       |> assign(:lobby_layout, layout)
+       |> push_event("save_lobby_layout", %{layout: Atom.to_string(layout)})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:guided_quality_changed, %{quality: quality}}, socket) do
+    if socket.assigns.guided_session && socket.assigns.guided_following do
+      socket =
+        if quality == :auto do
+          socket
+          |> assign(:quality_override, nil)
+          |> push_event("quality_changed", %{level: :auto, reason: "Guide changed"})
+        else
+          if socket.assigns[:priority_lens_registered] do
+            Sensocto.Lenses.PriorityLens.set_quality(socket.id, quality)
+          end
+
+          socket
+          |> assign(:quality_override, quality)
+          |> assign(:current_quality, quality)
+          |> push_event("quality_changed", %{level: quality, reason: "Guide changed"})
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:guided_sort_changed, %{sort_by: sort_by}}, socket) do
+    if socket.assigns.guided_session && socket.assigns.guided_following do
+      sorted = sort_sensors(socket.assigns.sensor_ids, socket.assigns.sensors, sort_by)
+
+      {:noreply,
+       socket
+       |> assign(:sort_by, sort_by)
+       |> assign(:sensor_ids, sorted)
+       |> push_event("save_sort_by", %{sort_by: Atom.to_string(sort_by)})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:guided_mode_changed, %{mode: mode}}, socket) do
+    if socket.assigns.guided_session && socket.assigns.guided_following do
+      old_mode = socket.assigns.lobby_mode
+      user = socket.assigns.current_user
+
+      if user && old_mode != mode do
+        release_control_for_mode(old_mode, user.id)
+      end
+
+      {:noreply,
+       socket
+       |> assign(:lobby_mode, mode)
+       |> push_event("save_lobby_mode", %{mode: Atom.to_string(mode)})}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:guided_break_away, _payload}, socket) do
     if socket.assigns.guiding_session do
       {:noreply, assign(socket, :guided_following, false)}
@@ -2209,11 +2280,16 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
-  def handle_info({:guided_drift_back, %{lens: lens}}, socket) do
+  def handle_info({:guided_drift_back, %{lens: lens} = payload}, socket) do
     socket = assign(socket, :guided_following, true)
 
     if socket.assigns.guided_session do
-      {:noreply, push_patch(socket, to: lens_to_path(lens))}
+      socket =
+        socket
+        |> apply_guided_settings(payload)
+        |> push_patch(to: lens_to_path(lens))
+
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
@@ -2936,14 +3012,87 @@ defmodule SensoctoWeb.LobbyLive do
   # Guided Session Events (from UI)
   # ============================================================================
 
+  def handle_event("start_guided_session", _params, socket) do
+    user = socket.assigns[:current_user]
+
+    is_guest = user && Map.get(user, :is_guest, false)
+
+    if user && !is_guest && is_nil(socket.assigns.guiding_session) &&
+         is_nil(socket.assigns.guided_session) do
+      case Ash.create(Sensocto.Guidance.GuidedSession, %{guide_user_id: user.id},
+             action: :create,
+             authorize?: false
+           ) do
+        {:ok, session} ->
+          invite_code = session.invite_code
+          share_url = SensoctoWeb.Endpoint.url() <> "/guide/join?code=#{invite_code}"
+
+          Sensocto.Guidance.SessionSupervisor.get_or_start_session(session.id,
+            guide_user_id: user.id
+          )
+
+          Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session.id}")
+          Sensocto.Guidance.SessionServer.connect(session.id, user.id)
+
+          {:noreply,
+           socket
+           |> assign(:guiding_session, session.id)
+           |> assign(:show_guide_modal, true)
+           |> assign(:guide_invite_code, invite_code)
+           |> assign(:guide_share_url, share_url)}
+
+        {:error, reason} ->
+          require Logger
+          Logger.error("Failed to create guided session: #{inspect(reason)}")
+          {:noreply, put_flash(socket, :error, "Failed to start guided session")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_guide_modal", _params, socket) do
+    {:noreply, assign(socket, :show_guide_modal, false)}
+  end
+
+  def handle_event("toggle_guide_panel", _params, socket) do
+    {:noreply, assign(socket, :guide_panel_expanded, !socket.assigns.guide_panel_expanded)}
+  end
+
+  def handle_event("open_guide_share", _params, socket) do
+    {:noreply, assign(socket, :show_guide_modal, true)}
+  end
+
+  def handle_event("share_guide_to_chat", _params, socket) do
+    user = socket.assigns[:current_user]
+    share_url = socket.assigns.guide_share_url
+
+    if user && share_url do
+      display_name = user.email || user.display_name || "Guide"
+
+      Sensocto.Chat.ChatStore.add_message("lobby", %{
+        user_id: to_string(user.id),
+        user_name: display_name,
+        text: "Join my guided session: #{share_url}",
+        type: :system
+      })
+    end
+
+    {:noreply,
+     socket
+     |> assign(:show_guide_modal, false)
+     |> put_flash(:info, "Shared to chat!")}
+  end
+
   def handle_event("guide_set_lens", %{"lens" => lens_str}, socket) do
     if session_id = socket.assigns.guiding_session do
       lens = String.to_existing_atom(lens_str)
       user_id = socket.assigns.current_user.id
       Sensocto.Guidance.SessionServer.set_lens(session_id, user_id, lens)
+      {:noreply, push_patch(socket, to: lens_to_path(lens))}
+    else
+      {:noreply, socket}
     end
-
-    {:noreply, socket}
   end
 
   def handle_event("guide_focus_sensor", %{"sensor_id" => sensor_id}, socket) do
@@ -2953,6 +3102,93 @@ defmodule SensoctoWeb.LobbyLive do
     end
 
     {:noreply, socket}
+  end
+
+  def handle_event("guide_set_layout", %{"layout" => layout_str}, socket) do
+    if session_id = socket.assigns.guiding_session do
+      layout = String.to_existing_atom(layout_str)
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_layout(session_id, user_id, layout)
+
+      {:noreply,
+       socket
+       |> assign(:lobby_layout, layout)
+       |> push_event("save_lobby_layout", %{layout: layout_str})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("guide_set_quality", %{"quality" => quality_str}, socket) do
+    if session_id = socket.assigns.guiding_session do
+      user_id = socket.assigns.current_user.id
+
+      socket =
+        if quality_str == "auto" do
+          Sensocto.Guidance.SessionServer.set_quality(session_id, user_id, :auto)
+
+          socket
+          |> assign(:quality_override, nil)
+          |> push_event("quality_changed", %{level: :auto, reason: "Guide override"})
+        else
+          quality = String.to_existing_atom(quality_str)
+          Sensocto.Guidance.SessionServer.set_quality(session_id, user_id, quality)
+
+          if socket.assigns[:priority_lens_registered] do
+            Sensocto.Lenses.PriorityLens.set_quality(socket.id, quality)
+          end
+
+          socket
+          |> assign(:quality_override, quality)
+          |> assign(:current_quality, quality)
+          |> push_event("quality_changed", %{level: quality, reason: "Guide override"})
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("guide_set_sort", %{"sort_by" => sort_str}, socket)
+      when sort_str in ["activity", "name", "type", "battery"] do
+    if session_id = socket.assigns.guiding_session do
+      sort_by = String.to_existing_atom(sort_str)
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_sort(session_id, user_id, sort_by)
+
+      sorted = sort_sensors(socket.assigns.sensor_ids, socket.assigns.sensors, sort_by)
+
+      {:noreply,
+       socket
+       |> assign(:sort_by, sort_by)
+       |> assign(:sensor_ids, sorted)
+       |> push_event("save_sort_by", %{sort_by: sort_str})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("guide_set_lobby_mode", %{"mode" => mode_str}, socket) do
+    if session_id = socket.assigns.guiding_session do
+      new_mode = String.to_existing_atom(mode_str)
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_lobby_mode(session_id, user_id, new_mode)
+
+      old_mode = socket.assigns.lobby_mode
+      user = socket.assigns.current_user
+
+      if user && old_mode != new_mode do
+        release_control_for_mode(old_mode, user.id)
+      end
+
+      {:noreply,
+       socket
+       |> assign(:lobby_mode, new_mode)
+       |> push_event("save_lobby_mode", %{mode: mode_str})}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("guide_suggest", %{"type" => type, "text" => text} = params, socket) do
@@ -2991,9 +3227,12 @@ defmodule SensoctoWeb.LobbyLive do
       user_id = socket.assigns.current_user.id
 
       case Sensocto.Guidance.SessionServer.rejoin(session_id, user_id) do
-        {:ok, %{lens: lens}} ->
-          socket = assign(socket, :guided_following, true)
-          {:noreply, push_patch(socket, to: lens_to_path(lens))}
+        {:ok, %{lens: lens} = state} ->
+          {:noreply,
+           socket
+           |> assign(:guided_following, true)
+           |> apply_guided_settings(state)
+           |> push_patch(to: lens_to_path(lens))}
 
         _ ->
           {:noreply, socket}
@@ -3413,6 +3652,48 @@ defmodule SensoctoWeb.LobbyLive do
   # ============================================================================
   # Guided Session Helpers
   # ============================================================================
+
+  defp apply_guided_settings(socket, payload) do
+    socket
+    |> then(fn s ->
+      case payload[:layout] do
+        nil -> s
+        layout -> assign(s, :lobby_layout, layout)
+      end
+    end)
+    |> then(fn s ->
+      case payload[:quality] do
+        nil ->
+          s
+
+        :auto ->
+          assign(s, :quality_override, nil)
+
+        quality ->
+          if s.assigns[:priority_lens_registered] do
+            Sensocto.Lenses.PriorityLens.set_quality(s.id, quality)
+          end
+
+          s |> assign(:quality_override, quality) |> assign(:current_quality, quality)
+      end
+    end)
+    |> then(fn s ->
+      case payload[:sort_by] do
+        nil ->
+          s
+
+        sort_by ->
+          sorted = sort_sensors(s.assigns.sensor_ids, s.assigns.sensors, sort_by)
+          s |> assign(:sort_by, sort_by) |> assign(:sensor_ids, sorted)
+      end
+    end)
+    |> then(fn s ->
+      case payload[:lobby_mode] do
+        nil -> s
+        mode -> assign(s, :lobby_mode, mode)
+      end
+    end)
+  end
 
   defp subscribe_to_guided_session(socket, user) do
     case Ash.read(Sensocto.Guidance.GuidedSession,

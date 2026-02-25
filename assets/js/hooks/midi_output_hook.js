@@ -943,8 +943,16 @@ const MidiOutputHook = {
     this._onMeasurement = (e) => this._handleMeasurement(e);
     window.addEventListener('composite-measurement-event', this._onMeasurement);
 
-    // Stop audio immediately when LiveView navigates away (before destroyed() fires)
-    this._onBeforeNav = () => this._teardownAudio();
+    // Stop audio when navigating away from graph/graph3d (but NOT between lobby sub-routes
+    // where this panel stays alive via phx-update="ignore").
+    this._onBeforeNav = (e) => {
+      const target = e?.detail?.to;
+      if (target && (target.includes('/lobby/graph') || target.includes('/lobby/graph3d'))) {
+        // Staying on a graph view — keep audio alive
+        return;
+      }
+      this._teardownAudio();
+    };
     window.addEventListener('phx:page-loading-start', this._onBeforeNav);
 
     this._restoreState();
@@ -1728,6 +1736,19 @@ const MidiOutputHook = {
   },
 
   _handleToggle() {
+    // Guard: if audio was torn down (e.g. by a stale navigation event), reinitialize
+    if (!this.midi) {
+      console.info('[MidiOutputHook] Reinitializing after teardown...');
+      this.midi = new AudioOutputRouter();
+      this.clock = new MidiClock(this.midi);
+      this.syncDetector = new SyncThresholdDetector(this.midi, SYNC_THRESHOLDS, CH.drums);
+      this.groovy = new GroovyEngine(this.midi);
+      this.magenta = new MagentaEngine(this.midi);
+      this.midi.onDeviceListChange = (devices) => this._updateDeviceSelect(devices);
+      this.syncDetector.onThresholdCross = (name, dir) => this._flashSyncIndicator(name, dir);
+      this._restoreState();
+    }
+
     const newEnabled = !this.midi.enabled;
 
     if (newEnabled) {

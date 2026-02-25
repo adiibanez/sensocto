@@ -69,14 +69,14 @@
   let rafId: number | null = null;
 
   // Heatmap
-  let heatmapCanvas: HTMLCanvasElement;
+  let heatmapCanvas = $state<HTMLCanvasElement>();
   let heatmapCtx: CanvasRenderingContext2D | null = null;
   let heatmapGrid = new Float32Array(100 * 100);
   const HEATMAP_RES = 100;
   const HEATMAP_DECAY = 0.99995;
 
   // Scanpath
-  let scanpathCanvas: HTMLCanvasElement;
+  let scanpathCanvas = $state<HTMLCanvasElement>();
   let scanpathCtx: CanvasRenderingContext2D | null = null;
 
   // Constants

@@ -564,25 +564,6 @@
         font-style: italic;
     }
 
-    .close-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.25rem;
-        height: 1.25rem;
-        background: transparent;
-        border: none;
-        color: #9ca3af;
-        cursor: pointer;
-        border-radius: 0.25rem;
-        transition: all 0.15s ease;
-    }
-
-    .close-btn:hover {
-        background: rgba(75, 85, 99, 0.5);
-        color: #f3f4f6;
-    }
-
     .detail-desc {
         font-size: 0.6875rem;
         color: #d1d5db;

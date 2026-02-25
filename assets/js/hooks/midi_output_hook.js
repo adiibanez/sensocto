@@ -170,7 +170,7 @@ const GENRE_DEEPHOUSE = {
   swing: 0.0,
   bpmFromHr: (hr) => clamp(Math.round(hr * 0.6 + 50), 118, 128),
   chordBars: 4,
-  bassMode: 'pulse',
+  bassMode: 'pulse_groove',
   padMode: 'filter_swell',
   chords: [
     { name: 'Am7',   root: 45, tones: [57, 60, 64, 67], arp: [57, 60, 64, 67, 69, 72] },
@@ -183,21 +183,23 @@ const GENRE_DEEPHOUSE = {
     { name: 'Em7',   root: 40, tones: [52, 55, 59, 62], arp: [52, 55, 59, 62, 64, 67] },
   ],
   drumPatterns: {
-    kick:      [110,0,0,0, 110,0,0,0, 110,0,0,0, 110,0,0,0],
+    kick:      [120,0,0,0, 120,0,0,0, 120,0,0,0, 120,0,0,0],
     snare:     [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    closedHat: [0,0,70,0, 0,0,70,0, 0,0,70,0, 0,0,70,0],
-    openHat:   [0,0,0,0, 0,0,0,60, 0,0,0,0, 0,0,0,60],
-    clap:      [0,0,0,0, 100,0,0,0, 0,0,0,0, 100,0,0,0],
-    shaker:    [50,30,45,30, 50,30,45,30, 50,30,45,30, 50,30,45,30],
-    rimshot:   [0,0,0,0, 0,0,0,0, 0,0,0,40, 0,0,0,0],
+    closedHat: [0,0,90,0, 0,0,90,0, 0,0,90,0, 0,0,90,0],
+    openHat:   [0,0,0,0, 0,0,0,50, 0,0,0,0, 0,0,0,50],
+    clap:      [0,0,0,0, 110,0,0,0, 0,0,0,0, 110,0,0,0],
+    shaker:    [40,25,50,25, 40,25,50,25, 40,25,50,25, 40,25,50,25],
+    rimshot:   [0,0,0,0, 0,0,0,0, 0,0,0,30, 0,0,0,0],
+    conga:     [0,0,0,0, 0,40,0,0, 0,0,0,0, 0,0,0,40],
   },
   drumVoices: [
-    { key: 'kick',      minActivity: 0.02, durMs: 60 },
-    { key: 'clap',      minActivity: 0.1,  durMs: 50 },
-    { key: 'closedHat', minActivity: 0.08, durMs: 25 },
-    { key: 'openHat',   minActivity: 0.25, durMs: 90 },
+    { key: 'kick',      minActivity: 0.02, durMs: 100 },
+    { key: 'clap',      minActivity: 0.08, durMs: 60 },
+    { key: 'closedHat', minActivity: 0.06, durMs: 30 },
+    { key: 'openHat',   minActivity: 0.25, durMs: 100 },
     { key: 'shaker',    minActivity: 0.15, durMs: 25, note: 70 },
     { key: 'rimshot',   minActivity: 0.4,  durMs: 35 },
+    { key: 'conga',     minActivity: 0.3,  durMs: 50, note: 63 },
   ],
 };
 
@@ -563,8 +565,8 @@ class GroovyEngine {
     // Full kit at a > 0.5, just kick+hat at a < 0.2, nothing below 0.05
     if (a > 0.05) this._playDrums(chord);
 
-    // ── Bass: on beats 1 and 3, or heartbeat — needs activity > 0.15 ──
-    if (a > 0.15 && (this.step === 0 || this.step === 8 || this._pendingBass)) {
+    // ── Bass: each bassMode gates its own steps internally ──
+    if (a > 0.15 && (this.step % 2 === 0 || this._pendingBass)) {
       this._playBass(chord);
       this._pendingBass = false;
     }
@@ -639,7 +641,7 @@ class GroovyEngine {
     this._releaseChannel(GROOVY_CH.bass);
     const actScale = 0.5 + this.activity * 0.5;
     const humanize = (Math.random() - 0.5) * 8;
-    const velocity = clamp(Math.round((90 + this.heartActivity * 37 + humanize) * actScale), 60, 127);
+    let velocity = clamp(Math.round((90 + this.heartActivity * 37 + humanize) * actScale), 60, 127);
     const chords = this.genre.chords;
     const nextChord = chords[(this.chordIndex + 1) % chords.length];
     let note = chord.root;
@@ -664,12 +666,32 @@ class GroovyEngine {
         else return;
         break;
       case 'pulse':
-        // Deep house: steady eighth-note root pulse, octave on beat 3
+        // Steady eighth-note root pulse, octave on beat 3
         if (this.step % 2 !== 0) return;
         if (this.step === 8) note = chord.root + 12;
         else if (this.step === 12) note = chord.root + 7;
         durFraction = 0.6;
         break;
+      case 'pulse_groove': {
+        // Deep house: syncopated bass with octave jumps and ghost notes
+        const bassMap = {
+          0:  { off: 0,  velScale: 1.0 },
+          6:  { off: 12, velScale: 0.8 },
+          8:  { off: 0,  velScale: 0.9 },
+          10: { off: 7,  velScale: 0.7 },
+          14: { off: -1, velScale: 0.6, approach: true },
+        };
+        const entry = bassMap[this.step];
+        if (!entry) return;
+        if (entry.approach) {
+          note = nextChord.root + (Math.random() < 0.5 ? -1 : 0);
+        } else {
+          note = chord.root + entry.off;
+        }
+        velocity = clamp(Math.round(velocity * entry.velScale), 50, 120);
+        durFraction = this.step === 6 ? 0.4 : 0.7;
+        break;
+      }
     }
 
     this.midi.sendNoteOn(GROOVY_CH.bass, note, velocity);
@@ -880,6 +902,9 @@ const MidiOutputHook = {
       hrv_sync: 'hsync',
     };
 
+    // Abstract mode drone — sustained note on bass channel so breath CCs produce audible sound
+    this._abstractDroneActive = false;
+
     this.smoothers = {
       respiration: makeSmoother(0.3),
       hrv: makeSmoother(0.2),
@@ -1018,7 +1043,9 @@ const MidiOutputHook = {
         this._updateMeter('tempo', Math.round(meanHr));
         const velocity = scale(bpm, 50, 140);
         this.midi.sendNoteOn(CH.heart, 60, velocity);
-        setTimeout(() => { if (this.midi) this.midi.sendNoteOff(CH.heart, 60, 0); }, 50);
+        // Hold note 300ms so Tone.js pad synths (slow attack) can ramp up
+        const holdMs = this.midi.getBackend?.() === 'midi' ? 50 : 300;
+        setTimeout(() => { if (this.midi) this.midi.sendNoteOff(CH.heart, 60, 0); }, holdMs);
         this._updateArousal();
         break;
       }
@@ -1530,6 +1557,7 @@ const MidiOutputHook = {
     } else if (this._mode === 'magenta') {
       this.magenta.stop();
     } else {
+      this._stopAbstractDrone();
       this.clock.stop();
       this.syncDetector.reset();
     }
@@ -1560,12 +1588,15 @@ const MidiOutputHook = {
           this.groovy.start();
         }
       } else if (this._mode === 'magenta') {
+        // Use jazz patch for Magenta — shortest pad attack (0.4s) and reasonable volumes
+        this.midi.tone.setGenre('jazz');
         if (this.midi.enabled) {
           this._initChannelVolumes();
           this.magenta.start();
         }
       } else if (this.midi.enabled) {
         this._initChannelVolumes();
+        this._startAbstractDrone();
       }
     } catch (err) {
       console.error('[MidiOutputHook] Error applying mode:', err);
@@ -1576,6 +1607,20 @@ const MidiOutputHook = {
       localStorage.setItem('sensocto_midi_mode', this._mode);
       localStorage.setItem('sensocto_midi_genre', this._genreIndex);
     } catch (_) {}
+
+    // After mode switch, schedule a context health check. Debounce so
+    // rapid clicking only triggers one check after the last click.
+    if (this._modeHealthCheck) clearTimeout(this._modeHealthCheck);
+    this._modeHealthCheck = setTimeout(async () => {
+      if (!this.midi?.tone?._initialized) return;
+      const ratio = await this.midi.tone.checkContextHealth();
+      if (ratio < 0.5) {
+        console.warn(`[MidiOutputHook] Post-cycle health check: stalled (${ratio.toFixed(3)}), rebuilding...`);
+        await this.midi.tone.rebuildContext();
+        // Re-init volumes after rebuild
+        if (this.midi?.enabled) this._initChannelVolumes();
+      }
+    }, 500);
   },
 
   _updateModeUI() {
@@ -1667,19 +1712,46 @@ const MidiOutputHook = {
     console.info('[MidiOutputHook] Channel volumes initialized on', channels.length, 'channels');
   },
 
+  _startAbstractDrone() {
+    if (this._abstractDroneActive || !this.midi) return;
+    const backend = this.midi.getBackend?.() || 'midi';
+    if (backend === 'midi') return; // external MIDI doesn't need drone
+    // Sustained low C on bass channel — breath CCs will modulate expression + filter
+    this.midi.sendNoteOn(CH.breath, 36, 80);
+    this._abstractDroneActive = true;
+  },
+
+  _stopAbstractDrone() {
+    if (!this._abstractDroneActive || !this.midi) return;
+    this.midi.sendNoteOff(CH.breath, 36, 0);
+    this._abstractDroneActive = false;
+  },
+
   _handleToggle() {
     const newEnabled = !this.midi.enabled;
 
     if (newEnabled) {
       // Request MIDI access on first enable (deferred from page load)
-      this.midi.requestAccess().then(() => {
+      this.midi.requestAccess().then(async () => {
         if (!this.midi) return;
+
+        // Check AudioContext health before enabling — if the audio thread
+        // is stalled (overloaded), rebuild on a fresh context.
+        if (this.midi.tone?._initialized) {
+          const ratio = await this.midi.tone.checkContextHealth();
+          if (ratio < 0.5) {
+            console.warn(`[MidiOutputHook] AudioContext stalled (ratio=${ratio.toFixed(3)}), rebuilding...`);
+            await this.midi.tone.rebuildContext();
+          }
+        }
+
         this.midi.setEnabled(true);
         this._updateToggleUI(true);
         this._showMeters(true);
         this._initChannelVolumes();
         if (this._mode === 'groovy') this.groovy.start();
         else if (this._mode === 'magenta') this.magenta.start();
+        else if (this._mode === 'abstract') this._startAbstractDrone();
         this.pushEvent("midi_toggled", { enabled: true });
         try { localStorage.setItem('sensocto_midi_enabled', 'true'); } catch (_) {}
       });
@@ -1688,6 +1760,7 @@ const MidiOutputHook = {
 
     // Stop engines BEFORE disabling the router, so their noteOff
     // messages reach the Tone.js synths while they're still active.
+    this._stopAbstractDrone();
     this.groovy.stop();
     this.magenta.stop();
     this.clock.stop();
@@ -1725,6 +1798,7 @@ const MidiOutputHook = {
         this.groovy.setGenre(GENRES[this._genreIndex]);
         this.midi.tone.setGenre(GENRES[this._genreIndex].id);
       } else if (this._mode === 'magenta') {
+        this.midi.tone.setGenre('jazz');
         this._applyStoredAISettings();
       }
       this._updateModeUI();
@@ -1739,6 +1813,7 @@ const MidiOutputHook = {
           this._showMeters(true);
           if (this._mode === 'groovy') this.groovy.start();
           else if (this._mode === 'magenta') this.magenta.start();
+          else if (this._mode === 'abstract') this._startAbstractDrone();
           this.pushEvent("midi_toggled", { enabled: true });
         });
       }

@@ -5,14 +5,12 @@
     sensors: Array<{ sensor_id: string; sensor_name?: string; bpm: number }>;
   } = $props();
 
-  // Local state for realtime updates - starts with initial props
-  let sensorsState = $state<Array<{ sensor_id: string; sensor_name?: string; bpm: number }>>(initialSensors);
+  // Local state for realtime updates
+  let sensorsState = $state<Array<{ sensor_id: string; sensor_name?: string; bpm: number }>>([]);
 
-  // Update local state when props change (e.g., on initial load or reconnect)
+  // Sync from props (initial load and reconnect)
   $effect(() => {
-    if (initialSensors.length > 0) {
-      sensorsState = [...initialSensors];
-    }
+    sensorsState = [...initialSensors];
   });
 
   // Compute stats from current sensor data

@@ -20,13 +20,13 @@
   let viewMode: ViewMode = $state("split");
 
   // Map state
-  let mapContainer: HTMLDivElement;
+  let mapContainer = $state<HTMLDivElement>();
   let map: maplibregl.Map | null = null;
   let markers: Map<string, maplibregl.Marker> = new Map();
   let trails: Map<string, Array<[number, number]>> = new Map();
 
   // Graph state
-  let graphContainer: HTMLDivElement;
+  let graphContainer = $state<HTMLDivElement>();
   let sigma: Sigma | null = null;
   let graph: Graph | null = null;
 

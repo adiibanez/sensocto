@@ -10,7 +10,14 @@
 
   let heartElement: SVGElement;
   let beatInterval: ReturnType<typeof setInterval> | null = null;
-  let currentBpm = bpm;
+  let currentBpm = $state(0);
+
+  // Sync from prop on mount/change
+  $effect(() => {
+    if (bpm > 0 && currentBpm === 0) {
+      currentBpm = bpm;
+    }
+  });
 
   function startHeartbeatFromBpm(targetBpm: number) {
     if (beatInterval) {

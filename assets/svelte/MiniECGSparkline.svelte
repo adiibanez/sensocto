@@ -9,7 +9,6 @@
 
     let loggerCtxName = "MiniECGSparkline";
 
-    export let id;
     export let sensor_id;
     export let attribute_id;
     export let width = 80;

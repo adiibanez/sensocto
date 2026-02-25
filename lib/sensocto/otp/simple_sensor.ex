@@ -568,6 +568,10 @@ defmodule Sensocto.SimpleSensor do
 
       {:noreply, state, :hibernate}
     else
+      # Active sensors (especially high-rate ones like ECG) accumulate heap garbage
+      # faster than fullsweep_after can reclaim. Force a full GC every minute
+      # to prevent heap bloat (~950KB → ~4KB per process).
+      :erlang.garbage_collect(self())
       {:noreply, state}
     end
   end

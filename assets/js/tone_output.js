@@ -54,10 +54,14 @@ export class ToneOutput {
     this._ready = null;
     this._destroyed = false;
     this._initialized = false;
+    this._healthCheckTimer = null;
+    this._rebuilding = false;
+    this._genreDebounce = null;
 
     // Synth instances per channel
     this._synths = {};    // channel -> Tone synth
     this._gains = {};     // channel -> Tone.Gain
+    this._baseGains = {}; // channel -> base gain value (from patch volume), CC7 scales relative to this
     this._filters = {};   // channel -> Tone.Filter (for CC74)
     this._drums = {};     // drum name -> Tone synth
 
@@ -82,7 +86,7 @@ export class ToneOutput {
     this._mutedChannels = new Set();
 
     // Volume level (master)
-    this._volume = -6;
+    this._volume = 6; // Moderate boost: CC7 now scales relative to patch gains; limiter at -2dB prevents clipping
   }
 
   requestAccess() {
@@ -124,6 +128,7 @@ export class ToneOutput {
     this._initEffects();
     this._initSynths();
     this._initialized = true;
+    this._startHealthMonitor();
   }
 
   _initEffects() {
@@ -178,7 +183,8 @@ export class ToneOutput {
 
       try {
         // Create gain node for this channel with role-specific routing
-        const gain = new Tone.Gain(Tone.dbToGain(p.volume || -10));
+        const baseGainVal = Tone.dbToGain(p.volume || -10);
+        const gain = new Tone.Gain(baseGainVal);
         gain.connect(this._dryBus);
         if (role === 'pad') {
           gain.connect(this._wetBusChorus);
@@ -190,6 +196,7 @@ export class ToneOutput {
           gain.connect(this._wetBusReverb);
         }
         this._gains[ch] = gain;
+        this._baseGains[ch] = baseGainVal;
 
         // Create filter for CC74 control
         const filter = new Tone.Filter({ frequency: 5000, type: 'lowpass', rolloff: -12 });
@@ -206,10 +213,12 @@ export class ToneOutput {
 
     // Drums — channel 9 (create gain BEFORE initDrums so drums can connect to it)
     try {
-      const drumGain = new Tone.Gain(Tone.dbToGain(-6));
+      const drumBaseGain = Tone.dbToGain(-6);
+      const drumGain = new Tone.Gain(drumBaseGain);
       drumGain.connect(this._dryBus);
       drumGain.connect(this._wetBusReverb);
       this._gains[9] = drumGain;
+      this._baseGains[9] = drumBaseGain;
       this._initDrums(patch.drums);
     } catch (err) {
       console.warn('[ToneOutput] Failed to init drums:', err.message);
@@ -368,14 +377,11 @@ export class ToneOutput {
       }
     } else {
       this._mutedChannels.delete(channel);
-      // Restore channel gain from patch volume
+      // Restore channel gain from stored base gain
       const gain = this._gains[channel];
       if (gain) {
-        const patch = TONE_PATCHES[this._genreId] || TONE_PATCHES.jazz;
-        const roles = { 0: 'bass', 1: 'pad', 2: 'lead', 3: 'arp' };
-        const role = roles[channel];
-        const vol = role && patch[role] ? patch[role].volume || -10 : -6;
-        try { gain.gain.setValueAtTime(window.Tone.dbToGain(vol), window.Tone.now()); } catch (_) {}
+        const base = this._baseGains[channel] ?? 0.5;
+        try { gain.gain.setValueAtTime(base, window.Tone.now()); } catch (_) {}
       }
     }
   }
@@ -389,6 +395,15 @@ export class ToneOutput {
     this._genreId = genreId;
     if (!this._initialized) return;
 
+    // Debounce: rapid genre switches (mode cycling) create and destroy
+    // hundreds of Web Audio nodes, which can overload the audio thread.
+    // Coalesce into a single rebuild after 150ms of quiet.
+    if (this._genreDebounce) clearTimeout(this._genreDebounce);
+    this._genreDebounce = setTimeout(() => this._applyGenre(), 150);
+  }
+
+  _applyGenre() {
+    const genreId = this._genreId;
     // Rebuild synths with new genre patches
     try {
       this._disposeSynths();
@@ -442,6 +457,94 @@ export class ToneOutput {
           window.Tone.dbToGain(this._volume), window.Tone.now()
         );
       } catch (_) {}
+    }
+  }
+
+  // Detect stalled AudioContext (audio thread overloaded or frozen).
+  // Returns a promise that resolves to the context-to-wall-clock ratio.
+  // A healthy ratio is ~1.0; below 0.5 means audio is severely stalled.
+  async checkContextHealth() {
+    if (!this._initialized || !window.Tone) return 1.0;
+    try {
+      const ctx = window.Tone.getContext().rawContext;
+      if (!ctx || ctx.state !== 'running') return 0;
+      const wallStart = Date.now();
+      const ctxStart = ctx.currentTime;
+      await new Promise(r => setTimeout(r, 150));
+      const wallElapsed = (Date.now() - wallStart) / 1000;
+      const ctxElapsed = ctx.currentTime - ctxStart;
+      return wallElapsed > 0 ? ctxElapsed / wallElapsed : 1.0;
+    } catch (_) {
+      return 1.0;
+    }
+  }
+
+  // Tear down the entire audio chain and rebuild on a fresh AudioContext.
+  // Call this when the context is stalled beyond recovery.
+  async rebuildContext() {
+    if (!window.Tone || this._rebuilding) return;
+    this._rebuilding = true;
+    console.info('[ToneOutput] Rebuilding AudioContext...');
+
+    // Dispose all Tone.js nodes
+    this._disposeSynths();
+    try { this._reverb?.dispose(); } catch (_) {}
+    try { this._delay?.dispose(); } catch (_) {}
+    try { this._chorus?.dispose(); } catch (_) {}
+    try { this._compressor?.dispose(); } catch (_) {}
+    try { this._limiter?.dispose(); } catch (_) {}
+    try { this._masterGain?.dispose(); } catch (_) {}
+    try { this._dryBus?.dispose(); } catch (_) {}
+    try { this._wetBusReverb?.dispose(); } catch (_) {}
+    try { this._wetBusDelay?.dispose(); } catch (_) {}
+    try { this._wetBusChorus?.dispose(); } catch (_) {}
+
+    // Close old context and create fresh one
+    try {
+      const oldCtx = window.Tone.getContext().rawContext;
+      if (oldCtx) await oldCtx.close().catch(() => {});
+    } catch (_) {}
+
+    const newCtx = new AudioContext({ sampleRate: 44100 });
+    window.Tone.setContext(newCtx);
+    if (newCtx.state === 'suspended') await newCtx.resume();
+
+    // Rebuild the full chain
+    this._initEffects();
+    this._initSynths();
+
+    // Restore master gain
+    if (this.enabled && this._masterGain) {
+      try {
+        this._masterGain.gain.setValueAtTime(
+          window.Tone.dbToGain(this._volume), window.Tone.now()
+        );
+      } catch (_) {}
+    }
+
+    this._rebuilding = false;
+    console.info('[ToneOutput] AudioContext rebuilt successfully.');
+    this._startHealthMonitor();
+  }
+
+  _startHealthMonitor() {
+    if (this._healthCheckTimer) clearInterval(this._healthCheckTimer);
+    this._healthCheckTimer = setInterval(() => this._runHealthCheck(), 15000);
+  }
+
+  async _runHealthCheck() {
+    if (!this.enabled || !this._initialized || this._destroyed || this._rebuilding) return;
+    const ratio = await this.checkContextHealth();
+    if (ratio < 0.5) {
+      console.warn(`[ToneOutput] Health check: context stalled (ratio=${ratio.toFixed(3)}), auto-rebuilding...`);
+      this._rebuilding = true;
+      try {
+        await this.rebuildContext();
+      } catch (err) {
+        console.error('[ToneOutput] Auto-rebuild failed:', err.message);
+      } finally {
+        this._rebuilding = false;
+      }
     }
   }
 
@@ -508,16 +611,18 @@ export class ToneOutput {
       const normalized = value / 127;
 
       switch (cc) {
-        case 7: { // Volume — skip if channel is muted
+        case 7: { // Volume — scale relative to patch base gain; skip if muted
           if (this._mutedChannels.has(channel)) break;
           const gain = this._gains[channel];
-          if (gain) gain.gain.rampTo(normalized * 0.8, 0.05);
+          const base = this._baseGains[channel] ?? 0.5;
+          if (gain) gain.gain.rampTo(normalized * base, 0.05);
           break;
         }
-        case 11: { // Expression — skip if channel is muted
+        case 11: { // Expression — scale relative to patch base gain; skip if muted
           if (this._mutedChannels.has(channel)) break;
-          const gain = this._gains[channel];
-          if (gain) gain.gain.rampTo(normalized * 0.8, 0.05);
+          const exGain = this._gains[channel];
+          const exBase = this._baseGains[channel] ?? 0.5;
+          if (exGain) exGain.gain.rampTo(normalized * exBase, 0.05);
           break;
         }
         case 74: { // Filter cutoff
@@ -594,9 +699,10 @@ export class ToneOutput {
   _disposeSynths() {
     this._allNotesOff();
 
-    // Collect old nodes — disconnect immediately but defer disposal so that
-    // pending async noteOff callbacks (from GroovyEngine setTimeout) don't
-    // hit disposed Web Audio nodes and throw InvalidAccessError.
+    // Disconnect and dispose old nodes immediately to keep the audio graph
+    // clean. Stray async callbacks (GroovyEngine setTimeout noteOff) may
+    // hit disposed nodes and throw InvalidAccessError — that's cosmetic
+    // noise, already caught at each call site.
     const old = [
       ...Object.values(this._synths),
       ...Object.values(this._drums),
@@ -605,23 +711,22 @@ export class ToneOutput {
     ];
     for (const node of old) {
       try { node.disconnect(); } catch (_) {}
+      try { node.dispose(); } catch (_) {}
     }
-    setTimeout(() => {
-      for (const node of old) {
-        try { node.dispose(); } catch (_) {}
-      }
-    }, 500);
 
     this._synths = {};
     this._drums = {};
     this._filters = {};
     this._gains = {};
+    this._baseGains = {};
   }
 
   dispose() {
     this._destroyed = true;
     this._initialized = false;
     this.enabled = false;
+    if (this._healthCheckTimer) { clearInterval(this._healthCheckTimer); this._healthCheckTimer = null; }
+    if (this._genreDebounce) { clearTimeout(this._genreDebounce); this._genreDebounce = null; }
     this._disposeSynths();
     try { this._reverb?.dispose(); } catch (_) {}
     try { this._delay?.dispose(); } catch (_) {}

@@ -49,8 +49,8 @@
     compact = false
   }: Props = $props();
 
-  let container: HTMLDivElement;
-  let graph: Graph;
+  let container = $state<HTMLDivElement>();
+  let graph: Graph = $state();
   let sigma: Sigma | null = null;
   let selectedNode = $state<string | null>(null);
   let hoveredNode = $state<string | null>(null);
@@ -3692,12 +3692,6 @@
     cursor: not-allowed;
   }
 
-  .control-btn.active {
-    background: rgba(59, 130, 246, 0.3);
-    color: #60a5fa;
-    border-color: rgba(59, 130, 246, 0.5);
-  }
-
   /* ── CSS Tooltips ─────────────────────────────────────── */
 
   [data-tooltip] {
@@ -3751,17 +3745,6 @@
 
   .tooltip-right[data-tooltip]:hover::after {
     transform: translateY(-50%) translateX(0);
-  }
-
-  /* Below tooltips (for the top mode selector) */
-  .tooltip-below[data-tooltip]::after {
-    top: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%) translateY(-4px);
-  }
-
-  .tooltip-below[data-tooltip]:hover::after {
-    transform: translateX(-50%) translateY(0);
   }
 
   /* Above tooltips (e.g. for bottom bar close) */
@@ -4294,27 +4277,6 @@
 
     .recording-indicator {
       left: 3.75rem;
-    }
-
-    .legend {
-      bottom: 0.5rem;
-      left: 0.5rem;
-      padding: 0.375rem 0.5rem;
-      gap: 0.5rem;
-      font-size: 0.625rem;
-    }
-
-    .legend-dot {
-      width: 7px;
-      height: 7px;
-    }
-
-    .stats {
-      bottom: 0.5rem;
-      right: 0.5rem;
-      padding: 0.25rem 0.5rem;
-      gap: 0.5rem;
-      font-size: 0.6rem;
     }
 
     [data-tooltip]::after {

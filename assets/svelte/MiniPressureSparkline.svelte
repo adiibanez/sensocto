@@ -9,7 +9,6 @@
 
     let loggerCtxName = "MiniPressureSparkline";
 
-    export let id;
     export let sensor_id;
     export let attribute_id;
     export let width = 80;

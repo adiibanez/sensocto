@@ -35,7 +35,12 @@ defmodule Sensocto.Simulator.SensorServer do
 
   def start_link(%{sensor_id: sensor_id, connector_id: connector_id} = config) do
     Logger.debug("SensorServer start_link: #{connector_id}/#{sensor_id}")
-    GenServer.start_link(__MODULE__, config, name: via_tuple("#{connector_id}_#{sensor_id}"))
+
+    GenServer.start_link(__MODULE__, config,
+      name: via_tuple("#{connector_id}_#{sensor_id}"),
+      hibernate_after: 15_000,
+      spawn_opt: [fullsweep_after: 10]
+    )
   end
 
   @impl true

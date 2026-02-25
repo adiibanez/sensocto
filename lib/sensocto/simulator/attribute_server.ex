@@ -61,7 +61,9 @@ defmodule Sensocto.Simulator.AttributeServer do
     Logger.debug("Starting AttributeServer: #{connector_id}/#{sensor_id}/#{attribute_id}")
 
     GenServer.start_link(__MODULE__, config,
-      name: via_tuple("#{connector_id}_#{sensor_id}_#{attribute_id}")
+      name: via_tuple("#{connector_id}_#{sensor_id}_#{attribute_id}"),
+      hibernate_after: 15_000,
+      spawn_opt: [fullsweep_after: 10]
     )
   end
 

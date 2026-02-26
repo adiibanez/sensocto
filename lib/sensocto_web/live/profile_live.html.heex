@@ -1,32 +1,40 @@
-<div class="max-w-2xl mx-auto px-4 py-8">
-  <.header>
-    Your Profile
-    <:subtitle>Manage your public profile and skills</:subtitle>
-  </.header>
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-2xl font-bold text-white mb-6">{gettext("Profile")}</h1>
 
-  <div class="mt-8 space-y-8">
+  <div class="space-y-6">
     <%!-- Profile Form --%>
-    <div class="bg-gray-800 rounded-lg p-6">
-      <h3 class="text-lg font-semibold text-white mb-4">Profile Information</h3>
+    <div class="bg-gray-800 rounded-xl p-6">
+      <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <Heroicons.icon name="user-circle" type="outline" class="h-5 w-5 text-gray-400" />
+        {gettext("Profile Information")}
+      </h2>
+      <p class="text-gray-400 text-sm mb-4">
+        {gettext("This is how other users see you on the platform.")}
+      </p>
 
       <.simple_form for={@form} phx-change="validate" phx-submit="save_profile">
         <.input
           field={@form[:display_name]}
           type="text"
-          label="Display Name"
-          placeholder="How others see you"
+          label={gettext("Display Name")}
+          placeholder={gettext("How others see you")}
         />
         <.input
           field={@form[:bio]}
           type="textarea"
-          label="Bio"
-          placeholder="Tell others about yourself..."
+          label={gettext("Bio")}
+          placeholder={gettext("Tell others about yourself...")}
         />
-        <.input field={@form[:status_emoji]} type="text" label="Status Emoji" placeholder="🎵" />
+        <.input
+          field={@form[:status_emoji]}
+          type="text"
+          label={gettext("Status Emoji")}
+          placeholder="🎵"
+        />
         <.input
           field={@form[:timezone]}
           type="select"
-          label="Timezone"
+          label={gettext("Timezone")}
           options={[
             {"Europe/Berlin", "Europe/Berlin"},
             {"Europe/London", "Europe/London"},
@@ -36,26 +44,25 @@
             {"UTC", "UTC"}
           ]}
         />
-        <.input
-          field={@form[:is_public]}
-          type="checkbox"
-          label="Public profile (visible in user directory)"
-        />
-
         <:actions>
-          <.button type="submit" phx-disable-with="Saving...">Save Profile</.button>
+          <.button type="submit" phx-disable-with={gettext("Saving...")}>
+            {gettext("Save Profile")}
+          </.button>
         </:actions>
       </.simple_form>
     </div>
 
     <%!-- Skills Section --%>
-    <div class="bg-gray-800 rounded-lg p-6">
-      <h3 class="text-lg font-semibold text-white mb-4">Skills</h3>
+    <div class="bg-gray-800 rounded-xl p-6">
+      <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <Heroicons.icon name="academic-cap" type="outline" class="h-5 w-5 text-gray-400" />
+        {gettext("Skills")}
+      </h2>
 
       <%= if @skills != [] do %>
         <div class="flex flex-wrap gap-2 mb-4">
           <%= for skill <- @skills do %>
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm bg-gray-700 text-gray-200">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-gray-700/80 text-gray-200 border border-gray-600/50">
               <span class={[
                 "w-2 h-2 rounded-full",
                 skill.level == :expert && "bg-green-400",
@@ -69,48 +76,259 @@
                 phx-click="remove_skill"
                 phx-value-id={skill.id}
                 aria-label={"Remove skill #{skill.skill_name}"}
-                class="ml-1 text-gray-400 hover:text-red-400"
+                class="ml-1 text-gray-400 hover:text-red-400 transition-colors"
               >
                 <.icon name="hero-x-mark" class="h-3 w-3" />
               </button>
             </span>
           <% end %>
         </div>
+      <% else %>
+        <p class="text-gray-500 text-sm mb-4">{gettext("No skills added yet.")}</p>
       <% end %>
 
-      <form phx-submit="add_skill" class="flex gap-2 items-end">
+      <form phx-submit="add_skill" class="flex gap-3 items-end">
         <div class="flex-1">
-          <label class="block text-sm font-medium text-gray-300 mb-1">Add Skill</label>
+          <label class="block text-sm font-medium text-gray-300 mb-1">
+            {gettext("Add Skill")}
+          </label>
           <input
             type="text"
             name="skill_name"
             value={@skill_form[:skill_name].value}
-            placeholder="e.g. elixir, biosignals, music"
-            class="w-full rounded-md bg-gray-700 border-gray-600 text-white text-sm"
+            placeholder={gettext("e.g. elixir, biosignals, music")}
+            class="w-full rounded-lg bg-gray-700 border-gray-600 text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-300 mb-1">Level</label>
-          <select name="level" class="rounded-md bg-gray-700 border-gray-600 text-white text-sm">
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="expert">Expert</option>
+          <label class="block text-sm font-medium text-gray-300 mb-1">{gettext("Level")}</label>
+          <select
+            name="level"
+            class="rounded-lg bg-gray-700 border-gray-600 text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="beginner">{gettext("Beginner")}</option>
+            <option value="intermediate">{gettext("Intermediate")}</option>
+            <option value="expert">{gettext("Expert")}</option>
           </select>
         </div>
-        <.button type="submit" class="mb-0">Add</.button>
+        <.button type="submit" class="mb-0">{gettext("Add")}</.button>
       </form>
     </div>
 
+    <%!-- Connections + Graph --%>
+    <div class="bg-gray-800 rounded-xl p-6">
+      <h2 class="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+        <Heroicons.icon name="share" type="outline" class="h-5 w-5 text-gray-400" />
+        {gettext("Connections")}
+      </h2>
+      <p class="text-gray-400 text-sm mb-4">
+        {gettext("People you follow, collaborate with, or mentor.")}
+      </p>
+
+      <%!-- Graph visualization --%>
+      <div class="rounded-lg overflow-hidden mb-6" style="height: 340px;">
+        <.svelte
+          name="UserGraph"
+          props={%{users: @graph_users, connections: @graph_connections}}
+          socket={@socket}
+          class="w-full h-full rounded-lg overflow-hidden"
+        />
+      </div>
+
+      <%!-- Connection list --%>
+      <%= if @connections != [] do %>
+        <div class="space-y-2 mb-5">
+          <%= for conn <- @connections do %>
+            <% other_id =
+              if conn.from_user_id == @user.id, do: conn.to_user_id, else: conn.from_user_id %>
+            <% other =
+              Enum.find(@all_users, &(&1.id == other_id)) ||
+                Enum.find(@graph_users, &(&1.id == other_id)) %>
+            <div class="flex items-center justify-between py-2 px-3 bg-gray-700/50 rounded-lg">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-base">
+                  {if other && Map.get(other, :status_emoji), do: other.status_emoji, else: "👤"}
+                </span>
+                <div class="min-w-0">
+                  <p class="text-white text-sm font-medium truncate">
+                    {if other,
+                      do:
+                        Map.get(other, :display_name) || Map.get(other, "display_name") ||
+                          "Unknown",
+                      else: "Unknown user"}
+                  </p>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <span class={[
+                      "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                      conn.connection_type == :follows && "bg-blue-500/20 text-blue-400",
+                      conn.connection_type == :collaborates && "bg-green-500/20 text-green-400",
+                      conn.connection_type == :mentors && "bg-purple-500/20 text-purple-400"
+                    ]}>
+                      {conn.connection_type}
+                    </span>
+                    <span class="text-gray-500 text-[10px]">
+                      {if conn.from_user_id == @user.id, do: "→ outgoing", else: "← incoming"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0 ml-2">
+                <%= if conn.from_user_id == @user.id do %>
+                  <select
+                    phx-change="update_connection"
+                    phx-value-id={conn.id}
+                    name="connection_type"
+                    class="text-xs rounded bg-gray-700 border-gray-600 text-gray-300 py-1 pl-1 pr-5 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="follows" selected={conn.connection_type == :follows}>
+                      follows
+                    </option>
+                    <option value="collaborates" selected={conn.connection_type == :collaborates}>
+                      collaborates
+                    </option>
+                    <option value="mentors" selected={conn.connection_type == :mentors}>
+                      mentors
+                    </option>
+                  </select>
+                  <button
+                    phx-click="remove_connection"
+                    phx-value-id={conn.id}
+                    class="text-gray-500 hover:text-red-400 transition-colors"
+                    title={gettext("Remove connection")}
+                  >
+                    <.icon name="hero-x-mark" class="h-4 w-4" />
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <p class="text-gray-500 text-sm mb-4">
+          {gettext("No connections yet. Add people you know below.")}
+        </p>
+      <% end %>
+
+      <%!-- Add connection --%>
+      <div class="space-y-3">
+        <%!-- Searchable user picker (outside the submit form so phx-click works) --%>
+        <div class="flex gap-2 items-end flex-wrap">
+          <div class="flex-1 min-w-48 relative">
+            <label class="block text-sm font-medium text-gray-300 mb-1">
+              {gettext("Add connection")}
+            </label>
+            <form phx-change="search_users" phx-submit="search_users">
+              <div class="relative">
+                <input
+                  type="text"
+                  id="user-search-input"
+                  name="user_search"
+                  value={@user_search}
+                  phx-debounce="150"
+                  autocomplete="off"
+                  placeholder={gettext("Search by name or email...")}
+                  class="w-full rounded-lg bg-gray-700 border-gray-600 text-white text-sm focus:ring-indigo-500 focus:border-indigo-500 pr-8"
+                />
+                <%= if @selected_user_id do %>
+                  <button
+                    type="button"
+                    phx-click="clear_user_search"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  >
+                    <.icon name="hero-x-mark" class="h-3.5 w-3.5" />
+                  </button>
+                <% else %>
+                  <span class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                    <.icon name="hero-magnifying-glass" class="h-3.5 w-3.5" />
+                  </span>
+                <% end %>
+              </div>
+            </form>
+            <%!-- Dropdown results --%>
+            <%= if @show_user_dropdown do %>
+              <div class="absolute z-30 top-full mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden">
+                <%= for u <- @user_search_results do %>
+                  <div
+                    phx-click="select_user"
+                    phx-value-id={u.id}
+                    class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-700 transition-colors cursor-pointer"
+                  >
+                    <span class="text-lg shrink-0">{u.status_emoji || "👤"}</span>
+                    <div class="min-w-0">
+                      <p class="text-white text-sm font-medium truncate">
+                        {u.display_name || u.email}
+                      </p>
+                      <%= if u.bio do %>
+                        <p class="text-gray-400 text-xs truncate">{u.bio}</p>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <%!-- Selected user chip + submit form --%>
+        <%= if @selected_user do %>
+          <div class="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+            <span class="text-base">{@selected_user.status_emoji || "👤"}</span>
+            <p class="text-indigo-300 text-sm font-medium">
+              {@selected_user.display_name || @selected_user.email}
+            </p>
+            <button
+              type="button"
+              phx-click="clear_user_search"
+              class="ml-auto text-indigo-400/60 hover:text-indigo-300"
+            >
+              <.icon name="hero-x-mark" class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        <% end %>
+
+        <form phx-submit="add_connection" class="flex gap-2 items-center flex-wrap">
+          <input type="hidden" name="to_user_id" value={@selected_user_id || ""} />
+          <div>
+            <select
+              name="connection_type"
+              class="rounded-lg bg-gray-700 border-gray-600 text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="follows">{gettext("follows")}</option>
+              <option value="collaborates">{gettext("collaborates")}</option>
+              <option value="mentors">{gettext("mentors")}</option>
+            </select>
+          </div>
+          <.button type="submit" class="mb-0" disabled={is_nil(@selected_user_id)}>
+            <Heroicons.icon name="plus" type="outline" class="h-4 w-4 mr-1" />
+            {gettext("Add")}
+          </.button>
+        </form>
+      </div>
+    </div>
+
     <%!-- Account Info --%>
-    <div class="bg-gray-800 rounded-lg p-6">
-      <h3 class="text-lg font-semibold text-white mb-4">Account</h3>
-      <.list>
-        <:item title="Email">{@user.email}</:item>
-        <:item title="Account ID"><code class="text-xs text-gray-400">{@user.id}</code></:item>
-      </.list>
-      <div class="mt-4">
-        <.link navigate={~p"/settings"} class="text-sm text-blue-400 hover:text-blue-300">
-          Go to Settings →
+    <div class="bg-gray-800 rounded-xl p-6">
+      <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <Heroicons.icon name="identification" type="outline" class="h-5 w-5 text-gray-400" />
+        {gettext("Account")}
+      </h2>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">{gettext("Email")}</label>
+          <div class="text-white">{@user.email}</div>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">{gettext("Account ID")}</label>
+          <div class="text-gray-300 font-mono text-sm">{@user.id}</div>
+        </div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-gray-700">
+        <.link
+          navigate={~p"/settings"}
+          class="inline-flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+        >
+          <Heroicons.icon name="cog-6-tooth" type="outline" class="h-4 w-4" />
+          {gettext("Go to Settings")}
         </.link>
       </div>
     </div>

@@ -208,16 +208,21 @@ defmodule Sensocto.Search.SearchIndex do
   end
 
   defp index_all_users do
-    case Ash.read(User, authorize?: false) do
+    require Ash.Query
+
+    case User
+         |> Ash.Query.filter(is_public == true)
+         |> Ash.read(authorize?: false) do
       {:ok, users} ->
         Enum.reduce(users, %{}, fn user, acc ->
           email = to_string(user.email)
+          display_name = user.display_name || email_to_name(email)
 
           user_data = %{
             id: user.id,
             email: email,
-            name: email_to_name(email),
-            searchable: String.downcase(email)
+            name: display_name,
+            searchable: String.downcase("#{display_name} #{email}")
           }
 
           Map.put(acc, user.id, user_data)

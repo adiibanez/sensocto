@@ -58,7 +58,10 @@ defmodule SensoctoWeb.GuidedSessionJoinLive do
 
       # Set follower and activate the session
       with {:ok, session} <-
-             Ash.update(session, %{follower_user_id: user_id}, action: :create, authorize?: false),
+             Ash.update(session, %{follower_user_id: user_id},
+               action: :assign_follower,
+               authorize?: false
+             ),
            {:ok, session} <- Ash.update(session, %{}, action: :accept, authorize?: false) do
         # Start the session server
         SessionSupervisor.get_or_start_session(session.id,

@@ -47,10 +47,11 @@
   let sensorData: Map<string, Array<{ x: number; y: number }>> = new Map();
   let sensorColors: Map<string, string> = new Map();
   let pendingUpdates: Map<string, Array<{ x: number; y: number }>> = new Map();
-  let updateTimer: ReturnType<typeof setInterval> | null = null;
   let rafId: number | null = null;
   let lastUpdateTime = 0;
+  let lastExtremesUpdate = 0;
   let latestDataTimestamp = 0;
+  let dirtySeriesIds: Set<string> = new Set();
 
   function initializeSensorData() {
     sensors.forEach((sensor, index) => {
@@ -69,30 +70,28 @@
     if (ts > latestDataTimestamp) latestDataTimestamp = ts;
   }
 
-  function processPendingUpdates() {
-    if (pendingUpdates.size === 0) return;
+  function processPendingUpdates(): boolean {
+    if (pendingUpdates.size === 0) return false;
 
     pendingUpdates.forEach((points, sensorId) => {
       let data = sensorData.get(sensorId) || [];
-      // Append new points - data arrives in order from server, no sorting needed
-      // Sorting breaks ECG waveforms because samples with same/similar timestamps
-      // get reordered randomly, creating horizontal lines
       data.push(...points);
-      // Trim from start efficiently using slice instead of shift loop
       if (data.length > MAX_DATA_POINTS) {
         data = data.slice(data.length - MAX_DATA_POINTS);
       }
       sensorData.set(sensorId, data);
+      dirtySeriesIds.add(sensorId);
     });
 
     pendingUpdates.clear();
+    return true;
   }
 
   function rafLoop(timestamp: number) {
     try {
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
-        processPendingUpdates();
-        updateChart();
+        const hadData = processPendingUpdates();
+        updateChart(hadData, timestamp);
         lastUpdateTime = timestamp;
       }
     } catch (e) {
@@ -246,25 +245,20 @@
   }
 
   function getFilteredData(data: Array<{ x: number; y: number }>, cutoff: number): Array<[number, number]> {
-    // Find first point after cutoff - scan from start since data is appended in order
-    // but might have small timestamp variations within batches
-    let start = 0;
-    for (let i = 0; i < data.length; i++) {
-      if (data[i].x >= cutoff) {
-        start = i;
-        break;
-      }
-      start = i + 1;
+    let lo = 0, hi = data.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (data[mid].x < cutoff) lo = mid + 1;
+      else hi = mid;
     }
-    // Transform to array format for Highcharts
-    const result: Array<[number, number]> = new Array(data.length - start);
-    for (let i = start; i < data.length; i++) {
-      result[i - start] = [data[i].x, data[i].y];
+    const result: Array<[number, number]> = new Array(data.length - lo);
+    for (let i = lo; i < data.length; i++) {
+      result[i - lo] = [data[i].x, data[i].y];
     }
     return result;
   }
 
-  function updateChart() {
+  function updateChart(hadData: boolean, timestamp: number) {
     if (!chart) {
       if (chartContainer && sensorData.size > 0) createChart();
       return;
@@ -275,14 +269,24 @@
       return;
     }
 
-    // Use data timestamps as the time reference so the chart scrolls at realtime pace.
-    // Falls back to Date.now() when no data has arrived yet.
+    if (!hadData) {
+      if (timestamp - lastExtremesUpdate >= 500) {
+        const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
+        chart.xAxis[0].setExtremes(now - selectedWindowMs, now, true, false);
+        lastExtremesUpdate = timestamp;
+      }
+      return;
+    }
+
     const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
     const cutoff = now - selectedWindowMs;
     let needsRedraw = false;
 
-    Array.from(sensorData.entries()).forEach(([sensorId, data], index) => {
+    dirtySeriesIds.forEach((sensorId) => {
       const seriesId = `sensor-${sensorId}`;
+      const data = sensorData.get(sensorId);
+      if (!data) return;
+
       const existingSeries = chart!.get(seriesId) as Highcharts.Series | null;
       const filteredData = getFilteredData(data, cutoff);
 
@@ -290,6 +294,7 @@
         existingSeries.setData(filteredData, false, false, false);
         needsRedraw = true;
       } else {
+        const index = Array.from(sensorData.keys()).indexOf(sensorId);
         chart!.addSeries({
           type: 'line',
           id: seriesId,
@@ -303,16 +308,19 @@
         needsRedraw = true;
       }
     });
+    dirtySeriesIds.clear();
 
     if (needsRedraw) {
       chart.xAxis[0].setExtremes(now - selectedWindowMs, now, false);
       chart.redraw(false);
+      lastExtremesUpdate = timestamp;
     }
   }
 
   function setTimeWindow(ms: number) {
     selectedWindowMs = ms;
-    updateChart();
+    sensorData.forEach((_data, sensorId) => dirtySeriesIds.add(sensorId));
+    updateChart(true, performance.now());
   }
 
   onMount(() => {

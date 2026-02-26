@@ -25,6 +25,10 @@ defmodule Sensocto.Accounts.UserConnection do
       argument :user_id, :uuid, allow_nil?: false
       filter expr(from_user_id == ^arg(:user_id) or to_user_id == ^arg(:user_id))
     end
+
+    update :update do
+      accept [:connection_type, :strength]
+    end
   end
 
   attributes do

@@ -64,6 +64,7 @@ defmodule SensoctoWeb.UserSettingsLive do
       |> assign(:show_qr, false)
       |> assign(:current_locale, current_locale)
       |> assign(:locales, @locales)
+      |> assign(:is_public, Map.get(user, :is_public, false))
 
     {:ok, socket}
   end
@@ -120,6 +121,39 @@ defmodule SensoctoWeb.UserSettingsLive do
   @impl true
   def handle_event("toggle_qr", _params, socket) do
     {:noreply, assign(socket, :show_qr, !socket.assigns.show_qr)}
+  end
+
+  @impl true
+  def handle_event(
+        "toggle_public",
+        _params,
+        %{assigns: %{current_user: %{is_guest: true}}} = socket
+      ) do
+    {:noreply, put_flash(socket, :error, gettext("Guest users cannot change visibility"))}
+  end
+
+  def handle_event("toggle_public", _params, socket) do
+    user = socket.assigns.current_user
+    new_value = !socket.assigns.is_public
+
+    case user
+         |> Ash.Changeset.for_update(:update_profile, %{is_public: new_value}, actor: user)
+         |> Ash.update() do
+      {:ok, _updated_user} ->
+        {:noreply,
+         socket
+         |> assign(:is_public, new_value)
+         |> put_flash(
+           :info,
+           if(new_value,
+             do: gettext("Profile is now visible in directory"),
+             else: gettext("Profile hidden from directory")
+           )
+         )}
+
+      {:error, _error} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to update visibility"))}
+    end
   end
 
   @impl true
@@ -326,6 +360,35 @@ defmodule SensoctoWeb.UserSettingsLive do
                 <li>{gettext("Point your camera at the QR code above")}</li>
                 <li>{gettext("You'll be automatically signed in")}</li>
               </ol>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-xl p-6">
+          <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Heroicons.icon name="eye" type="outline" class="h-5 w-5 text-gray-400" />
+            {gettext("Privacy")}
+          </h2>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-white text-sm font-medium">
+                  {gettext("Visible in user directory")}
+                </p>
+                <p class="text-gray-400 text-xs mt-1">
+                  {gettext("When enabled, other users can find your profile in the directory.")}
+                </p>
+              </div>
+              <button
+                phx-click="toggle_public"
+                class={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " <>
+                  if(@is_public, do: "bg-indigo-600", else: "bg-gray-600")}
+                role="switch"
+                aria-checked={to_string(@is_public)}
+              >
+                <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " <>
+                  if(@is_public, do: "translate-x-6", else: "translate-x-1")} />
+              </button>
             </div>
           </div>
         </div>

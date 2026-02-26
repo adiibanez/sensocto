@@ -12,6 +12,8 @@ defmodule SensoctoWeb.MagicSignInLive do
       session
       |> Map.get("overrides", [AshAuthentication.Phoenix.Overrides.Default])
 
+    locale = session["locale"] || "en"
+
     socket =
       socket
       |> assign(overrides: overrides)
@@ -22,6 +24,10 @@ defmodule SensoctoWeb.MagicSignInLive do
       |> assign(:gettext_fn, session["gettext_fn"])
       |> assign(:strategy, session["strategy"])
       |> assign(:resource, session["resource"])
+      |> assign(:locale, locale)
+      |> assign(:locale_label, String.upcase(locale))
+      |> assign(:locales, [])
+      |> assign(:current_uri_path, "/magic_link")
 
     {:ok, socket}
   end

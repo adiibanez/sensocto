@@ -479,7 +479,7 @@ defmodule Sensocto.Accounts.User do
 
     attribute :is_public, :boolean do
       allow_nil? false
-      default true
+      default false
     end
   end
 

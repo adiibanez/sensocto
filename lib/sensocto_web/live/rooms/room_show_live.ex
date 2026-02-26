@@ -1939,8 +1939,8 @@ defmodule SensoctoWeb.RoomShowLive do
 
   defp get_default_mode(room) do
     cond do
-      Map.get(room, :calls_enabled, true) -> :call
       Map.get(room, :media_playback_enabled, true) -> :media
+      Map.get(room, :calls_enabled, true) -> :call
       Map.get(room, :object_3d_enabled, false) -> :object3d
       Map.get(room, :whiteboard_enabled, false) -> :whiteboard
       true -> :sensors
@@ -2605,7 +2605,7 @@ defmodule SensoctoWeb.RoomShowLive do
                 if(@room_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
                 if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
           >
-            <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media Playback
+            <Heroicons.icon name="play" type="solid" class="h-4 w-4" /> Media
             <span
               :if={@media_viewers > 0}
               class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20"

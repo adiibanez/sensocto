@@ -49,7 +49,10 @@
   let pendingUpdates: Map<string, Array<{ x: number; y: number }>> = new Map();
   let rafId: number | null = null;
   let lastUpdateTime = 0;
+  let lastExtremesUpdate = 0;
   let latestDataTimestamp = 0;
+  let dirtySeriesIds: Set<string> = new Set();
+  let syncDirty = false;
 
   // Breathing state counts - updated imperatively in the RAF loop
   let latestValues: Map<string, number> = new Map();
@@ -155,6 +158,7 @@
     if (syncHistory.length > MAX_DATA_POINTS) {
       syncHistory = syncHistory.slice(syncHistory.length - MAX_DATA_POINTS);
     }
+    syncDirty = true;
   }
 
   function getSyncColor(pct: number): string {
@@ -199,8 +203,8 @@
     addToPhaseBuffer(sensorId, value);
   }
 
-  function processPendingUpdates() {
-    if (pendingUpdates.size === 0) return;
+  function processPendingUpdates(): boolean {
+    if (pendingUpdates.size === 0) return false;
 
     pendingUpdates.forEach((points, sensorId) => {
       let data = sensorData.get(sensorId) || [];
@@ -209,18 +213,22 @@
         data = data.slice(data.length - MAX_DATA_POINTS);
       }
       sensorData.set(sensorId, data);
+      dirtySeriesIds.add(sensorId);
     });
 
     pendingUpdates.clear();
+    return true;
   }
 
   function rafLoop(timestamp: number) {
     try {
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
-        processPendingUpdates();
-        updateChart();
-        updateBreathingStates();
-        computePhaseSync();
+        const hadData = processPendingUpdates();
+        updateChart(hadData, timestamp);
+        if (hadData) {
+          updateBreathingStates();
+          computePhaseSync();
+        }
         lastUpdateTime = timestamp;
       }
     } catch (e) {
@@ -422,22 +430,21 @@
   }
 
   function getFilteredData(data: Array<{ x: number; y: number }>, cutoff: number): Array<[number, number]> {
-    let start = 0;
-    for (let i = 0; i < data.length; i++) {
-      if (data[i].x >= cutoff) {
-        start = i;
-        break;
-      }
-      start = i + 1;
+    // Binary search for the first point >= cutoff
+    let lo = 0, hi = data.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (data[mid].x < cutoff) lo = mid + 1;
+      else hi = mid;
     }
-    const result: Array<[number, number]> = new Array(data.length - start);
-    for (let i = start; i < data.length; i++) {
-      result[i - start] = [data[i].x, data[i].y];
+    const result: Array<[number, number]> = new Array(data.length - lo);
+    for (let i = lo; i < data.length; i++) {
+      result[i - lo] = [data[i].x, data[i].y];
     }
     return result;
   }
 
-  function updateChart() {
+  function updateChart(hadData: boolean, timestamp: number) {
     if (!chart) {
       if (chartContainer && sensorData.size > 0) createChart();
       return;
@@ -448,12 +455,26 @@
       return;
     }
 
+    // If no new data, only update xAxis extremes every 500ms for window scrolling
+    if (!hadData) {
+      if (timestamp - lastExtremesUpdate >= 500) {
+        const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
+        chart.xAxis[0].setExtremes(now - selectedWindowMs, now, true, false);
+        lastExtremesUpdate = timestamp;
+      }
+      return;
+    }
+
     const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
     const cutoff = now - selectedWindowMs;
     let needsRedraw = false;
 
-    Array.from(sensorData.entries()).forEach(([sensorId, data], index) => {
+    // Only update series that have new data
+    dirtySeriesIds.forEach((sensorId) => {
       const seriesId = `sensor-${sensorId}`;
+      const data = sensorData.get(sensorId);
+      if (!data) return;
+
       const existingSeries = chart!.get(seriesId) as Highcharts.Series | null;
       const filteredData = getFilteredData(data, cutoff);
 
@@ -461,6 +482,7 @@
         existingSeries.setData(filteredData, false, false, false);
         needsRedraw = true;
       } else {
+        const index = Array.from(sensorData.keys()).indexOf(sensorId);
         chart!.addSeries({
           type: 'line',
           id: seriesId,
@@ -475,51 +497,59 @@
         needsRedraw = true;
       }
     });
+    dirtySeriesIds.clear();
 
-    // Update sync history series
-    const syncSeries = chart.series.find(s => s.name === SYNC_SERIES_NAME);
-    const filteredSync = getFilteredData(syncHistory, cutoff);
-    if (syncSeries) {
-      syncSeries.setData(filteredSync, false, false, false);
-      needsRedraw = true;
-    } else if (filteredSync.length > 0) {
-      chart.addSeries({
-        type: 'area',
-        name: SYNC_SERIES_NAME,
-        data: filteredSync,
-        yAxis: 1,
-        lineWidth: 0,
-        marker: { enabled: false },
-        animation: false,
-        fillOpacity: 0.6,
-        enableMouseTracking: true,
-        showInLegend: false,
-        tooltip: {
-          pointFormatter: function() {
-            const c = this.y < 20 ? '#ef4444' : this.y < 40 ? '#f97316' : this.y < 60 ? '#eab308' : this.y < 80 ? '#84cc16' : '#22c55e';
-            return `<span style="color:${c}">\u25CF</span> Phase Sync: <b>${Math.round(this.y)}%</b><br/>`;
-          }
-        },
-        zones: [
-          { value: 20, color: '#ef4444' },
-          { value: 40, color: '#f97316' },
-          { value: 60, color: '#eab308' },
-          { value: 80, color: '#84cc16' },
-          { color: '#22c55e' }
-        ]
-      }, false);
-      needsRedraw = true;
+    // Update sync history series only when dirty
+    if (syncDirty) {
+      const syncSeries = chart.series.find(s => s.name === SYNC_SERIES_NAME);
+      const filteredSync = getFilteredData(syncHistory, cutoff);
+      if (syncSeries) {
+        syncSeries.setData(filteredSync, false, false, false);
+        needsRedraw = true;
+      } else if (filteredSync.length > 0) {
+        chart.addSeries({
+          type: 'area',
+          name: SYNC_SERIES_NAME,
+          data: filteredSync,
+          yAxis: 1,
+          lineWidth: 0,
+          marker: { enabled: false },
+          animation: false,
+          fillOpacity: 0.6,
+          enableMouseTracking: true,
+          showInLegend: false,
+          tooltip: {
+            pointFormatter: function() {
+              const c = this.y < 20 ? '#ef4444' : this.y < 40 ? '#f97316' : this.y < 60 ? '#eab308' : this.y < 80 ? '#84cc16' : '#22c55e';
+              return `<span style="color:${c}">\u25CF</span> Phase Sync: <b>${Math.round(this.y)}%</b><br/>`;
+            }
+          },
+          zones: [
+            { value: 20, color: '#ef4444' },
+            { value: 40, color: '#f97316' },
+            { value: 60, color: '#eab308' },
+            { value: 80, color: '#84cc16' },
+            { color: '#22c55e' }
+          ]
+        }, false);
+        needsRedraw = true;
+      }
+      syncDirty = false;
     }
 
     if (needsRedraw) {
       chart.xAxis[0].setExtremes(now - selectedWindowMs, now, false);
       chart.redraw(false);
+      lastExtremesUpdate = timestamp;
     }
   }
 
   function setTimeWindow(ms: number) {
     selectedWindowMs = ms;
-    updateChart();
+    // Force full redraw with all series dirty
+    sensorData.forEach((_data, sensorId) => dirtySeriesIds.add(sensorId));
+    syncDirty = true;
+    updateChart(true, performance.now());
   }
 
   function consumeSeedBuffer(): boolean {
@@ -547,6 +577,7 @@
             syncHistory.push({ x: m.timestamp, y: m.payload });
           }
         });
+        syncDirty = true;
         consumed++;
       }
     });
@@ -615,6 +646,7 @@
               syncHistory.push({ x: m.timestamp, y: m.payload });
             }
           });
+          syncDirty = true;
         }
       }
     };
@@ -630,7 +662,11 @@
     );
 
     // Signal readiness - the hook will replay any buffered seed data
-    if (consumeSeedBuffer()) updateChart();
+    if (consumeSeedBuffer()) {
+      sensorData.forEach((_data, sensorId) => dirtySeriesIds.add(sensorId));
+      syncDirty = true;
+      updateChart(true, performance.now());
+    }
     window.dispatchEvent(new CustomEvent('composite-component-ready'));
 
     return () => {

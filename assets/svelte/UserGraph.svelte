@@ -221,12 +221,16 @@
   function runLayout() {
     if (!graph || graph.order === 0) return;
 
+    // More iterations for small graphs so the live FA2 phase has less work to do
+    const nodeCount = graph.order;
+    const iterations = nodeCount < 10 ? 300 : 100;
+
     forceAtlas2.assign(graph, {
-      iterations: 100,
+      iterations,
       settings: {
         gravity: 1,
         scalingRatio: 8,
-        strongGravityMode: false,
+        strongGravityMode: true,
         barnesHutOptimize: true,
         barnesHutTheta: 0.5,
         slowDown: 5,
@@ -238,19 +242,25 @@
     if (!graph || graph.order === 0) return;
     stopFA2();
 
+    // Small graphs need a much higher slowDown to avoid oscillation —
+    // with few nodes there are fewer counterbalancing forces.
+    const nodeCount = graph.order;
+    const slowDown = nodeCount < 5 ? 20 : nodeCount < 10 ? 10 : 3;
+    const duration = nodeCount < 10 ? 2000 : 4000;
+
     fa2Worker = new FA2Layout(graph, {
       settings: {
         gravity: 1.5,
         scalingRatio: 10,
-        strongGravityMode: false,
+        strongGravityMode: true,
         barnesHutOptimize: true,
         barnesHutTheta: 0.5,
-        slowDown: 3,
+        slowDown,
       },
     });
     fa2Worker.start();
 
-    setTimeout(() => stopFA2(), 4000);
+    setTimeout(() => stopFA2(), duration);
   }
 
   function stopFA2() {

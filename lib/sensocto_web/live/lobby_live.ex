@@ -8,12 +8,14 @@ defmodule SensoctoWeb.LobbyLive do
   use LiveSvelte.Components
   use Sensocto.Chat.AIChatHandler
   import SensoctoWeb.LiveHelpers.SensorData
+  import SensoctoWeb.LobbyLive.Components
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
-  alias SensoctoWeb.Live.Components.MediaPlayerComponent
-  alias SensoctoWeb.Live.Components.Object3DPlayerComponent
-  alias SensoctoWeb.Live.Components.WhiteboardComponent
+  # Used in hook modules, kept for potential future use in this module
+  alias SensoctoWeb.Live.Components.MediaPlayerComponent, warn: false
+  alias SensoctoWeb.Live.Components.Object3DPlayerComponent, warn: false
+  alias SensoctoWeb.Live.Components.WhiteboardComponent, warn: false
   alias SensoctoWeb.Sensocto.Presence
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Calls
@@ -292,6 +294,31 @@ defmodule SensoctoWeb.LobbyLive do
     # Defer non-essential subscriptions to after first render
     send(self(), :deferred_subscriptions)
 
+    # Attach hooks to delegate handler groups to separate modules
+    new_socket =
+      new_socket
+      |> attach_hook(
+        :media,
+        :handle_info,
+        &SensoctoWeb.LobbyLive.Hooks.MediaHook.on_handle_info/2
+      )
+      |> attach_hook(
+        :object3d,
+        :handle_info,
+        &SensoctoWeb.LobbyLive.Hooks.Object3DHook.on_handle_info/2
+      )
+      |> attach_hook(
+        :whiteboard,
+        :handle_info,
+        &SensoctoWeb.LobbyLive.Hooks.WhiteboardHook.on_handle_info/2
+      )
+      |> attach_hook(:call, :handle_info, &SensoctoWeb.LobbyLive.Hooks.CallHook.on_handle_info/2)
+      |> attach_hook(
+        :guided,
+        :handle_info,
+        &SensoctoWeb.LobbyLive.Hooks.GuidedSessionHook.on_handle_info/2
+      )
+
     {:ok, new_socket}
   end
 
@@ -306,8 +333,8 @@ defmodule SensoctoWeb.LobbyLive do
     # ECG needs full data fidelity for waveform visualization
     socket = update_lens_focus_for_action(socket, action)
 
-    # Push historical data so composite charts are pre-populated on navigation
-    socket = seed_composite_historical_data(socket, action)
+    # Async historical data loading — view renders immediately, data fills in
+    socket = start_seed_data_async(socket, action)
 
     {:noreply, socket}
   end
@@ -425,9 +452,9 @@ defmodule SensoctoWeb.LobbyLive do
 
   defp ensure_attention_for_composite_sensors(_socket, _action), do: :ok
 
-  # Push historical data from AttributeStoreTiered when entering a composite lens view
-  # so the chart is pre-populated instead of starting from zero
-  defp seed_composite_historical_data(socket, action)
+  # Kick off async historical data loading for composite lens views.
+  # The view renders immediately; seed data arrives via handle_async.
+  defp start_seed_data_async(socket, action)
        when action in [:heartrate, :ecg, :respiration, :battery, :hrv] do
     {sensor_ids, attr_ids} =
       case action do
@@ -447,24 +474,6 @@ defmodule SensoctoWeb.LobbyLive do
           {Enum.map(socket.assigns.hrv_sensors, & &1.sensor_id), ["hrv"]}
       end
 
-    socket =
-      Enum.reduce(sensor_ids, socket, fn sensor_id, acc ->
-        Enum.reduce(attr_ids, acc, fn attr_id, inner_acc ->
-          case Sensocto.AttributeStoreTiered.get_attribute(sensor_id, attr_id, 0, :infinity, 500) do
-            {:ok, data} when data != [] ->
-              push_event(inner_acc, "composite_seed_data", %{
-                sensor_id: sensor_id,
-                attribute_id: attr_id,
-                data: Enum.map(data, &%{payload: &1.payload, timestamp: &1.timestamp})
-              })
-
-            _ ->
-              inner_acc
-          end
-        end)
-      end)
-
-    # Also seed sync history for breathing/HRV composite views
     sync_attr_id =
       case action do
         :respiration -> "breathing_sync"
@@ -472,30 +481,79 @@ defmodule SensoctoWeb.LobbyLive do
         _ -> nil
       end
 
-    if sync_attr_id do
-      case Sensocto.AttributeStoreTiered.get_attribute(
-             "__composite_sync",
-             sync_attr_id,
-             0,
-             :infinity,
-             500
-           ) do
-        {:ok, data} when data != [] ->
-          push_event(socket, "composite_seed_data", %{
-            sensor_id: "__composite_sync",
-            attribute_id: sync_attr_id,
-            data: Enum.map(data, &%{payload: &1.payload, timestamp: &1.timestamp})
-          })
+    start_async(socket, :seed_composite_data, fn ->
+      # Collect all seed events as data (no socket access in async task)
+      events =
+        Enum.flat_map(sensor_ids, fn sensor_id ->
+          Enum.flat_map(attr_ids, fn attr_id ->
+            case Sensocto.AttributeStoreTiered.get_attribute(
+                   sensor_id,
+                   attr_id,
+                   0,
+                   :infinity,
+                   500
+                 ) do
+              {:ok, data} when data != [] ->
+                [
+                  %{
+                    sensor_id: sensor_id,
+                    attribute_id: attr_id,
+                    data: Enum.map(data, &%{payload: &1.payload, timestamp: &1.timestamp})
+                  }
+                ]
 
-        _ ->
-          socket
-      end
-    else
-      socket
-    end
+              _ ->
+                []
+            end
+          end)
+        end)
+
+      # Also fetch sync history for breathing/HRV
+      sync_events =
+        if sync_attr_id do
+          case Sensocto.AttributeStoreTiered.get_attribute(
+                 "__composite_sync",
+                 sync_attr_id,
+                 0,
+                 :infinity,
+                 500
+               ) do
+            {:ok, data} when data != [] ->
+              [
+                %{
+                  sensor_id: "__composite_sync",
+                  attribute_id: sync_attr_id,
+                  data: Enum.map(data, &%{payload: &1.payload, timestamp: &1.timestamp})
+                }
+              ]
+
+            _ ->
+              []
+          end
+        else
+          []
+        end
+
+      events ++ sync_events
+    end)
   end
 
-  defp seed_composite_historical_data(socket, _action), do: socket
+  defp start_seed_data_async(socket, _action), do: socket
+
+  @impl true
+  def handle_async(:seed_composite_data, {:ok, events}, socket) do
+    socket =
+      Enum.reduce(events, socket, fn event, acc ->
+        push_event(acc, "composite_seed_data", event)
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:seed_composite_data, {:exit, reason}, socket) do
+    Logger.warning("[LobbyLive] Seed data async failed: #{inspect(reason)}")
+    {:noreply, socket}
+  end
 
   defp calculate_max_attributes(sensors) do
     sensors
@@ -505,7 +563,8 @@ defmodule SensoctoWeb.LobbyLive do
 
   # Sort sensor IDs by the chosen strategy
   # All modes use sensor_name as secondary sort for stability
-  defp sort_sensors(sensor_ids, sensors, sort_by) do
+  @doc false
+  def sort_sensors(sensor_ids, sensors, sort_by) do
     case sort_by do
       :activity ->
         Enum.sort_by(sensor_ids, fn sid ->
@@ -1426,377 +1485,8 @@ defmodule SensoctoWeb.LobbyLive do
      })}
   end
 
-  # Media player events - forward to component via send_update AND push events to JS hook
-  @impl true
-  def handle_info({:media_state_changed, state}, socket) do
-    Logger.debug(
-      "LobbyLive received media_state_changed: #{inspect(state.state)} pos=#{state.position_seconds}"
-    )
-
-    # In solo mode, ignore position syncs but still update component state for info display
-    if socket.assigns.sync_mode == :solo do
-      # Only update component state, don't push sync events to JS
-      send_update(MediaPlayerComponent,
-        id: "lobby-media-player",
-        player_state: state.state,
-        position_seconds: state.position_seconds,
-        current_item: state.current_item
-      )
-
-      {:noreply, socket}
-    else
-      send_update(MediaPlayerComponent,
-        id: "lobby-media-player",
-        player_state: state.state,
-        position_seconds: state.position_seconds,
-        current_item: state.current_item
-      )
-
-      # Push sync event directly to JS hook from parent LiveView
-      socket =
-        push_event(socket, "media_sync", %{
-          state: state.state,
-          position_seconds: state.position_seconds
-        })
-
-      # Trigger bump animation only on active user interaction (not heartbeat syncs)
-      is_active = Map.get(state, :is_active, false)
-
-      socket =
-        if is_active and not socket.assigns.media_bump do
-          Process.send_after(self(), :clear_media_bump, 300)
-          assign(socket, :media_bump, true)
-        else
-          socket
-        end
-
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:media_video_changed, %{item: item}}, socket) do
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      current_item: item
-    )
-
-    # Push video change event directly to JS hook from parent LiveView
-    socket =
-      push_event(socket, "media_load_video", %{
-        video_id: item.youtube_video_id,
-        start_seconds: 0
-      })
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:media_playlist_updated, %{items: items}}, socket) do
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      playlist_items: items
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:media_controller_changed,
-         %{controller_user_id: user_id, controller_user_name: user_name} = params},
-        socket
-      ) do
-    # pending_request_user_id comes from server (nil when control changes)
-    pending_request_user_id = Map.get(params, :pending_request_user_id)
-
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      controller_user_id: user_id,
-      controller_user_name: user_name,
-      pending_request_user_id: pending_request_user_id
-    )
-
-    # Store controller_user_id so we can check if current user is the controller for request modal
-    # Also close the modal if control changed (request was fulfilled or timed out)
-    {:noreply,
-     socket
-     |> assign(:media_controller_user_id, user_id)
-     |> assign(:media_control_request_modal, nil)}
-  end
-
-  # 3D Object player events - forward to component
-  @impl true
-  def handle_info(
-        {:object3d_item_changed, %{item: item, camera_position: pos, camera_target: target}},
-        socket
-      ) do
-    send_update(Object3DPlayerComponent,
-      id: "lobby-object3d-player",
-      current_item: item,
-      camera_position: pos,
-      camera_target: target
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:object3d_camera_synced, %{camera_position: position, camera_target: target} = event},
-        socket
-      ) do
-    # In solo mode, ignore camera syncs entirely
-    if socket.assigns.sync_mode == :solo do
-      {:noreply, socket}
-    else
-      # Filter by socket_id instead of user_id to support multi-tab sync
-      # This allows same user in different tabs to receive camera syncs
-      controller_socket_id = Map.get(event, :controller_socket_id)
-
-      # Don't forward camera sync to the controller tab itself - it's the source
-      is_controller_tab = controller_socket_id && socket.id == controller_socket_id
-
-      unless is_controller_tab do
-        send_update(Object3DPlayerComponent,
-          id: "lobby-object3d-player",
-          synced_camera_position: position,
-          synced_camera_target: target
-        )
-      end
-
-      # Trigger bump animation only on active camera movement (not heartbeat syncs)
-      is_active = Map.get(event, :is_active, false)
-
-      socket =
-        if is_active and not socket.assigns.object3d_bump do
-          Process.send_after(self(), :clear_object3d_bump, 300)
-          assign(socket, :object3d_bump, true)
-        else
-          socket
-        end
-
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info(
-        {:object3d_controller_changed,
-         %{controller_user_id: user_id, controller_user_name: user_name}},
-        socket
-      ) do
-    send_update(Object3DPlayerComponent,
-      id: "lobby-object3d-player",
-      controller_user_id: user_id,
-      controller_user_name: user_name,
-      pending_request_user_id: nil,
-      pending_request_user_name: nil
-    )
-
-    # Store controller_user_id so we can check if current user is the controller
-    {:noreply, assign(socket, :object3d_controller_user_id, user_id)}
-  end
-
-  @impl true
-  def handle_info({:object3d_playlist_updated, %{items: items}}, socket) do
-    send_update(Object3DPlayerComponent,
-      id: "lobby-object3d-player",
-      playlist_items: items
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:control_requested, %{requester_id: requester_id, requester_name: requester_name}},
-        socket
-      ) do
-    current_user = socket.assigns[:current_user]
-    controller_user_id = socket.assigns[:object3d_controller_user_id]
-
-    # Only show modal to the controller
-    if current_user && controller_user_id &&
-         to_string(current_user.id) == to_string(controller_user_id) do
-      {:noreply,
-       socket
-       |> assign(:control_request_modal, %{
-         requester_id: requester_id,
-         requester_name: requester_name
-       })}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Handle object3d control request with 30s timeout (server-managed)
-  # Shows modal with Keep/Release buttons and audio notification
-  @impl true
-  def handle_info(
-        {:object3d_control_requested,
-         %{
-           requester_id: requester_id,
-           requester_name: requester_name,
-           controller_user_id: _controller_id,
-           timeout_seconds: _timeout
-         }},
-        socket
-      ) do
-    current_user = socket.assigns[:current_user]
-    controller_user_id = socket.assigns[:object3d_controller_user_id]
-
-    # Only show modal to the controller
-    if current_user && controller_user_id &&
-         to_string(current_user.id) == to_string(controller_user_id) do
-      # Update component with pending request info
-      send_update(Object3DPlayerComponent,
-        id: "lobby-object3d-player",
-        pending_request_user_id: requester_id,
-        pending_request_user_name: requester_name
-      )
-
-      # Show modal with Keep/Release buttons (uses existing control_request_modal)
-      {:noreply,
-       socket
-       |> assign(:control_request_modal, %{
-         requester_id: requester_id,
-         requester_name: requester_name
-       })}
-    else
-      # Not the controller - just update component (e.g., requester sees "pending")
-      send_update(Object3DPlayerComponent,
-        id: "lobby-object3d-player",
-        pending_request_user_id: requester_id,
-        pending_request_user_name: requester_name
-      )
-
-      {:noreply, socket}
-    end
-  end
-
-  # Handle object3d control request denied (keep control was clicked)
-  @impl true
-  def handle_info(
-        {:object3d_control_request_denied, %{requester_id: _requester_id}},
-        socket
-      ) do
-    send_update(Object3DPlayerComponent,
-      id: "lobby-object3d-player",
-      pending_request_user_id: nil,
-      pending_request_user_name: nil
-    )
-
-    # Also dismiss the modal if it's open
-    {:noreply, assign(socket, :control_request_modal, nil)}
-  end
-
-  # Handle media player control requests (server manages the 30s timeout)
-  @impl true
-  def handle_info(
-        {:media_control_requested,
-         %{requester_id: requester_id, requester_name: requester_name} = _params},
-        socket
-      ) do
-    current_user = socket.assigns[:current_user]
-    controller_user_id = socket.assigns[:media_controller_user_id]
-
-    # Update all clients with pending request info (for requester countdown display)
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      pending_request_user_id: requester_id
-    )
-
-    # Only show modal to the controller
-    if current_user && controller_user_id &&
-         to_string(current_user.id) == to_string(controller_user_id) do
-      {:noreply,
-       socket
-       |> assign(:media_control_request_modal, %{
-         requester_id: requester_id,
-         requester_name: requester_name
-       })}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Handle media control request cancellation
-  @impl true
-  def handle_info({:media_control_request_cancelled, _params}, socket) do
-    # Clear pending request in component
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      pending_request_user_id: nil
-    )
-
-    {:noreply, assign(socket, :media_control_request_modal, nil)}
-  end
-
-  # Handle media control request denied (keep control was clicked)
-  @impl true
-  def handle_info({:media_control_request_denied, _params}, socket) do
-    # Clear pending request in component
-    send_update(MediaPlayerComponent,
-      id: "lobby-media-player",
-      pending_request_user_id: nil
-    )
-
-    {:noreply, assign(socket, :media_control_request_modal, nil)}
-  end
-
-  # Legacy handler - no longer used since server manages timeout
-  # Keep for backwards compatibility but it should never fire
-  # Handle call events from CallServer via PubSub
-
-  # Handle call events from CallServer via PubSub
-  @impl true
-  def handle_info({:call_event, event}, socket) do
-    socket =
-      case event do
-        {:participant_joined, participant} ->
-          new_participants =
-            Map.put(socket.assigns.call_participants, participant.user_id, participant)
-
-          assign(socket, :call_participants, new_participants)
-
-        {:participant_left, user_id} ->
-          new_participants = Map.delete(socket.assigns.call_participants, user_id)
-          assign(socket, :call_participants, new_participants)
-
-        :call_ended ->
-          socket
-          |> assign(:call_active, false)
-          |> assign(:in_call, false)
-          |> assign(:call_participants, %{})
-
-        _ ->
-          socket
-      end
-
-    {:noreply, socket}
-  end
-
-  # Handle push_event requests from call components
-  @impl true
-  def handle_info({:push_event, event, payload}, socket) do
-    {:noreply, push_event(socket, event, payload)}
-  end
-
-  # Handle attention level changes for webcam backpressure
-  @impl true
-  def handle_info({:attention_level_changed, level}, socket) do
-    # Push to JS hook to adjust webcam quality
-    socket = push_event(socket, "set_attention_level", %{level: Atom.to_string(level)})
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:global_attention_level, level}, socket) do
-    # Global system load affects all call participants
-    socket = push_event(socket, "set_attention_level", %{level: Atom.to_string(level)})
-    {:noreply, socket}
-  end
+  # Media, Object3D, Call, Whiteboard, and Guided Session handlers are now in
+  # attach_hook modules under SensoctoWeb.LobbyLive.Hooks.*
 
   # AttentionTracker crashed and restarted — re-register all composite attention views
   # so GenServer state is rebuilt and sensors keep broadcasting
@@ -1933,181 +1623,6 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:sensor_ids, sorted_sensor_ids)}
   end
 
-  # Clear bump animations after timeout
-  @impl true
-  def handle_info(:clear_media_bump, socket) do
-    {:noreply, assign(socket, :media_bump, false)}
-  end
-
-  @impl true
-  def handle_info(:clear_object3d_bump, socket) do
-    {:noreply, assign(socket, :object3d_bump, false)}
-  end
-
-  @impl true
-  def handle_info(:clear_whiteboard_bump, socket) do
-    {:noreply, assign(socket, :whiteboard_bump, false)}
-  end
-
-  # Whiteboard PubSub handlers
-
-  # Real-time stroke progress for live drawing preview
-  @impl true
-  def handle_info({:whiteboard_stroke_progress, %{stroke: stroke, user_id: user_id}}, socket) do
-    # Don't echo back to the user who is drawing
-    if socket.assigns.current_user &&
-         to_string(socket.assigns.current_user.id) != to_string(user_id) do
-      send_update(WhiteboardComponent,
-        id: "lobby-whiteboard",
-        stroke_progress: %{stroke: stroke, user_id: user_id}
-      )
-    end
-
-    {:noreply, socket}
-  end
-
-  # Batched strokes for scalability
-  @impl true
-  def handle_info({:whiteboard_strokes_batch, %{strokes: strokes}}, socket) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      new_strokes: strokes
-    )
-
-    socket =
-      if not socket.assigns.whiteboard_bump do
-        Process.send_after(self(), :clear_whiteboard_bump, 300)
-        assign(socket, :whiteboard_bump, true)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:whiteboard_stroke_added, %{stroke: stroke}}, socket) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      new_stroke: stroke
-    )
-
-    socket =
-      if not socket.assigns.whiteboard_bump do
-        Process.send_after(self(), :clear_whiteboard_bump, 300)
-        assign(socket, :whiteboard_bump, true)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:whiteboard_cleared, _params}, socket) do
-    send_update(WhiteboardComponent, id: "lobby-whiteboard", strokes: [])
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:whiteboard_undo, %{removed_stroke: removed_stroke}}, socket) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      undo_stroke: removed_stroke
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:whiteboard_background_changed, %{color: color}}, socket) do
-    send_update(WhiteboardComponent, id: "lobby-whiteboard", background_color: color)
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:whiteboard_controller_changed,
-         %{controller_user_id: user_id, controller_user_name: user_name}},
-        socket
-      ) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      controller_user_id: user_id,
-      controller_user_name: user_name,
-      pending_request_user_id: nil,
-      pending_request_user_name: nil
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(
-        {:whiteboard_control_requested,
-         %{requester_id: requester_id, requester_name: requester_name}},
-        socket
-      ) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      pending_request_user_id: requester_id,
-      pending_request_user_name: requester_name
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:whiteboard_control_request_denied, _params}, socket) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      pending_request_user_id: nil,
-      pending_request_user_name: nil
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:whiteboard_control_request_cancelled, _params}, socket) do
-    send_update(WhiteboardComponent,
-      id: "lobby-whiteboard",
-      pending_request_user_id: nil,
-      pending_request_user_name: nil
-    )
-
-    {:noreply, socket}
-  end
-
-  # Handle attention changes from UserVideoCardComponent
-  @impl true
-  def handle_info({:user_attention_change, connector_id, level}, socket) do
-    # Forward attention change to CallHook for quality tier adjustment
-    Logger.debug("User attention change: #{connector_id} -> #{level}")
-
-    socket =
-      push_event(socket, "set_participant_attention", %{
-        connector_id: connector_id,
-        level: Atom.to_string(level)
-      })
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:user_focus, connector_id}, socket) do
-    # User clicked on a card to focus - boost quality to highest tier
-    Logger.debug("User focus requested: #{connector_id}")
-
-    socket =
-      push_event(socket, "set_participant_attention", %{
-        connector_id: connector_id,
-        level: "high"
-      })
-
-    {:noreply, socket}
-  end
-
   # Handle sensor state changes (e.g., new attributes registered)
   # This refreshes available lenses when attributes are auto-registered
   @impl true
@@ -2178,156 +1693,6 @@ defmodule SensoctoWeb.LobbyLive do
       })
 
     {:noreply, socket}
-  end
-
-  # ============================================================================
-  # Guided Session Events
-  # ============================================================================
-
-  def handle_info({:guided_lens_changed, %{lens: lens}}, socket) do
-    if socket.assigns.guided_session && socket.assigns.guided_following do
-      {:noreply, push_patch(socket, to: lens_to_path(lens))}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_sensor_focused, %{sensor_id: sensor_id}}, socket) do
-    {:noreply, assign(socket, :guided_focused_sensor_id, sensor_id)}
-  end
-
-  def handle_info({:guided_annotation, %{annotation: annotation}}, socket) do
-    annotations = socket.assigns.guided_annotations ++ [annotation]
-    {:noreply, assign(socket, :guided_annotations, annotations)}
-  end
-
-  def handle_info({:guided_suggestion, %{action: action}}, socket) do
-    {:noreply, assign(socket, :guided_suggestion, action)}
-  end
-
-  def handle_info({:guided_layout_changed, %{layout: layout}}, socket) do
-    if socket.assigns.guided_session && socket.assigns.guided_following do
-      {:noreply,
-       socket
-       |> assign(:lobby_layout, layout)
-       |> push_event("save_lobby_layout", %{layout: Atom.to_string(layout)})}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_quality_changed, %{quality: quality}}, socket) do
-    if socket.assigns.guided_session && socket.assigns.guided_following do
-      socket =
-        if quality == :auto do
-          socket
-          |> assign(:quality_override, nil)
-          |> push_event("quality_changed", %{level: :auto, reason: "Guide changed"})
-        else
-          if socket.assigns[:priority_lens_registered] do
-            Sensocto.Lenses.PriorityLens.set_quality(socket.id, quality)
-          end
-
-          socket
-          |> assign(:quality_override, quality)
-          |> assign(:current_quality, quality)
-          |> push_event("quality_changed", %{level: quality, reason: "Guide changed"})
-        end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_sort_changed, %{sort_by: sort_by}}, socket) do
-    if socket.assigns.guided_session && socket.assigns.guided_following do
-      sorted = sort_sensors(socket.assigns.sensor_ids, socket.assigns.sensors, sort_by)
-
-      {:noreply,
-       socket
-       |> assign(:sort_by, sort_by)
-       |> assign(:sensor_ids, sorted)
-       |> push_event("save_sort_by", %{sort_by: Atom.to_string(sort_by)})}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_mode_changed, %{mode: mode}}, socket) do
-    if socket.assigns.guided_session && socket.assigns.guided_following do
-      old_mode = socket.assigns.lobby_mode
-      user = socket.assigns.current_user
-
-      if user && old_mode != mode do
-        release_control_for_mode(old_mode, user.id)
-      end
-
-      {:noreply,
-       socket
-       |> assign(:lobby_mode, mode)
-       |> push_event("save_lobby_mode", %{mode: Atom.to_string(mode)})}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_break_away, _payload}, socket) do
-    if socket.assigns.guiding_session do
-      {:noreply, assign(socket, :guided_following, false)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_drift_back, %{lens: lens} = payload}, socket) do
-    socket = assign(socket, :guided_following, true)
-
-    if socket.assigns.guided_session do
-      socket =
-        socket
-        |> apply_guided_settings(payload)
-        |> push_patch(to: lens_to_path(lens))
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:guided_rejoin, _payload}, socket) do
-    {:noreply, assign(socket, :guided_following, true)}
-  end
-
-  def handle_info({:guided_presence, presence}, socket) do
-    {:noreply, assign(socket, :guided_presence, presence)}
-  end
-
-  def handle_info({:guided_ended, _payload}, socket) do
-    {:noreply,
-     socket
-     |> assign(:guided_session, nil)
-     |> assign(:guiding_session, nil)
-     |> assign(:guided_following, true)
-     |> assign(:guided_annotations, [])
-     |> assign(:guided_suggestion, nil)
-     |> assign(:guided_focused_sensor_id, nil)
-     |> assign(:guided_presence, %{guide_connected: false, follower_connected: false})
-     |> put_flash(:info, "Guided session ended.")}
-  end
-
-  def handle_info(
-        {:guidance_invitation_accepted, %{session_id: session_id, follower_name: name}},
-        socket
-      ) do
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session_id}")
-    Sensocto.Guidance.SessionServer.connect(session_id, socket.assigns.current_user.id)
-
-    {:noreply,
-     socket
-     |> assign(:guiding_session, session_id)
-     |> assign(:guided_following, true)
-     |> put_flash(:info, "#{name} joined your guided session.")}
   end
 
   @impl true
@@ -3085,13 +2450,13 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   def handle_event("guide_set_lens", %{"lens" => lens_str}, socket) do
-    if session_id = socket.assigns.guiding_session do
-      lens = String.to_existing_atom(lens_str)
+    with lens when lens != nil <- safe_to_lens(lens_str),
+         session_id when session_id != nil <- socket.assigns.guiding_session do
       user_id = socket.assigns.current_user.id
       Sensocto.Guidance.SessionServer.set_lens(session_id, user_id, lens)
       {:noreply, push_patch(socket, to: lens_to_path(lens))}
     else
-      {:noreply, socket}
+      _ -> {:noreply, socket}
     end
   end
 
@@ -3191,10 +2556,11 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
-  def handle_event("guide_suggest", %{"type" => type, "text" => text} = params, socket) do
+  def handle_event("guide_suggest", %{"type" => type, "text" => text} = params, socket)
+      when type in ["breathing_rhythm", "focus_sensor", "take_break", "custom"] do
     if session_id = socket.assigns.guiding_session do
       user_id = socket.assigns.current_user.id
-      action = %{type: String.to_existing_atom(type), text: text, data: params["data"] || %{}}
+      action = %{type: String.to_atom(type), text: text, data: params["data"] || %{}}
       Sensocto.Guidance.SessionServer.suggest_action(session_id, user_id, action)
     end
 
@@ -3244,6 +2610,22 @@ defmodule SensoctoWeb.LobbyLive do
 
   def handle_event("dismiss_suggestion", _params, socket) do
     {:noreply, assign(socket, :guided_suggestion, nil)}
+  end
+
+  def handle_event("follower_leave_session", _params, socket) do
+    if session_id = socket.assigns.guided_session do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.end_session(session_id, user_id)
+    end
+
+    {:noreply,
+     socket
+     |> assign(:guided_session, nil)
+     |> assign(:guided_following, true)
+     |> assign(:guided_annotations, [])
+     |> assign(:guided_suggestion, nil)
+     |> assign(:guided_focused_sensor_id, nil)
+     |> assign(:guided_presence, %{guide_connected: false, follower_connected: false})}
   end
 
   @impl true
@@ -3626,34 +3008,36 @@ defmodule SensoctoWeb.LobbyLive do
 
   # Release control for a specific mode when user navigates away
   # Playback continues without a controller - anyone can then take control
-  defp release_control_for_mode(:media, user_id) do
+  @doc false
+  def release_control_for_mode(:media, user_id) do
     alias Sensocto.Media.MediaPlayerServer
     MediaPlayerServer.release_control(:lobby, user_id)
   rescue
     _ -> :ok
   end
 
-  defp release_control_for_mode(:object3d, user_id) do
+  def release_control_for_mode(:object3d, user_id) do
     alias Sensocto.Object3D.Object3DPlayerServer
     Object3DPlayerServer.release_control(:lobby, user_id)
   rescue
     _ -> :ok
   end
 
-  defp release_control_for_mode(:whiteboard, user_id) do
+  def release_control_for_mode(:whiteboard, user_id) do
     alias Sensocto.Whiteboard.WhiteboardServer
     WhiteboardServer.release_control(:lobby, user_id)
   rescue
     _ -> :ok
   end
 
-  defp release_control_for_mode(_mode, _user_id), do: :ok
+  def release_control_for_mode(_mode, _user_id), do: :ok
 
   # ============================================================================
   # Guided Session Helpers
   # ============================================================================
 
-  defp apply_guided_settings(socket, payload) do
+  @doc false
+  def apply_guided_settings(socket, payload) do
     socket
     |> then(fn s ->
       case payload[:layout] do
@@ -3715,6 +3099,23 @@ defmodule SensoctoWeb.LobbyLive do
         socket
     end
   end
+
+  defp safe_to_lens("sensors"), do: :sensors
+  defp safe_to_lens("heartrate"), do: :heartrate
+  defp safe_to_lens("imu"), do: :imu
+  defp safe_to_lens("location"), do: :location
+  defp safe_to_lens("ecg"), do: :ecg
+  defp safe_to_lens("battery"), do: :battery
+  defp safe_to_lens("skeleton"), do: :skeleton
+  defp safe_to_lens("respiration"), do: :respiration
+  defp safe_to_lens("hrv"), do: :hrv
+  defp safe_to_lens("gaze"), do: :gaze
+  defp safe_to_lens("favorites"), do: :favorites
+  defp safe_to_lens("users"), do: :users
+  defp safe_to_lens("graph"), do: :graph
+  defp safe_to_lens("graph3d"), do: :graph3d
+  defp safe_to_lens("hierarchy"), do: :hierarchy
+  defp safe_to_lens(_), do: nil
 
   defp lens_to_path(:sensors), do: ~p"/lobby"
   defp lens_to_path(:heartrate), do: ~p"/lobby/heartrate"

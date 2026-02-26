@@ -26,6 +26,10 @@ defmodule Sensocto.Guidance.GuidedSession do
       end
     end
 
+    update :assign_follower do
+      accept [:follower_user_id]
+    end
+
     update :accept do
       accept []
       change set_attribute(:status, :active)

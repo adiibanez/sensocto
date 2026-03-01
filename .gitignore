@@ -74,3 +74,6 @@ sensocto.code-workspace
 
 # Ignore ssr build for svelte.
 /priv/svelte/
+# IDE and local tool config
+.vscode/
+.config/

@@ -1339,8 +1339,18 @@
     sigma?.refresh();
   }
 
+  function stopFA2() {
+    if (fa2Worker) {
+      fa2Worker.stop();
+      fa2Worker.kill();
+      fa2Worker = null;
+    }
+    isLayoutRunning = false;
+  }
+
   function cleanupMode(mode: ViewMode) {
     switch (mode) {
+      case "topology":   stopFA2(); break;
       case "heatmap":    stopActivityHeatmap(); break;
       case "freshness":  stopFreshnessDecay(); break;
       case "heartbeat":  stopHeartbeatSync(); break;
@@ -1910,7 +1920,9 @@
   }
 
   // ── Layout: DNA Double Helix ──────────────────────────────────
-  // Two intertwined spirals running vertically, rungs connecting them
+  // Two intertwined spirals running vertically, rungs connecting them.
+  // Uses cos for x (so strands are fully separated at t=0 and t=1),
+  // and sin as a depth (z) cue to modulate node size for a 3-D look.
   function layoutDNA() {
     if (!graph || graph.order === 0) return;
     isLayoutRunning = true;
@@ -1929,36 +1941,43 @@
       else if (attrs.nodeType === "attribute") attrNodes.push(node);
     });
 
-    // All positioned nodes: sensors on strand A, attributes on strand B, users as rungs
     const totalHeight = bottomY - topY;
 
-    // Strand A: sensors spiral down
+    // Strand A: sensors spiral down.
+    // cos(0)=1 → starts right, cos at end depends on turns but never = cos(angle+π),
+    // so the two strands are always on opposite sides.
     sensorNodes.forEach((node, i) => {
       const t = i / Math.max(sensorNodes.length - 1, 1);
       const y = topY + t * totalHeight;
       const angle = t * turns * 2 * Math.PI;
-      const x = cx + helixR * Math.sin(angle);
+      const x = cx + helixR * Math.cos(angle);
+      // depth ∈ [-1,1]: positive = toward viewer → slightly larger node
+      const depth = Math.sin(angle);
+      const baseSize = graph.getNodeAttribute(node, "size") ?? 8;
       graph.setNodeAttribute(node, "x", x);
       graph.setNodeAttribute(node, "y", y);
+      graph.setNodeAttribute(node, "size", baseSize * (1 + 0.25 * depth));
     });
 
-    // Strand B: attributes spiral down (phase-shifted by π)
+    // Strand B: attributes spiral down (phase-shifted by π so always opposite strand A)
     attrNodes.forEach((node, i) => {
       const t = i / Math.max(attrNodes.length - 1, 1);
       const y = topY + t * totalHeight;
       const angle = t * turns * 2 * Math.PI + Math.PI;
-      const x = cx + helixR * Math.sin(angle);
+      const x = cx + helixR * Math.cos(angle);
+      const depth = Math.sin(angle);
+      const baseSize = graph.getNodeAttribute(node, "size") ?? 6;
       graph.setNodeAttribute(node, "x", x);
       graph.setNodeAttribute(node, "y", y);
+      graph.setNodeAttribute(node, "size", baseSize * (1 + 0.25 * depth));
     });
 
-    // Users: placed along the center axis (the "rungs" of the ladder)
+    // Users: the "rungs" — sit on the central axis with a small depth wobble
     userNodes.forEach((node, i) => {
       const t = (i + 1) / (userNodes.length + 1);
       const y = topY + t * totalHeight;
       const angle = t * turns * 2 * Math.PI;
-      // Slight offset based on the helix phase for visual interest
-      const x = cx + helixR * 0.2 * Math.sin(angle + Math.PI / 2);
+      const x = cx + helixR * 0.15 * Math.cos(angle);
       graph.setNodeAttribute(node, "x", x);
       graph.setNodeAttribute(node, "y", y);
     });
@@ -3115,9 +3134,9 @@
         }
       }
 
-      // Re-run layout to integrate new nodes smoothly
+      // Re-run layout to integrate new nodes, respecting the current view mode
       if (addedSensors.length > 0 || addedUsers.length > 0) {
-        runLayout();
+        applyLayout(lastLayoutMode);
       }
       sigma?.refresh();
     }, 500);

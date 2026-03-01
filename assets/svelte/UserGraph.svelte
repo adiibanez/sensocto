@@ -218,23 +218,33 @@
     });
   }
 
+  function fa2Settings(nodeCount: number) {
+    // slowDown recommended by graphology: 10 + log(N), minimum 10
+    const slowDown = Math.max(10, 10 + Math.log(nodeCount));
+    // Barnes-Hut is only beneficial for large graphs; disable for small ones
+    // where it can introduce artefacts
+    const barnesHutOptimize = nodeCount > 100;
+
+    return {
+      gravity: 1.5,
+      scalingRatio: 10,
+      strongGravityMode: true,
+      barnesHutOptimize,
+      barnesHutTheta: 0.5,
+      slowDown,
+    };
+  }
+
   function runLayout() {
     if (!graph || graph.order === 0) return;
 
-    // More iterations for small graphs so the live FA2 phase has less work to do
     const nodeCount = graph.order;
-    const iterations = nodeCount < 10 ? 300 : 100;
+    // Run enough iterations upfront so the FA2 worker only needs to refine
+    const iterations = Math.max(300, nodeCount * 10);
 
     forceAtlas2.assign(graph, {
       iterations,
-      settings: {
-        gravity: 1,
-        scalingRatio: 8,
-        strongGravityMode: true,
-        barnesHutOptimize: true,
-        barnesHutTheta: 0.5,
-        slowDown: 5,
-      },
+      settings: fa2Settings(nodeCount),
     });
   }
 
@@ -242,22 +252,11 @@
     if (!graph || graph.order === 0) return;
     stopFA2();
 
-    // Small graphs need a much higher slowDown to avoid oscillation —
-    // with few nodes there are fewer counterbalancing forces.
     const nodeCount = graph.order;
-    const slowDown = nodeCount < 5 ? 20 : nodeCount < 10 ? 10 : 3;
-    const duration = nodeCount < 10 ? 2000 : 4000;
+    // Shorter animation for small graphs — they settle faster
+    const duration = nodeCount < 10 ? 1500 : 3000;
 
-    fa2Worker = new FA2Layout(graph, {
-      settings: {
-        gravity: 1.5,
-        scalingRatio: 10,
-        strongGravityMode: true,
-        barnesHutOptimize: true,
-        barnesHutTheta: 0.5,
-        slowDown,
-      },
-    });
+    fa2Worker = new FA2Layout(graph, { settings: fa2Settings(nodeCount) });
     fa2Worker.start();
 
     setTimeout(() => stopFA2(), duration);

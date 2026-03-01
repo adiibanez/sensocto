@@ -53,10 +53,14 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
       |> maybe_assign(assigns, :background_color)
       |> maybe_assign(assigns, :sync_mode)
 
-    # On first update, load initial state from server
+    # On first update, assign a deterministic per-user color and load state
     socket =
       if is_first_update and room_id do
-        ensure_whiteboard_started(socket, room_id)
+        user_id = get_in(socket.assigns, [:current_user, Access.key(:id)])
+
+        socket
+        |> assign(:stroke_color, user_color(user_id))
+        |> ensure_whiteboard_started(room_id)
       else
         socket
       end
@@ -88,6 +92,47 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
       end
 
     {:ok, socket}
+  end
+
+  # Distinct, high-contrast palette for per-user coloring
+  @user_colors [
+    # red
+    "#f87171",
+    # orange
+    "#fb923c",
+    # yellow
+    "#facc15",
+    # green
+    "#4ade80",
+    # emerald
+    "#34d399",
+    # cyan
+    "#22d3ee",
+    # blue
+    "#60a5fa",
+    # violet
+    "#a78bfa",
+    # pink
+    "#f472b6",
+    # fuchsia
+    "#e879f9",
+    # light green
+    "#86efac",
+    # light blue
+    "#93c5fd",
+    # rose
+    "#fda4af",
+    # amber
+    "#fcd34d",
+    # sky
+    "#67e8f9"
+  ]
+
+  defp user_color(nil), do: "#22c55e"
+
+  defp user_color(user_id) do
+    index = :erlang.phash2(to_string(user_id), length(@user_colors))
+    Enum.at(@user_colors, index)
   end
 
   defp maybe_assign(socket, assigns, key) do

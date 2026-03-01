@@ -973,6 +973,8 @@ defmodule SensoctoWeb.LobbyLive do
     lenses = if length(respiration_sensors) > 0, do: [:respiration | lenses], else: lenses
     lenses = if length(hrv_sensors) > 0, do: [:hrv | lenses], else: lenses
     lenses = if length(gaze_sensors) > 0, do: [:gaze | lenses], else: lenses
+    # Graph lenses are always available (they show whatever sensors are present)
+    lenses = [:graph3d, :graph | lenses]
     Enum.reverse(lenses)
   end
 

@@ -567,7 +567,8 @@ defmodule Sensocto.Simulator.DataGenerator do
 
     ecg = nk.ecg_simulate(duration=#{duration}, sampling_rate=250, heart_rate=#{heart_rate}, noise=0.05)
     processed, info = nk.ecg_process(ecg, sampling_rate=250)
-    rr = np.array(info['RRI'])
+    r_peaks = np.array(info['ECG_R_Peaks'])
+    rr = np.diff(r_peaks) / 250.0 * 1000.0
     window = 30
     rmssd = []
     for i in range(len(rr) - window):

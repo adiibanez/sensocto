@@ -60,6 +60,7 @@ jobs:
 
             Be helpful and constructive, not nitpicky.
           timeout_minutes: 10
+          allowed_bots: "dependabot[bot]"
 
   # Respond to review comments mentioning @claude
   respond-to-comments:

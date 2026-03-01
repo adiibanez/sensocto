@@ -111,7 +111,17 @@ defmodule SensoctoWeb.Components.ChatComponent do
 
     socket =
       if connected?(socket) && !socket.assigns[:subscribed] do
-        ChatStore.subscribe(room_id)
+        # Use the process dictionary to prevent duplicate PubSub subscriptions.
+        # The component may be destroyed and re-mounted (e.g. inside :if={@open})
+        # while the parent process stays alive — each re-mount would call
+        # ChatStore.subscribe again, causing messages to be delivered multiple times.
+        already_subscribed = Process.get({:chat_subscribed, room_id}, false)
+
+        unless already_subscribed do
+          ChatStore.subscribe(room_id)
+          Process.put({:chat_subscribed, room_id}, true)
+        end
+
         messages = ChatStore.get_messages(room_id)
 
         # Register this component with the parent for message forwarding
@@ -409,7 +419,18 @@ defmodule SensoctoWeb.Components.ChatComponent do
 
   # Private helpers
 
-  defp get_user_name(nil), do: "Guest"
+  defp get_user_name(nil) do
+    # self() is the parent LiveView process — unique per browser connection,
+    # stable for the lifetime of the session, zero extra state needed.
+    num =
+      self()
+      |> :erlang.phash2(10_000)
+      |> Integer.to_string()
+      |> String.pad_leading(4, "0")
+
+    "Guest #{num}"
+  end
+
   defp get_user_name(%{display_name: name}) when is_binary(name), do: name
   defp get_user_name(%{email: email}) when is_binary(email), do: String.split(email, "@") |> hd()
   defp get_user_name(_), do: "User"

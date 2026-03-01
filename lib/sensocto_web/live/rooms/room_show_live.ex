@@ -55,8 +55,11 @@ defmodule SensoctoWeb.RoomShowLive do
           # Subscribe to global sensor events to auto-join web connector sensors
           PubSub.subscribe(Sensocto.PubSub, "sensors:global")
 
-          # Subscribe to chat messages for this room
-          Sensocto.Chat.ChatStore.subscribe("room:#{room_id}")
+          # Subscribe to chat messages for this room (mark in process dict so
+          # ChatComponent.update won't subscribe a second time on the same process)
+          chat_room_id = "room:#{room_id}"
+          Sensocto.Chat.ChatStore.subscribe(chat_room_id)
+          Process.put({:chat_subscribed, chat_room_id}, true)
 
           Process.send_after(self(), :update_activity, @activity_check_interval)
         end

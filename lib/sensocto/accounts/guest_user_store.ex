@@ -94,7 +94,13 @@ defmodule Sensocto.Accounts.GuestUserStore do
     token = generate_token()
     now = DateTime.utc_now()
 
-    display_name = display_name || "Guest #{String.slice(guest_id, 0..5)}"
+    guest_num =
+      guest_id
+      |> :erlang.phash2(10_000)
+      |> Integer.to_string()
+      |> String.pad_leading(4, "0")
+
+    display_name = display_name || "Guest #{guest_num}"
 
     # Persist to database first
     case create_guest_session(guest_id, display_name, token) do

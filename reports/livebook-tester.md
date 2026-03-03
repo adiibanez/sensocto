@@ -10,12 +10,119 @@ Sensocto is a sophisticated real-time sensor platform built on Phoenix/LiveView 
 - GPS track replay simulation
 - Nx/numerical computing for quaternion calculations
 - Collaborative whiteboard, media player, and 3D object viewer
+- Guided session system for guide/follower coordination
 
-**Current Testing Status:** Substantial and growing -- **65 test files** across unit, integration, E2E (Wallaby), and regression guard tests.
+**Current Testing Status:** Substantial and growing -- **65 test files**, **974 test definitions**, **15,592 total test lines** across unit, integration, E2E (Wallaby), and regression guard tests.
 
-**Livebook Status:** 16 livebooks totaling 8,713 lines. Livebook count stagnant since Feb 16. New Guided Session feature presents a strong livebook opportunity.
+**Livebook Status:** 16 livebooks totaling 8,713 lines. Livebook count stagnant since Feb 16 (over 3 weeks). No new livebooks created.
 
-**Priority Recommendation:** Test the new Guided Session feature (SessionServer, GuidedSession resource, SessionSupervisor, JoinLive), expand Calls system coverage (0%), and create interactive livebooks for Guidance lifecycle exploration and drift-back timer experimentation.
+**Priority Recommendation:** Test the extracted LobbyLive hooks (8 new modules, 2,231 lines, 0% coverage), create tests for the expanded SessionServer (513 lines, 0% coverage), and add simulator DataGenerator/AttributeServer tests. Livebooks for the lobby hook architecture and backpressure pipeline would be high-value additions.
+
+---
+
+## Update: March 1, 2026
+
+### Key Changes Since Feb 24, 2026
+
+The past week brought significant architectural refactoring, substantial new test coverage for the backpressure and OTP layers, and continued improvements to the data pipeline. The codebase grew from ~780 to 974 test definitions (+25%) while the lobby was decomposed into a modular hook-based architecture.
+
+#### 1. Lobby Refactoring: Extracted Hooks and Components
+
+The monolithic `lobby_live.ex` was refactored into a modular architecture. Eight modules were extracted into `lib/sensocto_web/live/lobby_live/`:
+
+| Module | Lines | Purpose | Test Coverage |
+|--------|-------|---------|---------------|
+| `hooks/guided_session_hook.ex` | 182 | Guide/follower PubSub message handling | **0%** |
+| `hooks/media_hook.ex` | 140 | Media player event delegation | **0%** |
+| `hooks/object3d_hook.ex` | 156 | 3D object viewer event delegation | **0%** |
+| `hooks/whiteboard_hook.ex` | 131 | Whiteboard event delegation | **0%** |
+| `hooks/call_hook.ex` | 70 | Call/WebRTC event delegation | **0%** |
+| `components.ex` | 412 | Extracted function components | **0%** |
+| `sensor_detail_live.ex` | 909 | Sensor detail subview | **0%** |
+| `sensor_compare_live.ex` | 231 | Sensor comparison subview | **0%** |
+
+Despite the extraction, `lobby_live.ex` remains large at 3,138 lines, indicating the core lens/sensor logic is still inline. The hook modules use Phoenix LiveView's `attach_hook` pattern and follow a consistent `on_handle_info/2` callback structure with `{:halt, socket}` returns.
+
+**Testing opportunity:** Each hook module has a small, well-defined interface. They accept a PubSub message tuple and a socket, returning `{:halt, socket}`. These are highly testable with mock sockets.
+
+#### 2. Backpressure and PriorityLens Improvements
+
+Major improvements to the backpressure pipeline with substantial new test coverage. These files were all created since Feb 24:
+
+| New Test File | Lines | Tests | What It Covers |
+|---------------|-------|-------|----------------|
+| `priority_lens_buffer_test.exs` | 312 | 15 | ETS hot-path buffer operations, batch routing, flush timer |
+| `router_test.exs` | 188 | 13 | Demand-driven PubSub subscription, lens registration/unregistration |
+| `lobby_backpressure_test.exs` | 231 | 19 | Load level threshold calculation, quality hysteresis, upgrade delays |
+| `mount_optimization_test.exs` | 297 | 20 | SearchLive sticky mount, deferred subscriptions, signal topic deferral |
+| `simple_sensor_throttle_test.exs` | 452 | 16 | SimpleSensor throttling behavior under load |
+| `system_load_monitor_test.exs` | 266 | 24 | ETS fast reads, load level determination, memory protection, PubSub broadcasts |
+
+The `lobby_backpressure_test.exs` specifically catches a previously missing `:high` load level case that caused a fall-through to `:normal` thresholds. The `mount_optimization_test.exs` validates deferred subscription patterns that reduce mount-time overhead.
+
+**Key insight:** The backpressure system now has strong unit-level coverage but lacks end-to-end tests that verify the full pipeline from SystemLoadMonitor -> PriorityLens quality adjustment -> LobbyLive threshold response.
+
+#### 3. New OTP and Infrastructure Tests
+
+Several new test files were created for previously untested OTP modules:
+
+| New Test File | Lines | Tests | What It Covers |
+|---------------|-------|-------|----------------|
+| `room_store_test.exs` | 447 | 43 | RoomStore GenServer: hydration gate, room CRUD, member management |
+| `sensors_dynamic_supervisor_test.exs` | 321 | 18 | DynamicSupervisor for sensor processes |
+| `attribute_store_tiered_extended_test.exs` | 272 | 16 | Extended tiered storage: TTL, compaction, tier promotion |
+| `button_signal_reliability_test.exs` | 252 | 8 | Button press/release signal reliability under load |
+
+The `room_store_test.exs` at 447 lines and 43 tests is the most comprehensive new test file, covering the full RoomStore lifecycle including the hydration gate pattern documented in project memory.
+
+#### 4. Simulator Manager Tests
+
+`simulator/manager_test.exs` (202 lines, 19 tests) is the first test coverage for the simulator system. Tests startup phase, state queries, and connector management. Uses a defensive `skip_if_unavailable` pattern since the Manager may not be started in the test environment.
+
+**Remaining simulator gaps:** DataGenerator (1,392 lines, pure math functions -- ideal for property-based testing), AttributeServer (406 lines, recently refactored with ~85 lines of churn), SensorServer (408 lines).
+
+#### 5. Session Server Changes
+
+`SessionServer` grew from ~417 to 513 lines. Changes in commit `2797fa9` include expanded guide/follower coordination. The module still has **0% test coverage** despite being a complex GenServer with timer-based state management.
+
+#### 6. Additional New Test Files
+
+| New Test File | Lines | Tests | What It Covers |
+|---------------|-------|-------|----------------|
+| `health_controller_test.exs` | 174 | 15 | API health check endpoint |
+| `room_markdown_test.exs` | 438 | 50 | Markdown parsing and rendering |
+| `admin_protection_test.exs` | 175 | 16 | Admin-only operation guards |
+| `safe_keys_test.exs` | 238 | 32 | Safe key sanitization |
+| `correlation_tracker_test.exs` | 109 | 11 | Bio layer co-activation tracking |
+
+#### 7. Search Index Privacy Changes
+
+`search_index.ex` received privacy-related modifications (commit `e53fb41` -- profiles, graph, privacy). The existing `search_index_test.exs` (165 lines, 11 tests) should be reviewed to ensure it covers the new visibility/privacy filtering logic.
+
+#### 8. Other Notable Additions
+
+- `profile_live.ex` and `profile_live.html.heex` -- significantly expanded with privacy settings (commit `e53fb41`)
+- `user_settings_live.ex` (63 lines) -- new LiveView, untested
+- `magic_sign_in_live.ex` -- received additions, untested
+- `docs/liveview-architecture.md` -- new architecture documentation (552 lines)
+- `docs/midi-output.md` -- new MIDI output documentation
+- Plans moved to `plans/` directory (5 planning documents)
+- Migration `20260226195225_default_is_public_to_false.exs` -- `is_public` now defaults to false
+
+### Updated Metrics
+
+| Metric | Feb 24 | Mar 1 | Change |
+|--------|--------|-------|--------|
+| Test Files | 65 | **65** | +0 (new files created in the Feb 22-24 batch) |
+| Test Definitions | ~780 | **974** | +194 (+25%) |
+| Total Test Lines | ~9,500 | **15,592** | +6,092 (+64%) |
+| Ecto Schemas | 30 | **30** | No change |
+| Ash Domains | 6 | **6** | No change |
+| Livebook Count | 16 | **16** | Stagnant (3+ weeks) |
+| Docs Count | 20 | **22** | +2 (liveview-architecture.md, midi-output.md) |
+| Lobby Extracted Modules | 0 | **8** | NEW architecture |
+| Guidance Test Coverage | 0% | **0%** | Still untested |
+| Simulator Test Coverage | 0% | **~15%** | Manager only |
 
 ---
 
@@ -34,8 +141,6 @@ A new **Guidance** domain has been added with the following components:
 | `SensoctoWeb.GuidedSessionJoinLive` | `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView for accepting/declining invitations via invite code |
 
 **Ecto Schema Count:** 30 (up from 24). New: GuidedSession, plus UserConnection, UserSkill, Poll, PollOption, Vote added since last schema count.
-
-**Test File Count:** 65 (up from 54).
 
 **Current Guided Session Test Coverage: 0%.** No test files exist for any guidance module.
 
@@ -106,56 +211,6 @@ The system follows a guide/follower pattern (similar to MediaPlayerServer's take
 # Accept event without signed-in user shows flash error
 ```
 
-### Recommended Livebook Experiments
-
-#### Livebook 1: Guided Session Lifecycle (`livebooks/guided-session-lifecycle.livemd`)
-
-Full lifecycle exploration:
-- Create a GuidedSession via Ash, inspect the generated invite code
-- Start a SessionServer via SessionSupervisor
-- Simulate guide actions (set_lens, set_focused_sensor, add_annotation)
-- Subscribe to PubSub topic and observe all broadcast messages
-- Simulate follower break_away, observe drift-back timer firing
-- End session and verify Ash resource status update
-
-#### Livebook 2: Drift-Back Timer Experimentation (`livebooks/drift-back-timer.livemd`)
-
-Interactive timer exploration:
-- Start SessionServer with various drift_back_seconds values (5, 15, 60, 120)
-- Break away and watch real-time countdown via Kino frame updates
-- Test report_activity resets: break away, report activity every N seconds, verify timer resets
-- Test edge case: break away then immediately rejoin -- verify timer cancellation
-- Visualize timer behavior with VegaLite timeline chart showing break_away/activity/drift_back events
-
-#### Livebook 3: Concurrent Guide/Follower PubSub Testing (`livebooks/guidance-pubsub.livemd`)
-
-Multi-process interaction:
-- Spawn guide and follower "actors" as separate processes
-- Subscribe both to the guidance PubSub topic
-- Have guide change lenses rapidly, verify follower receives all updates in order
-- Test break_away/rejoin cycle while guide is actively changing state
-- Measure PubSub delivery latency under varying message rates
-
-#### Livebook 4: Load Testing Multiple Sessions (`livebooks/guidance-load-test.livemd`)
-
-Scalability exploration:
-- Start 10/50/100 concurrent SessionServers via SessionSupervisor
-- Measure memory per session (`:erlang.process_info(pid, :memory)`)
-- Simultaneous guide actions across all sessions
-- Verify Registry lookup performance at scale
-- DynamicSupervisor.count_children overhead measurement
-- Mermaid diagram showing supervision tree with N active sessions
-
-### Updated Metrics
-
-| Metric | Feb 22 | Feb 24 | Change |
-|--------|--------|--------|--------|
-| Test Files | ~54 | **65** | +11 (+20%) |
-| Ecto Schemas | 24 | **30** | +6 |
-| Ash Domains | 5+ | **6** (new: Guidance) | +1 |
-| Livebook Count | 16 | **16** | Stagnant |
-| Guidance Test Coverage | N/A | **0%** | NEW feature, untested |
-
 ---
 
 ## Update: February 22, 2026
@@ -199,21 +254,6 @@ Scalability exploration:
 - `search_live_test.exs`, `user_directory_live_test.exs` -- Basic LiveView mount/render
 - `sensor_data_channel_test.exs` -- Channel broadcast and ping/reply
 
-### Remaining Test Gaps
-
-1. **Calls system at 0%**: CallServer, QualityManager, SnapshotManager, CallChannel
-2. **LobbyLive event handlers**: Mount regression covered, but no event handler tests
-3. **IndexLive**: Main dashboard has no tests
-4. **New LiveView event handlers**: PollsLive, ProfileLive not tested beyond mount
-
-### Livebook Status (Stagnant)
-
-16 livebooks unchanged since Feb 16. No new livebooks created for:
-- Audio/MIDI system exploration
-- Delta encoding round-trip demo
-- Collaboration (Poll) interactive testing
-- User profiles/social graph exploration
-
 ---
 
 ## Previous Update: February 16, 2026
@@ -237,60 +277,108 @@ Scalability exploration:
 | Livebook Count | 11 | **16** | +45% |
 | Livebook Total Lines | ~3,500 | **8,713** | +149% |
 
-### Complete Test File Inventory (33 files)
+---
+
+## Complete Test File Inventory (65 files, 974 tests, 15,592 lines)
 
 **Core OTP / Data Pipeline:**
-- `test/sensocto/otp/simple_sensor_test.exs` -- SimpleSensor GenServer
-- `test/sensocto/otp/attribute_store_tiered_test.exs` -- Tiered attribute storage
-- `test/sensocto/otp/attention_tracker_test.exs` -- Attention level management
-- `test/sensocto/otp/button_state_visualization_test.exs` -- Button press/release integration
-- `test/sensocto/lenses/priority_lens_test.exs` -- Reactive backpressure, quality tiers
-- `test/sensocto/regression_guards_test.exs` -- Data pipeline contract guards
+- `test/sensocto/otp/simple_sensor_test.exs` (23 tests) -- SimpleSensor GenServer
+- `test/sensocto/otp/simple_sensor_throttle_test.exs` (16 tests) -- SimpleSensor throttling under load
+- `test/sensocto/otp/attribute_store_tiered_test.exs` (13 tests) -- Tiered attribute storage
+- `test/sensocto/otp/attribute_store_tiered_extended_test.exs` (16 tests) -- Extended: TTL, compaction, tier promotion
+- `test/sensocto/otp/attention_tracker_test.exs` (23 tests) -- Attention level management
+- `test/sensocto/otp/button_state_visualization_test.exs` (7 tests) -- Button press/release integration
+- `test/sensocto/otp/button_signal_reliability_test.exs` (8 tests) -- Signal reliability under load
+- `test/sensocto/otp/room_store_test.exs` (43 tests) -- RoomStore hydration, CRUD, members
+- `test/sensocto/otp/room_server_test.exs` (29 tests) -- RoomServer GenServer
+- `test/sensocto/otp/sensors_dynamic_supervisor_test.exs` (18 tests) -- Sensor DynamicSupervisor
+- `test/sensocto/otp/system_load_monitor_test.exs` (24 tests) -- SystemLoadMonitor ETS reads, load levels
+- `test/sensocto/lenses/priority_lens_test.exs` (20 tests) -- Reactive backpressure, quality tiers
+- `test/sensocto/lenses/priority_lens_buffer_test.exs` (15 tests) -- ETS hot-path buffer operations
+- `test/sensocto/lenses/router_test.exs` (13 tests) -- Demand-driven subscription, lens registration
+- `test/sensocto/regression_guards_test.exs` (49 tests) -- Data pipeline contract guards
 
 **Ash Resources:**
-- `test/sensocto/sensors/room_test.exs` -- Room resource create/read/update actions
-- `test/sensocto/sensors/attribute_store_test.exs` -- Legacy attribute store (may be outdated)
+- `test/sensocto/sensors/room_test.exs` (18 tests) -- Room resource create/read/update actions
+- `test/sensocto/sensors/sensor_test.exs` (9 tests) -- Sensor resource tests
+- `test/sensocto/sensors/attribute_store_test.exs` (9 tests) -- Legacy attribute store
+- `test/sensocto/accounts/accounts_test.exs` (19 tests) -- User, UserSkill, UserConnection, GuestSession
+- `test/sensocto/collaboration/collaboration_test.exs` (11 tests) -- Poll, PollOption, Vote
 
 **Bio Layer (Biomimetic Supervision):**
-- `test/sensocto/bio/homeostatic_tuner_test.exs`
-- `test/sensocto/bio/resource_arbiter_test.exs`
-- `test/sensocto/bio/predictive_load_balancer_test.exs`
-- `test/sensocto/bio/circadian_scheduler_test.exs`
-- `test/sensocto/bio/novelty_detector_test.exs`
+- `test/sensocto/bio/homeostatic_tuner_test.exs` (6 tests)
+- `test/sensocto/bio/resource_arbiter_test.exs` (6 tests)
+- `test/sensocto/bio/predictive_load_balancer_test.exs` (7 tests)
+- `test/sensocto/bio/circadian_scheduler_test.exs` (9 tests)
+- `test/sensocto/bio/novelty_detector_test.exs` (6 tests)
+- `test/sensocto/bio/correlation_tracker_test.exs` (11 tests)
+- `test/sensocto/bio/sync_computer_test.exs` (8 tests)
 
 **CRDT / Iroh:**
-- `test/sensocto/iroh/room_state_crdt_test.exs`
-- `test/sensocto/iroh/iroh_automerge_test.exs`
+- `test/sensocto/iroh/room_state_crdt_test.exs` (13 tests)
+- `test/sensocto/iroh/iroh_automerge_test.exs` (20 tests)
 
 **Media / Object3D:**
-- `test/sensocto/media/media_player_server_test.exs` -- Complete GenServer coverage
-- `test/sensocto/object3d/object3d_player_server_test.exs` -- Complete GenServer coverage
+- `test/sensocto/media/media_player_server_test.exs` (35 tests)
+- `test/sensocto/object3d/object3d_player_server_test.exs` (31 tests)
+
+**Simulator:**
+- `test/sensocto/simulator/manager_test.exs` (19 tests) -- Startup phase, state queries, connectors
+
+**Encoding / Types:**
+- `test/sensocto/encoding/delta_encoder_test.exs` (11 tests)
+- `test/sensocto/types/safe_keys_test.exs` (32 tests)
+
+**Room Markdown:**
+- `test/sensocto/room_markdown/room_markdown_test.exs` (50 tests)
+- `test/sensocto/room_markdown/admin_protection_test.exs` (16 tests)
+
+**Resilience:**
+- `test/sensocto/resilience/circuit_breaker_test.exs` (13 tests)
+
+**Search:**
+- `test/sensocto/search/search_index_test.exs` (11 tests)
+
+**Chat:**
+- `test/sensocto/chat/chat_store_test.exs` (8 tests)
 
 **Supervision:**
-- `test/sensocto/supervision/supervision_tree_test.exs` -- Hierarchy verification
+- `test/sensocto/supervision/supervision_tree_test.exs` (31 tests)
 
 **Web Layer:**
-- `test/sensocto_web/controllers/error_json_test.exs`
-- `test/sensocto_web/controllers/error_html_test.exs`
-- `test/sensocto_web/controllers/page_controller_test.exs`
-- `test/sensocto_web/channels/sensor_data_channel_test.exs`
-- `test/sensocto_web/openapi_test.exs` -- OpenAPI 3.x spec validation
-- `test/sensocto_web/plugs/rate_limiter_test.exs` -- Rate limiting with ETS
+- `test/sensocto_web/controllers/error_json_test.exs` (2 tests)
+- `test/sensocto_web/controllers/error_html_test.exs` (2 tests)
+- `test/sensocto_web/controllers/page_controller_test.exs` (1 test)
+- `test/sensocto_web/controllers/health_controller_test.exs` (15 tests)
+- `test/sensocto_web/channels/sensor_data_channel_test.exs` (2 tests)
+- `test/sensocto_web/openapi_test.exs` (2 tests)
+- `test/sensocto_web/plugs/rate_limiter_test.exs` (13 tests)
 
 **LiveView / Component Tests:**
-- `test/sensocto_web/live/media_player_component_test.exs`
-- `test/sensocto_web/live/object3d_player_component_test.exs`
-- `test/sensocto_web/live/stateful_sensor_live_test.exs`
-- `test/sensocto_web/components/core_components_test.exs` -- ARIA/accessibility
-- `test/sensocto_web/components/modal_accessibility_test.exs` -- Focus management, keyboard nav
+- `test/sensocto_web/live/media_player_component_test.exs` (10 tests)
+- `test/sensocto_web/live/object3d_player_component_test.exs` (9 tests)
+- `test/sensocto_web/live/stateful_sensor_live_test.exs` (2 tests)
+- `test/sensocto_web/live/search_live_test.exs` (4 tests)
+- `test/sensocto_web/live/user_directory_live_test.exs` (8 tests)
+- `test/sensocto_web/live/lobby_graph_regression_test.exs` (14 tests)
+- `test/sensocto_web/live/midi_output_regression_test.exs` (10 tests)
+- `test/sensocto_web/live/lobby_backpressure_test.exs` (19 tests)
+- `test/sensocto_web/live/mount_optimization_test.exs` (20 tests)
+- `test/sensocto_web/components/core_components_test.exs` (10 tests)
+- `test/sensocto_web/components/modal_accessibility_test.exs` (14 tests)
 
 **E2E Feature Tests (Wallaby / ChromeDriver):**
-- `test/sensocto_web/features/collab_demo_feature_test.exs` -- Cross-component collaboration
-- `test/sensocto_web/features/media_player_feature_test.exs` -- Media player E2E
-- `test/sensocto_web/features/whiteboard_feature_test.exs` -- Whiteboard E2E
-- `test/sensocto_web/features/object3d_player_feature_test.exs` -- 3D viewer E2E
+- `test/sensocto_web/features/collab_demo_feature_test.exs` (13 tests)
+- `test/sensocto_web/features/media_player_feature_test.exs` (20 tests)
+- `test/sensocto_web/features/whiteboard_feature_test.exs` (20 tests)
+- `test/sensocto_web/features/object3d_player_feature_test.exs` (23 tests)
+- `test/sensocto_web/features/auth_flow_feature_test.exs` (5 tests)
+- `test/sensocto_web/features/lobby_navigation_feature_test.exs` (7 tests)
+- `test/sensocto_web/features/room_feature_test.exs` (3 tests)
 
-### E2E Testing Infrastructure
+---
+
+## E2E Testing Infrastructure
 
 A comprehensive E2E testing framework has been established using Wallaby with ChromeDriver, as documented in `docs/e2e-testing.md`. Key highlights:
 
@@ -307,17 +395,23 @@ mix test --include e2e                    # All E2E
 mix test test/sensocto_web/features/      # Feature tests only
 ```
 
-### Notable New Test Patterns
+---
 
-**Regression Guards** (`regression_guards_test.exs`): A "honey badger" approach that tests contracts (message shapes, topic formats, API return values) rather than implementation details. These catch silent breakage during refactoring. This pattern is worth expanding to other subsystems.
+## Notable Test Patterns
 
-**PriorityLens Tests**: Verify the removal of preemptive quality throttling -- quality always starts at `:high` regardless of sensor count, validating the reactive backpressure design.
+**Regression Guards** (`regression_guards_test.exs`, 49 tests): A "honey badger" approach that tests contracts (message shapes, topic formats, API return values) rather than implementation details. These catch silent breakage during refactoring. This pattern is worth expanding to other subsystems.
 
-**AttentionTracker Tests**: Cover the attention level lifecycle (`:none` -> `:medium` -> `:high`), multi-user view registration, and hover tracking.
+**PriorityLens Buffer Tests** (`priority_lens_buffer_test.exs`): Tests the GenServer-free hot data path via ETS direct writes. Verifies `buffer_for_sensor/2`, `buffer_batch_for_sensor/2`, `get_sockets_for_sensor/1`, and flush timer delivery.
 
-**ButtonState Visualization Tests**: Integration tests that create actual SimpleSensor processes, send button events through PubSub, and verify PriorityLens buffering.
+**Backpressure Threshold Tests** (`lobby_backpressure_test.exs`): Pure function tests for load level threshold calculation. Caught the missing `:high` case that was falling through to `:normal`. Uses `async: true` since it tests pure logic.
 
-### Complete Livebook Inventory (16 files, 8,713 lines)
+**Mount Optimization Tests** (`mount_optimization_test.exs`): Integration tests verifying SearchLive sticky mount persistence, LobbyLive deferred subscriptions, and SenseLive deferred signal subscription. Uses `Ash.Seed.seed!` for user setup with JWT authentication.
+
+**Simulator Manager Tests** (`manager_test.exs`): Uses defensive `skip_if_unavailable` pattern since Manager may not be started in test environment. A pragmatic approach for testing supervisor-managed processes.
+
+---
+
+## Complete Livebook Inventory (16 files, 8,713 lines)
 
 | File | Lines | Category | Quality |
 |------|-------|----------|---------|
@@ -340,16 +434,11 @@ mix test test/sensocto_web/features/      # Feature tests only
 
 *Note: `ash_neo4j_demo.livemd` references Neo4j, which has been removed from the project. This livebook should be archived or deleted.
 
-**New since January 20:**
-- `security-assessment.livemd` (674 lines) -- Platform security audit with OWASP framework
-- `biomimetic-resilience.livemd` (1,000 lines) -- Bio-inspired patterns (immune memory, synaptic pruning, quorum sensing)
-- `api-developer-experience.livemd` (752 lines) -- Interactive API guide with Kino forms for REST and WebSocket
-- `test-accessibility-assessment.livemd` (1,088 lines) -- Testing coverage and accessibility audit
-- `resilience-assessment.livemd` (811 lines) -- Live supervision tree visualization and resilience metrics
+---
 
-### Ecto Schemas (30 Total)
+## Ecto Schemas (30 Total)
 
-The project now has 30 Ecto schemas across domains:
+The project has 30 Ecto schemas across domains:
 - **Accounts (6):** User, Token, UserPreference, GuestSession, UserConnection, UserSkill
 - **Sensors (16):** Sensor, SensorType, SensorAttribute, SensorAttributeData, Room, RoomMembership, RoomSensorType, Connector, ConnectorSensorType, SensorConnection, SensorSensorConnection, SensorManager, SimulatorBatteryState, SimulatorConnector, SimulatorScenario, SimulatorTrackPosition
 - **Collaboration (3):** Poll, PollOption, Vote
@@ -357,89 +446,80 @@ The project now has 30 Ecto schemas across domains:
 - **Media (2):** Playlist, PlaylistItem
 - **Object3D (2):** Object3DPlaylist, Object3DPlaylistItem
 
-### Source Changes in Progress (Git Status)
-
-Active modifications on main branch:
-- `lib/sensocto_web/live/lobby_live.ex` -- Lobby LiveView changes
-- `lib/sensocto_web/live/index_live.ex` -- Index LiveView changes
-- `lib/sensocto_web/live/tabbed_footer_live.ex` -- Tabbed footer
-- `lib/sensocto_web/live/helpers/sensor_data.ex` -- NEW shared helper for sensor data transformation (used by both LobbyLive and IndexLive)
-- `lib/sensocto_web/live/components/about_content_component.ex` -- About content
-- `assets/svelte/LobbyGraph.svelte` -- Lobby graph Svelte component
-- `assets/js/hooks.js` -- JS hooks updates
-
-The new `SensoctoWeb.LiveHelpers.SensorData` module is a refactoring that extracts shared logic (`group_sensors_by_user/1`) for both LobbyLive and IndexLive. This is a good candidate for unit testing.
-
 ---
 
 ## Remaining Gaps and Recommendations
 
 ### Critical Gaps
 
-#### 1. Ash Resource Tests -- Only Room Covered
+#### 1. Extracted Lobby Hooks -- 0% Coverage (HIGH PRIORITY)
 
-Only `Sensocto.Sensors.Room` has Ash resource tests. The following resources have zero test coverage:
+The lobby refactoring created 8 new modules (2,231 lines total) with zero test coverage. These hooks are the integration glue for guided sessions, media, object3D, whiteboard, and calls within the lobby.
 
-| Resource | Actions | Risk |
-|----------|---------|------|
-| `Sensocto.Sensors.Sensor` | create, read, update | HIGH -- core entity |
-| `Sensocto.Accounts.User` | register, sign_in | HIGH -- authentication |
-| `Sensocto.Sensors.SensorAttribute` | create, read | MEDIUM |
-| `Sensocto.Sensors.Connector` | create, read | MEDIUM |
-| `Sensocto.Media.Playlist` | CRUD | MEDIUM |
-| `Sensocto.Object3D.Object3DPlaylist` | CRUD | MEDIUM |
+| Hook Module | Lines | Testing Strategy |
+|-------------|-------|-----------------|
+| `guided_session_hook.ex` | 182 | Mock socket assigns, verify PubSub message routing and assign updates |
+| `media_hook.ex` | 140 | Test event delegation to MediaPlayerServer |
+| `object3d_hook.ex` | 156 | Test event delegation to Object3DPlayerServer |
+| `whiteboard_hook.ex` | 131 | Test event delegation to WhiteboardComponent |
+| `call_hook.ex` | 70 | Test call initiation/termination events |
+| `components.ex` | 412 | Render tests for extracted function components |
+| `sensor_detail_live.ex` | 909 | Mount and event tests for sensor detail view |
+| `sensor_compare_live.ex` | 231 | Mount and comparison logic tests |
 
-**Recommendation:** Use the pattern established in `room_test.exs` (Ash.Seed.seed! for setup, Ash.Changeset.for_create for actions) and extend to Sensor and User resources first.
+#### 2. Guided Session System -- Still 0%
 
-#### 2. No Call System Tests
+SessionServer (513 lines), GuidedSession Ash resource, SessionSupervisor, and JoinLive all remain untested. The `guided_session_hook.ex` extraction makes this even more urgent since the hook delegates to SessionServer but neither has tests.
 
-- `CallServer` -- WebRTC coordination via Membrane RTC Engine, untested
-- `QualityManager` (`lib/sensocto/calls/quality_manager.ex`) -- Pure functions, straightforward to test
-- `SnapshotManager` -- untested
+#### 3. Calls System -- Still 0%
 
-**Recommendation:** Start with QualityManager since it contains pure functions with no process dependencies.
+CallServer, QualityManager, SnapshotManager, CallChannel remain untested.
 
-#### 3. No Simulator Tests
+#### 4. Simulator DataGenerator and AttributeServer -- 0%
 
-DataGenerator, TrackPlayer, BatteryState remain untested. These modules generate ECG waveforms, GPS track interpolation, and battery drain curves -- all with mathematical logic that benefits from property-based testing.
+DataGenerator (1,392 lines) contains pure mathematical functions for ECG waveforms, GPS interpolation, and battery curves. AttributeServer (406 lines) was recently refactored. Both are prime candidates for unit testing.
 
-**Recommendation:** Use StreamData for property-based testing of DataGenerator output ranges and waveform characteristics.
+#### 5. New LiveViews Without Tests
 
-#### 4. No LobbyLive / Data Pipeline Integration Tests
+- `profile_live.ex` -- significantly expanded with privacy settings
+- `user_settings_live.ex` -- new module
+- `devices_live.ex` -- device management with rename/forget
+- `magic_sign_in_live.ex` -- magic link authentication flow
+- `sensor_detail_live.ex` -- extracted from lobby, 909 lines
+- `sensor_compare_live.ex` -- extracted from lobby, 231 lines
 
-The lobby lens system (LobbyLive + PriorityLens + Router + AttentionTracker) is the most complex data path in the application. While individual components (PriorityLens, AttentionTracker) now have tests, there are no integration tests for the full pipeline including composite lenses (heartrate, ECG, breathing).
+#### 6. Search Index Privacy Filtering
 
-The new `SensoctoWeb.LiveHelpers.SensorData` module also lacks tests.
+The `search_index.ex` received privacy-related changes. Existing `search_index_test.exs` should be reviewed and extended to cover visibility/privacy filtering logic.
 
-#### 5. Outdated Content
+#### 7. Outdated Content
 
 - `ash_neo4j_demo.livemd` references Neo4j, which has been removed from the project
-- `attribute_store_test.exs` may reference outdated modules (flagged since January)
-- The architecture overview in this report still listed Neo4j under "Graph (Ash Domain)" -- now corrected
 
 ### Priority Recommendations
 
 **Immediate (This Sprint):**
 
-1. **Test Guided Session feature** -- SessionServer unit tests (drift-back timer, guide/follower authorization, PubSub broadcasts), GuidedSession Ash resource tests (all 6 actions, invite code generation, status transitions), SessionSupervisor tests (start/stop/idempotency), JoinLive tests (mount with valid/invalid codes, accept flow)
-2. **Create `guided-session-lifecycle.livemd`** -- Interactive exploration of the full session lifecycle with PubSub observation
-3. **Test `SensoctoWeb.LiveHelpers.SensorData`** -- New shared helper module, pure functions, easy to test
-4. **Create QualityManager tests** -- Pure function module in the call system
-5. **Archive or delete `ash_neo4j_demo.livemd`** -- References removed Neo4j dependency
+1. **Test extracted lobby hooks** -- Start with `guided_session_hook.ex` (most complex at 182 lines) and `components.ex` (412 lines of function components). These are self-contained modules with clear input/output contracts.
+2. **Test SessionServer** -- 513 lines of complex GenServer logic with timers, now the highest-risk untested module.
+3. **Test DataGenerator pure functions** -- 1,392 lines of mathematical logic. Property-based testing with StreamData would verify ECG waveform bounds, GPS coordinate validity, and battery curve monotonicity.
+4. **Review search_index_test.exs** -- Ensure privacy filtering changes are covered.
+5. **Archive or delete `ash_neo4j_demo.livemd`** -- References removed dependency.
 
 **Short-term (2-4 Weeks):**
 
-1. **Ash resource tests for Sensor and User** -- Follow the Room test pattern
-2. **Simulator DataGenerator tests** -- Property-based testing with StreamData for ECG waveform bounds, GPS coordinate validity
-3. **Create `data_pipeline_exploration.livemd`** -- Interactive notebook documenting SimpleSensor -> PubSub -> Router -> PriorityLens -> LobbyLive flow with live tracing
-4. **Lobby composite lens integration tests** -- Test `extract_composite_data/1` tuple shapes and all destructuring sites
+1. **Create `backpressure-pipeline.livemd`** -- Interactive notebook tracing data flow from SystemLoadMonitor through PriorityLens quality adjustment to LobbyLive threshold response. Visualize with VegaLite charts showing quality transitions under load.
+2. **Create `lobby-hooks-architecture.livemd`** -- Document the new hook extraction pattern with Mermaid diagrams showing message flow through each hook.
+3. **Test sensor_detail_live.ex and sensor_compare_live.ex** -- Largest extracted modules at 909 and 231 lines.
+4. **End-to-end backpressure test** -- Integration test that applies load via SystemLoadMonitor, verifies PriorityLens quality degradation, and confirms LobbyLive responds with appropriate threshold adjustments.
 
 **Medium-term (1-2 Months):**
 
 1. **CallServer integration tests** -- WebRTC participant lifecycle
 2. **Full E2E for sensor data flow** -- Connect via channel, send measurement, verify it appears in lobby LiveView
-3. **Performance benchmarking livebook** -- Benchmark PriorityLens ETS write throughput, attention level switching latency
-4. **Property-based testing expansion** -- StreamData for all sensor type payloads (ECG, IMU, HTML5, Thingy52)
+3. **Property-based testing for AttributeServer** -- Test data generation, attribute routing, and cleanup under concurrent load
+4. **Create `guided-session-lifecycle.livemd`** -- Interactive exploration of guide/follower coordination with PubSub observation
+5. **Create `data-generator-waveforms.livemd`** -- Plot ECG, breathing, HRV waveforms with VegaLite for visual verification
 
 ---
 
@@ -448,34 +528,37 @@ The new `SensoctoWeb.LiveHelpers.SensorData` module also lacks tests.
 ### Strengths
 
 - **Well-structured E2E framework**: Wallaby setup with FeatureCase helpers, multi-user support, device viewport simulation, and proper tag-based execution gating
-- **Regression guard pattern**: The "honey badger" approach in `regression_guards_test.exs` is excellent -- testing contracts rather than implementations
+- **Regression guard pattern**: The "honey badger" approach in `regression_guards_test.exs` (49 tests) is excellent -- testing contracts rather than implementations
 - **Consistent test isolation**: Most tests use `System.unique_integer([:positive])` for unique IDs, avoiding cross-test interference
 - **Accessibility testing**: Two dedicated test files for ARIA attributes, keyboard navigation, and focus management in modals
 - **Integration tests**: ButtonState visualization tests create real processes and verify the full PubSub pipeline
+- **Backpressure coverage**: New tests for PriorityLens buffer, Router demand-driven subscription, SystemLoadMonitor, and lobby threshold calculation provide strong coverage of the hot data path
+- **Defensive test patterns**: The `skip_if_unavailable` pattern in Manager tests handles optional supervisor-managed processes gracefully
 
 ### Areas for Improvement
 
 - **No test factories or shared fixture module**: Each test file creates its own helpers (e.g., `create_user/1` in room_test.exs). A shared factory module would reduce duplication
-- **No property-based testing**: StreamData is not yet used anywhere
+- **No property-based testing**: StreamData is not yet used anywhere. DataGenerator is the ideal first candidate
 - **No test coverage tooling**: No excoveralls or similar tool configured
-- **Limited channel tests**: `sensor_data_channel_test.exs` is only 28 lines with basic join/broadcast tests
+- **Limited channel tests**: `sensor_data_channel_test.exs` is only 2 tests with basic join/broadcast
 - **Async test ratio**: Many tests use `async: false` -- reviewing which can safely use `async: true` would improve test suite speed
+- **Hook modules untested**: The lobby refactoring created 8 new modules (2,231 lines) with 0% coverage, representing the largest untested surface area in the codebase
 
 ### Documentation Ecosystem
 
-The docs/ directory contains 20 markdown files providing comprehensive coverage:
+The docs/ directory contains 22 markdown files providing comprehensive coverage:
 
 | Category | Files |
 |----------|-------|
-| Architecture | `architecture.md`, `supervision-tree.md`, `attention-system.md` |
+| Architecture | `architecture.md`, `supervision-tree.md`, `attention-system.md`, `liveview-architecture.md` |
 | Operations | `deployment.md`, `beam-vm-tuning.md`, `scalability.md` |
 | Development | `getting-started.md`, `e2e-testing.md`, `attributes.md`, `api-attributes-reference.md` |
 | Integration | `simulator-integration.md`, `membrane-webrtc-integration.md`, `iroh-room-storage-architecture.md` |
-| Planning | `CLUSTERING_PLAN.md`, `VISION.md` |
-| Features | `room-markdown-format.md`, `modal-accessibility-implementation.md`, `letsgobio.md` |
+| Planning | `CLUSTERING_PLAN.md`, `VISION.md` + 5 plan docs in `plans/` directory |
+| Features | `room-markdown-format.md`, `modal-accessibility-implementation.md`, `letsgobio.md`, `midi-output.md` |
 | Infrastructure | `tidewave-production.md`, `github-agents.md` |
 
-Combined with 16 livebooks and 33 test files, the project has a mature documentation and testing foundation that continues to grow.
+Combined with 16 livebooks and 65 test files (974 test definitions), the project has a mature documentation and testing foundation.
 
 ---
 
@@ -483,11 +566,14 @@ Combined with 16 livebooks and 33 test files, the project has a mature documenta
 
 ### Key Changes Since Last Report
 
-1. **Neo4j removed** -- No more graph database. The Graph Ash domain no longer exists.
-2. **Sensor data helper extraction** -- `SensoctoWeb.LiveHelpers.SensorData` centralizes `group_sensors_by_user/1` for LobbyLive and IndexLive.
-3. **7-Layer supervision tree** -- The application now uses a layered supervision architecture: Infrastructure, Registry, Storage, Bio, Domain, plus Endpoint and Auth layers.
-4. **Attention-aware routing** is fully operational with sharded PubSub topics (`data:attention:high`, `data:attention:medium`, `data:attention:low`).
-5. **GuestSession** added to Accounts domain (24th Ecto schema).
+1. **Lobby refactored into hook architecture** -- 5 hook modules (`guided_session`, `media`, `object3d`, `whiteboard`, `call`) extracted from LobbyLive, following Phoenix LiveView's `attach_hook` pattern. Each hook has a consistent `on_handle_info/2` interface.
+2. **Sensor detail and compare views extracted** -- `sensor_detail_live.ex` (909 lines) and `sensor_compare_live.ex` (231 lines) separated from LobbyLive.
+3. **Components extracted** -- `lobby_live/components.ex` (412 lines) contains function components previously inline in LobbyLive.
+4. **SystemLoadMonitor** tested -- ETS-based load level reads, memory protection, PubSub broadcasts on transitions.
+5. **SessionServer expanded** -- 513 lines (up from ~417), with additional guide/follower coordination logic.
+6. **Profile and privacy system** -- ProfileLive significantly expanded, `is_public` default changed to false.
+7. **Simulator AttributeServer refactored** -- ~85 lines of churn, simplified data generation flow.
+8. **New docs** -- `liveview-architecture.md` (552 lines) documents the LiveView module structure. `midi-output.md` documents MIDI integration.
 
 ### Data Pipeline (Current)
 
@@ -496,6 +582,17 @@ SimpleSensor -> PubSub (data:attention:{level}) -> Router -> PriorityLens ETS ->
 ```
 
 Hot path is GenServer-free (ETS `:public` tables for direct writes).
+
+### Backpressure Feedback Loop (Updated)
+
+```
+SystemLoadMonitor (ETS) -> load level broadcast -> LobbyLive adjusts thresholds
+                                                -> PriorityLens adjusts quality/flush interval
+LobbyLive mailbox size -> backpressure/critical -> quality downgrade request to PriorityLens
+Consecutive healthy checks (2) + delay (8s) -> quality upgrade request to PriorityLens
+```
+
+Quality levels scale flush intervals: `:high` (32ms) -> `:medium` (50ms) -> `:low` (100ms) -> `:paused` (200ms). All non-paused quality levels use `max_sensors: :unlimited` per project memory.
 
 ---
 
@@ -506,45 +603,53 @@ Hot path is GenServer-free (ETS `:public` tables for direct writes).
 | Achievement | Status | Details |
 |-------------|--------|---------|
 | **First Blood** | EARNED | Many modules now have first tests |
-| **OTP Guardian** | PARTIAL | SimpleSensor, AttentionTracker, PriorityLens tested; Router, RoomServer still missing |
-| **Room Champion** | PARTIAL | Room Ash resource tested; RoomServer, RoomStore not yet |
-| **Bio Master** | EARNED | All 5 bio modules have comprehensive tests |
+| **OTP Guardian** | EARNED | SimpleSensor, throttle, AttentionTracker, PriorityLens+buffer, Router, RoomStore, RoomServer, SystemLoadMonitor, SensorsDynSup all tested |
+| **Room Champion** | PARTIAL | Room Ash resource + RoomStore + RoomServer tested; RoomShowLive not yet |
+| **Bio Master** | EARNED | All 7 bio modules have comprehensive tests (including CorrelationTracker, SyncComputer) |
 | **Accessibility Advocate** | EARNED | Modal and core component ARIA tests |
-| **E2E Pioneer** | EARNED | 4 Wallaby feature test files |
-| **Regression Sentinel** | EARNED | Contract-based regression guards |
+| **E2E Pioneer** | EARNED | 7 Wallaby feature test files |
+| **Regression Sentinel** | EARNED | Contract-based regression guards (49 tests) |
+| **Backpressure Guardian** | EARNED | PriorityLens buffer, Router, SystemLoadMonitor, lobby thresholds, mount optimization all tested |
+| **Markdown Master** | EARNED | RoomMarkdown + admin protection: 66 tests |
+| **Simulator Scout** | PARTIAL | Manager tested (19 tests), DataGenerator/AttributeServer/SensorServer still at 0% |
 
 ### Remaining Challenges
 
 | Achievement | Criteria | Progress |
 |-------------|----------|----------|
-| **Ash Master** | Test all Ash resource actions | 1/30 schemas |
-| **Guidance Guardian** | Full Guided Session lifecycle tests | 0% (NEW) |
+| **Ash Master** | Test all Ash resource actions | ~5/30 schemas covered |
+| **Guidance Guardian** | Full Guided Session lifecycle tests | 0% |
+| **Hook Hero** | Test all extracted lobby hooks | 0% (8 modules, 2,231 lines) |
 | **Channel Surfer** | Full channel message coverage | ~10% |
 | **Call Expert** | WebRTC integration tests | 0% |
-| **Simulator Sage** | All data generators tested | 0% |
-| **LiveView Legend** | All LiveViews have tests | ~15% |
+| **Simulator Sage** | All data generators tested | ~15% (Manager only) |
+| **LiveView Legend** | All LiveViews have tests | ~20% |
 | **Property Prover** | StreamData property tests | 0% |
 
 ### Current Coverage Estimate
 
 ```
-Core OTP:        ████████░░  ~80% (SimpleSensor, AttentionTracker, PriorityLens, AttributeStoreTiered)
-Bio Layer:       ██████████  100% (All 5 modules)
-CRDT/Iroh:       ████████░░  ~80% (RoomStateCRDT, Automerge)
-Media/Object3D:  ██████████  100% (Both player servers)
-Ash Resources:   █░░░░░░░░░  ~3% (Room only, 1/30 schemas)
-Channels:        █░░░░░░░░░  ~10% (Basic channel join)
-Call System:     ░░░░░░░░░░  0%
-Simulator:       ░░░░░░░░░░  0%
-LiveViews:       ██░░░░░░░░  ~15% (Components, stateful sensor)
-Web/Plugs:       ███░░░░░░░  ~30% (RateLimiter, OpenAPI, Controllers)
-Guidance:        ░░░░░░░░░░  0% (NEW -- SessionServer, GuidedSession, Supervisor, JoinLive)
-E2E Features:    ████░░░░░░  ~40% (Collab demos covered)
+Core OTP:        |=========.| ~90%
+Backpressure:    |=========.| ~90%
+Bio Layer:       |==========| 100%
+CRDT/Iroh:       |========..| ~80%
+Media/Object3D:  |==========| 100%
+Ash Resources:   |==........| ~17%
+Channels:        |=.........| ~10%
+Call System:     |..........| 0%
+Simulator:       |==........| ~15%
+LiveViews:       |===.......| ~25%
+Lobby Hooks:     |..........| 0%
+Web/Plugs:       |====......| ~35%
+Guidance:        |..........| 0%
+E2E Features:    |=====.....| ~45%
+Room Markdown:   |==========| 100%
+Types/Encoding:  |==========| 100%
 ```
 
-Overall estimated module coverage: ~30-35%
+Overall estimated module coverage: ~35-40%
 
 ---
 
-*Report updated: 2026-02-24*
+*Report updated: 2026-03-01*
 *Analysis by: Livebook Tester Agent (Claude Opus 4.6)*

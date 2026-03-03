@@ -81,6 +81,51 @@ defmodule Sensocto.Chat.AIChatHandler do
 
         {:noreply, socket}
       end
+
+      def handle_info({:typing, user_name}, socket) do
+        timers = socket.assigns[:typing_timers] || %{}
+
+        if timers[user_name], do: Process.cancel_timer(timers[user_name])
+
+        ref = Process.send_after(self(), {:clear_typing, user_name}, 3000)
+        typing_users = Map.get(socket.assigns, :typing_users, MapSet.new()) |> MapSet.put(user_name)
+
+        socket =
+          socket
+          |> assign(:typing_users, typing_users)
+          |> assign(:typing_timers, Map.put(timers, user_name, ref))
+
+        component_id =
+          socket.assigns[:chat_component_id] || socket.assigns[:chat_component_id_permanent]
+
+        if component_id do
+          send_update(SensoctoWeb.Components.ChatComponent,
+            id: component_id,
+            typing_users: typing_users
+          )
+        end
+
+        {:noreply, socket}
+      end
+
+      def handle_info({:clear_typing, user_name}, socket) do
+        typing_users =
+          Map.get(socket.assigns, :typing_users, MapSet.new()) |> MapSet.delete(user_name)
+
+        socket = assign(socket, :typing_users, typing_users)
+
+        component_id =
+          socket.assigns[:chat_component_id] || socket.assigns[:chat_component_id_permanent]
+
+        if component_id do
+          send_update(SensoctoWeb.Components.ChatComponent,
+            id: component_id,
+            typing_users: typing_users
+          )
+        end
+
+        {:noreply, socket}
+      end
     end
   end
 

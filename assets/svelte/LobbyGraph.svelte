@@ -1777,13 +1777,15 @@
   }
 
   // ── Layout: Mushroom ──────────────────────────────────────────
-  // Clean dome cap (single arc of sensors), gill spokes per sensor, straight stem
+  // Flat-top dome cap with drooping rim, fanning gills, fat stem
   function layoutMushroom() {
     if (!graph || graph.order === 0) return;
     isLayoutRunning = true;
 
-    const cx = 50, capTopY = 15;
-    const capWidth = 34, capHeight = 14;
+    const cx = 50, capTopY = 8;
+    const capWidth = 46, capHeight = 20;
+    const brimDroop = 0.55;
+    const GILLS_PER_SENSOR = 2; // first N attrs per sensor go to gills; rest go to stem
 
     const userNodes: string[] = [];
     const sensorNodes: string[] = [];
@@ -1800,43 +1802,53 @@
 
     const n = sensorNodes.length;
 
-    // Cap: single smooth dome arc of sensors (semicircle, open at bottom)
-    sensorNodes.forEach((node, i) => {
-      const a = Math.PI + (i / Math.max(n - 1, 1)) * Math.PI;
-      graph.setNodeAttribute(node, "x", cx + capWidth * Math.cos(a));
-      graph.setNodeAttribute(node, "y", capTopY + capHeight * Math.sin(a));
-    });
-
-    // Gills: each sensor's attributes drop straight down as a short spoke
-    const gillTop = capTopY + capHeight + 2;
-    sensorNodes.forEach((sNode, si) => {
-      const sx = graph.getNodeAttribute(sNode, "x") as number;
+    // Split attributes: short gills (first N per sensor) vs stem overflow (the rest)
+    const gillMap = new Map<string, string[]>();
+    const stemAttrNodes: string[] = [];
+    sensorNodes.forEach(sNode => {
       const attrs = attrsBySensor.get(sNode) || [];
-      attrs.forEach((attr, ai) => {
-        const depth = gillTop + (ai + 1) * 2.5;
-        // Slight inward lean toward center for gill shape
-        const lean = (cx - sx) * 0.02 * (ai + 1);
-        graph.setNodeAttribute(attr, "x", sx + lean);
-        graph.setNodeAttribute(attr, "y", depth);
-      });
+      gillMap.set(sNode, attrs.slice(0, GILLS_PER_SENSOR));
+      stemAttrNodes.push(...attrs.slice(GILLS_PER_SENSOR));
     });
 
-    // Stem: users form a straight trunk with gentle taper
-    const stemTop = gillTop + 12;
-    const stemBottom = 90;
-    const stemWidth = 3;
-    userNodes.forEach((node, i) => {
-      const t = (i + 1) / (userNodes.length + 1);
-      const y = stemTop + t * (stemBottom - stemTop);
-      // Alternate left/right within a narrow column, widening slightly at base
-      const side = i % 2 === 0 ? 1 : -1;
-      const taper = 1 + t * 0.5; // slightly wider at bottom
-      const x = cx + side * stemWidth * taper * ((Math.floor(i / 2) % 2) * 0.5 + 0.5);
+    // Cap: flat-top dome with drooping rim
+    sensorNodes.forEach((node, i) => {
+      const u = n <= 1 ? 0 : -1 + (2 * i) / (n - 1);
+      const x = cx + capWidth * u;
+      const y = capTopY + capHeight * (u * u + brimDroop * Math.pow(u * u, 2));
       graph.setNodeAttribute(node, "x", x);
       graph.setNodeAttribute(node, "y", y);
     });
 
-    rotateLayout(180); // cap at bottom, stem grows up
+    // Gills: short spokes fanning outward under the cap
+    const gillBase = capTopY + capHeight * (1 + brimDroop) + 2;
+    sensorNodes.forEach((sNode, si) => {
+      const u = n <= 1 ? 0 : -1 + (2 * si) / (n - 1);
+      const sx = graph.getNodeAttribute(sNode, "x") as number;
+      const attrs = gillMap.get(sNode) || [];
+      attrs.forEach((attr, ai) => {
+        const depth = (ai + 1) * 3.5;
+        const fan = u * 0.09 * capWidth * (ai + 1);
+        graph.setNodeAttribute(attr, "x", sx + fan);
+        graph.setNodeAttribute(attr, "y", gillBase + depth);
+      });
+    });
+
+    // Stem: users + overflow attribute nodes packed in a 3-column grid
+    const stemTop = gillBase + 10;
+    const stemBottom = 95;
+    const stemNodes = [...userNodes, ...stemAttrNodes];
+    const stemWidth = 4;
+    stemNodes.forEach((node, i) => {
+      const t = (i + 1) / (stemNodes.length + 1);
+      const y = stemTop + t * (stemBottom - stemTop);
+      const col = i % 3; // 3-column grid for density
+      const x = cx + (col - 1) * stemWidth * (1 + t * 0.3);
+      graph.setNodeAttribute(node, "x", x);
+      graph.setNodeAttribute(node, "y", y);
+    });
+
+    rotateLayout(180);
     isLayoutRunning = false;
   }
 

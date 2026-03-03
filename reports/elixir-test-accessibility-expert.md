@@ -1,7 +1,7 @@
 # Comprehensive Test Coverage and Accessibility Analysis
 ## Sensocto IoT Sensor Platform
 
-**Analysis Date:** January 12, 2026 (Updated: February 24, 2026)
+**Analysis Date:** January 12, 2026 (Updated: March 1, 2026)
 **Analyzed By:** Testing, Usability, and Accessibility Expert Agent
 **Project:** Sensocto - Elixir/Phoenix IoT Sensor Platform
 
@@ -1822,4 +1822,65 @@ The project made substantial testing and accessibility progress since the Februa
 
 The three custom modals in `lobby_live.html.heex` remain the project's most significant pre-existing accessibility debt. The new Guidance feature has added to that debt with 8 new violations, 2 of which (the live region for state changes and the suggestion toast announcement) are HIGH severity and directly affect the core user experience of the feature.
 
-*Last updated: 2026-02-24 by elixir-test-accessibility-expert agent.*
+*Last updated: 2026-03-01 by elixir-test-accessibility-expert agent.*
+
+---
+
+## Update: March 1, 2026
+
+### Changes Since Last Review (Feb 24 -> Mar 1, 2026)
+
+**Lobby Refactoring:** `lobby_live.ex` was significantly refactored with hooks extracted to `lobby_live/hooks/` (5 files: call_hook, guided_session_hook, media_hook, object3d_hook, whiteboard_hook) and UI components extracted to `lobby_live/components.ex` (412 lines). All 8 new modules have 0% test coverage.
+
+**Profile System:** `profile_live.ex` grew by ~200 lines with skills management, connections, user search, and UserGraph visualization. `profile_live.html.heex` expanded by ~180 lines.
+
+**New Pages:** `user_settings_live.ex` (417 lines) — language selector, mobile device linking (QR code), privacy toggle, sign-out.
+
+### Bugs Fixed
+- **GS-Bug-1 FIXED**: `guided_session_join_live.ex` now uses `:assign_follower` action correctly
+- **Violation 3 FIXED**: Profile remove-skill button now has `aria-label={"Remove skill #{skill.skill_name}"}`
+
+### New Accessibility Violations
+
+| ID | File | Issue | Severity |
+|---|---|---|---|
+| SETS-1 | `user_settings_live.ex:242-253` | `<label>` outside form context for static info | HIGH |
+| SETS-2 | `user_settings_live.ex:382-392` | Privacy `role="switch"` missing `aria-labelledby` | HIGH |
+| SETS-3 | `user_settings_live.ex:340-350` | Copy button lacks descriptive accessible name | MEDIUM |
+| SETS-4 | `user_settings_live.ex:313-318` | QR token auto-regeneration not announced via `aria-live` | MEDIUM |
+| SETS-5 | `user_settings_live.ex:267-277` | Locale buttons missing visible focus ring | MEDIUM |
+| COMP-1 | `lobby_live/components.ex:37-55` | Call mute/video buttons use color-only state | HIGH |
+| COMP-2 | `lobby_live/components.ex:131-134` | Modal close buttons lack `aria-label` | HIGH |
+
+### New Usability Issues
+
+- **SETS-U1 (HIGH)**: No visual warning when QR auth token is about to expire
+- **SETS-U2 (MEDIUM)**: "Copied!" state persists after token regeneration
+- **SETS-U3 (MEDIUM)**: Privacy toggle to public has no confirmation/undo
+- **PROF-U1 (MEDIUM)**: Per-connection type select has no accessible label
+- **PROF-U2 (MEDIUM)**: User search dropdown not keyboard-accessible
+
+### Updated Test Coverage (Mar 2026)
+
+| Domain | Files | Approx. Tests | Change |
+|---|---|---|---|
+| OTP / Supervision | 7 | ~100 | +3 files |
+| Lenses (PriorityLens) | 3 | ~45 | +2 files |
+| Bio | 6 | ~60 | +1 file |
+| E2E (Wallaby) | 7 | ~70 | +3 files |
+| LiveView (regression) | 5 | ~50 | +1 file |
+| **Total** | **~66** | **~855** | **+~120 since Feb 24** |
+
+Estimated coverage: ~26%. Largest zero-coverage areas: `UserSettingsLive`, `LobbyLive.Components`/`Hooks` (8 modules), `Guidance` domain.
+
+### Priority Actions
+
+1. Add `aria-labelledby` to privacy toggle (SETS-2) — 5min
+2. Replace `<label>` with `<dt>`/`<dd>` in settings info (SETS-1) — 10min
+3. Add `aria-pressed` + `aria-label` to call mute/video buttons (COMP-1) — 10min
+4. Add `aria-label="Close modal"` to component close buttons (COMP-2) — 5min
+5. Add focus ring classes to locale buttons (SETS-5) — 5min
+6. Fix `@copied` reset after token regenerate (SETS-U2) — 20min
+7. Write `UserSettingsLive` tests — ~3 hours
+8. Write `ProfileLive` event handler tests — ~3 hours
+9. Write `LobbyLive.Components` unit tests — ~2 hours

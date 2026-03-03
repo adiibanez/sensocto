@@ -29,7 +29,8 @@ defmodule SensoctoWeb.Components.ChatComponent do
      |> assign(:ai_streaming, false)
      |> assign(:ai_response, "")
      |> assign(:unread_count, 0)
-     |> assign(:mode, :floating)}
+     |> assign(:mode, :floating)
+     |> assign(:typing_users, MapSet.new())}
   end
 
   @impl true
@@ -84,6 +85,10 @@ defmodule SensoctoWeb.Components.ChatComponent do
       |> maybe_increment_unread()
 
     {:ok, socket}
+  end
+
+  def update(%{typing_users: users}, socket) do
+    {:ok, assign(socket, :typing_users, users)}
   end
 
   def update(assigns, socket) do
@@ -179,8 +184,10 @@ defmodule SensoctoWeb.Components.ChatComponent do
           messages={@messages}
           room_id={@room_id}
           current_user={@current_user}
+          user_name={@user_name}
           ai_streaming={@ai_streaming}
           ai_response={@ai_response}
+          typing_users={@typing_users}
           mode={@mode}
         />
         <.chat_input
@@ -202,8 +209,10 @@ defmodule SensoctoWeb.Components.ChatComponent do
         messages={@messages}
         room_id={@room_id}
         current_user={@current_user}
+        user_name={@user_name}
         ai_streaming={@ai_streaming}
         ai_response={@ai_response}
+        typing_users={@typing_users}
         mode={@mode}
       />
       <.chat_input
@@ -224,8 +233,10 @@ defmodule SensoctoWeb.Components.ChatComponent do
         messages={@messages}
         room_id={@room_id}
         current_user={@current_user}
+        user_name={@user_name}
         ai_streaming={@ai_streaming}
         ai_response={@ai_response}
+        typing_users={@typing_users}
         mode={@mode}
       />
       <.chat_input
@@ -292,8 +303,10 @@ defmodule SensoctoWeb.Components.ChatComponent do
   attr :messages, :list, required: true
   attr :room_id, :string, required: true
   attr :current_user, :any, required: true
+  attr :user_name, :string, required: true
   attr :ai_streaming, :boolean, required: true
   attr :ai_response, :string, required: true
+  attr :typing_users, :any, required: true
   attr :mode, :atom, required: true
 
   defp chat_messages(assigns) do
@@ -327,6 +340,18 @@ defmodule SensoctoWeb.Components.ChatComponent do
             {@ai_response}<span class="animate-pulse">▊</span>
           </div>
         </div>
+      </div>
+
+      <div
+        :if={visible_typers(@typing_users, @user_name) != []}
+        class="flex items-center gap-1 text-xs text-gray-400 px-1"
+      >
+        <span class="flex gap-0.5">
+          <span class="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms" />
+          <span class="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms" />
+          <span class="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms" />
+        </span>
+        {format_typing_users(visible_typers(@typing_users, @user_name))}
       </div>
     </div>
     """
@@ -380,6 +405,10 @@ defmodule SensoctoWeb.Components.ChatComponent do
   end
 
   def handle_event("update_input", %{"message" => message}, socket) do
+    if message != "" do
+      ChatStore.broadcast_typing(socket.assigns.room_id, socket.assigns.user_name)
+    end
+
     {:noreply, assign(socket, :input, message)}
   end
 
@@ -479,4 +508,14 @@ defmodule SensoctoWeb.Components.ChatComponent do
       socket
     end
   end
+
+  defp visible_typers(typing_users, own_name) do
+    typing_users
+    |> MapSet.delete(own_name)
+    |> MapSet.to_list()
+  end
+
+  defp format_typing_users([name]), do: "#{name} is typing..."
+  defp format_typing_users([a, b]), do: "#{a} and #{b} are typing..."
+  defp format_typing_users(_), do: "Several people are typing..."
 end

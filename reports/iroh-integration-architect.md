@@ -1,31 +1,39 @@
 # Iroh Integration -- Team Report
-*Last updated: 2026-02-20*
+*Last updated: 2026-03-01*
 
 ## Goals
 
 1. **Complete the half-built room state CRDT sync** so media playback, 3D viewer, and presence state synchronize between multiple server instances and (eventually) directly to clients.
-2. **Consolidate the 4 separate iroh nodes into 1** via the `IrohConnectionManager` pattern, which is a prerequisite for everything else. **DONE.**
+2. **Consolidate the 4 separate iroh nodes into 1** via the `IrohConnectionManager` pattern. **DONE.**
 3. **Bridge sensor data to iroh gossip** for native clients (mobile, edge), while keeping the Phoenix PubSub path for web LiveView.
 4. **Use iroh-blobs for historical sensor data distribution** so seed data for composite lenses does not always hit PostgreSQL.
 5. **Achieve production readiness** by resolving the Linux x86_64 NIF build blocker for Fly.io.
 
 ---
 
-## Current Status (2026-02-16)
+## Current Status (2026-03-01)
 
-### What Has Changed Since 2026-02-16
+### What Has Changed Since 2026-02-20
 
-The iroh modules have **not changed** since the Feb 8 implementation session. Commits 12841b8 through 9207440 (Feb 16-20) added audio/MIDI (client-side), collaboration domain (polls), user profiles/social graph, and delta encoding -- none of which touch iroh code or create P2P opportunities.
+**iroh modules**: No changes. The iroh code in `lib/sensocto/iroh/` has been stable since the ConnectionManager consolidation (commit `4d12618`, 2026-02-08). All 5 modules (`connection_manager.ex`, `room_store.ex`, `room_sync.ex`, `room_state_crdt.ex`, `room_state_bridge.ex`) are unchanged.
 
-However, the surrounding architecture has evolved significantly:
+**iroh_ex dependency**: Remains at `~> 0.0.15` (Hex). NIF binary is `aarch64-apple-darwin` only. No version bump since the `0.0.14 -> 0.0.15` change in commit `ce3c60b`.
 
-- **Attention-aware routing is now sharded PubSub**: `SimpleSensor` broadcasts to `"data:attention:high"`, `"data:attention:medium"`, `"data:attention:low"` instead of the old `"data:global"` topic. The Router subscribes to all three and is demand-driven (only subscribes when lenses are registered). This is a pure server-side improvement that reduces unnecessary message processing.
-- **ETS direct-write optimization**: The Router now calls `PriorityLens.buffer_for_sensor/2` directly, bypassing the PriorityLens GenServer mailbox for the hot data path. ETS tables are `:public`.
-- **Sensor registry migration**: Sensors now use `:pg` (Erlang process groups) for cluster-wide discovery + local `Registry` for per-node lookup, replacing Horde for sensors. Rooms and connectors still use Horde.Registry.
-- **Resilience improvements**: ConnectorServer parallel shutdown, SensorServer room deletion detection, Manager health checks, and startup optimization (async hydration) have all landed.
-- **New plans exist**: Adaptive video quality (attention-driven bandwidth), sensor component migration (LiveView to LiveComponent), and startup optimization (implemented).
+**Significant surrounding architecture changes (Feb 20 - Mar 1):**
 
-These changes do **not** affect the iroh integration directly, but they refine the architectural context for future iroh work. The sharded PubSub pattern in particular is relevant: if/when we build a SensorGossipPublisher, it should subscribe to these same attention-sharded topics rather than duplicating the subscription logic.
+- **Guided Sessions system** (`lib/sensocto/guidance/`): New feature (commit `f5aa3f4`). A guide can lead a follower through the UI -- lens changes, sensor focus, annotations, lobby settings. Uses PubSub for state sync. Follows the MediaPlayerServer guide-writes/follower-reads pattern. Natural candidate for CRDT sync if cross-server or native client support is ever needed, but PubSub handles it fine for the foreseeable future.
+
+- **Discovery module** (`lib/sensocto/discovery/`): Implemented in commit `97c9fbd`. ETS-cached cluster-wide entity listing with background `SyncWorker`. Uses `:pg` for sensor discovery, Horde for rooms/connectors. This is **complementary** to iroh -- Discovery handles Erlang cluster topology, while iroh would handle server-to-native-client and peer-to-peer data flows.
+
+- **TURN/Cloudflare integration** (`plans/PLAN-turn-cloudflare.md`): Code-complete Cloudflare TURN for WebRTC video calls on mobile. Uses ephemeral credentials cached in `persistent_term`. Entirely independent of iroh -- Membrane handles WebRTC, Cloudflare handles relay.
+
+- **Plans reorganized**: All PLAN-*.md files moved from project root to `plans/` directory. File paths in this report have been updated accordingly.
+
+- **Graph/audio/MIDI/breathing features**: Multiple commits added interactive graph views, audio MIDI routing, tone patches, breathing lens visualization. None touch iroh.
+
+- **Resilience improvements**: Reactive backpressure, improved attention tracking, sensor cleanup, connector health checks, startup optimization. All pure server-side.
+
+**Key takeaway:** The platform is growing rapidly in features (guidance, discovery, graphs, audio, video calls) but all of these use server-mediated patterns (PubSub, ETS, PostgreSQL, Membrane). iroh remains in its "foundation laid but not actively used" state. This is not a problem -- it means the server-side architecture is handling current scale well. iroh's value proposition kicks in at higher scale or when native clients need direct data access.
 
 ### Module-by-Module Assessment
 
@@ -56,6 +64,17 @@ Storage.Supervisor (:rest_for_one, 3/5s)
   |-- RoomPresenceServer         -- room presence tracking
 ```
 
+### Sensor Registry Architecture (Stable)
+
+The sensor registry has been stable since the `:pg` migration:
+
+- **Local lookup**: `SimpleSensorRegistry` (Elixir `Registry`, unique keys) -- used by `via_tuple`
+- **Cluster discovery**: `:pg` process groups (scope `:sensocto_sensors`) -- used by `get_device_names/0`
+- **Rooms/Connectors**: Use `Horde.Registry` for cluster-wide distributed lookup
+- **Discovery module** (`lib/sensocto/discovery/`): ETS-cached read path with background `SyncWorker`
+
+Note: Commit `97c9fbd` briefly switched sensors to `Horde.Registry` via `DistributedSensorRegistry`, but this was reverted back to `:pg` + local Registry in subsequent commits. The current `via_tuple/1` in `SimpleSensor` uses the local `SimpleSensorRegistry`.
+
 ### Architectural Issues
 
 **RESOLVED: 4 separate iroh nodes consolidated into 1.** The `Iroh.ConnectionManager` GenServer owns the single shared iroh node. All 4 consumer modules (`RoomStore`, `RoomStateCRDT`, `GossipTopic`, `CrdtDocument`) use `ConnectionManager.get_node_ref()`.
@@ -75,7 +94,7 @@ SimpleSensor -> PubSub (data:attention:{high,medium,low}) -> Router -> PriorityL
 ```
 This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the right tool for web LiveView clients.
 
-**GossipTopic and CrdtDocument are orphaned.** These two modules exist in `lib/sensocto/room_markdown/` and are functional code, but they are not started in any supervisor. They were designed for per-room markdown CRDT sync. They properly use ConnectionManager but are effectively dead code.
+**GossipTopic and CrdtDocument are orphaned.** These two modules exist in `lib/sensocto/room_markdown/` and are functional code, but they are not started in any supervisor. They properly use ConnectionManager but are effectively dead code.
 
 ### What Actually Works Well
 
@@ -117,9 +136,9 @@ This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the ri
 
 **What:** A new `SensorGossipPublisher` GenServer that subscribes to the sharded PubSub topics (`"data:attention:high"`, etc.) and republishes measurements to per-room iroh gossip topics. Native clients receive sensor data P2P instead of going through the server.
 
-**Updated context (2026-02-16):** The PubSub topic structure has changed from `"data:global"` to attention-sharded topics. A gossip publisher should subscribe to the same 3 topics the Router uses (`@attention_topics`), applying the same demand-driven subscription pattern.
+**Updated context:** The Discovery module (`lib/sensocto/discovery/`) with ETS-backed caching and `SyncWorker` provides the architectural pattern for how a gossip publisher should handle cluster-wide entity resolution. Subscribe to the same 3 attention-sharded topics the Router uses.
 
-**Honest assessment:** This is a significant engineering effort with a dependency chain: it needs identity persistence (#3), a Linux NIF (#5), and a native client with iroh support. The payoff is real but distant. For web-only users (LiveView), this provides zero benefit. Only matters if you have native clients consuming sensor data directly.
+**Honest assessment:** This is a significant engineering effort with a dependency chain: it needs identity persistence (#3), a Linux NIF, and a native client with iroh support. For web-only users (LiveView), this provides zero benefit. Only matters once native clients consuming sensor data directly exist.
 
 ### Opportunity 5: Delta Encoding for ECG Data (NOT iroh -- Pure Server) -- PARTIALLY DONE
 **Impact: HIGH for interactive experience**
@@ -128,9 +147,18 @@ This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the ri
 
 **What:** Implement the delta encoding plan at `plans/delta-encoding-ecg.md`. Reduces ECG WebSocket bandwidth by ~84%.
 
-**Status (Feb 20):** The Elixir encoder module exists at `lib/sensocto/encoding/delta_encoder.ex` (148 lines). Feature-flagged off. Binary protocol with version byte and reset markers. Remaining work: JS decoder implementation, integration into the LiveView push path, and feature flag activation. **Note:** `enabled?/0` calls `Application.get_env` on every invocation -- should migrate to `:persistent_term` before enabling on hot path.
+**Status:** The Elixir encoder module exists at `lib/sensocto/encoding/delta_encoder.ex` (148 lines). Feature-flagged off. Binary protocol with version byte and reset markers. Remaining work: JS decoder implementation, integration into the LiveView push path, and feature flag activation. **Note:** `enabled?/0` calls `Application.get_env` on every invocation -- should migrate to `:persistent_term` before enabling on hot path.
 
-### Opportunity 6: Research-Grade Sync Visualizations (Partially iroh-adjacent)
+### Opportunity 6: Guided Session P2P Extension (NEW)
+**Impact: MEDIUM (enables cross-server guide-follower sync without Erlang clustering)**
+**Effort: 1-2 days**
+**Needs Linux NIF: No**
+
+**What:** The new Guidance system (`lib/sensocto/guidance/session_server.ex`) synchronizes a guide's navigation state to a follower via PubSub. The state is small (current lens, focused sensor, annotations, lobby settings) and unidirectional (guide writes, follower reads). If guide and follower are on different non-clustered instances or on native clients, iroh-gossip or CRDT sync would be a natural fit.
+
+**Honest assessment:** PubSub handles this fine for the foreseeable future. Erlang clustering (PG2) already distributes PubSub across nodes. Only worth iroh-ifying if we need non-clustered or native client support. Low priority.
+
+### Opportunity 7: Research-Grade Sync Visualizations (Not iroh)
 **Impact: HIGH for differentiation**
 **Effort: 5-10 days for the P1 tier**
 **Needs Linux NIF: No**
@@ -139,17 +167,17 @@ This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the ri
 
 **Honest assessment:** The visualizations are pure Svelte/client-side work with existing data. iroh adds marginal value. Build these with Phoenix PubSub.
 
-### Opportunity 7: Historical Data as iroh-blobs
+### Opportunity 8: Historical Data as iroh-blobs
 **Impact: MEDIUM (reduces PostgreSQL load for seed data)**
 **Effort: 3-5 days**
 **Needs Linux NIF: Yes for P2P; No for local caching**
 
-### Opportunity 8: Room Markdown CRDT Sync (Closest to Working)
+### Opportunity 9: Room Markdown CRDT Sync (Closest to Working)
 **Impact: MEDIUM for collaborative room editing**
 **Effort: 1-2 days to get it working end-to-end**
 **Needs Linux NIF: No (dev-only is fine)**
 
-**Updated context (2026-02-16):** The `GossipTopic` and `CrdtDocument` modules exist but are not supervised. They need to be added to the supervision tree (either statically or via a DynamicSupervisor) and connected together. The room_markdown directory also contains `TigrisStorage` and `BackupWorker`, suggesting there is already thinking about persisting room documents to object storage.
+**What:** The `GossipTopic` and `CrdtDocument` modules exist but are not supervised. They need to be added to the supervision tree (either statically or via a DynamicSupervisor) and connected together. The room_markdown directory also contains `TigrisStorage` and `BackupWorker`, suggesting there is already thinking about persisting room documents to object storage.
 
 ---
 
@@ -162,17 +190,19 @@ This is pure Phoenix PubSub + ETS. This is by design -- Phoenix PubSub is the ri
 | 3 | Persist node identity/namespaces | 4-6 hours | HIGH | No | **BLOCKED** (iroh_ex needs secret_key) |
 | 4 | Sensor data gossip bridge | 2-3 days | HIGH (native only) | Yes (prod) | Planned |
 | 5 | Delta encoding for ECG | 1-2 days remaining | HIGH (all users) | No | Encoder done, JS decoder pending |
-| 6 | Research-grade sync visualizations | 5-10 days | HIGH (differentiation) | No | Planned (not iroh) |
-| 7 | Historical data as blobs | 3-5 days | MEDIUM | Yes (P2P) | Planned |
-| 8 | Room markdown CRDT sync | 1-2 days | MEDIUM | No | Planned |
+| 6 | Guided Session P2P extension | 1-2 days | MEDIUM | No | Planned (PubSub sufficient) |
+| 7 | Research-grade sync visualizations | 5-10 days | HIGH (differentiation) | No | Planned (not iroh) |
+| 8 | Historical data as blobs | 3-5 days | MEDIUM | Yes (P2P) | Planned |
+| 9 | Room markdown CRDT sync | 1-2 days | MEDIUM | No | Planned |
 
 **Recommended execution order:**
 1. **#5 Delta encoding** -- highest impact-to-effort ratio, zero dependencies, benefits all users immediately
 2. **#3 Identity persistence** -- enables real P2P continuity (blocked on iroh_ex change)
-3. **#6 Research visualizations** -- product differentiation, independent of iroh
-4. **#8 Room markdown sync** -- close to working, just needs supervision + wiring
-5. **#4 Sensor gossip bridge** -- only after Linux NIF is available and native clients exist
-6. **#7 Historical data blobs** -- only at scale
+3. **#7 Research visualizations** -- product differentiation, independent of iroh
+4. **#9 Room markdown sync** -- close to working, just needs supervision + wiring
+5. **#6 Guided Session P2P** -- only if non-clustered or native support needed
+6. **#4 Sensor gossip bridge** -- only after Linux NIF is available and native clients exist
+7. **#8 Historical data blobs** -- only at scale
 
 ---
 
@@ -204,7 +234,7 @@ These modules exist and are functional but are not started in any supervisor. Th
 
 ## Questions for the iroh Team
 
-(Carried forward from previous report, still unanswered)
+(Carried forward from previous reports, still unanswered)
 
 ### 1. Shared Node API Pattern
 Can a single `node_ref` be safely used from multiple BEAM processes concurrently? The NIF resource handle needs to be thread-safe for our shared-node architecture. We are currently doing this and it appears to work, but we have no confirmation this is safe.
@@ -230,7 +260,7 @@ The `NodeConfig` Rust struct needs a `secret_key: Option<String>` field to suppo
 
 ### Current Architecture Cost Projections
 
-Sensor data pipeline is now sharded by attention level and uses ETS direct-writes, making the server-only path more efficient than previously modeled.
+Sensor data pipeline uses attention-aware sharded PubSub and ETS direct-writes, making the server-only path efficient. The Discovery module adds ETS-cached reads for entity listing.
 
 | Sensor Count | Active (20%) | Viewers | Server I/O | Est. Monthly Cost (Fly.io) |
 |-------------|-------------|---------|------------|---------------------------|
@@ -273,7 +303,7 @@ At 10,000 sensors: 62% savings from delta encoding + 75% savings from gossip for
 ### Phase 0: Non-iroh Wins (NOW)
 - [x] Implement delta encoding -- encoder done (`lib/sensocto/encoding/delta_encoder.ex`), JS decoder + integration pending
 - [ ] Research-grade sync visualizations P1 tier (`plans/PLAN-research-grade-synchronization.md`)
-- [ ] Sensor component migration: LiveView to LiveComponent (`PLAN-sensor-component-migration.md`) -- reduces server process count for lobby
+- [ ] Sensor component migration: LiveView to LiveComponent (`plans/PLAN-sensor-component-migration.md`)
 
 ### Phase 1: iroh Foundation
 - [x] Implement `IrohConnectionManager` -- single shared node (2026-02-08)
@@ -302,19 +332,29 @@ At 10,000 sensors: 62% savings from delta encoding + 75% savings from gossip for
 ### Phase 5: Advanced Distribution
 - [ ] Historical data as iroh-blobs
 - [ ] Client-side iroh for mobile apps
-- [ ] Adaptive video quality with iroh signaling (`PLAN-adaptive-video-quality.md`)
+- [ ] Guided session P2P extension (if needed beyond PubSub)
+- [ ] Adaptive video quality with iroh signaling (`plans/PLAN-adaptive-video-quality.md`)
 
 ---
 
 ## Key Relationships with Other Architecture Work
 
-### Clustering Plan (`docs/CLUSTERING_PLAN.md`)
-The clustering plan proposes Horde for distributed registries and `libcluster` for node discovery. This is **complementary** to iroh, not competing. The clustering plan handles server-to-server Erlang distribution. iroh handles server-to-native-client and peer-to-peer data flows. Both are needed at different scales.
+### Discovery Module (`lib/sensocto/discovery/`, `plans/PLAN-distributed-discovery.md`)
+The Discovery module provides ETS-cached cluster-wide entity listing with background `SyncWorker`. Uses `:pg` for sensor discovery, Horde for rooms/connectors. This is **complementary** to iroh -- Discovery handles Erlang cluster topology, while iroh handles server-to-native-client and peer-to-peer data flows. Both are needed at different scales.
 
-Current state: `libcluster` is commented out in `mix.exs` (line 80). Horde is used for rooms and connectors. Sensors use `:pg` + local Registry. PubSub uses the default adapter (not PG2).
+### Guided Sessions (`lib/sensocto/guidance/`)
+New feature: guide-follower navigation sync. Uses PubSub, follows MediaPlayerServer control pattern. State is small (lens, sensor focus, annotations, lobby settings) and unidirectional (guide writes, follower reads). Natural CRDT candidate, but PubSub handles it well.
+
+### TURN/Cloudflare (`plans/PLAN-turn-cloudflare.md`)
+Code-complete Cloudflare TURN integration for WebRTC video calls on mobile. Uses ephemeral credentials cached in `persistent_term`. Independent of iroh -- Membrane handles WebRTC, Cloudflare handles relay.
+
+### Clustering Plan (`docs/CLUSTERING_PLAN.md`)
+The clustering plan proposes Horde for distributed registries and `libcluster` for node discovery. This is **complementary** to iroh, not competing. The clustering plan handles server-to-server Erlang distribution. iroh handles server-to-native-client and peer-to-peer data flows.
+
+Current state: `libcluster` is commented out in `mix.exs`. Horde is used for rooms and connectors. Sensors use `:pg` + local Registry. PubSub uses the default adapter.
 
 ### Membrane WebRTC Integration (`docs/membrane-webrtc-integration.md`)
-The CallServer uses Membrane RTC Engine for video/voice calls. The adaptive video quality plan (`PLAN-adaptive-video-quality.md`) proposes attention-driven bandwidth allocation -- the same attention system that drives sensor data routing. iroh could potentially serve as a signaling layer for WebRTC negotiation, but Membrane handles this well already. No iroh integration needed here.
+The CallServer uses Membrane RTC Engine for video/voice calls. The adaptive video quality plan (`plans/PLAN-adaptive-video-quality.md`) proposes attention-driven bandwidth allocation. iroh could serve as a signaling layer for WebRTC negotiation, but Membrane handles this already. No iroh integration needed here.
 
 ### Scalability (`docs/scalability.md`)
 The scalability doc focuses on the AttentionTracker bottleneck. The recommended path for 2000+ users is GenServer sharding by sensor. This is independent of iroh. The attention system's ETS-based read path and async writes are the right pattern regardless of transport layer.
@@ -345,24 +385,44 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 | Backup worker | `lib/sensocto/room_markdown/backup_worker.ex` |
 | Storage supervisor | `lib/sensocto/storage/supervisor.ex` |
 | Application entry | `lib/sensocto/application.ex` |
+| Discovery module | `lib/sensocto/discovery/discovery.ex` |
+| Discovery cache (ETS) | `lib/sensocto/discovery/discovery_cache.ex` |
+| Discovery sync worker | `lib/sensocto/discovery/sync_worker.ex` |
+| Guidance session server | `lib/sensocto/guidance/session_server.ex` |
+| Guidance session supervisor | `lib/sensocto/guidance/session_supervisor.ex` |
 | Sensor data router | `lib/sensocto/lenses/router.ex` |
 | Priority lens (buffer) | `lib/sensocto/lenses/priority_lens.ex` |
 | SimpleSensor (broadcast) | `lib/sensocto/otp/simple_sensor.ex` |
 | Architecture design doc | `docs/iroh-room-storage-architecture.md` |
-| Migration plan | `PLAN-room-iroh-migration.md` |
+| Migration plan | `plans/PLAN-room-iroh-migration.md` |
+| Distributed discovery plan | `plans/PLAN-distributed-discovery.md` |
 | Clustering plan | `docs/CLUSTERING_PLAN.md` |
 | Scalability guide | `docs/scalability.md` |
 | Delta encoding plan | `plans/delta-encoding-ecg.md` |
 | Research sync plan | `plans/PLAN-research-grade-synchronization.md` |
 | Sensor scaling plan | `plans/PLAN-sensor-scaling-refactor.md` |
-| Adaptive video plan | `PLAN-adaptive-video-quality.md` |
-| Sensor component plan | `PLAN-sensor-component-migration.md` |
+| Adaptive video plan | `plans/PLAN-adaptive-video-quality.md` |
+| Sensor component plan | `plans/PLAN-sensor-component-migration.md` |
+| TURN/Cloudflare plan | `plans/PLAN-turn-cloudflare.md` |
 | Automerge tests | `test/sensocto/iroh/iroh_automerge_test.exs` |
 | RoomStateCRDT tests | `test/sensocto/iroh/room_state_crdt_test.exs` |
 
 ---
 
 ## Changelog
+
+### 2026-03-01: Report Refresh
+- No iroh code changes since 2026-02-08; all 5 iroh modules remain unchanged
+- iroh_ex remains at v0.0.15, NIF binary aarch64-apple-darwin only
+- New platform features since last update: Guided Sessions (`lib/sensocto/guidance/`), Discovery module (`lib/sensocto/discovery/`), TURN/Cloudflare integration, graph views, audio/MIDI, breathing lens
+- Added Opportunity #6: Guided Session P2P Extension (low priority, PubSub sufficient)
+- Renumbered opportunities: Research visualizations is now #7, Historical blobs #8, Room markdown #9
+- Updated all plan file paths: moved from root to `plans/` directory
+- Added Discovery module, Guidance module, TURN plan to file locations appendix
+- Added sensor registry architecture section (confirmed stable at `:pg` + local Registry)
+- Added "Key Relationships" entries for Discovery module and Guided Sessions
+- All blockers remain unchanged: no `secret_key` in NodeConfig, no Linux NIF, `list_all_rooms` still broken
+- All 6 questions for iroh team remain unanswered
 
 ### 2026-02-20: Report Refresh
 - No iroh code changes since 2026-02-08; all iroh modules remain unchanged

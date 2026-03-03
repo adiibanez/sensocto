@@ -64,6 +64,13 @@ defmodule Sensocto.Chat.ChatStore do
   end
 
   @doc """
+  Broadcast a typing event for a user. Ephemeral — not stored in ETS.
+  """
+  def broadcast_typing(room_id, user_name) when is_binary(room_id) and is_binary(user_name) do
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, chat_topic(room_id), {:typing, user_name})
+  end
+
+  @doc """
   Get the PubSub topic for a room's chat.
   """
   def chat_topic(room_id), do: "chat:#{room_id}"

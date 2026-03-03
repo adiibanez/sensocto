@@ -1,8 +1,8 @@
 # Sensocto API Client Development Report
 
 **Generated:** 2026-01-24
-**Last Updated:** 2026-02-24
-**Status:** Comprehensive Review with DX Deep Dive, Cross-SDK Audit, New Attribute Types, and Guided Sessions
+**Last Updated:** 2026-03-01
+**Status:** Comprehensive Review with Dependency Updates, New Routes, and Cross-SDK Audit
 
 ---
 
@@ -10,9 +10,9 @@
 
 The Sensocto platform provides four client SDKs (Unity/C#, Rust, Python, TypeScript/Three.js) for connecting to the sensor streaming platform. All SDKs are functionally complete for core use cases including sensor data streaming, video/voice calls, and backpressure handling. However, a critical cross-SDK model mismatch remains: the server sends `backpressure_config` events with 8 fields, but only Rust and TypeScript SDKs model all key fields. Unity and Python SDKs are missing critical fields (`paused`, `system_load`, `load_multiplier`), and ALL SDKs are missing `memory_protection_active`.
 
-Since the last review (2026-02-08), the platform has added new attribute types (eye tracking: `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture`; pose: `skeleton`), new composite lenses (gaze, skeleton, HRV, breathing), a new lobby graph view with server-side Kuramoto phase synchronization (SyncComputer), new lobby routes (`/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users`), a shared `SensorData` helper module, and significant resilience improvements. A new **Guided Session** feature has been added (Ash domain `Sensocto.Guidance`, GenServer `SessionServer`, DynamicSupervisor `SessionSupervisor`) enabling a guide to lead a follower through sensor views in real time. No REST API endpoints exist for this feature yet; it is currently LiveView-only with PubSub broadcast on `guidance:{session_id}`. Mobile SDK support will require new REST endpoints and a WebSocket channel or PubSub subscription mechanism.
+Since the last review (2026-02-24), development focus has been on platform resilience, UI improvements (graphs, whiteboard, profiles, privacy, audio/MIDI), new lobby routes (`/lobby/graph3d`, `/lobby/hierarchy`), poll features, user profiles, and dependency maintenance across all SDKs. A Connector REST API (`GET/PUT/DELETE /api/connectors`) and token refresh (`POST /api/auth/refresh`) endpoint are now documented in the OpenAPI spec. No new WebSocket channel events or REST endpoints were added in this period.
 
-### Key Findings (2026-02-16)
+### Key Findings (2026-03-01)
 
 | Area | Status | Priority |
 |------|--------|----------|
@@ -23,73 +23,45 @@ Since the last review (2026-02-08), the platform has added new attribute types (
 | `update_connector` event | Server supports it, NO SDK exposes it | High |
 | HydrationChannel | New channel, no SDK support or docs | High |
 | SyncComputer (Kuramoto Sync) | Server-side sync data exposed via composite events, no SDK access | Medium |
-| SDK Identification Constants | Inconsistent across SDKs | Medium |
 | Test Coverage | Python SDK tests still empty | Medium |
 | Python Reconnection Logic | Config exists but not implemented | Medium |
 | `request_quality_tier` event | Undocumented in SDKs | Medium |
-| Guided Sessions -- No REST API | New feature, LiveView-only, no mobile SDK access | **High** |
+| Guided Sessions -- No REST API | Feature exists, LiveView-only, no mobile SDK access | **High** |
 | Package Publishing | Not published to registries | Low |
 
-### Changes Since Last Review (2026-02-22 to 2026-02-24)
+### Changes Since Last Review (2026-02-24 to 2026-03-01)
 
 | Change | Impact |
 |--------|--------|
-| Guided Sessions Feature: New `Sensocto.Guidance` Ash domain with `GuidedSession` resource (create, accept, decline, end_session, by_invite_code, active_for_user actions) | **HIGH SDK IMPACT** -- New feature needs REST API endpoints for mobile clients to create, join, and participate in guided sessions |
-| `SessionServer` GenServer: Client API for set_lens, set_focused_sensor, add_annotation, suggest_action, break_away, report_activity, rejoin, end_session, connect, disconnect | Real-time guided navigation state management; mobile clients need a way to call these operations (REST or WebSocket channel) |
-| `SessionSupervisor` DynamicSupervisor: Manages SessionServer lifecycle with Registry-based lookup | Infrastructure for session process management; no direct SDK impact |
-| `GuidedSessionJoinLive`: LiveView for accepting invite codes, sets follower and starts SessionServer | Currently browser-only; mobile needs equivalent REST endpoint for invite code acceptance |
-| PubSub topic `guidance:{session_id}`: Broadcasts guided_lens_changed, guided_sensor_focused, guided_annotation, guided_suggestion, guided_break_away, guided_drift_back, guided_rejoin, guided_presence, guided_ended | Mobile followers need real-time event delivery; requires a new WebSocket channel or SSE endpoint |
-| PubSub topic `user:{user_id}:guidance`: Broadcasts guidance_invitation_accepted | Guide notification when follower joins; mobile guides need this notification |
+| Rust SDK: `bytes` bumped 1.11.0 to 1.11.1 (PR #63) | Minor dependency maintenance, no API change |
+| Rust SDK: `SDK_NAME` constant added as `"sensocto-rust"` (PR #49) | Rust now has identification constant; Unity, Python, TypeScript still lack one |
+| Three.js SDK: `rollup` bumped 4.55.1 to 4.59.0 (PR #64) | Build tooling update, no runtime change |
+| Three.js SDK: `esbuild`, `@vitest/coverage-v8`, `vitest` bumped (PR #55) | Dev dependency update, no runtime change |
+| Python SDK: `aiohttp` bumped 3.10.11 to 3.13.3 (PR #54) | Runtime dependency update; drops Python 3.8 support in aiohttp itself |
+| Python SDK: minimum Python version bumped to 3.9 in `pyproject.toml` | `requires-python = ">=3.9"` now; classifiers still list 3.8 (stale) |
+| Python SDK: `uv.lock` revision updated from 1 to 3, drops Python <3.9 resolution markers | Lock file simplified, no longer resolves for Python 3.8 |
+| New lobby routes: `/lobby/graph3d`, `/lobby/hierarchy` | LiveView-only, no SDK impact |
+| Guided session improvements (commit `ce729b2`: "improvements to guide, whiteboard") | Continued iteration on guided sessions; still LiveView-only |
+| User profiles, graph views, privacy features (commit `e53fb41`) | LiveView-only, no SDK impact |
+| Audio/MIDI system improvements | Client-side JS only, no SDK impact |
+| Poll system | Collaboration domain; no REST API endpoints for polls yet |
+| Chat component fixes | LiveView-only, no SDK impact |
+| `ash_admin` bumped 0.13.24 to 0.13.26 (PR #72) | Admin UI only, no SDK impact |
 
-### Changes Since Last Review (2026-02-20 to 2026-02-22)
+### Python SDK: Version Mismatch Warning
 
-| Change | Impact |
-|--------|--------|
-| Connector Persistence (#39): Migrated from ETS to Postgres (AshPostgres.DataLayer) with user ownership | Connector model now database-backed; SDKs sending connector data will benefit from persistence across restarts |
-| OpenAPI Spec (#32): Added OpenApiSpex controller specs to RoomController, RoomTicketController, ConnectorController; `Paths.from_router/1` in api_spec.ex | Connector schemas now in OpenAPI spec; SDK code generators can produce typed connector models |
-| Connector REST API (#40): New controller with index/show/update/delete, routes GET/PUT/DELETE `/api/connectors(/:id)` | **HIGH SDK IMPACT** -- All SDKs should add connector CRUD methods. New endpoints: `GET /api/connectors`, `GET /api/connectors/:id`, `PUT /api/connectors/:id`, `DELETE /api/connectors/:id` |
-| Connector Broadcasts (#43): User-scoped PubSub on `user:#{user_id}:connectors` with events connector_online/offline, sensor_attached/detached | SDKs subscribing to user-scoped topics can receive real-time connector status changes |
-| Token Refresh (#37): HttpOnly cookie auth plug, POST `/api/auth/refresh` endpoint | SDKs should implement token refresh flow via POST `/api/auth/refresh`; mobile SDKs benefit from cookie-based auth |
-| Hierarchy View (#41): `/lobby/hierarchy` route with collapsible User > Sensor tree | No direct SDK impact -- LiveView-only feature |
-| My Devices View (#42): `/devices` route with device cards, inline rename, forget with confirmation | No direct SDK impact -- LiveView-only feature, but consumes Connector API |
-| CRDT Sessions (#36): LWW CRDT document_worker.ex with per-user GenServer, multi-device tracking | No SDK impact currently -- internal session state management |
-| E2E Tests (#35): 3 new feature test files (auth_flow, room, lobby_navigation); total 7 feature test files | No SDK impact -- test infrastructure |
+The `pyproject.toml` now specifies `requires-python = ">=3.9"` and the `uv.lock` no longer resolves dependencies for Python 3.8. However, the classifiers list still includes `"Programming Language :: Python :: 3.8"` and the tool configs (`[tool.black]`, `[tool.ruff]`, `[tool.mypy]`) still target Python 3.8. These should be updated to 3.9 for consistency:
 
-### Changes Since Last Review (2026-02-16 to 2026-02-20)
-
-| Change | Impact |
-|--------|--------|
-| Audio/MIDI system (client-side JS) | No SDK impact -- client-only feature consuming existing SyncComputer data |
-| Collaboration domain (Poll, PollOption, Vote) | No SDK impact unless REST API endpoints are added for polls |
-| User Profiles/Social Graph | No SDK impact unless REST API endpoints are added |
-| Delta Encoding module (`delta_encoder.ex`, 148 lines) | Feature-flagged off. When enabled, SDKs need delta decoders (unchanged from prior assessment) |
-| Health Check endpoint (`/health/live`, `/health/ready`) | Low SDK impact -- useful for SDK health monitoring utilities |
-| Graph and lobby UI improvements | No SDK impact -- LiveView-only |
-
-### Changes Since Prior Review (2026-02-08 to 2026-02-16)
-
-| Change | Impact |
-|--------|--------|
-| New attribute types: `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` | SDKs need new model types for eye tracking payloads |
-| New attribute type: `skeleton` (pose tracking with `landmarks` field) | SDKs need skeleton/pose model type |
-| New eye tracking category in `AttributeType.category/1` | New `:eye_tracking` category for organizing attributes |
-| New composite lenses: CompositeGaze, CompositeSkeletons, CompositeBreathing, CompositeHRV | No direct SDK impact (LiveView-only) |
-| New lobby routes: `/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users` | No direct SDK impact (LiveView-only) |
-| `SyncComputer` GenServer for Kuramoto phase synchronization | Server-side breathing/HRV sync computation; could become future API |
-| Shared `SensoctoWeb.LiveHelpers.SensorData` module extracted | Internal refactor, no API change |
-| Attention tracker resilience improvements | More robust attention tracking, no protocol changes |
-| PriorityLens and Router resilience improvements | Internal pipeline hardening, no protocol changes |
-| CircuitBreaker module added | Internal resilience pattern, no API change |
-| Biomimetic modules (CircadianScheduler, HomeostaticTuner, etc.) | Internal bio-inspired resilience, no API change |
-| Guest sessions database index migration | Performance improvement, no API change |
-| Internationalization (i18n) with Gettext (8 languages) | UI only, no API change |
-| Rust SDK dependency bump (bytes 1.11.0 to 1.11.1) | Minor maintenance |
+- `classifiers`: Remove `"Programming Language :: Python :: 3.8"`
+- `[tool.black] target-version`: Change to `["py39", "py310", "py311", "py312"]`
+- `[tool.ruff] target-version`: Change to `"py39"`
+- `[tool.mypy] python_version`: Change to `"3.9"`
 
 ---
 
 ## CRITICAL FINDING: BackpressureConfig Model Mismatch
 
-### Server Payload (sensor_data_channel.ex lines 747-756)
+### Server Payload (sensor_data_channel.ex)
 
 The server's `get_backpressure_config/1` function returns 8 fields:
 
@@ -125,7 +97,7 @@ The server's `get_backpressure_config/1` function returns 8 fields:
 
 **All SDKs** are missing `memory_protection_active`. While `paused` is the actionable field (clients should stop sending when `paused: true`), `memory_protection_active` provides valuable diagnostic information about why backpressure is being applied.
 
-### Pause Conditions (from server code lines 718-735)
+### Pause Conditions (from server code)
 
 The server sets `paused: true` under two conditions:
 1. **Memory protection active** AND attention is `low` or `none`
@@ -135,7 +107,7 @@ When memory protection is active, non-paused sensors (high/medium attention) rec
 
 ### Behavioral Comparison of paused Handling
 
-**Rust SDK** (`clients/rust/src/models.rs` lines 75-130, `channel.rs`):
+**Rust SDK** (`clients/rust/src/models.rs`, `channel.rs`):
 - `BackpressureConfig` includes `paused`, `system_load` (as `SystemLoadLevel` enum), `load_multiplier`
 - `should_pause()` and `effective_batch_window()` helper methods
 - Checks `paused` before `send_measurement` (returns error)
@@ -144,76 +116,68 @@ When memory protection is active, non-paused sensors (high/medium attention) rec
 - Exposes `is_paused()` async method
 - Force-flushes on close even when paused
 
-**TypeScript SDK** (`clients/threejs/src/models.ts` lines 126-212, `sensor.ts`):
+**TypeScript SDK** (`clients/threejs/src/models.ts`, `sensor.ts`):
 - `BackpressureConfig` interface includes `paused`, `systemLoad`, `loadMultiplier`
 - `parseBackpressureConfig()` correctly maps all fields from server payload
 - `isPaused` getter on SensorStream
 - Checks `paused` before `sendMeasurement`, `addToBatch`, `flushBatch`
 - Force-flush on close even when paused
 
-**Unity SDK** (`clients/unity/SensoctoSDK/Runtime/Models.cs` lines 127-186): No `paused` field in `BackpressureConfig`, `FromPayload()` only parses 4 fields, no pause checks in `BackpressureManager`
+**Unity SDK** (`clients/unity/SensoctoSDK/Runtime/Models.cs`): No `paused` field in `BackpressureConfig`, `FromPayload()` only parses 4 fields, no pause checks in `BackpressureManager`
 
-**Python SDK** (`clients/python/sensocto/models.py` lines 82-104): No `paused` field in `BackpressureConfig`, `from_payload()` only parses 4 fields, no pause checks anywhere
+**Python SDK** (`clients/python/sensocto/models.py`): No `paused` field in `BackpressureConfig`, `from_payload()` only parses 4 fields, no pause checks anywhere
 
 ---
 
-## NEW FINDING: Attribute Type Expansion (Eye Tracking + Skeleton)
+## FINDING: Attribute Type Expansion (Eye Tracking + Skeleton)
 
-### New Attribute Types Added Since Last Review
+### New Attribute Types
 
-The `AttributeType` module (`lib/sensocto/types/attribute_type.ex`) now includes 48 attribute types across 8 categories, up from the previously documented set. The following types are new:
+The `AttributeType` module now includes 48 attribute types across 8 categories. The following are the newer types that have no SDK model support:
 
 #### Eye Tracking Category (`:eye_tracking`)
 
-| Type | Payload Fields | Visualization | Description |
-|------|----------------|---------------|-------------|
-| `eye_gaze` | `x`, `y`, `confidence` | Heatmap | Eye gaze direction with confidence score |
-| `eye_blink` | `value` | Event indicator | Blink detection |
-| `eye_worn` | `value` | Indicator | Whether eye tracker is being worn |
-| `eye_aperture` | `left`, `right` | Dual gauge | Eye aperture (openness) per eye |
+| Type | Payload Fields | Description |
+|------|----------------|-------------|
+| `eye_gaze` | `x`, `y`, `confidence` | Eye gaze direction with confidence score |
+| `eye_blink` | `value` | Blink detection |
+| `eye_worn` | `value` | Whether eye tracker is being worn |
+| `eye_aperture` | `left`, `right` | Eye aperture (openness) per eye |
 
 #### Pose/Skeleton Category (within `:motion`)
 
-| Type | Payload Fields | Visualization | Description |
-|------|----------------|---------------|-------------|
-| `skeleton` | `landmarks` | Skeleton visualization | Full body pose tracking landmarks |
+| Type | Payload Fields | Description |
+|------|----------------|-------------|
+| `skeleton` | `landmarks` | Full body pose tracking landmarks |
 
 ### SDK Impact
 
-No SDK currently includes models for these new attribute types. While the SDKs can still receive and forward the raw payload data (they do not strictly validate attribute types), adding typed models would improve developer experience through autocomplete, type safety, and documentation.
+No SDK currently includes models for these attribute types. While the SDKs can still receive and forward the raw payload data (they do not strictly validate attribute types), adding typed models would improve developer experience through autocomplete, type safety, and documentation.
 
-**Recommendation:** Add typed payload models for `EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`, and `Skeleton` to all SDKs.
+### Composite View Coverage
 
-### Simulator Support
-
-The `DataGenerator` module (`lib/sensocto/simulator/data_generator.ex`) includes data generation for the new eye tracking types, and pupil neon simulator scenarios exist at:
-- `config/simulator_scenarios/pupil_neon_large.yaml`
-- `config/simulator_scenarios/pupil_neon_small.yaml`
+The server's `has_composite_view?/1` function recognizes these attribute types for composite (multi-sensor) visualization: `heartrate`, `hr`, `imu`, `geolocation`, `ecg`, `battery`, `spo2`, `skeleton`, `respiration`, `hrv`, `eye_gaze`, `eye_aperture`.
 
 ---
 
-## NEW FINDING: Server-Side Synchronization Computing
+## FINDING: Server-Side Synchronization Computing
 
 ### SyncComputer (Kuramoto Phase Synchronization)
 
-A new `Sensocto.Bio.SyncComputer` GenServer computes real-time interpersonal physiological synchronization using the Kuramoto order parameter. This is a demand-driven system that only activates when viewers are present.
+A `Sensocto.Bio.SyncComputer` GenServer computes real-time interpersonal physiological synchronization using the Kuramoto order parameter. This is a demand-driven system that only activates when viewers are present.
 
 | Aspect | Details |
 |--------|---------|
 | Location | `lib/sensocto/bio/sync_computer.ex` |
 | Algorithm | Kuramoto order parameter with exponential smoothing (alpha=0.15) |
 | Data sources | Breathing (`respiration`) and HRV (`hrv`) sensors |
-| Buffer sizes | Breathing: 50 phases, HRV: 20 phases |
 | Output | Stored as attributes under `__composite_sync` sensor in `AttributeStoreTiered` |
-| Demand-driven | Only subscribes to sensor data when viewers are registered |
 
 **SDK Impact:** Currently internal only, exposed via LiveView composite events. If REST endpoints are added for sync data, SDKs will need new models.
 
-**Recommendation:** When sync metrics become available via API, add a `SyncMetrics` model with `order_parameter` (0.0-1.0) to the Python SDK (primary research audience).
-
 ---
 
-## NEW FINDING: Guided Sessions -- API Surface for Mobile Clients
+## FINDING: Guided Sessions -- API Surface for Mobile Clients
 
 ### Overview
 
@@ -228,7 +192,6 @@ The Guided Sessions feature enables a **guide** to lead a **follower** through t
 | `SessionServer` | `lib/sensocto/guidance/session_server.ex` | GenServer managing real-time state |
 | `SessionSupervisor` | `lib/sensocto/guidance/session_supervisor.ex` | DynamicSupervisor with Registry lookup |
 | `GuidedSessionJoinLive` | `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView for accepting invites |
-| `GuidanceRegistry` | Elixir Registry | Process lookup by session_id |
 
 ### Ash Resource: GuidedSession
 
@@ -254,12 +217,12 @@ The Guided Sessions feature enables a **guide** to lead a **follower** through t
 | `:accept` | update | (none) | Sets status `:active`, sets `started_at` |
 | `:decline` | update | (none) | Sets status `:declined`, sets `ended_at` |
 | `:end_session` | update | (none) | Sets status `:ended`, sets `ended_at` |
-| `:by_invite_code` | read | arg `invite_code` | Finds pending/active session by code (get?) |
+| `:by_invite_code` | read | arg `invite_code` | Finds pending/active session by code |
 | `:active_for_user` | read | arg `user_id` | Lists active sessions where user is guide or follower |
 
 ### SessionServer: Real-Time State
 
-The SessionServer GenServer manages the live state of an active session. It is registered via `Sensocto.GuidanceRegistry` and started by `SessionSupervisor`.
+The SessionServer GenServer manages the live state of an active session.
 
 **Client API (GenServer calls/casts):**
 
@@ -293,77 +256,46 @@ The SessionServer GenServer manages the live state of an active session. It is r
 
 ### Current Gap: No REST or WebSocket API for Mobile
 
-The Guided Session feature is currently accessible only through:
-1. **LiveView** (browser) -- LobbyLive handles all guide/follower interactions via `handle_event` and PubSub
-2. **LiveView** (browser) -- GuidedSessionJoinLive handles invite code acceptance
+There are **no REST endpoints** and **no dedicated WebSocket channel** for guided sessions. The router has no `/api/guidance/*` routes. Mobile SDK support requires:
 
-There are **no REST endpoints** and **no dedicated WebSocket channel** for guided sessions. The router has no `/api/guidance/*` routes.
+1. REST endpoints for session lifecycle (create, accept, decline, end, lookup by invite code)
+2. A WebSocket channel (`guidance:{session_id}`) for real-time event delivery (lens changes, annotations, drift-back, presence)
+3. SDK models for `GuidedSession` and `GuidedSessionState`
 
-### Recommended REST API Endpoints for Mobile SDKs
-
-The following endpoints would enable full mobile participation in guided sessions:
+### Recommended REST API Endpoints
 
 #### Session Lifecycle (Guide)
 
-| Method | Path | Purpose | Maps To |
-|--------|------|---------|---------|
-| POST | `/api/guidance/sessions` | Create a new guided session | `GuidedSession` `:create` action |
-| GET | `/api/guidance/sessions/:id` | Get session details + state | `Ash.get` + `SessionServer.get_state` |
-| GET | `/api/guidance/sessions/active` | List active sessions for current user | `GuidedSession` `:active_for_user` action |
-| DELETE | `/api/guidance/sessions/:id` | End a session | `SessionServer.end_session` |
-
-**POST `/api/guidance/sessions` request:**
-```json
-{
-  "room_id": "optional-uuid",
-  "drift_back_seconds": 15
-}
-```
-
-**POST `/api/guidance/sessions` response:**
-```json
-{
-  "id": "session-uuid",
-  "status": "pending",
-  "invite_code": "X7K9M2",
-  "guide_user_id": "current-user-uuid",
-  "drift_back_seconds": 15,
-  "created_at": "2026-02-24T10:00:00Z"
-}
-```
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/guidance/sessions` | Create a new guided session |
+| GET | `/api/guidance/sessions/:id` | Get session details + state |
+| GET | `/api/guidance/sessions/active` | List active sessions for current user |
+| DELETE | `/api/guidance/sessions/:id` | End a session |
 
 #### Session Lifecycle (Follower)
 
-| Method | Path | Purpose | Maps To |
-|--------|------|---------|---------|
-| GET | `/api/guidance/sessions/by-code/:code` | Look up session by invite code | `GuidedSession` `:by_invite_code` action |
-| POST | `/api/guidance/sessions/:id/accept` | Accept invitation and join | `Ash.update` `:accept` + start SessionServer |
-| POST | `/api/guidance/sessions/:id/decline` | Decline invitation | `Ash.update` `:decline` |
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/guidance/sessions/by-code/:code` | Look up session by invite code |
+| POST | `/api/guidance/sessions/:id/accept` | Accept invitation and join |
+| POST | `/api/guidance/sessions/:id/decline` | Decline invitation |
 
-#### Real-Time Guide Actions
+#### Real-Time Actions (via WebSocket channel or REST)
 
-| Method | Path | Purpose | Maps To |
-|--------|------|---------|---------|
-| POST | `/api/guidance/sessions/:id/lens` | Set current lens | `SessionServer.set_lens` |
-| POST | `/api/guidance/sessions/:id/focus` | Focus on a sensor | `SessionServer.set_focused_sensor` |
-| POST | `/api/guidance/sessions/:id/annotate` | Add annotation | `SessionServer.add_annotation` |
-| POST | `/api/guidance/sessions/:id/suggest` | Suggest action to follower | `SessionServer.suggest_action` |
-
-#### Real-Time Follower Actions
-
-| Method | Path | Purpose | Maps To |
-|--------|------|---------|---------|
-| POST | `/api/guidance/sessions/:id/break-away` | Stop following temporarily | `SessionServer.break_away` |
-| POST | `/api/guidance/sessions/:id/rejoin` | Resume following | `SessionServer.rejoin` |
-| POST | `/api/guidance/sessions/:id/activity` | Report activity (reset drift timer) | `SessionServer.report_activity` |
+| Method | Path | Role | Purpose |
+|--------|------|------|---------|
+| POST | `/api/guidance/sessions/:id/lens` | Guide | Set current lens |
+| POST | `/api/guidance/sessions/:id/focus` | Guide | Focus on a sensor |
+| POST | `/api/guidance/sessions/:id/annotate` | Guide | Add annotation |
+| POST | `/api/guidance/sessions/:id/suggest` | Guide | Suggest action |
+| POST | `/api/guidance/sessions/:id/break-away` | Follower | Stop following temporarily |
+| POST | `/api/guidance/sessions/:id/rejoin` | Follower | Resume following |
+| POST | `/api/guidance/sessions/:id/activity` | Follower | Report activity (reset drift timer) |
 
 ### Recommended WebSocket Channel for Real-Time Events
 
-REST endpoints alone are insufficient for the follower experience. The follower needs to receive real-time push events (lens changes, annotations, drift-back, presence). Two options:
-
-**Option A: Dedicated Guidance Channel (Recommended)**
-
-Add a new Phoenix channel topic `guidance:{session_id}` on the existing UserSocket. This mirrors how `call:{room_id}` works for WebRTC signaling.
+REST endpoints alone are insufficient for the follower experience. A dedicated Guidance Channel is recommended:
 
 ```elixir
 # In user_socket.ex
@@ -384,126 +316,19 @@ Channel events would map directly to existing PubSub events:
 | `presence` | `{guide_connected, follower_connected, following}` | `:guided_presence` |
 | `ended` | `{ended_by: string}` | `:guided_ended` |
 
-Client-to-server events could also be routed through the channel, making the REST action endpoints optional:
-
-| Client-to-Server Event | Role | Payload |
-|------------------------|------|---------|
-| `set_lens` | Guide | `{lens: string}` |
-| `set_focused_sensor` | Guide | `{sensor_id: string}` |
-| `add_annotation` | Guide | `{text: string, ...}` |
-| `suggest_action` | Guide | `{action: string}` |
-| `break_away` | Follower | (empty) |
-| `report_activity` | Follower | (empty) |
-| `rejoin` | Follower | (empty) |
-| `end_session` | Either | (empty) |
-
-**Option B: Bridge Channel with guidance topic**
-
-Use the existing BridgeChannel to subscribe to `guidance:{session_id}` PubSub topic. Simpler but less structured -- events arrive as raw PubSub tuples rather than typed channel messages.
-
-### SDK Implementation Recommendations
-
-#### All SDKs: GuidedSession Model
-
-```typescript
-// TypeScript example -- adapt for each language
-interface GuidedSession {
-  id: string;
-  status: "pending" | "active" | "ended" | "declined";
-  guide_user_id: string;
-  follower_user_id: string | null;
-  room_id: string | null;
-  invite_code: string;
-  drift_back_seconds: number;
-  started_at: string | null;
-  ended_at: string | null;
-}
-
-interface GuidedSessionState {
-  session_id: string;
-  guide_user_id: string;
-  guide_user_name: string;
-  follower_user_id: string | null;
-  follower_user_name: string;
-  room_id: string | null;
-  current_lens: string;
-  focused_sensor_id: string | null;
-  annotations: Annotation[];
-  suggested_action: any | null;
-  follower_connected: boolean;
-  following: boolean;
-  guide_connected: boolean;
-}
-
-interface Annotation {
-  id: string;
-  text?: string;
-  [key: string]: any;
-}
-```
-
-#### SDK Priority for Guided Sessions
-
-| SDK | Priority | Rationale |
-|-----|----------|-----------|
-| Unity/C# | **High** | Primary mobile client for guided sensor experiences |
-| TypeScript | **High** | Web companion app, could act as guide while Unity follower is on mobile |
-| Python | Medium | Research tooling; guides may use Python scripts to programmatically lead sessions |
-| Rust | Low | Embedded/IoT clients unlikely to participate in guided sessions |
-
-#### Minimum Viable SDK Methods (Guide)
-
-```
-createGuidedSession(roomId?, driftBackSeconds?) -> GuidedSession
-getActiveGuidedSessions() -> GuidedSession[]
-setGuidedLens(sessionId, lens) -> void
-setGuidedFocus(sessionId, sensorId) -> void
-addGuidedAnnotation(sessionId, annotation) -> void
-suggestGuidedAction(sessionId, action) -> void
-endGuidedSession(sessionId) -> void
-onGuidedPresenceChanged(callback) -> unsubscribe
-onGuidedFollowerBreakAway(callback) -> unsubscribe
-onGuidedFollowerRejoin(callback) -> unsubscribe
-```
-
-#### Minimum Viable SDK Methods (Follower)
-
-```
-lookupGuidedSession(inviteCode) -> GuidedSession
-acceptGuidedSession(sessionId) -> GuidedSessionState
-declineGuidedSession(sessionId) -> void
-breakAway(sessionId) -> void
-rejoin(sessionId) -> GuidedSessionState (with current lens + focus)
-reportActivity(sessionId) -> void (fire-and-forget, resets drift timer)
-endGuidedSession(sessionId) -> void
-onGuidedLensChanged(callback) -> unsubscribe
-onGuidedSensorFocused(callback) -> unsubscribe
-onGuidedAnnotation(callback) -> unsubscribe
-onGuidedSuggestion(callback) -> unsubscribe
-onGuidedDriftBack(callback) -> unsubscribe
-onGuidedSessionEnded(callback) -> unsubscribe
-onGuidedPresenceChanged(callback) -> unsubscribe
-```
-
 ### Mobile UX Considerations
 
 1. **Invite Code Entry**: The 6-character code uses an unambiguous alphabet (no O/0/I/1). Mobile SDKs should provide a dedicated invite code input with uppercase filtering and validation.
-
-2. **Drift-Back Timer**: When the follower breaks away, they have `drift_back_seconds` (default 15s) before being pulled back to the guide's view. Mobile SDKs should expose this countdown so the UI can show a timer.
-
-3. **Idle Timeout**: If the guide disconnects for 5 minutes, the session auto-ends. Mobile clients should handle this gracefully, especially on poor network connections where the guide may appear to disconnect briefly.
-
-4. **Presence Tracking**: The `connect`/`disconnect` cast calls should be sent on app foreground/background transitions, not just on socket connect/disconnect, to give accurate presence on mobile.
-
-5. **Offline Resilience**: If the follower loses connectivity briefly, they should rejoin the guidance channel on reconnect and request the current state via `get_state` to resynchronize.
+2. **Drift-Back Timer**: When the follower breaks away, they have `drift_back_seconds` (default 15s) before being pulled back. Mobile SDKs should expose this countdown.
+3. **Idle Timeout**: If the guide disconnects for 5 minutes, the session auto-ends. Mobile clients should handle this gracefully.
+4. **Presence Tracking**: The `connect`/`disconnect` cast calls should be sent on app foreground/background transitions.
+5. **Offline Resilience**: If the follower loses connectivity briefly, they should rejoin the guidance channel on reconnect and request current state via `get_state`.
 
 ---
 
-## DX Deep Dive Analysis (2026-02-06, updated 2026-02-16)
+## DX Deep Dive Analysis
 
 ### New Developer Onboarding Friction Assessment
-
-After a detailed code review of the server-side implementation, the following friction points were identified for new developers trying to integrate with Sensocto:
 
 #### Critical Friction Points
 
@@ -511,7 +336,7 @@ After a detailed code review of the server-side implementation, the following fr
 |-------|----------|--------|
 | **Phoenix Channel Protocol Knowledge Required** | High | Developers must understand Phoenix-specific message formats (`ref`, `join_ref`, heartbeat protocol) |
 | **Undocumented Backpressure Response Contract** | High | `backpressure_config` events pushed to clients but no guidance on how clients should respond |
-| **Memory Protection Protocol Undocumented** | Medium | System can activate memory protection mode that pauses low-priority sensors - clients need to handle gracefully |
+| **Memory Protection Protocol Undocumented** | Medium | System can activate memory protection mode that pauses low-priority sensors |
 | **Guest Token Format Secret** | Medium | Guest tokens use `guest:{id}:{token}` format but this is not documented externally |
 | **Attribute Type Validation** | Medium | 48 valid attribute types but no client-side validation utilities in SDKs |
 
@@ -521,12 +346,11 @@ After a detailed code review of the server-side implementation, the following fr
 |---------|---------------|----------|
 | **OpenAPI Spec** | Full spec with Swagger UI | `/api/openapi`, `/swaggerui` |
 | **Type System** | Comprehensive `AttributeType` module (48 types) | `lib/sensocto/types/attribute_type.ex` |
-| **Safe Key Validation** | Prevents atom exhaustion attacks | `lib/sensocto/types/safe_keys.ex` |
-| **BLE UUID Mappings** | 80+ Bluetooth characteristic mappings | `assets/svelte/bluetooth-utils.js` |
 | **Health Endpoints** | Kubernetes-ready liveness/readiness | `/health/live`, `/health/ready` |
 | **Rate Limiting** | ETS-based sliding window with headers | `lib/sensocto_web/plugs/rate_limiter.ex` |
-| **Internationalization** | Gettext with 8 languages (en, de, es, fr, gsw, ja, pt_BR, zh) | `priv/gettext/` |
-| **Shared Helpers** | `SensorData` module for sensor grouping and enrichment | `lib/sensocto_web/live/helpers/sensor_data.ex` |
+| **Internationalization** | Gettext with 8 languages | `priv/gettext/` |
+| **Connector REST API** | Full CRUD with OpenAPI specs | `/api/connectors` |
+| **Token Refresh** | HttpOnly cookie auth + refresh endpoint | `/api/auth/refresh` |
 
 ### Client-Side Resilience Patterns Required
 
@@ -535,17 +359,13 @@ Based on server analysis, clients MUST implement these patterns:
 #### 1. Backpressure Response Handler
 
 ```javascript
-// Required client implementation
 channel.on("backpressure_config", (config) => {
   if (config.paused) {
-    // MUST stop sending data - queue locally
     pauseDataTransmission();
     startLocalQueue();
   } else if (config.memory_protection_active) {
-    // Heavy throttling active - reduce rate 5x
     setThrottleMultiplier(5.0);
   } else {
-    // Normal operation - follow recommendations
     setBatchWindow(config.recommended_batch_window);
     setBatchSize(config.recommended_batch_size);
   }
@@ -554,28 +374,11 @@ channel.on("backpressure_config", (config) => {
 
 #### 2. Reconnection with Channel Rejoin
 
-The server uses Phoenix Presence to track connections. On reconnect, clients must:
+On reconnect, clients must:
 1. Re-establish WebSocket connection with exponential backoff
 2. Re-join ALL previously joined channels with same parameters
 3. Re-subscribe to PubSub topics (attention, system load)
 4. Request fresh backpressure config via `:send_backpressure_config`
-
-#### 3. Offline-First Data Queue
-
-For sensor data reliability:
-```
-On disconnect:
-  1. Detect disconnect (heartbeat failure or close event)
-  2. Start local IndexedDB/SQLite queue
-  3. Continue collecting measurements locally
-  4. Track queue depth for memory management
-
-On reconnect:
-  1. Rejoin channel
-  2. Wait for backpressure_config
-  3. If not paused: drain queue with rate limiting
-  4. Resume real-time streaming
-```
 
 ### API Resilience Assessment
 
@@ -586,28 +389,6 @@ On reconnect:
 | **API Versioning** | None | Implement `/api/v1/` prefix |
 | **Idempotency Keys** | Not supported | Add for POST/PUT mutations |
 | **Error Codes** | Strings only | Add numeric codes for programmatic handling |
-| **Rate Limiting Scope** | POST only | Only rate-limits POST requests; GET requests bypass |
-
-### Recommended Error Code Structure
-
-Current error responses use simple reason strings:
-```elixir
-{:error, %{reason: "unauthorized"}}
-```
-
-Proposed standardized structure:
-```json
-{
-  "error": {
-    "code": "AUTH_TOKEN_EXPIRED",
-    "message": "Bearer token has expired",
-    "category": "auth",
-    "retryable": true,
-    "retry_after_ms": 0,
-    "request_id": "req_abc123def456"
-  }
-}
-```
 
 ### SDK Testing Infrastructure Audit
 
@@ -624,31 +405,12 @@ Proposed standardized structure:
 
 ## Planned Work: SDK and API Implications
 
-This section analyzes all planned architecture changes and their impact on client SDKs, API surface, and developer experience.
-
 ### 1. Room Persistence: PostgreSQL to In-Memory + Iroh Docs
 
 **Plan:** `PLAN-room-iroh-migration.md`
 **Status:** Planned
 
-**SDK Impact: MEDIUM**
-
-The room persistence layer is migrating from PostgreSQL (Ash/Ecto) to an in-memory GenServer with Iroh document storage for distributed state synchronization.
-
-| Aspect | Current | After Migration | SDK Change Required |
-|--------|---------|-----------------|---------------------|
-| Room CRUD API | REST via Ash | REST via RoomStore GenServer | None -- API contract stays the same |
-| Room data model | Ash Resource | Plain map with same fields | None -- JSON shape identical |
-| Room membership | Join table in PostgreSQL | In-memory map + Iroh sync | None -- REST API same |
-| Startup behavior | Rooms available immediately | Rooms available after Iroh hydration | SDKs may see brief period of empty room lists on cold start |
-
-**Developer Experience Implications:**
-- Rooms may take 1-3 seconds to appear after a server cold start (Iroh hydration is async)
-- SDKs should handle empty room lists gracefully during startup
-- No new API endpoints; existing `/api/rooms/*` routes remain unchanged
-- HydrationChannel (`hydration:room:*`) is the client-side complement to this -- SDKs that want to participate in room snapshot persistence would need to implement the snapshot offer/data protocol
-
-**Recommendation:** Document in SDK READMEs that room lists may be temporarily empty during server startup. No code changes needed.
+**SDK Impact: MEDIUM** -- Rooms may take 1-3 seconds to appear after a server cold start (Iroh hydration is async). SDKs should handle empty room lists gracefully. No API endpoint changes.
 
 ### 2. Adaptive Video Quality for Massive Scale Calls
 
@@ -657,22 +419,18 @@ The room persistence layer is migrating from PostgreSQL (Ash/Ecto) to an in-memo
 
 **SDK Impact: HIGH -- New channel events already deployed but not documented in SDKs**
 
-This plan introduced attention-based quality tiers for video calls, enabling 100+ participants per room. All backend and frontend components are implemented.
-
-| New Channel Event | Direction | Payload | SDK Coverage |
-|-------------------|-----------|---------|--------------|
-| `speaking_state` | Client -> Server | `{speaking: bool}` | Not in any SDK |
-| `attention_state` | Client -> Server | `{level: "high\|medium\|low"}` | Not in any SDK |
-| `video_snapshot` | Client -> Server | `{data, width, height, timestamp}` | Not in any SDK |
-| `request_quality_tier` | Client -> Server | `{target_user_id, tier}` | Not in any SDK |
-| `tier_changed` | Server -> Client | `{user_id, tier}` | Rust has `QualityChanged` event |
-| `quality_tier_request` | Server -> Client | `{from_user_id, target_user_id, tier}` | Not in any SDK |
-| `participant_audio_changed` | Server -> Client (intercepted) | `{user_id, enabled}` | Rust + TypeScript have events |
-| `participant_video_changed` | Server -> Client (intercepted) | `{user_id, enabled}` | Rust + TypeScript have events |
-| `participant_speaking` | Server -> Client (intercepted) | `{user_id, speaking}` | Not in any SDK |
-| `video_snapshot` | Server -> Client (intercepted) | `{user_id, data, ...}` | Not in any SDK |
+| New Channel Event | Direction | SDK Coverage |
+|-------------------|-----------|--------------|
+| `speaking_state` | Client -> Server | Not in any SDK |
+| `attention_state` | Client -> Server | Not in any SDK |
+| `video_snapshot` | Client -> Server | Not in any SDK |
+| `request_quality_tier` | Client -> Server | Not in any SDK |
+| `tier_changed` | Server -> Client | Rust has `QualityChanged` event |
+| `quality_tier_request` | Server -> Client | Not in any SDK |
+| `participant_speaking` | Server -> Client | Not in any SDK |
 
 **Quality Tiers (already deployed):**
+
 | Tier | Mode | Resolution | Bandwidth |
 |------|------|------------|-----------|
 | `:active` | Full Video | 720p @ 30fps | ~2.5 Mbps |
@@ -680,116 +438,36 @@ This plan introduced attention-based quality tiers for video calls, enabling 100
 | `:viewer` | Snapshot | 240p @ 1fps JPEG | ~50-100 Kbps |
 | `:idle` | Static Avatar | N/A | ~0 |
 
-**Recommendation:** Add `speaking_state`, `attention_state`, `video_snapshot`, `request_quality_tier` methods to all SDK call session classes. Add `tier_changed` and `quality_tier_request` event handlers.
+### 3. Delta Encoding for High-Frequency ECG Data
 
-### 3. Sensor Component Migration (LiveView to LiveComponent)
+**Status:** Planned (feature-flagged off)
 
-**Plan:** `PLAN-sensor-component-migration.md`
-**Status:** Partially implemented (`@use_sensor_components true` flag in LobbyLive)
+**SDK Impact: HIGH** -- When enabled, SDKs need delta decoders:
+- Read 1-byte header (version in lower nibble)
+- Read 8-byte base timestamp (int64 LE)
+- Read 4-byte first value (float32 LE)
+- Read deltas: int8 value delta (0x80 = reset marker) + uint16 timestamp delta (LE)
+- Quantization step: 0.01 mV per int8 unit
 
-**SDK Impact: NONE** -- Purely server-side/frontend architecture change. No WebSocket protocol, REST API, or channel event changes.
+### 4. Distributed Discovery System
 
-### 4. Startup Time Optimization
-
-**Plan:** `PLAN-startup-optimization.md`
-**Status:** IMPLEMENTED (2026-01-31)
-
-**SDK Impact: LOW** -- HTTP server now responsive within 1-2 seconds. `/health/ready` returns faster. Sensor lists populate gradually after start. No protocol changes.
-
-### 5. Delta Encoding for High-Frequency ECG Data
-
-**Plan:** `plans/delta-encoding-ecg.md`
 **Status:** Planned
 
-**SDK Impact: HIGH -- New binary encoding format for ECG data**
+**SDK Impact: MEDIUM** -- New REST endpoints (`GET /api/sensors`, `GET /api/sensors/:id`) when shipped.
 
-Introduces delta encoding for ECG waveform data, reducing bandwidth by approximately 84% (from ~1000 bytes to ~162 bytes for 50 samples).
+### 5. Sensor Scaling Refactor
 
-| Aspect | Details |
-|--------|---------|
-| New event | `composite_measurement_encoded` (LiveView push event) |
-| Encoding format | Binary: 1-byte header + 8-byte base timestamp + 4-byte first value + int8 deltas |
-| Feature flag | `DELTA_ENCODING_ENABLED` env var, disabled by default |
-| Affected data | ECG attribute only (initially) |
-| Backward compatible | Yes -- unencoded path preserved when flag is off |
-
-**SDK Requirements When Delta Encoding Ships:**
-
-1. **All SDKs** need a delta decoder that mirrors `Sensocto.Encoding.DeltaEncoder`:
-   - Read 1-byte header (version in lower nibble)
-   - Read 8-byte base timestamp (int64 LE)
-   - Read 4-byte first value (float32 LE)
-   - Read deltas: int8 value delta (0x80 = reset marker) + uint16 timestamp delta (LE)
-   - Quantization step: 0.01 mV per int8 unit
-
-2. **SDKs receiving sensor data** (subscription mode) must detect `__delta_encoded__: true` in payloads and decode accordingly
-
-3. **SDKs sending ECG data** could optionally encode on the client side for bandwidth savings
-
-**Recommendation:** Prepare delta decoder implementations for each SDK language. Rust: use `byteorder` crate. Python: use `struct` module. Unity: use `BinaryReader`. TypeScript: use `DataView` (already planned).
-
-### 6. Cluster-Wide Sensor Visibility (Horde Migration)
-
-**Plan:** `plans/PLAN-cluster-sensor-visibility.md`
-**Status:** Planned (HIGH priority)
-
-**SDK Impact: LOW** -- Transparent to clients. Migrates sensor registry to Horde for cluster-wide discovery. More sensors visible from any node. No protocol changes.
-
-### 7. Distributed Discovery System
-
-**Plan:** `plans/PLAN-distributed-discovery.md`
-**Status:** Planned (HIGH priority, depends on cluster sensor visibility)
-
-**SDK Impact: MEDIUM -- New Discovery API could become REST endpoints**
-
-Introduces a 4-layer Discovery Service with a public API including `Discovery.list_sensors()`, `Discovery.get_sensor_state()`, and `Discovery.cluster_health()`. Currently internal Elixir API but could power new REST endpoints:
-- `GET /api/sensors` -- powered by `Discovery.list_sensors()`
-- `GET /api/sensors/:id` -- powered by `Discovery.get_sensor_state(id)`
-
-Staleness indicator (`fresh` vs `stale`) in sensor state could be exposed to SDKs.
-
-**Recommendation:** When this plan ships, add corresponding REST endpoints and update all SDKs with sensor listing and discovery methods.
-
-### 8. Sensor Scaling Refactor
-
-**Plan:** `plans/PLAN-sensor-scaling-refactor.md`
 **Status:** Partially implemented (attention-based sharded PubSub is live)
 
-**SDK Impact: MEDIUM -- PubSub topic structure changes affect subscription patterns**
+**SDK Impact: MEDIUM** -- Sensor-specific topic `data:sensor:{sensor_id}` enables direct subscriptions. Per-socket ETS buffers in PriorityLens are implemented. When exposed via API, SDKs will need `subscribeTo(sensorId)` and `requestHistory(sensorId, from, to)` methods.
 
-Major refactor for 1000+ sensor scale: hybrid registry (pg + local), sharded PubSub topics (`data:attention:high/medium/low`, `data:sensor:{id}`), per-socket ETS buffers, sensor-side ring buffers.
+### 6. Research-Grade Synchronization Metrics
 
-New capability: sensor-specific topic `data:sensor:{sensor_id}` enables direct subscriptions. Ring buffers enable `get_buffered_data(from, to)` for historical windows.
-
-**Update:** The sharded PubSub topics (`data:attention:high/medium/low`) are now live in production. The sensor-specific topic `data:sensor:{id}` also exists (used by SyncComputer). The per-socket ETS buffers in PriorityLens are also implemented.
-
-**Recommendation:** When direct sensor subscription is exposed via API, add `subscribeTo(sensorId)` and `requestHistory(sensorId, from, to)` methods to SDKs.
-
-### 9. Research-Grade Synchronization Metrics
-
-**Plan:** `plans/PLAN-research-grade-synchronization.md`
 **Status:** Partially implemented (SyncComputer with Kuramoto order parameter is live)
 
-**SDK Impact: HIGH -- Major new API surface for analysis**
-
-Introduces research-grade interpersonal physiological synchronization metrics (PLV, TLCC, WTC, CRQA, DTW, IRN). Real-time Kuramoto sync is now computed server-side via SyncComputer. Post-hoc analysis runs server-side via Pythonx.
-
-New database schema `sync_reports` stores analysis results. New REST endpoints needed:
+**SDK Impact: HIGH** -- Major new API surface for analysis. New REST endpoints needed:
 - `GET /api/sessions/:id/sync-report` -- Fetch sync analysis results
 - `POST /api/sessions/:id/sync-report` -- Trigger sync report generation
-
-**Recommendation:** When sync reports ship, add `SyncReport` models and API methods to Python SDK (primary research audience). Consider dedicated `sensocto-analysis` Python package.
-
-### 10. TURN Server and Cloudflare Realtime Integration
-
-**Plan:** `plans/PLAN-turn-cloudflare.md`
-**Status:** Partially Complete (module done, secrets not deployed)
-
-**SDK Impact: MEDIUM -- ICE server configuration changes**
-
-Call join response now includes 7 STUN + optional Cloudflare TURN servers. SDKs must pass full `ice_servers` array to `RTCPeerConnection`. TURN enables mobile users behind symmetric NAT/CGNAT.
-
-**Recommendation:** Verify all SDKs correctly propagate `ice_servers` from call join response to WebRTC config.
 
 ### Planned Work Summary: SDK Update Matrix
 
@@ -809,77 +487,9 @@ Call join response now includes 7 STUN + optional Cloudflare TURN servers. SDKs 
 
 ---
 
-## Recent Changes (2026-02-08 to 2026-02-16)
+## Current API Surface
 
-### Server-Side Architecture Changes
-
-#### 1. New Attribute Types: Eye Tracking and Skeleton
-
-**Commits:** `377026d`, `4d12618`
-
-The `AttributeType` module now includes 48 attribute types with a new `:eye_tracking` category containing `eye_gaze`, `eye_blink`, `eye_worn`, and `eye_aperture`. The `skeleton` type for pose tracking was also added to the `:motion` category.
-
-New simulator scenarios for Pupil Neon eye trackers:
-- `config/simulator_scenarios/pupil_neon_large.yaml`
-- `config/simulator_scenarios/pupil_neon_small.yaml`
-
-**Impact on SDKs:** SDKs should add typed models for these new attribute types to provide autocomplete and validation.
-
-#### 2. Server-Side Synchronization Computing (SyncComputer)
-
-**Commits:** `dc7c0ce`, `8fa301e`, `9b2d8ca`
-
-New `Sensocto.Bio.SyncComputer` GenServer implements Kuramoto phase synchronization for breathing and HRV sensors. Demand-driven architecture activates only when viewers are present. Results stored in `AttributeStoreTiered` under `__composite_sync` sensor.
-
-**Impact on SDKs:** None currently. If sync data becomes available via REST API, SDKs will need new models.
-
-#### 3. Biomimetic Resilience Framework
-
-**Commits:** `56c58c7`, `1ba92a1`, `9b2d8ca`
-
-New modules added for bio-inspired system resilience:
-- `Sensocto.Bio.CircadianScheduler` -- Time-based resource management
-- `Sensocto.Bio.HomeostaticTuner` -- Self-regulating parameter adjustment
-- `Sensocto.Bio.NoveltyDetector` -- Anomaly detection
-- `Sensocto.Bio.PredictiveLoadBalancer` -- Predictive load distribution
-- `Sensocto.Bio.ResourceArbiter` -- Resource allocation
-- `Sensocto.Resilience.CircuitBreaker` -- Fault isolation
-
-**Impact on SDKs:** None -- internal resilience mechanisms only.
-
-#### 4. Attention Tracker Hardening
-
-**Commits:** `7cd2179`, `9ae2339`, `9b2d8ca`
-
-Attention tracker received significant resilience improvements including a separate `TableOwner` process for ETS table ownership. This ensures attention tracking survives process restarts.
-
-**Impact on SDKs:** None -- backpressure protocol remains identical.
-
-#### 5. New Composite Lenses and Lobby Views
-
-**Commits:** `377026d`, `8fa301e`, various
-
-New composite lenses added: `CompositeGaze.svelte`, `CompositeSkeletons.svelte`, `CompositeBreathing.svelte`, `CompositeHRV.svelte`, `LobbyGraph.svelte`. New lobby routes: `/lobby/gaze`, `/lobby/graph`, `/lobby/favorites`, `/lobby/users`.
-
-**Impact on SDKs:** None -- LiveView-only features.
-
-#### 6. Shared SensorData Helper Module
-
-**Commit:** Various recent
-
-New `SensoctoWeb.LiveHelpers.SensorData` module extracted from LobbyLive, providing:
-- `group_sensors_by_user/1` -- Groups sensors by connector for graph visualization
-- `enrich_sensors_with_attention/1` -- Adds attention levels to sensor data
-
-Used by both `LobbyLive` and `IndexLive`. Internal refactor with no API impact.
-
----
-
-## 1. Current API Surface
-
-Sensocto provides multiple API entry points for external clients to interact with the platform.
-
-### 1.1 WebSocket Channels (Phoenix Channels)
+### WebSocket Channels (Phoenix Channels)
 
 #### User Socket (`/socket/websocket`)
 
@@ -903,13 +513,14 @@ Sensocto provides multiple API entry points for external clients to interact wit
 | `bridge:control` | BridgeChannel | Iroh bridge control channel |
 | `bridge:topic:{topic}` | BridgeChannel | Subscribe to Phoenix PubSub topics |
 
-### 1.2 REST API Endpoints
+### REST API Endpoints
 
 #### Authentication
 | Method | Path | Controller | Purpose |
 |--------|------|------------|---------|
 | GET/POST | `/api/auth/verify` | MobileAuthController | Verify JWT token |
 | GET | `/api/me` | MobileAuthController | Get current user info |
+| POST | `/api/auth/refresh` | MobileAuthController | Refresh auth token |
 | POST | `/api/auth/debug` | MobileAuthController | Debug token verification (dev only) |
 
 #### Rooms
@@ -922,6 +533,14 @@ Sensocto provides multiple API entry points for external clients to interact wit
 | GET | `/api/rooms/by-code/:code/ticket` | RoomTicketController | Get ticket by join code |
 | POST | `/api/rooms/verify-ticket` | RoomTicketController | Verify room ticket |
 
+#### Connectors
+| Method | Path | Controller | Purpose |
+|--------|------|------------|---------|
+| GET | `/api/connectors` | ConnectorController | List user's connectors |
+| GET | `/api/connectors/:id` | ConnectorController | Get connector with sensors |
+| PUT | `/api/connectors/:id` | ConnectorController | Update connector (rename) |
+| DELETE | `/api/connectors/:id` | ConnectorController | Forget a connector |
+
 #### Guest Authentication
 | Method | Path | Controller | Purpose |
 |--------|------|------------|---------|
@@ -933,27 +552,27 @@ Sensocto provides multiple API entry points for external clients to interact wit
 | GET | `/health/live` | HealthController | Liveness probe (shallow) |
 | GET | `/health/ready` | HealthController | Readiness probe (deep) |
 
-### 1.3 Phoenix LiveView (Browser-Only)
+### Phoenix LiveView (Browser-Only)
 
 LiveView routes require browser sessions with CSRF protection:
 - `/` - Index page with sigma graph preview and rooms
-- `/lobby/*` - Real-time sensor monitoring dashboard (14 sub-routes including new gaze, graph, favorites, users)
-- `/lobby/sensors/:sensor_id` - Single sensor detail view
-- `/lobby/compare` - Multi-sensor comparison view
+- `/lobby/*` - Real-time sensor monitoring dashboard (16 sub-routes: sensors, heartrate, imu, location, ecg, battery, skeleton, breathing, hrv, gaze, favorites, users, graph, graph3d, hierarchy, plus sensor detail and compare)
 - `/rooms/*` - Room management and viewing
 - `/simulator` - Sensor simulation interface
 - `/settings` - User settings
-- `/about` - About page with videos tab
-- `/system-status` - System status dashboard
+- `/profile` - User profile
+- `/users` - User directory with graph view
+- `/polls` - Collaboration polls
+- `/guide/join` - Guided session invite acceptance
+- `/devices` - My devices page
 - `/ai-chat` - AI chat interface
-- `/sense` - Sensor data capture interface
-- `/playground` - Development playground
+- `/system-status` - System status dashboard
 
 ---
 
-## 2. Client Platforms
+## Client Platforms
 
-### 2.1 Unity/C# SDK
+### Unity/C# SDK
 
 **Location:** `clients/unity/SensoctoSDK/`
 **Status:** Production-ready but missing critical backpressure fields
@@ -962,23 +581,26 @@ LiveView routes require browser sessions with CSRF protection:
 
 **Critical Issues:**
 - BackpressureConfig missing `paused`, `system_load`, `load_multiplier`, `memory_protection_active`
-- `FromPayload()` (Models.cs lines 149-174) only parses 4 of 8 fields
+- `FromPayload()` (Models.cs) only parses 4 of 8 fields
 - `BackpressureManager.cs` has no pause check
 - Missing `SDK_NAME` and `VERSION` constants
 - No models for new attribute types (eye tracking, skeleton)
+- No Connector REST API methods
 
-### 2.2 Rust SDK
+### Rust SDK
 
 **Location:** `clients/rust/`
 **Status:** Most complete SDK alongside TypeScript
 
 **Strengths:** Idiomatic Rust, async tokio, builder pattern, thiserror errors, `SDK_NAME = "sensocto-rust"`, full backpressure with `paused`/`system_load`/`load_multiplier`, `should_pause()` + `effective_batch_window()`, pause checks in all send paths, force-flush on close
 
-**Issues:** Missing `memory_protection_active`, `blocking` feature flag not implemented, examples commented out, no models for new attribute types (eye tracking, skeleton)
+**Issues:** Missing `memory_protection_active`, `blocking` feature flag not implemented, examples commented out, no models for new attribute types (eye tracking, skeleton), no Connector REST API methods
 
-**Recent:** Dependency bump `bytes` 1.11.0 to 1.11.1 (PR #63)
+**Recent Changes:**
+- `bytes` dependency bumped 1.11.0 to 1.11.1 (PR #63, minor maintenance)
+- `SDK_NAME` constant added as `"sensocto-rust"` (PR #49)
 
-### 2.3 Python SDK
+### Python SDK
 
 **Location:** `clients/python/`
 **Status:** Functional but incomplete
@@ -991,25 +613,35 @@ LiveView routes require browser sessions with CSRF protection:
 - Reconnection not implemented (config exists, socket does not use it)
 - Missing `SDK_NAME`
 - No models for new attribute types (eye tracking, skeleton)
+- No Connector REST API methods
 
-### 2.4 TypeScript/Three.js SDK
+**Recent Changes:**
+- `aiohttp` bumped 3.10.11 to 3.13.3 (PR #54) -- significant upgrade
+- Minimum Python version bumped to 3.9 in `requires-python` but tool configs still target 3.8 (inconsistency)
+- `uv.lock` simplified: no longer resolves for Python <3.9
+
+### TypeScript/Three.js SDK
 
 **Location:** `clients/threejs/`
 **Status:** Feature-complete with best backpressure handling
 
 **Strengths:** Full TypeScript, `BackpressureConfig` with `paused`/`systemLoad`/`loadMultiplier`, `parseBackpressureConfig()`, `isPaused` getter, pause checks everywhere, force-flush on close, handler unsubscribe pattern, ESM + CJS
 
-**Issues:** Missing `memory_protection_active`, missing `SDK_NAME`, no models for new attribute types (eye tracking, skeleton)
+**Issues:** Missing `memory_protection_active`, missing `SDK_NAME`, no models for new attribute types (eye tracking, skeleton), no Connector REST API methods
 
-### 2.5 Livebook/Elixir
+**Recent Changes:**
+- `rollup` bumped 4.55.1 to 4.59.0 (PR #64)
+- `esbuild`, `@vitest/coverage-v8`, `vitest` bumped (PR #55)
+
+### Livebook/Elixir
 
 **Status:** Interactive `livebooks/api-developer-experience.livemd` available. Additional livebooks added for resilience assessment, security assessment, and biomimetic resilience. Not formally packaged.
 
 ---
 
-## 3. WebSocket Protocol
+## WebSocket Protocol
 
-### 3.1 Connection Flow
+### Connection Flow
 
 ```
 1. Connect to wss://{server}/socket/websocket
@@ -1019,7 +651,7 @@ LiveView routes require browser sessions with CSRF protection:
 5. Leave / disconnect
 ```
 
-### 3.2 Sensor Data Channel Protocol
+### Sensor Data Channel Protocol
 
 #### Client-to-Server Events
 
@@ -1046,7 +678,7 @@ LiveView routes require browser sessions with CSRF protection:
 }
 ```
 
-### 3.3 Call Channel Protocol
+### Call Channel Protocol
 
 #### Client-to-Server Events
 
@@ -1080,11 +712,11 @@ LiveView routes require browser sessions with CSRF protection:
 | `video_snapshot` | `{user_id, data, ...}` | Snapshot broadcast |
 | `call_ended` | none | Call terminated |
 
-### 3.4 Bridge Channel Protocol
+### Bridge Channel Protocol
 
 Iroh P2P bridge with envelope format (version 1), `publish`/`subscribe`/`unsubscribe`/`heartbeat` events. Optional token-based auth.
 
-### 3.5 Hydration Channel Protocol
+### Hydration Channel Protocol
 
 **Topic:** `hydration:room:{room_id}` (supports `*` wildcard)
 
@@ -1093,7 +725,7 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ---
 
-## 4. Authentication
+## Authentication
 
 | Method | Format | Where Used |
 |--------|--------|-----------|
@@ -1109,7 +741,7 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ---
 
-## 5. Complete Attribute Types Reference (48 Types)
+## Complete Attribute Types Reference (48 Types)
 
 ### By Category
 
@@ -1123,12 +755,8 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 | Activity | `steps`, `calories`, `distance` | 3 |
 | Specialty | `buttplug` | 1 |
 | Eye Tracking | `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` | 4 |
-| **Marine** | `water_temperature`, `sea_surface_temperature`, `salinity`, `ph`, `dissolved_oxygen`, `turbidity`, `depth`, `light_par`, `nitrate`, `phosphate`, `ammonia`, `alkalinity`, `current_speed`, `current_direction`, `wave_height` | Documented in API ref but not in `AttributeType` module |
-| **AI/Inference** | `fish_count`, `species_diversity`, `coral_coverage`, `algae_coverage`, `bleaching_index`, `inference_confidence` | Documented in API ref but not in `AttributeType` module |
 
-**Note:** Marine and AI/Inference types are documented in `docs/api-attributes-reference.md` but are NOT currently in the `@attribute_types` list in `attribute_type.ex`. They would pass through without type validation. SDKs should support them as generic types with `value` payloads.
-
-### New Eye Tracking Payload Fields
+### Eye Tracking Payload Fields
 
 | Type | Fields | Example Payload |
 |------|--------|-----------------|
@@ -1137,7 +765,7 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 | `eye_worn` | `value` | `{"value": true}` |
 | `eye_aperture` | `left`, `right` | `{"left": 0.8, "right": 0.75}` |
 
-### New Skeleton Payload Fields
+### Skeleton Payload Fields
 
 | Type | Fields | Example Payload |
 |------|--------|-----------------|
@@ -1145,7 +773,7 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ---
 
-## 6. Summary Recommendations
+## Summary Recommendations
 
 ### Immediate Actions (Priority: Critical)
 
@@ -1163,29 +791,31 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 9. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
 10. **Add Python SDK tests** -- Currently empty directory
 11. **Expose `update_connector` event in SDKs**
-12. **Document HydrationChannel protocol**
-13. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
-14. **Document adaptive video quality events** in SDK call session classes
+12. **Add Connector REST API methods** to all SDKs (`GET/PUT/DELETE /api/connectors`)
+13. **Fix Python SDK version config inconsistency** -- Update tool configs from 3.8 to 3.9 targets
+14. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
+15. **Document adaptive video quality events** in SDK call session classes
 
 ### Medium-term Actions (Priority: Medium)
 
-13. **Prepare delta decoders** for each SDK ahead of delta encoding rollout
-14. **Publish SDKs** to package registries (crates.io, PyPI, npm, OpenUPM)
-15. **Add `blocking` API** to Rust SDK
-16. **Add sync wrapper** for Python SDK
-17. **Create cross-SDK backpressure handling guide**
-18. **Add sensor listing API** when Distributed Discovery ships
-19. **Document marine/coral attribute types** in SDK attribute enums (currently in docs but not in `AttributeType` module)
+16. **Prepare delta decoders** for each SDK ahead of delta encoding rollout
+17. **Publish SDKs** to package registries (crates.io, PyPI, npm, OpenUPM)
+18. **Add `blocking` API** to Rust SDK
+19. **Add sync wrapper** for Python SDK
+20. **Create cross-SDK backpressure handling guide**
+21. **Add sensor listing API** when Distributed Discovery ships
+22. **Document HydrationChannel protocol** in SDK docs
+23. **Document marine/coral attribute types** in SDK attribute enums (currently in docs but not in `AttributeType` module)
 
 ### Long-term Actions (Priority: Low)
 
-20. **Create Elixir/Livebook SDK** with Kino integration
-21. **Add binary protocol option** for high-frequency data
-22. **Implement API versioning** strategy
-23. **Build developer portal** with interactive docs
-24. **Add WebWorker support** to TypeScript SDK
-25. **Add sync report API** to Python SDK when research sync metrics ship
-26. **Verify ICE server propagation** across all SDKs for TURN support
+24. **Create Elixir/Livebook SDK** with Kino integration
+25. **Add binary protocol option** for high-frequency data
+26. **Implement API versioning** strategy
+27. **Build developer portal** with interactive docs
+28. **Add WebWorker support** to TypeScript SDK
+29. **Add sync report API** to Python SDK when research sync metrics ship
+30. **Verify ICE server propagation** across all SDKs for TURN support
 
 ---
 
@@ -1279,23 +909,23 @@ interface HydrationJoinParams {
 | MobileAuthController | `lib/sensocto_web/controllers/api/mobile_auth_controller.ex` |
 | RoomController | `lib/sensocto_web/controllers/api/room_controller.ex` |
 | RoomTicketController | `lib/sensocto_web/controllers/api/room_ticket_controller.ex` |
+| ConnectorController | `lib/sensocto_web/controllers/api/connector_controller.ex` |
 | HealthController | `lib/sensocto_web/controllers/health_controller.ex` |
 | GuestAuthController | `lib/sensocto_web/controllers/guest_auth_controller.ex` |
 
-### Key Server Modules (New/Updated)
+### Key Server Modules
 
 | Module | Location | Purpose |
 |--------|----------|---------|
 | AttributeType | `lib/sensocto/types/attribute_type.ex` | 48 attribute type definitions |
 | SyncComputer | `lib/sensocto/bio/sync_computer.ex` | Kuramoto phase synchronization |
 | CircuitBreaker | `lib/sensocto/resilience/circuit_breaker.ex` | Fault isolation |
-| AttentionTracker.TableOwner | `lib/sensocto/otp/attention_tracker/table_owner.ex` | ETS table ownership |
-| SensorData Helper | `lib/sensocto_web/live/helpers/sensor_data.ex` | Shared sensor data helpers |
 | Guidance Domain | `lib/sensocto/guidance.ex` | Ash domain for guided sessions |
 | GuidedSession | `lib/sensocto/guidance/guided_session.ex` | Ash resource: session lifecycle + invite codes |
 | SessionServer | `lib/sensocto/guidance/session_server.ex` | GenServer: real-time guide/follower state |
 | SessionSupervisor | `lib/sensocto/guidance/session_supervisor.ex` | DynamicSupervisor for SessionServer processes |
 | GuidedSessionJoinLive | `lib/sensocto_web/live/guided_session_join_live.ex` | LiveView for invite code acceptance |
+| SensorData Helper | `lib/sensocto_web/live/helpers/sensor_data.ex` | Shared sensor data helpers |
 
 ### Documentation
 
@@ -1308,11 +938,10 @@ interface HydrationJoinParams {
 | Attention System | `docs/attention-system.md` |
 | Supervision Tree | `docs/supervision-tree.md` |
 | API Developer Experience Livebook | `livebooks/api-developer-experience.livemd` |
-| Biomimetic Resilience Livebook | `livebooks/biomimetic-resilience.livemd` |
 | OpenAPI Spec Module | `lib/sensocto_web/api_spec.ex` |
 | Rate Limiter | `lib/sensocto_web/plugs/rate_limiter.ex` |
 
 ---
 
 *Report generated by api-client-developer agent*
-*Last review: 2026-02-24*
+*Last review: 2026-03-01*

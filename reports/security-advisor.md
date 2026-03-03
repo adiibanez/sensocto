@@ -1,7 +1,7 @@
 # Security Assessment Report: Sensocto Platform
 
-**Assessment Date:** 2026-02-08 | **Updated:** 2026-02-24
-**Previous Assessment:** 2026-02-22
+**Assessment Date:** 2026-02-08 | **Updated:** 2026-03-01
+**Previous Assessment:** 2026-02-24
 **Assessor:** Security Advisor Agent (Claude Opus 4.6)
 **Platform Version:** Current main branch
 **Risk Framework:** OWASP Top 10 2021 + Elixir/Phoenix Best Practices
@@ -14,24 +14,43 @@ The Sensocto platform demonstrates a **mature security posture** with well-imple
 
 **Overall Security Grade: B+ (Good)**
 
-### Key Changes Since Last Assessment (2026-02-22 to 2026-02-24)
+### Key Changes Since Last Assessment (2026-02-24 to 2026-03-01)
 
 | Change | Impact |
 |--------|--------|
-| Guided Session feature: New `Sensocto.Guidance` domain with invite-code-based session joining, SessionServer GenServer, DynamicSupervisor, and join LiveView | **REVIEW NEEDED**: New feature introduces invite code brute-force surface, PubSub topic access control questions, and authorization checks in SessionServer. See Section 14 for detailed analysis. |
+| Privacy default change: `is_public` now defaults to `false` in User resource + migration | **POSITIVE**: Privacy-by-default is the correct posture. New users are hidden from directory until they opt in. |
+| Profile system expanded: `ProfileLive` with skills, connections, user search, graph visualization | **REVIEW NEEDED**: Authorization gaps in skill/connection management. See M-012, M-013. |
+| User Settings page: new `UserSettingsLive` with privacy toggle, mobile QR linking, locale | **POSITIVE**: Privacy controls are user-facing. Guest guard on `toggle_public` is correct. |
+| Chat component: duplicate PubSub subscription fix via Process dictionary | **POSITIVE**: Prevents duplicate message delivery. No new security surface. |
+| Guest user store: display name uses `phash2` instead of raw guest ID prefix | **POSITIVE**: Eliminates information leakage of guest ID prefix in display names. |
+| Guided session join: action name corrected from `:create` to `:assign_follower` | **POSITIVE**: Fixes potential Ash action mismatch bug noted in previous assessment. |
+| Magic sign-in: locale support added, sign-in guard on custom_sign_in_live | **NEUTRAL**: No security impact from locale addition. Sign-in guard redirects already-authenticated guests. |
+| Dependabot: bumped `actions/github-script` 7->8, `actions/cache` 4->5, `actions/setup-node` 4->6, `actions/upload-artifact` 4->6, `actions/setup-dotnet` 4->5, `ash_admin` 0.13.24->0.13.26, `rollup` 4.55.1->4.59.0 | **POSITIVE**: CI action supply chain kept current. No known CVEs in bumped versions. |
+| Claude PR review workflow: `allowed_bots: "dependabot[bot]"` added | **POSITIVE**: Allows automated review of dependabot PRs without manual trigger. |
 
 **New findings from this review:**
 
 | ID | Severity | Finding | Status |
 |----|----------|---------|--------|
-| M-009 | MEDIUM | Invite code brute-force: no rate limiting on join page lookups | Open |
-| M-010 | MEDIUM | `authorize?: false` on all Guidance Ash operations bypasses policy layer | Open |
-| M-011 | MEDIUM | `String.to_existing_atom` in guide events can crash on unknown atoms | Open |
-| L-004 | LOW | Invite codes never expire (pending codes valid indefinitely) | Open |
-| L-005 | LOW | No limit on concurrent active sessions per guide | Open |
-| L-006 | LOW | Annotations list unbounded (memory growth in SessionServer) | Open |
-| I-001 | INFO | PubSub topic `guidance:#{session_id}` uses UUID -- low enumeration risk | Acceptable |
-| I-002 | INFO | Privacy: guide cannot see follower view when broken away -- correctly implemented | Verified Good |
+| M-012 | MEDIUM | ProfileLive: `remove_skill` and `remove_connection` lack ownership validation | Open |
+| M-013 | MEDIUM | ProfileLive: `String.to_existing_atom(level)` on user-supplied skill level | Open |
+| M-014 | MEDIUM | ProfileLive: user search exposes all public users' emails to authenticated users | Open |
+| L-007 | LOW | UserSettingsLive: locale redirect uses unsanitized locale in URL | Open |
+| L-008 | LOW | ChatComponent: no message length or rate limiting on chat messages | Open |
+| I-003 | INFO | SearchIndex correctly filters users by `is_public == true` | Verified Good |
+| I-004 | INFO | Privacy default changed to `false` -- aligns with GDPR/privacy-by-default | Verified Good |
+
+**Resolved from previous assessment:**
+
+| ID | Status | Notes |
+|----|--------|-------|
+| (partial) M-011 context | IMPROVED | `lobby_live.ex` still uses `String.to_existing_atom` in many places, but `profile_live.ex` now uses `safe_atom/2` whitelist for connection types. Mixed progress. |
+
+### Key Changes Since Last Assessment (2026-02-22 to 2026-02-24)
+
+| Change | Impact |
+|--------|--------|
+| Guided Session feature: New `Sensocto.Guidance` domain with invite-code-based session joining, SessionServer GenServer, DynamicSupervisor, and join LiveView | **REVIEW NEEDED**: New feature introduces invite code brute-force surface, PubSub topic access control questions, and authorization checks in SessionServer. See Section 14 for detailed analysis. |
 
 ### Key Changes Since Last Assessment (2026-02-20 to 2026-02-22)
 
@@ -78,15 +97,20 @@ The Sensocto platform demonstrates a **mature security posture** with well-imple
 | M-006 | MEDIUM | /dev/mailbox route not gated | **RESOLVED**: behind `dev_routes` |
 | M-007 | MEDIUM | Rate limiter skips GET requests (guest auth is GET) | Open |
 | M-008 | MEDIUM | `Ash.create!` crash on channel write failure | **RESOLVED**: replaced with `Ash.create()` |
+| M-009 | MEDIUM | Guided Session: no rate limiting on invite code lookups | Open |
+| M-010 | MEDIUM | Guided Session: `authorize?: false` on all Ash operations | Open |
+| M-011 | MEDIUM | `String.to_existing_atom` crash risk in multiple LiveViews | Open |
+| M-012 | MEDIUM | ProfileLive: skill/connection deletion lacks ownership check | Open |
+| M-013 | MEDIUM | ProfileLive: `String.to_existing_atom` on user-supplied skill level | Open |
+| M-014 | MEDIUM | ProfileLive: user search exposes emails of all public users | Open |
 | L-001 | LOW | No force_ssl / HSTS | Open |
 | L-002 | LOW | `create_test_user` action accessible via Ash policies bypass | Open (low risk) |
 | L-003 | LOW | No `Plug.Parsers` body size limit configured | Open (low risk) |
-| M-009 | MEDIUM | Guided Session: no rate limiting on invite code lookups | Open |
-| M-010 | MEDIUM | Guided Session: `authorize?: false` on all Ash operations | Open |
-| M-011 | MEDIUM | Guided Session: `String.to_existing_atom` crash risk in guide events | Open |
 | L-004 | LOW | Guided Session: invite codes never expire | Open |
 | L-005 | LOW | Guided Session: no limit on concurrent sessions per guide | Open |
 | L-006 | LOW | Guided Session: unbounded annotations list in SessionServer | Open |
+| L-007 | LOW | UserSettingsLive: unsanitized locale in redirect URL | Open |
+| L-008 | LOW | ChatComponent: no message length or rate limiting | Open |
 
 ---
 
@@ -141,12 +165,25 @@ end
 - Explicit logout invalidates both cookies, preventing persistent access
 - `require_token_presence_for_authentication?` still enables server-side revocation for both token types
 
-**Previous state (now resolved):**
+**Usability Impact:** Transparent to users. The remember_me mechanism silently refreshes sessions in the background. Users who explicitly log out lose persistent access as expected.
+
+### 1.3 Sign-In Guards (NEW -- Feb 2026)
+
+**File:** `lib/sensocto_web/live/custom_sign_in_live.ex`
+
+The custom sign-in page now checks for valid existing guest sessions on mount:
+
 ```elixir
-token_lifetime {3650, :days}  # was: 10 YEARS
+valid_guest? =
+  session["is_guest"] == true and
+    match?({:ok, _}, Sensocto.Accounts.GuestUserStore.get_guest(session["guest_id"]))
+
+if valid_guest? do
+  {:ok, redirect(socket, to: ~p"/lobby")}
+end
 ```
 
-**Usability Impact:** Transparent to users. The remember_me mechanism silently refreshes sessions in the background. Users who explicitly log out lose persistent access as expected.
+**Assessment: Good.** This prevents authenticated guests from seeing the sign-in page, which is the correct UX behavior. The validation checks both the session flag AND the backend store, preventing stale session data from granting access to a deleted guest.
 
 ---
 
@@ -342,114 +379,368 @@ Multi-strategy token verification: JWT bearer tokens via `AshAuthentication.Jwt.
 
 ---
 
-## 6. New Observations (Feb 16, 2026)
+## 6. Privacy and Profile System (NEW -- Mar 2026)
 
-### 6.1 `create_test_user` Action (L-002)
+### 6.1 Privacy Default Change (I-004 -- Verified Good)
 
-**File:** `lib/sensocto/accounts/user.ex` (lines 338-365)
+**File:** `lib/sensocto/accounts/user.ex` (line 482)
+**Migration:** `priv/repo/migrations/20260226195225_default_is_public_to_false.exs`
 
-The `create_test_user` action bypasses AshAuthentication validation and auto-confirms users. It uses `Bcrypt.hash_pwd_salt` directly rather than going through the password strategy.
-
-**Current mitigation:** Ash policies default-deny all non-AshAuthentication interactions. The action is only used in test files (`object3d_player_component_test.exs`, `object3d_player_server_test.exs`).
-
-**Risk:** LOW. The Ash policy layer prevents external callers from invoking this action. However, any code running with `authorize?: false` could create users without proper validation.
-
-**Recommendation:** Add a guard comment or consider using `config :sensocto, :env` to conditionally compile this action only in test.
-
-### 6.2 No Plug.Parsers Body Size Limit (L-003)
-
-**File:** `lib/sensocto_web/endpoint.ex` (lines 81-84)
+The `is_public` attribute now defaults to `false`:
 
 ```elixir
-plug Plug.Parsers,
-  parsers: [:urlencoded, :multipart, :json],
-  pass: ["*/*"],
-  json_decoder: Phoenix.json_library()
-```
-
-No `length` option is specified. The default is 8MB for urlencoded/multipart and 1MB for JSON, which is reasonable for most cases. However, the `pass: ["*/*"]` allows any content type through unparsed.
-
-**Risk:** LOW. Default limits are reasonable. The `pass: ["*/*"]` is standard for Phoenix apps that handle multiple content types.
-
-### 6.3 Shared Helper Module (No Security Impact)
-
-**File:** `lib/sensocto_web/live/helpers/sensor_data.ex`
-
-New helper module `SensoctoWeb.LiveHelpers.SensorData` extracted from lobby/index live views. Contains only data transformation logic (grouping sensors, enriching with attention levels). No security implications.
-
-### 6.4 SyncComputer / Bio Modules (No Security Impact)
-
-Recent resilience improvements to Bio modules, SyncComputer, CircuitBreaker, and attention tracking. These are internal computation modules with no external input surface. No security implications.
-
----
-
-## 7. New Observations and Resolved Findings (Feb 17, 2026)
-
-### 7.1 Remember Me Token Strategy (H-001 -- RESOLVED)
-
-See Section 1.2 for full details. AshAuthentication's built-in `remember_me` strategy was added to `lib/sensocto/accounts/user.ex`. Key points:
-
-- Session tokens: 30-day lifetime (down from 10 years)
-- Remember_me cookie: 365-day lifetime (separate token type)
-- `sign_in_with_remember_me` plug added before `load_from_session` in the browser pipeline
-- `delete_all_remember_me_cookies(:sensocto)` called on explicit logout
-- Transparent to users; silently refreshes sessions when session token expires
-
-**Impact on Authentication Security Score:** Token Lifetime upgraded from D to B+.
-
-### 7.2 Ash.create! Crash Risk Eliminated (M-008 -- RESOLVED)
-
-**File:** `lib/sensocto_web/channels/sensor_data_channel.ex`
-
-**Finding M-008: MEDIUM - `Ash.create!` crash on write failure**
-
-The channel previously used `Ash.create!` (bang variant) when persisting sensor data events. If the database write failed for any reason -- connection loss, constraint violation, transient error -- the channel process would crash with an unhandled exception.
-
-**Previous code:**
-```elixir
-Ash.create!(SomeResource, params, authorize?: false)
-```
-
-**Resolution:** Replaced with `Ash.create()` (non-bang) with proper error handling:
-```elixir
-case Ash.create(SomeResource, params, authorize?: false) do
-  {:ok, _record} -> :ok
-  {:error, reason} -> Logger.error("Failed to persist sensor event: #{inspect(reason)}")
+attribute :is_public, :boolean do
+  allow_nil? false
+  default false  # was: true
 end
 ```
 
-**Security benefit:** Channel process no longer crashes on database write failures. A crashing channel GenServer can be exploited to cause denial-of-service -- an attacker who can trigger write failures (e.g., by exhausting connection pool) would previously cause channel processes to crash and drop sensor data. The fix makes the channel resilient to transient failures.
+**Assessment: Excellent.** This is a privacy-by-default change aligned with GDPR Article 25 (Data Protection by Design). New users must explicitly opt in to directory visibility. The migration updates the database default. The `UserSettingsLive` page provides a clear toggle for users to control their visibility.
 
-**Usability benefit:** Sensor data streaming continues even when individual write operations fail.
+### 6.2 User Settings Privacy Toggle
 
-### 7.3 Bio Factor Error Logging (Observability Improvement)
+**File:** `lib/sensocto_web/live/user_settings_live.ex`
 
-**File:** `lib/sensocto/attention_tracker.ex` (or equivalent)
+```elixir
+# Guest users cannot change visibility
+def handle_event("toggle_public", _params,
+      %{assigns: %{current_user: %{is_guest: true}}} = socket) do
+  {:noreply, put_flash(socket, :error, gettext("Guest users cannot change visibility"))}
+end
 
-AttentionTracker now emits `Logger.warning` when any of the following bio factor computations fail:
-- Novelty factor
-- Predictive factor
-- Competitive factor
-- Circadian factor
+# Authenticated users use Ash with actor-based authorization
+def handle_event("toggle_public", _params, socket) do
+  user = socket.assigns.current_user
+  new_value = !socket.assigns.is_public
+  case user
+       |> Ash.Changeset.for_update(:update_profile, %{is_public: new_value}, actor: user)
+       |> Ash.update() do
+    # ...
+  end
+end
+```
 
-**Security relevance:** Bio factor failures that were previously silent could mask anomalous behavior. For example, if a novelty factor computation starts failing consistently, it may indicate unexpected data patterns, resource exhaustion, or a bug introduced by a dependency update. Surfacing these as log warnings enables:
-- Detection of unexpected failure patterns via log monitoring
-- Alerting when computation errors spike (possible DoS indicator)
-- Faster debugging of data integrity issues
+**Assessment: Good.** The guest guard is correct. The update uses `actor: user` which goes through Ash policies. The `on_mount` guard ensures authentication.
 
-**Observability impact:** No user-facing change. Log noise will increase slightly when bio factors fail; this is intentional and desirable for production monitoring.
+### 6.3 Profile Management Authorization Gaps
 
-### 7.4 WCAG Color Contrast Fix (Accessibility -- No Security Impact)
+**File:** `lib/sensocto_web/live/profile_live.ex`
 
-**Files:** `lib/sensocto_web/components/layouts/app.html.heex`, `lib/sensocto_web/live/lobby_live.html.heex`
+**Finding M-012: MEDIUM -- Skill and connection deletion lacks ownership validation**
 
-`text-gray-400` changed to `text-gray-300` across 25 instances.
+The `remove_skill` and `remove_connection` event handlers look up resources by ID and delete them without verifying the requesting user owns them:
 
-**Security relevance:** No direct security impact. Accessibility improvements reduce the risk of regulatory non-compliance (e.g., ADA, WCAG 2.1 AA requirements). Proper contrast ratios also reduce social engineering risk -- text that is hard to read can cause users to skip security-relevant UI elements such as warning messages, privacy notices, or consent dialogs.
+```elixir
+def handle_event("remove_skill", %{"id" => skill_id}, socket) do
+  case Ash.get(UserSkill, skill_id, authorize?: false) do
+    {:ok, skill} ->
+      Ash.destroy!(skill, authorize?: false)  # No ownership check!
+      # ...
+  end
+end
+
+def handle_event("remove_connection", %{"id" => conn_id}, socket) do
+  case Ash.get(UserConnection, conn_id, authorize?: false) do
+    {:ok, conn} ->
+      Ash.destroy!(conn, authorize?: false)  # No ownership check!
+      # ...
+  end
+end
+```
+
+A user could craft a `phx-value-id` attribute in the DOM (via browser devtools) to delete another user's skills or connections. The `authorize?: false` bypasses any Ash policy that might otherwise prevent this.
+
+**Risk:** An authenticated user can delete any other user's skills or connections by providing their UUIDs. UUID guessing is impractical, but if skill/connection IDs are ever leaked (e.g., in API responses, logs, or DOM attributes), this becomes exploitable.
+
+**Recommendation:** Add ownership validation:
+```elixir
+def handle_event("remove_skill", %{"id" => skill_id}, socket) do
+  user_id = socket.assigns.user.id
+  case Ash.get(UserSkill, skill_id, authorize?: false) do
+    {:ok, %{user_id: ^user_id} = skill} ->
+      Ash.destroy!(skill, authorize?: false)
+    _ ->
+      {:noreply, socket}
+  end
+end
+```
+
+Or better, add Ash policies to `UserSkill` and `UserConnection` and use `actor: socket.assigns.user`.
+
+**Finding M-013: MEDIUM -- `String.to_existing_atom(level)` on user-supplied skill level**
+
+```elixir
+def handle_event("add_skill", %{"skill_name" => name, "level" => level}, socket) do
+  # ...
+  level: String.to_existing_atom(level)
+  # ...
+end
+```
+
+The `level` parameter comes from a form select, but a malicious client can send any string. If the atom does not exist, this raises `ArgumentError` and crashes the LiveView process. LiveView will reconnect, but repeated crashes degrade UX.
+
+**Current mitigation:** The `UserSkill` resource has `constraints one_of: [...]` which would reject invalid atoms at the Ash level. However, the crash happens before the Ash call.
+
+**Recommendation:** Use a whitelist like `safe_atom/2` (already used in `profile_live.ex` for connection types):
+```elixir
+defp safe_skill_level(str) do
+  case str do
+    "beginner" -> :beginner
+    "intermediate" -> :intermediate
+    "advanced" -> :advanced
+    "expert" -> :expert
+    _ -> :beginner
+  end
+end
+```
+
+**Finding M-014: MEDIUM -- User search exposes all public users' emails**
+
+```elixir
+all_users =
+  User
+  |> Ash.Query.filter(is_public == true and id != ^user_id)
+  |> Ash.read!(authorize?: false)
+  |> Enum.sort_by(fn u -> u.display_name || to_string(u.email) end)
+```
+
+All public users are loaded into the socket assigns, including their email addresses. The search function then filters client-side. The user search results are rendered in the dropdown, potentially exposing email addresses in the DOM.
+
+**Risk:** Any authenticated user can view the email addresses of all public users by inspecting the LiveView assigns or DOM.
+
+**Recommendation:** Only load display names and IDs for the user search. Strip email addresses unless the user is viewing their own profile. Use server-side search with an Ash query instead of loading all users into memory:
+```elixir
+defp search_users(query, current_user_id) do
+  User
+  |> Ash.Query.filter(is_public == true and id != ^current_user_id)
+  |> Ash.Query.filter(fragment("? ILIKE ?", display_name, ^"%#{query}%"))
+  |> Ash.Query.select([:id, :display_name])
+  |> Ash.Query.limit(8)
+  |> Ash.read!(authorize?: false)
+end
+```
+
+### 6.4 Search Index Privacy (I-003 -- Verified Good)
+
+**File:** `lib/sensocto/search/search_index.ex`
+
+The search index correctly filters users by `is_public == true`:
+
+```elixir
+User
+|> Ash.Query.filter(is_public == true)
+|> Ash.read(authorize?: false)
+```
+
+This respects the privacy default change. Users who have not opted in to directory visibility will not appear in search results. The index rebuilds every 30 seconds, so privacy changes propagate within 30 seconds.
+
+### 6.5 Guest User Display Name Privacy (Positive Change)
+
+**File:** `lib/sensocto/accounts/guest_user_store.ex`
+
+Previously: `"Guest #{String.slice(guest_id, 0..5)}"` -- leaked a prefix of the guest ID
+Now: `"Guest #{:erlang.phash2(guest_id, 10_000) |> Integer.to_string() |> String.pad_leading(4, "0")}"` -- uses a deterministic hash
+
+**Assessment: Good.** The `phash2` approach prevents information leakage of the guest ID while maintaining a stable, human-readable display name. The same pattern is applied in `ChatComponent.get_user_name/1`.
 
 ---
 
-## 8. Bot Protection Recommendation (H-005)
+## 7. Chat Component Security (NEW -- Mar 2026)
+
+### 7.1 Duplicate Subscription Fix (Positive Change)
+
+**File:** `lib/sensocto_web/live/components/chat_component.ex`
+
+```elixir
+already_subscribed = Process.get({:chat_subscribed, room_id}, false)
+unless already_subscribed do
+  ChatStore.subscribe(room_id)
+  Process.put({:chat_subscribed, room_id}, true)
+end
+```
+
+The fix uses the process dictionary to prevent duplicate PubSub subscriptions when a component is unmounted and remounted within the same parent LiveView process. The corresponding `room_show_live.ex` also marks the subscription in the process dictionary before the component mounts.
+
+**Assessment: Good.** This is a correctness fix, not a security fix, but it prevents a potential message amplification issue where duplicate subscriptions could cause the same message to be processed multiple times.
+
+### 7.2 Chat Message Input Validation
+
+**Finding L-008: LOW -- No message length or rate limiting on chat messages**
+
+```elixir
+def handle_event("send_message", %{"message" => message}, socket) when message != "" do
+  # Sends directly to ChatStore without length validation
+  user_message = %{
+    role: "user",
+    content: message,  # no length limit
+    user_id: user_id,
+    user_name: user_name
+  }
+  ChatStore.add_message(room_id, user_message)
+end
+```
+
+A user could send very long messages or flood the chat with rapid submissions. The ChatStore presumably holds messages in memory, so large payloads could contribute to memory pressure.
+
+**Risk:** LOW. The LiveView socket has natural backpressure (events are processed sequentially). However, there is no explicit protection against:
+- Messages exceeding a reasonable length (e.g., 10KB of text)
+- Rapid message submission (no client-side or server-side rate limiting)
+
+**Recommendation:** Add a message length check and simple per-user rate limit:
+```elixir
+@max_message_length 2_000
+@max_messages_per_minute 30
+
+def handle_event("send_message", %{"message" => message}, socket)
+    when byte_size(message) > @max_message_length do
+  {:noreply, put_flash(socket, :error, "Message too long")}
+end
+```
+
+---
+
+## 8. User Settings Security (NEW -- Mar 2026)
+
+### 8.1 Mobile Token Generation
+
+**File:** `lib/sensocto_web/live/user_settings_live.ex`
+
+The settings page generates short-lived tokens (5 minutes) for mobile device linking via QR code:
+
+```elixir
+@token_lifetime_seconds 5 * 60
+
+defp generate_mobile_token(user) do
+  expires_at = DateTime.add(DateTime.utc_now(), @token_lifetime_seconds, :second)
+  case AshAuthentication.Jwt.token_for_user(user) do
+    {:ok, token, _claims} -> {token, expires_at}
+    {:error, _} -> generate_fallback_token(user, expires_at)
+  end
+end
+```
+
+**Assessment: Good.** The 5-minute lifetime is appropriate for a QR-based authentication flow. The fallback token uses `Phoenix.Token.sign/4` which is signed but not encrypted. The QR code is only shown when explicitly toggled.
+
+**Concern:** The JWT generated by `AshAuthentication.Jwt.token_for_user/1` has its own expiration (30 days per the token configuration), not the 5-minute lifetime displayed in the UI. The `@token_lifetime_seconds` only controls the countdown timer and auto-regeneration in the UI. The actual token is valid for 30 days.
+
+**Recommendation:** If the intent is to provide a short-lived token for mobile linking, use `Phoenix.Token.sign/4` with a `max_age` option instead of the full JWT, or generate a one-time-use token that is invalidated on first use.
+
+### 8.2 Locale Redirect
+
+**Finding L-007: LOW -- Unsanitized locale in redirect URL**
+
+```elixir
+def handle_event("change_locale", %{"locale" => locale}, socket) do
+  {:noreply, redirect(socket, to: "/settings?locale=#{locale}")}
+end
+```
+
+The `locale` parameter is user-supplied and interpolated directly into the redirect URL. While Phoenix's `redirect/2` prevents open redirects (it only allows path-based redirects), an attacker could inject query parameters or URL fragments.
+
+**Risk:** LOW. The locale value is rendered in the URL bar but does not flow into any dangerous context. The Locale plug presumably validates the locale against a known list. However, the string interpolation could inject additional query parameters (e.g., `locale=en&admin=true`).
+
+**Recommendation:** Validate the locale against the known list before using it in the redirect:
+```elixir
+def handle_event("change_locale", %{"locale" => locale}, socket) do
+  valid_locales = Enum.map(@locales, &elem(&1, 1))
+  if locale in valid_locales do
+    {:noreply, redirect(socket, to: "/settings?locale=#{locale}")}
+  else
+    {:noreply, put_flash(socket, :error, "Invalid locale")}
+  end
+end
+```
+
+---
+
+## 9. `String.to_existing_atom` Audit (M-011 -- Updated)
+
+The previous assessment flagged `String.to_existing_atom` in guided session events. A broader audit reveals widespread usage across the codebase. While `String.to_existing_atom` is the correct choice over `String.to_atom` (it prevents atom table exhaustion), it can crash on unknown strings.
+
+**Files with `String.to_existing_atom` on user-supplied input:**
+
+| File | Input Source | Risk |
+|------|-------------|------|
+| `lobby_live.ex` (9 call sites) | LiveView events | MEDIUM: crash on unknown values |
+| `profile_live.ex` | Form select | MEDIUM: crash on unknown values |
+| `tabbed_footer_live.ex` | LiveView event | LOW: limited tab values |
+| `polls_live.ex` | Form params | MEDIUM: crash on unknown poll type |
+| `about_content_component.ex` (2 sites) | LiveView events | LOW: limited values |
+| `sensor_detail_live.ex` (2 sites) | URL params | MEDIUM: crash on unknown lens |
+| `system_status_live.ex` | LiveView event | LOW: admin page |
+
+**Remaining `String.to_atom` usage (unsafe):**
+
+| File | Context | Risk |
+|------|---------|------|
+| `lobby_live.ex` line 2565 | `String.to_atom(type)` on guide suggested action type | MEDIUM: unbounded atom creation from guide events |
+| `button.ex` line 1955 | Component helper converting string to atom | LOW: internal component usage |
+
+**Positive patterns already in use:**
+
+The `profile_live.ex` file uses a `safe_atom/2` whitelist for connection types:
+```elixir
+defp safe_atom(str, default) when is_binary(str) do
+  case str do
+    "follows" -> :follows
+    "collaborates" -> :collaborates
+    "mentors" -> :mentors
+    _ -> default
+  end
+end
+```
+
+**Recommendation:** Apply this pattern consistently across all call sites. Create a shared helper module:
+```elixir
+defmodule SensoctoWeb.LiveHelpers.SafeAtom do
+  @lenses ~w(sensors heartrate ecg breathing hrv gaze geolocation pressure)a
+  @qualities ~w(auto high medium low)a
+  @sorts ~w(activity name type)a
+
+  def to_lens(str), do: safe(str, @lenses, :sensors)
+  def to_quality(str), do: safe(str, @qualities, :auto)
+  def to_sort(str), do: safe(str, @sorts, :activity)
+
+  defp safe(str, allowed, default) do
+    atom = String.to_existing_atom(str)
+    if atom in allowed, do: atom, else: default
+  rescue
+    ArgumentError -> default
+  end
+end
+```
+
+---
+
+## 10. Dependabot and CI Security (Updated Mar 2026)
+
+### 10.1 GitHub Actions Supply Chain
+
+Recent dependabot bumps have kept CI actions current:
+
+| Action | Previous | Current | Security Impact |
+|--------|----------|---------|-----------------|
+| `actions/github-script` | v7 | v8 | Major version bump; review changelog |
+| `actions/cache` | v4 | v5 | Cache isolation improvements |
+| `actions/setup-node` | v4 | v6 | Node.js security patches |
+| `actions/upload-artifact` | v4 | v6 | Artifact handling improvements |
+| `actions/setup-dotnet` | v4 | v5 | .NET SDK security |
+
+**Assessment: Good.** Keeping CI actions current reduces supply chain risk. All bumps are from the official `actions/` organization.
+
+### 10.2 Claude PR Review Workflow
+
+**File:** `.github/workflows/claude-pr-review.yml`
+
+The addition of `allowed_bots: "dependabot[bot]"` enables automated Claude review of dependabot PRs. This is a positive security practice -- automated dependency updates get reviewed before merge.
+
+### 10.3 Elixir Dependency Updates
+
+`ash_admin` bumped from 0.13.24 to 0.13.26. `usage_rules` bumped to 1.2.3. No known CVEs in these versions.
+
+---
+
+## 11. Bot Protection Recommendation (H-005)
 
 **Why Paraxial.io for Sensocto:**
 
@@ -460,19 +751,19 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 
 ---
 
-## 9. Security Metrics
+## 12. Security Metrics
 
-### Authentication Security Score: B+ (upgraded from B)
+### Authentication Security Score: B+ (unchanged)
 
 | Metric | Score | Notes |
 |--------|-------|-------|
 | Strategy Security | A | Magic Link with interaction required |
 | Token Storage | A | Database-backed with revocation |
-| Token Lifetime | B+ | 30-day session + 365-day remember_me (resolved H-001) |
+| Token Lifetime | B+ | 30-day session + 365-day remember_me |
 | MFA | F | Not implemented |
 | Rate Limiting | B | Comprehensive but skips GET requests |
 
-### Authorization Security Score: A-
+### Authorization Security Score: B+ (downgraded from A-)
 
 | Metric | Score | Notes |
 |--------|-------|-------|
@@ -480,16 +771,28 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 | Room Access | A | Membership validation enforced |
 | Channel Auth | B | Good but socket-level missing |
 | API Auth | B | JWT validation good, room endpoints gap |
+| Profile Operations | C | Skill/connection CRUD lacks ownership checks (M-012) |
 
-### Input Validation Score: A-
+### Privacy Score: A- (NEW)
 
 | Metric | Score | Notes |
 |--------|-------|-------|
-| Atom Protection | A | SafeKeys excellent, bridge.ex verified clean |
+| Default Privacy | A | `is_public` defaults to `false` |
+| User Control | A | Settings page toggle, clear UX |
+| Search Index | A | Respects `is_public` filter |
+| Data Exposure | B | Email addresses visible in profile search (M-014) |
+| Guest Privacy | A | Display names use hash, not ID prefix |
+
+### Input Validation Score: B+ (downgraded from A-)
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Atom Protection | A | SafeKeys excellent for data layer |
 | SQL Injection | A | Ecto parameterized queries |
 | XSS Prevention | B | Headers good, CSP missing |
+| LiveView Events | B- | Widespread `String.to_existing_atom` crash risk (M-011) |
 
-### DoS Resistance Score: A
+### DoS Resistance Score: A (unchanged)
 
 | Metric | Score | Notes |
 |--------|-------|-------|
@@ -500,9 +803,9 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 
 ---
 
-## 10. Planned Work: Security Implications
+## 13. Planned Work: Security Implications
 
-### 10.1 Room Iroh Migration (PLAN-room-iroh-migration.md)
+### 13.1 Room Iroh Migration (PLAN-room-iroh-migration.md)
 
 **Security Impact: MEDIUM**
 
@@ -511,7 +814,7 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 - **Risk**: No encryption-at-rest. PostgreSQL had this via disk encryption; in-memory + Iroh docs need explicit encryption for sensitive room data.
 - **Recommendation**: Implement authorization checks in `RoomStore` API functions before migration. Validate all Iroh-synced data. Consider encrypting room metadata in Iroh docs.
 
-### 10.2 Adaptive Video Quality (PLAN-adaptive-video-quality.md) - IMPLEMENTED
+### 13.2 Adaptive Video Quality (PLAN-adaptive-video-quality.md) - IMPLEMENTED
 
 **Security Impact: LOW**
 
@@ -519,71 +822,20 @@ AttentionTracker now emits `Logger.warning` when any of the following bio factor
 - **Risk**: `video_snapshot` channel event broadcasts base64-encoded JPEG data. No size validation on incoming snapshots could allow memory exhaustion via oversized payloads.
 - **Recommendation**: Add max size validation (e.g., 100KB) for incoming `video_snapshot` events in `call_channel.ex`.
 
-### 10.3 Sensor Component Migration (PLAN-sensor-component-migration.md)
+### 13.3 Other Plans
 
-**Security Impact: LOW**
+All plan assessments from previous report remain valid:
 
-- Purely internal architecture change (LiveView to LiveComponent). No new attack surface.
-- **Positive**: Reduces process count from 73 to 1, reducing the surface for process-targeting attacks.
-
-### 10.4 Startup Optimization (PLAN-startup-optimization.md) - IMPLEMENTED
-
-**Security Impact: NONE**
-
-- Deferred hydration timing only. No security implications.
-- **Positive**: Faster HTTP server availability means health checks respond sooner, reducing window where the app is unprotected.
-
-### 10.5 Delta Encoding ECG (plans/delta-encoding-ecg.md)
-
-**Security Impact: LOW-MEDIUM**
-
-- **Risk**: Binary protocol parsing (both Elixir encoder and JS decoder) introduces potential for buffer-related bugs. Malformed binary data could cause decoder errors or unexpected behavior.
-- **Risk**: Feature flag via `Application.get_env` is mutable at runtime via IEx. An attacker with IEx access could toggle encoding to disrupt data flow.
-- **Recommendation**: Validate binary header version and bounds-check all offsets in the decoder. Use `:persistent_term` for the feature flag (harder to tamper).
-
-### 10.6 Cluster Sensor Visibility (plans/PLAN-cluster-sensor-visibility.md)
-
-**Security Impact: MEDIUM**
-
-- **Risk**: Migrating to Horde.Registry makes sensor processes discoverable from any node. Currently, sensors are only visible on their local node, providing implicit isolation.
-- **Risk**: Cross-node sensor state fetching via PubSub request/reply or `:rpc.call` introduces new RPC surface. Malicious node could request sensitive sensor data.
-- **Recommendation**: Validate node membership before processing cross-node requests. Use libcluster's node authorization. Rate-limit cross-node state requests.
-
-### 10.7 Distributed Discovery (plans/PLAN-distributed-discovery.md)
-
-**Security Impact: MEDIUM**
-
-- **Risk**: DiscoveryCache stores sensor/room metadata in ETS with `:public` access. Any process on the node can read/write this data.
-- **Risk**: PubSub-based sync (`discovery:sensors` topic) could be poisoned by a compromised node broadcasting fake sensor registrations.
-- **Risk**: Circuit breaker `NodeHealth` uses `:net_kernel.monitor_nodes(true)` -- should validate that joining nodes are authorized.
-- **Recommendation**: Use `:protected` ETS tables instead of `:public`. Validate discovery events against Horde registry state. Ensure libcluster's topology configuration restricts which nodes can join.
-
-### 10.8 Sensor Scaling Refactor (plans/PLAN-sensor-scaling-refactor.md)
-
-**Security Impact: LOW-MEDIUM**
-
-- **Risk**: Per-socket ETS tables (`:"lens_buffer_#{socket_id}"`) use dynamically generated atom names. If `socket_id` comes from untrusted input, this is an atom exhaustion vector.
-- **Risk**: `:pg` process groups are cluster-wide by default. Any node can join groups and receive sensor data.
-- **Recommendation**: Use integer-keyed ETS tables (not atom names) for per-socket buffers. Validate `:pg` group membership.
-
-### 10.9 Research-Grade Synchronization (plans/PLAN-research-grade-synchronization.md)
-
-**Security Impact: LOW-MEDIUM**
-
-- **Risk**: Pythonx (NIF) introduces native code execution. Python dependency chain (`scipy`, `neurokit2`, `pywt`, `pyrqa`, `networkx`) significantly expands the attack surface via supply chain.
-- **Risk**: New `sync_reports` PostgreSQL table stores JSONB results. Ensure no user-controlled strings are stored without sanitization.
-- **Risk**: Post-hoc analysis runs potentially expensive computations (CRQA is O(T^2)). Unbounded session data could cause OOM.
-- **Recommendation**: Pin Python dependency versions. Limit maximum session length for analysis. Run Pythonx computations in a sandboxed Task with memory limits. Validate JSONB payloads before storage.
-
-### 10.10 TURN/Cloudflare (plans/PLAN-turn-cloudflare.md) - IMPLEMENTED
-
-**Security Impact: LOW**
-
-- **Positive**: Uses `persistent_term` for credential caching (no GenServer state to leak).
-- **Positive**: Credentials are ephemeral (24h TTL) and auto-refresh.
-- **Positive**: Graceful degradation when Cloudflare API is unavailable.
-- **Risk**: `CLOUDFLARE_TURN_API_TOKEN` is a long-lived secret. If compromised, attacker can generate TURN credentials and relay traffic through your Cloudflare account.
-- **Recommendation**: Rotate Cloudflare API tokens periodically. Monitor Cloudflare TURN usage for anomalies.
+| Plan | Impact | Priority |
+|------|--------|----------|
+| Sensor Component Migration | LOW | No action needed |
+| Startup Optimization (IMPLEMENTED) | NONE | No action needed |
+| Delta Encoding ECG | LOW-MED | During implementation |
+| Cluster Sensor Visibility | MEDIUM | Before implementation |
+| Distributed Discovery | MEDIUM | Before implementation |
+| Sensor Scaling Refactor | LOW-MED | During implementation |
+| Research-Grade Synchronization | LOW-MED | During implementation |
+| TURN/Cloudflare (IMPLEMENTED) | LOW | Monitoring |
 
 ### Security Implications Summary Matrix
 
@@ -647,7 +899,7 @@ Every Ash operation in the Guidance domain uses `authorize?: false`:
 ```elixir
 # guided_session_join_live.ex
 Ash.read_one(GuidedSession, action: :by_invite_code, ..., authorize?: false)
-Ash.update(session, ..., action: :create, authorize?: false)
+Ash.update(session, ..., action: :assign_follower, authorize?: false)
 Ash.update(session, ..., action: :accept, authorize?: false)
 
 # session_server.ex
@@ -756,9 +1008,9 @@ The join flow in `GuidedSessionJoinLive`:
 **Concerns:**
 - The route is in the `live_user_optional` scope. An unauthenticated user will see the invite page but get a flash error when clicking Accept. This is acceptable UX -- they can see the invitation exists before signing in.
 - However, this means an unauthenticated user can confirm whether an invite code is valid by observing the page response (error message vs. accept button). Combined with no rate limiting (M-009), this makes enumeration slightly easier.
-- The `Ash.update(session, %{follower_user_id: user_id}, action: :create, ...)` on line 61 uses `action: :create` which is a create action being called on an update. This appears to be a bug -- it should likely use a dedicated `:join` or `:set_follower` update action. As written, it may fail or behave unexpectedly since `:create` is a create action, not an update action.
+- **UPDATE (Mar 2026):** The action name on the follower assignment has been corrected from `:create` to `:assign_follower`, fixing the action mismatch noted in the previous assessment.
 
-**Recommendation:** Fix the action name on the follower assignment update. Add a dedicated update action like `:join` that accepts `follower_user_id`.
+**Recommendation:** Add a dedicated update action like `:join` that accepts `follower_user_id` if not already covered by `:assign_follower`.
 
 ### 14.8 Resource Exhaustion Vectors
 
@@ -810,9 +1062,9 @@ filter expr(
 
 ---
 
-## 11. Implementation Roadmap
+## 15. Implementation Roadmap
 
-### Phase 1: Immediate (1-2 days)
+### Phase 1: Immediate (1-2 days) -- ALL RESOLVED
 - [x] Reduce token lifetime from 10 years to 30 days (H-001) -- **RESOLVED 2026-02-17**
 - [x] Add remember_me strategy with 365-day cookie (H-001 companion) -- **RESOLVED 2026-02-17**
 - [x] Replace `Ash.create!` with `Ash.create()` in sensor_data_channel.ex (M-008) -- **RESOLVED 2026-02-17**
@@ -824,6 +1076,9 @@ filter expr(
 - [x] Add session cookie encryption_salt (M-004) -- **already implemented**
 
 ### Phase 2: Short-term (1 week)
+- [ ] Add ownership checks to ProfileLive skill/connection operations (M-012)
+- [ ] Replace `String.to_existing_atom` with whitelists across LiveViews (M-011, M-013)
+- [ ] Limit email exposure in profile user search (M-014)
 - [ ] Add socket-level authentication to UserSocket (H-002)
 - [ ] Add auth pipeline to room API endpoints (H-003)
 - [ ] Fix rate limiter to cover GET-based auth routes (M-007)
@@ -831,8 +1086,9 @@ filter expr(
 - [ ] Add Content-Security-Policy headers
 - [ ] Add rate limiting to guided session join page (M-009)
 - [ ] Add Ash policies to GuidedSession resource (M-010)
-- [ ] Replace `String.to_existing_atom` with whitelist in guide events (M-011)
 - [ ] Add invite code expiration (L-004)
+- [ ] Validate locale in settings redirect (L-007)
+- [ ] Add chat message length limit (L-008)
 
 ### Phase 3: Medium-term (2-4 weeks)
 - [ ] Implement refresh token pattern
@@ -841,6 +1097,7 @@ filter expr(
 - [ ] Pre-migration security review for Room Iroh Migration
 - [ ] Pre-migration security review for Cluster Visibility plans
 - [ ] Require bridge token in production (M-002)
+- [ ] Add Ash policies to UserSkill and UserConnection resources
 
 ### Phase 4: Ongoing
 - [ ] Penetration testing
@@ -850,7 +1107,7 @@ filter expr(
 
 ---
 
-## 12. Security Configuration Checklist
+## 16. Security Configuration Checklist
 
 ```elixir
 # config/prod.exs - Recommended security settings
@@ -877,7 +1134,34 @@ config :paraxial,
 
 ---
 
-## 13. Changes Applied by Assessment Round
+## 17. Changes Applied by Assessment Round
+
+### Mar 1, 2026
+
+Review of commits bb7db7f through d9321a8, plus e53fb41, ce729b2, 2797fa9, and dependabot PRs.
+
+1. **Privacy default**: `is_public` changed from `true` to `false` in User resource with corresponding migration. All new users are private by default. SearchIndex and UserDirectoryLive correctly filter by `is_public`. **I-004: Verified Good.**
+2. **Profile system**: New `ProfileLive` with skills, connections, and user graph. Authorization gaps identified (M-012, M-013, M-014). The `safe_atom/2` pattern for connection types is a positive security pattern that should be applied more broadly.
+3. **User Settings**: New `UserSettingsLive` with privacy toggle, locale selection, and mobile device linking via QR code. Guest guard on privacy toggle is correct. Mobile token lifetime concern noted (JWT lifetime vs displayed lifetime).
+4. **Chat fix**: Duplicate PubSub subscription prevented via process dictionary. No new security surface.
+5. **Guest display names**: Switched from ID prefix to `phash2` hash. Eliminates guest ID information leakage.
+6. **Guided session join**: Action name corrected from `:create` to `:assign_follower`. This was noted as a potential bug in the previous assessment.
+7. **Sign-in guards**: Custom sign-in page validates guest session existence before redirecting. Prevents stale session access.
+8. **Dependabot**: 6 GitHub Actions bumped to latest major versions. 2 Elixir dependencies updated. No known CVEs.
+9. **`String.to_existing_atom` audit**: Expanded scope of M-011. Found widespread usage across codebase. Also found remaining `String.to_atom` usage in `lobby_live.ex` line 2565 (guide suggested action type). Profile already uses `safe_atom/2` whitelist for connection types -- this pattern should be applied consistently.
+10. **Overall**: Security grade maintained at B+. Authorization score downgraded from A- to B+ due to profile operation gaps. New Privacy score added at A-. Three new MEDIUM findings (M-012, M-013, M-014) and two new LOW findings (L-007, L-008).
+
+### Feb 24, 2026
+
+Guided Session feature analysis. See Section 14 for full details. Findings M-009 through L-006.
+
+### Feb 22, 2026
+
+Token refresh, connector persistence, CRDT sessions. See archived changelog.
+
+### Feb 20, 2026
+
+Audio/MIDI system (client-side only), Polls domain, User Profiles/Social Graph, Delta Encoding, Health Check Endpoint.
 
 ### Feb 17, 2026
 
@@ -898,17 +1182,6 @@ The following improvements were made during low-hanging fruit optimization round
 5. **ETS write_concurrency**: Enabled on Bio module ETS tables, PriorityLens tables, and AttentionTracker tables for improved concurrent write performance.
 6. **Bio.Supervisor restart limits**: Added explicit `max_restarts: 10, max_seconds: 60` (was using defaults 3/5s which was too aggressive for non-critical bio components).
 
-### Feb 20, 2026
-
-Review of commits 12841b8 through 9207440. No new security-relevant server-side changes.
-
-1. **Audio/MIDI system**: Entirely client-side (~3,485 lines JS). No new attack surface. Clean teardown.
-2. **Collaboration domain (Polls)**: New Ash resources (Poll, PollOption, Vote). Uses `String.to_existing_atom/1` safely. **Note:** Ash policies should be reviewed -- ensure poll actions enforce authorization (who can create/vote).
-3. **User Profiles/Social Graph**: New Ash resources (UserConnection, UserSkill). Identity constraints present. **Note:** Verify that user connection requests require mutual consent and that profile data access is properly scoped.
-4. **Delta Encoding**: Feature-flagged off. Binary protocol is well-designed with version byte. No injection risk -- operates on numerical sensor data.
-5. **Health Check Endpoint**: `/health/live` (shallow) and `/health/ready` (deep). Deep check reveals database latency, PubSub health, system load, and ETS table existence. **Note:** Ensure `/health/ready` is not exposed to unauthenticated external users as it leaks infrastructure details.
-6. **Overall**: Security grade maintained at B+. No new HIGH findings. Existing open findings (H-002, H-003, H-005, M-002, M-007, L-001) unchanged.
-
 ---
 
 ## References
@@ -921,4 +1194,4 @@ Review of commits 12841b8 through 9207440. No new security-relevant server-side 
 
 ---
 
-*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-02-24*
+*Report generated by Security Advisor Agent (Claude Opus 4.6). Last updated: 2026-03-01*

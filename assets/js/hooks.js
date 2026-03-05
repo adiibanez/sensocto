@@ -1375,6 +1375,25 @@ Hooks.Object3DPlayerHook = {
         this.handleEvent("object3d_center_object", () => this.centerObject());
         this.handleEvent("object3d_controller_changed", (data) => this.onControllerChanged(data));
 
+        // Fullscreen
+        this.handleEvent("object3d_enter_fullscreen", () => {
+            const container = this.el.querySelector('[data-object3d-viewer]') || this.el;
+            if (container.requestFullscreen) container.requestFullscreen();
+        });
+        this.handleEvent("object3d_exit_fullscreen", () => {
+            if (document.fullscreenElement) document.exitFullscreen();
+        });
+        this._onFullscreenChange = () => {
+            const isFullscreen = !!document.fullscreenElement;
+            this.pushEventTo(this.el, "fullscreen_changed", { fullscreen: isFullscreen });
+            if (this.viewer && this.viewer.renderer) {
+                const container = document.fullscreenElement || this.viewerContainer || this.el;
+                const rect = container.getBoundingClientRect();
+                this.viewer.renderer.setSize(rect.width, rect.height);
+            }
+        };
+        document.addEventListener('fullscreenchange', this._onFullscreenChange);
+
         // Handle window resize
         this.handleResize = () => {
             if (this.viewer && this.viewer.renderer) {
@@ -1824,6 +1843,9 @@ Hooks.Object3DPlayerHook = {
     // === CLEANUP ===
     destroyed() {
         window.removeEventListener('resize', this.handleResize);
+        if (this._onFullscreenChange) {
+            document.removeEventListener('fullscreenchange', this._onFullscreenChange);
+        }
         this.stopCameraPoll();
 
         if (this.canvasObserver) {

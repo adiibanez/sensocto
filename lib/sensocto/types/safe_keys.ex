@@ -36,6 +36,7 @@ defmodule Sensocto.Types.SafeKeys do
     track_duration track_name generate_track base_lat base_lng base_alt unit
     motion_type blink_rate fixation_duration saccade_duration
     sensor_pid connector_pid
+    hydro_station_id hydro_parameter
   )
 
   # Allowed atoms for Bridge protocol decoding (wx modules, common atoms)

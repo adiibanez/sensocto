@@ -35,7 +35,10 @@ defmodule Sensocto.Simulator.AttributeServer do
                 :attribute_id_str,
                 # Timer ref for batch_window — tracked so we can cancel/reschedule
                 # when attention changes significantly (e.g., :none → :medium)
-                :batch_timer_ref
+                :batch_timer_ref,
+                # Cumulative sample counter — passed to data generator so high-frequency
+                # waveforms (ECG, etc.) maintain phase continuity across batch boundaries.
+                sample_offset: 0
               ]
 
   @type t :: %__MODULE__{
@@ -175,9 +178,11 @@ defmodule Sensocto.Simulator.AttributeServer do
   defp do_process_queue(%{paused: true} = state), do: state
 
   defp do_process_queue(%{messages_queue: [], paused: false} = state) do
-    # Generate data inline — no DataServer bottleneck
-    {:ok, data} = Sensocto.Simulator.DataGenerator.fetch_sensor_data(state.config)
-    %{state | messages_queue: data} |> do_process_queue()
+    # Pass cumulative offset so waveforms like ECG maintain phase across batches
+    config = Map.put(state.config, :sample_offset, state.sample_offset)
+    {:ok, data} = Sensocto.Simulator.DataGenerator.fetch_sensor_data(config)
+    new_offset = state.sample_offset + length(data)
+    %{state | messages_queue: data, sample_offset: new_offset} |> do_process_queue()
   end
 
   defp do_process_queue(%{messages_queue: [head | tail], paused: false} = state) do

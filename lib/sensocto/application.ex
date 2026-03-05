@@ -90,6 +90,10 @@ defmodule Sensocto.Application do
       # Depends on registries (Layer 2) and storage (Layer 3)
       Sensocto.Domain.Supervisor,
 
+      # Layer 5b: Environmental monitoring (live data from external APIs)
+      # Depends on Domain.Supervisor (SensorsDynamicSupervisor) being up
+      Sensocto.EcoMonitor.Supervisor,
+
       # Layer 6: Web interface (serves HTTP/WebSocket requests)
       # Must be last - depends on all business logic being available
       SensoctoWeb.Endpoint,

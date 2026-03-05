@@ -1,0 +1,19 @@
+name: reuss
+source: existenz_hydro
+api_base: https://api.existenz.ch/apiv1/hydro
+poll_interval_seconds: 300
+app_identifier: sensocto
+
+stations:
+  - id: "2087"
+    name: Andermatt
+    parameters: [height, flow]
+  - id: "2056"
+    name: Seedorf
+    parameters: [height, flow, temperature, turbidity]
+  - id: "2152"
+    name: Luzern
+    parameters: [height, flow, temperature]
+  - id: "2018"
+    name: Mellingen
+    parameters: [height, flow, temperature, oxygen, acidity, conductivity]

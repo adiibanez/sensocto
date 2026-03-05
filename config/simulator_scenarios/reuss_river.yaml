@@ -1,0 +1,175 @@
+# Reuss River Hydrological Monitoring
+# Real-time data from Swiss Federal Office for the Environment (FOEN/BAFU)
+# via existenz.ch API — no authentication required, 10-minute update intervals
+#
+# STATIONS (source to lowland):
+#   2087 Andermatt   — alpine source (~1427m), height + flow only
+#   2056 Seedorf     — upper valley (~437m), + temperature + turbidity
+#   2152 Luzern      — lake outlet (~431m), + temperature
+#   2018 Mellingen   — lowland (~344m), most instrumented (6 parameters)
+#
+# Polling: every 5 minutes (data refreshes every 10 min at source)
+# sensor_type: "hydro_api" — calls existenz.ch /hydro/latest per attribute
+# sampling_rate: 0.00333 (~1 sample/5 min) controls AttributeServer poll interval
+
+connectors:
+  reuss_river:
+    connector_id: "reuss_river"
+    connector_name: "Reuss_River_BAFU"
+    sensors:
+
+      # ============================================================
+      # ANDERMATT (2087) — Alpine source, Gotthard region
+      # Elevation: ~1427m | Parameters: height, flow
+      # ============================================================
+      reuss_andermatt:
+        sensor_id: "reuss-2087-andermatt"
+        sensor_name: "Reuss Andermatt"
+        attributes:
+          height:
+            attribute_id: "height"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2087"
+            hydro_parameter: "height"
+          flow:
+            attribute_id: "flow"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2087"
+            hydro_parameter: "flow"
+
+      # ============================================================
+      # SEEDORF (2056) — Upper valley
+      # Elevation: ~437m | Parameters: height, flow, temperature, turbidity
+      # ============================================================
+      reuss_seedorf:
+        sensor_id: "reuss-2056-seedorf"
+        sensor_name: "Reuss Seedorf"
+        attributes:
+          height:
+            attribute_id: "height"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2056"
+            hydro_parameter: "height"
+          flow:
+            attribute_id: "flow"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2056"
+            hydro_parameter: "flow"
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2056"
+            hydro_parameter: "temperature"
+          turbidity:
+            attribute_id: "turbidity"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2056"
+            hydro_parameter: "turbidity"
+
+      # ============================================================
+      # LUZERN, GEISSMATTBRÜCKE (2152) — Lake outlet
+      # Elevation: ~431m | Parameters: height, flow, temperature
+      # ============================================================
+      reuss_luzern:
+        sensor_id: "reuss-2152-luzern"
+        sensor_name: "Reuss Luzern"
+        attributes:
+          height:
+            attribute_id: "height"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2152"
+            hydro_parameter: "height"
+          flow:
+            attribute_id: "flow"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2152"
+            hydro_parameter: "flow"
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2152"
+            hydro_parameter: "temperature"
+
+      # ============================================================
+      # MELLINGEN (2018) — Lowland, most instrumented
+      # Elevation: ~344m | Parameters: height, flow, temperature, oxygen, acidity, conductivity
+      # ============================================================
+      reuss_mellingen:
+        sensor_id: "reuss-2018-mellingen"
+        sensor_name: "Reuss Mellingen"
+        attributes:
+          height:
+            attribute_id: "height"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2018"
+            hydro_parameter: "height"
+          flow:
+            attribute_id: "flow"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2018"
+            hydro_parameter: "flow"
+          temperature:
+            attribute_id: "temperature"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2018"
+            hydro_parameter: "temperature"
+          oxygen:
+            attribute_id: "oxygen"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2018"
+            hydro_parameter: "oxygen"
+          acidity:
+            attribute_id: "acidity"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2018"
+            hydro_parameter: "acidity"
+          conductivity:
+            attribute_id: "conductivity"
+            sensor_type: "hydro_api"
+            batch_size: 1
+            batch_window: 300000
+            sampling_rate: 0.00333
+            hydro_station_id: "2018"
+            hydro_parameter: "conductivity"

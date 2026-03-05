@@ -184,7 +184,7 @@ defmodule SensoctoWeb.LobbyLive do
           last_report_time: System.monotonic_time(:millisecond)
         },
         # Sort mode for sensor grid (:activity, :name, :type, :battery)
-        sort_by: :activity,
+        sort_by: :name,
         # Timer for debouncing activity re-sort on attention changes
         sort_timer: nil,
         # Client health monitoring for adaptive streaming
@@ -1080,7 +1080,7 @@ defmodule SensoctoWeb.LobbyLive do
           )
 
         sorted_sensor_ids =
-          sort_sensors(new_sensor_ids, sensors, socket.assigns[:sort_by] || :activity)
+          sort_sensors(new_sensor_ids, sensors, socket.assigns[:sort_by] || :name)
 
         updated_socket =
           socket
@@ -1522,7 +1522,7 @@ defmodule SensoctoWeb.LobbyLive do
       sort_sensors(
         socket.assigns.sensor_ids,
         socket.assigns.sensors,
-        socket.assigns[:sort_by] || :activity
+        socket.assigns[:sort_by] || :name
       )
 
     {:noreply, assign(socket, sensor_ids: sorted, sort_timer: nil)}
@@ -1606,7 +1606,7 @@ defmodule SensoctoWeb.LobbyLive do
       )
 
     sorted_sensor_ids =
-      sort_sensors(Map.keys(sensors), sensors, socket.assigns[:sort_by] || :activity)
+      sort_sensors(Map.keys(sensors), sensors, socket.assigns[:sort_by] || :name)
 
     {:noreply,
      socket

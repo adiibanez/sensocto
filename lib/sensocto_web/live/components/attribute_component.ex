@@ -2209,6 +2209,100 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
     """
   end
 
+  # Hydro API attributes — summary card: value + mini sparkline
+  @impl true
+  def render(%{:attribute_type => "hydro_api", :view_mode => :summary} = assigns) do
+    ~H"""
+    <div
+      id={"cnt_summary_#{@sensor_id}_#{@attribute_id}"}
+      class="text-xs py-0.5"
+      data-sensor_id={@sensor_id}
+      data-attribute_id={@attribute_id}
+      phx-hook="SensorDataAccumulator"
+    >
+      <div class="flex items-center justify-between">
+        <span class="text-gray-400">{hydro_label(@attribute_id)}</span>
+        <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+          {hydro_format(@attribute_id, @lastvalue.payload)}
+          <span class="text-gray-500 text-[10px]">{hydro_unit(@attribute_id)}</span>
+        </span>
+        <.loading_spinner :if={is_nil(@lastvalue)} />
+      </div>
+      <div :if={@lastvalue} class="w-full mt-0.5">
+        <.svelte
+          name="SparklineWasm"
+          props={
+            %{
+              height: 20,
+              id: "cnt_summary_#{@sensor_id}_#{@attribute_id}",
+              sensor_id: @sensor_id,
+              attribute_id: @attribute.attribute_id,
+              samplingrate: @attribute.sampling_rate,
+              timewindow: 21_600_000,
+              minvalue: 0,
+              maxvalue: 0
+            }
+          }
+          socket={@socket}
+          class="w-full m-0 p-0"
+        />
+      </div>
+    </div>
+    """
+  end
+
+  # Hydro API attributes — expanded card: large value + 24h sparkline
+  @impl true
+  def render(%{:attribute_type => "hydro_api"} = assigns) do
+    ~H"""
+    <div>
+      <.container
+        identifier={"cnt_#{@sensor_id}_#{@attribute_id}"}
+        sensor_id={@sensor_id}
+        attribute_id={@attribute_id}
+        phx_hook="SensorDataAccumulator"
+        attribute={@attribute}
+      >
+        <.render_attribute_header
+          sensor_id={@sensor_id}
+          attribute_id={@attribute_id}
+          attribute_name={hydro_label(@attribute_id)}
+          lastvalue={@lastvalue}
+          socket={@socket}
+        />
+
+        <div :if={is_nil(@lastvalue)} class="loading"></div>
+
+        <div :if={@lastvalue}>
+          <div class="flex items-baseline gap-2 py-1">
+            <span class="text-2xl font-bold text-white">
+              {hydro_format(@attribute_id, @lastvalue.payload)}
+            </span>
+            <span class="text-sm text-gray-400">{hydro_unit(@attribute_id)}</span>
+          </div>
+          <.svelte
+            name="SparklineWasm"
+            props={
+              %{
+                height: 80,
+                id: "cnt_#{@sensor_id}_#{@attribute_id}",
+                sensor_id: @sensor_id,
+                attribute_id: @attribute.attribute_id,
+                samplingrate: @attribute.sampling_rate,
+                timewindow: 86_400_000,
+                minvalue: 0,
+                maxvalue: 0
+              }
+            }
+            socket={@socket}
+            class="w-full m-0 p-0"
+          />
+        </div>
+      </.container>
+    </div>
+    """
+  end
+
   @impl true
   def render(%{:view_mode => :summary} = assigns) do
     ~H"""
@@ -2677,6 +2771,49 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   # Helper to format payload values for summary display
+  defp hydro_label(attribute_id) do
+    case to_string(attribute_id) do
+      "height" -> "Height"
+      "flow" -> "Flow"
+      "temperature" -> "Temperature"
+      "turbidity" -> "Turbidity"
+      "oxygen" -> "Dissolved O₂"
+      "acidity" -> "pH"
+      "conductivity" -> "Conductivity"
+      other -> String.capitalize(other)
+    end
+  end
+
+  defp hydro_unit(attribute_id) do
+    case to_string(attribute_id) do
+      "height" -> "m"
+      "flow" -> "m³/s"
+      "temperature" -> "°C"
+      "turbidity" -> "BSTU"
+      "oxygen" -> "mg/l"
+      "acidity" -> "pH"
+      "conductivity" -> "µS/cm"
+      _ -> ""
+    end
+  end
+
+  defp hydro_format(_attr, nil), do: "--"
+
+  defp hydro_format(attribute_id, v) when is_number(v) do
+    case to_string(attribute_id) do
+      "height" -> :erlang.float_to_binary(v * 1.0, decimals: 2)
+      "flow" -> :erlang.float_to_binary(v * 1.0, decimals: 2)
+      "temperature" -> :erlang.float_to_binary(v * 1.0, decimals: 1)
+      "turbidity" -> :erlang.float_to_binary(v * 1.0, decimals: 1)
+      "oxygen" -> :erlang.float_to_binary(v * 1.0, decimals: 1)
+      "acidity" -> :erlang.float_to_binary(v * 1.0, decimals: 2)
+      "conductivity" -> Integer.to_string(round(v))
+      _ -> format_payload(v)
+    end
+  end
+
+  defp hydro_format(_attr, v), do: format_payload(v)
+
   defp format_payload(payload) when is_number(payload) do
     if payload == trunc(payload) do
       Integer.to_string(trunc(payload))

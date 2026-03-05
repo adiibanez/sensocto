@@ -45,6 +45,9 @@ defmodule Sensocto.Simulator.DataGenerator do
         sensor_type == "eye_aperture" ->
           {:ok, fetch_eye_aperture_data(config)}
 
+        sensor_type == "hydro_api" ->
+          {:ok, fetch_hydro_api_data(config)}
+
         true ->
           result =
             case config[:dummy_data] do
@@ -541,9 +544,10 @@ defmodule Sensocto.Simulator.DataGenerator do
 
   defp init_hrv_buffer(sensor_id, config) do
     heart_rate = config[:heart_rate] || 70
-    duration = 120
+    # 10 minutes of unique data at 0.2 Hz = 120 samples before looping
+    duration = 600
 
-    samples = generate_neurokit2_hrv_buffer(heart_rate, duration)
+    samples = generate_physiological_hrv_buffer(sensor_id, heart_rate, duration)
 
     buffer = %{
       data: List.to_tuple(samples),
@@ -554,50 +558,135 @@ defmodule Sensocto.Simulator.DataGenerator do
     :ets.insert(@hrv_buffers_table, {sensor_id, buffer})
 
     Logger.info(
-      "Initialized HRV buffer for #{sensor_id}: #{buffer.total} RMSSD samples (#{duration}s ECG at #{heart_rate} bpm)"
+      "Initialized HRV buffer for #{sensor_id}: #{buffer.total} RMSSD samples " <>
+        "(#{duration}s physiological model, HR=#{heart_rate} bpm, " <>
+        "range #{buffer.data |> Tuple.to_list() |> Enum.min() |> Float.round(1)}" <>
+        "–#{buffer.data |> Tuple.to_list() |> Enum.max() |> Float.round(1)} ms)"
     )
 
     buffer
   end
 
-  defp generate_neurokit2_hrv_buffer(heart_rate, duration) do
+  # Physiological HRV model: generates realistic RMSSD (ms) time series.
+  #
+  # RMSSD is built as a sum of known physiological oscillations:
+  #   RSA  — Respiratory Sinus Arrhythmia    (HF: 0.15–0.40 Hz, ~12–18 breaths/min)
+  #   LF   — Mayer waves / baroreflex        (LF: 0.07–0.12 Hz)
+  #   VLF  — Thermoregulation / hormonal     (VLF: 0.02–0.04 Hz)
+  #   Drift — Ultra-slow non-stationarity    (<0.01 Hz, circadian-like)
+  #   Noise — Measurement / estimation noise
+  #
+  # Baseline anti-correlates with HR (high HR → lower HRV).
+  # All parameters are seeded from sensor_id so each person is unique but
+  # deterministic across restarts. Values are clipped to 5–150 ms.
+  defp generate_physiological_hrv_buffer(sensor_id, heart_rate, duration) do
     python_code = """
-    import neurokit2 as nk
     import numpy as np
 
-    ecg = nk.ecg_simulate(duration=#{duration}, sampling_rate=250, heart_rate=#{heart_rate}, noise=0.05)
-    processed, info = nk.ecg_process(ecg, sampling_rate=250)
-    r_peaks = np.array(info['ECG_R_Peaks'])
-    rr = np.diff(r_peaks) / 250.0 * 1000.0
-    window = 30
-    rmssd = []
-    for i in range(len(rr) - window):
-        w = rr[i:i+window]
-        diffs = np.diff(w)
-        rmssd.append(float(np.sqrt(np.mean(diffs**2))))
-    rmssd
+    # --- Per-person deterministic seed ---
+    seed = abs(hash('#{sensor_id}')) % (2**31)
+    rng = np.random.default_rng(seed)
+
+    hr = float(#{heart_rate})
+
+    # Baseline RMSSD: anti-correlates with HR.
+    # HR 50 bpm → ~55 ms,  HR 80 bpm → ~38 ms,  HR 100 bpm → ~22 ms
+    hr_factor  = float(np.clip((hr - 40.0) / 70.0, 0.0, 1.0))
+    baseline   = rng.uniform(48.0, 65.0) - hr_factor * rng.uniform(28.0, 38.0)
+
+    # Respiratory Sinus Arrhythmia (dominant RMSSD contributor, HF band)
+    resp_rate  = rng.uniform(12.0, 18.0)          # breaths per minute
+    resp_freq  = resp_rate / 60.0                 # Hz
+    resp_amp   = rng.uniform(9.0, 17.0)           # ms amplitude
+    resp_phase = rng.uniform(0.0, 2.0 * np.pi)
+
+    # Mayer waves / baroreceptor reflex (LF band)
+    mayer_freq  = rng.uniform(0.07, 0.12)
+    mayer_amp   = rng.uniform(4.0, 9.0)
+    mayer_phase = rng.uniform(0.0, 2.0 * np.pi)
+
+    # VLF component
+    vlf_freq  = rng.uniform(0.020, 0.040)
+    vlf_amp   = rng.uniform(2.5, 6.0)
+    vlf_phase = rng.uniform(0.0, 2.0 * np.pi)
+
+    # Ultra-slow non-stationarity (minutes-scale drift, e.g. posture, alertness)
+    drift_freq  = rng.uniform(0.005, 0.010)
+    drift_amp   = rng.uniform(4.0, 11.0)
+    drift_phase = rng.uniform(0.0, 2.0 * np.pi)
+
+    # Measurement / windowed-RMSSD estimation noise
+    noise_sigma = rng.uniform(1.2, 3.0)
+
+    # Generate at 0.2 Hz
+    n = int(#{duration} * 0.2)
+    t = np.linspace(0.0, float(#{duration}), n)
+
+    rmssd = (
+        baseline
+        + resp_amp   * np.sin(2.0 * np.pi * resp_freq  * t + resp_phase)
+        + mayer_amp  * np.sin(2.0 * np.pi * mayer_freq * t + mayer_phase)
+        + vlf_amp    * np.sin(2.0 * np.pi * vlf_freq   * t + vlf_phase)
+        + drift_amp  * np.sin(2.0 * np.pi * drift_freq * t + drift_phase)
+        + rng.normal(0.0, noise_sigma, n)
+    )
+
+    # Physiological bounds
+    rmssd = np.clip(rmssd, 5.0, 150.0)
+    list(np.round(rmssd, 2))
     """
 
     {result, _globals} = Pythonx.eval(python_code, %{})
     Pythonx.decode(result)
   rescue
     e ->
-      Logger.warning("NeuroKit2 HRV buffer generation failed: #{inspect(e)}, using sine fallback")
-      generate_fallback_hrv_buffer(heart_rate, duration)
+      Logger.warning(
+        "Physiological HRV buffer generation failed: #{inspect(e)}, using Elixir fallback"
+      )
+
+      generate_fallback_hrv_buffer(sensor_id, heart_rate, duration)
   end
 
-  defp generate_fallback_hrv_buffer(heart_rate, duration) do
-    # Approximate number of heartbeats minus window
-    total_beats = trunc(duration * heart_rate / 60) - 30
-    total_samples = max(total_beats, 10)
-    phase_offset = :rand.uniform() * 2 * :math.pi()
-    base_rmssd = 30.0 + :rand.uniform() * 20.0
+  # Pure-Elixir fallback with the same physiological structure.
+  defp generate_fallback_hrv_buffer(sensor_id, heart_rate, duration) do
+    # Deterministic seed per sensor
+    seed = :erlang.phash2(sensor_id, 999_983)
+    :rand.seed(:exsss, {seed, seed + 1, seed + 2})
 
-    Enum.map(0..(total_samples - 1), fn i ->
-      t = i / total_samples * duration
-      value = base_rmssd + 15.0 * :math.sin(2 * :math.pi() * 0.1 * t + phase_offset)
-      noise = (:rand.uniform() - 0.5) * 5.0
-      Float.round(max(5.0, value + noise), 2)
+    pi2 = 2.0 * :math.pi()
+    hr_factor = min(max((heart_rate - 40) / 70.0, 0.0), 1.0)
+    baseline = 50.0 + :rand.uniform() * 14.0 - hr_factor * 30.0
+
+    resp_freq = (12.0 + :rand.uniform() * 6.0) / 60.0
+    resp_amp = 9.0 + :rand.uniform() * 8.0
+    resp_phase = :rand.uniform() * pi2
+
+    mayer_freq = 0.07 + :rand.uniform() * 0.05
+    mayer_amp = 4.0 + :rand.uniform() * 5.0
+    mayer_phase = :rand.uniform() * pi2
+
+    vlf_freq = 0.020 + :rand.uniform() * 0.020
+    vlf_amp = 2.5 + :rand.uniform() * 3.5
+    vlf_phase = :rand.uniform() * pi2
+
+    drift_freq = 0.005 + :rand.uniform() * 0.005
+    drift_amp = 4.0 + :rand.uniform() * 7.0
+    drift_phase = :rand.uniform() * pi2
+
+    n = trunc(duration * 0.2)
+
+    Enum.map(0..(n - 1), fn i ->
+      t = i / n * duration
+
+      value =
+        baseline +
+          resp_amp * :math.sin(pi2 * resp_freq * t + resp_phase) +
+          mayer_amp * :math.sin(pi2 * mayer_freq * t + mayer_phase) +
+          vlf_amp * :math.sin(pi2 * vlf_freq * t + vlf_phase) +
+          drift_amp * :math.sin(pi2 * drift_freq * t + drift_phase) +
+          (:rand.uniform() - 0.5) * 4.5
+
+      Float.round(min(150.0, max(5.0, value)), 2)
     end)
   end
 
@@ -803,6 +892,55 @@ defmodule Sensocto.Simulator.DataGenerator do
 
   defp clamp(value, min_val, max_val), do: max(min_val, min(max_val, value))
 
+  # Fetch real hydrological data from existenz.ch API (BAFU/FOEN source)
+  # Called by AttributeServer for sensor_type: "hydro_api" attributes.
+  # Returns a single measurement; the delay field controls next poll timing.
+  defp fetch_hydro_api_data(config) do
+    station_id = to_string(config[:hydro_station_id] || "")
+    parameter = to_string(config[:hydro_parameter] || "")
+    sampling_rate = max(config[:sampling_rate] || 0.00333, 0.000001)
+    delay = 1.0 / sampling_rate
+
+    url = "https://api.existenz.ch/apiv1/hydro/latest"
+
+    result =
+      Req.get(url,
+        params: [locations: station_id, parameters: parameter, app: "sensocto"],
+        receive_timeout: 15_000
+      )
+
+    case result do
+      {:ok, %{status: 200, body: body}} ->
+        payload_items = body["payload"] || []
+
+        case Enum.find(payload_items, fn item ->
+               item["loc"] == station_id and item["par"] == parameter
+             end) do
+          %{"val" => val, "timestamp" => ts} ->
+            [%{delay: delay, payload: val, timestamp: ts * 1000}]
+
+          nil ->
+            Logger.warning("hydro_api: no value for station=#{station_id} parameter=#{parameter}")
+
+            [%{delay: delay, payload: nil, timestamp: :os.system_time(:millisecond)}]
+        end
+
+      {:ok, %{status: status}} ->
+        Logger.warning(
+          "hydro_api: HTTP #{status} for station=#{station_id} parameter=#{parameter}"
+        )
+
+        [%{delay: delay, payload: nil, timestamp: :os.system_time(:millisecond)}]
+
+      {:error, reason} ->
+        Logger.warning(
+          "hydro_api: request failed for station=#{station_id} parameter=#{parameter}: #{inspect(reason)}"
+        )
+
+        [%{delay: delay, payload: nil, timestamp: :os.system_time(:millisecond)}]
+    end
+  end
+
   defp fetch_python_data(config) do
     # Path to Python script - check multiple locations
     script_paths = [
@@ -861,13 +999,16 @@ defmodule Sensocto.Simulator.DataGenerator do
     # Generate CSV-like output
     header = "timestamp,delay,payload"
 
+    # sample_offset keeps waveform phase continuous across batch boundaries
+    sample_offset = config[:sample_offset] || 0
+
     data_lines =
       Enum.map(0..(num_samples - 1), fn i ->
         timestamp = now + i * interval_ms
         # For batch_size 1, we still need the sampling_rate delay since each fetch is one sample
         # Only skip delay for the first sample in multi-sample batches
         delay = if i == 0 and num_samples > 1, do: 0.0, else: 1.0 / sampling_rate
-        value = generate_value(sensor_type, config, i, sampling_rate)
+        value = generate_value(sensor_type, config, i + sample_offset, sampling_rate)
         "#{timestamp},#{delay},#{Float.round(value * 1.0, 2)}"
       end)
 

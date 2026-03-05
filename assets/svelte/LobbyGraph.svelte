@@ -96,26 +96,31 @@
   let fa2Worker: FA2Layout | null = null;
 
   // ── View Mode System ──────────────────────────────────────────────
-  type ViewMode =
+  type LayoutMode =
     | "topology"       // ForceAtlas2 organic clustering
     | "per-user"       // Circular clusters per user
     | "per-type"       // Column lanes per attribute type
     | "radial"         // Concentric rings
-
     | "flower"         // Rose-curve petal layout
     | "octopus"        // Central head + curving tentacles
     | "mushroom"       // Dome cap + stem
     | "jellyfish"      // Bell + trailing tentacles
-    | "dna"            // Double helix spiral
+    | "dna";           // Double helix spiral
+
+  type VisualMode =
+    | "none"           // No overlay
     | "heatmap"        // Activity frequency coloring
     | "freshness"      // Time-since-data fading
     | "heartbeat"      // BPM-synchronized pulsing
     | "river"          // Animated data particles
     | "attention";     // Attention level visualization
 
-  let viewMode = $state<ViewMode>("topology");
+  // Keep ViewMode as union for backward-compat with applyLayout/cleanupMode signatures
+  type ViewMode = LayoutMode | VisualMode;
+
+  let layoutMode = $state<LayoutMode>("topology");
+  let visualMode = $state<VisualMode>("none");
   let isTransitioning = $state(false);
-  let lastLayoutMode = $state<ViewMode>("topology");
 
   // Auto-cycle layout mode
   let cycleEnabled = $state(false);
@@ -127,13 +132,8 @@
   function startCycleTimer() {
     stopCycleTimer();
     cycleTimer = setInterval(() => {
-      const currentIdx = layoutModes.indexOf(viewMode as ViewMode);
-      const baseIdx = layoutModes.indexOf(lastLayoutMode);
-      const nextIdx = (currentIdx >= 0 ? currentIdx : baseIdx) + 1;
-      const nextMode = layoutModes[nextIdx % layoutModes.length];
-      switchViewMode(nextMode);
-
-      // Also cycle season theme with each layout change
+      const nextIdx = (layoutModes.indexOf(layoutMode) + 1) % layoutModes.length;
+      switchLayoutMode(layoutModes[nextIdx]);
       const seasonIdx = SEASONS.indexOf(currentSeason);
       switchSeason(SEASONS[(seasonIdx + 1) % SEASONS.length]);
     }, CYCLE_INTERVAL_MS);
@@ -146,12 +146,8 @@
   function toggleCycle() {
     cycleEnabled = !cycleEnabled;
     if (cycleEnabled) {
-      // Immediately switch to next layout + season for instant feedback
-      const currentIdx = layoutModes.indexOf(viewMode as ViewMode);
-      const baseIdx = layoutModes.indexOf(lastLayoutMode);
-      const nextIdx = (currentIdx >= 0 ? currentIdx : baseIdx) + 1;
-      const nextMode = layoutModes[nextIdx % layoutModes.length];
-      switchViewMode(nextMode);
+      const nextIdx = (layoutModes.indexOf(layoutMode) + 1) % layoutModes.length;
+      switchLayoutMode(layoutModes[nextIdx]);
       const seasonIdx = SEASONS.indexOf(currentSeason);
       switchSeason(SEASONS[(seasonIdx + 1) % SEASONS.length]);
       startCycleTimer();
@@ -173,6 +169,7 @@
 
   // Heartbeat tracking (heartbeat mode)
   let heartbeatBPMs = new Map<string, number>();
+  let heartbeatHopDistances = new Map<string, number>(); // BFS hops from nearest heart node
   let heartbeatAnimFrame: number | null = null;
   let heartbeatStartTime: number | null = null;
 
@@ -844,7 +841,7 @@
         isLayoutRunning = false;
         sigma?.refresh();
         if (compact) {
-          setTimeout(() => zoomToRandomDetail(), 50);
+          setTimeout(() => sigma?.getCamera().reset(), 50);
         }
       }, duration);
     } catch (e) {
@@ -1251,35 +1248,40 @@
     return positions;
   }
 
-  function switchViewMode(newMode: ViewMode) {
-    if (viewMode === newMode || isTransitioning) return;
-
+  function switchLayoutMode(newLayout: LayoutMode) {
+    if (layoutMode === newLayout || isTransitioning) return;
     isTransitioning = true;
-    const oldMode = viewMode;
-    viewMode = newMode;
-
-    // Cleanup old mode's timers/animations
-    cleanupMode(oldMode);
-
-    // Track which layout was last applied
-    if (layoutModes.includes(newMode)) {
-      lastLayoutMode = newMode;
+    layoutMode = newLayout;
+    applyLayout(newLayout, true);
+    // Re-apply active visual on top of the new layout
+    if (visualMode !== "none") {
+      setTimeout(() => applyViewMode(visualMode), 100);
     }
-
-    // For visual modes, re-apply the last layout first to get clean positions
-    if (visualModes.includes(newMode) && visualModes.includes(oldMode)) {
-      applyLayout(lastLayoutMode);
-    }
-
-    // For layout mode switches, animate the transition
-    if (layoutModes.includes(newMode)) {
-      applyLayout(newMode, true);
-    } else {
-      applyViewMode(newMode);
-    }
-
     setTimeout(() => { isTransitioning = false; }, 600);
-    try { localStorage.setItem('sensocto_graph_viewmode', newMode); } catch (_) {}
+    try { localStorage.setItem('sensocto_graph_layoutmode', newLayout); } catch (_) {}
+  }
+
+  function switchVisualMode(newVisual: VisualMode) {
+    // Toggle off if same visual clicked again
+    const next = visualMode === newVisual ? "none" : newVisual;
+    cleanupVisual(visualMode);
+    visualMode = next;
+    if (next === "none") {
+      restoreNodeAppearances();
+      sigma?.refresh();
+    } else {
+      applyViewMode(next);
+    }
+    try { localStorage.setItem('sensocto_graph_visualmode', next); } catch (_) {}
+  }
+
+  // Keep for backward compat (called from old code paths)
+  function switchViewMode(newMode: ViewMode) {
+    if (layoutModes.includes(newMode as LayoutMode)) {
+      switchLayoutMode(newMode as LayoutMode);
+    } else {
+      switchVisualMode(newMode as VisualMode);
+    }
   }
 
   function applyLayout(mode: ViewMode, animate: boolean = false) {
@@ -1351,6 +1353,16 @@
   function cleanupMode(mode: ViewMode) {
     switch (mode) {
       case "topology":   stopFA2(); break;
+      case "heatmap":    stopActivityHeatmap(); break;
+      case "freshness":  stopFreshnessDecay(); break;
+      case "heartbeat":  stopHeartbeatSync(); break;
+      case "river":      stopDataRiver(); break;
+      case "attention":  stopAttentionRadar(); break;
+    }
+  }
+
+  function cleanupVisual(mode: VisualMode) {
+    switch (mode) {
       case "heatmap":    stopActivityHeatmap(); break;
       case "freshness":  stopFreshnessDecay(); break;
       case "heartbeat":  stopHeartbeatSync(); break;
@@ -2002,7 +2014,7 @@
 
   function startActivityHeatmap() {
     // Apply heatmap coloring to current layout positions
-    applyLayout(lastLayoutMode);
+    applyLayout(layoutMode);
     if (graph) {
       graph.forEachNode(node => {
         activityCounts.set(node, 0);
@@ -2026,7 +2038,7 @@
     const timer = setTimeout(() => {
       const c = activityCounts.get(nodeId) || 0;
       if (c > 0) activityCounts.set(nodeId, c - 1);
-      if (viewMode === "heatmap") updateHeatmapNode(nodeId);
+      if (visualMode === "heatmap") updateHeatmapNode(nodeId);
       scheduleRefresh();
     }, ACTIVITY_WINDOW_MS);
     activityDecayTimers.push(timer);
@@ -2055,7 +2067,7 @@
   // ── Visual: Freshness Decay ───────────────────────────────────
 
   function startFreshnessDecay() {
-    applyLayout(lastLayoutMode);
+    applyLayout(layoutMode);
     const now = Date.now();
     if (graph) {
       graph.forEachNode(node => nodeFreshness.set(node, now));
@@ -2087,7 +2099,7 @@
   }
 
   function updateFreshnessAppearances() {
-    if (!graph || viewMode !== "freshness") return;
+    if (!graph || visualMode !== "freshness") return;
     const now = Date.now();
 
     graph.forEachNode((node, attrs) => {
@@ -2111,7 +2123,7 @@
 
   function markNodeFresh(nodeId: string) {
     nodeFreshness.set(nodeId, Date.now());
-    if (viewMode !== "freshness" || !graph || !graph.hasNode(nodeId)) return;
+    if (visualMode !== "freshness" || !graph || !graph.hasNode(nodeId)) return;
     const attrs = graph.getNodeAttributes(nodeId);
     const origColor = getOriginalNodeColor(attrs);
     graph.setNodeAttribute(nodeId, "color", lightenColor(origColor, 0.6));
@@ -2138,7 +2150,7 @@
   }
 
   function startHeartbeatSync() {
-    applyLayout(lastLayoutMode);
+    applyLayout(layoutMode);
     heartbeatStartTime = performance.now();
     heartbeatBPMs.clear();
 
@@ -2152,17 +2164,22 @@
         }
       });
     }
+    computeHeartbeatHopDistances();
     heartbeatAnimFrame = requestAnimationFrame(animateHeartbeat);
   }
 
   function stopHeartbeatSync() {
     if (heartbeatAnimFrame) { cancelAnimationFrame(heartbeatAnimFrame); heartbeatAnimFrame = null; }
     heartbeatBPMs.clear();
+    heartbeatHopDistances.clear();
     heartbeatStartTime = null;
+    if (glowCtx && glowCanvas) {
+      glowCtx.clearRect(0, 0, glowCanvas.clientWidth, glowCanvas.clientHeight);
+    }
   }
 
   function animateHeartbeat() {
-    if (!sigma || !graph || viewMode !== "heartbeat") { heartbeatAnimFrame = null; return; }
+    if (!sigma || !graph || visualMode !== "heartbeat") { heartbeatAnimFrame = null; return; }
 
     const now = performance.now();
     const elapsed = heartbeatStartTime ? now - heartbeatStartTime : 0;
@@ -2181,10 +2198,9 @@
         const nodeScale = 1.0 + Math.sin(nodePhase) * 0.2;
         graph.setNodeAttribute(node, "size", baseSize * nodeScale);
 
-        // Glow at peak
+        // Glow at peak — handled by renderHeartbeatCanvas, just register entry
         if (Math.sin(nodePhase) > 0.95 && isNodeInViewport(node)) {
           activeGlows.set(node, { start: now, kind: "heartbeat" });
-          startGlowLoop();
         }
         // Color heartbeat nodes red at peak, pink otherwise
         const intensity = (Math.sin(nodePhase) + 1) / 2;
@@ -2196,13 +2212,219 @@
     });
 
     sigma.refresh();
+    renderHeartbeatCanvas(avgBPM, elapsed);
     heartbeatAnimFrame = requestAnimationFrame(animateHeartbeat);
+  }
+
+  // ECG waveform: t ∈ [0,1] → intensity [0,1]. Sharp QRS spike + gentle T-wave.
+  function ecgWave(t: number): number {
+    const qrs = Math.exp(-Math.pow((t - 0.15) / 0.04, 2));
+    const twave = 0.35 * Math.exp(-Math.pow((t - 0.45) / 0.12, 2));
+    return Math.min(1, Math.max(0, qrs + twave));
+  }
+
+  // BFS from all heart-rate nodes to assign propagation delays to edges.
+  function computeHeartbeatHopDistances() {
+    heartbeatHopDistances.clear();
+    if (!graph) return;
+    const queue: Array<{ node: string; dist: number }> = [];
+    heartbeatBPMs.forEach((_, nodeId) => {
+      heartbeatHopDistances.set(nodeId, 0);
+      queue.push({ node: nodeId, dist: 0 });
+    });
+    // Also seed from parent sensor nodes (heart nodes are attributes, sensors are one hop up)
+    heartbeatBPMs.forEach((_, nodeId) => {
+      const sensorId = graph?.getNodeAttribute(nodeId, "data")?.sensor_id;
+      if (sensorId) {
+        const sNodeId = `sensor:${sensorId}`;
+        if (graph?.hasNode(sNodeId) && !heartbeatHopDistances.has(sNodeId)) {
+          heartbeatHopDistances.set(sNodeId, 1);
+          queue.push({ node: sNodeId, dist: 1 });
+        }
+      }
+    });
+    let head = 0;
+    while (head < queue.length) {
+      const { node, dist } = queue[head++];
+      graph?.forEachNeighbor(node, (neighbor) => {
+        if (!heartbeatHopDistances.has(neighbor)) {
+          heartbeatHopDistances.set(neighbor, dist + 1);
+          queue.push({ node: neighbor, dist: dist + 1 });
+        }
+      });
+    }
+  }
+
+  // Renders the heartbeat canvas overlay: vessel lines + traveling bolus + node glows.
+  // Owns the canvas completely during heartbeat mode (renderGlows skips when visualMode === "heartbeat").
+  function renderHeartbeatCanvas(avgBPM: number, elapsed: number) {
+    if (!glowCanvas || !sigma || !graph) return;
+    if (!glowCtx) glowCtx = glowCanvas.getContext("2d");
+    if (!glowCtx) return;
+
+    const w = glowCanvas.clientWidth;
+    const h = glowCanvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    if (glowCanvas.width !== w * dpr || glowCanvas.height !== h * dpr) {
+      glowCanvas.width = w * dpr;
+      glowCanvas.height = h * dpr;
+      glowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    glowCtx.clearRect(0, 0, w, h);
+
+    const cycleMs = (60 / avgBPM) * 1000;
+    const maxHop = heartbeatHopDistances.size > 0
+      ? Math.max(0, ...heartbeatHopDistances.values())
+      : 1;
+
+    // Derive all colors from the theme edge color so the heartbeat pulse
+    // stays in the same hue family as the graph edges.
+    const edgeHex = themeEdge();
+    const edgeR = parseInt(edgeHex.slice(1, 3), 16);
+    const edgeG = parseInt(edgeHex.slice(3, 5), 16);
+    const edgeB = parseInt(edgeHex.slice(5, 7), 16);
+    const edgeRgb = `${edgeR},${edgeG},${edgeB}`;
+
+    // ── Pass 1: Batched halo — single stroke() call for ALL edges ──────────
+    // Uses global phase (no per-edge delay) so all edges share one path.
+    // This gives a soft, organic "artery glow" at near-zero extra cost.
+    const globalCyclePos = ((elapsed % cycleMs) / cycleMs + 1) % 1;
+    const globalIntensity = ecgWave(globalCyclePos);
+    glowCtx.save();
+    glowCtx.lineCap = "round";
+    glowCtx.globalAlpha = 0.028 + globalIntensity * 0.055;
+    glowCtx.strokeStyle = `rgb(${edgeRgb})`;
+    glowCtx.lineWidth = 5 + globalIntensity * 5; // 5→10px soft aura
+    glowCtx.beginPath();
+    graph.forEachEdge((_e, _a, source, target) => {
+      if (!graph.hasNode(source) || !graph.hasNode(target)) return;
+      if (!isNodeInViewport(source) && !isNodeInViewport(target)) return;
+      const srcA = graph.getNodeAttributes(source);
+      const tgtA = graph.getNodeAttributes(target);
+      const sv = sigma!.graphToViewport({ x: srcA.x, y: srcA.y });
+      const tv = sigma!.graphToViewport({ x: tgtA.x, y: tgtA.y });
+      glowCtx.moveTo(sv.x, sv.y);
+      glowCtx.lineTo(tv.x, tv.y);
+    });
+    glowCtx.stroke();
+    glowCtx.restore();
+
+    // ── Pass 2: Per-edge core stroke + bolus ──────────────────────
+    glowCtx.lineCap = "round";
+    graph.forEachEdge((edge, _attrs, source, target) => {
+      if (!graph.hasNode(source) || !graph.hasNode(target)) return;
+      if (!isNodeInViewport(source) && !isNodeInViewport(target)) return;
+
+      const srcA = graph.getNodeAttributes(source);
+      const tgtA = graph.getNodeAttributes(target);
+      const sv = sigma!.graphToViewport({ x: srcA.x, y: srcA.y });
+      const tv = sigma!.graphToViewport({ x: tgtA.x, y: tgtA.y });
+
+      // Phase delay: edges further from heart pulse slightly later (pressure wave propagation)
+      const srcHop = heartbeatHopDistances.get(source) ?? maxHop + 1;
+      const tgtHop = heartbeatHopDistances.get(target) ?? maxHop + 1;
+      const edgeHop = Math.min(srcHop, tgtHop);
+      const delayMs = (edgeHop / Math.max(maxHop, 1)) * cycleMs * 0.32;
+
+      const adjustedElapsed = elapsed - delayMs;
+      const cyclePos = ((adjustedElapsed % cycleMs) / cycleMs + 1) % 1;
+      const intensity = ecgWave(cyclePos);
+
+      // Core vessel: swells from 0.6→3px at systole with rounded caps
+      glowCtx!.strokeStyle = `rgba(${edgeRgb},${0.12 + intensity * 0.20})`;
+      glowCtx!.lineWidth = 0.6 + intensity * 2.4; // 0.6→3px
+      glowCtx!.beginPath();
+      glowCtx!.moveTo(sv.x, sv.y);
+      glowCtx!.lineTo(tv.x, tv.y);
+      glowCtx!.stroke();
+
+      // Traveling bolus: edge color brightened toward white at systole peak
+      const bx = sv.x + (tv.x - sv.x) * cyclePos;
+      const by = sv.y + (tv.y - sv.y) * cyclePos;
+      const bolusR = 1.5 + intensity * 4.5;           // 1.5→6 px radius — subtle
+      const bolusAlpha = 0.22 + intensity * 0.60;     // 22%→82% — always visible
+
+      // Mix edge color toward white proportional to intensity (0 = edge, 1 = 70% white)
+      const bR = Math.round(edgeR + (255 - edgeR) * intensity * 0.72);
+      const bG = Math.round(edgeG + (255 - edgeG) * intensity * 0.72);
+      const bB = Math.round(edgeB + (255 - edgeB) * intensity * 0.72);
+      const mxR = Math.round(edgeR + (255 - edgeR) * intensity * 0.36);
+      const mxG = Math.round(edgeG + (255 - edgeG) * intensity * 0.36);
+      const mxB = Math.round(edgeB + (255 - edgeB) * intensity * 0.36);
+
+      const grad = glowCtx!.createRadialGradient(bx, by, 0, bx, by, bolusR);
+      grad.addColorStop(0, `rgba(${bR},${bG},${bB},${bolusAlpha})`);
+      grad.addColorStop(0.45, `rgba(${mxR},${mxG},${mxB},${bolusAlpha * 0.35})`);
+      grad.addColorStop(1, `rgba(${mxR},${mxG},${mxB},0)`);
+      glowCtx!.fillStyle = grad;
+      glowCtx!.beginPath();
+      glowCtx!.arc(bx, by, bolusR, 0, Math.PI * 2);
+      glowCtx!.fill();
+    });
+
+    // ── Node glow pass (inline to avoid canvas ownership conflict with startGlowLoop) ──
+    const now = performance.now();
+    const palettes = getGlowPalettes();
+    for (const [nodeId, glow] of activeGlows) {
+      const glowElapsed = now - glow.start;
+      if (glowElapsed > GLOW_DURATION_MS) { activeGlows.delete(nodeId); continue; }
+      if (!graph.hasNode(nodeId) || !isNodeInViewport(nodeId)) continue;
+
+      const nodeAttrs = graph.getNodeAttributes(nodeId);
+      const viewPos = sigma!.graphToViewport({ x: nodeAttrs.x, y: nodeAttrs.y });
+      const ratio = sigma!.getCamera().ratio || 1;
+      const displaySize = ((nodeAttrs.size || 4) / ratio) * 2;
+
+      const palette = palettes[glow.kind] || palettes.data;
+      const [cR, cG, cB] = palette.core;
+      const [mR, mG, mB] = palette.mid;
+      const [wR, wG, wB] = palette.wisp;
+
+      const progress = glowElapsed / GLOW_DURATION_MS;
+      const alpha = 0.5 * (1 - progress * progress);
+      const glowRadius = displaySize * (2.0 + progress * 1.0);
+
+      const hash = nodeId.charCodeAt(0) + (nodeId.charCodeAt(1) || 0) * 7;
+      const angle1 = hash % 6.28;
+      const angle2 = angle1 + 2.1;
+      const drift = displaySize * 0.3;
+
+      const g1 = glowCtx.createRadialGradient(
+        viewPos.x, viewPos.y, displaySize * 0.2,
+        viewPos.x, viewPos.y, glowRadius * 0.7
+      );
+      g1.addColorStop(0, `rgba(${cR},${cG},${cB},${alpha * 0.9})`);
+      g1.addColorStop(0.4, `rgba(${mR},${mG},${mB},${alpha * 0.4})`);
+      g1.addColorStop(1, `rgba(${mR},${mG},${mB},0)`);
+      glowCtx.fillStyle = g1;
+      glowCtx.beginPath();
+      glowCtx.arc(viewPos.x, viewPos.y, glowRadius * 0.7, 0, Math.PI * 2);
+      glowCtx.fill();
+
+      for (const off of [
+        { x: Math.cos(angle1) * drift, y: Math.sin(angle1) * drift },
+        { x: Math.cos(angle2) * drift, y: Math.sin(angle2) * drift },
+      ]) {
+        const cx = viewPos.x + off.x;
+        const cy = viewPos.y + off.y;
+        const gr = glowRadius * 0.5;
+        const g2 = glowCtx.createRadialGradient(cx, cy, 0, cx, cy, gr);
+        g2.addColorStop(0, `rgba(${wR},${wG},${wB},${alpha * 0.5})`);
+        g2.addColorStop(0.5, `rgba(${mR},${mG},${mB},${alpha * 0.2})`);
+        g2.addColorStop(1, `rgba(${mR},${mG},${mB},0)`);
+        glowCtx.fillStyle = g2;
+        glowCtx.beginPath();
+        glowCtx.arc(cx, cy, gr, 0, Math.PI * 2);
+        glowCtx.fill();
+      }
+    }
   }
 
   // ── Visual: Data River ────────────────────────────────────────
 
   function startDataRiver() {
-    applyLayout(lastLayoutMode);
+    applyLayout(layoutMode);
     riverParticles = [];
     riverAnimFrame = requestAnimationFrame(animateDataRiver);
   }
@@ -2217,7 +2439,7 @@
   }
 
   function spawnParticle(sensorId: string, attributeId: string) {
-    if (viewMode !== "river" || !graph || !sigma) return;
+    if (visualMode !== "river" || !graph || !sigma) return;
 
     const sensorNodeId = `sensor:${sensorId}`;
     const attrNodeId = `attr:${sensorId}:${attributeId}`;
@@ -2246,7 +2468,7 @@
   }
 
   function animateDataRiver() {
-    if (viewMode !== "river") { riverAnimFrame = null; return; }
+    if (visualMode !== "river") { riverAnimFrame = null; return; }
 
     // Update particles
     riverParticles = riverParticles.filter(p => { p.progress += p.speed; return p.progress < 1.0; });
@@ -2301,7 +2523,7 @@
   // ── Visual: Attention Radar ───────────────────────────────────
 
   function startAttentionRadar() {
-    applyLayout(lastLayoutMode);
+    applyLayout(layoutMode);
     if (graph) {
       graph.forEachNode((node, attrs) => {
         if (attrs.nodeType === "sensor") {
@@ -2347,7 +2569,7 @@
     const { sensor_id, level } = event.detail;
     sensorAttentionLevels.set(sensor_id, level);
 
-    if (viewMode !== "attention") return;
+    if (visualMode !== "attention") return;
     const sNodeId = `sensor:${sensor_id}`;
     if (graph?.hasNode(sNodeId)) {
       applyAttentionAppearance(sNodeId, level);
@@ -2364,11 +2586,7 @@
 
   // ── Mode-specific label for re-layout button ──────────────────
   function handleRelayoutForMode() {
-    if (layoutModes.includes(viewMode)) {
-      applyLayout(viewMode, true);
-    } else {
-      applyLayout(lastLayoutMode, true);
-    }
+    applyLayout(layoutMode, true);
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -2680,6 +2898,8 @@
   }
 
   function renderGlows() {
+    // Heartbeat mode owns the canvas completely via renderHeartbeatCanvas
+    if (visualMode === "heartbeat") return;
     if (!glowCanvas || !sigma || !graph) return;
     if (!glowCtx) glowCtx = glowCanvas.getContext("2d");
     if (!glowCtx) return;
@@ -2869,7 +3089,7 @@
     let anyVisible = false;
 
     // Mode-specific handling
-    if (viewMode === "heatmap") {
+    if (visualMode === "heatmap") {
       if (graph?.hasNode(sensorNodeId)) trackActivity(sensorNodeId);
       if (attribute_ids && Array.isArray(attribute_ids)) {
         for (const attrId of attribute_ids) {
@@ -2880,7 +3100,7 @@
       return;
     }
 
-    if (viewMode === "river") {
+    if (visualMode === "river") {
       if (attribute_ids && Array.isArray(attribute_ids)) {
         for (const attrId of attribute_ids) {
           spawnParticle(sensor_id, attrId);
@@ -2888,7 +3108,7 @@
       }
     }
 
-    if (viewMode === "freshness") {
+    if (visualMode === "freshness") {
       if (graph?.hasNode(sensorNodeId)) markNodeFresh(sensorNodeId);
       if (attribute_ids && Array.isArray(attribute_ids)) {
         for (const attrId of attribute_ids) {
@@ -2899,7 +3119,7 @@
     }
 
     // Pulsation for topology and layout modes
-    if (layoutModes.includes(viewMode)) {
+    if (true) {
       if (graph && graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
         pulsateNode(sensorNodeId);
         anyVisible = true;
@@ -2931,27 +3151,30 @@
       }
 
       // Mode-specific handling
-      if (viewMode === "freshness") {
+      if (visualMode === "freshness") {
         markNodeFresh(attrNodeId);
         markNodeFresh(`sensor:${sensor_id}`);
       }
-      if (viewMode === "heartbeat") {
+      if (visualMode === "heartbeat") {
         const bpm = extractBPM({ payload });
         if (bpm) {
+          const wasEmpty = heartbeatBPMs.size === 0;
           heartbeatBPMs.set(attrNodeId, bpm);
+          // Recompute hop distances when we first get heartrate data (was empty before)
+          if (wasEmpty) computeHeartbeatHopDistances();
           vibrateNode(attrNodeId);
         }
       }
-      if (viewMode === "river") {
+      if (visualMode === "river") {
         spawnParticle(sensor_id, attribute_id);
       }
-      if (viewMode === "heatmap") {
+      if (visualMode === "heatmap") {
         trackActivity(attrNodeId);
         trackActivity(`sensor:${sensor_id}`);
       }
 
       // Pulsation for layout modes
-      if (layoutModes.includes(viewMode) && isNodeInViewport(attrNodeId)) {
+      if (true && isNodeInViewport(attrNodeId)) {
         pulsateNode(attrNodeId);
         const sensorNodeId = `sensor:${sensor_id}`;
         if (graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
@@ -2994,10 +3217,11 @@
         isInitialBuild = false;
         prevSensorSet = currentSensorSet;
         prevUserSet = currentUserSet;
+        cleanupVisual(visualMode);
         buildGraph();
         if (container) {
           initSigma();
-          applyViewMode(viewMode);
+          applyViewMode(visualMode);
         }
         return;
       }
@@ -3015,10 +3239,11 @@
       const changeCount = addedSensors.length + removedSensors.length + addedUsers.length + removedUsers.length;
       const totalNodes = graph.order;
       if (changeCount > totalNodes * 0.3 || changeCount > 50) {
+        cleanupVisual(visualMode);
         buildGraph();
         if (container) {
           initSigma();
-          applyViewMode(viewMode);
+          applyViewMode(visualMode);
         }
         return;
       }
@@ -3148,7 +3373,7 @@
 
       // Re-run layout to integrate new nodes, respecting the current view mode
       if (addedSensors.length > 0 || addedUsers.length > 0) {
-        applyLayout(lastLayoutMode);
+        applyLayout(layoutMode);
       }
       sigma?.refresh();
     }, 500);
@@ -3177,10 +3402,13 @@
         if (soundTheme !== "off") ensureAudioCtx();
       }
 
-      const savedViewMode = localStorage.getItem('sensocto_graph_viewmode') as ViewMode | null;
-      if (savedViewMode && [...layoutModes, ...visualModes].includes(savedViewMode)) {
-        // Defer so the graph is built first
-        setTimeout(() => switchViewMode(savedViewMode), 200);
+      const savedLayout = localStorage.getItem('sensocto_graph_layoutmode') as LayoutMode | null;
+      if (savedLayout && layoutModes.includes(savedLayout)) {
+        setTimeout(() => switchLayoutMode(savedLayout), 200);
+      }
+      const savedVisual = localStorage.getItem('sensocto_graph_visualmode') as VisualMode | null;
+      if (savedVisual && visualModes.includes(savedVisual)) {
+        setTimeout(() => switchVisualMode(savedVisual), 300);
       }
 
       const savedExport = localStorage.getItem('sensocto_graph_export');
@@ -3198,7 +3426,7 @@
     if (isRecording) stopRecording();
     if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }
     activeGlows.clear();
-    cleanupMode(viewMode);
+    cleanupVisual(visualMode);
     if (fa2Worker) {
       fa2Worker.stop();
       fa2Worker.kill();
@@ -3324,31 +3552,31 @@
     <div class="sidebar-panel sidebar-two-col">
       <div class="sidebar-col">
         <span class="sidebar-group-label">Layout</span>
-        <button onclick={() => switchViewMode("topology")} class="mode-btn tooltip-right" class:active={viewMode === "topology"} class:layout-active={lastLayoutMode === "topology" && visualModes.includes(viewMode)} data-tooltip="Topology — Force-directed clustering">
+        <button onclick={() => switchLayoutMode("topology")} class="mode-btn tooltip-right" class:active={layoutMode === "topology"} data-tooltip="Topology — Force-directed clustering">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
         </button>
-        <button onclick={() => switchViewMode("per-type")} class="mode-btn tooltip-right" class:active={viewMode === "per-type"} class:layout-active={lastLayoutMode === "per-type" && visualModes.includes(viewMode)} data-tooltip="Per Type — Lanes by attribute">
+        <button onclick={() => switchLayoutMode("per-type")} class="mode-btn tooltip-right" class:active={layoutMode === "per-type"} data-tooltip="Per Type — Lanes by attribute">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
         </button>
-        <button onclick={() => switchViewMode("radial")} class="mode-btn tooltip-right" class:active={viewMode === "radial"} class:layout-active={lastLayoutMode === "radial" && visualModes.includes(viewMode)} data-tooltip="Radial — Concentric rings">
+        <button onclick={() => switchLayoutMode("radial")} class="mode-btn tooltip-right" class:active={layoutMode === "radial"} data-tooltip="Radial — Concentric rings">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" /><circle cx="12" cy="12" r="5" stroke-width="2" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
         </button>
-        <button onclick={() => switchViewMode("flower")} class="mode-btn tooltip-right" class:active={viewMode === "flower"} class:layout-active={lastLayoutMode === "flower" && visualModes.includes(viewMode)} data-tooltip="Flower — Rose-curve petals">
+        <button onclick={() => switchLayoutMode("flower")} class="mode-btn tooltip-right" class:active={layoutMode === "flower"} data-tooltip="Flower — Rose-curve petals">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2C12 2 14.5 5.5 14.5 8.5C14.5 10.5 13.4 12 12 12C10.6 12 9.5 10.5 9.5 8.5C9.5 5.5 12 2 12 2Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 12C22 12 18.5 14.5 15.5 14.5C13.5 14.5 12 13.4 12 12C12 10.6 13.5 9.5 15.5 9.5C18.5 9.5 22 12 22 12Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 22C12 22 9.5 18.5 9.5 15.5C9.5 13.5 10.6 12 12 12C13.4 12 14.5 13.5 14.5 15.5C14.5 18.5 12 22 12 22Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2 12C2 12 5.5 9.5 8.5 9.5C10.5 9.5 12 10.6 12 12C12 13.4 10.5 14.5 8.5 14.5C5.5 14.5 2 12 2 12Z" /><circle cx="12" cy="12" r="2" fill="currentColor" /></svg>
         </button>
-        <button onclick={() => switchViewMode("per-user")} class="mode-btn tooltip-right" class:active={viewMode === "per-user"} class:layout-active={lastLayoutMode === "per-user" && visualModes.includes(viewMode)} data-tooltip="Per User — Sensors orbit owner">
+        <button onclick={() => switchLayoutMode("per-user")} class="mode-btn tooltip-right" class:active={layoutMode === "per-user"} data-tooltip="Per User — Sensors orbit owner">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
         </button>
-        <button onclick={() => switchViewMode("octopus")} class="mode-btn tooltip-right" class:active={viewMode === "octopus"} class:layout-active={lastLayoutMode === "octopus" && visualModes.includes(viewMode)} data-tooltip="Octopus — Head + tentacles">
+        <button onclick={() => switchLayoutMode("octopus")} class="mode-btn tooltip-right" class:active={layoutMode === "octopus"} data-tooltip="Octopus — Head + tentacles">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="7" r="5" /><path d="M4 12c-1 4-2 8 0 9s2-3 3-5" /><path d="M7 12c0 4-1 9 1 9s1-5 1-7" /><path d="M15 12c0 4 1 9-1 9s-1-5-1-7" /><path d="M20 12c1 4 2 8 0 9s-2-3-3-5" /></svg>
         </button>
-        <button onclick={() => switchViewMode("mushroom")} class="mode-btn tooltip-right" class:active={viewMode === "mushroom"} class:layout-active={lastLayoutMode === "mushroom" && visualModes.includes(viewMode)} data-tooltip="Mushroom — Cap + stem">
+        <button onclick={() => switchLayoutMode("mushroom")} class="mode-btn tooltip-right" class:active={layoutMode === "mushroom"} data-tooltip="Mushroom — Cap + stem">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14c0-5.5 3.6-10 8-10s8 4.5 8 10H4z" /><path d="M9 14v7h6v-7" /></svg>
         </button>
-        <button onclick={() => switchViewMode("jellyfish")} class="mode-btn tooltip-right" class:active={viewMode === "jellyfish"} class:layout-active={lastLayoutMode === "jellyfish" && visualModes.includes(viewMode)} data-tooltip="Jellyfish — Bell + tentacles">
+        <button onclick={() => switchLayoutMode("jellyfish")} class="mode-btn tooltip-right" class:active={layoutMode === "jellyfish"} data-tooltip="Jellyfish — Bell + tentacles">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 11c0-4.4 3.1-8 7-8s7 3.6 7 8" /><path d="M7 11c-.5 3-1 6-.5 8s1-3 1.5-5" /><path d="M10 11c0 3-.5 7 .5 8s.5-4 .5-6" /><path d="M14 11c0 3 .5 7-.5 8s-.5-4-.5-6" /><path d="M17 11c.5 3 1 6 .5 8s-1-3-1.5-5" /></svg>
         </button>
-        <button onclick={() => switchViewMode("dna")} class="mode-btn tooltip-right" class:active={viewMode === "dna"} class:layout-active={lastLayoutMode === "dna" && visualModes.includes(viewMode)} data-tooltip="DNA — Double helix">
+        <button onclick={() => switchLayoutMode("dna")} class="mode-btn tooltip-right" class:active={layoutMode === "dna"} data-tooltip="DNA — Double helix">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3c0 4 12 4 12 8s-12 4-12 8" /><path d="M18 3c0 4-12 4-12 8s12 4 12 8" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="17" x2="16" y2="17" /><line x1="7" y1="12" x2="17" y2="12" /></svg>
         </button>
         <button onclick={toggleCycle} class="mode-btn tooltip-right" class:active={cycleEnabled} data-tooltip={cycleEnabled ? "Stop auto-cycle (30s)" : "Auto-cycle layouts + seasons (30s)"}>
@@ -3359,19 +3587,19 @@
       </div>
       <div class="sidebar-col">
         <span class="sidebar-group-label">Visual</span>
-        <button onclick={() => switchViewMode("heatmap")} class="mode-btn tooltip-right" class:active={viewMode === "heatmap"} data-tooltip="Heatmap — Data frequency colors">
+        <button onclick={() => switchVisualMode("heatmap")} class="mode-btn tooltip-right" class:active={visualMode === "heatmap"} data-tooltip="Heatmap — Data frequency colors (click again to turn off)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>
         </button>
-        <button onclick={() => switchViewMode("freshness")} class="mode-btn tooltip-right" class:active={viewMode === "freshness"} data-tooltip="Freshness — Fade over time">
+        <button onclick={() => switchVisualMode("freshness")} class="mode-btn tooltip-right" class:active={visualMode === "freshness"} data-tooltip="Freshness — Fade over time (click again to turn off)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         </button>
-        <button onclick={() => switchViewMode("heartbeat")} class="mode-btn tooltip-right" class:active={viewMode === "heartbeat"} data-tooltip="Heartbeat — Pulse at BPM">
+        <button onclick={() => switchVisualMode("heartbeat")} class="mode-btn tooltip-right" class:active={visualMode === "heartbeat"} data-tooltip="Heartbeat — Pulse at BPM (click again to turn off)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
         </button>
-        <button onclick={() => switchViewMode("river")} class="mode-btn tooltip-right" class:active={viewMode === "river"} data-tooltip="Data River — Flowing particles">
+        <button onclick={() => switchVisualMode("river")} class="mode-btn tooltip-right" class:active={visualMode === "river"} data-tooltip="Data River — Flowing particles (click again to turn off)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
         </button>
-        <button onclick={() => switchViewMode("attention")} class="mode-btn tooltip-right" class:active={viewMode === "attention"} data-tooltip="Attention — Who's watching">
+        <button onclick={() => switchVisualMode("attention")} class="mode-btn tooltip-right" class:active={visualMode === "attention"} data-tooltip="Attention — Who's watching (click again to turn off)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
         </button>
       </div>

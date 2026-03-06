@@ -127,7 +127,7 @@ defmodule SensoctoWeb.UserSettingsLive do
   def handle_event(
         "toggle_public",
         _params,
-        %{assigns: %{current_user: %{is_guest: true}}} = socket
+        %{assigns: %{current_user: %Sensocto.Accounts.GuestSession{}}} = socket
       ) do
     {:noreply, put_flash(socket, :error, gettext("Guest users cannot change visibility"))}
   end

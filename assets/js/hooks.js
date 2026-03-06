@@ -630,15 +630,17 @@ Hooks.MediaPlayerHook = {
             this.log(`Sync complete: ${stateName}`);
             if (ytState === YT.PlayerState.PLAYING) {
                 this.transition(this.STATES.PLAYING, 'sync complete');
-            } else if (ytState === YT.PlayerState.PAUSED) {
-                this.transition(this.STATES.PAUSED, 'sync complete');
-            }
-            // Report duration when playing starts
-            if (ytState === YT.PlayerState.PLAYING) {
                 const duration = this.player.getDuration();
                 if (duration > 0) {
                     this.pushEventTo(this.el, "report_duration", { duration });
                 }
+            } else if (ytState === YT.PlayerState.PAUSED) {
+                // PAUSED during SYNCING could mean the server-driven pause completed,
+                // OR the user clicked pause while we were seeking/syncing.
+                // Always notify the server so it stays in sync, and set a grace
+                // period to prevent the heartbeat from immediately re-playing.
+                this.enterUserControl('paused during sync');
+                this.pushEventTo(this.el, "pause", {});
             }
             return;
         }

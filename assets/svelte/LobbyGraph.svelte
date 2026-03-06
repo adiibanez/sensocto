@@ -109,6 +109,7 @@
 
   type VisualMode =
     | "none"           // No overlay
+    | "pulse"          // Node pulsation on data events (default)
     | "heatmap"        // Activity frequency coloring
     | "freshness"      // Time-since-data fading
     | "heartbeat"      // BPM-synchronized pulsing
@@ -119,7 +120,7 @@
   type ViewMode = LayoutMode | VisualMode;
 
   let layoutMode = $state<LayoutMode>("topology");
-  let visualMode = $state<VisualMode>("none");
+  let visualMode = $state<VisualMode>("pulse");
   let isTransitioning = $state(false);
 
   // Auto-cycle layout mode
@@ -188,7 +189,7 @@
   let sensorAttentionLevels = new Map<string, string>();
 
   const layoutModes: ViewMode[] = ["topology", "per-type", "radial", "flower", "per-user", "octopus", "mushroom", "jellyfish", "dna"];
-  const visualModes: ViewMode[] = ["heatmap", "freshness", "heartbeat", "river", "attention"];
+  const visualModes: ViewMode[] = ["pulse", "heatmap", "freshness", "heartbeat", "river", "attention"];
 
   // Sound engine — switchable themes for graph activity sonification
   type SoundTheme = "off" | "plasma" | "birds" | "underwater" | "chimes" | "heartbeat";
@@ -571,7 +572,7 @@
       glow: {
         data:       { core: [180, 255, 210], mid: [34, 197, 94],   wisp: [120, 230, 170] },
         attention:  { core: [255, 220, 180], mid: [250, 180, 120], wisp: [252, 200, 150] },
-        heartbeat:  { core: [255, 100, 100], mid: [239, 68, 68],   wisp: [248, 84, 84] },
+        heartbeat:  { core: [255, 20, 80],   mid: [255, 0, 120],   wisp: [255, 60, 100] },
         connect:    { core: [100, 220, 255], mid: [6, 182, 212],   wisp: [50, 200, 235] },
         disconnect: { core: [255, 200, 80],  mid: [234, 179, 8],   wisp: [245, 190, 44] },
       },
@@ -1250,6 +1251,7 @@
 
   function switchLayoutMode(newLayout: LayoutMode) {
     if (layoutMode === newLayout || isTransitioning) return;
+    stopFA2();
     isTransitioning = true;
     layoutMode = newLayout;
     applyLayout(newLayout, true);
@@ -1326,6 +1328,7 @@
 
     // Start overlay-specific systems
     switch (mode) {
+      case "pulse":      restoreNodeAppearances(); break;
       case "heatmap":    startActivityHeatmap(); break;
       case "freshness":  startFreshnessDecay(); break;
       case "heartbeat":  startHeartbeatSync(); break;
@@ -2278,12 +2281,9 @@
       ? Math.max(0, ...heartbeatHopDistances.values())
       : 1;
 
-    // Derive all colors from the theme edge color so the heartbeat pulse
-    // stays in the same hue family as the graph edges.
-    const edgeHex = themeEdge();
-    const edgeR = parseInt(edgeHex.slice(1, 3), 16);
-    const edgeG = parseInt(edgeHex.slice(3, 5), 16);
-    const edgeB = parseInt(edgeHex.slice(5, 7), 16);
+    // Derive heartbeat canvas colors from the theme's heartbeat glow palette.
+    const hbGlow = getGlowPalettes().heartbeat;
+    const [edgeR, edgeG, edgeB] = hbGlow.core;
     const edgeRgb = `${edgeR},${edgeG},${edgeB}`;
 
     // ── Pass 1: Batched halo — single stroke() call for ALL edges ──────────
@@ -3407,7 +3407,7 @@
         setTimeout(() => switchLayoutMode(savedLayout), 200);
       }
       const savedVisual = localStorage.getItem('sensocto_graph_visualmode') as VisualMode | null;
-      if (savedVisual && visualModes.includes(savedVisual)) {
+      if (!compact && savedVisual && visualModes.includes(savedVisual)) {
         setTimeout(() => switchVisualMode(savedVisual), 300);
       }
 
@@ -3587,6 +3587,9 @@
       </div>
       <div class="sidebar-col">
         <span class="sidebar-group-label">Visual</span>
+        <button onclick={() => switchVisualMode("pulse")} class="mode-btn tooltip-right" class:active={visualMode === "pulse"} data-tooltip="Pulse — Nodes pulse on data events (click again to turn off)">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12h3l3-9 4 18 3-9h5" /></svg>
+        </button>
         <button onclick={() => switchVisualMode("heatmap")} class="mode-btn tooltip-right" class:active={visualMode === "heatmap"} data-tooltip="Heatmap — Data frequency colors (click again to turn off)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>
         </button>

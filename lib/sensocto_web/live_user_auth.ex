@@ -77,6 +77,14 @@ defmodule SensoctoWeb.LiveUserAuth do
     end
   end
 
+  def on_mount(:ensure_not_guest, _params, _session, socket) do
+    if guest?(socket.assigns[:current_user]) do
+      {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/sign-in")}
+    else
+      {:cont, socket}
+    end
+  end
+
   def on_mount(:live_no_user, params, session, socket) do
     Logger.debug(
       "live_no_user: socket assigns: #{inspect(socket.assigns)} params: #{inspect(params)} session:#{inspect(session)}"
@@ -113,6 +121,14 @@ defmodule SensoctoWeb.LiveUserAuth do
       {:halt, Phoenix.LiveView.redirect(socket, to: redirect_to || ~p"/sign-in")}
     end
   end
+
+  @doc """
+  Returns true if the given user is a guest (not a full registered user).
+  Guest users are plain maps with `is_guest: true`.
+  """
+  def guest?(nil), do: false
+  def guest?(%{is_guest: true}), do: true
+  def guest?(_), do: false
 
   @doc """
   Gets the last visited path for a user, if available.

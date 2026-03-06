@@ -23,6 +23,7 @@ defmodule SensoctoWeb.RoomListLive do
       |> assign(:public_rooms, Rooms.list_public_rooms())
       |> assign(:show_create_modal, false)
       |> assign(:active_tab, :all)
+      |> assign(:is_guest, SensoctoWeb.LiveUserAuth.guest?(user))
       |> assign(
         :form,
         to_form(%{
@@ -63,6 +64,11 @@ defmodule SensoctoWeb.RoomListLive do
   end
 
   @impl true
+  def handle_event("open_create_modal", _params, %{assigns: %{is_guest: true}} = socket) do
+    {:noreply,
+     put_flash(socket, :error, "Guests cannot create rooms. Please sign up for an account.")}
+  end
+
   def handle_event("open_create_modal", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/rooms/new")}
   end
@@ -88,6 +94,11 @@ defmodule SensoctoWeb.RoomListLive do
   end
 
   @impl true
+  def handle_event("create_room", _params, %{assigns: %{is_guest: true}} = socket) do
+    {:noreply,
+     put_flash(socket, :error, "Guests cannot create rooms. Please sign up for an account.")}
+  end
+
   def handle_event(
         "create_room",
         %{"name" => name, "description" => description} = params,
@@ -161,12 +172,14 @@ defmodule SensoctoWeb.RoomListLive do
 
       <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold">Rooms</h1>
-        <button
-          phx-click="open_create_modal"
-          class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
-        >
-          <Heroicons.icon name="plus" type="outline" class="h-5 w-5" /> Create Room
-        </button>
+        <%= if not @is_guest do %>
+          <button
+            phx-click="open_create_modal"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Heroicons.icon name="plus" type="outline" class="h-5 w-5" /> Create Room
+          </button>
+        <% end %>
       </div>
 
       <.tabs>
@@ -178,7 +191,7 @@ defmodule SensoctoWeb.RoomListLive do
       <%= case @active_tab do %>
         <% :all -> %>
           <%= if Enum.empty?(@user_rooms) and Enum.empty?(@public_rooms) do %>
-            <.empty_state />
+            <.empty_state is_guest={@is_guest} />
           <% else %>
             <%= if not Enum.empty?(@user_rooms) do %>
               <div class="mb-8">
@@ -203,7 +216,7 @@ defmodule SensoctoWeb.RoomListLive do
           <% end %>
         <% :my -> %>
           <%= if Enum.empty?(@user_rooms) do %>
-            <.empty_state message="You haven't created or joined any rooms yet." />
+            <.empty_state message="You haven't created or joined any rooms yet." is_guest={@is_guest} />
           <% else %>
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <%= for room <- @user_rooms do %>
@@ -231,18 +244,20 @@ defmodule SensoctoWeb.RoomListLive do
   end
 
   defp empty_state(assigns) do
-    assigns = assign_new(assigns, :message, fn -> "No rooms found." end)
+    assigns =
+      assigns
+      |> assign_new(:message, fn -> "No rooms found." end)
+      |> assign_new(:is_guest, fn -> false end)
 
     ~H"""
     <div class="text-center py-12">
       <Heroicons.icon name="home" type="outline" class="h-12 w-12 mx-auto mb-4 text-gray-500" />
       <p class="text-gray-400">{@message}</p>
-      <button
-        phx-click="open_create_modal"
-        class="mt-4 text-blue-400 hover:text-blue-300"
-      >
-        Create your first room
-      </button>
+      <%= if not @is_guest do %>
+        <button phx-click="open_create_modal" class="mt-4 text-blue-400 hover:text-blue-300">
+          Create your first room
+        </button>
+      <% end %>
     </div>
     """
   end

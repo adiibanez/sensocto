@@ -27,6 +27,17 @@ defmodule SensoctoWeb.RoomShowLive do
 
   @activity_check_interval 5000
 
+  # Events that guests (read-only users) are not allowed to trigger
+  @guest_restricted_events ~w[
+    save_room delete_room
+    add_sensor remove_sensor
+    regenerate_code
+    toggle_calls_enabled toggle_media_playback_enabled toggle_object_3d_enabled
+    promote_to_admin demote_to_member kick_member
+    switch_room_mode
+    open_add_sensor_modal open_edit_modal
+  ]
+
   @impl true
   def mount(%{"id" => room_id}, _session, socket) do
     user = socket.assigns.current_user
@@ -92,6 +103,7 @@ defmodule SensoctoWeb.RoomShowLive do
           |> assign(:is_owner, Rooms.owner?(room, user))
           |> assign(:is_member, Rooms.member?(room, user))
           |> assign(:can_manage, Rooms.can_manage?(room, user))
+          |> assign(:is_guest, SensoctoWeb.LiveUserAuth.guest?(user))
           |> assign(:sensor_activity, build_activity_map(room.sensors || []))
           |> assign(:edit_form, build_edit_form(room))
           # Lens-related assigns
@@ -364,6 +376,16 @@ defmodule SensoctoWeb.RoomShowLive do
   end
 
   @impl true
+  def handle_event(event, _params, %{assigns: %{is_guest: true}} = socket)
+      when event in @guest_restricted_events do
+    {:noreply,
+     put_flash(
+       socket,
+       :error,
+       "Guests cannot perform this action. Please sign up for an account."
+     )}
+  end
+
   def handle_event("save_room", params, socket) do
     room = socket.assigns.room
     user = socket.assigns.current_user

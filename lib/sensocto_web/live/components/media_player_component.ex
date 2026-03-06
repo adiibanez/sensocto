@@ -11,6 +11,9 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   alias Sensocto.Media.MediaPlayerSupervisor
   alias Sensocto.Accounts.UserPreferences
 
+  # Playlist/playback write events that guests cannot trigger
+  @guest_restricted_events ~w[add_video remove_item reorder_playlist play pause next previous play_item client_seek]
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -178,6 +181,12 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   end
 
   @impl true
+  def handle_event(event, _params, %{assigns: %{current_user: %{is_guest: true}}} = socket)
+      when event in @guest_restricted_events do
+    {:noreply,
+     put_flash(socket, :error, "Guests cannot manage media. Please sign up for an account.")}
+  end
+
   def handle_event("play", _, socket) do
     Logger.debug("MediaPlayerComponent received PLAY event")
     socket = maybe_auto_claim_control(socket)

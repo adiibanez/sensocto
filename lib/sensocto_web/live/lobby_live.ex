@@ -1910,6 +1910,14 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
+  def handle_event(
+        "toggle_favorite",
+        _params,
+        %{assigns: %{current_user: %{is_guest: true}}} = socket
+      ) do
+    {:noreply, socket}
+  end
+
   def handle_event("toggle_favorite", %{"sensor-id" => sensor_id}, socket) do
     user = socket.assigns.current_user
 

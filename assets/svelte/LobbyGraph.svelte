@@ -1168,8 +1168,9 @@
       }
     });
 
-    // Run initial layout
-    runLayout();
+    // Run initial layout — respect current layoutMode so persisted/selected
+    // layout is not overridden by the default topology on every (re)build.
+    applyLayout(layoutMode);
   }
 
   function handleZoomIn() {

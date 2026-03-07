@@ -203,14 +203,11 @@ defmodule Sensocto.Iroh.ConnectionManager do
   end
 
   defp build_node_config do
-    default = %NodeConfig{
-      is_whale_node: false,
-      active_view_capacity: 10,
-      passive_view_capacity: 10,
-      relay_urls: ["https://euw1-1.relay.iroh.network./"],
-      discovery: ["n0", "local_network"]
-    }
+    opts = Application.get_env(:sensocto, :iroh_node_config, [])
 
-    Application.get_env(:sensocto, :iroh_node_config, default)
+    case opts do
+      %NodeConfig{} -> opts
+      kw when is_list(kw) -> NodeConfig.build(kw)
+    end
   end
 end

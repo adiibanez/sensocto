@@ -32,20 +32,36 @@ defmodule Sensocto.Encoding.DeltaEncoder do
 
   @version 0x01
 
-  @doc """
-  Check if delta encoding is enabled via application config.
-  """
-  def enabled? do
-    Application.get_env(:sensocto, :delta_encoding, [])
-    |> Keyword.get(:enabled, false)
-  end
+  @persistent_key {__MODULE__, :config}
 
   @doc """
-  Returns the list of attribute IDs that support delta encoding.
+  Check if delta encoding is enabled. Result is cached in :persistent_term after
+  the first call for O(1) subsequent reads on the hot path.
   """
-  def supported_attributes do
-    Application.get_env(:sensocto, :delta_encoding, [])
-    |> Keyword.get(:supported_attributes, ["ecg"])
+  def enabled?, do: get_cached_config().enabled
+
+  @doc """
+  Returns the list of attribute IDs that support delta encoding. Cached in
+  :persistent_term after the first call.
+  """
+  def supported_attributes, do: get_cached_config().supported_attributes
+
+  defp get_cached_config do
+    case :persistent_term.get(@persistent_key, nil) do
+      nil ->
+        env = Application.get_env(:sensocto, :delta_encoding, [])
+
+        config = %{
+          enabled: Keyword.get(env, :enabled, false),
+          supported_attributes: Keyword.get(env, :supported_attributes, ["ecg", "respiration"])
+        }
+
+        :persistent_term.put(@persistent_key, config)
+        config
+
+      config ->
+        config
+    end
   end
 
   @doc """

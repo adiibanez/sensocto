@@ -588,13 +588,21 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defp do_get_state(state, room_id) do
     case get_doc_id(state, room_id) do
       {:ok, doc_id} ->
-        case CircuitBreaker.call(:iroh_nif, fn ->
-               Native.automerge_to_json(state.node_ref, doc_id)
-             end) do
-          {:ok, json_str} -> Jason.decode(json_str)
-          {:error, :circuit_open} -> {:error, :circuit_open}
-          {:error, reason} -> {:error, reason}
-        end
+        :telemetry.span([:iroh, :crdt, :get_state], %{room_id: room_id}, fn ->
+          result =
+            CircuitBreaker.call(:iroh_nif, fn ->
+              Native.automerge_to_json(state.node_ref, doc_id)
+            end)
+
+          outcome =
+            case result do
+              {:ok, json_str} -> Jason.decode(json_str)
+              {:error, :circuit_open} -> {:error, :circuit_open}
+              {:error, reason} -> {:error, reason}
+            end
+
+          {outcome, %{status: elem(outcome, 0)}}
+        end)
 
       error ->
         error
@@ -622,22 +630,30 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defp do_set_media_field(state, room_id, field, value, user_id) do
     case get_doc_id(state, room_id) do
       {:ok, doc_id} ->
-        case CircuitBreaker.call(:iroh_nif, fn ->
-               Native.automerge_map_put(state.node_ref, doc_id, ["media"], field, value)
-               Native.automerge_map_put(state.node_ref, doc_id, ["media"], "updated_by", user_id)
+        :telemetry.span([:iroh, :crdt, :set_media_field], %{room_id: room_id, field: field}, fn ->
+          result =
+            CircuitBreaker.call(:iroh_nif, fn ->
+              Native.automerge_map_put(state.node_ref, doc_id, ["media"], field, value)
+              Native.automerge_map_put(state.node_ref, doc_id, ["media"], "updated_by", user_id)
 
-               Native.automerge_map_put(
-                 state.node_ref,
-                 doc_id,
-                 ["media"],
-                 "updated_at",
-                 DateTime.utc_now() |> DateTime.to_iso8601()
-               )
-             end) do
-          {:ok, _} -> :ok
-          {:error, :circuit_open} -> {:error, :circuit_open}
-          {:error, reason} -> {:error, reason}
-        end
+              Native.automerge_map_put(
+                state.node_ref,
+                doc_id,
+                ["media"],
+                "updated_at",
+                DateTime.utc_now() |> DateTime.to_iso8601()
+              )
+            end)
+
+          outcome =
+            case result do
+              {:ok, _} -> :ok
+              {:error, :circuit_open} -> {:error, :circuit_open}
+              {:error, reason} -> {:error, reason}
+            end
+
+          {outcome, %{status: if(outcome == :ok, do: :ok, else: :error)}}
+        end)
 
       error ->
         error
@@ -647,29 +663,41 @@ defmodule Sensocto.Iroh.RoomStateCRDT do
   defp do_set_object3d_field(state, room_id, field, value, user_id) do
     case get_doc_id(state, room_id) do
       {:ok, doc_id} ->
-        case CircuitBreaker.call(:iroh_nif, fn ->
-               Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], field, value)
+        :telemetry.span(
+          [:iroh, :crdt, :set_object3d_field],
+          %{room_id: room_id, field: field},
+          fn ->
+            result =
+              CircuitBreaker.call(:iroh_nif, fn ->
+                Native.automerge_map_put(state.node_ref, doc_id, ["object_3d"], field, value)
 
-               Native.automerge_map_put(
-                 state.node_ref,
-                 doc_id,
-                 ["object_3d"],
-                 "updated_by",
-                 user_id
-               )
+                Native.automerge_map_put(
+                  state.node_ref,
+                  doc_id,
+                  ["object_3d"],
+                  "updated_by",
+                  user_id
+                )
 
-               Native.automerge_map_put(
-                 state.node_ref,
-                 doc_id,
-                 ["object_3d"],
-                 "updated_at",
-                 DateTime.utc_now() |> DateTime.to_iso8601()
-               )
-             end) do
-          {:ok, _} -> :ok
-          {:error, :circuit_open} -> {:error, :circuit_open}
-          {:error, reason} -> {:error, reason}
-        end
+                Native.automerge_map_put(
+                  state.node_ref,
+                  doc_id,
+                  ["object_3d"],
+                  "updated_at",
+                  DateTime.utc_now() |> DateTime.to_iso8601()
+                )
+              end)
+
+            outcome =
+              case result do
+                {:ok, _} -> :ok
+                {:error, :circuit_open} -> {:error, :circuit_open}
+                {:error, reason} -> {:error, reason}
+              end
+
+            {outcome, %{status: if(outcome == :ok, do: :ok, else: :error)}}
+          end
+        )
 
       error ->
         error

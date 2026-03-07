@@ -171,6 +171,7 @@
   // Heartbeat tracking (heartbeat mode)
   let heartbeatBPMs = new Map<string, number>();
   let heartbeatHopDistances = new Map<string, number>(); // BFS hops from nearest heart node
+  let heartbeatMaxHop = 1; // pre-computed during BFS, avoids spread on every render frame
   let heartbeatAnimFrame: number | null = null;
   let heartbeatStartTime: number | null = null;
 
@@ -180,6 +181,7 @@
     progress: number;
     speed: number;
     color: string;
+    colorRgb: string; // pre-converted "r,g,b" string — avoids parsing on every render frame
     size: number;
   }
   let riverParticles: Particle[] = [];
@@ -201,7 +203,9 @@
       pulsationFramePending = true;
       requestAnimationFrame(() => {
         pulsationFramePending = false;
-        pendingPulsations.forEach(nId => pulsateNode(nId));
+        pendingPulsations.forEach(nId => {
+          if (isNodeInViewport(nId)) pulsateNode(nId);
+        });
         pendingPulsations.clear();
       });
     }
@@ -532,7 +536,7 @@
         disconnect: { core: [255, 240, 100], mid: [245, 220, 60], wisp: [250, 230, 80] },
       },
       heatmap: ["#1a3a2a", "#2d8a4e", "#5cc870", "#ff69b4", "#ff1493"],
-      attention_levels: ["#ff69b4", "#5cc870", "#2d8a4e", "#1a3a2a"],
+      attention_levels: ["#ef4444", "#f59e0b", "#3b82f6", "#4b5563"],
       selectedEdge: "#90ee90",
       edge: "#2d6850", edgeDim: "#255842",
     },
@@ -548,7 +552,7 @@
         disconnect: { core: [255, 220, 130], mid: [245, 185, 60],  wisp: [250, 200, 100] },
       },
       heatmap: ["#334155", "#2d8a8a", "#d4a030", "#f09030", "#e84040"],
-      attention_levels: ["#f5c030", "#d4a030", "#2d8a8a", "#374151"],
+      attention_levels: ["#ef4444", "#f59e0b", "#3b82f6", "#4b5563"],
       selectedEdge: "#fcd9a0",
       edge: "#424555", edgeDim: "#383a4a",
     },
@@ -564,7 +568,7 @@
         disconnect: { core: [230, 190, 120], mid: [210, 160, 70],  wisp: [220, 175, 95] },
       },
       heatmap: ["#334155", "#6b5b3c", "#a07040", "#cc6633", "#c44040"],
-      attention_levels: ["#d4a030", "#b08030", "#6b5b3c", "#374151"],
+      attention_levels: ["#ef4444", "#f59e0b", "#3b82f6", "#4b5563"],
       selectedEdge: "#e8c090",
       edge: "#4a3c2c", edgeDim: "#403424",
     },
@@ -580,7 +584,7 @@
         disconnect: { core: [210, 210, 230], mid: [180, 180, 210], wisp: [195, 195, 220] },
       },
       heatmap: ["#334155", "#4a6a8a", "#5090b0", "#4ca6c9", "#d47090"],
-      attention_levels: ["#4ca6c9", "#5a7d9a", "#4a5a6a", "#374151"],
+      attention_levels: ["#ef4444", "#f59e0b", "#3b82f6", "#4b5563"],
       selectedEdge: "#a0d0e8",
       edge: "#2e4562", edgeDim: "#263a55",
     },
@@ -596,7 +600,7 @@
         disconnect: { core: [255, 200, 80],  mid: [234, 179, 8],   wisp: [245, 190, 44] },
       },
       heatmap: ["#334155", "#22c55e", "#eab308", "#f97316", "#ef4444"],
-      attention_levels: ["#ef4444", "#eab308", "#22c55e", "#374151"],
+      attention_levels: ["#ef4444", "#f59e0b", "#3b82f6", "#4b5563"],
       selectedEdge: "#34d399",
       edge: "#305555", edgeDim: "#284848",
     },
@@ -789,6 +793,10 @@
           x: Math.random() * 100,
           y: Math.random() * 100
         });
+
+        const attrList0 = sensorAttrIndex.get(sensorId) || [];
+        attrList0.push(attrNodeId);
+        sensorAttrIndex.set(sensorId, attrList0);
 
         graph.addEdge(sensorNodeId, attrNodeId, {
           size: Math.max(0.2, 0.4 * scale),
@@ -1387,6 +1395,20 @@
       case "river":      stopDataRiver(); break;
       case "attention":  stopAttentionRadar(); break;
     }
+  }
+
+  // Flush all in-flight animation state before a full graph rebuild.
+  // Without this, pending timeouts fire against stale/removed nodes and map entries
+  // accumulate indefinitely (one per event × sensor count × time since last rebuild).
+  function cleanupAnimationState() {
+    for (const pulsation of activePulsations.values()) clearTimeout(pulsation.timeout);
+    activePulsations.clear();
+    for (const vib of activeVibrations.values()) for (const vt of vib.timeouts) clearTimeout(vt);
+    activeVibrations.clear();
+    activeGlows.clear();
+    if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }
+    sensorAttrIndex.clear();
+    stopActivityHeatmap();
   }
 
   function restoreNodeAppearances() {
@@ -2279,8 +2301,10 @@
       }
     });
     let head = 0;
+    let maxDist = 0;
     while (head < queue.length) {
       const { node, dist } = queue[head++];
+      if (dist > maxDist) maxDist = dist;
       graph?.forEachNeighbor(node, (neighbor) => {
         if (!heartbeatHopDistances.has(neighbor)) {
           heartbeatHopDistances.set(neighbor, dist + 1);
@@ -2288,6 +2312,7 @@
         }
       });
     }
+    heartbeatMaxHop = Math.max(maxDist, 1);
   }
 
   // Renders the heartbeat canvas overlay: vessel lines + traveling bolus + node glows.
@@ -2308,10 +2333,20 @@
 
     glowCtx.clearRect(0, 0, w, h);
 
+    // Pre-compute viewport positions for all nodes once per frame.
+    // Both edge passes (batched halo + per-edge core) can then read from this cache
+    // instead of calling sigma.graphToViewport() + isNodeInViewport() multiple times per edge.
+    const margin = 80;
+    const nodeVP = new Map<string, { x: number; y: number }>();
+    graph.forEachNode((nodeId, attrs) => {
+      const vp = sigma!.graphToViewport({ x: attrs.x, y: attrs.y });
+      if (vp.x >= -margin && vp.x <= w + margin && vp.y >= -margin && vp.y <= h + margin) {
+        nodeVP.set(nodeId, vp);
+      }
+    });
+
     const cycleMs = (60 / avgBPM) * 1000;
-    const maxHop = heartbeatHopDistances.size > 0
-      ? Math.max(0, ...heartbeatHopDistances.values())
-      : 1;
+    const maxHop = heartbeatMaxHop;
 
     // Derive heartbeat canvas colors from the theme's heartbeat glow palette.
     const hbGlow = getGlowPalettes().heartbeat;
@@ -2330,14 +2365,13 @@
     glowCtx.lineWidth = 5 + globalIntensity * 5; // 5→10px soft aura
     glowCtx.beginPath();
     graph.forEachEdge((_e, _a, source, target) => {
-      if (!graph.hasNode(source) || !graph.hasNode(target)) return;
-      if (!isNodeInViewport(source) && !isNodeInViewport(target)) return;
-      const srcA = graph.getNodeAttributes(source);
-      const tgtA = graph.getNodeAttributes(target);
-      const sv = sigma!.graphToViewport({ x: srcA.x, y: srcA.y });
-      const tv = sigma!.graphToViewport({ x: tgtA.x, y: tgtA.y });
-      glowCtx.moveTo(sv.x, sv.y);
-      glowCtx.lineTo(tv.x, tv.y);
+      const sv = nodeVP.get(source);
+      const tv = nodeVP.get(target);
+      if (!sv && !tv) return;
+      const s = sv ?? sigma!.graphToViewport({ x: graph.getNodeAttribute(source, "x"), y: graph.getNodeAttribute(source, "y") });
+      const t = tv ?? sigma!.graphToViewport({ x: graph.getNodeAttribute(target, "x"), y: graph.getNodeAttribute(target, "y") });
+      glowCtx.moveTo(s.x, s.y);
+      glowCtx.lineTo(t.x, t.y);
     });
     glowCtx.stroke();
     glowCtx.restore();
@@ -2345,13 +2379,11 @@
     // ── Pass 2: Per-edge core stroke + bolus ──────────────────────
     glowCtx.lineCap = "round";
     graph.forEachEdge((edge, _attrs, source, target) => {
-      if (!graph.hasNode(source) || !graph.hasNode(target)) return;
-      if (!isNodeInViewport(source) && !isNodeInViewport(target)) return;
-
-      const srcA = graph.getNodeAttributes(source);
-      const tgtA = graph.getNodeAttributes(target);
-      const sv = sigma!.graphToViewport({ x: srcA.x, y: srcA.y });
-      const tv = sigma!.graphToViewport({ x: tgtA.x, y: tgtA.y });
+      const sv = nodeVP.get(source);
+      const tv = nodeVP.get(target);
+      if (!sv && !tv) return;
+      const s = sv ?? sigma!.graphToViewport({ x: graph.getNodeAttribute(source, "x"), y: graph.getNodeAttribute(source, "y") });
+      const t = tv ?? sigma!.graphToViewport({ x: graph.getNodeAttribute(target, "x"), y: graph.getNodeAttribute(target, "y") });
 
       // Phase delay: edges further from heart pulse slightly later (pressure wave propagation)
       const srcHop = heartbeatHopDistances.get(source) ?? maxHop + 1;
@@ -2367,13 +2399,13 @@
       glowCtx!.strokeStyle = `rgba(${edgeRgb},${0.12 + intensity * 0.20})`;
       glowCtx!.lineWidth = 0.6 + intensity * 2.4; // 0.6→3px
       glowCtx!.beginPath();
-      glowCtx!.moveTo(sv.x, sv.y);
-      glowCtx!.lineTo(tv.x, tv.y);
+      glowCtx!.moveTo(s.x, s.y);
+      glowCtx!.lineTo(t.x, t.y);
       glowCtx!.stroke();
 
       // Traveling bolus: edge color brightened toward white at systole peak
-      const bx = sv.x + (tv.x - sv.x) * cyclePos;
-      const by = sv.y + (tv.y - sv.y) * cyclePos;
+      const bx = s.x + (t.x - s.x) * cyclePos;
+      const by = s.y + (t.y - s.y) * cyclePos;
       const bolusR = 1.5 + intensity * 4.5;           // 1.5→6 px radius — subtle
       const bolusAlpha = 0.22 + intensity * 0.60;     // 22%→82% — always visible
 
@@ -2408,14 +2440,11 @@
       const ratio = sigma!.getCamera().ratio || 1;
       const displaySize = ((nodeAttrs.size || 4) / ratio) * 2;
 
-      const palette = palettes[glow.kind] || palettes.data;
-      const [cR, cG, cB] = palette.core;
-      const [mR, mG, mB] = palette.mid;
-      const [wR, wG, wB] = palette.wisp;
+      const { c: [cR, cG, cB], m: [mR, mG, mB], w: [wR, wG, wB] } = glowRgbFromEntry(glow, palettes);
 
       const progress = glowElapsed / GLOW_DURATION_MS;
       const alpha = 0.5 * (1 - progress * progress);
-      const glowRadius = displaySize * (2.0 + progress * 1.0);
+      const glowRadius = displaySize * (1.5 + progress * 0.75);
 
       const hash = nodeId.charCodeAt(0) + (nodeId.charCodeAt(1) || 0) * 7;
       const angle1 = hash % 6.28;
@@ -2492,7 +2521,7 @@
     if (path.length < 2) return;
 
     const color = graph.getNodeAttribute(attrNodeId, "color") || getTheme().nodes.attribute;
-    riverParticles.push({ path, progress: 0, speed: 0.012 + Math.random() * 0.008, color, size: 1.5 + Math.random() });
+    riverParticles.push({ path, progress: 0, speed: 0.012 + Math.random() * 0.008, color, colorRgb: colorToRgb(color), size: 1.5 + Math.random() });
 
     if (riverParticles.length > 300) riverParticles.splice(0, riverParticles.length - 300);
 
@@ -2502,8 +2531,14 @@
   function animateDataRiver() {
     if (visualMode !== "river") { riverAnimFrame = null; return; }
 
-    // Update particles
-    riverParticles = riverParticles.filter(p => { p.progress += p.speed; return p.progress < 1.0; });
+    // Update particles in-place to avoid array allocation on every frame
+    let alive = 0;
+    for (let pi = 0; pi < riverParticles.length; pi++) {
+      const p = riverParticles[pi];
+      p.progress += p.speed;
+      if (p.progress < 1.0) riverParticles[alive++] = p;
+    }
+    riverParticles.length = alive;
 
     // Render on glow canvas
     if (!glowCanvas || !sigma) { riverAnimFrame = requestAnimationFrame(animateDataRiver); return; }
@@ -2529,10 +2564,9 @@
       const vp = sigma.graphToViewport(pos);
 
       const grad = glowCtx.createRadialGradient(vp.x, vp.y, 0, vp.x, vp.y, p.size * 4);
-      const rgb = colorToRgb(p.color);
-      grad.addColorStop(0, `rgba(${rgb},1)`);
-      grad.addColorStop(0.4, `rgba(${rgb},0.53)`);
-      grad.addColorStop(1, `rgba(${rgb},0)`);
+      grad.addColorStop(0, `rgba(${p.colorRgb},1)`);
+      grad.addColorStop(0.4, `rgba(${p.colorRgb},0.53)`);
+      grad.addColorStop(1, `rgba(${p.colorRgb},0)`);
       glowCtx.fillStyle = grad;
       glowCtx.beginPath();
       glowCtx.arc(vp.x, vp.y, p.size * 4, 0, Math.PI * 2);
@@ -2592,8 +2626,8 @@
     graph.setNodeAttribute(nodeId, "color", color);
     graph.setNodeAttribute(nodeId, "size", baseSize * sizeMult);
 
-    if (level === "high") {
-      activeGlows.set(nodeId, { start: performance.now(), kind: "attention" });
+    if (level === "high" || level === "medium") {
+      activeGlows.set(nodeId, { start: performance.now(), kind: "attention", rgb: hexToRgb(color) });
       startGlowLoop();
     }
   }
@@ -2894,12 +2928,12 @@
       timeouts.push(vt);
     }
     const resetVt = setTimeout(() => {
+      activeVibrations.delete(nodeId);
       if (!graph || !graph.hasNode(nodeId)) return;
       graph.setNodeAttribute(nodeId, "x", graph.getNodeAttribute(nodeId, "x") - offset.dx);
       graph.setNodeAttribute(nodeId, "y", graph.getNodeAttribute(nodeId, "y") - offset.dy);
       offset.dx = 0;
       offset.dy = 0;
-      activeVibrations.delete(nodeId);
     }, 100);
     timeouts.push(resetVt);
 
@@ -2913,7 +2947,29 @@
   type GlowKind = "data" | "attention" | "heartbeat" | "connect" | "disconnect";
   interface GlowColors { core: [number, number, number]; mid: [number, number, number]; wisp: [number, number, number]; }
   function getGlowPalettes(): Record<GlowKind, GlowColors> { return getTheme().glow; }
-  interface GlowEntry { start: number; kind: GlowKind; frozenPos?: { x: number; y: number }; frozenSize?: number; }
+  interface GlowEntry { start: number; kind: GlowKind; frozenPos?: { x: number; y: number }; frozenSize?: number; rgb?: [number, number, number]; }
+
+  function hexToRgb(hex: string): [number, number, number] {
+    return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  }
+
+  function glowRgbFromEntry(glow: GlowEntry, palettes: Record<GlowKind, GlowColors>): { c: [number,number,number]; m: [number,number,number]; w: [number,number,number] } {
+    if (glow.rgb) {
+      const [r, g, b] = glow.rgb;
+      const clamp = (v: number) => Math.min(255, v);
+      // Ensure minimum brightness so dark "none"-level glows remain visible.
+      // Boost channels proportionally when the color is too dim (sum < 240).
+      const sum = r + g + b;
+      const boost = sum < 240 ? Math.round((240 - sum) / 3) : 0;
+      return {
+        c: [clamp(r + boost), clamp(g + boost), clamp(b + boost)],
+        m: [clamp(r + boost + 35), clamp(g + boost + 35), clamp(b + boost + 35)],
+        w: [clamp(r + boost + 65), clamp(g + boost + 65), clamp(b + boost + 65)],
+      };
+    }
+    const p = palettes[glow.kind] || palettes.data;
+    return { c: p.core, m: p.mid, w: p.wisp };
+  }
   let activeGlows = new Map<string, GlowEntry>();
   const GLOW_DURATION_MS = 350;
 
@@ -2978,14 +3034,11 @@
       }
 
       const palettes = getGlowPalettes();
-      const palette = palettes[glow.kind] || palettes.data;
-      const [cR, cG, cB] = palette.core;
-      const [mR, mG, mB] = palette.mid;
-      const [wR, wG, wB] = palette.wisp;
+      const { c: [cR, cG, cB], m: [mR, mG, mB], w: [wR, wG, wB] } = glowRgbFromEntry(glow, palettes);
 
       const progress = elapsed / GLOW_DURATION_MS;
       const alpha = 0.5 * (1 - progress * progress);
-      const glowRadius = displaySize * (2.0 + progress * 1.0);
+      const glowRadius = displaySize * (1.5 + progress * 0.75);
 
       const hash = nodeId.charCodeAt(0) + (nodeId.charCodeAt(1) || 0) * 7;
       const angle1 = (hash % 6.28);
@@ -3099,17 +3152,18 @@
 
     // Contract back after animation
     const timeout = setTimeout(() => {
+      activePulsations.delete(nodeId);
       if (graph && graph.hasNode(nodeId)) {
         graph.setNodeAttribute(nodeId, "size", baseSize);
         graph.setNodeAttribute(nodeId, "color", originalColor);
-        activePulsations.delete(nodeId);
         scheduleRefresh();
       }
     }, 250);
 
     activePulsations.set(nodeId, {timeout, baseSize, originalColor});
 
-    activeGlows.set(nodeId, { start: performance.now(), kind: "data" });
+    const glowRgb = visualMode === "attention" ? hexToRgb(originalColor) : undefined;
+    activeGlows.set(nodeId, { start: performance.now(), kind: "data", rgb: glowRgb });
     startGlowLoop();
 
     scheduleRefresh();
@@ -3151,19 +3205,17 @@
       }
     }
 
-    // Pulsation for topology and layout modes — coalesced into one RAF frame
-    if (true) {
-      if (graph && graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
-        schedulePulsation(sensorNodeId);
-        anyVisible = true;
-      }
-      if (attribute_ids && Array.isArray(attribute_ids)) {
-        for (const attrId of attribute_ids) {
-          const attrNodeId = `attr:${sensor_id}:${attrId}`;
-          if (graph && graph.hasNode(attrNodeId) && isNodeInViewport(attrNodeId)) {
-            schedulePulsation(attrNodeId);
-            anyVisible = true;
-          }
+    // Pulsation — coalesced into one RAF frame, viewport check happens at flush time
+    if (graph?.hasNode(sensorNodeId)) {
+      schedulePulsation(sensorNodeId);
+      anyVisible = true;
+    }
+    if (attribute_ids && Array.isArray(attribute_ids)) {
+      for (const attrId of attribute_ids) {
+        const attrNodeId = `attr:${sensor_id}:${attrId}`;
+        if (graph?.hasNode(attrNodeId)) {
+          schedulePulsation(attrNodeId);
+          anyVisible = true;
         }
       }
     }
@@ -3206,14 +3258,10 @@
         trackActivity(`sensor:${sensor_id}`);
       }
 
-      // Pulsation for layout modes
-      if (true && isNodeInViewport(attrNodeId)) {
-        pulsateNode(attrNodeId);
-        const sensorNodeId = `sensor:${sensor_id}`;
-        if (graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
-          pulsateNode(sensorNodeId);
-        }
-      }
+      // Pulsation — coalesced into one RAF frame (same Set as handleGraphActivity)
+      schedulePulsation(attrNodeId);
+      const sensorNodeId = `sensor:${sensor_id}`;
+      if (graph.hasNode(sensorNodeId)) schedulePulsation(sensorNodeId);
     }
   }
 
@@ -3251,6 +3299,7 @@
         prevSensorSet = currentSensorSet;
         prevUserSet = currentUserSet;
         cleanupVisual(visualMode);
+        cleanupAnimationState();
         buildGraph();
         if (container) {
           initSigma();
@@ -3273,6 +3322,7 @@
       const totalNodes = graph.order;
       if (changeCount > totalNodes * 0.3 || changeCount > 50) {
         cleanupVisual(visualMode);
+        cleanupAnimationState();
         buildGraph();
         if (container) {
           initSigma();
@@ -3666,6 +3716,17 @@
       {/each}
     </div>
   </div>
+
+  <!-- Attention legend — shown when attention mode is active -->
+  {#if visualMode === "attention"}
+    <div class="attention-legend">
+      <div class="attention-legend-title">Attention</div>
+      <div class="attention-legend-item"><span class="attention-legend-dot" style="background:#ef4444"></span>High</div>
+      <div class="attention-legend-item"><span class="attention-legend-dot" style="background:#f59e0b"></span>Medium</div>
+      <div class="attention-legend-item"><span class="attention-legend-dot" style="background:#3b82f6"></span>Low</div>
+      <div class="attention-legend-item"><span class="attention-legend-dot" style="background:#4b5563"></span>None</div>
+    </div>
+  {/if}
 
   <!-- Recording indicator -->
   {#if isRecording}
@@ -4175,6 +4236,48 @@
       visibility: visible;
       transform: translateY(0);
     }
+  }
+
+  /* ── Attention legend ─────────────────────────────── */
+
+  .attention-legend {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    background: rgba(15, 20, 30, 0.82);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  .attention-legend-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 0.1rem;
+  }
+
+  .attention-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .attention-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
   /* Compact hover tooltip - follows cursor */

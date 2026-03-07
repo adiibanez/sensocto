@@ -351,7 +351,28 @@ defmodule SensoctoWeb.LobbyLive do
     # Async historical data loading — view renders immediately, data fills in
     socket = start_seed_data_async(socket, action)
 
+    # Re-push the viewer channel token for every composite/graph navigation.
+    # The CompositeMeasurementHandler hook is conditionally rendered (:if={@live_action == :x}),
+    # so it is destroyed and re-mounted on each view change. The freshly-mounted hook
+    # needs the token to join ViewerDataChannel. Push events are delivered after the DOM
+    # patch so the hook's handleEvent is registered before the event fires.
+    socket = push_viewer_token_for_composite(socket, action)
+
     {:noreply, socket}
+  end
+
+  # Sensors view: no token push needed (hook element is not rendered)
+  defp push_viewer_token_for_composite(socket, :sensors), do: socket
+
+  # Composite/graph views: re-push the signed token so the freshly-mounted
+  # CompositeMeasurementHandler hook can join ViewerDataChannel.
+  defp push_viewer_token_for_composite(socket, _action) do
+    if socket.assigns[:priority_lens_registered] do
+      viewer_token = Phoenix.Token.sign(SensoctoWeb.Endpoint, "viewer_data", socket.id)
+      push_event(socket, "viewer_channel_token", %{token: viewer_token})
+    else
+      socket
+    end
   end
 
   # Sensors grid view: LobbyLive subscribes so it can call send_update on LiveComponents

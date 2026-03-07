@@ -295,64 +295,77 @@ defmodule Sensocto.Iroh.RoomStore do
       key = "room:#{room_id}"
       value = Jason.encode!(room_data)
 
-      case CircuitBreaker.call(:iroh_docs, fn ->
-             Native.docs_set_entry(
-               state.node_ref,
-               state.rooms_namespace,
-               state.author_id,
-               key,
-               value
-             )
-           end) do
-        {:ok, content_hash} when is_binary(content_hash) ->
-          {:ok, content_hash}
+      :telemetry.span([:iroh, :room_store, :store_room], %{room_id: room_id}, fn ->
+        result =
+          CircuitBreaker.call(:iroh_docs, fn ->
+            Native.docs_set_entry(
+              state.node_ref,
+              state.rooms_namespace,
+              state.author_id,
+              key,
+              value
+            )
+          end)
 
-        {:error, :circuit_open} ->
-          {:error, :circuit_open}
+        {case result do
+           {:ok, content_hash} when is_binary(content_hash) ->
+             {:ok, content_hash}
 
-        {:ok, error} ->
-          Logger.error("[Iroh.RoomStore] Failed to store room: #{inspect(error)}")
-          {:error, error}
+           {:error, :circuit_open} ->
+             {:error, :circuit_open}
 
-        {:error, reason} ->
-          Logger.error("[Iroh.RoomStore] Failed to store room: #{inspect(reason)}")
-          {:error, reason}
-      end
+           {:ok, error} ->
+             Logger.error("[Iroh.RoomStore] Failed to store room: #{inspect(error)}")
+             {:error, error}
+
+           {:error, reason} ->
+             Logger.error("[Iroh.RoomStore] Failed to store room: #{inspect(reason)}")
+             {:error, reason}
+         end, %{status: elem(result, 0)}}
+      end)
     end
   end
 
   defp do_get_room(state, room_id) do
     key = "room:#{room_id}"
 
-    case CircuitBreaker.call(:iroh_docs, fn ->
-           Native.docs_get_entry_value(
-             state.node_ref,
-             state.rooms_namespace,
-             state.author_id,
-             key
-           )
-         end) do
-      {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
-        case Jason.decode(value) do
-          {:ok, data} -> {:ok, atomize_keys(data)}
-          {:error, reason} -> {:error, {:json_decode, reason}}
+    :telemetry.span([:iroh, :room_store, :get_room], %{room_id: room_id}, fn ->
+      result =
+        CircuitBreaker.call(:iroh_docs, fn ->
+          Native.docs_get_entry_value(
+            state.node_ref,
+            state.rooms_namespace,
+            state.author_id,
+            key
+          )
+        end)
+
+      outcome =
+        case result do
+          {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
+            case Jason.decode(value) do
+              {:ok, data} -> {:ok, atomize_keys(data)}
+              {:error, reason} -> {:error, {:json_decode, reason}}
+            end
+
+          {:ok, ""} ->
+            {:error, :not_found}
+
+          {:ok, nil} ->
+            {:error, :not_found}
+
+          {:error, :circuit_open} ->
+            {:error, :circuit_open}
+
+          {:ok, error} ->
+            {:error, error}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      {:ok, ""} ->
-        {:error, :not_found}
-
-      {:ok, nil} ->
-        {:error, :not_found}
-
-      {:error, :circuit_open} ->
-        {:error, :circuit_open}
-
-      {:ok, error} ->
-        {:error, error}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+      {outcome, %{status: elem(outcome, 0)}}
+    end)
   end
 
   defp do_delete_room(state, room_id) do
@@ -360,24 +373,27 @@ defmodule Sensocto.Iroh.RoomStore do
     key = "room:#{room_id}"
     tombstone = Jason.encode!(%{deleted: true, deleted_at: DateTime.utc_now()})
 
-    case CircuitBreaker.call(:iroh_docs, fn ->
-           Native.docs_set_entry(
-             state.node_ref,
-             state.rooms_namespace,
-             state.author_id,
-             key,
-             tombstone
-           )
-         end) do
-      {:ok, content_hash} when is_binary(content_hash) ->
-        :ok
+    :telemetry.span([:iroh, :room_store, :delete_room], %{room_id: room_id}, fn ->
+      result =
+        CircuitBreaker.call(:iroh_docs, fn ->
+          Native.docs_set_entry(
+            state.node_ref,
+            state.rooms_namespace,
+            state.author_id,
+            key,
+            tombstone
+          )
+        end)
 
-      {:error, :circuit_open} ->
-        {:error, :circuit_open}
+      outcome =
+        case result do
+          {:ok, content_hash} when is_binary(content_hash) -> :ok
+          {:error, :circuit_open} -> {:error, :circuit_open}
+          other -> {:error, other}
+        end
 
-      other ->
-        {:error, other}
-    end
+      {outcome, %{status: if(outcome == :ok, do: :ok, else: :error)}}
+    end)
   end
 
   defp do_list_all_rooms(_state) do
@@ -403,79 +419,93 @@ defmodule Sensocto.Iroh.RoomStore do
 
     value = Jason.encode!(membership_data)
 
-    case CircuitBreaker.call(:iroh_docs, fn ->
-           Native.docs_set_entry(
-             state.node_ref,
-             state.memberships_namespace,
-             state.author_id,
-             key,
-             value
-           )
-         end) do
-      {:ok, content_hash} when is_binary(content_hash) ->
-        {:ok, content_hash}
+    :telemetry.span([:iroh, :room_store, :store_membership], %{room_id: room_id}, fn ->
+      result =
+        CircuitBreaker.call(:iroh_docs, fn ->
+          Native.docs_set_entry(
+            state.node_ref,
+            state.memberships_namespace,
+            state.author_id,
+            key,
+            value
+          )
+        end)
 
-      {:error, :circuit_open} ->
-        {:error, :circuit_open}
+      outcome =
+        case result do
+          {:ok, content_hash} when is_binary(content_hash) -> {:ok, content_hash}
+          {:error, :circuit_open} -> {:error, :circuit_open}
+          other -> {:error, other}
+        end
 
-      other ->
-        {:error, other}
-    end
+      {outcome, %{status: elem(outcome, 0)}}
+    end)
   end
 
   defp do_get_membership(state, room_id, user_id) do
     key = "membership:#{room_id}:#{user_id}"
 
-    case CircuitBreaker.call(:iroh_docs, fn ->
-           Native.docs_get_entry_value(
-             state.node_ref,
-             state.memberships_namespace,
-             state.author_id,
-             key
-           )
-         end) do
-      {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
-        case Jason.decode(value) do
-          {:ok, data} -> {:ok, atomize_keys(data)}
-          {:error, reason} -> {:error, {:json_decode, reason}}
+    :telemetry.span([:iroh, :room_store, :get_membership], %{room_id: room_id}, fn ->
+      result =
+        CircuitBreaker.call(:iroh_docs, fn ->
+          Native.docs_get_entry_value(
+            state.node_ref,
+            state.memberships_namespace,
+            state.author_id,
+            key
+          )
+        end)
+
+      outcome =
+        case result do
+          {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
+            case Jason.decode(value) do
+              {:ok, data} -> {:ok, atomize_keys(data)}
+              {:error, reason} -> {:error, {:json_decode, reason}}
+            end
+
+          {:ok, ""} ->
+            {:error, :not_found}
+
+          {:ok, nil} ->
+            {:error, :not_found}
+
+          {:error, :circuit_open} ->
+            {:error, :circuit_open}
+
+          other ->
+            {:error, other}
         end
 
-      {:ok, ""} ->
-        {:error, :not_found}
-
-      {:ok, nil} ->
-        {:error, :not_found}
-
-      {:error, :circuit_open} ->
-        {:error, :circuit_open}
-
-      other ->
-        {:error, other}
-    end
+      {outcome, %{status: elem(outcome, 0)}}
+    end)
   end
 
   defp do_delete_membership(state, room_id, user_id) do
     key = "membership:#{room_id}:#{user_id}"
     tombstone = Jason.encode!(%{deleted: true})
 
-    case CircuitBreaker.call(:iroh_docs, fn ->
-           Native.docs_set_entry(
-             state.node_ref,
-             state.memberships_namespace,
-             state.author_id,
-             key,
-             tombstone
-           )
-         end) do
-      {:ok, content_hash} when is_binary(content_hash) ->
-        :ok
+    :telemetry.span([:iroh, :room_store, :delete_membership], %{room_id: room_id}, fn ->
+      result =
+        CircuitBreaker.call(:iroh_docs, fn ->
+          Native.docs_set_entry(
+            state.node_ref,
+            state.memberships_namespace,
+            state.author_id,
+            key,
+            tombstone
+          )
+        end)
 
-      {:error, :circuit_open} ->
-        {:error, :circuit_open}
+      outcome =
+        case result do
+          {:ok, content_hash} when is_binary(content_hash) -> :ok
+          {:error, :circuit_open} -> {:error, :circuit_open}
+          other -> {:error, other}
+        end
 
-      other ->
-        {:error, other}
-    end
+      {outcome, %{status: if(outcome == :ok, do: :ok, else: :error)}}
+    end)
   end
 
   defp do_list_room_memberships(_state, _room_id) do

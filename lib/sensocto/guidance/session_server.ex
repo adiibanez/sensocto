@@ -510,4 +510,7 @@ defmodule Sensocto.Guidance.SessionServer do
     Process.cancel_timer(ref)
     %{state | idle_timeout_ref: nil}
   end
+
+  @impl true
+  def code_change(_old_vsn, state, _extra), do: {:ok, state}
 end

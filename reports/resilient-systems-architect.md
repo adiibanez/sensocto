@@ -1,6 +1,6 @@
 # Sensocto OTP Architecture and Resilience Assessment
 
-**Generated:** 2026-02-08, **Updated:** 2026-03-01
+**Generated:** 2026-02-08, **Updated:** 2026-03-07
 **Author:** Resilient Systems Architect Agent
 **Codebase Version:** Based on commit d9321a8 (main branch)
 **Previous Report:** 2026-02-24
@@ -16,6 +16,8 @@ Several structural issues have been identified and progressively addressed. Rece
 **Overall Resilience Grade: A-** (maintained)
 
 The system is well above average for Elixir applications. The attention-aware routing, five-layer backpressure system, and ETS direct-write optimization are genuinely innovative. Live measurements with 152 sensors revealed that the SimpleSensor GC fix reduced per-sensor process memory from 2.1 MB to 175 KB (12x improvement), but ETS warm store is now the dominant memory consumer at 3.6 MB/sensor. A single node can support ~1,400 sensors with current caps, or ~4,000 with the recommended warm store cap reduction. Remaining gaps: ETS warm store scaling, Domain.Supervisor strategy mismatch, absence of `code_change/3`, and database retention policy.
+
+**Mar 7 Update:** Channel data path migration complete. Created `ViewerDataChannel` (`lib/sensocto_web/channels/viewer_data_channel.ex`) — all composite and graph views (ECG, heartrate, HRV, IMU, gaze, skeleton, respiration, battery, location, graph, graph3d) now bypass LobbyLive entirely. Data flows directly from PriorityLens ETS → PubSub → ViewerDataChannel → `sensor_batch` push → `CompositeMeasurementHandler` JS hook → Svelte component. LobbyLive only subscribes to `lens:priority` in the `:sensors` grid view; its mailbox stays at 0 in all composite/graph views. The LobbyLive mailbox bottleneck for composite views is **resolved**. Removed ~130 lines of composite/graph batch processing from LobbyLive (`process_lens_batch_for_composite/3`, `process_lens_batch_for_graph/2`, `process_lens_digest_for_composite/3`). Seed data continues via `start_async` → `push_event` (small one-time payload). See Section 13.10 for throughput analysis.
 
 **Mar 1 Update:** Significant lobby refactoring -- LobbyLive handle_info callbacks extracted into 5 hook modules (`lobby_live/hooks/`) and UI components extracted to `lobby_live/components.ex`. This is a major maintainability improvement: ~1,091 lines moved out of the monolithic LobbyLive into focused modules, reducing it from ~4,200 to ~3,138 lines. Privacy default changed to `is_public: false` (migration 20260226195225). SearchIndex now filters by `is_public == true`. SessionServer expanded with layout/quality/sort/lobby_mode sync for guided sessions (grew from ~417 to ~513 lines). ChatComponent gained duplicate PubSub subscription prevention using process dictionary. GuestUserStore moved to database persistence with ETS cache overlay (30-day TTL). See Section 12.29-12.34 for detailed analysis.
 
@@ -162,7 +164,7 @@ Sensocto.Supervisor (root, :rest_for_one, 5/10s)
 
 ### 2.1 Primary Data Flow
 
-PubSub sharded by attention level; Router writes directly to PriorityLens ETS.
+PubSub sharded by attention level; Router writes directly to PriorityLens ETS. As of Mar 2026, there are two downstream paths depending on the active view.
 
 ```
 External Device
@@ -183,21 +185,29 @@ Lenses.Router (subscribed to 3 attention topics, demand-driven)
   |
   v
 PriorityLens ETS tables (per-socket buffering, :public access)
-  |-- flush timer: 32ms (high), 50ms (medium), 100ms (low), 200ms (minimal)
+  |-- flush timer: 64ms (high), 128ms (medium), 250ms (low), 500ms (minimal)
   |-- broadcasts to "lens:priority:{socket_id}"
   |
-  v
-LobbyLive / RoomShowLive (handle_info({:lens_batch, ...}))
-  |-- process_lens_batch_for_composite
-  |-- push_event("composite_measurement")
+  v  (dual path based on active view)
   |
-  v
-CompositeMeasurementHandler (JS Hook)
-  |-- window.dispatchEvent("composite-measurement-event")
-  |
-  v
-Svelte Component (CompositeECG, CompositeBreathing, etc.)
+  +-- [Sensors grid view] -------------------------+
+  |   LobbyLive (handle_info({:lens_batch, ...}))  |
+  |     |-- send_update(StatefulSensorComponent)   |
+  |   StatefulSensorComponent (LiveComponent)      |
+  |                                                |
+  +-- [Composite / graph views] -------------------+
+      ViewerDataChannel (Channel process, one per browser session)
+        |-- push("sensor_batch", batch)
+        |
+        v
+      CompositeMeasurementHandler (JS Hook)
+        |-- window.dispatchEvent CustomEvent
+        |
+        v
+      Svelte Component (CompositeECG, CompositeBreathing, etc.)
 ```
+
+**Key property (Mar 2026):** In composite/graph views, LobbyLive does NOT subscribe to `lens:priority`. Its mailbox receives 0 lens-batch messages. The ViewerDataChannel process is the sole subscriber and pushes data directly to the WebSocket. Each concurrent viewer gets their own Channel process — completely parallelized, no shared bottleneck.
 
 ### 2.2 Parallel Data Paths
 
@@ -255,11 +265,13 @@ This is a clean implementation of the Distributed Discovery plan (11.7). The eve
 - Clean separation between always-on (per-sensor) and attention-gated (global) data paths
 - ETS-backed buffering in PriorityLens avoids GenServer mailbox buildup
 - Timer-based flush with quality tiers provides graceful degradation
-- Historical seed data uses proper handshake, not timing hacks
+- Historical seed data uses `start_async` + `push_event` (small one-time payload, non-blocking)
 - Discovery system is event-driven with proper debouncing and node-down cleanup
+- **Mar 2026:** LobbyLive mailbox bottleneck for composite/graph views is **fully resolved**. LobbyLive receives zero lens-batch messages in these views. Each concurrent viewer gets their own ViewerDataChannel process — completely parallelized fan-out.
 
 **Concerns:**
 - ~~**Single Router GenServer bottleneck**~~ **Mitigated.** Router writes directly to public ETS tables. PubSub fan-out reduced via attention-level sharding.
+- ~~**LobbyLive mailbox bottleneck for composite/graph views**~~ **RESOLVED (Mar 2026).** ViewerDataChannel bypasses LobbyLive entirely for all composite and graph views. Backpressure monitoring (quality tiers) is still active and necessary for the sensors grid view.
 - **No dead letter handling.** If a PubSub subscriber dies between subscription and message delivery, messages are silently dropped. Acceptable for real-time data but worth noting.
 
 ---
@@ -311,11 +323,11 @@ Amortized split optimization: hot tier only splits to warm when it reaches 2x th
 
 ### Layer 4: PriorityLens Quality Tiers
 
-Four quality levels with different flush intervals:
-- High: 32ms (31.25 Hz -- near real-time)
-- Medium: 50ms (20 Hz)
-- Low: 100ms (10 Hz)
-- Minimal: 200ms (5 Hz)
+Four quality levels with different flush intervals (current values as of Mar 2026):
+- High: 64ms (~15.6 Hz)
+- Medium: 128ms (~7.8 Hz)
+- Low: 250ms (4 Hz)
+- Minimal: 500ms (2 Hz)
 - Paused: no flush
 
 **Philosophy shift.** The PriorityLens now defaults to maximum throughput. Preemptive sensor-count-based throttling has been removed. Degradation only occurs based on actual backpressure (mailbox depth), not predicted load. This is the correct approach -- measure, then react, rather than guess.
@@ -1436,7 +1448,7 @@ Sensors naturally distribute by device connection point. Rooms distribute via Ho
 
 ### 13.8 The Next Bottleneck
 
-With the GC fix in place, the scaling bottlenecks in priority order:
+With the GC fix in place and the ViewerDataChannel migration complete, the scaling bottlenecks in priority order:
 
 1. **ETS warm store memory (NOW).** At 3.6 MB/sensor (10,000 entry cap), ETS consumes 95% of per-sensor cost. Reducing the 10,000 entry cap to 2,500 is the single highest-leverage change. Estimated impact: 3x increase in single-node sensor capacity.
 
@@ -1447,6 +1459,8 @@ With the GC fix in place, the scaling bottlenecks in priority order:
 4. **SyncComputer per-sensor subscriptions (AT HIGH SYNC PARTICIPATION).** If 500+ sensors participate in sync computation simultaneously, SyncComputer becomes CPU-bound. Sharding by group would solve this.
 
 5. **Horde CRDT sync overhead (AT 1000+ ROOMS).** Horde's delta-CRDT protocol has overhead proportional to total registered entries. Monitor and consider migration to `:pg` for rooms (as was done for sensors) if convergence latency becomes problematic.
+
+~~**LobbyLive mailbox bottleneck for composite/graph views.**~~ **RESOLVED (Mar 2026)** by ViewerDataChannel. This bottleneck no longer exists for composite or graph views. The sensors grid view retains its backpressure monitoring (quality tiers), which remains appropriate and necessary.
 
 ### 13.9 Capacity Planning Summary
 
@@ -1459,6 +1473,51 @@ With the GC fix in place, the scaling bottlenecks in priority order:
 | Research event | 10,000 | ~2.3 GB/node | 8 | All of the above + SyncComputer sharding |
 
 These projections assume the warm store cap is reduced to 2,500 (~1.5 MB/sensor total). Without that change, divide sensor counts by ~3.
+
+### 13.10 WebSocket Viewer Throughput (Mar 2026)
+
+**Measurement baseline:** 159 sensors at `:high` quality (64ms flush interval). In ECG view, `ViewerDataChannel` delivers approximately **1,400 ECG events/sec** to a single browser client.
+
+#### Process Overhead
+
+The Channel path adds exactly **one new process per browser session** — the `ViewerDataChannel` process. This process subscribes to `lens:priority:{socket_id}`, receives `{:lens_batch, _}` messages from PubSub, and pushes `sensor_batch` events to the WebSocket. No GenServer calls, no ETS lookups in the hot path — O(batch_size) work only.
+
+The `sensor_batch` push from the Channel uses JSON encoding (same as `push_event`). Binary encoding (which would eliminate JSON serialization overhead for numeric arrays like ECG samples) is a future optimization.
+
+#### Before vs After Migration
+
+**Before (composite views through LobbyLive):**
+
+Per-viewer overhead was proportional to `sensors × attributes × flush_rate × viewers`:
+- LobbyLive received ALL lens batches regardless of which view was active
+- Each batch was processed by `process_lens_batch_for_composite/3` or `process_lens_batch_for_graph/2`
+- `push_event` per measurement was called from within the LobbyLive process
+- With N concurrent viewers in ECG view, LobbyLive processed N × batch_size events per flush cycle — CPU work scaled with viewer count
+
+**After (composite views through ViewerDataChannel):**
+
+- LobbyLive receives **zero** lens-batch messages in composite/graph views (`lens_locally_subscribed: false`)
+- Each viewer's `ViewerDataChannel` process independently subscribes to `lens:priority:{socket_id}` and handles its own batches
+- Work is fully parallelized across BEAM schedulers
+- Adding viewers adds Channel processes, not mailbox pressure on a shared LobbyLive
+
+#### Concurrent Viewer Scaling
+
+At 10 concurrent viewers in ECG view: 10 `ViewerDataChannel` processes each handling their own PubSub subscription and WebSocket push. Each process is independent — no lock contention, no shared bottleneck. The LobbyLive process for each of those 10 viewers remains idle (0 lens-batch messages).
+
+Viewer count no longer strains the LobbyLive process. The backpressure system (quality tiers) still controls data volume upstream but is now only relevant to the sensors grid view path.
+
+#### Updated Capacity Table
+
+| Scenario | Sensors | Concurrent Viewers | LobbyLive Mailbox (composite) | ViewerDataChannel Processes | Notes |
+|----------|---------|-------------------|-------------------------------|-----------------------------|-------|
+| Current baseline | 159 | 1 | 0 | 1 | ECG view, 64ms flush |
+| Normal session | 200 | 10 | 0 | 10 | Fully parallelized |
+| Large session | 500 | 50 | 0 | 50 | ~50 independent channels |
+| Research event | 1,500 | 100 | 0 | 100 | Viewer scalability: no longer the bottleneck |
+| **Viewer scalability** | any | N | **0** (composite) | **N** | Each viewer: 1 Channel process, O(batch) work, no shared state |
+
+The binding constraint for viewers is now WebSocket bandwidth and browser rendering throughput, not server-side process pressure.
 
 ---
 

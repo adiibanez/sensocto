@@ -62,6 +62,16 @@ defmodule Sensocto.Guidance.GuidedSession do
                  (guide_user_id == ^arg(:user_id) or follower_user_id == ^arg(:user_id))
              )
     end
+
+    read :pending_for_others do
+      argument :user_id, :uuid, allow_nil?: false
+
+      filter expr(
+               status == :pending and
+                 guide_user_id != ^arg(:user_id) and
+                 is_nil(follower_user_id)
+             )
+    end
   end
 
   attributes do

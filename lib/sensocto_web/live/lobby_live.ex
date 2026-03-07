@@ -210,6 +210,7 @@ defmodule SensoctoWeb.LobbyLive do
         # Guided session state (nil when no active session)
         guided_session: nil,
         guiding_session: nil,
+        available_guided_session: nil,
         show_guide_modal: false,
         guide_invite_code: nil,
         guide_share_url: nil,
@@ -257,7 +258,8 @@ defmodule SensoctoWeb.LobbyLive do
         Process.send_after(self(), :flush_component_measurements, @component_flush_interval_ms)
 
         # Register with PriorityLens for adaptive data streaming
-        # This enables client health-based quality adaptation
+        # Does NOT subscribe to the PubSub topic here — ViewerDataChannel handles composite/graph
+        # delivery. LobbyLive only subscribes in sensors grid view (see update_lens_subscription/2).
         {priority_lens_registered, priority_lens_topic} =
           case Sensocto.Lenses.PriorityLens.register_socket(
                  new_socket.id,
@@ -265,7 +267,6 @@ defmodule SensoctoWeb.LobbyLive do
                  quality: :high
                ) do
             {:ok, topic} ->
-              Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
               {true, topic}
 
             {:error, reason} ->
@@ -273,7 +274,15 @@ defmodule SensoctoWeb.LobbyLive do
               {false, nil}
           end
 
-        new_socket
+        # Schedule the viewer token push after the first render so the
+        # CompositeMeasurementHandler hook's handleEvent is registered when it arrives.
+        if priority_lens_registered do
+          send(self(), :push_viewer_token)
+        end
+
+        viewer_channel_socket = new_socket
+
+        viewer_channel_socket
         |> assign(:presence_key, presence_key)
         |> assign(:media_viewers, media_count)
         |> assign(:object3d_viewers, object3d_count)
@@ -282,6 +291,7 @@ defmodule SensoctoWeb.LobbyLive do
         |> assign(:solo_users, solo_users)
         |> assign(:priority_lens_registered, priority_lens_registered)
         |> assign(:priority_lens_topic, priority_lens_topic)
+        |> assign(:lens_locally_subscribed, false)
       else
         assign(new_socket, :presence_key, presence_key)
       end
@@ -334,10 +344,39 @@ defmodule SensoctoWeb.LobbyLive do
     # ECG needs full data fidelity for waveform visualization
     socket = update_lens_focus_for_action(socket, action)
 
+    # Manage PubSub subscription: only subscribe in sensors grid view.
+    # Composite/graph views use ViewerDataChannel — data never touches the LV mailbox.
+    socket = update_lens_subscription(socket, action)
+
     # Async historical data loading — view renders immediately, data fills in
     socket = start_seed_data_async(socket, action)
 
     {:noreply, socket}
+  end
+
+  # Sensors grid view: LobbyLive subscribes so it can call send_update on LiveComponents
+  defp update_lens_subscription(socket, :sensors) do
+    topic = socket.assigns[:priority_lens_topic]
+
+    if topic && !socket.assigns[:lens_locally_subscribed] do
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+      assign(socket, :lens_locally_subscribed, true)
+    else
+      socket
+    end
+  end
+
+  # All composite and graph views: ViewerDataChannel delivers data directly to browser.
+  # LobbyLive unsubscribes so its mailbox stays clean.
+  defp update_lens_subscription(socket, _action) do
+    topic = socket.assigns[:priority_lens_topic]
+
+    if topic && socket.assigns[:lens_locally_subscribed] do
+      Phoenix.PubSub.unsubscribe(Sensocto.PubSub, topic)
+      assign(socket, :lens_locally_subscribed, false)
+    else
+      socket
+    end
   end
 
   defp lens_page_title(:heartrate), do: "Heartrate"
@@ -1258,7 +1297,8 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      # Normal processing
+      # Normal processing — only the sensors grid view needs LV processing.
+      # Composite and graph views use ViewerDataChannel (LV is unsubscribed for those).
       true ->
         socket = assign(socket, :data_mode, :realtime)
 
@@ -1267,26 +1307,8 @@ defmodule SensoctoWeb.LobbyLive do
             socket = process_lens_batch_for_sensors(socket, batch_data)
             {:noreply, socket}
 
-          action
-          when action in [
-                 :heartrate,
-                 :imu,
-                 :location,
-                 :ecg,
-                 :battery,
-                 :skeleton,
-                 :respiration,
-                 :hrv,
-                 :gaze
-               ] ->
-            socket = process_lens_batch_for_composite(socket, batch_data, action)
-            {:noreply, socket}
-
-          action when action in [:graph, :graph3d] ->
-            socket = process_lens_batch_for_graph(socket, batch_data)
-            {:noreply, socket}
-
           _ ->
+            # Stale message received while switching views — ignore
             {:noreply, socket}
         end
     end
@@ -1294,13 +1316,13 @@ defmodule SensoctoWeb.LobbyLive do
 
   # Handle PriorityLens digest data (low/minimal quality)
   # digests structure: %{sensor_id => %{attribute_id => %{count, avg, min, max, latest}}}
+  # Composite/graph views receive digest via ViewerDataChannel — only sensors grid handled here.
   @impl true
   def handle_info({:lens_digest, digests}, socket) do
     socket = assign(socket, :data_mode, :digest)
 
     case socket.assigns.live_action do
       :sensors ->
-        # For sensors grid, push digest data for summary display
         socket =
           Enum.reduce(digests, socket, fn {sensor_id, attrs}, acc ->
             push_event(acc, "sensor_digest", %{sensor_id: sensor_id, attributes: attrs})
@@ -1308,13 +1330,8 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      action when action in [:heartrate, :battery, :respiration, :hrv, :gaze] ->
-        # These can work with digest mode - show latest values
-        socket = process_lens_digest_for_composite(socket, digests, action)
-        {:noreply, socket}
-
-      _action ->
-        # ECG, IMU, skeleton need real-time data - digest mode just shows placeholder
+      _ ->
+        # Composite/graph: ViewerDataChannel delivers digest; stale messages ignored
         {:noreply, socket}
     end
   end
@@ -1554,6 +1571,20 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
+  # Push the viewer channel token after the first render so the JS hook's handleEvent
+  # is registered before the event arrives. The hook uses this token to join ViewerDataChannel.
+  def handle_info(:push_viewer_token, socket) do
+    socket =
+      if socket.assigns[:priority_lens_registered] do
+        viewer_token = Phoenix.Token.sign(SensoctoWeb.Endpoint, "viewer_data", socket.id)
+        push_event(socket, "viewer_channel_token", %{token: viewer_token})
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_info(:deferred_subscriptions, socket) do
     # These subscriptions are deferred from mount to speed up first render.
     # They handle mode-specific features (media, calls, 3D, whiteboard),
@@ -1571,9 +1602,13 @@ defmodule SensoctoWeb.LobbyLive do
       if user do
         Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby:user:#{user.id}")
         Phoenix.PubSub.subscribe(Sensocto.PubSub, "user:#{user.id}:guidance")
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:guidance:available")
 
         # Check for active guided sessions and subscribe
-        subscribe_to_guided_session(socket, user)
+        socket = subscribe_to_guided_session(socket, user)
+
+        # Check for available pending sessions from other guides
+        discover_available_guided_session(socket, user)
       else
         socket
       end
@@ -2410,6 +2445,15 @@ defmodule SensoctoWeb.LobbyLive do
           Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session.id}")
           Sensocto.Guidance.SessionServer.connect(session.id, user.id)
 
+          guide_name = user.display_name || "A guide"
+
+          Phoenix.PubSub.broadcast(
+            Sensocto.PubSub,
+            "lobby:guidance:available",
+            {:guidance_available,
+             %{session_id: session.id, guide_user_id: user.id, guide_name: guide_name}}
+          )
+
           {:noreply,
            socket
            |> assign(:guiding_session, session.id)
@@ -2584,9 +2628,67 @@ defmodule SensoctoWeb.LobbyLive do
     if session_id do
       user_id = socket.assigns.current_user.id
       Sensocto.Guidance.SessionServer.end_session(session_id, user_id)
+
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "lobby:guidance:available",
+        {:guidance_unavailable, %{session_id: session_id}}
+      )
     end
 
     {:noreply, socket}
+  end
+
+  def handle_event("dismiss_available_guided_session", _params, socket) do
+    {:noreply, assign(socket, :available_guided_session, nil)}
+  end
+
+  def handle_event("join_guided_session", %{"session_id" => session_id}, socket) do
+    user = socket.assigns.current_user
+
+    with false <- is_nil(user),
+         false <- Map.get(user, :is_guest, false),
+         true <- is_nil(socket.assigns.guided_session),
+         true <- is_nil(socket.assigns.guiding_session),
+         {:ok, session} <-
+           Ash.get(Sensocto.Guidance.GuidedSession, session_id, authorize?: false),
+         true <- session.status == :pending,
+         {:ok, session} <-
+           Ash.update(session, %{follower_user_id: user.id},
+             action: :assign_follower,
+             authorize?: false
+           ),
+         {:ok, session} <- Ash.update(session, %{}, action: :accept, authorize?: false) do
+      follower_name = user.display_name || "Follower"
+
+      Sensocto.Guidance.SessionSupervisor.get_or_start_session(session.id,
+        guide_user_id: session.guide_user_id,
+        follower_user_id: user.id,
+        follower_user_name: follower_name
+      )
+
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session.id}")
+      Sensocto.Guidance.SessionServer.connect(session.id, user.id)
+
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "user:#{session.guide_user_id}:guidance",
+        {:guidance_invitation_accepted, %{session_id: session.id, follower_name: follower_name}}
+      )
+
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "lobby:guidance:available",
+        {:guidance_unavailable, %{session_id: session.id}}
+      )
+
+      {:noreply,
+       socket
+       |> assign(:guided_session, session.id)
+       |> assign(:available_guided_session, nil)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("follower_break_away", _params, socket) do
@@ -2753,67 +2855,6 @@ defmodule SensoctoWeb.LobbyLive do
   # Maximum send_update calls per batch cycle to prevent overwhelming the system
   @max_updates_per_batch 20
 
-  # Transform lens_batch to push_events for graph view
-  # Pushes sensor activity events to trigger node pulsation in the graph
-  @midi_attribute_types ["respiration", "hrv", "breathing_sync", "hrv_sync", "heartrate", "hr"]
-
-  defp process_lens_batch_for_graph(socket, batch_data) do
-    # Rate limit: only push updates for a subset of sensors per batch
-    sensors_to_update =
-      batch_data
-      |> Map.keys()
-      |> Enum.take(@max_updates_per_batch)
-
-    Enum.reduce(sensors_to_update, socket, fn sensor_id, acc ->
-      attributes = Map.get(batch_data, sensor_id, %{})
-
-      # Push graph_activity for the graph visualization
-      acc =
-        push_event(acc, "graph_activity", %{
-          sensor_id: sensor_id,
-          attribute_ids: Map.keys(attributes),
-          timestamp: System.system_time(:millisecond)
-        })
-
-      # Also push composite_measurement for MIDI-relevant attributes
-      Enum.reduce(attributes, acc, fn {attr_id, measurement}, inner_acc ->
-        if attr_id in @midi_attribute_types do
-          case measurement do
-            %{__delta_encoded__: true} = encoded ->
-              push_event(inner_acc, "composite_measurement_encoded", %{
-                sensor_id: sensor_id,
-                attribute_id: attr_id,
-                encoded: encoded
-              })
-
-            list when is_list(list) ->
-              Enum.reduce(list, inner_acc, fn item, a ->
-                push_event(a, "composite_measurement", %{
-                  sensor_id: sensor_id,
-                  attribute_id: attr_id,
-                  payload: item.payload,
-                  timestamp: item.timestamp
-                })
-              end)
-
-            single when is_map(single) ->
-              push_event(inner_acc, "composite_measurement", %{
-                sensor_id: sensor_id,
-                attribute_id: attr_id,
-                payload: single.payload,
-                timestamp: single.timestamp
-              })
-
-            _ ->
-              inner_acc
-          end
-        else
-          inner_acc
-        end
-      end)
-    end)
-  end
-
   # Transform lens_batch to push_events for sensors view
   # With LiveComponents, we send updates directly to the component instead of push_event
   # Rate-limited to @max_updates_per_batch to prevent overwhelming slow clients
@@ -2921,102 +2962,6 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
-  # Transform lens_batch to push_events for composite views
-  defp process_lens_batch_for_composite(socket, batch_data, action) do
-    # Map action to attribute type
-    attr_type =
-      case action do
-        :heartrate -> ["heartrate", "hr"]
-        :ecg -> ["ecg"]
-        :imu -> ["imu"]
-        :location -> ["geolocation"]
-        :battery -> ["battery"]
-        :skeleton -> ["skeleton"]
-        :respiration -> ["respiration"]
-        :hrv -> ["hrv"]
-        :gaze -> ["eye_gaze", "eye_aperture", "eye_blink", "eye_worn"]
-      end
-
-    Enum.reduce(batch_data, socket, fn {sensor_id, attributes}, acc ->
-      # Filter to relevant attributes for this composite view
-      relevant =
-        Enum.filter(attributes, fn {attr_id, _m} ->
-          attr_id in attr_type or String.contains?(attr_id, attr_type)
-        end)
-
-      # Also push MIDI-relevant attributes not already in the primary set,
-      # so the MIDI output hook receives all biometric data on every view.
-      midi_extra =
-        Enum.filter(attributes, fn {attr_id, _m} ->
-          attr_id in @midi_attribute_types and
-            attr_id not in attr_type and
-            not Enum.any?(attr_type, &String.contains?(attr_id, &1))
-        end)
-
-      Enum.reduce(relevant ++ midi_extra, acc, fn {attr_id, m}, sock ->
-        # Handle delta-encoded, list, and single measurements
-        case m do
-          %{__delta_encoded__: true} = encoded ->
-            # Delta-encoded high-frequency data — send as single event, decode on client
-            push_event(sock, "composite_measurement_encoded", %{
-              sensor_id: sensor_id,
-              attribute_id: attr_id,
-              encoded: encoded
-            })
-
-          list when is_list(list) ->
-            # Push each measurement in the list
-            Enum.reduce(list, sock, fn item, inner_sock ->
-              push_event(inner_sock, "composite_measurement", %{
-                sensor_id: sensor_id,
-                attribute_id: attr_id,
-                payload: item.payload,
-                timestamp: item.timestamp
-              })
-            end)
-
-          single ->
-            push_event(sock, "composite_measurement", %{
-              sensor_id: sensor_id,
-              attribute_id: attr_id,
-              payload: single.payload,
-              timestamp: single.timestamp
-            })
-        end
-      end)
-    end)
-  end
-
-  # Transform lens_digest to push_events for composite views
-  defp process_lens_digest_for_composite(socket, digests, action) do
-    attr_type =
-      case action do
-        :heartrate -> ["heartrate", "hr"]
-        :battery -> ["battery"]
-        :respiration -> ["respiration"]
-        :hrv -> ["hrv"]
-        :gaze -> ["eye_gaze", "eye_aperture", "eye_blink", "eye_worn"]
-        _ -> []
-      end
-
-    Enum.reduce(digests, socket, fn {sensor_id, attributes}, acc ->
-      relevant =
-        Enum.filter(attributes, fn {attr_id, _stats} ->
-          attr_id in attr_type or String.contains?(attr_id, attr_type)
-        end)
-
-      Enum.reduce(relevant, acc, fn {attr_id, stats}, sock ->
-        # For digest mode, push the latest value as if it were a measurement
-        push_event(sock, "composite_measurement", %{
-          sensor_id: sensor_id,
-          attribute_id: attr_id,
-          payload: stats.latest,
-          timestamp: System.system_time(:millisecond)
-        })
-      end)
-    end)
-  end
-
   # Release control for a specific mode when user navigates away
   # Playback continues without a controller - anyone can then take control
   @doc false
@@ -3088,6 +3033,34 @@ defmodule SensoctoWeb.LobbyLive do
         mode -> assign(s, :lobby_mode, mode)
       end
     end)
+  end
+
+  defp discover_available_guided_session(socket, user) do
+    if is_nil(socket.assigns.guided_session) && is_nil(socket.assigns.guiding_session) do
+      case Ash.read(Sensocto.Guidance.GuidedSession,
+             action: :pending_for_others,
+             args: [user_id: user.id],
+             authorize?: false
+           ) do
+        {:ok, [session | _]} ->
+          guide_name =
+            case Ash.get(Sensocto.Accounts.User, session.guide_user_id, authorize?: false) do
+              {:ok, u} -> u.display_name || "A guide"
+              _ -> "A guide"
+            end
+
+          assign(socket, :available_guided_session, %{
+            session_id: session.id,
+            guide_user_id: session.guide_user_id,
+            guide_name: guide_name
+          })
+
+        _ ->
+          socket
+      end
+    else
+      socket
+    end
   end
 
   defp subscribe_to_guided_session(socket, user) do

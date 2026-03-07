@@ -179,6 +179,9 @@ class SensorStream:
             timestamp=timestamp,
         )
 
+        if self._backpressure.paused:
+            return
+
         async with self._batch_lock:
             self._batch_buffer.append(measurement)
 

@@ -1268,4 +1268,7 @@ defmodule Sensocto.AttentionTracker do
       until -> DateTime.compare(DateTime.utc_now(), until) == :lt
     end
   end
+
+  @impl true
+  def code_change(_old_vsn, state, _extra), do: {:ok, state}
 end

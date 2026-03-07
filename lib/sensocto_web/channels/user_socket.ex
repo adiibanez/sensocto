@@ -18,6 +18,9 @@ defmodule SensoctoWeb.UserSocket do
   # Room hydration (client-side localStorage sync)
   channel("hydration:room:*", SensoctoWeb.HydrationChannel)
 
+  # Viewer data channel — high-frequency sensor data delivery bypassing LobbyLive
+  channel("viewer:*", SensoctoWeb.ViewerDataChannel)
+
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
   # verification, you can put default assigns into

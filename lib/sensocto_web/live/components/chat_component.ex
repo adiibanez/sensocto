@@ -18,6 +18,8 @@ defmodule SensoctoWeb.Components.ChatComponent do
 
   alias Sensocto.Chat.ChatStore
 
+  @max_message_length 1000
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -348,8 +350,14 @@ defmodule SensoctoWeb.Components.ChatComponent do
       >
         <span class="flex gap-0.5">
           <span class="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms" />
-          <span class="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms" />
-          <span class="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms" />
+          <span
+            class="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+            style="animation-delay: 150ms"
+          />
+          <span
+            class="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+            style="animation-delay: 300ms"
+          />
         </span>
         {format_typing_users(visible_typers(@typing_users, @user_name))}
       </div>
@@ -412,7 +420,8 @@ defmodule SensoctoWeb.Components.ChatComponent do
     {:noreply, assign(socket, :input, message)}
   end
 
-  def handle_event("send_message", %{"message" => message}, socket) when message != "" do
+  def handle_event("send_message", %{"message" => message}, socket)
+      when message != "" and byte_size(message) <= @max_message_length do
     room_id = socket.assigns.room_id
     user_name = socket.assigns.user_name
     user_id = get_user_id(socket.assigns.current_user)

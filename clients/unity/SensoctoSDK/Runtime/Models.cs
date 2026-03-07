@@ -146,6 +146,26 @@ namespace Sensocto.SDK
         /// </summary>
         public long Timestamp { get; set; }
 
+        /// <summary>
+        /// Whether the server has requested the client to pause sending data.
+        /// </summary>
+        public bool Paused { get; set; }
+
+        /// <summary>
+        /// Current system load on the server (0.0 - 1.0).
+        /// </summary>
+        public float SystemLoad { get; set; }
+
+        /// <summary>
+        /// Multiplier applied to batch window under load conditions.
+        /// </summary>
+        public float LoadMultiplier { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Whether the server's memory protection system is active.
+        /// </summary>
+        public bool MemoryProtectionActive { get; set; }
+
         internal static BackpressureConfig FromPayload(Dictionary<string, object> payload)
         {
             var config = new BackpressureConfig();
@@ -168,6 +188,26 @@ namespace Sensocto.SDK
             if (payload.TryGetValue("timestamp", out var ts))
             {
                 config.Timestamp = Convert.ToInt64(ts);
+            }
+
+            if (payload.TryGetValue("paused", out var paused))
+            {
+                config.Paused = Convert.ToBoolean(paused);
+            }
+
+            if (payload.TryGetValue("system_load", out var sysLoad))
+            {
+                config.SystemLoad = Convert.ToSingle(sysLoad);
+            }
+
+            if (payload.TryGetValue("load_multiplier", out var multiplier))
+            {
+                config.LoadMultiplier = Convert.ToSingle(multiplier);
+            }
+
+            if (payload.TryGetValue("memory_protection_active", out var memProt))
+            {
+                config.MemoryProtectionActive = Convert.ToBoolean(memProt);
             }
 
             return config;

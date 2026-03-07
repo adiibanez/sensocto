@@ -915,6 +915,30 @@
 </div>
 <%!-- /Side-by-side wrapper --%>
 
+<%!-- Guided Session: Available session join prompt --%>
+<%= if @available_guided_session && is_nil(@guided_session) && is_nil(@guiding_session) do %>
+  <div class="fixed top-16 right-4 z-50" role="status" aria-live="polite">
+    <div class="bg-base-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-2 text-sm">
+      <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+      <span>{@available_guided_session.guide_name} is guiding</span>
+      <button
+        phx-click="join_guided_session"
+        phx-value-session_id={@available_guided_session.session_id}
+        class="ml-1 text-xs text-primary hover:text-primary-focus underline font-medium"
+      >
+        Join
+      </button>
+      <button
+        phx-click="dismiss_available_guided_session"
+        class="ml-1 text-xs text-base-content/40 hover:text-base-content"
+        aria-label="Dismiss"
+      >
+        &times;
+      </button>
+    </div>
+  </div>
+<% end %>
+
 <%!-- Guided Session: Follower floating badge --%>
 <%= if @guided_session do %>
   <div class="fixed top-16 right-4 z-50" role="status" aria-live="polite">

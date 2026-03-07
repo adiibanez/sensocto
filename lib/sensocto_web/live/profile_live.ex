@@ -94,11 +94,19 @@ defmodule SensoctoWeb.ProfileLive do
     if name == "" do
       {:noreply, socket}
     else
+      level_atom =
+        case level do
+          "beginner" -> :beginner
+          "intermediate" -> :intermediate
+          "expert" -> :expert
+          _ -> :beginner
+        end
+
       case UserSkill
            |> Ash.Changeset.for_create(:add_skill, %{
              user_id: socket.assigns.user.id,
              skill_name: name,
-             level: String.to_existing_atom(level)
+             level: level_atom
            })
            |> Ash.create(authorize?: false) do
         {:ok, _skill} ->
@@ -116,10 +124,12 @@ defmodule SensoctoWeb.ProfileLive do
   end
 
   def handle_event("remove_skill", %{"id" => skill_id}, socket) do
+    user = socket.assigns.user
+
     case Ash.get(UserSkill, skill_id, authorize?: false) do
-      {:ok, skill} ->
+      {:ok, skill} when skill.user_id == user.id ->
         Ash.destroy!(skill, authorize?: false)
-        skills = load_skills(socket.assigns.user.id)
+        skills = load_skills(user.id)
         {:noreply, assign(socket, :skills, skills)}
 
       _ ->
@@ -147,6 +157,9 @@ defmodule SensoctoWeb.ProfileLive do
             String.contains?(name, q) or String.contains?(email, q)
           end)
           |> Enum.take(8)
+          |> Enum.map(fn u ->
+            %{id: u.id, display_name: u.display_name, bio: u.bio, status_emoji: u.status_emoji}
+          end)
         end
 
       {:noreply,
@@ -166,7 +179,7 @@ defmodule SensoctoWeb.ProfileLive do
      socket
      |> assign(:selected_user_id, id)
      |> assign(:selected_user, user)
-     |> assign(:user_search, (user && (user.display_name || to_string(user.email))) || "")
+     |> assign(:user_search, (user && (user.display_name || "User")) || "")
      |> assign(:user_search_results, [])
      |> assign(:show_user_dropdown, false)}
   end
@@ -227,7 +240,7 @@ defmodule SensoctoWeb.ProfileLive do
     user = socket.assigns.user
 
     case Ash.get(UserConnection, conn_id, authorize?: false) do
-      {:ok, conn} ->
+      {:ok, conn} when conn.from_user_id == user.id ->
         Ash.destroy!(conn, authorize?: false)
         {connections, all_users, graph_users, graph_connections} = load_connection_data(user)
 

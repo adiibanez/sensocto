@@ -112,8 +112,12 @@ defmodule SensoctoWeb.Plugs.RateLimiter do
           not Application.get_env(:sensocto, :enable_rate_limiting_in_test, false) ->
         conn
 
-      # Only rate limit POST requests (actual auth attempts), not page views
-      conn.method != "POST" ->
+      # Only rate limit POST requests for most auth endpoints.
+      # GET is included for guest_auth since it authenticates via URL params.
+      conn.method not in ["POST", "GET"] ->
+        conn
+
+      conn.method == "GET" and type != :guest_auth ->
         conn
 
       true ->

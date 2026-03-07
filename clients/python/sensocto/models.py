@@ -86,6 +86,10 @@ class BackpressureConfig(BaseModel):
     recommended_batch_window: int = 500
     recommended_batch_size: int = 5
     timestamp: int = 0
+    paused: bool = False
+    system_load: float = 0.0
+    load_multiplier: float = 1.0
+    memory_protection_active: bool = False
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "BackpressureConfig":
@@ -101,6 +105,10 @@ class BackpressureConfig(BaseModel):
             recommended_batch_window=payload.get("recommended_batch_window", 500),
             recommended_batch_size=payload.get("recommended_batch_size", 5),
             timestamp=payload.get("timestamp", 0),
+            paused=payload.get("paused", False),
+            system_load=payload.get("system_load", 0.0),
+            load_multiplier=payload.get("load_multiplier", 1.0),
+            memory_protection_active=payload.get("memory_protection_active", False),
         )
 
 

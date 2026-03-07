@@ -577,4 +577,7 @@ defmodule Sensocto.SystemLoadMonitor do
       critical: Keyword.get(config, :critical, @default_memory_thresholds.critical)
     }
   end
+
+  @impl true
+  def code_change(_old_vsn, state, _extra), do: {:ok, state}
 end

@@ -159,6 +159,29 @@ defmodule SensoctoWeb.LobbyLive.Hooks.GuidedSessionHook do
      |> put_flash(:info, "#{name} joined your guided session.")}
   end
 
+  def on_handle_info({:guidance_available, %{session_id: session_id} = info}, socket) do
+    if is_nil(socket.assigns.guided_session) && is_nil(socket.assigns.guiding_session) do
+      {:halt,
+       assign(socket, :available_guided_session, %{
+         session_id: session_id,
+         guide_user_id: info.guide_user_id,
+         guide_name: info.guide_name
+       })}
+    else
+      {:halt, socket}
+    end
+  end
+
+  def on_handle_info({:guidance_unavailable, %{session_id: session_id}}, socket) do
+    current = socket.assigns[:available_guided_session]
+
+    if current && current.session_id == session_id do
+      {:halt, assign(socket, :available_guided_session, nil)}
+    else
+      {:halt, socket}
+    end
+  end
+
   def on_handle_info(_msg, socket), do: {:cont, socket}
 
   # Private helpers

@@ -89,7 +89,7 @@
   // Hide attribute nodes only on very large graphs when fully zoomed out.
   // Threshold scales with graph size: small graphs never trigger LOD.
   let lodAttributesVisible = $state(true);
-  const LOD_MIN_NODES = 1000; // LOD only activates for graphs this large
+  const LOD_MIN_NODES = 300; // LOD activates for medium-to-large graphs
   const LOD_ZOOM_THRESHOLD = 2.5; // camera ratio above this = very zoomed out
 
   // ── ForceAtlas2 Web Worker ─────────────────────────────────────────
@@ -160,7 +160,7 @@
 
   // Activity tracking (heatmap mode)
   let activityCounts = new Map<string, number>();
-  let activityDecayTimers: ReturnType<typeof setTimeout>[] = [];
+  let activityDecayTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const ACTIVITY_WINDOW_MS = 10_000;
 
   // Freshness tracking (freshness mode)
@@ -187,6 +187,25 @@
 
   // Attention tracking (attention mode)
   let sensorAttentionLevels = new Map<string, string>();
+  // Index: sensor_id -> [attrNodeId, ...] — avoids O(N) forEachNode in attention handler
+  let sensorAttrIndex = new Map<string, string[]>();
+
+  // Pulsation coalescing: batch all pulsation requests into one RAF frame so that
+  // many events arriving in the same frame (e.g. 10 sensors × 5 attrs) produce at
+  // most one pulsateNode() call per node instead of dozens of redundant calls.
+  let pendingPulsations = new Set<string>();
+  let pulsationFramePending = false;
+  function schedulePulsation(nodeId: string) {
+    pendingPulsations.add(nodeId);
+    if (!pulsationFramePending) {
+      pulsationFramePending = true;
+      requestAnimationFrame(() => {
+        pulsationFramePending = false;
+        pendingPulsations.forEach(nId => pulsateNode(nId));
+        pendingPulsations.clear();
+      });
+    }
+  }
 
   const layoutModes: ViewMode[] = ["topology", "per-type", "radial", "flower", "per-user", "octopus", "mushroom", "jellyfish", "dna"];
   const visualModes: ViewMode[] = ["pulse", "heatmap", "freshness", "heartbeat", "river", "attention"];
@@ -1043,21 +1062,16 @@
         };
       },
       edgeReducer: (edge, data) => {
-        // LOD: hide edges to hidden attribute nodes
-        if (!lodAttributesVisible) {
-          const target = graph.target(edge);
-          const targetAttrs = graph.getNodeAttributes(target);
-          if (targetAttrs.nodeType === "attribute") {
-            return { ...data, hidden: true };
-          }
+        // LOD: hide edges to attribute nodes using cached tgtNodeType (no graph lookups)
+        if (!lodAttributesVisible && data.tgtNodeType === "attribute") {
+          return { ...data, hidden: true };
         }
-        const source = graph.source(edge);
-        const target = graph.target(edge);
-        const srcType = graph.getNodeAttribute(source, "nodeType");
-        const tgtType = graph.getNodeAttribute(target, "nodeType");
         if (highlightedNodes.size === 0) {
           return { ...data, color: data.color || themeEdge() };
         }
+        // Highlight path: only compute source/target when needed
+        const source = graph.source(edge);
+        const target = graph.target(edge);
         if (highlightedNodes.has(source) && highlightedNodes.has(target)) {
           return { ...data, color: getTheme().selectedEdge, size: (data.size || 0.5) * 1.5, zIndex: 1 };
         }
@@ -1480,10 +1494,13 @@
     const colCount = Math.max(types.length, 1);
     const colWidth = 100 / (colCount + 1);
 
+    const positionedNodes = new Set<string>();
+
     // Users across top
     userNodes.forEach((node, i) => {
       graph.setNodeAttribute(node, "x", ((i + 1) / (userNodes.length + 1)) * 100);
       graph.setNodeAttribute(node, "y", 8);
+      positionedNodes.add(node);
     });
 
     // Each type in its column
@@ -1496,13 +1513,24 @@
         if (graph.hasNode(sNode)) {
           graph.setNodeAttribute(sNode, "x", colX + (Math.random() - 0.5) * 4);
           graph.setNodeAttribute(sNode, "y", 25 + (si / Math.max(sensors.length, 1)) * 40);
+          positionedNodes.add(sNode);
         }
       });
 
       group.attributes.forEach((aNode, ai) => {
         graph.setNodeAttribute(aNode, "x", colX + (Math.random() - 0.5) * 6);
         graph.setNodeAttribute(aNode, "y", 30 + (ai / Math.max(group.attributes.length, 1)) * 55);
+        positionedNodes.add(aNode);
       });
+    });
+
+    // Pull orphaned nodes (not covered by any type group) to center
+    // to avoid them floating as distant outliers from a previous layout
+    graph.forEachNode((node) => {
+      if (!positionedNodes.has(node)) {
+        graph.setNodeAttribute(node, "x", 50 + (Math.random() - 0.5) * 6);
+        graph.setNodeAttribute(node, "y", 50);
+      }
     });
 
     isLayoutRunning = false;
@@ -2029,7 +2057,7 @@
 
   function stopActivityHeatmap() {
     activityDecayTimers.forEach(t => clearTimeout(t));
-    activityDecayTimers = [];
+    activityDecayTimers.clear();
     activityCounts.clear();
   }
 
@@ -2039,13 +2067,16 @@
     updateHeatmapNode(nodeId);
     vibrateNode(nodeId);
 
+    const existingTimer = activityDecayTimers.get(nodeId);
+    if (existingTimer) clearTimeout(existingTimer);
     const timer = setTimeout(() => {
+      activityDecayTimers.delete(nodeId);
       const c = activityCounts.get(nodeId) || 0;
       if (c > 0) activityCounts.set(nodeId, c - 1);
       if (visualMode === "heatmap") updateHeatmapNode(nodeId);
       scheduleRefresh();
     }, ACTIVITY_WINDOW_MS);
-    activityDecayTimers.push(timer);
+    activityDecayTimers.set(nodeId, timer);
   }
 
   function updateHeatmapNode(nodeId: string) {
@@ -2540,6 +2571,7 @@
   }
 
   function stopAttentionRadar() {
+    sensorAttentionLevels.clear();
     // appearances restored by restoreNodeAppearances in next mode switch
   }
 
@@ -2575,12 +2607,12 @@
     if (graph?.hasNode(sNodeId)) {
       applyAttentionAppearance(sNodeId, level);
       vibrateNode(sNodeId);
-      graph.forEachNode((node, attrs) => {
-        if (attrs.nodeType === "attribute" && attrs.data?.sensor_id === sensor_id) {
+      for (const node of (sensorAttrIndex.get(sensor_id) || [])) {
+        if (graph.hasNode(node)) {
           applyAttentionAppearance(node, level);
           vibrateNode(node);
         }
-      });
+      }
       scheduleRefresh();
     }
   }
@@ -3119,17 +3151,17 @@
       }
     }
 
-    // Pulsation for topology and layout modes
+    // Pulsation for topology and layout modes — coalesced into one RAF frame
     if (true) {
       if (graph && graph.hasNode(sensorNodeId) && isNodeInViewport(sensorNodeId)) {
-        pulsateNode(sensorNodeId);
+        schedulePulsation(sensorNodeId);
         anyVisible = true;
       }
       if (attribute_ids && Array.isArray(attribute_ids)) {
         for (const attrId of attribute_ids) {
           const attrNodeId = `attr:${sensor_id}:${attrId}`;
           if (graph && graph.hasNode(attrNodeId) && isNodeInViewport(attrNodeId)) {
-            pulsateNode(attrNodeId);
+            schedulePulsation(attrNodeId);
             anyVisible = true;
           }
         }
@@ -3275,6 +3307,7 @@
             }
           }
           graph.dropNode(sensorNodeId);
+          sensorAttrIndex.delete(sensorId);
         }
       }
 
@@ -3341,7 +3374,8 @@
           graph.addEdge(userNodeId, sensorNodeId, {
             size: Math.max(0.3, 0.7 * scale),
             color: varyEdge(themeEdge()),
-            curvature: randomCurvature()
+            curvature: randomCurvature(),
+            tgtNodeType: "sensor"
           });
         }
 
@@ -3360,13 +3394,17 @@
               x: startX + (Math.random() - 0.5) * 5,
               y: startY + (Math.random() - 0.5) * 5
             });
+            const attrList = sensorAttrIndex.get(sensorId) || [];
+            attrList.push(attrNodeId);
+            sensorAttrIndex.set(sensorId, attrList);
           }
 
           if (!graph.hasEdge(sensorNodeId, attrNodeId)) {
             graph.addEdge(sensorNodeId, attrNodeId, {
               size: Math.max(0.2, 0.4 * scale),
               color: varyEdge(themeEdgeDim()),
-              curvature: randomCurvature()
+              curvature: randomCurvature(),
+              tgtNodeType: "attribute"
             });
           }
         }

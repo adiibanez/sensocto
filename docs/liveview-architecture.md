@@ -39,10 +39,14 @@ graph LR
     S[SimpleSensor GenServer] -->|PubSub: data:attention:high/med/low| R[Lenses.Router GenServer]
     R -->|ETS direct write| P[PriorityLens ETS tables]
     P -->|flush timer 64-500ms| PB[PubSub: lens:priority:socket_id]
-    PB -->|handle_info| LV[LobbyLive LiveView]
-    LV -->|push_event| H[JS Hook: CompositeMeasurementHandler]
+    PB -->|handle_info ":sensors" view only| LV[LobbyLive LiveView]
+    PB -->|handle_info composite/graph views| VC[ViewerDataChannel]
+    LV -->|send_update| LC[StatefulSensorComponent]
+    VC -->|push sensor_batch| H[JS Hook: CompositeMeasurementHandler]
     H -->|window CustomEvent| SV[Svelte Component]
 ```
+
+> **Note**: LobbyLive only subscribes to `lens:priority` in the `:sensors` grid view (for `send_update` to LiveComponents). All composite and graph views bypass the LiveView process — data flows directly from PriorityLens → ViewerDataChannel → browser. Historical seed data still uses `start_async` → `push_event` (small payload, one-time).
 
 ### The Lens System
 
@@ -72,6 +76,8 @@ LobbyLive monitors its own mailbox depth and degrades quality when overwhelmed. 
 ```
 :high (64ms) → :medium (128ms) → :low (250ms) → :minimal (500ms) → :paused (stop)
 ```
+
+> **Current PriorityLens quality config (Mar 2026):** high: 64ms, medium: 128ms, low: 250ms, minimal: 500ms. The backpressure system is now only active for the sensors grid view. Composite and graph views bypass LobbyLive entirely, so quality tier changes in those views affect only the `sensors` grid path.
 
 Recovery is hysteresis-based: multiple consecutive healthy checks required before upgrading. Client-side health reports (JS hook) can trigger immediate downgrades but not upgrades.
 
@@ -161,7 +167,7 @@ Major topic patterns:
 | Topic | Publisher | Subscriber | Frequency |
 |-------|----------|------------|-----------|
 | `data:attention:{level}` | SimpleSensor | Lenses.Router | 10-250Hz per sensor |
-| `lens:priority:{socket_id}` | PriorityLens | LobbyLive | 2-16 flushes/sec |
+| `lens:priority:{socket_id}` | PriorityLens | LobbyLive (`:sensors` view only) or ViewerDataChannel (composite/graph views) | 15-31 flushes/sec (64-500ms intervals) |
 | `presence:all` | Presence | LobbyLive | On join/leave |
 | `attention:lobby` | AttentionTracker | LobbyLive | On level changes |
 | `room:{id}` | RoomServer | RoomShowLive | On room updates |
@@ -246,14 +252,14 @@ Phoenix Channels and LiveViews can share the same WebSocket connection. By movin
 - Binary payloads are supported natively (no JSON serialization overhead)
 - LiveView's diffing is not involved at all — it skips diffing when assigns haven't changed
 
-**TODO**: Migrate the hot data path from `push_event` to a dedicated `SensorDataChannel` that shares the LiveView WebSocket. The PriorityLens can push directly to the channel process.
+**DONE**: Implemented as `ViewerDataChannel` (`lib/sensocto_web/channels/viewer_data_channel.ex`). All composite and graph views (ECG, heartrate, HRV, IMU, gaze, skeleton, respiration, battery, location, graph, graph3d) now bypass LobbyLive entirely. Data flows from PriorityLens ETS → PubSub (`lens:priority:{socket_id}`) → ViewerDataChannel → `sensor_batch` push → `CompositeMeasurementHandler` JS hook → CustomEvent → Svelte component. LobbyLive only subscribes to `lens:priority` in the `:sensors` grid view (for `send_update` to LiveComponents). In all composite/graph views: `lens_locally_subscribed: false`, LobbyLive mailbox stays at 0. The Channel process receives a signed token (`Phoenix.Token.sign(Endpoint, "viewer_data", socket.id)`) pushed after mount via `handle_info(:push_viewer_token)`, and joins via `UserSocket` channel `"viewer:*"`. The JS `_dispatchBatch` function uses a per-view attribute allowlist that reduces event volume by ~60% in composite views.
 
-### 2. `push_event` as Main Data Path — Solved by Channels
+### 2. `push_event` as Main Data Path — DONE
 
-Same solution as #1. With a dedicated Channel for sensor data:
-- Events can be batched into single WebSocket frames
-- Binary payloads eliminate JSON serialization overhead for numeric arrays (ECG samples)
+Same solution as #1, now implemented. With `ViewerDataChannel` handling sensor data:
+- Events are batched into `sensor_batch` pushes from the Channel process (single WebSocket frame per flush)
 - The LiveView process only handles UI state changes (lens switches, settings, presence)
+- Note: the `sensor_batch` push uses JSON encoding (same as `push_event`) — binary encoding is a future optimization
 
 ### 3. Virtual Scrolling with LiveComponents
 
@@ -266,6 +272,8 @@ We show 100-200 sensor tiles in a scrollable grid. Only ~20-40 are visible at on
 **Resolution: Channel-based visibility filtering**
 
 With a dedicated Channel for sensor data, the JS client tells the Channel which sensor tiles are currently visible. The Channel then only pushes data for visible sensors, completely skipping invisible ones. This eliminates the need for LiveView to manage visibility at all.
+
+**TODO**: Not yet implemented. The sensors grid view still uses the `send_update` path through LobbyLive. This is future work — the Channel migration resolved composite/graph views first, and the sensors grid remains.
 
 ### 4. Giant LiveView Modules — Solved by `attach_hook`
 
@@ -288,9 +296,9 @@ socket
 
 Each handler module has a catch-all `def handle_event(_event, _params, socket), do: {:cont, socket}` to pass unhandled events through. This lets us split 3700-line modules into focused, testable modules.
 
-**TODO**: Refactor LobbyLive and RoomShowLive to use `attach_hook` for media player, whiteboard, guided session, call, and object3D handlers.
+**Done (Mar 2026)**: LobbyLive now uses `attach_hook/4` for media, object3d, whiteboard, call, and guided session handlers (see `lobby_live/hooks/`). RoomShowLive refactoring remains as future work.
 
-### 5. Seed Data / Historical Data on Navigation — Solved by `start_async`
+### 5. Seed Data / Historical Data on Navigation — DONE
 
 When a user navigates to a composite view (e.g., `/lobby/ecg`), we need to send historical data (last 30 seconds of ECG samples) so the chart isn't empty.
 
@@ -314,7 +322,7 @@ def handle_async(:seed_data, {:ok, data}, socket) do
 end
 ```
 
-This also pairs well with the Channel approach: seed data could be pushed through the Channel, and the Svelte buffering handshake might become unnecessary if data arrives after the component mounts.
+**Already implemented** as `start_seed_data_async/2` in LobbyLive. The `handle_async(:seed_composite_data, {:ok, events}, socket)` callback pushes `composite_seed_data` events. Seed data still flows through `push_event` (LobbyLive → JS hook), not through the Channel — this is a small one-time payload so the overhead is negligible.
 
 ### 6. send_update for High-Frequency Component Updates
 
@@ -387,26 +395,29 @@ LiveView already optimizes conditional rendering: when a template is split into 
 
 Based on the feedback, the biggest architectural improvement is moving the high-frequency sensor data path from LiveView `push_event` to a dedicated Phoenix Channel sharing the same WebSocket. This resolves friction points 1, 2, 3, 7, and 9.
 
-### Phase 1: Channel Setup
-- Create `SensorDataChannel` that joins with the user's socket
-- Share the WebSocket via `use Phoenix.LiveView.Socket` in a custom UserSocket
-- Channel receives sensor IDs to subscribe to on join
+### Phase 1: Channel Setup — ✅ DONE
+- ~~Create `SensorDataChannel` that joins with the user's socket~~ Created `ViewerDataChannel` (`lib/sensocto_web/channels/viewer_data_channel.ex`)
+- Share the WebSocket via `UserSocket` — `channel "viewer:*", SensoctoWeb.ViewerDataChannel`
+- Channel authenticates via signed token (`Phoenix.Token.sign(Endpoint, "viewer_data", socket.id)`) pushed from LobbyLive after mount
 
-### Phase 2: Data Path Migration
-- PriorityLens pushes batched data to the Channel process instead of PubSub → LiveView
-- Channel sends binary-encoded sensor data frames to JS
-- JS dispatches to Svelte components directly (no `window.dispatchEvent` hacks)
+### Phase 2: Data Path Migration — ✅ DONE
+- PriorityLens ETS → PubSub (`lens:priority:{socket_id}`) → ViewerDataChannel (subscribed in composite/graph views)
+- Channel pushes `sensor_batch` events to JS (JSON encoding; binary is a future optimization)
+- JS `CompositeMeasurementHandler` dispatches to Svelte components directly via CustomEvents
+- LobbyLive `handle_info({:lens_batch, _})` now only handles `:sensors` action — ~130 lines removed (`process_lens_batch_for_composite/3`, `process_lens_batch_for_graph/2`, `process_lens_digest_for_composite/3`)
 
-### Phase 3: LiveView Cleanup
-- Remove mailbox backpressure monitoring from LobbyLive (Channel handles its own)
-- Remove `push_event`-based measurement delivery
-- LiveView only handles: UI state, navigation, presence, settings
-- Use `attach_hook` to split remaining handlers into focused modules
-- Split templates into function components per lens view
+### Phase 3: LiveView Cleanup — ✅ DONE (composite/graph views); 🔲 Partial (sensors grid)
+- Backpressure monitoring still active in sensors view (correct — still needed there)
+- `push_event`-based measurement delivery removed for composite/graph views
+- LobbyLive mailbox at 0 in all composite/graph views
+- `attach_hook` used for media, object3d, whiteboard, call, guided session handlers
+- Templates split into function components (`LensComponents`) — template reduced 37%
+- **Remaining**: sensors grid still uses `send_update` path; RoomShowLive not yet refactored with `attach_hook`
 
-### Phase 4: Async Historical Data
-- Use `start_async` for historical data fetching on lens navigation
-- Push seed data through Channel (or `handle_async` → `push_event` for small payloads)
+### Phase 4: Async Historical Data — ✅ DONE
+- `start_async/4` implemented as `start_seed_data_async/2`
+- `handle_async(:seed_composite_data, {:ok, events}, socket)` pushes `composite_seed_data` events
+- Seed data flows via `push_event` (LobbyLive, one-time small payload) — not through Channel
 
 ## Summary
 

@@ -31,6 +31,11 @@ namespace Sensocto.SDK
         public int BatchSize => _config?.RecommendedBatchSize ?? 20;
 
         /// <summary>
+        /// Whether the server has requested the client to pause sending data.
+        /// </summary>
+        public bool IsPaused => _config?.Paused ?? false;
+
+        /// <summary>
         /// Number of measurements currently buffered.
         /// </summary>
         public int BufferedCount
@@ -110,9 +115,13 @@ namespace Sensocto.SDK
 
         /// <summary>
         /// Check if the batch should be flushed based on size or time.
+        /// Returns false if the server has requested a pause.
         /// </summary>
         public bool ShouldFlush()
         {
+            if (IsPaused)
+                return false;
+
             lock (_bufferLock)
             {
                 if (_buffer.Count == 0)
@@ -133,9 +142,13 @@ namespace Sensocto.SDK
 
         /// <summary>
         /// Check if should flush, accounting for high attention mode (immediate send).
+        /// Returns false if the server has requested a pause.
         /// </summary>
         public bool ShouldFlushImmediate()
         {
+            if (IsPaused)
+                return false;
+
             // In high attention mode, flush immediately
             if (CurrentLevel == AttentionLevel.High)
             {

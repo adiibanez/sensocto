@@ -391,32 +391,22 @@ Hooks.ConnectionHandler = {
   }
 }
 
-// CompositeMeasurementHandler hook - receives server-pushed measurements for composite views
-// and dispatches them as window events for Svelte components to consume
+// CompositeMeasurementHandler hook - receives high-frequency sensor data via ViewerDataChannel
+// and dispatches it as window events for Svelte components to consume.
+//
+// Data path: PriorityLens → PubSub → ViewerDataChannel → sensor_batch → here → CustomEvent → Svelte
+// Seed data (historical) still arrives via LobbyLive push_event (start_async path).
 Hooks.CompositeMeasurementHandler = {
   mounted() {
     console.log("[CompositeMeasurementHandler] mounted on element:", this.el.id);
 
-    this.handleEvent("composite_measurement", (event) => {
-      const customEvent = new CustomEvent('composite-measurement-event', {
-        detail: event
-      });
-      window.dispatchEvent(customEvent);
-    });
+    this._channel = null;
+    this._channelSocket = null;
 
-    // Handle delta-encoded high-frequency data (ECG)
-    this.handleEvent("composite_measurement_encoded", (event) => {
-      const { sensor_id, attribute_id, encoded } = event;
-      if (isDeltaEncoded(encoded)) {
-        const measurements = decodeECG(encoded.data);
-        if (measurements) {
-          for (const m of measurements) {
-            window.dispatchEvent(new CustomEvent('composite-measurement-event', {
-              detail: { sensor_id, attribute_id, payload: m.payload, timestamp: m.timestamp }
-            }));
-          }
-        }
-      }
+    // Receive a signed viewer token from LobbyLive; use it to join ViewerDataChannel.
+    // The channel bypasses the LiveView process for all high-frequency sensor data.
+    this.handleEvent("viewer_channel_token", ({ token }) => {
+      this._joinViewerChannel(token);
     });
 
     // Handle seed data for composite views - pushes historical data on view entry
@@ -448,14 +438,6 @@ Hooks.CompositeMeasurementHandler = {
     };
     window.addEventListener('composite-component-ready', this._onComponentReady);
 
-    // Handle graph activity events for node pulsation
-    this.handleEvent("graph_activity", (event) => {
-      const customEvent = new CustomEvent('graph-activity-event', {
-        detail: event
-      });
-      window.dispatchEvent(customEvent);
-    });
-
     // Handle attention changes for attention radar mode
     this.handleEvent("attention_changed", (event) => {
       window.dispatchEvent(new CustomEvent('attention-changed-event', { detail: event }));
@@ -473,8 +455,133 @@ Hooks.CompositeMeasurementHandler = {
     window.addEventListener("graph-hover-sensor", this._onGraphHover);
   },
 
+  // Join the ViewerDataChannel on the /socket WebSocket using the signed token.
+  // Registers channel event handlers for real-time batch delivery.
+  _joinViewerChannel(token) {
+    if (this._channel) {
+      this._channel.leave();
+      this._channel = null;
+    }
+    if (this._channelSocket) {
+      this._channelSocket.disconnect();
+      this._channelSocket = null;
+    }
+
+    const socket = new Socket("/socket", { params: {} });
+    socket.connect();
+    this._channelSocket = socket;
+
+    const channel = socket.channel(`viewer:data:${token}`, {});
+    this._channel = channel;
+
+    // Batched sensor data: %{batch: %{sensor_id => %{attr_id => measurement}}}
+    channel.on("sensor_batch", ({ batch }) => {
+      this._dispatchBatch(batch);
+    });
+
+    // Digest data: %{digests: %{sensor_id => %{attr_id => %{count, avg, min, max, latest}}}}
+    channel.on("sensor_digest", ({ digests }) => {
+      for (const [sensorId, attributes] of Object.entries(digests)) {
+        for (const [attrId, stats] of Object.entries(attributes)) {
+          if (stats.latest != null) {
+            window.dispatchEvent(new CustomEvent('composite-measurement-event', {
+              detail: {
+                sensor_id: sensorId,
+                attribute_id: attrId,
+                payload: stats.latest,
+                timestamp: Date.now()
+              }
+            }));
+          }
+        }
+      }
+    });
+
+    channel.join()
+      .receive("ok", () => {
+        console.log("[CompositeMeasurementHandler] ViewerDataChannel joined");
+      })
+      .receive("error", (resp) => {
+        console.error("[CompositeMeasurementHandler] ViewerDataChannel join failed", resp);
+      });
+  },
+
+  // Dispatch measurements from a sensor_batch to Svelte via CustomEvents.
+  // Handles single measurements, lists (high-freq), and delta-encoded ECG.
+  // Filters attributes by view type to avoid flooding the browser in composite views.
+  _dispatchBatch(batch) {
+    const elId = this.el.id;
+    const isGraphView = elId.startsWith('lobby-graph');
+
+    // Per-view attribute allowlist — only dispatch what the current view needs.
+    // null means "dispatch all" (graph views need all attrs for activity pulses + MIDI).
+    const ATTR_FILTER = {
+      'composite-ecg': new Set(['ecg']),
+      'composite-heartrate': new Set(['heartrate', 'hr']),
+      'composite-respiration': new Set(['respiration', 'breathing_sync']),
+      'composite-hrv': new Set(['hrv', 'hrv_sync']),
+      'composite-battery': new Set(['battery']),
+      'composite-imu': new Set(['imu']),
+      'composite-location': new Set(['geolocation']),
+      'composite-skeleton': new Set(['skeleton']),
+      'composite-gaze': new Set(['eye_gaze', 'eye_aperture', 'eye_blink', 'eye_worn']),
+    };
+    const allowedAttrs = ATTR_FILTER[elId] || null;
+
+    for (const [sensorId, attributes] of Object.entries(batch)) {
+      const activityAttrIds = isGraphView ? [] : null;
+
+      for (const [attrId, measurement] of Object.entries(attributes)) {
+        if (!measurement) continue;
+
+        // Skip attributes not relevant for this view (composite views only)
+        if (allowedAttrs && !allowedAttrs.has(attrId)) continue;
+
+        if (measurement.__delta_encoded__) {
+          if (isDeltaEncoded(measurement)) {
+            const samples = decodeECG(measurement.data);
+            if (samples) {
+              for (const s of samples) {
+                window.dispatchEvent(new CustomEvent('composite-measurement-event', {
+                  detail: { sensor_id: sensorId, attribute_id: attrId, payload: s.payload, timestamp: s.timestamp }
+                }));
+              }
+            }
+          }
+        } else if (Array.isArray(measurement)) {
+          for (const item of measurement) {
+            window.dispatchEvent(new CustomEvent('composite-measurement-event', {
+              detail: { sensor_id: sensorId, attribute_id: attrId, payload: item.payload, timestamp: item.timestamp }
+            }));
+          }
+        } else {
+          window.dispatchEvent(new CustomEvent('composite-measurement-event', {
+            detail: { sensor_id: sensorId, attribute_id: attrId, payload: measurement.payload, timestamp: measurement.timestamp }
+          }));
+        }
+
+        if (isGraphView && activityAttrIds) activityAttrIds.push(attrId);
+      }
+
+      // Graph activity event: one per sensor per batch (not per attribute)
+      if (isGraphView && activityAttrIds && activityAttrIds.length > 0) {
+        window.dispatchEvent(new CustomEvent('graph-activity-event', {
+          detail: { sensor_id: sensorId, attribute_ids: activityAttrIds, timestamp: Date.now() }
+        }));
+      }
+    }
+  },
+
   destroyed() {
     console.log("[CompositeMeasurementHandler] destroyed");
+    if (this._channel) {
+      this._channel.leave();
+      this._channel = null;
+    }
+    if (this._channelSocket) {
+      this._channelSocket.disconnect();
+      this._channelSocket = null;
+    }
     if (this._onComponentReady) {
       window.removeEventListener('composite-component-ready', this._onComponentReady);
     }

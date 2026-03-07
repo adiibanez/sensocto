@@ -38,6 +38,8 @@ defmodule SensoctoWeb.LobbyLive.Components do
                 phx-click="toggle_call_audio"
                 class={"p-2 rounded-lg transition-colors " <> if(@audio_enabled, do: "bg-gray-700 hover:bg-gray-600 text-gray-300", else: "bg-red-600 hover:bg-red-500 text-white")}
                 title={if @audio_enabled, do: "Mute microphone", else: "Unmute microphone"}
+                aria-pressed={to_string(@audio_enabled)}
+                aria-label={if @audio_enabled, do: "Mute microphone", else: "Unmute microphone"}
               >
                 <Heroicons.icon
                   name={if @audio_enabled, do: "microphone", else: "microphone"}
@@ -49,6 +51,8 @@ defmodule SensoctoWeb.LobbyLive.Components do
                 phx-click="toggle_call_video"
                 class={"p-2 rounded-lg transition-colors " <> if(@video_enabled, do: "bg-gray-700 hover:bg-gray-600 text-gray-300", else: "bg-red-600 hover:bg-red-500 text-white")}
                 title={if @video_enabled, do: "Turn off camera", else: "Turn on camera"}
+                aria-pressed={to_string(@video_enabled)}
+                aria-label={if @video_enabled, do: "Turn off camera", else: "Turn on camera"}
               >
                 <Heroicons.icon name="video-camera" type="solid" class="h-4 w-4" />
               </button>
@@ -58,6 +62,8 @@ defmodule SensoctoWeb.LobbyLive.Components do
               phx-click="toggle_call_expanded"
               class={"p-2 rounded-lg transition-colors " <> if(@call_expanded, do: "bg-green-600 text-white", else: "bg-gray-700 hover:bg-gray-600 text-gray-300")}
               title={if @call_expanded, do: "Hide participants", else: "Show participants"}
+              aria-pressed={to_string(@call_expanded)}
+              aria-label={if @call_expanded, do: "Hide participants", else: "Show participants"}
             >
               <Heroicons.icon
                 name={if @call_expanded, do: "chevron-up", else: "chevron-down"}
@@ -128,7 +134,11 @@ defmodule SensoctoWeb.LobbyLive.Components do
       >
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-semibold">Join a Room</h2>
-          <button phx-click="close_join_modal" class="text-gray-300 hover:text-white">
+          <button
+            phx-click="close_join_modal"
+            aria-label="Close modal"
+            class="text-gray-300 hover:text-white"
+          >
             <Heroicons.icon name="x-mark" type="outline" class="h-6 w-6" />
           </button>
         </div>

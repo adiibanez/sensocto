@@ -156,8 +156,11 @@ defmodule SensoctoWeb.UserSettingsLive do
     end
   end
 
+  @valid_locale_codes Enum.map(@locales, fn {_name, code} -> code end)
+
   @impl true
-  def handle_event("change_locale", %{"locale" => locale}, socket) do
+  def handle_event("change_locale", %{"locale" => locale}, socket)
+      when locale in @valid_locale_codes do
     user = socket.assigns.current_user
 
     # Save preference to database (no-op for guest users)
@@ -166,6 +169,8 @@ defmodule SensoctoWeb.UserSettingsLive do
     # Redirect with locale query param so the Locale plug updates session/cookie
     {:noreply, redirect(socket, to: "/settings?locale=#{locale}")}
   end
+
+  def handle_event("change_locale", _params, socket), do: {:noreply, socket}
 
   defp generate_mobile_token(%{is_guest: true} = user) do
     # Guest users can't use AshAuthentication JWT - use fallback token
@@ -239,15 +244,15 @@ defmodule SensoctoWeb.UserSettingsLive do
           </h2>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm text-gray-400 mb-1">
+              <span class="block text-sm text-gray-400 mb-1">
                 {if Map.get(@current_user, :is_guest), do: gettext("Name"), else: gettext("Email")}
-              </label>
+              </span>
               <div class="text-white">
                 {Map.get(@current_user, :email) || Map.get(@current_user, :display_name, "Guest")}
               </div>
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-1">{gettext("Account ID")}</label>
+              <span class="block text-sm text-gray-400 mb-1">{gettext("Account ID")}</span>
               <div class="text-gray-300 font-mono text-sm">{@current_user.id}</div>
             </div>
           </div>
@@ -372,7 +377,7 @@ defmodule SensoctoWeb.UserSettingsLive do
           <div class="space-y-4">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-white text-sm font-medium">
+                <p id="privacy-label" class="text-white text-sm font-medium">
                   {gettext("Visible in user directory")}
                 </p>
                 <p class="text-gray-400 text-xs mt-1">
@@ -385,6 +390,7 @@ defmodule SensoctoWeb.UserSettingsLive do
                   if(@is_public, do: "bg-indigo-600", else: "bg-gray-600")}
                 role="switch"
                 aria-checked={to_string(@is_public)}
+                aria-labelledby="privacy-label"
               >
                 <span class={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " <>
                   if(@is_public, do: "translate-x-6", else: "translate-x-1")} />

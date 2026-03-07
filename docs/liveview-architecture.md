@@ -363,7 +363,11 @@ The LiveView process can restart (deploy, crash, reconnect) but the browser hold
 
 LiveView already optimizes conditional rendering: when a template is split into function components, subtrees whose assigns haven't changed are skipped during diffing. For even stronger isolation, LiveComponents do their own independent diff tracking.
 
-**TODO**: Split `lobby_live.html.heex` into function components per lens view (e.g., `<.heartrate_lens sensors={@heartrate_sensors} />`, `<.ecg_lens sensors={@ecg_sensors} />`). For lens views with complex state, use LiveComponents to get independent diff tracking.
+**Done**: Split `lobby_live.html.heex` into function components in `LensComponents`:
+- Generic `composite_lens/1` covers all 9 composite views (heartrate, IMU, location, ECG, battery, skeleton, respiration, HRV, gaze)
+- `midi_panel/1` extracts the ~860-line MIDI/GrooveEngine panel (pure static HTML)
+- Template reduced from 2,415 → 1,513 lines (−37%)
+- LiveView now skips diffing inactive lens subtrees when assigns haven't changed
 
 ## Tech Stack Summary
 

@@ -85,9 +85,9 @@ defmodule SensoctoWeb.LobbyGraphRegressionTest do
       {:ok, _view, _html} = live(conn, "/")
     end
 
-    test "shows Enter Lobby link", %{conn: conn} do
+    test "shows Join Lobby link", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Enter Lobby"
+      assert html =~ "Join Lobby"
     end
 
     test "shows sensor count", %{conn: conn} do

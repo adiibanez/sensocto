@@ -9,6 +9,7 @@ defmodule SensoctoWeb.LobbyLive do
   use Sensocto.Chat.AIChatHandler
   import SensoctoWeb.LiveHelpers.SensorData
   import SensoctoWeb.LobbyLive.Components
+  import SensoctoWeb.LobbyLive.LensComponents
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false

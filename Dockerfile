@@ -15,11 +15,11 @@
 #ARG ELIXIR_VERSION=1.16.2
 #ARG DEBIAN_VERSION=bullseye-20240408-slim
 
-# Versions synced with .tool-versions (elixir 1.19.4-otp-27, erlang 27.3)
+# Versions synced with .tool-versions (elixir 1.19.4-otp-28, erlang 28.4)
 ARG ELIXIR_VERSION=1.19.4
-ARG OTP_VERSION=27.3
+ARG OTP_VERSION=28.4
 
-ARG DEBIAN_VERSION=bookworm-20251229-slim
+ARG DEBIAN_VERSION=bookworm-20260223-slim
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"

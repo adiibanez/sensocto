@@ -92,7 +92,7 @@ impl PhoenixSocket {
     }
 
     /// Sends a message and waits for a reply.
-    pub(crate) async fn send(
+    pub async fn send(
         &self,
         topic: &str,
         event: &str,

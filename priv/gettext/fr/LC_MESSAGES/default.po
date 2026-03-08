@@ -65,252 +65,247 @@ msgstr "fermer"
 msgid "If this user exists in our database you will be contacted with a sign-in link shortly."
 msgstr "Si ce compte existe, vous recevrez bientôt un lien de connexion par e-mail."
 
-#: lib/sensocto_web/components/layouts/app.html.heex:35
-#: lib/sensocto_web/components/layouts/app.html.heex:145
+#: lib/sensocto_web/components/layouts/app.html.heex:72
+#: lib/sensocto_web/components/layouts/app.html.heex:194
 #, elixir-autogen, elixir-format
 msgid "About"
 msgstr "À propos"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:24
-#: lib/sensocto_web/components/layouts/app.html.heex:121
+#: lib/sensocto_web/components/layouts/app.html.heex:58
+#: lib/sensocto_web/components/layouts/app.html.heex:164
 #, elixir-autogen, elixir-format
 msgid "Home"
 msgstr "Accueil"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:26
-#: lib/sensocto_web/components/layouts/app.html.heex:127
+#: lib/sensocto_web/components/layouts/app.html.heex:60
+#: lib/sensocto_web/components/layouts/app.html.heex:170
 #, elixir-autogen, elixir-format
 msgid "Lobby"
 msgstr "Lobby"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:29
-#: lib/sensocto_web/components/layouts/app.html.heex:133
+#: lib/sensocto_web/components/layouts/app.html.heex:63
+#: lib/sensocto_web/components/layouts/app.html.heex:176
 #, elixir-autogen, elixir-format
 msgid "Rooms"
 msgstr "Salles"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:87
-#: lib/sensocto_web/components/layouts/app.html.heex:173
-#: lib/sensocto_web/live/user_settings_live.ex:197
+#: lib/sensocto_web/components/layouts/app.html.heex:130
+#: lib/sensocto_web/components/layouts/app.html.heex:222
+#: lib/sensocto_web/live/user_settings_live.ex:236
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Paramètres"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:97
-#: lib/sensocto_web/components/layouts/app.html.heex:180
-#: lib/sensocto_web/live/user_settings_live.ex:345
+#: lib/sensocto_web/components/layouts/app.html.heex:140
+#: lib/sensocto_web/components/layouts/app.html.heex:229
+#: lib/sensocto_web/live/user_settings_live.ex:414
 #, elixir-autogen, elixir-format
 msgid "Sign Out"
 msgstr "Déconnexion"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:32
-#: lib/sensocto_web/components/layouts/app.html.heex:139
+#: lib/sensocto_web/components/layouts/app.html.heex:69
+#: lib/sensocto_web/components/layouts/app.html.heex:188
 #, elixir-autogen, elixir-format
 msgid "Sim"
 msgstr "Sim"
 
-#: lib/sensocto_web/live/user_settings_live.ex:335
+#: lib/sensocto_web/live/profile_live.html.heex:313
+#: lib/sensocto_web/live/user_settings_live.ex:404
 #, elixir-autogen, elixir-format
 msgid "Account"
 msgstr "Compte"
 
-#: lib/sensocto_web/live/user_settings_live.ex:216
+#: lib/sensocto_web/live/profile_live.html.heex:321
+#: lib/sensocto_web/live/user_settings_live.ex:255
 #, elixir-autogen, elixir-format
 msgid "Account ID"
 msgstr "Identifiant du compte"
 
-#: lib/sensocto_web/live/user_settings_live.ex:230
+#: lib/sensocto_web/live/user_settings_live.ex:269
 #, elixir-autogen, elixir-format
 msgid "Choose your preferred language for the application interface."
 msgstr "Choisissez votre langue préférée pour l'interface de l'application."
 
-#: lib/sensocto_web/live/user_settings_live.ex:314
+#: lib/sensocto_web/live/user_settings_live.ex:353
 #, elixir-autogen, elixir-format
 msgid "Copied!"
 msgstr "Copié !"
 
-#: lib/sensocto_web/live/user_settings_live.ex:314
+#: lib/sensocto_web/live/user_settings_live.ex:353
 #, elixir-autogen, elixir-format
 msgid "Copy"
 msgstr "Copier"
 
-#: lib/sensocto_web/live/user_settings_live.ex:209
+#: lib/sensocto_web/live/profile_live.html.heex:317
+#: lib/sensocto_web/live/user_settings_live.ex:248
 #, elixir-autogen, elixir-format
 msgid "Email"
 msgstr "E-mail"
 
-#: lib/sensocto_web/live/user_settings_live.ex:282
+#: lib/sensocto_web/live/user_settings_live.ex:321
 #, elixir-autogen, elixir-format
 msgid "Expires in"
 msgstr "Expire dans"
 
-#: lib/sensocto_web/live/user_settings_live.ex:291
+#: lib/sensocto_web/live/user_settings_live.ex:330
 #, elixir-autogen, elixir-format
 msgid "Generate new code"
 msgstr "Générer un nouveau code"
 
-#: lib/sensocto_web/live/user_settings_live.ex:325
+#: lib/sensocto_web/live/user_settings_live.ex:364
 #, elixir-autogen, elixir-format
 msgid "Go to Settings and tap \"Scan QR Code\""
 msgstr "Allez dans Paramètres et appuyez sur \"Scanner le code QR\""
 
-#: lib/sensocto_web/live/user_settings_live.ex:269
+#: lib/sensocto_web/live/user_settings_live.ex:308
 #, elixir-autogen, elixir-format
 msgid "Hide QR Code"
 msgstr "Masquer le code QR"
 
-#: lib/sensocto_web/live/user_settings_live.ex:322
+#: lib/sensocto_web/live/user_settings_live.ex:361
 #, elixir-autogen, elixir-format
 msgid "How to link your device:"
 msgstr "Comment associer votre appareil :"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:151
-#: lib/sensocto_web/live/user_settings_live.ex:224
+#: lib/sensocto_web/components/layouts/app.html.heex:200
+#: lib/sensocto_web/live/user_settings_live.ex:263
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr "Langue"
 
-#: lib/sensocto_web/live/user_settings_live.ex:252
+#: lib/sensocto_web/live/user_settings_live.ex:291
 #, elixir-autogen, elixir-format
 msgid "Link Mobile Device"
 msgstr "Associer un appareil mobile"
 
-#: lib/sensocto_web/live/user_settings_live.ex:209
+#: lib/sensocto_web/live/user_settings_live.ex:248
 #, elixir-autogen, elixir-format
 msgid "Name"
 msgstr "Nom"
 
-#: lib/sensocto_web/live/user_settings_live.ex:324
+#: lib/sensocto_web/live/user_settings_live.ex:363
 #, elixir-autogen, elixir-format
 msgid "Open the SensOcto mobile app"
 msgstr "Ouvrez l'application mobile SensOcto"
 
-#: lib/sensocto_web/live/user_settings_live.ex:296
+#: lib/sensocto_web/live/user_settings_live.ex:335
 #, elixir-autogen, elixir-format
 msgid "Or copy the link:"
 msgstr "Ou copiez le lien :"
 
-#: lib/sensocto_web/live/user_settings_live.ex:326
+#: lib/sensocto_web/live/user_settings_live.ex:365
 #, elixir-autogen, elixir-format
 msgid "Point your camera at the QR code above"
 msgstr "Dirigez votre caméra vers le code QR ci-dessus"
 
-#: lib/sensocto_web/live/user_settings_live.ex:202
+#: lib/sensocto_web/components/layouts/app.html.heex:124
+#: lib/sensocto_web/live/profile_live.html.heex:2
+#: lib/sensocto_web/live/user_settings_live.ex:241
 #, elixir-autogen, elixir-format
 msgid "Profile"
 msgstr "Profil"
 
-#: lib/sensocto_web/live/user_settings_live.ex:255
+#: lib/sensocto_web/live/user_settings_live.ex:294
 #, elixir-autogen, elixir-format
 msgid "Scan the QR code with the SensOcto mobile app to sign in on your mobile device."
 msgstr "Scannez le code QR avec l'application mobile SensOcto pour vous connecter sur votre appareil mobile."
 
-#: lib/sensocto_web/live/user_settings_live.ex:269
+#: lib/sensocto_web/live/user_settings_live.ex:308
 #, elixir-autogen, elixir-format
 msgid "Show QR Code"
 msgstr "Afficher le code QR"
 
-#: lib/sensocto_web/live/user_settings_live.ex:327
+#: lib/sensocto_web/live/user_settings_live.ex:366
 #, elixir-autogen, elixir-format
 msgid "You'll be automatically signed in"
 msgstr "Vous serez automatiquement connecté"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:779
+#: lib/sensocto_web/live/components/about_content_component.ex:801
 #, elixir-autogen, elixir-format
 msgid "\"Connection becomes tangible when you can feel someone's presence—their heartbeat, their calm, their stress—in real-time.\""
 msgstr "\"La connexion devient tangible quand on peut ressentir la présence de quelqu'un — son rythme cardiaque, son calme, son stress — en temps réel.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:883
+#: lib/sensocto_web/live/components/about_content_component.ex:905
 #, elixir-autogen, elixir-format
 msgid "\"Dignity and agency restored through embodied communication.\""
 msgstr "\"Dignité et autonomie restaurées grâce à la communication incarnée.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:949
+#: lib/sensocto_web/live/components/about_content_component.ex:971
 #, elixir-autogen, elixir-format
 msgid "\"Emergent collective intelligence through shared physiology.\""
 msgstr "\"Intelligence collective émergente par la physiologie partagée.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:971
+#: lib/sensocto_web/live/components/about_content_component.ex:993
 #, elixir-autogen, elixir-format
 msgid "\"From coral reefs to urban gardens—sensing what matters.\""
 msgstr "\"Des récifs coralliens aux jardins urbains — capter ce qui compte.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:927
+#: lib/sensocto_web/live/components/about_content_component.ex:949
 #, elixir-autogen, elixir-format
 msgid "\"Presence you can feel, not just see.\""
 msgstr "\"Une présence que l'on ressent, pas seulement que l'on voit.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:905
+#: lib/sensocto_web/live/components/about_content_component.ex:927
 #, elixir-autogen, elixir-format
 msgid "\"Prevention over crisis. Community as safety net.\""
 msgstr "\"La prévention plutôt que la crise. La communauté comme filet de sécurité.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:861
+#: lib/sensocto_web/live/components/about_content_component.ex:883
 #, elixir-autogen, elixir-format
 msgid "\"See the nervous system respond before words form.\""
 msgstr "\"Voir le système nerveux réagir avant que les mots ne se forment.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:17
-#, elixir-autogen, elixir-format
-msgid "9-axis IMU quaternions for motion analysis"
-msgstr "Quaternions IMU 9 axes pour l'analyse du mouvement"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:1022
+#: lib/sensocto_web/live/components/about_content_component.ex:1044
 #, elixir-autogen, elixir-format
 msgid "A live sensor network — each node is a person, each connection a shared signal."
 msgstr "Un réseau de capteurs en direct — chaque nœud est une personne, chaque connexion un signal partagé."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1154
+#: lib/sensocto_web/live/components/about_content_component.ex:1176
 #, elixir-autogen, elixir-format
 msgid "Alertness to anomalous data"
 msgstr "Vigilance face aux données anormales"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1158
+#: lib/sensocto_web/live/components/about_content_component.ex:1180
 #, elixir-autogen, elixir-format
 msgid "Anticipates demand spikes"
 msgstr "Anticipe les pics de demande"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1083
+#: lib/sensocto_web/live/components/about_content_component.ex:1105
 #, elixir-autogen, elixir-format
 msgid "Architecture shapes incentives. We built Sensocto so that privacy and human dignity are structural guarantees, not policy promises."
 msgstr "L'architecture façonne les incitations. Nous avons conçu Sensocto pour que la vie privée et la dignité humaine soient des garanties structurelles, et non des promesses politiques."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:176
+#: lib/sensocto_web/live/components/about_content_component.ex:178
 #, elixir-autogen, elixir-format
 msgid "Argues that interpersonal synchrony functions as 'social glue' and presents a theoretical framework for studying group synchrony beyond dyads."
 msgstr "Soutient que la synchronie interpersonnelle fonctionne comme un « ciment social » et présente un cadre théorique pour l'étude de la synchronie de groupe au-delà des dyades."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1165
+#: lib/sensocto_web/live/components/about_content_component.ex:1187
 #, elixir-autogen, elixir-format
 msgid "Attention-Aware Batching"
 msgstr "Traitement par lots adapté à l'attention"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1147
+#: lib/sensocto_web/live/components/about_content_component.ex:1169
 #, elixir-autogen, elixir-format
 msgid "Beneath the surface, Sensocto operates like a living organism—adapting, learning, self-regulating."
 msgstr "Sous la surface, Sensocto fonctionne comme un organisme vivant — s'adaptant, apprenant, s'autorégulant."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1144
+#: lib/sensocto_web/live/components/about_content_component.ex:1166
 #, elixir-autogen, elixir-format
 msgid "Biomimetic Intelligence"
 msgstr "Intelligence biomimétique"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1283
+#: lib/sensocto_web/live/components/about_content_component.ex:1305
 #, elixir-autogen, elixir-format
 msgid "Brief (~300 words)"
 msgstr "Bref (~300 mots)"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1182
+#: lib/sensocto_web/live/components/about_content_component.ex:1204
 #, elixir-autogen, elixir-format
 msgid "Built with"
 msgstr "Conçu avec"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:23
-#, elixir-autogen, elixir-format
-msgid "Buttplug.io for haptic device control"
-msgstr "Buttplug.io pour le contrôle de dispositifs haptiques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:402
+#: lib/sensocto_web/live/components/about_content_component.ex:404
 #, elixir-autogen, elixir-format
 msgid "CARE NETWORKS: SOCIAL TIES AS HEALTH INFRASTRUCTURE\n\nThe care network research establishes the epidemiological significance of human connection. Kawachi and Berkman's 2001 paper in the Journal of Urban Health documented what subsequent research has repeatedly confirmed: social ties directly influence mental health outcomes. People with strong social networks experience lower rates of depression, better recovery from illness, reduced mortality risk, and improved quality of life across virtually every measure. Isolation is not just uncomfortable; it's a significant health risk factor comparable to smoking.\n\nRepper and Carter's 2011 systematic review of peer support in the Journal of Mental Health demonstrated that mutual aid creates therapeutic value that professional intervention alone cannot replicate. Peer supporters—individuals with lived experience of mental health challenges—provide a form of understanding and validation that differs qualitatively from professional care. This isn't about replacing clinicians; it's about recognizing that healing happens in community, not just in clinical settings.\n\nThe challenge that current technology fails to address is the reactive nature of support. By the time someone posts about a crisis, the crisis is often well advanced. By the time friends notice withdrawal, isolation has already taken hold. What the research suggests is needed is proactive support—the ability to notice someone struggling before they can articulate it, to reach out before being asked.\n\nChen and Schultz's 2016 research in JMIR Mental Health explored how technology might enhance rather than diminish compassionate care. Their work suggests that technology-mediated support can extend the reach of care networks without replacing their human core. The key is designing technology that facilitates genuine connection rather than substituting for it."
 msgstr ""
@@ -324,211 +319,196 @@ msgstr ""
 "\n"
 "La recherche de Chen et Schultz en 2016 dans JMIR Mental Health a exploré comment la technologie pourrait renforcer plutôt que diminuer les soins empreints de compassion. Leurs travaux suggèrent que le soutien médié par la technologie peut étendre la portée des réseaux de soins sans remplacer leur noyau humain. L'essentiel est de concevoir une technologie qui facilite la connexion authentique plutôt que de s'y substituer."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:371
+#: lib/sensocto_web/live/components/about_content_component.ex:373
 #, elixir-autogen, elixir-format
 msgid "Care Networks"
 msgstr "Réseaux de soins"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1094
-#: lib/sensocto_web/live/components/about_content_component.ex:1106
-#: lib/sensocto_web/live/components/about_content_component.ex:1118
-#: lib/sensocto_web/live/components/about_content_component.ex:1130
+#: lib/sensocto_web/live/components/about_content_component.ex:1116
+#: lib/sensocto_web/live/components/about_content_component.ex:1128
+#: lib/sensocto_web/live/components/about_content_component.ex:1140
+#: lib/sensocto_web/live/components/about_content_component.ex:1152
 #, elixir-autogen, elixir-format
 msgid "Centralized Problem"
 msgstr "Problème centralisé"
 
-#: lib/sensocto_web/components/layouts/app.html.heex:43
+#: lib/sensocto_web/components/layouts/app.html.heex:80
 #, elixir-autogen, elixir-format
 msgid "Change language"
 msgstr "Changer de langue"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1169
+#: lib/sensocto_web/live/components/about_content_component.ex:1191
 #, elixir-autogen, elixir-format
 msgid "Circadian Scheduling"
 msgstr "Planification circadienne"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:744
-#: lib/sensocto_web/live/components/about_content_component.ex:755
+#: lib/sensocto_web/live/components/about_content_component.ex:767
+#: lib/sensocto_web/live/components/about_content_component.ex:777
 #, elixir-autogen, elixir-format
 msgid "Click for more examples"
 msgstr "Cliquez pour plus d'exemples"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1174
+#: lib/sensocto_web/live/components/about_content_component.ex:1196
 #, elixir-autogen, elixir-format
 msgid "Competitive allocation"
 msgstr "Allocation compétitive"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:151
+#: lib/sensocto_web/live/components/about_content_component.ex:153
 #, elixir-autogen, elixir-format
 msgid "Comprehensive review of cardiac physiological synchrony (CPS) mechanisms—cognitive, mechanical, and environmental—and their roles in empathy, stress, and anxiety."
 msgstr "Revue exhaustive des mécanismes de synchronie physiologique cardiaque (CPS) — cognitifs, mécaniques et environnementaux — et de leurs rôles dans l'empathie, le stress et l'anxiété."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:966
+#: lib/sensocto_web/live/components/about_content_component.ex:988
 #, elixir-autogen, elixir-format
 msgid "Coral reef restoration with edge AI cameras detecting fish species and health metrics. Environmental sensors tracking water quality, temperature, and ecosystem vitals. Real-time telemetry from remote locations."
 msgstr "Restauration de récifs coralliens avec des caméras IA embarquées détectant les espèces de poissons et les indicateurs de santé. Capteurs environnementaux surveillant la qualité de l'eau, la température et les signes vitaux de l'écosystème. Télémétrie en temps réel depuis des sites isolés."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1170
+#: lib/sensocto_web/live/components/about_content_component.ex:1192
 #, elixir-autogen, elixir-format
 msgid "Daily pattern learning"
 msgstr "Apprentissage des rythmes quotidiens"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1109
+#: lib/sensocto_web/live/components/about_content_component.ex:1131
 #, elixir-autogen, elixir-format
 msgid "Data harvesting for ad targeting"
 msgstr "Collecte de données pour le ciblage publicitaire"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1113
+#: lib/sensocto_web/live/components/about_content_component.ex:1135
 #, elixir-autogen, elixir-format
 msgid "Data stays on your devices. Privacy by structure."
 msgstr "Les données restent sur vos appareils. Vie privée par conception."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1309
+#: lib/sensocto_web/live/components/about_content_component.ex:1331
 #, elixir-autogen, elixir-format
 msgid "Deep Dive (~1800 words)"
 msgstr "Approfondissement (~1800 mots)"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:201
+#: lib/sensocto_web/live/components/about_content_component.ex:203
 #, elixir-autogen, elixir-format
 msgid "Demonstrates that social anxiety reduces physiological synchrony during cooperative tasks, while task novelty increases it—contextual and individual factors shape autonomic alignment."
 msgstr "Démontre que l'anxiété sociale réduit la synchronie physiologique lors de tâches coopératives, tandis que la nouveauté de la tâche l'augmente — les facteurs contextuels et individuels façonnent l'alignement autonome."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1121
+#: lib/sensocto_web/live/components/about_content_component.ex:1143
 #, elixir-autogen, elixir-format
 msgid "Deplatforming and censorship risk"
 msgstr "Risque de déréférencement et de censure"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:875
+#: lib/sensocto_web/live/components/about_content_component.ex:897
 #, elixir-autogen, elixir-format
 msgid "Disability Care & Non-Verbal Communication"
 msgstr "Accompagnement du handicap et communication non verbale"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:164
+#: lib/sensocto_web/live/components/about_content_component.ex:166
 #, elixir-autogen, elixir-format
 msgid "EEG-BIO hyperscanning study showing how moral alignment between individuals modulates neural and autonomic (including HRV) synchronization during persuasion."
 msgstr "Étude d'hyperscanning EEG-BIO montrant comment l'alignement moral entre individus module la synchronisation neuronale et autonome (y compris le HRV) lors de la persuasion."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:98
+#: lib/sensocto_web/live/components/about_content_component.ex:100
 #, elixir-autogen, elixir-format
 msgid "Empathy"
 msgstr "Empathie"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1255
+#: lib/sensocto_web/live/components/about_content_component.ex:1277
 #, elixir-autogen, elixir-format
 msgid "Empathy Connectome: Insula, Amygdala, ACC"
 msgstr "Connectome de l'empathie : Insula, Amygdale, ACC"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1229
+#: lib/sensocto_web/live/components/about_content_component.ex:1251
 #, elixir-autogen, elixir-format
 msgid "Empathy Resonance & Control Networks"
 msgstr "Réseaux de résonance empathique et de contrôle"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1135
+#: lib/sensocto_web/live/components/about_content_component.ex:1157
 #, elixir-autogen, elixir-format
 msgid "End-to-end encryption native. Intimate data protected."
 msgstr "Chiffrement de bout en bout natif. Données intimes protégées."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:963
+#: lib/sensocto_web/live/components/about_content_component.ex:985
 #, elixir-autogen, elixir-format
 msgid "Environmental Monitoring"
 msgstr "Surveillance environnementale"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:327
+#: lib/sensocto_web/live/components/about_content_component.ex:329
 #, elixir-autogen, elixir-format
 msgid "Evidence for HRV biofeedback as an effective intervention for anxiety and trauma recovery."
 msgstr "Preuves de l'efficacité du biofeedback HRV comme intervention pour l'anxiété et la récupération post-traumatique."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:315
+#: lib/sensocto_web/live/components/about_content_component.ex:317
 #, elixir-autogen, elixir-format
 msgid "Examines how partners' physiological systems co-regulate during emotional conversations and health discussions."
 msgstr "Examine comment les systèmes physiologiques des partenaires se co-régulent lors de conversations émotionnelles et de discussions sur la santé."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:278
+#: lib/sensocto_web/live/components/about_content_component.ex:280
 #, elixir-autogen, elixir-format
 msgid "Explores how technology can enhance compassionate care in mental health treatment settings."
 msgstr "Explore comment la technologie peut renforcer les soins empreints de compassion dans les contextes de traitement en santé mentale."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:647
+#: lib/sensocto_web/live/components/about_content_component.ex:662
 #, elixir-autogen, elixir-format
 msgid "Feel someone's presence. Not their performance."
 msgstr "Ressentir la présence de quelqu'un. Pas sa performance."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:101
+#: lib/sensocto_web/live/components/about_content_component.ex:103
 #, elixir-autogen, elixir-format
 msgid "Feelings, relationships, presence"
 msgstr "Émotions, relations, présence"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:878
+#: lib/sensocto_web/live/components/about_content_component.ex:900
 #, elixir-autogen, elixir-format
 msgid "For those who cannot speak their needs—non-verbal individuals, wheelchair users, those with chronic conditions—physiological signals become their voice. Caregivers sense when someone needs help before they ask."
 msgstr "Pour ceux qui ne peuvent pas exprimer leurs besoins — personnes non verbales, utilisateurs de fauteuil roulant, personnes atteintes de maladies chroniques — les signaux physiologiques deviennent leur voix. Les aidants perçoivent quand quelqu'un a besoin d'aide avant même qu'il ne le demande."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1356
+#: lib/sensocto_web/live/components/about_content_component.ex:1378
 #, elixir-autogen, elixir-format
 msgid "Foundational Research (2001-2018)"
 msgstr "Recherche fondamentale (2001-2018)"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:351
+#: lib/sensocto_web/live/components/about_content_component.ex:353
 #, elixir-autogen, elixir-format
 msgid "Foundational work on how social networks influence mental health outcomes and crisis prevention."
 msgstr "Travaux fondateurs sur la façon dont les réseaux sociaux influencent les résultats en santé mentale et la prévention des crises."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:106
+#: lib/sensocto_web/live/components/about_content_component.ex:108
 #, elixir-autogen, elixir-format
 msgid "Fun"
 msgstr "Plaisir"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:14
-#, elixir-autogen, elixir-format
-msgid "GPS tracks from walking, cycling, or drones"
-msgstr "Traces GPS de marche, vélo ou drones"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:109
+#: lib/sensocto_web/live/components/about_content_component.ex:111
 #, elixir-autogen, elixir-format
 msgid "Games, play, entertainment"
 msgstr "Jeux, divertissement, loisirs"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1374
+#: lib/sensocto_web/live/components/about_content_component.ex:1533
 #, elixir-autogen, elixir-format
 msgid "Get Started"
 msgstr "Commencer"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:366
+#: lib/sensocto_web/live/components/about_content_component.ex:368
 #, elixir-autogen, elixir-format
 msgid "Group Dynamics"
 msgstr "Dynamiques de groupe"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:941
+#: lib/sensocto_web/live/components/about_content_component.ex:963
 #, elixir-autogen, elixir-format
 msgid "Groups & Collective Presence"
 msgstr "Groupes et présence collective"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:361
+#: lib/sensocto_web/live/components/about_content_component.ex:363
 #, elixir-autogen, elixir-format
 msgid "HRV Synchronization"
 msgstr "Synchronisation HRV"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:24
-#, elixir-autogen, elixir-format
-msgid "HRV and recovery metrics from medical wearables"
-msgstr "Métriques HRV et de récupération issues de dispositifs médicaux portables"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:77
-#, elixir-autogen, elixir-format
-msgid "HRV responses to therapeutic interventions"
-msgstr "Réponses HRV aux interventions thérapeutiques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:227
+#: lib/sensocto_web/live/components/about_content_component.ex:229
 #, elixir-autogen, elixir-format
 msgid "Heart rate synchrony predicted correct group consensus with >70% cross-validation accuracy across 44 groups, providing a biomarker of interpersonal engagement."
 msgstr "La synchronie de fréquence cardiaque a prédit le consensus de groupe correct avec une précision de validation croisée supérieure à 70 %% sur 44 groupes, fournissant un biomarqueur de l'engagement interpersonnel."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1161
+#: lib/sensocto_web/live/components/about_content_component.ex:1183
 #, elixir-autogen, elixir-format
 msgid "Homeostatic Tuning"
 msgstr "Ajustement homéostatique"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:383
+#: lib/sensocto_web/live/components/about_content_component.ex:385
 #, elixir-autogen, elixir-format
 msgid "Human connection has a measurable heartbeat. When two people truly connect—in therapy, in love, in crisis support—their autonomic nervous systems begin to synchronize. Heart rate variability aligns. Breathing patterns match. This isn't metaphor; it's physiology.\n\nThe research behind Sensocto spans five domains: interpersonal synchronization studies showing how bodies co-regulate during meaningful interactions; group dynamics research revealing synchrony as \"social glue\" that predicts collective outcomes; therapy research demonstrating that physiological attunement predicts therapeutic outcomes; care network studies proving that social ties directly impact mental health; and wearable technology research enabling real-time monitoring of these vital signs.\n\nA wave of 2024-2025 research has strengthened this foundation dramatically. Heart rate synchrony now predicts group consensus with over 70%% accuracy (PNAS 2024). Respiratory sinus arrhythmia increases during conversations regardless of relationship type. A unified framework identifies six dimensions of synchrony and four core functions. Social anxiety reduces physiological alignment, while shared novelty amplifies it. What emerges is a scientific foundation for what humans have always intuited: presence is physical, connection is measurable, and technology can amplify empathy rather than replace it."
 msgstr ""
@@ -538,7 +518,7 @@ msgstr ""
 "\n"
 "Une vague de recherches 2024-2025 a considérablement renforcé ces fondations. La synchronie de fréquence cardiaque prédit désormais le consensus de groupe avec plus de 70 %% de précision (PNAS 2024). L'arythmie sinusale respiratoire augmente pendant les conversations quel que soit le type de relation. Un cadre unifié identifie six dimensions de la synchronie et quatre fonctions fondamentales. L'anxiété sociale réduit l'alignement physiologique, tandis que la nouveauté partagée l'amplifie. Ce qui émerge est un fondement scientifique pour ce que les humains ont toujours pressenti : la présence est physique, la connexion est mesurable, et la technologie peut amplifier l'empathie plutôt que la remplacer."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:396
+#: lib/sensocto_web/live/components/about_content_component.ex:398
 #, elixir-autogen, elixir-format
 msgid "INTERPERSONAL AUTONOMIC PHYSIOLOGY: THE SCIENCE OF SYNCHRONIZATION\n\nPalumbo and colleagues' 2017 systematic review in Personality and Social Psychology Review established interpersonal autonomic physiology as a rigorous field of study. Their comprehensive analysis of the literature defined the phenomenon: when humans engage in meaningful social interactions, their autonomic nervous systems—the unconscious regulatory systems controlling heart rate, breathing, and arousal—begin to synchronize. This synchronization isn't metaphorical. It's measurable in heart rate variability patterns, skin conductance responses, and respiratory rhythms.\n\nWhat makes this research particularly significant is its demonstration that synchronization varies with relationship quality. Strangers show minimal synchronization. Couples, therapists and clients, parents and children—these dyads show pronounced coupling that increases with trust and emotional connection. Reed and colleagues' 2013 research in the International Journal of Psychophysiology examined romantic partners specifically, finding that physiological linkage during emotional conversations reflects and reinforces the quality of the relationship. Partners don't just influence each other's moods; they literally shape each other's nervous system regulation.\n\nThe group dimension adds further richness. Páez and colleagues' 2015 study of collective rituals in Frontiers in Psychology demonstrated that synchronized activities produce the experience Durkheim called \"collective effervescence\"—the profound sense of belonging and transcendence that occurs when groups move, breathe, or experience together. This research explains why meditation circles, dance parties, and protest marches feel so different from solitary activities. Our bodies are designed for collective experience, and synchronization is the physiological substrate."
 msgstr ""
@@ -550,85 +530,75 @@ msgstr ""
 "\n"
 "La dimension groupale ajoute encore plus de richesse. L'étude de Páez et collègues en 2015 sur les rituels collectifs dans Frontiers in Psychology a démontré que les activités synchronisées produisent l'expérience que Durkheim appelait l'« effervescence collective » — le profond sentiment d'appartenance et de transcendance qui survient quand les groupes bougent, respirent ou vivent ensemble. Cette recherche explique pourquoi les cercles de méditation, les soirées dansantes et les marches de protestation sont ressentis si différemment des activités solitaires. Nos corps sont conçus pour l'expérience collective, et la synchronisation en est le substrat physiologique."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:122
+#: lib/sensocto_web/live/components/about_content_component.ex:124
 #, elixir-autogen, elixir-format
 msgid "Impact"
 msgstr "Impact"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:919
+#: lib/sensocto_web/live/components/about_content_component.ex:941
 #, elixir-autogen, elixir-format
 msgid "Intimacy & Real Connection"
 msgstr "Intimité et connexion authentique"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:188
+#: lib/sensocto_web/live/components/about_content_component.ex:190
 #, elixir-autogen, elixir-format
 msgid "Major synthesis proposing a unified framework with six dimensions of synchrony form and four core functions: reducing complexity, accomplishing joint tasks, strengthening connection, and influencing partners."
 msgstr "Synthèse majeure proposant un cadre unifié avec six dimensions de forme de la synchronie et quatre fonctions fondamentales : réduire la complexité, accomplir des tâches conjointes, renforcer la connexion et influencer les partenaires."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:897
+#: lib/sensocto_web/live/components/about_content_component.ex:919
 #, elixir-autogen, elixir-format
 msgid "Mental Health & Trusted Networks"
 msgstr "Santé mentale et réseaux de confiance"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:302
+#: lib/sensocto_web/live/components/about_content_component.ex:304
 #, elixir-autogen, elixir-format
 msgid "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
 msgstr "Méthodes de détection des états émotionnels par le suivi du système nerveux autonome via des dispositifs portables."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:12
-#, elixir-autogen, elixir-format
-msgid "Movesense ECG and IMU data at 100Hz"
-msgstr "Données ECG et IMU Movesense à 100 Hz"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:1101
+#: lib/sensocto_web/live/components/about_content_component.ex:1123
 #, elixir-autogen, elixir-format
 msgid "Near-zero marginal cost. No need to harvest data."
 msgstr "Coût marginal quasi nul. Pas besoin de collecter les données."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1125
+#: lib/sensocto_web/live/components/about_content_component.ex:1147
 #, elixir-autogen, elixir-format
 msgid "No central authority. Communities cannot be silenced."
 msgstr "Aucune autorité centrale. Les communautés ne peuvent pas être réduites au silence."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1059
+#: lib/sensocto_web/live/components/about_content_component.ex:1081
 #, elixir-autogen, elixir-format
 msgid "No harvesting. No surveillance. No algorithms deciding who sees what."
 msgstr "Pas de collecte. Pas de surveillance. Pas d'algorithmes décidant qui voit quoi."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:13
-#, elixir-autogen, elixir-format
-msgid "Nordic Thingy:52 via Web Bluetooth"
-msgstr "Nordic Thingy:52 via Web Bluetooth"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:1153
+#: lib/sensocto_web/live/components/about_content_component.ex:1175
 #, elixir-autogen, elixir-format
 msgid "Novelty Detection"
 msgstr "Détection de nouveauté"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1203
+#: lib/sensocto_web/live/components/about_content_component.ex:1225
 #, elixir-autogen, elixir-format
 msgid "Our approach is grounded in peer-reviewed research on physiological synchronization, care networks, and wearable technology for mental health."
 msgstr "Notre approche est fondée sur des recherches évaluées par les pairs portant sur la synchronisation physiologique, les réseaux de soins et les technologies portables pour la santé mentale."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1099
-#: lib/sensocto_web/live/components/about_content_component.ex:1111
-#: lib/sensocto_web/live/components/about_content_component.ex:1123
+#: lib/sensocto_web/live/components/about_content_component.ex:1121
 #: lib/sensocto_web/live/components/about_content_component.ex:1133
+#: lib/sensocto_web/live/components/about_content_component.ex:1145
+#: lib/sensocto_web/live/components/about_content_component.ex:1155
 #, elixir-autogen, elixir-format
 msgid "P2P Solution"
 msgstr "Solution P2P"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:900
+#: lib/sensocto_web/live/components/about_content_component.ex:922
 #, elixir-autogen, elixir-format
 msgid "Peer support networks are reactive—friends don't know someone's in crisis until it's too late. With shared physiology, trusted contacts see rising stress patterns and can reach out proactively."
 msgstr "Les réseaux de soutien par les pairs sont réactifs — les amis ne savent pas que quelqu'un est en crise avant qu'il ne soit trop tard. Grâce à la physiologie partagée, les contacts de confiance voient les schémas de stress croissants et peuvent intervenir de manière proactive."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1157
+#: lib/sensocto_web/live/components/about_content_component.ex:1179
 #, elixir-autogen, elixir-format
 msgid "Predictive Load Balancing"
 msgstr "Équilibrage de charge prédictif"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:408
+#: lib/sensocto_web/live/components/about_content_component.ex:410
 #, elixir-autogen, elixir-format
 msgid "RECENT ADVANCES: GROUP DYNAMICS AND UNIFIED FRAMEWORKS (2024-2025)\n\nThe most recent wave of research has elevated synchrony science from observation to prediction, and from dyads to groups. Sharika and colleagues' 2024 study in PNAS represents a watershed moment: using multidimensional recurrence quantification analysis and machine learning on 44 groups (204 participants), they demonstrated that interpersonal heart rate synchrony predicted correct group consensus with over 70%% cross-validation accuracy—significantly higher than discussion duration, subjective assessments, or baseline heart rates. This establishes physiological synchronization not merely as a correlate of connection but as a predictive biomarker of collective intelligence.\n\ndaSilva and Wood's 2025 synthesis in Personality and Social Psychology Review provided the field's first unified framework, classifying synchrony along six dimensions—periodicity, discreteness, spatial similarity, directionality, leader-follower dynamics, and observability—and distilling four core functions: reducing complexity and improving understanding, accomplishing joint tasks, strengthening social connection, and influencing partners' behavior. This framework resolves longstanding fragmentation across disciplines studying the same phenomenon under different names.\n\nGordon's 2025 review in Social and Personality Psychology Compass extended the theoretical lens beyond dyads, arguing that interpersonal synchrony functions as \"social glue\" at the group level and proposing a neuroscience-informed framework for understanding why some groups succeed while others fail. This group-level perspective is critical for applications like meditation circles, team coordination, and collective rituals.\n\nAt the physiological mechanism level, Stuart and colleagues' 2025 study of 712 adults in Psychophysiology revealed that respiratory sinus arrhythmia—a marker of vagal regulation—increases during face-to-face conversations regardless of relationship type or topic. This finding suggests that our autonomic nervous systems actively prepare for social engagement, a process independent of conscious intention. Boukarras and colleagues found that social anxiety dampens this natural synchronization during cooperative tasks, while task novelty amplifies it—pointing toward specific intervention targets for social anxiety treatment. Escobar's comprehensive review mapped three mechanisms of cardiac physiological synchrony—cognitive, mechanical, and environmental—to empathy expression and anxiety manifestation. Ciminaghi's EEG-BIO hyperscanning study added a striking finding: even moral alignment between individuals modulates both neural and autonomic coupling during persuasion tasks, suggesting that shared values create deeper physiological resonance."
 msgstr ""
@@ -642,128 +612,123 @@ msgstr ""
 "\n"
 "Au niveau des mécanismes physiologiques, l'étude de Stuart et collègues en 2025 portant sur 712 adultes dans Psychophysiology a révélé que l'arythmie sinusale respiratoire — un marqueur de la régulation vagale — augmente lors des conversations en face à face, indépendamment du type de relation ou du sujet. Cette découverte suggère que nos systèmes nerveux autonomes se préparent activement à l'engagement social, un processus indépendant de l'intention consciente. Boukarras et collègues ont constaté que l'anxiété sociale atténue cette synchronisation naturelle lors de tâches coopératives, tandis que la nouveauté de la tâche l'amplifie — pointant vers des cibles d'intervention spécifiques pour le traitement de l'anxiété sociale. La revue exhaustive d'Escobar a cartographié trois mécanismes de synchronie physiologique cardiaque — cognitif, mécanique et environnemental — vers l'expression de l'empathie et la manifestation de l'anxiété. L'étude d'hyperscanning EEG-BIO de Ciminaghi a ajouté une découverte frappante : même l'alignement moral entre individus module le couplage neuronal et autonome lors de tâches de persuasion, suggérant que les valeurs partagées créent une résonance physiologique plus profonde."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1192
+#: lib/sensocto_web/live/components/about_content_component.ex:1214
 #, elixir-autogen, elixir-format
 msgid "RESEARCH"
 msgstr "RECHERCHE"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:22
-#, elixir-autogen, elixir-format
-msgid "ROV video feeds with real-time annotations"
-msgstr "Flux vidéo ROV avec annotations en temps réel"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:922
+#: lib/sensocto_web/live/components/about_content_component.ex:944
 #, elixir-autogen, elixir-format
 msgid "Real arousal, real connection. Digital lovers, musicians and audiences, actors and viewers, interviewers and guests, sensual caregivers—anyone sharing intimate moments across distance can finally feel each other's presence."
 msgstr "Excitation réelle, connexion réelle. Amants numériques, musiciens et publics, acteurs et spectateurs, intervieweurs et invités, soignants sensuels — tous ceux qui partagent des moments intimes à distance peuvent enfin ressentir la présence de l'autre."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1342
+#: lib/sensocto_web/live/components/about_content_component.ex:1364
 #, elixir-autogen, elixir-format
 msgid "Recent Research (2024-2025)"
 msgstr "Recherche récente (2024-2025)"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:130
-#: lib/sensocto_web/live/components/about_content_component.ex:682
+#: lib/sensocto_web/live/components/about_content_component.ex:132
+#: lib/sensocto_web/live/components/about_content_component.ex:697
 #, elixir-autogen, elixir-format
 msgid "Research"
 msgstr "Recherche"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1269
+#: lib/sensocto_web/live/components/about_content_component.ex:1291
 #, elixir-autogen, elixir-format
 msgid "Research Synthesis"
 msgstr "Synthèse de recherche"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1173
+#: lib/sensocto_web/live/components/about_content_component.ex:1195
 #, elixir-autogen, elixir-format
 msgid "Resource Arbitration"
 msgstr "Arbitrage des ressources"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1166
+#: lib/sensocto_web/live/components/about_content_component.ex:1188
 #, elixir-autogen, elixir-format
 msgid "Respects user focus"
 msgstr "Respecte l'attention de l'utilisateur"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:266
+#: lib/sensocto_web/live/components/about_content_component.ex:268
 #, elixir-autogen, elixir-format
 msgid "Reviews evidence for physiological synchrony between therapists and clients as a marker of therapeutic alliance."
 msgstr "Passe en revue les preuves de la synchronie physiologique entre thérapeutes et clients comme marqueur de l'alliance thérapeutique."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:133
+#: lib/sensocto_web/live/components/about_content_component.ex:135
 #, elixir-autogen, elixir-format
 msgid "Science, analysis, discovery"
 msgstr "Science, analyse, découverte"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1162
+#: lib/sensocto_web/live/components/about_content_component.ex:1184
 #, elixir-autogen, elixir-format
 msgid "Self-adapting thresholds"
 msgstr "Seuils auto-adaptatifs"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:117
+#: lib/sensocto_web/live/components/about_content_component.ex:119
 #, elixir-autogen, elixir-format
 msgid "Sensors, protocols, data flows"
 msgstr "Capteurs, protocoles, flux de données"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1097
+#: lib/sensocto_web/live/components/about_content_component.ex:1119
 #, elixir-autogen, elixir-format
 msgid "Server costs create monetization pressure"
 msgstr "Les coûts serveur créent une pression à la monétisation"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:765
+#: lib/sensocto_web/live/components/about_content_component.ex:787
 #, elixir-autogen, elixir-format
 msgid "Show"
 msgstr "Afficher"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:125
+#: lib/sensocto_web/live/components/about_content_component.ex:127
 #, elixir-autogen, elixir-format
 msgid "Social good, accessibility, outcomes"
 msgstr "Bien commun, accessibilité, résultats"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1296
+#: lib/sensocto_web/live/components/about_content_component.ex:1318
 #, elixir-autogen, elixir-format
 msgid "Standard (~900 words)"
 msgstr "Standard (~900 mots)"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:290
+#: lib/sensocto_web/live/components/about_content_component.ex:292
 #, elixir-autogen, elixir-format
 msgid "Studies how group rituals produce physiological and emotional synchronization among participants."
 msgstr "Étudie comment les rituels de groupe produisent une synchronisation physiologique et émotionnelle entre les participants."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:214
+#: lib/sensocto_web/live/components/about_content_component.ex:216
 #, elixir-autogen, elixir-format
 msgid "Study of 712 adults showing RSA increases during interpersonal conversations regardless of relationship type, connecting vagally mediated HRV to self-regulatory and interpersonal processes."
 msgstr "Étude de 712 adultes montrant que l'arythmie sinusale respiratoire (RSA) augmente lors des conversations interpersonnelles quel que soit le type de relation, reliant le HRV médié par le nerf vague aux processus d'autorégulation et interpersonnels."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1132
+#: lib/sensocto_web/live/components/about_content_component.ex:1154
 #, elixir-autogen, elixir-format
 msgid "Surveillance by design"
 msgstr "Surveillance par conception"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:253
+#: lib/sensocto_web/live/components/about_content_component.ex:255
 #, elixir-autogen, elixir-format
 msgid "Systematic review defining interpersonal autonomic physiology and how physiological synchronization emerges during social interactions."
 msgstr "Revue systématique définissant la physiologie autonome interpersonnelle et comment la synchronisation physiologique émerge lors des interactions sociales."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:339
+#: lib/sensocto_web/live/components/about_content_component.ex:341
 #, elixir-autogen, elixir-format
 msgid "Systematic review of peer support effectiveness in mental health care and community interventions."
 msgstr "Revue systématique de l'efficacité du soutien par les pairs dans les soins de santé mentale et les interventions communautaires."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1072
+#: lib/sensocto_web/live/components/about_content_component.ex:1094
 #, elixir-autogen, elixir-format
 msgid "THE DEEP DIVE"
 msgstr "L'APPROFONDISSEMENT"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:703
+#: lib/sensocto_web/live/components/about_content_component.ex:726
 #, elixir-autogen, elixir-format
 msgid "THE SPARK"
 msgstr "L'ÉTINCELLE"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:834
+#: lib/sensocto_web/live/components/about_content_component.ex:856
 #, elixir-autogen, elixir-format
 msgid "THE STORY"
 msgstr "L'HISTOIRE"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:399
+#: lib/sensocto_web/live/components/about_content_component.ex:401
 #, elixir-autogen, elixir-format
 msgid "THERAPEUTIC APPLICATIONS: WHEN ATTUNEMENT HEALS\n\nThe therapy research stream provides perhaps the most compelling case for Sensocto's approach. Kleinbub's 2017 systematic review in Frontiers in Psychology synthesized evidence on interpersonal physiology in psychotherapy, finding that therapist-client physiological synchrony serves as a reliable marker of therapeutic alliance. This matters enormously because therapeutic alliance—the quality of the working relationship between therapist and client—is the single strongest predictor of positive outcomes across all forms of psychotherapy, accounting for more variance than specific techniques or theoretical orientations.\n\nWhat this means practically is that effective therapy involves bodies, not just minds. When a therapist attunes to a client's nervous system state, co-regulation becomes possible. The therapist's calm can literally help regulate a dysregulated client. This somatic dimension of healing is often invisible in traditional therapy, but physiological monitoring makes it tangible and teachable.\n\nTan and colleagues' 2011 research on biofeedback for anxiety and PTSD in Applied Psychophysiology and Biofeedback extended this insight to self-regulation. Their evidence showed that HRV biofeedback—learning to consciously influence heart rate variability—produces significant improvements in anxiety symptoms and trauma recovery. The body isn't just a site of symptoms; it's an active participant in healing. Teaching individuals to recognize and regulate their physiological states creates lasting change that top-down cognitive approaches often cannot achieve alone."
 msgstr ""
@@ -775,42 +740,42 @@ msgstr ""
 "\n"
 "La recherche de Tan et collègues en 2011 sur le biofeedback pour l'anxiété et le TSPT dans Applied Psychophysiology and Biofeedback a étendu cette perspective à l'autorégulation. Leurs preuves ont montré que le biofeedback HRV — apprendre à influencer consciemment la variabilité de la fréquence cardiaque — produit des améliorations significatives des symptômes d'anxiété et de la récupération post-traumatique. Le corps n'est pas seulement un site de symptômes ; il est un participant actif de la guérison. Enseigner aux individus à reconnaître et réguler leurs états physiologiques crée un changement durable que les approches cognitives descendantes ne parviennent souvent pas à obtenir seules."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:944
+#: lib/sensocto_web/live/components/about_content_component.ex:966
 #, elixir-autogen, elixir-format
 msgid "Teams feel collective calm or tension. Meditation groups verify synchronization. Performers read live audience engagement. Rituals become measurable. Groups self-regulate as organisms."
 msgstr "Les équipes ressentent le calme ou la tension collective. Les groupes de méditation vérifient la synchronisation. Les artistes lisent l'engagement du public en direct. Les rituels deviennent mesurables. Les groupes s'autorégulent comme des organismes."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:114
+#: lib/sensocto_web/live/components/about_content_component.ex:116
 #, elixir-autogen, elixir-format
 msgid "Technical"
 msgstr "Technique"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:674
+#: lib/sensocto_web/live/components/about_content_component.ex:689
 #, elixir-autogen, elixir-format
 msgid "The Deep Dive"
 msgstr "L'approfondissement"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1047
+#: lib/sensocto_web/live/components/about_content_component.ex:1069
 #, elixir-autogen, elixir-format
 msgid "The Promise"
 msgstr "La promesse"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:658
+#: lib/sensocto_web/live/components/about_content_component.ex:673
 #, elixir-autogen, elixir-format
 msgid "The Spark"
 msgstr "L'étincelle"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:666
+#: lib/sensocto_web/live/components/about_content_component.ex:681
 #, elixir-autogen, elixir-format
 msgid "The Story"
 msgstr "L'histoire"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:393
+#: lib/sensocto_web/live/components/about_content_component.ex:395
 #, elixir-autogen, elixir-format
 msgid "The research foundation for Sensocto represents a convergence of four scientific domains that together reveal an extraordinary opportunity: to use technology not as a replacement for human connection, but as an amplifier of our innate capacity for empathy and co-regulation. This body of research challenges fundamental assumptions about what technology can do for human relationships."
 msgstr "Le fondement scientifique de Sensocto représente une convergence de quatre domaines scientifiques qui, ensemble, révèlent une opportunité extraordinaire : utiliser la technologie non pas comme substitut de la connexion humaine, mais comme amplificateur de notre capacité innée d'empathie et de co-régulation. Ce corpus de recherche remet en question les hypothèses fondamentales sur ce que la technologie peut apporter aux relations humaines."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:387
+#: lib/sensocto_web/live/components/about_content_component.ex:389
 #, elixir-autogen, elixir-format
 msgid "The science of human connection has revealed something profound: our bodies are constantly communicating beneath conscious awareness. When we sit with someone we trust, our heart rate variability begins to synchronize. When a therapist truly attunes to a client, their autonomic nervous systems enter a coordinated dance. This interpersonal physiology—documented across hundreds of peer-reviewed studies—forms the scientific foundation for everything Sensocto does.\n\nPalumbo and colleagues' systematic review of interpersonal autonomic physiology established that physiological synchronization reliably emerges during social interactions. This isn't random noise or coincidence. When humans engage meaningfully, their bodies begin to mirror each other. Reed's research on romantic couples showed this co-regulation extends to health discussions and emotional conversations—partners literally influence each other's nervous systems. Páez's work on collective rituals demonstrated that group synchronization produces the experience of \"collective effervescence\"—that feeling of being part of something larger than yourself.\n\nIn therapeutic contexts, this synchronization becomes even more significant. Kleinbub's systematic review found that physiological attunement between therapist and client serves as a marker of therapeutic alliance—the single strongest predictor of positive outcomes in psychotherapy. Tan's research showed that HRV biofeedback can effectively treat anxiety and PTSD by helping individuals regulate their own nervous systems. The body remembers what the mind suppresses, and healing often happens through somatic pathways.\n\nThe care network research adds another dimension. Kawachi and Berkman's foundational work demonstrated that social ties directly influence mental health outcomes. People embedded in supportive networks experience better outcomes across nearly every health measure. Repper and Carter's systematic review of peer support showed that mutual aid and lived experience create therapeutic value that professional intervention alone cannot replicate. Chen and Schultz explored how technology can enhance rather than diminish compassionate care.\n\nThe wearable technology research makes all of this actionable. Sano's work showed that stress and mental health states can be classified in real-time using wearable biosensors. Valenza's research on autonomic nervous system dynamics demonstrated that emotional states can be detected through continuous monitoring. The hardware exists. The science is validated.\n\nRecent advances (2024-2025) have transformed the field from foundational observation to predictive science. Sharika and colleagues demonstrated in PNAS that heart rate synchrony predicts correct group consensus with over 70%% accuracy—establishing physiological alignment as a genuine biomarker of collective intelligence. daSilva and Wood's major synthesis in Personality and Social Psychology Review proposed a unified framework classifying synchrony along six dimensions with four core functions: reducing complexity, accomplishing joint tasks, strengthening social bonds, and influencing partners. Stuart's study of 712 adults showed that respiratory sinus arrhythmia increases during face-to-face conversations regardless of relationship type—our bodies prepare for connection before we consciously engage. Boukarras found that social anxiety reduces physiological synchrony while task novelty increases it, and Escobar's review mapped the mechanisms of cardiac synchrony to empathy, stress, and anxiety pathways. Gordon's framework positions synchrony as \"social glue\" operating at the group level, while Ciminaghi's hyperscanning study revealed that even moral alignment modulates neural and autonomic coupling.\n\nSensocto synthesizes these research streams into a coherent vision: a platform where presence is physiological, where support is proactive rather than reactive, where intimacy transcends distance, and where technology serves connection rather than performance. We're not building another social network. We're building the infrastructure for genuine human attunement."
 msgstr ""
@@ -828,23 +793,23 @@ msgstr ""
 "\n"
 "Sensocto synthétise ces flux de recherche en une vision cohérente : une plateforme où la présence est physiologique, où le soutien est proactif plutôt que réactif, où l'intimité transcende la distance, et où la technologie sert la connexion plutôt que la performance. Nous ne construisons pas un autre réseau social. Nous construisons l'infrastructure pour un véritable accordage humain."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:856
+#: lib/sensocto_web/live/components/about_content_component.ex:878
 #, elixir-autogen, elixir-format
 msgid "Therapists see nervous system dysregulation in real-time. HRV, breathing patterns, heart rate—visible during sessions. Trust forms faster when bodies sync. Healing accelerates with biofeedback."
 msgstr "Les thérapeutes voient la dérégulation du système nerveux en temps réel. HRV, schémas respiratoires, fréquence cardiaque — visibles pendant les séances. La confiance se construit plus vite quand les corps se synchronisent. La guérison s'accélère avec le biofeedback."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:370
-#: lib/sensocto_web/live/components/about_content_component.ex:853
+#: lib/sensocto_web/live/components/about_content_component.ex:372
+#: lib/sensocto_web/live/components/about_content_component.ex:875
 #, elixir-autogen, elixir-format
 msgid "Therapy & Healing"
 msgstr "Thérapie et guérison"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:241
+#: lib/sensocto_web/live/components/about_content_component.ex:243
 #, elixir-autogen, elixir-format
 msgid "Uses wearable biosensors and machine learning to classify stress and mental health status in real-time."
 msgstr "Utilise des biocapteurs portables et l'apprentissage automatique pour classifier le stress et l'état de santé mentale en temps réel."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:405
+#: lib/sensocto_web/live/components/about_content_component.ex:407
 #, elixir-autogen, elixir-format
 msgid "WEARABLE TECHNOLOGY: FROM RESEARCH TO PRACTICE\n\nThe final research stream makes the vision actionable. Sano and colleagues' 2018 paper in the Journal of Medical Internet Research demonstrated that wearable biosensors combined with machine learning can classify stress levels and mental health states with clinically useful accuracy. The data that matters—heart rate, HRV, skin conductance, sleep patterns, activity levels—can now be captured continuously in daily life, not just in laboratory settings.\n\nValenza and colleagues' 2014 research in IEEE Transactions on Affective Computing developed methods for detecting emotional states through autonomic nervous system monitoring. Their work established that the information content in physiological signals is sufficient to distinguish between emotional states with meaningful reliability. Combined with advances in wearable hardware—medical-grade sensors now available in consumer devices—this research establishes that continuous physiological monitoring is technically feasible."
 msgstr ""
@@ -854,7 +819,7 @@ msgstr ""
 "\n"
 "La recherche de Valenza et collègues en 2014 dans IEEE Transactions on Affective Computing a développé des méthodes pour détecter les états émotionnels par le suivi du système nerveux autonome. Leurs travaux ont établi que le contenu informationnel des signaux physiologiques est suffisant pour distinguer les états émotionnels avec une fiabilité significative. Combinée aux avancées du matériel portable — des capteurs de qualité médicale désormais disponibles dans les appareils grand public — cette recherche établit que le suivi physiologique continu est techniquement réalisable."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:411
+#: lib/sensocto_web/live/components/about_content_component.ex:413
 #, elixir-autogen, elixir-format
 msgid "WHY THIS MATTERS FOR SENSOCTO\n\nThe synthesis of these five research streams points to a specific opportunity that current technology entirely misses. Social media platforms harvest attention for advertising revenue, creating incentive structures that favor outrage over calm, performance over authenticity, isolation disguised as connection. Healthcare systems remain reactive, responding to crises rather than preventing them. Therapy often treats the mind as separate from the body. Support networks rely on explicit communication that stigma and shame often prevent.\n\nSensocto proposes something different: a platform where connection is physiological, not performative. Where a trusted friend can sense you're struggling before you post about it. Where a therapist can see nervous system dysregulation in real-time during sessions. Where romantic partners separated by distance can feel each other's presence through their actual heartbeats. Where groups can verify their synchronization in meditation, dance, or collective action.\n\nThis isn't technological utopianism. The research is clear about what's possible and what's not. Physiological synchronization is real but doesn't replace verbal communication. Biofeedback is effective but requires practice and intention. Care networks matter but don't substitute for professional treatment when needed. What the research supports is a both/and approach: technology that enhances human capacity for connection rather than replacing it, that makes visible what was previously invisible, that creates the conditions for empathy without attempting to automate it.\n\nThe scientific foundation is solid. The hardware exists. The research is validated. What's been missing is a platform designed from the ground up to serve human flourishing rather than extract human attention. That's what Sensocto aims to build—and why understanding this research matters for everyone who uses it."
 msgstr ""
@@ -868,665 +833,680 @@ msgstr ""
 "\n"
 "Le fondement scientifique est solide. Le matériel existe. La recherche est validée. Ce qui manquait, c'est une plateforme conçue dès le départ pour servir l'épanouissement humain plutôt que d'extraire l'attention humaine. C'est ce que Sensocto vise à construire — et pourquoi comprendre cette recherche compte pour tous ceux qui l'utilisent."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:711
+#: lib/sensocto_web/live/components/about_content_component.ex:734
 #, elixir-autogen, elixir-format
 msgid "We scroll, we perform, we feel more alone."
 msgstr "Nous scrollons, nous performons, nous nous sentons plus seuls."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:373
+#: lib/sensocto_web/live/components/about_content_component.ex:375
 #, elixir-autogen, elixir-format
 msgid "Wearables & Monitoring"
 msgstr "Dispositifs portables et suivi"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:747
+#: lib/sensocto_web/live/components/about_content_component.ex:770
 #, elixir-autogen, elixir-format
 msgid "What if you could"
 msgstr "Et si vous pouviez"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1090
+#: lib/sensocto_web/live/components/about_content_component.ex:1112
 #, elixir-autogen, elixir-format
 msgid "Why Peer-to-Peer?"
 msgstr "Pourquoi le pair-à-pair ?"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:16
-#, elixir-autogen, elixir-format
-msgid "YOLOfish-style inference on live video"
-msgstr "Inférence de type YOLOfish sur vidéo en direct"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:30
-#, elixir-autogen, elixir-format
-msgid "a friend is struggling before they ask"
-msgstr "qu'un ami souffre avant qu'il ne le demande"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:29
-#, elixir-autogen, elixir-format
-msgid "a partner's desire without words"
-msgstr "le désir d'un partenaire sans mots"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:69
-#, elixir-autogen, elixir-format
-msgid "accelerate"
-msgstr "accélérer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:20
-#, elixir-autogen, elixir-format
-msgid "actuators from sensor threshold rules"
-msgstr "actionneurs à partir de règles de seuil des capteurs"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:15
-#: lib/sensocto_web/live/components/about_content_component.ex:79
-#, elixir-autogen, elixir-format
-msgid "analyze"
-msgstr "analyser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:57
-#, elixir-autogen, elixir-format
-msgid "as haptic devices tickle synchronized giggles"
-msgstr "tandis que des dispositifs haptiques provoquent des fous rires synchronisés"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:87
-#, elixir-autogen, elixir-format
-msgid "assess"
-msgstr "évaluer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:68
-#, elixir-autogen, elixir-format
-msgid "assist"
-msgstr "assister"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:89
-#, elixir-autogen, elixir-format
-msgid "assistive interfaces with sensor feedback"
-msgstr "interfaces d'assistance avec retour de capteurs"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:53
-#, elixir-autogen, elixir-format
-msgid "breathe"
-msgstr "respirer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:17
-#, elixir-autogen, elixir-format
-msgid "capture"
-msgstr "capturer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:68
-#, elixir-autogen, elixir-format
-msgid "caregivers with real-time patient monitoring"
-msgstr "les aidants grâce au suivi des patients en temps réel"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:52
-#, elixir-autogen, elixir-format
-msgid "chill"
-msgstr "se détendre"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:85
-#, elixir-autogen, elixir-format
-msgid "circadian rhythm impacts on chronic conditions"
-msgstr "les impacts du rythme circadien sur les maladies chroniques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:82
-#, elixir-autogen, elixir-format
-msgid "co-regulation dynamics in therapy dyads"
-msgstr "les dynamiques de co-régulation dans les dyades thérapeutiques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:25
-#, elixir-autogen, elixir-format
-msgid "collect"
-msgstr "collecter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:35
-#, elixir-autogen, elixir-format
-msgid "collective flow in a jam session"
-msgstr "le flux collectif d'une session d'improvisation"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:84
-#, elixir-autogen, elixir-format
-msgid "compare"
-msgstr "comparer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:13
-#: lib/sensocto_web/live/components/about_content_component.ex:72
-#, elixir-autogen, elixir-format
-msgid "connect"
-msgstr "connecter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:73
-#, elixir-autogen, elixir-format
-msgid "consent through embodied signals"
-msgstr "le consentement par les signaux corporels"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:79
-#, elixir-autogen, elixir-format
-msgid "coral health metrics across reef systems"
-msgstr "les indicateurs de santé corallienne à travers les systèmes récifaux"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:60
-#, elixir-autogen, elixir-format
-msgid "coral reef ecosystems with AI monitoring"
-msgstr "les écosystèmes de récifs coralliens avec suivi par IA"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:80
-#, elixir-autogen, elixir-format
-msgid "correlate"
-msgstr "corréler"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:49
-#, elixir-autogen, elixir-format
-msgid "create"
-msgstr "créer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:66
-#, elixir-autogen, elixir-format
-msgid "crises with early warning biometrics"
-msgstr "les crises grâce aux biométriques d'alerte précoce"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:64
-#, elixir-autogen, elixir-format
-msgid "cystic fibrosis outcomes through gamification"
-msgstr "les résultats de la mucoviscidose par la gamification"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:47
-#, elixir-autogen, elixir-format
-msgid "dance"
-msgstr "danser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:67
-#, elixir-autogen, elixir-format
-msgid "democratize"
-msgstr "démocratiser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:70
-#, elixir-autogen, elixir-format
-msgid "detect"
-msgstr "détecter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:18
-#, elixir-autogen, elixir-format
-msgid "distributed datasets via P2P CRDT networks"
-msgstr "jeux de données distribués via des réseaux P2P CRDT"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:83
-#, elixir-autogen, elixir-format
-msgid "document"
-msgstr "documenter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:45
-#, elixir-autogen, elixir-format
-msgid "drones while sharing your excitement"
-msgstr "des drones en partageant votre enthousiasme"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:65
-#, elixir-autogen, elixir-format
-msgid "empower"
-msgstr "autonomiser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:61
-#, elixir-autogen, elixir-format
-msgid "enable"
-msgstr "permettre"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:50
-#, elixir-autogen, elixir-format
-msgid "escape rooms with physiological puzzles"
-msgstr "des escape rooms avec des énigmes physiologiques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:35
-#: lib/sensocto_web/live/components/about_content_component.ex:41
-#, elixir-autogen, elixir-format
-msgid "experience"
-msgstr "vivre"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:48
-#: lib/sensocto_web/live/components/about_content_component.ex:88
-#, elixir-autogen, elixir-format
-msgid "explore"
-msgstr "explorer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:19
-#, elixir-autogen, elixir-format
-msgid "export"
-msgstr "exporter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:28
-#: lib/sensocto_web/live/components/about_content_component.ex:36
-#: lib/sensocto_web/live/components/about_content_component.ex:40
-#, elixir-autogen, elixir-format
-msgid "feel"
-msgstr "ressentir"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:25
-#, elixir-autogen, elixir-format
-msgid "field research data stored locally on mobile"
-msgstr "données de recherche de terrain stockées localement sur mobile"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:1183
+#: lib/sensocto_web/live/components/about_content_component.ex:1205
 #, elixir-autogen, elixir-format
 msgid "for humans who believe technology should serve connection, not extraction."
 msgstr "pour les humains qui croient que la technologie devrait servir la connexion, pas l'extraction."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:81
-#, elixir-autogen, elixir-format
-msgid "freediving training protocols with ECG"
-msgstr "les protocoles d'entraînement d'apnée avec ECG"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:76
-#, elixir-autogen, elixir-format
-msgid "group synchronization in meditation studies"
-msgstr "la synchronisation de groupe dans les études de méditation"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:64
-#, elixir-autogen, elixir-format
-msgid "improve"
-msgstr "améliorer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:52
-#, elixir-autogen, elixir-format
-msgid "in calm-off sessions seeing who relaxes first"
-msgstr "dans des défis de calme pour voir qui se détend en premier"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:61
-#, elixir-autogen, elixir-format
-msgid "independence for wheelchair users"
-msgstr "l'autonomie des utilisateurs de fauteuil roulant"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:23
-#, elixir-autogen, elixir-format
-msgid "integrate"
-msgstr "intégrer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:87
-#, elixir-autogen, elixir-format
-msgid "intervention effectiveness with biometrics"
-msgstr "l'efficacité des interventions grâce aux biométriques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:72
-#, elixir-autogen, elixir-format
-msgid "isolated individuals to support networks"
-msgstr "les individus isolés aux réseaux de soutien"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:51
-#, elixir-autogen, elixir-format
-msgid "jam"
-msgstr "improviser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:30
-#: lib/sensocto_web/live/components/about_content_component.ex:38
-#, elixir-autogen, elixir-format
-msgid "know"
-msgstr "savoir"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:57
-#, elixir-autogen, elixir-format
-msgid "laugh"
-msgstr "rire"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:86
-#, elixir-autogen, elixir-format
-msgid "map"
-msgstr "cartographier"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:62
-#, elixir-autogen, elixir-format
-msgid "marine biodiversity through acoustic detection"
-msgstr "la biodiversité marine par la détection acoustique"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:78
-#, elixir-autogen, elixir-format
-msgid "marine migration patterns via bioacoustics"
-msgstr "les schémas de migration marine via la bioacoustique"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:88
-#, elixir-autogen, elixir-format
-msgid "massive datasets like wildflow.org corals"
-msgstr "des jeux de données massifs comme les coraux de wildflow.org"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:77
-#, elixir-autogen, elixir-format
-msgid "measure"
-msgstr "mesurer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:63
-#, elixir-autogen, elixir-format
-msgid "mental health with trusted peer networks"
-msgstr "la santé mentale grâce aux réseaux de pairs de confiance"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:21
-#, elixir-autogen, elixir-format
-msgid "monitor"
-msgstr "surveiller"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:49
-#, elixir-autogen, elixir-format
-msgid "music from your collective heartbeats"
-msgstr "de la musique à partir de vos battements de cœur collectifs"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:54
-#, elixir-autogen, elixir-format
-msgid "new experiences by reaching flow states"
-msgstr "de nouvelles expériences en atteignant des états de flow"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:65
-#, elixir-autogen, elixir-format
-msgid "non-verbal communication via physiology"
-msgstr "la communication non verbale via la physiologie"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:33
-#, elixir-autogen, elixir-format
-msgid "notice"
-msgstr "remarquer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:85
-#, elixir-autogen, elixir-format
-msgid "observe"
-msgstr "observer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:80
-#, elixir-autogen, elixir-format
-msgid "physiological data with mood reports"
-msgstr "les données physiologiques avec les rapports d'humeur"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:71
-#, elixir-autogen, elixir-format
-msgid "physiotherapy into engaging games"
-msgstr "la kinésithérapie en jeux captivants"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:45
-#, elixir-autogen, elixir-format
-msgid "pilot"
-msgstr "piloter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:44
-#, elixir-autogen, elixir-format
-msgid "play"
-msgstr "jouer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:39
-#, elixir-autogen, elixir-format
-msgid "presence across distance and time"
-msgstr "la présence au-delà de la distance et du temps"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:66
-#, elixir-autogen, elixir-format
-msgid "prevent"
-msgstr "prévenir"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:16
-#, elixir-autogen, elixir-format
-msgid "process"
-msgstr "traiter"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:62
-#, elixir-autogen, elixir-format
-msgid "protect"
-msgstr "protéger"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:89
-#, elixir-autogen, elixir-format
-msgid "prototype"
-msgstr "prototyper"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:76
-#, elixir-autogen, elixir-format
-msgid "quantify"
-msgstr "quantifier"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:84
-#, elixir-autogen, elixir-format
-msgid "recovery patterns across athlete cohorts"
-msgstr "les schémas de récupération entre cohortes d'athlètes"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:67
-#, elixir-autogen, elixir-format
-msgid "research with P2P data collection"
-msgstr "la recherche grâce à la collecte de données P2P"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:60
-#, elixir-autogen, elixir-format
-msgid "restore"
-msgstr "restaurer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:46
-#, elixir-autogen, elixir-format
-msgid "roll"
-msgstr "lancer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:29
-#: lib/sensocto_web/live/components/about_content_component.ex:37
-#, elixir-autogen, elixir-format
-msgid "sense"
-msgstr "percevoir"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:44
-#, elixir-autogen, elixir-format
-msgid "sensor-driven party games with friends"
-msgstr "des jeux de soirée pilotés par capteurs entre amis"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:31
-#: lib/sensocto_web/live/components/about_content_component.ex:39
-#, elixir-autogen, elixir-format
-msgid "share"
-msgstr "partager"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:46
-#, elixir-autogen, elixir-format
-msgid "smart dice that glow with your heartbeat"
-msgstr "des dés intelligents qui brillent au rythme de votre cœur"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:50
-#, elixir-autogen, elixir-format
-msgid "solve"
-msgstr "résoudre"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:28
-#, elixir-autogen, elixir-format
-msgid "someone's nervousness before they speak"
-msgstr "la nervosité de quelqu'un avant qu'il ne parle"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:83
-#, elixir-autogen, elixir-format
-msgid "species diversity with automated detection"
-msgstr "la diversité des espèces par détection automatisée"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:12
-#: lib/sensocto_web/live/components/about_content_component.ex:22
-#: lib/sensocto_web/live/components/about_content_component.ex:55
-#, elixir-autogen, elixir-format
-msgid "stream"
-msgstr "diffuser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:86
-#, elixir-autogen, elixir-format
-msgid "stress patterns in distributed populations"
-msgstr "les schémas de stress dans des populations distribuées"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:82
-#, elixir-autogen, elixir-format
-msgid "study"
-msgstr "étudier"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:63
-#, elixir-autogen, elixir-format
-msgid "support"
-msgstr "soutenir"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:18
-#: lib/sensocto_web/live/components/about_content_component.ex:32
-#, elixir-autogen, elixir-format
-msgid "sync"
-msgstr "synchroniser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:41
-#, elixir-autogen, elixir-format
-msgid "synchronized pleasure in real-time"
-msgstr "du plaisir synchronisé en temps réel"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:21
-#, elixir-autogen, elixir-format
-msgid "temperature, humidity, pressure, air quality"
-msgstr "température, humidité, pression, qualité de l'air"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:36
-#, elixir-autogen, elixir-format
-msgid "the ocean's rhythm through a hydrophone"
-msgstr "le rythme de l'océan à travers un hydrophone"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:19
-#, elixir-autogen, elixir-format
-msgid "time-series data in scientific formats"
-msgstr "des données temporelles dans des formats scientifiques"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:53
-#, elixir-autogen, elixir-format
-msgid "together and watch your sync grow"
-msgstr "ensemble et regarder votre synchronisation grandir"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:51
-#, elixir-autogen, elixir-format
-msgid "together as instruments respond to your mood"
-msgstr "ensemble tandis que les instruments répondent à votre humeur"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:56
-#, elixir-autogen, elixir-format
-msgid "together at silent discos with shared pulse"
-msgstr "ensemble lors de silent discos au pouls partagé"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:24
-#: lib/sensocto_web/live/components/about_content_component.ex:78
-#, elixir-autogen, elixir-format
-msgid "track"
-msgstr "suivre"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:71
-#, elixir-autogen, elixir-format
-msgid "transform"
-msgstr "transformer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:69
-#, elixir-autogen, elixir-format
-msgid "trauma healing with biofeedback"
-msgstr "la guérison des traumatismes par le biofeedback"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:20
-#, elixir-autogen, elixir-format
-msgid "trigger"
-msgstr "déclencher"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:34
-#, elixir-autogen, elixir-format
-msgid "trust forming in a therapy session"
-msgstr "la confiance se former lors d'une séance de thérapie"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:15
-#, elixir-autogen, elixir-format
-msgid "underwater hydrophone feeds with spectrograms"
-msgstr "flux d'hydrophones sous-marins avec spectrogrammes"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:48
-#, elixir-autogen, elixir-format
-msgid "underwater worlds through ROV adventures"
-msgstr "des mondes sous-marins à travers des aventures en ROV"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:54
-#, elixir-autogen, elixir-format
-msgid "unlock"
-msgstr "débloquer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:81
-#, elixir-autogen, elixir-format
-msgid "validate"
-msgstr "valider"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:73
-#, elixir-autogen, elixir-format
-msgid "verify"
-msgstr "vérifier"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:56
-#, elixir-autogen, elixir-format
-msgid "vibe"
-msgstr "vibrer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:14
-#, elixir-autogen, elixir-format
-msgid "visualize"
-msgstr "visualiser"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:70
-#, elixir-autogen, elixir-format
-msgid "wandering risk via wearable location tracking"
-msgstr "le risque d'errance via le suivi de localisation par dispositif portable"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:38
-#, elixir-autogen, elixir-format
-msgid "when words aren't needed anymore"
-msgstr "quand les mots ne sont plus nécessaires"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:37
-#, elixir-autogen, elixir-format
-msgid "when your partner needs to be held"
-msgstr "quand votre partenaire a besoin d'être enlacé"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:47
-#, elixir-autogen, elixir-format
-msgid "with haptic feedback synced to the beat"
-msgstr "avec retour haptique synchronisé au rythme"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:34
-#, elixir-autogen, elixir-format
-msgid "witness"
-msgstr "observer"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:40
-#, elixir-autogen, elixir-format
-msgid "your body's wisdom guiding decisions"
-msgstr "la sagesse de votre corps guider vos décisions"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:32
-#, elixir-autogen, elixir-format
-msgid "your breathing with a meditation circle"
-msgstr "votre respiration avec un cercle de méditation"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:31
-#, elixir-autogen, elixir-format
-msgid "your calm with an anxious loved one"
-msgstr "votre calme avec un proche anxieux"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:33
-#, elixir-autogen, elixir-format
-msgid "your child's nightmare from another room"
-msgstr "le cauchemar de votre enfant depuis une autre pièce"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:55
-#, elixir-autogen, elixir-format
-msgid "your gameplay with live biometrics overlay"
-msgstr "votre gameplay avec une surcouche biométrique en direct"
-
-#: lib/sensocto_web/live/components/about_content_component.ex:839
+#: lib/sensocto_web/live/components/about_content_component.ex:861
 #, elixir-autogen, elixir-format
 msgid "Built for humans who want to **truly** connect"
 msgstr "Conçu pour les humains qui veulent **vraiment** se connecter"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1050
+#: lib/sensocto_web/live/components/about_content_component.ex:1072
 #, elixir-autogen, elixir-format
 msgid "Connection measured in **heartbeats**, not dopamine hits."
 msgstr "La connexion mesurée en **battements de cœur**, pas en pics de dopamine."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1077
+#: lib/sensocto_web/live/components/about_content_component.ex:1099
 #, elixir-autogen, elixir-format
 msgid "Every technical decision is a **moral statement**"
 msgstr "Chaque décision technique est une **déclaration morale**"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1197
+#: lib/sensocto_web/live/components/about_content_component.ex:1219
 #, elixir-autogen, elixir-format
 msgid "Scientific **foundations** for human connection"
 msgstr "Les **fondements** scientifiques de la connexion humaine"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:708
+#: lib/sensocto_web/live/components/about_content_component.ex:731
 #, elixir-autogen, elixir-format
 msgid "Technology promised connection and delivered **performance**."
 msgstr "La technologie a promis la connexion et a livré la **performance**."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1055
+#: lib/sensocto_web/live/components/about_content_component.ex:1077
 #, elixir-autogen, elixir-format
 msgid "Technology that **amplifies empathy** instead of exploiting attention."
 msgstr "Une technologie qui **amplifie l'empathie** au lieu d'exploiter l'attention."
+
+#: lib/sensocto_web/live/components/about_content_component.ex:71
+#, elixir-autogen, elixir-format
+msgid "**accelerate** trauma healing with biofeedback"
+msgstr "**accélérer** la guérison des traumatismes grâce au biofeedback"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:81
+#, elixir-autogen, elixir-format
+msgid "**analyze** coral health metrics across reef systems"
+msgstr "**analyser** les métriques de santé des coraux à travers les systèmes de récifs"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:17
+#, elixir-autogen, elixir-format
+msgid "**analyze** underwater hydrophone feeds with spectrograms"
+msgstr "**analyser** les flux hydrophones sous-marins avec des spectrogrammes"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:89
+#, elixir-autogen, elixir-format
+msgid "**assess** intervention effectiveness with biometrics"
+msgstr "**évaluer** l'efficacité des interventions avec la biométrie"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:70
+#, elixir-autogen, elixir-format
+msgid "**assist** caregivers with real-time patient monitoring"
+msgstr "**assister** les soignants avec la surveillance des patients en temps réel"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:55
+#, elixir-autogen, elixir-format
+msgid "**breathe** together and watch your sync grow"
+msgstr "**respirer** ensemble et regarder votre synchronisation croître"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:19
+#, elixir-autogen, elixir-format
+msgid "**capture** 9-axis IMU quaternions for motion analysis"
+msgstr "**capturer** des quaternions IMU à 9 axes pour l'analyse du mouvement"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:54
+#, elixir-autogen, elixir-format
+msgid "**chill** in calm-off sessions seeing who relaxes first"
+msgstr "**décompresser** dans des sessions de calme pour voir qui se détend en premier"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:27
+#, elixir-autogen, elixir-format
+msgid "**collect** field research data stored locally on mobile"
+msgstr "**collecter** des données de recherche terrain stockées localement sur mobile"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:86
+#, elixir-autogen, elixir-format
+msgid "**compare** recovery patterns across athlete cohorts"
+msgstr "**comparer** les schémas de récupération entre les cohortes d'athlètes"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:15
+#, elixir-autogen, elixir-format
+msgid "**connect** Nordic Thingy:52 via Web Bluetooth"
+msgstr "**connecter** le Nordic Thingy:52 via Web Bluetooth"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:74
+#, elixir-autogen, elixir-format
+msgid "**connect** isolated individuals to support networks"
+msgstr "**connecter** les personnes isolées à des réseaux de soutien"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:82
+#, elixir-autogen, elixir-format
+msgid "**correlate** physiological data with mood reports"
+msgstr "**corréler** les données physiologiques avec les rapports d'humeur"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:51
+#, elixir-autogen, elixir-format
+msgid "**create** music from your collective heartbeats"
+msgstr "**créer** de la musique à partir de vos battements de cœur collectifs"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:49
+#, elixir-autogen, elixir-format
+msgid "**dance** with haptic feedback synced to the beat"
+msgstr "**danser** avec un retour haptique synchronisé sur le rythme"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:69
+#, elixir-autogen, elixir-format
+msgid "**democratize** research with P2P data collection"
+msgstr "**démocratiser** la recherche grâce à la collecte de données P2P"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:72
+#, elixir-autogen, elixir-format
+msgid "**detect** wandering risk via wearable location tracking"
+msgstr "**détecter** le risque d'errance via le suivi de localisation par wearable"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:85
+#, elixir-autogen, elixir-format
+msgid "**document** species diversity with automated detection"
+msgstr "**documenter** la diversité des espèces avec la détection automatisée"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:67
+#, elixir-autogen, elixir-format
+msgid "**empower** non-verbal communication via physiology"
+msgstr "**renforcer** la communication non verbale via la physiologie"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:63
+#, elixir-autogen, elixir-format
+msgid "**enable** independence for wheelchair users"
+msgstr "**permettre** l'indépendance pour les utilisateurs de fauteuil roulant"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:37
+#, elixir-autogen, elixir-format
+msgid "**experience** collective flow in a jam session"
+msgstr "**vivre** un flow collectif lors d'une jam session"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:43
+#, elixir-autogen, elixir-format
+msgid "**experience** synchronized pleasure in real-time"
+msgstr "**vivre** un plaisir synchronisé en temps réel"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:90
+#, elixir-autogen, elixir-format
+msgid "**explore** massive datasets like wildflow.org corals"
+msgstr "**explorer** des ensembles de données massifs comme les coraux de wildflow.org"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:50
+#, elixir-autogen, elixir-format
+msgid "**explore** underwater worlds through ROV adventures"
+msgstr "**explorer** les mondes sous-marins à travers des aventures en ROV"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:21
+#, elixir-autogen, elixir-format
+msgid "**export** time-series data in scientific formats"
+msgstr "**exporter** des données de séries temporelles en formats scientifiques"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:30
+#, elixir-autogen, elixir-format
+msgid "**feel** someone's nervousness before they speak"
+msgstr "**sentir** la nervosité de quelqu'un avant qu'il prenne la parole"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:38
+#, elixir-autogen, elixir-format
+msgid "**feel** the ocean's rhythm through a hydrophone"
+msgstr "**ressentir** le rythme de l'océan à travers un hydrophone"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:42
+#, elixir-autogen, elixir-format, fuzzy
+msgid "**feel** your body's wisdom guiding decisions"
+msgstr "**ressentir** la sagesse de ton corps guidant les décisions"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:66
+#, elixir-autogen, elixir-format
+msgid "**improve** cystic fibrosis outcomes through gamification"
+msgstr "**améliorer** les résultats de la mucoviscidose grâce à la gamification"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:25
+#, elixir-autogen, elixir-format
+msgid "**integrate** Buttplug.io for haptic device control"
+msgstr "**intégrer** Buttplug.io pour le contrôle de dispositifs haptiques"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:53
+#, elixir-autogen, elixir-format, fuzzy
+msgid "**jam** together as instruments respond to your mood"
+msgstr "**jammer** ensemble pendant que les instruments répondent à votre humeur"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:32
+#, elixir-autogen, elixir-format
+msgid "**know** a friend is struggling before they ask"
+msgstr "**savoir** qu'un ami souffre avant qu'il demande de l'aide"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:40
+#, elixir-autogen, elixir-format
+msgid "**know** when words aren't needed anymore"
+msgstr "**savoir** quand les mots ne sont plus nécessaires"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:59
+#, elixir-autogen, elixir-format
+msgid "**laugh** as haptic devices tickle synchronized giggles"
+msgstr "**rire** quand les appareils haptiques déclenchent des fous rires synchronisés"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:88
+#, elixir-autogen, elixir-format, fuzzy
+msgid "**map** stress patterns in distributed populations"
+msgstr "**cartographier** les schémas de stress dans des populations distribuées"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:79
+#, elixir-autogen, elixir-format
+msgid "**measure** HRV responses to therapeutic interventions"
+msgstr "**mesurer** les réponses de VRC aux interventions thérapeutiques"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:23
+#, elixir-autogen, elixir-format
+msgid "**monitor** temperature, humidity, pressure, air quality"
+msgstr "**surveiller** la température, l'humidité, la pression et la qualité de l'air"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:35
+#, elixir-autogen, elixir-format
+msgid "**notice** your child's nightmare from another room"
+msgstr "**remarquer** le cauchemar de ton enfant depuis une autre pièce"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:87
+#, elixir-autogen, elixir-format
+msgid "**observe** circadian rhythm impacts on chronic conditions"
+msgstr "**observer** les impacts du rythme circadien sur les maladies chroniques"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:47
+#, elixir-autogen, elixir-format
+msgid "**pilot** drones while sharing your excitement"
+msgstr "**piloter** des drones tout en partageant ton excitation"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:46
+#, elixir-autogen, elixir-format, fuzzy
+msgid "**play** sensor-driven party games with friends"
+msgstr "**jouer** à des jeux de soirée pilotés par capteurs avec des amis"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:68
+#, elixir-autogen, elixir-format
+msgid "**prevent** crises with early warning biometrics"
+msgstr "**prévenir** les crises grâce à la biométrie d'alerte précoce"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:18
+#, elixir-autogen, elixir-format
+msgid "**process** YOLOfish-style inference on live video"
+msgstr "**traiter** l'inférence style YOLOfish sur vidéo en direct"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:64
+#, elixir-autogen, elixir-format
+msgid "**protect** marine biodiversity through acoustic detection"
+msgstr "**protéger** la biodiversité marine par détection acoustique"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:91
+#, elixir-autogen, elixir-format
+msgid "**prototype** assistive interfaces with sensor feedback"
+msgstr "**prototyper** des interfaces d'assistance avec retour de capteurs"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:78
+#, elixir-autogen, elixir-format
+msgid "**quantify** group synchronization in meditation studies"
+msgstr "**quantifier** la synchronisation de groupe dans les études de méditation"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:62
+#, elixir-autogen, elixir-format
+msgid "**restore** coral reef ecosystems with AI monitoring"
+msgstr "**restaurer** les écosystèmes de récifs coralliens grâce au suivi par IA"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:48
+#, elixir-autogen, elixir-format
+msgid "**roll** smart dice that glow with your heartbeat"
+msgstr "**lancer** des dés intelligents qui brillent avec ton rythme cardiaque"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:31
+#, elixir-autogen, elixir-format
+msgid "**sense** a partner's desire without words"
+msgstr "**ressentir** le désir de son partenaire sans mots"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:39
+#, elixir-autogen, elixir-format
+msgid "**sense** when your partner needs to be held"
+msgstr "**sentir** quand ton partenaire a besoin d'être tenu"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:41
+#, elixir-autogen, elixir-format
+msgid "**share** presence across distance and time"
+msgstr "**partager** une présence à travers la distance et le temps"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:33
+#, elixir-autogen, elixir-format
+msgid "**share** your calm with an anxious loved one"
+msgstr "**partager** ton calme avec un proche anxieux"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:52
+#, elixir-autogen, elixir-format
+msgid "**solve** escape rooms with physiological puzzles"
+msgstr "**résoudre** des escape rooms avec des énigmes physiologiques"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:14
+#, elixir-autogen, elixir-format
+msgid "**stream** Movesense ECG and IMU data at 100Hz"
+msgstr "**diffuser** les données ECG et IMU Movesense à 100Hz"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:24
+#, elixir-autogen, elixir-format
+msgid "**stream** ROV video feeds with real-time annotations"
+msgstr "**diffuser** les flux vidéo ROV avec des annotations en temps réel"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:57
+#, elixir-autogen, elixir-format
+msgid "**stream** your gameplay with live biometrics overlay"
+msgstr "**diffuser** ton gameplay avec une superposition biométrique en direct"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:84
+#, elixir-autogen, elixir-format
+msgid "**study** co-regulation dynamics in therapy dyads"
+msgstr "**étudier** les dynamiques de corégulation dans les dyades thérapeutiques"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:65
+#, elixir-autogen, elixir-format
+msgid "**support** mental health with trusted peer networks"
+msgstr "**soutenir** la santé mentale avec des réseaux de pairs de confiance"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:20
+#, elixir-autogen, elixir-format
+msgid "**sync** distributed datasets via P2P CRDT networks"
+msgstr "**synchroniser** des ensembles de données distribués via des réseaux P2P CRDT"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:34
+#, elixir-autogen, elixir-format, fuzzy
+msgid "**sync** your breathing with a meditation circle"
+msgstr "**synchroniser** ta respiration avec un cercle de méditation"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:26
+#, elixir-autogen, elixir-format
+msgid "**track** HRV and recovery metrics from medical wearables"
+msgstr "**suivre** les métriques VRC et de récupération depuis les wearables médicaux"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:80
+#, elixir-autogen, elixir-format
+msgid "**track** marine migration patterns via bioacoustics"
+msgstr "**suivre** les schémas de migration marine via la bioacoustique"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:73
+#, elixir-autogen, elixir-format
+msgid "**transform** physiotherapy into engaging games"
+msgstr "**transformer** la physiothérapie en jeux captivants"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:22
+#, elixir-autogen, elixir-format
+msgid "**trigger** actuators from sensor threshold rules"
+msgstr "**déclencher** des actionneurs à partir de règles de seuil de capteurs"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:56
+#, elixir-autogen, elixir-format, fuzzy
+msgid "**unlock** new experiences by reaching flow states"
+msgstr "**débloquer** de nouvelles expériences en atteignant des états de flow"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:83
+#, elixir-autogen, elixir-format
+msgid "**validate** freediving training protocols with ECG"
+msgstr "**valider** les protocoles d'entraînement en apnée avec l'ECG"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:75
+#, elixir-autogen, elixir-format
+msgid "**verify** consent through embodied signals"
+msgstr "**vérifier** le consentement à travers des signaux corporels"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:58
+#, elixir-autogen, elixir-format
+msgid "**vibe** together at silent discos with shared pulse"
+msgstr "**vibrer** ensemble lors de soirées silencieuses avec un pouls partagé"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:16
+#, elixir-autogen, elixir-format
+msgid "**visualize** GPS tracks from walking, cycling, or drones"
+msgstr "**visualiser** des traces GPS de marche, vélo ou drones"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:36
+#, elixir-autogen, elixir-format
+msgid "**witness** trust forming in a therapy session"
+msgstr "**être témoin** de la confiance qui se forme lors d'une séance de thérapie"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1520
+#, elixir-autogen, elixir-format
+msgid "31 seconds"
+msgstr "31 secondes"
+
+#: lib/sensocto_web/live/profile_live.html.heex:114
+#: lib/sensocto_web/live/profile_live.html.heex:303
+#, elixir-autogen, elixir-format
+msgid "Add"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:93
+#, elixir-autogen, elixir-format
+msgid "Add Skill"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:218
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Add connection"
+msgstr "connecter"
+
+#: lib/sensocto_web/live/profile_live.html.heex:109
+#, elixir-autogen, elixir-format
+msgid "Beginner"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:25
+#, elixir-autogen, elixir-format
+msgid "Bio"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1515
+#, elixir-autogen, elixir-format
+msgid "Breathing"
+msgstr "Respiration"
+
+#: lib/sensocto_web/live/profile_live.html.heex:122
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Connections"
+msgstr "connecter"
+
+#: lib/sensocto_web/live/profile_live.html.heex:19
+#, elixir-autogen, elixir-format
+msgid "Display Name"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1438
+#, elixir-autogen, elixir-format
+msgid "ECG"
+msgstr "ECG"
+
+#: lib/sensocto_web/live/profile_live.html.heex:111
+#, elixir-autogen, elixir-format
+msgid "Expert"
+msgstr ""
+
+#: lib/sensocto_web/live/user_settings_live.ex:155
+#, elixir-autogen, elixir-format
+msgid "Failed to update visibility"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1518
+#, elixir-autogen, elixir-format
+msgid "Gaze"
+msgstr "Regard"
+
+#: lib/sensocto_web/live/profile_live.html.heex:331
+#, elixir-autogen, elixir-format
+msgid "Go to Settings"
+msgstr ""
+
+#: lib/sensocto_web/live/user_settings_live.ex:132
+#, elixir-autogen, elixir-format
+msgid "Guest users cannot change visibility"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1441
+#: lib/sensocto_web/live/components/about_content_component.ex:1512
+#, elixir-autogen, elixir-format
+msgid "Heart Rate"
+msgstr "Fréquence cardiaque"
+
+#: lib/sensocto_web/live/profile_live.html.heex:20
+#, elixir-autogen, elixir-format
+msgid "How others see you"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1444
+#, elixir-autogen, elixir-format
+msgid "IMU"
+msgstr "IMU"
+
+#: lib/sensocto_web/live/profile_live.html.heex:110
+#, elixir-autogen, elixir-format
+msgid "Intermediate"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:104
+#, elixir-autogen, elixir-format
+msgid "Level"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1429
+#, elixir-autogen, elixir-format
+msgid "Live Sensor Graph — Real Movesense Data"
+msgstr "Graphe de capteurs en direct — Données Movesense réelles"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1447
+#, elixir-autogen, elixir-format
+msgid "Movesense"
+msgstr "Movesense"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1483
+#, elixir-autogen, elixir-format
+msgid "Multi-Sensor Graph Visualization"
+msgstr "Visualisation de graphe multi-capteurs"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1432
+#, elixir-autogen, elixir-format
+msgid "Multiple Movesense sensors streaming ECG, heart rate, and IMU data simultaneously. The force-directed graph visualizes connections between participants in real-time."
+msgstr "Plusieurs capteurs Movesense diffusant simultanément des données ECG, fréquence cardiaque et IMU. Le graphe dirigé par la force visualise les connexions entre les participants en temps réel."
+
+#: lib/sensocto_web/live/profile_live.html.heex:208
+#, elixir-autogen, elixir-format
+msgid "No connections yet. Add people you know below."
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:87
+#, elixir-autogen, elixir-format
+msgid "No skills added yet."
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:125
+#, elixir-autogen, elixir-format
+msgid "People you follow, collaborate with, or mentor."
+msgstr ""
+
+#: lib/sensocto_web/live/user_settings_live.ex:375
+#, elixir-autogen, elixir-format
+msgid "Privacy"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:9
+#, elixir-autogen, elixir-format
+msgid "Profile Information"
+msgstr ""
+
+#: lib/sensocto_web/live/user_settings_live.ex:150
+#, elixir-autogen, elixir-format
+msgid "Profile hidden from directory"
+msgstr ""
+
+#: lib/sensocto_web/live/user_settings_live.ex:149
+#, elixir-autogen, elixir-format
+msgid "Profile is now visible in directory"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1399
+#, elixir-autogen, elixir-format
+msgid "Real sensor recordings capturing fascinating moments of human physiology. Each video tells a story through data."
+msgstr "De vraies captations par capteurs qui saisissent des moments fascinants de physiologie humaine. Chaque vidéo raconte une histoire à travers les données."
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1486
+#, elixir-autogen, elixir-format
+msgid "Real-time heart rate, breathing, and gaze data rendered as an interactive force-directed graph. Watch how physiological signals create living, breathing patterns."
+msgstr "Données de fréquence cardiaque, de respiration et de regard en temps réel sous forme de graphe interactif dirigé par la force. Regardez comment les signaux physiologiques créent des schémas vivants et respiratoires."
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1396
+#, elixir-autogen, elixir-format
+msgid "Recordings of Unique Human Experiences"
+msgstr "Enregistrements d'expériences humaines uniques"
+
+#: lib/sensocto_web/live/profile_live.html.heex:197
+#, elixir-autogen, elixir-format
+msgid "Remove connection"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:49
+#, elixir-autogen, elixir-format
+msgid "Save Profile"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:48
+#, elixir-autogen, elixir-format
+msgid "Saving..."
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:229
+#, elixir-autogen, elixir-format
+msgid "Search by name or email..."
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1503
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Show Clip"
+msgstr "Afficher"
+
+#: lib/sensocto_web/live/profile_live.html.heex:59
+#, elixir-autogen, elixir-format
+msgid "Skills"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:31
+#, elixir-autogen, elixir-format
+msgid "Status Emoji"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:26
+#, elixir-autogen, elixir-format
+msgid "Tell others about yourself..."
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:12
+#, elixir-autogen, elixir-format
+msgid "This is how other users see you on the platform."
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:37
+#, elixir-autogen, elixir-format
+msgid "Timezone"
+msgstr ""
+
+#: lib/sensocto_web/components/layouts/app.html.heex:66
+#: lib/sensocto_web/components/layouts/app.html.heex:182
+#, elixir-autogen, elixir-format
+msgid "Users"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1393
+#, elixir-autogen, elixir-format
+msgid "VIDEOS"
+msgstr "VIDÉOS"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:705
+#, elixir-autogen, elixir-format
+msgid "Videos"
+msgstr "Vidéos"
+
+#: lib/sensocto_web/live/user_settings_live.ex:381
+#, elixir-autogen, elixir-format
+msgid "Visible in user directory"
+msgstr ""
+
+#: lib/sensocto_web/live/components/about_content_component.ex:1506
+#, elixir-autogen, elixir-format
+msgid "Watch Full Recording"
+msgstr "Voir l'enregistrement complet"
+
+#: lib/sensocto_web/live/user_settings_live.ex:384
+#, elixir-autogen, elixir-format
+msgid "When enabled, other users can find your profile in the directory."
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:297
+#, elixir-autogen, elixir-format
+msgid "collaborates"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:99
+#, elixir-autogen, elixir-format
+msgid "e.g. elixir, biosignals, music"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:296
+#, elixir-autogen, elixir-format
+msgid "follows"
+msgstr ""
+
+#: lib/sensocto_web/live/profile_live.html.heex:298
+#, elixir-autogen, elixir-format, fuzzy
+msgid "mentors"
+msgstr "surveiller"

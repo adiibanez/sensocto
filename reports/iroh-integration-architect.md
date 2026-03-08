@@ -1,5 +1,5 @@
 # Iroh Integration -- Team Report
-*Last updated: 2026-03-05*
+*Last updated: 2026-03-08*
 
 ## Goals
 
@@ -17,7 +17,7 @@
 
 **iroh modules**: No changes. The iroh code in `lib/sensocto/iroh/` has been stable since the ConnectionManager consolidation (commit `4d12618`, 2026-02-08). All 5 modules (`connection_manager.ex`, `room_store.ex`, `room_sync.ex`, `room_state_crdt.ex`, `room_state_bridge.ex`) are unchanged.
 
-**iroh_ex dependency**: Remains at `~> 0.0.15` (Hex). NIF binary is `aarch64-apple-darwin` only (38.6 MB). No version bump.
+**iroh_ex dependency**: Updated to `~> 0.0.16` (Hex). NIF binary targets include `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, and `x86_64-pc-windows-msvc`. The `NodeConfig` struct now includes a `secret_key` field (enforced key), which may resolve the identity persistence blocker.
 
 **Significant surrounding changes (Mar 1 - Mar 5):**
 
@@ -112,7 +112,7 @@ Key efficiency features:
 
 **RESOLVED: RoomStateBridge now bidirectional.** The CRDT-to-local direction is implemented with echo suppression. Media state (play/pause/seek) and object3d state sync from CRDT to local servers.
 
-**BLOCKED: Node identity persistence.** Each restart still creates a new node identity because `iroh_ex` v0.0.15's `NodeConfig` has no `secret_key` field. The Rust NIF's `create_node` calls `Endpoint::builder().bind()` without a key. Fix needed in iroh_ex: add `secret_key: Option<String>` to the Rust `NodeConfig` struct.
+**POSSIBLY UNBLOCKED: Node identity persistence.** Previously blocked because `iroh_ex` v0.0.15's `NodeConfig` had no `secret_key` field. The v0.0.16 `NodeConfig` struct now includes `secret_key` as an enforced key. **Needs validation**: test that passing a `secret_key` to `NodeConfig.build/1` actually results in the same node identity across restarts. The `ConnectionManager.build_node_config/0` must be updated to persist and restore the key.
 
 **Zero cross-node synchronization works today.** Despite the Automerge and gossip infrastructure, no data actually synchronizes between separate server instances because:
 - Each restart creates a new node identity (blocked, see above)
@@ -139,20 +139,20 @@ Key efficiency features:
 ### Opportunity 2: Complete RoomStateBridge Bidirectional Sync -- DONE
 **Status: COMPLETE (2026-02-08)**
 
-### Opportunity 3: Persist Node Identity and Namespace IDs -- BLOCKED
+### Opportunity 3: Persist Node Identity and Namespace IDs -- POSSIBLY UNBLOCKED
 **Impact: HIGH (enables real P2P continuity)**
-**Effort: 4-6 hours** (blocked on iroh_ex missing `secret_key` in NodeConfig)
+**Effort: 2-4 hours** (iroh_ex v0.0.16 now has `secret_key` in NodeConfig -- needs validation)
 **Needs Linux NIF: No (but matters more in production)**
 
 **What:** Store the iroh node's secret key to disk on first run, restore it on subsequent runs. Also persist the mapping of `room_id -> namespace_id` so documents survive restarts.
 
 **What's already built:** `RoomTicket` already derives deterministic namespace identifiers via HMAC. The architecture doc specifies a `priv/iroh/node_identity` file path.
 
-**What's missing:** The actual persistence code. `iroh_ex` v0.0.15's `NodeConfig` struct does not have a `secret_key` field. The `generate_secretkey/0` NIF function exists but there is no way to use the result when creating a node.
+**What's changed since last report:** iroh_ex v0.0.16's `NodeConfig` struct now includes `secret_key` as an enforced key. `NodeConfig.build/0` defaults it to `""`. The `generate_secretkey/0` NIF function exists and can presumably be passed to `NodeConfig.build(secret_key: key)`.
 
-**Proposed fix for iroh_ex:** Add `secret_key: Option<String>` to the Rust `NodeConfig` struct in `native/iroh_ex/src/lib.rs` and use `Endpoint::builder().secret_key(SecretKey::from_bytes(key))` when present.
+**What's needed:** (1) Validate that non-empty `secret_key` in NodeConfig produces deterministic node identity. (2) Add persistence code to `ConnectionManager`: generate key on first start, store to `priv/iroh/node_secret.key`, restore on subsequent starts.
 
-**Honest assessment:** This is essential for production P2P sync. Without it, every restart creates a new node identity, room tickets become invalid, and cross-node sync can never work. However, for single-server deployments where iroh is only used for local Automerge CRDT operations, identity persistence has no practical impact.
+**Honest assessment:** This is likely a half-day task now, down from "blocked." The iroh_ex v0.0.16 upgrade appears to have resolved the API gap. This is the prerequisite for Phase 1 of the P2P sensor data routing plan.
 
 ### Opportunity 4: Sensor Data Gossip Bridge (for Native Clients)
 **Impact: HIGH for mobile/native clients; ZERO for web LiveView**
@@ -216,8 +216,8 @@ Key efficiency features:
 |---|-----------|--------|--------|----------------|--------|
 | 1 | IrohConnectionManager | 1-2 days | CRITICAL | No | **DONE** |
 | 2 | Complete Bridge bidirectional sync | 2-4 hours | HIGH | No | **DONE** |
-| 3 | Persist node identity/namespaces | 4-6 hours | HIGH | No | **BLOCKED** (iroh_ex needs secret_key) |
-| 4 | Sensor data gossip bridge | 2-3 days | HIGH (native only) | Yes (prod) | Planned |
+| 3 | Persist node identity/namespaces | 2-4 hours | HIGH | No | **POSSIBLY UNBLOCKED** (iroh_ex v0.0.16 has secret_key) |
+| 4 | Sensor data gossip bridge | 3-5 days | HIGH (native only) | Yes (prod) | **DESIGNED** (see P2P plan) |
 | 5 | Delta encoding for ECG + respiration | 1-2 days remaining | HIGH (all users) | No | Encoder done, JS decoder pending |
 | 6 | Guided Session P2P extension | 1-2 days | MEDIUM | No | Planned (PubSub sufficient) |
 | 7 | Research-grade sync visualizations | 5-10 days | HIGH (differentiation) | No | Planned (not iroh) |
@@ -237,19 +237,17 @@ Key efficiency features:
 
 ## Impediments and Blockers
 
-### 1. Linux x86_64 NIF Build (HARD BLOCKER for production P2P)
+### 1. Linux x86_64 NIF Build (POSSIBLY RESOLVED in v0.0.16)
 
-**Status:** The iroh_ex NIF binary is compiled for `aarch64-apple-darwin` only (38.6 MB at `_build/dev/lib/iroh_ex/priv/native/`). Fly.io runs Linux x86_64 containers. Until a Linux build exists, all iroh features are disabled in production.
+**Status:** iroh_ex v0.0.16's `RustlerPrecompiled` config at `deps/iroh_ex/lib/native.ex` now lists `"x86_64-unknown-linux-gnu"` and `"aarch64-unknown-linux-gnu"` as compilation targets. This suggests precompiled binaries for Linux should be available via the GitHub releases.
+
+**Needs validation:** Confirm that `_build/dev/lib/iroh_ex/priv/native/` contains or can download the Linux x86_64 binary on a Fly.io deployment. The `rustler_precompiled` dependency (v0.8) handles download at compile time.
 
 **Mitigation:** All modules gracefully degrade when the NIF is unavailable. The application runs fine without iroh -- it just does not have P2P capabilities.
 
-**Action needed:** Either compile iroh_ex for `x86_64-unknown-linux-gnu` or request a precompiled binary from the iroh_ex maintainers. The `rustler_precompiled` dependency (v0.8) is already in the project, so this may be a matter of adding the target to the iroh_ex build matrix.
+### 2. iroh_ex NodeConfig `secret_key` (POSSIBLY RESOLVED in v0.0.16)
 
-### 2. iroh_ex NodeConfig Missing `secret_key` (BLOCKER for identity persistence)
-
-The `NodeConfig` Rust struct only has `is_whale_node`, `active_view_capacity`, `passive_view_capacity`, `relay_urls`, and `discovery`. To persist node identity across restarts, we need to pass a previously generated secret key to `create_node`.
-
-The `generate_secretkey/0` NIF function exists but there is no way to use the result when creating a node. **Proposed fix**: Add `secret_key: Option<String>` to the Rust `NodeConfig` struct in `native/iroh_ex/src/lib.rs` and use `Endpoint::builder().secret_key(SecretKey::from_bytes(key))` when present.
+The `NodeConfig` struct in iroh_ex v0.0.16 now includes `secret_key` as an enforced key (defaults to `""` when built via `NodeConfig.build/0`). The `generate_secretkey/0` NIF function also exists. **Needs validation**: does passing a non-empty `secret_key` to `create_node` actually produce a deterministic node identity? The `ConnectionManager.build_node_config/0` must be updated to persist and restore the key. This is a 30-minute validation task.
 
 ### 3. `list_all_rooms` Returns Empty (Known Bug)
 
@@ -423,7 +421,7 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 | Purpose | File |
 |---------|------|
 | iroh NIF bindings | `deps/iroh_ex/lib/iroh_ex.ex` |
-| Compiled NIF (.so) | `_build/dev/lib/iroh_ex/priv/native/libiroh_ex-v0.0.15-nif-2.15-aarch64-apple-darwin.so` |
+| Compiled NIF (.so) | `_build/dev/lib/iroh_ex/priv/native/libiroh_ex-v0.0.16-nif-2.15-{arch}.so` |
 | Connection manager | `lib/sensocto/iroh/connection_manager.ex` |
 | Low-level docs storage | `lib/sensocto/iroh/room_store.ex` |
 | Async sync worker | `lib/sensocto/iroh/room_sync.ex` |
@@ -467,7 +465,456 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 
 ---
 
+## P2P Sensor Data Routing -- Architectural Plan (2026-03-08)
+
+### Problem Statement
+
+Mobile devices in the same Sensocto room currently route all sensor data through the server:
+
+```
+Mobile A (sensor) --WebSocket--> Server --WebSocket--> Mobile B (viewer)
+Mobile A (sensor) --WebSocket--> Server --WebSocket--> Mobile C (viewer)
+```
+
+Each sensor measurement travels to the server and is fanned out to every viewer. For N mobile devices in a room, each producing sensor data at 10-50Hz with ~200 bytes/measurement, the server handles N * M * freq * 200 bytes/second of I/O (where M = number of viewers). With 10 devices at 25Hz average, that is 10 * 9 * 25 * 200 = 450KB/s through the server -- modest, but growing quadratically with room size.
+
+The goal is to enable same-room mobile devices to exchange sensor data peer-to-peer, reducing server I/O and latency. Two sub-goals:
+
+1. **Full P2P**: All devices exchange sensor data directly, server only orchestrates room membership
+2. **Hybrid**: One device streams to server (for persistence/audit), others receive locally via P2P
+
+### Design Question Answers
+
+#### 1. What iroh primitives are available?
+
+From the `IrohEx.Native` NIF bindings at `deps/iroh_ex/lib/native.ex`:
+
+| Primitive | Available | Relevant Functions |
+|-----------|-----------|-------------------|
+| **iroh-net** (QUIC connectivity) | Yes | `create_node/2`, `connect_node/2`, `gen_node_addr/1`, `list_peers/1` |
+| **iroh-gossip** (pub/sub) | Yes | `subscribe_to_topic/3`, `broadcast_message/3`, `unsubscribe_from_topic/2`, `list_topics/1` |
+| **iroh-blobs** (content-addressed transfer) | Yes | `blob_add/2`, `blob_get/2`, `blob_list/1` |
+| **iroh-docs** (CRDT key-value) | Yes | `docs_create/1`, `docs_set_entry/5`, `docs_get_entry_value/4` |
+| **Automerge CRDT** | Yes | Full map/list/text/counter ops, merge, sync via gossip |
+
+**Best primitive for sensor data: iroh-gossip.** Sensor data is ephemeral (no need to persist in a CRDT), high-frequency, fan-out to all room members, and tolerant of message loss. iroh-gossip is built on HyParView/PlumTree epidemic broadcast trees -- exactly the right tool for real-time sensor dissemination.
+
+iroh-docs/Automerge are wrong for sensor data: they are designed for persistent, conflict-free state (like room configuration), not for ephemeral streams.
+
+#### 2. Best topology: full mesh P2P, or one device as relay?
+
+**Recommended: Star topology with server node as bootstrap, converging to partial mesh via gossip.**
+
+iroh-gossip handles topology automatically. It does not require full mesh -- it builds a spanning tree (PlumTree) with lazy repair paths. Devices join a gossip topic and iroh manages the overlay network.
+
+However, the critical architecture choice is where the iroh node lives:
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **A. Server-side iroh node only** (mobiles connect via WebSocket/Channel, server publishes to gossip) | Simplest to implement, web clients unchanged | Server still handles all data, just adds gossip as secondary transport |
+| **B. Native mobile iroh + server iroh node** | True P2P between native apps, server participates as one gossip peer for persistence | Requires iroh SDK on each mobile platform (iOS/Android), web browsers cannot participate in P2P |
+| **C. Server-mediated relay: one mobile streams to server, server gossips to room** | Reduces upstream bandwidth (1 device → server instead of N), other devices receive from server via gossip or WebSocket | Still server-mediated for first hop |
+
+**Recommendation: Option A (Phase 1), then Option B (Phase 2).**
+
+Phase 1 (server-side gossip publisher) is achievable with the current stack. Phase 2 (native mobile iroh) requires iroh mobile SDKs which are not yet production-ready.
+
+#### 3. How does a mobile browser/native app connect to iroh?
+
+This is the hardest question and the answer depends on the client type:
+
+**Native mobile apps (iOS/Android):**
+- iroh is a Rust library that cross-compiles to iOS (aarch64-apple-ios) and Android (aarch64-linux-android)
+- The mobile app embeds iroh directly, connects to the server's iroh node via QUIC
+- On same LAN: iroh uses local network discovery (mDNS) for direct connections (~1ms latency)
+- Different networks: iroh holepunches (success rate ~90%) or falls back to relay (~50-100ms added latency)
+- The `RoomTicket` at `lib/sensocto/p2p/room_ticket.ex` already generates bootstrap data: docs namespace, gossip topic, bootstrap peers, relay URL
+
+**Browser (web) clients:**
+- iroh compiles to WASM but ALL connections must flow through a relay (browsers cannot send UDP)
+- iroh-gossip supports browser builds since v0.33
+- Latency: browser-to-relay-to-peer adds ~50-100ms vs direct QUIC between native clients
+- For web clients, the existing WebSocket/Channel path (ViewerDataChannel) will likely remain the lowest-latency option since the Phoenix server is already a single hop
+
+**Practical implication:** P2P sensor data routing primarily benefits native mobile apps. Web browsers gain little because they already communicate through the server via WebSocket. The plan should not break the existing web path.
+
+#### 4. What happens when devices are NOT on the same LAN?
+
+iroh handles this transparently with a fallback chain:
+
+```
+Same LAN  -->  mDNS discovery  -->  direct QUIC  (~1ms)
+                    |
+                    v (if mDNS fails)
+Public IP  -->  holepunching via relay-assisted NAT traversal  (~10-30ms)
+                    |
+                    v (if holepunching fails, ~10% of cases)
+Relay      -->  encrypted relay through euw1-1.relay.iroh.network  (~50-100ms)
+```
+
+All connections are end-to-end encrypted. The relay cannot read the data.
+
+For the Sensocto use case, the "same room" scenario splits into two:
+
+- **Physical same room**: Devices on same WiFi network. mDNS discovery gives direct QUIC connections. This is the best case -- sub-millisecond latency between devices.
+- **Virtual same room**: Devices in different locations joined to the same Sensocto room. Holepunching or relay. Still better than server round-trip if the server is geographically distant.
+
+**Server fallback**: If iroh connectivity fails entirely (rare, but possible behind very restrictive corporate NATs), the existing WebSocket/Channel path remains available. The `BridgeChannel` at `lib/sensocto_web/channels/bridge_channel.ex` already bridges Phoenix PubSub to external systems.
+
+#### 5. How does the server learn about sensor data if P2P bypasses it?
+
+Three strategies, not mutually exclusive:
+
+**Strategy A: Server participates in gossip (recommended)**
+The server's iroh node (managed by `ConnectionManager`) joins the same gossip topic as the mobile devices. It receives all sensor data via gossip and feeds it into the existing pipeline (PriorityLens ETS) for web clients and persistence.
+
+```
+Mobile A --gossip--> Mobile B (direct, P2P)
+Mobile A --gossip--> Server iroh node (via gossip, same topic)
+                         |
+                         v
+                    PubSub "data:attention:{level}" (existing pipeline)
+```
+
+This means the server sees 100% of the data with no additional mobile upload cost -- gossip distributes the data, and the server is just another subscriber.
+
+**Strategy B: Elected uploader**
+One mobile device is elected (by the server) to upload sensor data via the existing WebSocket path. Other devices receive P2P. If the elected device goes offline, another is elected. This reduces upstream bandwidth by (N-1)/N.
+
+**Strategy C: Digest-only to server**
+Mobile devices only send periodic digests (1Hz summaries instead of 25Hz raw data) to the server. Full-rate data flows P2P. The server stores digests for audit. Works well when the server does not need to render real-time visualizations.
+
+**Recommendation: Strategy A for Phase 1.** The server iroh node subscribing to gossip is the simplest and gives the server complete visibility. Strategies B and C are optimizations for Phase 2 when server bandwidth becomes a concern.
+
+#### 6. What is the minimal server-side change needed?
+
+**Phase 1 requires one new module and one small change:**
+
+1. **New module: `Sensocto.Iroh.SensorGossipBridge`** (~200 lines)
+   - A GenServer that subscribes to PubSub `"data:attention:high"`, `"data:attention:medium"`, `"data:attention:low"`
+   - On each measurement batch, publishes to per-room gossip topics via `IrohEx.Native.broadcast_message/3`
+   - Also subscribes to incoming gossip (from mobile devices publishing sensor data P2P)
+   - Incoming gossip data is re-published to the existing PubSub topics so PriorityLens picks it up
+
+2. **Small change: extend `RoomTicket.generate/2`** to include sensor gossip topic alongside the existing docs namespace and CRDT gossip topic
+
+No changes needed to: SimpleSensor, Router, PriorityLens, LobbyLive, ViewerDataChannel, or any Svelte components. The existing pipeline is completely preserved.
+
+### Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Mobile Device A (sensor source)"
+        SA[Sensor Hardware<br/>BLE/Internal]
+        IA[iroh node<br/>native Rust]
+        SA -->|raw data| IA
+    end
+
+    subgraph "Mobile Device B (viewer)"
+        IB[iroh node<br/>native Rust]
+        VB[Sensor Visualization<br/>native UI]
+        IB -->|sensor data| VB
+    end
+
+    subgraph "Server (Phoenix)"
+        SGB[SensorGossipBridge<br/>new GenServer]
+        CM[ConnectionManager<br/>shared iroh node]
+        PS[PubSub<br/>data:attention:*]
+        R[Router]
+        PL[PriorityLens<br/>ETS]
+        VDC[ViewerDataChannel<br/>WebSocket]
+
+        SGB <-->|gossip subscribe/<br/>publish| CM
+        SGB -->|incoming gossip<br/>measurements| PS
+        PS -->|existing pipeline| R
+        R -->|ETS write| PL
+        PL -->|flush| VDC
+    end
+
+    subgraph "Web Browser (viewer)"
+        WS[WebSocket]
+        LV[LiveView / Svelte]
+        WS --> LV
+    end
+
+    IA <-->|iroh gossip<br/>P2P or relay| IB
+    IA <-->|iroh gossip| CM
+    IB <-->|iroh gossip| CM
+    VDC <-->|WebSocket| WS
+
+    style SGB fill:#f9f,stroke:#333,stroke-width:2px
+    style IA fill:#bbf,stroke:#333
+    style IB fill:#bbf,stroke:#333
+    style CM fill:#bbf,stroke:#333
+```
+
+### Data Flow: Same-Room P2P Scenario
+
+#### Happy Path (devices on same WiFi)
+
+```
+1. Mobile A starts sensor recording
+   - Sensor hardware produces measurements at 25Hz
+   - Mobile A's iroh node subscribes to room gossip topic (from RoomTicket)
+
+2. Mobile B joins room
+   - Gets RoomTicket via API (contains gossip_topic, bootstrap_peers, relay_url)
+   - Mobile B's iroh node connects to gossip topic
+   - mDNS discovers Mobile A on same LAN
+   - Direct QUIC connection established (~1ms)
+
+3. Sensor data flows P2P
+   - Mobile A broadcasts measurement to gossip topic
+   - iroh-gossip delivers to Mobile B directly (sub-ms on LAN)
+   - iroh-gossip also delivers to server's iroh node (may be relay if server is remote)
+
+4. Server receives via gossip
+   - SensorGossipBridge receives gossip message
+   - Decodes binary measurement
+   - Publishes to PubSub "data:attention:{level}"
+   - Existing pipeline handles web client delivery
+
+5. Web browser receives normally
+   - PriorityLens flushes batch to ViewerDataChannel
+   - No change to web client experience
+```
+
+#### Degraded Path (P2P fails)
+
+```
+1. iroh connection fails (strict NAT, no relay reachable)
+   - Mobile detects gossip topic has no peers after timeout (5s)
+   - Falls back to WebSocket upload to server (existing BridgeChannel)
+   - Server publishes to gossip for other mobile devices
+
+2. Server iroh node is down (NIF unavailable)
+   - SensorGossipBridge gracefully degrades (checks ConnectionManager.available?())
+   - Sensor data still flows through standard PubSub pipeline
+   - Mobile devices fall back to WebSocket
+   - System operates exactly as it does today
+```
+
+### Binary Encoding for Gossip Messages
+
+Sensor data over gossip needs a compact binary format. JSON is too heavy at 25Hz.
+
+```
+Gossip Sensor Message (variable length):
++--------+--------+--------+--------+--------+--------+
+| version| msg_typ| room_id_len     | room_id (UTF-8) |
+| 1 byte | 1 byte | 2 bytes (u16be) | variable        |
++--------+--------+-----------------+-----------------+
+| sensor_id_len   | sensor_id (UTF-8)                  |
+| 2 bytes (u16be) | variable                           |
++-----------------+------------------------------------+
+| timestamp_ms (u64be)    | attr_count (u16be)          |
+| 8 bytes                 | 2 bytes                     |
++-------------------------+-----------------------------+
+| For each attribute:                                   |
+| attr_id_len (u8) | attr_id (UTF-8) | value_type (u8) |
+| value (variable: f64=8B, i64=8B, string=len+data)    |
++-------------------------------------------------------+
+
+Message types:
+  0x01 = single measurement
+  0x02 = batch (multiple measurements)
+  0x03 = digest (summary: count, avg, min, max, latest)
+```
+
+This gives ~50-80 bytes per single heartrate measurement vs ~200+ bytes for JSON. At 25Hz * 10 devices, that is 12.5-20 KB/s of gossip traffic per room -- trivial for a LAN.
+
+### Fallback Strategy
+
+The system must work in four modes, selected automatically:
+
+| Mode | When | Server I/O | Mobile Latency |
+|------|------|-----------|----------------|
+| **P2P Direct** | Same LAN, mDNS works | Gossip only (server as subscriber) | <1ms |
+| **P2P Relayed** | Different networks, holepunch fails | Gossip via relay | 50-100ms |
+| **Hybrid** | Some devices P2P, some WebSocket | Mixed | Varies |
+| **Server-only** | iroh unavailable, corporate NAT, web browser | Full server pipeline (current) | 20-50ms (WebSocket RTT) |
+
+Selection logic on mobile:
+
+```
+1. Attempt gossip topic join (from RoomTicket)
+2. Wait 5s for at least one peer neighbor
+3. If peers found: P2P mode (direct or relayed, iroh handles transparently)
+4. If no peers: fall back to WebSocket upload via BridgeChannel
+5. Periodically retry gossip join (every 30s) in case peers come online
+```
+
+The web browser always uses the server-only path. No change to web experience.
+
+### Phased Implementation Plan
+
+#### Phase 1: Server-Side Gossip Bridge (Minimal, 3-5 days)
+
+**Goal**: Server publishes sensor data to iroh gossip topics. Native clients can subscribe. No mobile app changes yet -- this is infrastructure.
+
+**Prerequisites**:
+- iroh_ex v0.0.16 (already in mix.exs -- `secret_key` field now available in NodeConfig)
+- ConnectionManager must persist node identity (use the new `secret_key` field)
+
+**Deliverables**:
+
+1. **`lib/sensocto/iroh/sensor_gossip_bridge.ex`** (~200 lines)
+   - GenServer started in `Storage.Supervisor` after `ConnectionManager`
+   - Subscribes to PubSub `"data:attention:high"`, `"data:attention:medium"`, `"data:attention:low"`
+   - Maintains a mapping of `room_id -> gossip_topic_id` (from `RoomTicket.derive_namespace`)
+   - On measurement batch from PubSub: encode to binary, `Native.broadcast_message(node_ref, topic, encoded)`
+   - Handles incoming gossip messages: decode binary, publish to PubSub for PriorityLens
+   - Rate limiting: batch measurements per room (configurable, default 10ms window)
+   - Graceful degradation: no-op if `ConnectionManager.available?()` returns false
+
+2. **Identity persistence in ConnectionManager** (~50 lines)
+   - On first start: `Native.generate_secretkey()`, store to `priv/iroh/node_secret.key`
+   - On subsequent starts: read key, pass via `NodeConfig.build(secret_key: key)`
+   - This resolves the long-standing blocker (#3 in the report)
+
+3. **Extend `RoomTicket`** (~20 lines)
+   - Add `sensor_gossip_topic` field to the ticket struct
+   - Derive it from `room_id` + `"sensor_gossip"` salt (same HMAC pattern)
+   - Include in QR code / deep link payload
+
+4. **Binary encoder/decoder module** (`lib/sensocto/encoding/gossip_codec.ex`, ~150 lines)
+   - Encode/decode functions for the binary message format described above
+   - Property-based tests for round-trip encoding
+
+5. **Integration test** (~100 lines)
+   - Start sensor, verify gossip bridge publishes to topic
+   - Simulate incoming gossip message, verify it flows through PriorityLens to ViewerDataChannel
+
+**What this does NOT include**: Any mobile app changes, any browser changes, any modifications to the existing sensor pipeline. It is purely additive infrastructure.
+
+#### Phase 2: Native Mobile P2P (2-4 weeks, depends on mobile SDK)
+
+**Goal**: Native iOS/Android apps exchange sensor data P2P via iroh-gossip.
+
+**Prerequisites**:
+- Phase 1 complete
+- iroh compiled as a library for iOS (aarch64-apple-ios) and Android (aarch64-linux-android)
+- Swift/Kotlin wrapper for iroh gossip (subscribe, broadcast, peer management)
+
+**Deliverables**:
+
+1. **iroh Rust library for mobile** (cross-compilation)
+   - Build iroh with `--target aarch64-apple-ios` / `aarch64-linux-android`
+   - Expose C FFI: `iroh_create_node()`, `iroh_join_topic()`, `iroh_broadcast()`, `iroh_set_callback()`
+   - Swift and Kotlin wrappers
+
+2. **Mobile sensor data publisher**
+   - On sensor data from BLE/internal sensors: encode to binary, broadcast to gossip topic
+   - On incoming gossip: decode, feed to local visualization pipeline
+
+3. **Connection manager on mobile**
+   - Parse `RoomTicket` from QR code / deep link
+   - Create iroh node with `secret_key` (generated once, stored in Keychain/Keystore)
+   - Join gossip topic from ticket
+   - Monitor peer count, fall back to WebSocket if no peers after 5s
+
+4. **Dual-path data flow**
+   - If gossip topic has peers: publish via gossip only
+   - If no peers: publish via WebSocket (BridgeChannel)
+   - Server always receives (either via gossip subscriber or WebSocket)
+
+5. **Bandwidth optimization**
+   - Only one device needs to upload to server (elected by server, or self-elected based on lowest latency)
+   - Other devices receive P2P and skip WebSocket upload
+   - Server tracks which rooms have P2P-connected devices to avoid duplicate data
+
+### Key Risks and Open Questions
+
+#### Risk 1: Browser clients get no benefit (ACCEPTED)
+
+Web browsers cannot participate in iroh P2P -- all browser iroh connections must go through a relay, which adds latency vs the existing direct WebSocket to Phoenix. For web clients, the current pipeline is already optimal. This plan explicitly accepts this and does not attempt to change the web client path.
+
+**Mitigation**: None needed. The web path is already good. P2P sensor routing is a native mobile optimization.
+
+#### Risk 2: iroh_ex NIF stability under high-frequency gossip
+
+The iroh_ex NIF has been tested primarily with room-state CRDT operations (low frequency, ~1/second). Publishing sensor data at 25Hz per sensor per room is a different load profile. The NIF must handle:
+- 250 calls/second to `broadcast_message/3` (10 sensors * 25Hz, before batching)
+- Concurrent reads from multiple BEAM processes (the `node_ref` is shared)
+
+**Mitigation**: The `SensorGossipBridge` should batch measurements per room (10ms window) before publishing, reducing to ~100 gossip broadcasts/second. This is well within what iroh-gossip's PlumTree can handle, but the NIF call overhead needs benchmarking.
+
+**Question for iroh team (#7)**: What is the maximum sustained message rate for `broadcast_message` through the NIF? Are there thread-safety concerns with concurrent `broadcast_message` + `subscribe_to_topic` calls on the same `node_ref`?
+
+#### Risk 3: Gossip topic lifecycle management
+
+Each active room needs a gossip topic. With 100 concurrent rooms, that is 100 gossip topics on the server's iroh node. iroh-gossip's HyParView maintains per-topic peer state.
+
+**Question for iroh team (#8)**: What is the memory footprint per gossip topic? At 100-1000 topics with 2-20 peers each, is there a practical limit?
+
+**Mitigation**: Only create gossip topics for rooms that have active mobile P2P devices. Rooms with only web clients skip gossip entirely. Use a topic activity timeout (5 minutes of no messages) to unsubscribe and reclaim resources.
+
+#### Risk 4: iroh mobile SDK maturity
+
+The iroh team has discussed mobile SDKs (see GitHub discussion #517) but there is no production-ready Swift/Kotlin wrapper as of this writing. Cross-compiling Rust for iOS/Android is well-understood, but the iroh-specific FFI surface needs design work.
+
+**Mitigation**: Phase 1 is entirely server-side and can be completed regardless of mobile SDK readiness. Phase 2 is blocked on mobile SDK availability. If the iroh team does not ship mobile SDKs, we can build a thin C FFI wrapper ourselves (~1-2 weeks for basic gossip operations).
+
+#### Risk 5: Message ordering and loss tolerance
+
+iroh-gossip provides probabilistic delivery -- "messages eventually reach most or all subscribers." For sensor data, this is acceptable: a missed heartrate reading at t=1.04s does not matter if t=1.08s arrives. ECG waveform data is more sensitive to gaps, but the client-side rendering already interpolates.
+
+**Mitigation**: Add sequence numbers to the binary gossip messages. The receiver can detect gaps and request retransmission via a separate gossip message, or simply interpolate. Do not attempt reliable delivery -- it defeats the purpose of gossip.
+
+#### Risk 6: NodeConfig secret_key -- has the blocker been resolved?
+
+The report has documented since 2026-02-08 that `iroh_ex` NodeConfig lacked a `secret_key` field. However, examining the current `deps/iroh_ex/lib/native.ex`, the `NodeConfig` struct now includes `secret_key` as an enforced key, and `mix.exs` pins `iroh_ex` at `~> 0.0.16`. This suggests the blocker may have been resolved in the upgrade from 0.0.15 to 0.0.16.
+
+**Action needed**: Test that passing a `secret_key` to `NodeConfig.build/1` actually results in the same node identity across restarts. This is a 30-minute validation task.
+
+### New Questions for the iroh Team
+
+**Question 7**: What is the maximum sustained `broadcast_message` rate through the NIF? We plan ~100 gossip broadcasts/second from the server node (batched sensor data for ~10 rooms). Is there a known performance ceiling?
+
+**Question 8**: What is the memory cost per gossip topic? We may have 100-1000 concurrent topics (one per active room) with 2-20 peers each. Are there practical limits or recommended maximums?
+
+**Question 9**: For the mobile SDK roadmap: is there a recommended pattern for exposing iroh-gossip via C FFI for consumption by Swift/Kotlin? We are considering building a thin wrapper for sensor data gossip specifically.
+
+**Question 10**: Does iroh-gossip support a "lightweight subscriber" mode where a node receives messages but does not participate in the spanning tree construction? This would be useful for the server node, which only needs to observe sensor data, not actively participate in the broadcast tree.
+
+### Cost Impact Analysis
+
+#### Phase 1 (server gossip bridge, no mobile changes)
+
+Server cost: **no savings**. The server still processes all sensor data through the existing pipeline. The gossip bridge adds ~5% CPU overhead for encoding/broadcasting. The benefit is infrastructure readiness -- native clients can start receiving P2P once they embed iroh.
+
+#### Phase 2 (native mobile P2P active)
+
+With 10 mobile devices in a room at 25Hz:
+
+| Metric | Server-only (today) | With P2P (Phase 2) |
+|--------|--------------------|--------------------|
+| Server inbound I/O | 50 KB/s (10 devices * 25Hz * 200B) | 5 KB/s (server receives via gossip, 1 hop) |
+| Server outbound I/O | 450 KB/s (10 devices * 9 viewers * 25Hz * 200B / dedup) | 50 KB/s (web viewers only, mobile viewers receive P2P) |
+| Server total I/O | ~500 KB/s per room | ~55 KB/s per room (89% reduction) |
+| Mobile-to-mobile latency | 40-80ms (mobile -> server -> mobile) | <1ms (same LAN) to 50ms (relayed) |
+| Server CPU (per room) | Moderate (PubSub, Router, PriorityLens) | Low (gossip subscription only for web viewers) |
+
+At 100 concurrent rooms: 50 MB/s server I/O today vs 5.5 MB/s with P2P = 89% reduction.
+
+The savings are proportional to the fraction of viewers that are native mobile apps vs web browsers. If all viewers are web browsers, savings are zero (data still goes through server to WebSocket).
+
+---
+
 ## Changelog
+
+### 2026-03-08: P2P Sensor Data Routing Plan
+- Added comprehensive architectural plan for routing sensor data through iroh gossip
+- Answered all 6 design questions with specific technical analysis
+- Designed two-phase implementation: Phase 1 (server gossip bridge, 3-5 days), Phase 2 (native mobile P2P, 2-4 weeks)
+- Identified iroh-gossip as the correct primitive (not iroh-docs/Automerge) for ephemeral sensor streams
+- Discovered iroh_ex v0.0.16 now includes `secret_key` in NodeConfig -- the identity persistence blocker may be resolved
+- Designed binary encoding format for gossip sensor messages (~50-80 bytes vs ~200+ bytes JSON)
+- Documented star topology with server as gossip participant (not pure relay) -- server sees 100% of data
+- Quantified cost impact: 89% server I/O reduction when native mobile P2P is active
+- Added 4 new questions for iroh team (#7-#10): NIF broadcast rate, per-topic memory, mobile FFI, lightweight subscriber mode
+- Explicitly accepted that web browser clients get no benefit from this plan (already optimal via WebSocket)
+- Architecture diagram (mermaid) showing SensorGossipBridge as the only new server component
 
 ### 2026-03-05: Report Refresh
 - No iroh code changes since 2026-02-08; all 5 iroh modules remain unchanged

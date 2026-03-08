@@ -12,6 +12,9 @@ defmodule SensoctoWeb.UserSocket do
   #  channel("sensor_data:*", SensoctoWeb.SensorDataChannel)
   channel("sensocto:*", SensoctoWeb.SensorDataChannel)
 
+  # Room updates (sensor add/remove, members)
+  channel("room:*", SensoctoWeb.RoomChannel)
+
   # Video/Voice calls
   channel("call:*", SensoctoWeb.CallChannel)
 

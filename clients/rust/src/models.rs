@@ -240,7 +240,7 @@ pub(crate) struct PhoenixMessage {
 
 /// Phoenix reply payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct PhoenixReply {
+pub struct PhoenixReply {
     pub status: String,
     #[serde(default)]
     pub response: serde_json::Value,

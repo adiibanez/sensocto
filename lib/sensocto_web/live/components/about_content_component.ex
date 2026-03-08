@@ -5,88 +5,90 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
   """
   use SensoctoWeb, :live_component
 
-  # Use cases organized by viewing lens - converted to function for gettext support
+  # Use cases organized by viewing lens.
+  # Each entry is {color, phrase} where **word** marks the highlighted action verb.
+  # Translators may place **word** anywhere for natural grammar (e.g. verb-final in German/Japanese).
   defp use_cases_by_lens do
     %{
       technical: [
-        {gettext("stream"), "cyan", gettext("Movesense ECG and IMU data at 100Hz")},
-        {gettext("connect"), "teal", gettext("Nordic Thingy:52 via Web Bluetooth")},
-        {gettext("visualize"), "blue", gettext("GPS tracks from walking, cycling, or drones")},
-        {gettext("analyze"), "emerald", gettext("underwater hydrophone feeds with spectrograms")},
-        {gettext("process"), "purple", gettext("YOLOfish-style inference on live video")},
-        {gettext("capture"), "amber", gettext("9-axis IMU quaternions for motion analysis")},
-        {gettext("sync"), "cyan", gettext("distributed datasets via P2P CRDT networks")},
-        {gettext("export"), "teal", gettext("time-series data in scientific formats")},
-        {gettext("trigger"), "violet", gettext("actuators from sensor threshold rules")},
-        {gettext("monitor"), "blue", gettext("temperature, humidity, pressure, air quality")},
-        {gettext("stream"), "pink", gettext("ROV video feeds with real-time annotations")},
-        {gettext("integrate"), "emerald", gettext("Buttplug.io for haptic device control")},
-        {gettext("track"), "cyan", gettext("HRV and recovery metrics from medical wearables")},
-        {gettext("collect"), "teal", gettext("field research data stored locally on mobile")}
+        {"cyan", gettext("**stream** Movesense ECG and IMU data at 100Hz")},
+        {"teal", gettext("**connect** Nordic Thingy:52 via Web Bluetooth")},
+        {"blue", gettext("**visualize** GPS tracks from walking, cycling, or drones")},
+        {"emerald", gettext("**analyze** underwater hydrophone feeds with spectrograms")},
+        {"purple", gettext("**process** YOLOfish-style inference on live video")},
+        {"amber", gettext("**capture** 9-axis IMU quaternions for motion analysis")},
+        {"cyan", gettext("**sync** distributed datasets via P2P CRDT networks")},
+        {"teal", gettext("**export** time-series data in scientific formats")},
+        {"violet", gettext("**trigger** actuators from sensor threshold rules")},
+        {"blue", gettext("**monitor** temperature, humidity, pressure, air quality")},
+        {"pink", gettext("**stream** ROV video feeds with real-time annotations")},
+        {"emerald", gettext("**integrate** Buttplug.io for haptic device control")},
+        {"cyan", gettext("**track** HRV and recovery metrics from medical wearables")},
+        {"teal", gettext("**collect** field research data stored locally on mobile")}
       ],
       empathy: [
-        {gettext("feel"), "pink", gettext("someone's nervousness before they speak")},
-        {gettext("sense"), "rose", gettext("a partner's desire without words")},
-        {gettext("know"), "purple", gettext("a friend is struggling before they ask")},
-        {gettext("share"), "cyan", gettext("your calm with an anxious loved one")},
-        {gettext("sync"), "teal", gettext("your breathing with a meditation circle")},
-        {gettext("notice"), "amber", gettext("your child's nightmare from another room")},
-        {gettext("witness"), "green", gettext("trust forming in a therapy session")},
-        {gettext("experience"), "violet", gettext("collective flow in a jam session")},
-        {gettext("feel"), "blue", gettext("the ocean's rhythm through a hydrophone")},
-        {gettext("sense"), "pink", gettext("when your partner needs to be held")},
-        {gettext("know"), "emerald", gettext("when words aren't needed anymore")},
-        {gettext("share"), "cyan", gettext("presence across distance and time")},
-        {gettext("feel"), "rose", gettext("your body's wisdom guiding decisions")},
-        {gettext("experience"), "purple", gettext("synchronized pleasure in real-time")}
+        {"pink", gettext("**feel** someone's nervousness before they speak")},
+        {"rose", gettext("**sense** a partner's desire without words")},
+        {"purple", gettext("**know** a friend is struggling before they ask")},
+        {"cyan", gettext("**share** your calm with an anxious loved one")},
+        {"teal", gettext("**sync** your breathing with a meditation circle")},
+        {"amber", gettext("**notice** your child's nightmare from another room")},
+        {"green", gettext("**witness** trust forming in a therapy session")},
+        {"violet", gettext("**experience** collective flow in a jam session")},
+        {"blue", gettext("**feel** the ocean's rhythm through a hydrophone")},
+        {"pink", gettext("**sense** when your partner needs to be held")},
+        {"emerald", gettext("**know** when words aren't needed anymore")},
+        {"cyan", gettext("**share** presence across distance and time")},
+        {"rose", gettext("**feel** your body's wisdom guiding decisions")},
+        {"purple", gettext("**experience** synchronized pleasure in real-time")}
       ],
       fun: [
-        {gettext("play"), "yellow", gettext("sensor-driven party games with friends")},
-        {gettext("pilot"), "orange", gettext("drones while sharing your excitement")},
-        {gettext("roll"), "amber", gettext("smart dice that glow with your heartbeat")},
-        {gettext("dance"), "pink", gettext("with haptic feedback synced to the beat")},
-        {gettext("explore"), "cyan", gettext("underwater worlds through ROV adventures")},
-        {gettext("create"), "violet", gettext("music from your collective heartbeats")},
-        {gettext("solve"), "teal", gettext("escape rooms with physiological puzzles")},
-        {gettext("jam"), "rose", gettext("together as instruments respond to your mood")},
-        {gettext("chill"), "blue", gettext("in calm-off sessions seeing who relaxes first")},
-        {gettext("breathe"), "emerald", gettext("together and watch your sync grow")},
-        {gettext("unlock"), "purple", gettext("new experiences by reaching flow states")},
-        {gettext("stream"), "cyan", gettext("your gameplay with live biometrics overlay")},
-        {gettext("vibe"), "pink", gettext("together at silent discos with shared pulse")},
-        {gettext("laugh"), "yellow", gettext("as haptic devices tickle synchronized giggles")}
+        {"yellow", gettext("**play** sensor-driven party games with friends")},
+        {"orange", gettext("**pilot** drones while sharing your excitement")},
+        {"amber", gettext("**roll** smart dice that glow with your heartbeat")},
+        {"pink", gettext("**dance** with haptic feedback synced to the beat")},
+        {"cyan", gettext("**explore** underwater worlds through ROV adventures")},
+        {"violet", gettext("**create** music from your collective heartbeats")},
+        {"teal", gettext("**solve** escape rooms with physiological puzzles")},
+        {"rose", gettext("**jam** together as instruments respond to your mood")},
+        {"blue", gettext("**chill** in calm-off sessions seeing who relaxes first")},
+        {"emerald", gettext("**breathe** together and watch your sync grow")},
+        {"purple", gettext("**unlock** new experiences by reaching flow states")},
+        {"cyan", gettext("**stream** your gameplay with live biometrics overlay")},
+        {"pink", gettext("**vibe** together at silent discos with shared pulse")},
+        {"yellow", gettext("**laugh** as haptic devices tickle synchronized giggles")}
       ],
       impact: [
-        {gettext("restore"), "emerald", gettext("coral reef ecosystems with AI monitoring")},
-        {gettext("enable"), "violet", gettext("independence for wheelchair users")},
-        {gettext("protect"), "cyan", gettext("marine biodiversity through acoustic detection")},
-        {gettext("support"), "green", gettext("mental health with trusted peer networks")},
-        {gettext("improve"), "blue", gettext("cystic fibrosis outcomes through gamification")},
-        {gettext("empower"), "teal", gettext("non-verbal communication via physiology")},
-        {gettext("prevent"), "amber", gettext("crises with early warning biometrics")},
-        {gettext("democratize"), "purple", gettext("research with P2P data collection")},
-        {gettext("assist"), "pink", gettext("caregivers with real-time patient monitoring")},
-        {gettext("accelerate"), "cyan", gettext("trauma healing with biofeedback")},
-        {gettext("detect"), "emerald", gettext("wandering risk via wearable location tracking")},
-        {gettext("transform"), "violet", gettext("physiotherapy into engaging games")},
-        {gettext("connect"), "blue", gettext("isolated individuals to support networks")},
-        {gettext("verify"), "teal", gettext("consent through embodied signals")}
+        {"emerald", gettext("**restore** coral reef ecosystems with AI monitoring")},
+        {"violet", gettext("**enable** independence for wheelchair users")},
+        {"cyan", gettext("**protect** marine biodiversity through acoustic detection")},
+        {"green", gettext("**support** mental health with trusted peer networks")},
+        {"blue", gettext("**improve** cystic fibrosis outcomes through gamification")},
+        {"teal", gettext("**empower** non-verbal communication via physiology")},
+        {"amber", gettext("**prevent** crises with early warning biometrics")},
+        {"purple", gettext("**democratize** research with P2P data collection")},
+        {"pink", gettext("**assist** caregivers with real-time patient monitoring")},
+        {"cyan", gettext("**accelerate** trauma healing with biofeedback")},
+        {"emerald", gettext("**detect** wandering risk via wearable location tracking")},
+        {"violet", gettext("**transform** physiotherapy into engaging games")},
+        {"blue", gettext("**connect** isolated individuals to support networks")},
+        {"teal", gettext("**verify** consent through embodied signals")}
       ],
       research: [
-        {gettext("quantify"), "blue", gettext("group synchronization in meditation studies")},
-        {gettext("measure"), "cyan", gettext("HRV responses to therapeutic interventions")},
-        {gettext("track"), "teal", gettext("marine migration patterns via bioacoustics")},
-        {gettext("analyze"), "emerald", gettext("coral health metrics across reef systems")},
-        {gettext("correlate"), "purple", gettext("physiological data with mood reports")},
-        {gettext("validate"), "amber", gettext("freediving training protocols with ECG")},
-        {gettext("study"), "violet", gettext("co-regulation dynamics in therapy dyads")},
-        {gettext("document"), "pink", gettext("species diversity with automated detection")},
-        {gettext("compare"), "cyan", gettext("recovery patterns across athlete cohorts")},
-        {gettext("observe"), "teal", gettext("circadian rhythm impacts on chronic conditions")},
-        {gettext("map"), "blue", gettext("stress patterns in distributed populations")},
-        {gettext("assess"), "emerald", gettext("intervention effectiveness with biometrics")},
-        {gettext("explore"), "purple", gettext("massive datasets like wildflow.org corals")},
-        {gettext("prototype"), "amber", gettext("assistive interfaces with sensor feedback")}
+        {"blue", gettext("**quantify** group synchronization in meditation studies")},
+        {"cyan", gettext("**measure** HRV responses to therapeutic interventions")},
+        {"teal", gettext("**track** marine migration patterns via bioacoustics")},
+        {"emerald", gettext("**analyze** coral health metrics across reef systems")},
+        {"purple", gettext("**correlate** physiological data with mood reports")},
+        {"amber", gettext("**validate** freediving training protocols with ECG")},
+        {"violet", gettext("**study** co-regulation dynamics in therapy dyads")},
+        {"pink", gettext("**document** species diversity with automated detection")},
+        {"cyan", gettext("**compare** recovery patterns across athlete cohorts")},
+        {"teal", gettext("**observe** circadian rhythm impacts on chronic conditions")},
+        {"blue", gettext("**map** stress patterns in distributed populations")},
+        {"emerald", gettext("**assess** intervention effectiveness with biometrics")},
+        {"purple", gettext("**explore** massive datasets like wildflow.org corals")},
+        {"amber", gettext("**prototype** assistive interfaces with sensor feedback")}
       ]
     }
   end
@@ -550,7 +552,7 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
         assigns = assign(assigns, before: before, word: word, rest: rest)
 
         ~H"""
-        {@before}<span class={"text-#{@color}-400"}>{@word}</span>{@rest}
+        {@before}<span class={"text-#{@color}-400 font-medium"}>{@word}</span>{@rest}
         """
 
       _ ->
@@ -766,9 +768,8 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
           >
             <p class="leading-relaxed">
               {gettext("What if you could")}
-              <%= for {{verb, color, rest}, index} <- Enum.with_index(visible_use_cases(@use_cases, @current_offset, @visible_count)) do %>
-                <span class={"text-#{color}-400 font-medium"}>{verb}</span>
-                {rest}{if index < @visible_count - 1, do: "? ", else: "?"}
+              <%= for {{color, use_case}, index} <- Enum.with_index(visible_use_cases(@use_cases, @current_offset, @visible_count)) do %>
+                <.hl text={use_case} color={color} />{if index < @visible_count - 1, do: "? ", else: "?"}
               <% end %>
             </p>
             <div class="flex items-center justify-center gap-2 mt-3 text-sm text-gray-500 group-hover:text-gray-400 transition-colors">

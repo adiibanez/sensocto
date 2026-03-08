@@ -1247,12 +1247,12 @@ msgstr "31 segundos"
 #: lib/sensocto_web/live/profile_live.html.heex:303
 #, elixir-autogen, elixir-format
 msgid "Add"
-msgstr ""
+msgstr "Añadir"
 
 #: lib/sensocto_web/live/profile_live.html.heex:93
 #, elixir-autogen, elixir-format
 msgid "Add Skill"
-msgstr ""
+msgstr "Añadir habilidad"
 
 #: lib/sensocto_web/live/profile_live.html.heex:218
 #, elixir-autogen, elixir-format, fuzzy
@@ -1262,12 +1262,12 @@ msgstr "conectar"
 #: lib/sensocto_web/live/profile_live.html.heex:109
 #, elixir-autogen, elixir-format
 msgid "Beginner"
-msgstr ""
+msgstr "Principiante"
 
 #: lib/sensocto_web/live/profile_live.html.heex:25
 #, elixir-autogen, elixir-format
 msgid "Bio"
-msgstr ""
+msgstr "Bio"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1515
 #, elixir-autogen, elixir-format
@@ -1282,7 +1282,7 @@ msgstr "conectar"
 #: lib/sensocto_web/live/profile_live.html.heex:19
 #, elixir-autogen, elixir-format
 msgid "Display Name"
-msgstr ""
+msgstr "Nombre visible"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1438
 #, elixir-autogen, elixir-format
@@ -1292,12 +1292,12 @@ msgstr "ECG"
 #: lib/sensocto_web/live/profile_live.html.heex:111
 #, elixir-autogen, elixir-format
 msgid "Expert"
-msgstr ""
+msgstr "Experto"
 
 #: lib/sensocto_web/live/user_settings_live.ex:155
 #, elixir-autogen, elixir-format
 msgid "Failed to update visibility"
-msgstr ""
+msgstr "Error al actualizar la visibilidad"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1518
 #, elixir-autogen, elixir-format
@@ -1307,12 +1307,12 @@ msgstr "Mirada"
 #: lib/sensocto_web/live/profile_live.html.heex:331
 #, elixir-autogen, elixir-format
 msgid "Go to Settings"
-msgstr ""
+msgstr "Ir a Configuración"
 
 #: lib/sensocto_web/live/user_settings_live.ex:132
 #, elixir-autogen, elixir-format
 msgid "Guest users cannot change visibility"
-msgstr ""
+msgstr "Los usuarios invitados no pueden cambiar la visibilidad"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1441
 #: lib/sensocto_web/live/components/about_content_component.ex:1512
@@ -1323,7 +1323,7 @@ msgstr "Frecuencia cardíaca"
 #: lib/sensocto_web/live/profile_live.html.heex:20
 #, elixir-autogen, elixir-format
 msgid "How others see you"
-msgstr ""
+msgstr "Cómo te ven los demás"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1444
 #, elixir-autogen, elixir-format
@@ -1333,12 +1333,12 @@ msgstr "IMU"
 #: lib/sensocto_web/live/profile_live.html.heex:110
 #, elixir-autogen, elixir-format
 msgid "Intermediate"
-msgstr ""
+msgstr "Intermedio"
 
 #: lib/sensocto_web/live/profile_live.html.heex:104
 #, elixir-autogen, elixir-format
 msgid "Level"
-msgstr ""
+msgstr "Nivel"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1429
 #, elixir-autogen, elixir-format
@@ -1363,37 +1363,37 @@ msgstr "Múltiples sensores Movesense transmitiendo datos de ECG, frecuencia car
 #: lib/sensocto_web/live/profile_live.html.heex:208
 #, elixir-autogen, elixir-format
 msgid "No connections yet. Add people you know below."
-msgstr ""
+msgstr "Aún no hay conexiones. Añade personas que conozcas abajo."
 
 #: lib/sensocto_web/live/profile_live.html.heex:87
 #, elixir-autogen, elixir-format
 msgid "No skills added yet."
-msgstr ""
+msgstr "Aún no se han añadido habilidades."
 
 #: lib/sensocto_web/live/profile_live.html.heex:125
 #, elixir-autogen, elixir-format
 msgid "People you follow, collaborate with, or mentor."
-msgstr ""
+msgstr "Personas a las que sigues, con las que colaboras o a las que mentorizas."
 
 #: lib/sensocto_web/live/user_settings_live.ex:375
 #, elixir-autogen, elixir-format
 msgid "Privacy"
-msgstr ""
+msgstr "Privacidad"
 
 #: lib/sensocto_web/live/profile_live.html.heex:9
 #, elixir-autogen, elixir-format
 msgid "Profile Information"
-msgstr ""
+msgstr "Información del perfil"
 
 #: lib/sensocto_web/live/user_settings_live.ex:150
 #, elixir-autogen, elixir-format
 msgid "Profile hidden from directory"
-msgstr ""
+msgstr "Perfil oculto del directorio"
 
 #: lib/sensocto_web/live/user_settings_live.ex:149
 #, elixir-autogen, elixir-format
 msgid "Profile is now visible in directory"
-msgstr ""
+msgstr "El perfil ahora es visible en el directorio"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1399
 #, elixir-autogen, elixir-format
@@ -1413,22 +1413,22 @@ msgstr "Grabaciones de experiencias humanas únicas"
 #: lib/sensocto_web/live/profile_live.html.heex:197
 #, elixir-autogen, elixir-format
 msgid "Remove connection"
-msgstr ""
+msgstr "Eliminar conexión"
 
 #: lib/sensocto_web/live/profile_live.html.heex:49
 #, elixir-autogen, elixir-format
 msgid "Save Profile"
-msgstr ""
+msgstr "Guardar perfil"
 
 #: lib/sensocto_web/live/profile_live.html.heex:48
 #, elixir-autogen, elixir-format
 msgid "Saving..."
-msgstr ""
+msgstr "Guardando..."
 
 #: lib/sensocto_web/live/profile_live.html.heex:229
 #, elixir-autogen, elixir-format
 msgid "Search by name or email..."
-msgstr ""
+msgstr "Buscar por nombre o correo..."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1503
 #, elixir-autogen, elixir-format, fuzzy
@@ -1438,33 +1438,33 @@ msgstr "Mostrar"
 #: lib/sensocto_web/live/profile_live.html.heex:59
 #, elixir-autogen, elixir-format
 msgid "Skills"
-msgstr ""
+msgstr "Habilidades"
 
 #: lib/sensocto_web/live/profile_live.html.heex:31
 #, elixir-autogen, elixir-format
 msgid "Status Emoji"
-msgstr ""
+msgstr "Emoji de estado"
 
 #: lib/sensocto_web/live/profile_live.html.heex:26
 #, elixir-autogen, elixir-format
 msgid "Tell others about yourself..."
-msgstr ""
+msgstr "Cuéntales algo sobre ti..."
 
 #: lib/sensocto_web/live/profile_live.html.heex:12
 #, elixir-autogen, elixir-format
 msgid "This is how other users see you on the platform."
-msgstr ""
+msgstr "Así es como otros usuarios te ven en la plataforma."
 
 #: lib/sensocto_web/live/profile_live.html.heex:37
 #, elixir-autogen, elixir-format
 msgid "Timezone"
-msgstr ""
+msgstr "Zona horaria"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:66
 #: lib/sensocto_web/components/layouts/app.html.heex:182
 #, elixir-autogen, elixir-format
 msgid "Users"
-msgstr ""
+msgstr "Usuarios"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1393
 #, elixir-autogen, elixir-format
@@ -1479,7 +1479,7 @@ msgstr "Vídeos"
 #: lib/sensocto_web/live/user_settings_live.ex:381
 #, elixir-autogen, elixir-format
 msgid "Visible in user directory"
-msgstr ""
+msgstr "Visible en el directorio de usuarios"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1506
 #, elixir-autogen, elixir-format
@@ -1489,22 +1489,22 @@ msgstr "Ver grabación completa"
 #: lib/sensocto_web/live/user_settings_live.ex:384
 #, elixir-autogen, elixir-format
 msgid "When enabled, other users can find your profile in the directory."
-msgstr ""
+msgstr "Cuando está activado, otros usuarios pueden encontrar tu perfil en el directorio."
 
 #: lib/sensocto_web/live/profile_live.html.heex:297
 #, elixir-autogen, elixir-format
 msgid "collaborates"
-msgstr ""
+msgstr "colabora con"
 
 #: lib/sensocto_web/live/profile_live.html.heex:99
 #, elixir-autogen, elixir-format
 msgid "e.g. elixir, biosignals, music"
-msgstr ""
+msgstr "p. ej. elixir, bioseñales, música"
 
 #: lib/sensocto_web/live/profile_live.html.heex:296
 #, elixir-autogen, elixir-format
 msgid "follows"
-msgstr ""
+msgstr "sigue a"
 
 #: lib/sensocto_web/live/profile_live.html.heex:298
 #, elixir-autogen, elixir-format, fuzzy

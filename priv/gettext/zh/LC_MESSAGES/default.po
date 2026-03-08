@@ -1247,12 +1247,12 @@ msgstr "31秒"
 #: lib/sensocto_web/live/profile_live.html.heex:303
 #, elixir-autogen, elixir-format
 msgid "Add"
-msgstr ""
+msgstr "添加"
 
 #: lib/sensocto_web/live/profile_live.html.heex:93
 #, elixir-autogen, elixir-format
 msgid "Add Skill"
-msgstr ""
+msgstr "添加技能"
 
 #: lib/sensocto_web/live/profile_live.html.heex:218
 #, elixir-autogen, elixir-format, fuzzy
@@ -1262,12 +1262,12 @@ msgstr "连接"
 #: lib/sensocto_web/live/profile_live.html.heex:109
 #, elixir-autogen, elixir-format
 msgid "Beginner"
-msgstr ""
+msgstr "初学者"
 
 #: lib/sensocto_web/live/profile_live.html.heex:25
 #, elixir-autogen, elixir-format
 msgid "Bio"
-msgstr ""
+msgstr "简介"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1515
 #, elixir-autogen, elixir-format
@@ -1282,7 +1282,7 @@ msgstr "连接"
 #: lib/sensocto_web/live/profile_live.html.heex:19
 #, elixir-autogen, elixir-format
 msgid "Display Name"
-msgstr ""
+msgstr "显示名称"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1438
 #, elixir-autogen, elixir-format
@@ -1292,12 +1292,12 @@ msgstr "心电图"
 #: lib/sensocto_web/live/profile_live.html.heex:111
 #, elixir-autogen, elixir-format
 msgid "Expert"
-msgstr ""
+msgstr "专家"
 
 #: lib/sensocto_web/live/user_settings_live.ex:155
 #, elixir-autogen, elixir-format
 msgid "Failed to update visibility"
-msgstr ""
+msgstr "更新可见性失败"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1518
 #, elixir-autogen, elixir-format
@@ -1307,12 +1307,12 @@ msgstr "视线"
 #: lib/sensocto_web/live/profile_live.html.heex:331
 #, elixir-autogen, elixir-format
 msgid "Go to Settings"
-msgstr ""
+msgstr "前往设置"
 
 #: lib/sensocto_web/live/user_settings_live.ex:132
 #, elixir-autogen, elixir-format
 msgid "Guest users cannot change visibility"
-msgstr ""
+msgstr "访客用户无法更改可见性"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1441
 #: lib/sensocto_web/live/components/about_content_component.ex:1512
@@ -1323,7 +1323,7 @@ msgstr "心率"
 #: lib/sensocto_web/live/profile_live.html.heex:20
 #, elixir-autogen, elixir-format
 msgid "How others see you"
-msgstr ""
+msgstr "别人如何看到你"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1444
 #, elixir-autogen, elixir-format
@@ -1333,12 +1333,12 @@ msgstr "IMU"
 #: lib/sensocto_web/live/profile_live.html.heex:110
 #, elixir-autogen, elixir-format
 msgid "Intermediate"
-msgstr ""
+msgstr "中级"
 
 #: lib/sensocto_web/live/profile_live.html.heex:104
 #, elixir-autogen, elixir-format
 msgid "Level"
-msgstr ""
+msgstr "级别"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1429
 #, elixir-autogen, elixir-format
@@ -1363,37 +1363,37 @@ msgstr "多个 Movesense 传感器同时传输心电图、心率和 IMU 数据�
 #: lib/sensocto_web/live/profile_live.html.heex:208
 #, elixir-autogen, elixir-format
 msgid "No connections yet. Add people you know below."
-msgstr ""
+msgstr "还没有连接。在下方添加你认识的人。"
 
 #: lib/sensocto_web/live/profile_live.html.heex:87
 #, elixir-autogen, elixir-format
 msgid "No skills added yet."
-msgstr ""
+msgstr "尚未添加任何技能。"
 
 #: lib/sensocto_web/live/profile_live.html.heex:125
 #, elixir-autogen, elixir-format
 msgid "People you follow, collaborate with, or mentor."
-msgstr ""
+msgstr "你关注、合作或指导的人。"
 
 #: lib/sensocto_web/live/user_settings_live.ex:375
 #, elixir-autogen, elixir-format
 msgid "Privacy"
-msgstr ""
+msgstr "隐私"
 
 #: lib/sensocto_web/live/profile_live.html.heex:9
 #, elixir-autogen, elixir-format
 msgid "Profile Information"
-msgstr ""
+msgstr "个人资料"
 
 #: lib/sensocto_web/live/user_settings_live.ex:150
 #, elixir-autogen, elixir-format
 msgid "Profile hidden from directory"
-msgstr ""
+msgstr "个人资料对目录隐藏"
 
 #: lib/sensocto_web/live/user_settings_live.ex:149
 #, elixir-autogen, elixir-format
 msgid "Profile is now visible in directory"
-msgstr ""
+msgstr "个人资料现在在目录中可见"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1399
 #, elixir-autogen, elixir-format
@@ -1413,22 +1413,22 @@ msgstr "独特人类体验的录像"
 #: lib/sensocto_web/live/profile_live.html.heex:197
 #, elixir-autogen, elixir-format
 msgid "Remove connection"
-msgstr ""
+msgstr "移除连接"
 
 #: lib/sensocto_web/live/profile_live.html.heex:49
 #, elixir-autogen, elixir-format
 msgid "Save Profile"
-msgstr ""
+msgstr "保存个人资料"
 
 #: lib/sensocto_web/live/profile_live.html.heex:48
 #, elixir-autogen, elixir-format
 msgid "Saving..."
-msgstr ""
+msgstr "保存中..."
 
 #: lib/sensocto_web/live/profile_live.html.heex:229
 #, elixir-autogen, elixir-format
 msgid "Search by name or email..."
-msgstr ""
+msgstr "按姓名或邮箱搜索..."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1503
 #, elixir-autogen, elixir-format, fuzzy
@@ -1438,33 +1438,33 @@ msgstr "展示"
 #: lib/sensocto_web/live/profile_live.html.heex:59
 #, elixir-autogen, elixir-format
 msgid "Skills"
-msgstr ""
+msgstr "技能"
 
 #: lib/sensocto_web/live/profile_live.html.heex:31
 #, elixir-autogen, elixir-format
 msgid "Status Emoji"
-msgstr ""
+msgstr "状态表情"
 
 #: lib/sensocto_web/live/profile_live.html.heex:26
 #, elixir-autogen, elixir-format
 msgid "Tell others about yourself..."
-msgstr ""
+msgstr "向他人介绍你自己..."
 
 #: lib/sensocto_web/live/profile_live.html.heex:12
 #, elixir-autogen, elixir-format
 msgid "This is how other users see you on the platform."
-msgstr ""
+msgstr "这是其他用户在平台上看到你的方式。"
 
 #: lib/sensocto_web/live/profile_live.html.heex:37
 #, elixir-autogen, elixir-format
 msgid "Timezone"
-msgstr ""
+msgstr "时区"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:66
 #: lib/sensocto_web/components/layouts/app.html.heex:182
 #, elixir-autogen, elixir-format
 msgid "Users"
-msgstr ""
+msgstr "用户"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1393
 #, elixir-autogen, elixir-format
@@ -1479,7 +1479,7 @@ msgstr "视频"
 #: lib/sensocto_web/live/user_settings_live.ex:381
 #, elixir-autogen, elixir-format
 msgid "Visible in user directory"
-msgstr ""
+msgstr "在用户目录中可见"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1506
 #, elixir-autogen, elixir-format
@@ -1489,22 +1489,22 @@ msgstr "观看完整录像"
 #: lib/sensocto_web/live/user_settings_live.ex:384
 #, elixir-autogen, elixir-format
 msgid "When enabled, other users can find your profile in the directory."
-msgstr ""
+msgstr "启用后，其他用户可以在目录中找到你的个人资料。"
 
 #: lib/sensocto_web/live/profile_live.html.heex:297
 #, elixir-autogen, elixir-format
 msgid "collaborates"
-msgstr ""
+msgstr "与…合作"
 
 #: lib/sensocto_web/live/profile_live.html.heex:99
 #, elixir-autogen, elixir-format
 msgid "e.g. elixir, biosignals, music"
-msgstr ""
+msgstr "例如：elixir、生物信号、音乐"
 
 #: lib/sensocto_web/live/profile_live.html.heex:296
 #, elixir-autogen, elixir-format
 msgid "follows"
-msgstr ""
+msgstr "关注了"
 
 #: lib/sensocto_web/live/profile_live.html.heex:298
 #, elixir-autogen, elixir-format, fuzzy

@@ -437,7 +437,7 @@ msgstr "Erforscht, wie Technologii mitfühlendi Pflege i mentale Gsundheits-Beha
 #: lib/sensocto_web/live/components/about_content_component.ex:662
 #, elixir-autogen, elixir-format
 msgid "Feel someone's presence. Not their performance."
-msgstr "Füehle d Aawäsehäit vo öpperem. Nöd ihri Performance."
+msgstr "D Aawäsehäit vo öpperem füehle. Nöd ihri Performance."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:103
 #, elixir-autogen, elixir-format
@@ -942,17 +942,17 @@ msgstr "riesigi Datensätz wie wildflow.org-Korallendaten **erkunde**"
 #: lib/sensocto_web/live/components/about_content_component.ex:50
 #, elixir-autogen, elixir-format
 msgid "**explore** underwater worlds through ROV adventures"
-msgstr "Underwasserwelt durch ROV-Abentüür **erkunde**"
+msgstr "Underwasserwälte durch ROV-Abentüür **erkunde**"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:21
 #, elixir-autogen, elixir-format
 msgid "**export** time-series data in scientific formats"
-msgstr "Zeitreihedaten in wissenschaftliche Format **exportiere**"
+msgstr "Ziitreihedaten imene wüsseschaftliche Format **exportiere**"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:30
 #, elixir-autogen, elixir-format
 msgid "**feel** someone's nervousness before they speak"
-msgstr "d'Nervosität vo jemand **spüre**, bevor er redt"
+msgstr "d'Nervosität vo öpperem **spüre**, bevor er redt"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:38
 #, elixir-autogen, elixir-format

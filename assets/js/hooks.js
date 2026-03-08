@@ -166,6 +166,19 @@ Hooks.GaussianSplatViewer = {
             observer.observe(container, { childList: true });
             this.canvasObserver = observer;
 
+            // Remove WASD keyboard listener from OrbitControls — it calls preventDefault()
+            // globally on window, breaking text input across the entire page.
+            const disableKeyControls = () => {
+                for (const controls of [this.viewer?.perspectiveControls, this.viewer?.orthographicControls]) {
+                    if (controls && typeof controls.stopListenToKeyEvents === 'function') {
+                        controls.stopListenToKeyEvents();
+                    }
+                }
+            };
+            disableKeyControls();
+            // Also try after a tick in case controls are set up asynchronously
+            setTimeout(disableKeyControls, 0);
+
             this.pushEvent("viewer_ready", {});
 
             // Load initial splat if URL provided
@@ -1453,6 +1466,14 @@ Hooks.Object3DPlayerHook = {
         });
 
         this.log('Viewer created');
+
+        // Remove WASD keyboard listener — OrbitControls calls preventDefault() on
+        // window globally, which breaks typing in text inputs anywhere on the page.
+        for (const controls of [this.viewer?.perspectiveControls, this.viewer?.orthographicControls]) {
+            if (controls && typeof controls.stopListenToKeyEvents === 'function') {
+                controls.stopListenToKeyEvents();
+            }
+        }
 
         // Setup canvas when it appears
         this.setupCanvasObserver();

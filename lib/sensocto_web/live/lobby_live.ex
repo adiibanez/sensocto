@@ -361,9 +361,8 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
-  # Sensors view: no token push needed (hook element is not rendered)
-  defp push_viewer_token_for_composite(socket, :sensors), do: socket
-
+  # All views including sensors: push token so SensorGridHook / CompositeMeasurementHandler
+  # can join ViewerDataChannel after each handle_params (hook elements are destroyed/remounted).
   # Composite/graph views: re-push the signed token so the freshly-mounted
   # CompositeMeasurementHandler hook can join ViewerDataChannel.
   defp push_viewer_token_for_composite(socket, _action) do
@@ -1318,43 +1317,21 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      # Normal processing — only the sensors grid view needs LV processing.
-      # Composite and graph views use ViewerDataChannel (LV is unsubscribed for those).
+      # Normal processing — ViewerDataChannel delivers data to all views directly.
+      # LobbyLive only receives batches in :sensors view (for backpressure monitoring).
       true ->
         socket = assign(socket, :data_mode, :realtime)
-
-        case socket.assigns.live_action do
-          :sensors ->
-            socket = process_lens_batch_for_sensors(socket, batch_data)
-            {:noreply, socket}
-
-          _ ->
-            # Stale message received while switching views — ignore
-            {:noreply, socket}
-        end
+        # Data delivery is handled by ViewerDataChannel → SensorGridHook → DOM.
+        # No send_update calls needed here.
+        {:noreply, socket}
     end
   end
 
   # Handle PriorityLens digest data (low/minimal quality)
-  # digests structure: %{sensor_id => %{attribute_id => %{count, avg, min, max, latest}}}
-  # Composite/graph views receive digest via ViewerDataChannel — only sensors grid handled here.
+  # All views receive digest via ViewerDataChannel; LobbyLive only tracks data_mode.
   @impl true
-  def handle_info({:lens_digest, digests}, socket) do
-    socket = assign(socket, :data_mode, :digest)
-
-    case socket.assigns.live_action do
-      :sensors ->
-        socket =
-          Enum.reduce(digests, socket, fn {sensor_id, attrs}, acc ->
-            push_event(acc, "sensor_digest", %{sensor_id: sensor_id, attributes: attrs})
-          end)
-
-        {:noreply, socket}
-
-      _ ->
-        # Composite/graph: ViewerDataChannel delivers digest; stale messages ignored
-        {:noreply, socket}
-    end
+  def handle_info({:lens_digest, _digests}, socket) do
+    {:noreply, assign(socket, :data_mode, :digest)}
   end
 
   # Recovery check for paused quality mode
@@ -1722,21 +1699,12 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
   end
 
-  # Flush measurement buffers in all visible sensor components
+  # Measurement flush timer — sensor data now delivered via ViewerDataChannel → SensorGridHook.
+  # StatefulSensorComponent no longer buffers measurements, so this is a no-op.
+  # Timer kept running to avoid needing to stop it; overhead is negligible.
   @impl true
   def handle_info(:flush_component_measurements, socket) do
-    # Schedule next flush
     Process.send_after(self(), :flush_component_measurements, @component_flush_interval_ms)
-
-    # Get visible sensor range
-    {start_idx, end_idx} = socket.assigns.visible_range
-    visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, end_idx - start_idx)
-
-    # Send flush to each visible component
-    Enum.each(visible_sensor_ids, fn sensor_id ->
-      send_update(StatefulSensorComponent, id: "sensor_#{sensor_id}", flush: true)
-    end)
-
     {:noreply, socket}
   end
 
@@ -2871,116 +2839,6 @@ defmodule SensoctoWeb.LobbyLive do
     idx1 = Enum.find_index(@quality_order, &(&1 == q1)) || 0
     idx2 = Enum.find_index(@quality_order, &(&1 == q2)) || 0
     idx1 > idx2
-  end
-
-  # Maximum send_update calls per batch cycle to prevent overwhelming the system
-  @max_updates_per_batch 20
-
-  # Transform lens_batch to push_events for sensors view
-  # With LiveComponents, we send updates directly to the component instead of push_event
-  # Rate-limited to @max_updates_per_batch to prevent overwhelming slow clients
-  defp process_lens_batch_for_sensors(socket, batch_data) do
-    # Get visible sensor range to only update visible components
-    {start_idx, end_idx} = socket.assigns.visible_range
-
-    # Guard against invalid range (start > end can happen during rapid scrolling)
-    count = max(0, end_idx - start_idx)
-    visible_sensor_ids = socket.assigns.sensor_ids |> Enum.slice(start_idx, count)
-
-    # Only process sensors that appear in this batch AND are visible
-    # This reduces unnecessary work when batch_data is sparse
-    sensors_with_data = Map.keys(batch_data) |> MapSet.new()
-
-    # Debug: Check if web connector sensor has button data in this batch
-    web_connector_id = "46991438cf49"
-
-    if Map.has_key?(batch_data, web_connector_id) do
-      sensor_attrs = Map.get(batch_data, web_connector_id, %{})
-      attr_keys = Map.keys(sensor_attrs)
-      Logger.debug("LobbyLive: Web connector attrs in batch: #{inspect(attr_keys)}")
-
-      button_data = Map.get(sensor_attrs, "button")
-
-      if button_data do
-        Logger.debug("LobbyLive: Web connector button data: #{inspect(button_data)}")
-        is_visible = web_connector_id in visible_sensor_ids
-
-        Logger.debug(
-          "LobbyLive: visible_range=#{inspect({start_idx, end_idx})}, sensor in visible=#{is_visible}"
-        )
-      end
-    end
-
-    # Filter to visible sensors with data, then rate-limit
-    sensors_to_update =
-      visible_sensor_ids
-      |> Enum.filter(&MapSet.member?(sensors_with_data, &1))
-      |> Enum.take(@max_updates_per_batch)
-
-    # Also find non-visible sensors that have button data - buttons need instant feedback
-    # even when the sensor card isn't visible (summary bar shows button state)
-    non_visible_sensors_with_buttons =
-      batch_data
-      |> Enum.filter(fn {sensor_id, attrs} ->
-        not MapSet.member?(MapSet.new(visible_sensor_ids), sensor_id) and
-          Map.has_key?(attrs, "button")
-      end)
-      |> Enum.map(fn {sensor_id, _} -> sensor_id end)
-
-    # Combine visible sensors + non-visible sensors with button data
-    all_sensors_to_update = sensors_to_update ++ non_visible_sensors_with_buttons
-
-    Enum.each(all_sensors_to_update, fn sensor_id ->
-      attributes = Map.get(batch_data, sensor_id, %{})
-
-      measurements =
-        Enum.flat_map(attributes, fn {attr_id, m} ->
-          # Handle delta-encoded, list, and single measurements
-          case m do
-            %{__delta_encoded__: true, data: base64} ->
-              # Decode delta-encoded data back to measurements for LiveComponent
-              case Sensocto.Encoding.DeltaEncoder.decode(Base.decode64!(base64)) do
-                {:ok, decoded} ->
-                  Enum.map(decoded, fn item ->
-                    %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
-                  end)
-
-                {:error, _} ->
-                  []
-              end
-
-            list when is_list(list) ->
-              Enum.map(list, fn item ->
-                %{attribute_id: attr_id, payload: item.payload, timestamp: item.timestamp}
-                |> maybe_add_event(item)
-              end)
-
-            single ->
-              [
-                %{attribute_id: attr_id, payload: single.payload, timestamp: single.timestamp}
-                |> maybe_add_event(single)
-              ]
-          end
-        end)
-
-      send_update(StatefulSensorComponent,
-        id: "sensor_#{sensor_id}",
-        measurements_batch: measurements
-      )
-    end)
-
-    socket
-  end
-
-  # Add event field to measurement if present (for button press/release)
-  # Handles both atom and string keys for robustness
-  defp maybe_add_event(measurement, source) do
-    event = Map.get(source, :event) || Map.get(source, "event")
-
-    case event do
-      nil -> measurement
-      e -> Map.put(measurement, :event, e)
-    end
   end
 
   # Release control for a specific mode when user navigates away

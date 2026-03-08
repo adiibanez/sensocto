@@ -593,6 +593,127 @@ Hooks.CompositeMeasurementHandler = {
   }
 }
 
+// SensorGridHook — joins ViewerDataChannel for the sensors grid view and delivers
+// high-frequency sensor batch data directly to DOM without touching the LobbyLive process.
+//
+// Data path: ViewerDataChannel → sensor_batch → here → measurements-batch-event → SensorDataAccumulator
+//
+// The hook also tells the channel which sensors are currently visible (from VirtualScrollHook
+// via a sensor-range-changed CustomEvent), so the channel only pushes data for those sensors.
+Hooks.SensorGridHook = {
+  mounted() {
+    this._channel = null;
+
+    // Receive the signed viewer token from LobbyLive and join the channel.
+    this.handleEvent("viewer_channel_token", ({ token }) => {
+      this._joinViewerChannel(token);
+    });
+
+    // Listen for visible range changes dispatched by VirtualScrollHook.
+    this._onRangeChanged = (e) => {
+      const { startIndex, endIndex } = e.detail;
+      const gridEl = document.getElementById("sensor-virtual-scroll");
+      if (!gridEl) return;
+
+      let sensorIds = [];
+      try {
+        sensorIds = JSON.parse(gridEl.dataset.sensorIds || "[]");
+      } catch (_) {}
+
+      const visibleIds = sensorIds.slice(startIndex, endIndex);
+      if (this._channel) {
+        this._channel.push("set_visible_sensors", { sensor_ids: visibleIds });
+      }
+    };
+    window.addEventListener("sensor-range-changed", this._onRangeChanged);
+  },
+
+  destroyed() {
+    window.removeEventListener("sensor-range-changed", this._onRangeChanged);
+    if (this._channel) {
+      this._channel.leave();
+      this._channel = null;
+    }
+    if (this._channelSocket) {
+      this._channelSocket.disconnect();
+      this._channelSocket = null;
+    }
+  },
+
+  _joinViewerChannel(token) {
+    if (this._channel) {
+      this._channel.leave();
+      this._channel = null;
+    }
+    if (this._channelSocket) {
+      this._channelSocket.disconnect();
+      this._channelSocket = null;
+    }
+
+    const socket = new Socket("/socket", { params: {} });
+    socket.connect();
+    this._channelSocket = socket;
+
+    const channel = socket.channel(`viewer:data:${token}`, {});
+
+    channel.on("sensor_batch", ({ batch }) => {
+      this._dispatchBatch(batch);
+    });
+
+    channel.on("sensor_digest", ({ digests }) => {
+      // Digests arrive at low/minimal quality — dispatch same event shape
+      // but with a single-item attributes array holding the latest digest value.
+      for (const [sensorId, attrs] of Object.entries(digests)) {
+        const attrList = Object.entries(attrs).map(([attrId, digest]) => ({
+          attribute_id: attrId,
+          payload: digest.latest ?? digest,
+          timestamp: Date.now(),
+        }));
+        if (attrList.length > 0) {
+          window.dispatchEvent(new CustomEvent("measurements-batch-event", {
+            detail: { sensor_id: sensorId, attributes: attrList },
+          }));
+        }
+      }
+    });
+
+    channel.join()
+      .receive("ok", () => {
+        console.log("[SensorGridHook] ViewerDataChannel joined");
+        this._channel = channel;
+        // Trigger initial visible sensor report
+        const gridEl = document.getElementById("sensor-virtual-scroll");
+        if (gridEl) {
+          gridEl.dispatchEvent(new CustomEvent("force-range-report"));
+        }
+      })
+      .receive("error", (resp) => {
+        console.error("[SensorGridHook] join failed", resp);
+      });
+  },
+
+  _dispatchBatch(batch) {
+    for (const [sensorId, attributes] of Object.entries(batch)) {
+      const attrList = [];
+      for (const [attrId, data] of Object.entries(attributes)) {
+        const items = Array.isArray(data) ? data : [data];
+        for (const item of items) {
+          if (item != null && item.payload !== undefined) {
+            const m = { attribute_id: attrId, payload: item.payload, timestamp: item.timestamp };
+            if (item.event !== undefined) m.event = item.event;
+            attrList.push(m);
+          }
+        }
+      }
+      if (attrList.length > 0) {
+        window.dispatchEvent(new CustomEvent("measurements-batch-event", {
+          detail: { sensor_id: sensorId, attributes: attrList },
+        }));
+      }
+    }
+  },
+};
+
 // FooterToolbar hook - floating pill with popover for desktop sensor controls
 Hooks.FooterToolbar = {
   mounted() {
@@ -918,54 +1039,34 @@ Hooks.SensorDataAccumulator = {
 
     var hookElement = this.el;
 
-    if ('pushEvent' in this && 'handleEvent' in this) {
-      this.handleEvent("measurements_batch", (event) => {
-        if (hookElement.dataset.seeding !== true && event.sensor_id == this.el.dataset.sensor_id) {
-          // iterate over attributes and triage
-          let uniqueAttributeIds = [...new Set(event.attributes.map(attribute => attribute.attribute_id))];
-
-          uniqueAttributeIds.forEach(attributeId => {
-            logger.log("Hooks.SensorDataAccumulator", "measurements_batch ", { attribute_id: attributeId, el_attribute_id: this.el.dataset.attribute_id }, event);
-            if (event.sensor_id == this.el.dataset.sensor_id && attributeId == this.el.dataset.attribute_id) {
-              let relevantAttributes = event.attributes.filter(attribute => attribute.attribute_id === attributeId);
-              logger.log("Hooks.SensorDataAccumulator", "handleEvent BATCH measurement_batch", event.sensor_id, attributeId, relevantAttributes.length, relevantAttributes);
-              const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: attributeId, data: relevantAttributes } });
-              window.dispatchEvent(accumulatorEvent);
-
-              handleAppendData(event.sensor_id, attributeId, relevantAttributes).then((result) => {
-                logger.log("Hooks.SensorDataAccumulator", " handleAppendData measurements_batch", event.sensor_id, attributeId, result);
-              });
-            }
-          });
-        }
-      });
-
-      this.handleEvent("measurement", (event) => {
-        // match sensor_id and attribute_id, then push event
-        if (hookElement.dataset.seeding !== true && event.sensor_id == this.el.dataset.sensor_id && event.attribute_id == this.el.dataset.attribute_id) {
-          logger.log("Hooks.SensorDataAccumulator", "handleEvent SINGLE measurement", event.sensor_id, event.attribute_id, event);
-          const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: this.el.dataset.attribute_id, data: event } });
-          window.dispatchEvent(accumulatorEvent);
-
-          handleAppendData(event.sensor_id, event.attribute_id, event).then((result) => {
-            logger.log("Hooks.SensorDataAccumulator", "handleAppendData measurement", event.sensor_id, event.attribute_id, result);
-          });
-        }
+    // Listen for batch measurements delivered by SensorGridHook via ViewerDataChannel.
+    // Uses a global window event so data bypasses the LobbyLive process entirely.
+    this._onMeasurementsBatch = (e) => {
+      const event = e.detail;
+      if (hookElement.dataset.seeding !== true && event.sensor_id == hookElement.dataset.sensor_id) {
+        let uniqueAttributeIds = [...new Set(event.attributes.map(a => a.attribute_id))];
+        uniqueAttributeIds.forEach(attributeId => {
+          if (attributeId == hookElement.dataset.attribute_id) {
+            let relevantAttributes = event.attributes.filter(a => a.attribute_id === attributeId);
+            logger.log("Hooks.SensorDataAccumulator", "measurements-batch-event BATCH", event.sensor_id, attributeId, relevantAttributes.length);
+            const accumulatorEvent = new CustomEvent('accumulator-data-event', { detail: { sensor_id: event.sensor_id, attribute_id: attributeId, data: relevantAttributes } });
+            window.dispatchEvent(accumulatorEvent);
+            handleAppendData(event.sensor_id, attributeId, relevantAttributes).then((result) => {
+              logger.log("Hooks.SensorDataAccumulator", "handleAppendData measurements_batch", event.sensor_id, attributeId, result);
+            });
+          }
+        });
       }
-      );
-
-    } else {
-      logger.log("Hooks.SensorDataAccumulator", 'liveSocket', liveSocket);
-    }
+    };
+    window.addEventListener("measurements-batch-event", this._onMeasurementsBatch);
 
     resizeElements();
   },
 
   destroyed() {
-
-
-
-    //workerStorage.postMessage({ type: 'clear-data', data: { id: this.el.dataset.sensor_id + "_" + this.el.dataset.attribute_id } });
+    if (this._onMeasurementsBatch) {
+      window.removeEventListener("measurements-batch-event", this._onMeasurementsBatch);
+    }
   },
 
 

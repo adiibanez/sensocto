@@ -528,6 +528,9 @@
       </div>
 
       <div :if={@live_action == :sensors}>
+        <%!-- SensorGridHook anchor: joins ViewerDataChannel and delivers sensor data directly to DOM --%>
+        <div id="sensor-grid-channel-hook" phx-hook="SensorGridHook" class="hidden"></div>
+
         <%!-- Virtual scroll sensor grid --%>
         <% {rows_before, visible_sensor_ids, rows_after, sensors_remaining} =
           partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
@@ -536,6 +539,7 @@
           id="sensor-virtual-scroll"
           phx-hook="VirtualScrollHook"
           data-total-sensors={length(@sensor_ids)}
+          data-sensor-ids={Jason.encode!(@sensor_ids)}
           data-row-height={@row_height}
           class={[
             "grid grid-cols-1",

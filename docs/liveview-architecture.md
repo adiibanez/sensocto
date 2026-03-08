@@ -273,7 +273,7 @@ We show 100-200 sensor tiles in a scrollable grid. Only ~20-40 are visible at on
 
 With a dedicated Channel for sensor data, the JS client tells the Channel which sensor tiles are currently visible. The Channel then only pushes data for visible sensors, completely skipping invisible ones. This eliminates the need for LiveView to manage visibility at all.
 
-**TODO**: Not yet implemented. The sensors grid view still uses the `send_update` path through LobbyLive. This is future work — the Channel migration resolved composite/graph views first, and the sensors grid remains.
+**DONE** (Mar 2026): The sensors grid now uses the same Channel-based path. A new `SensorGridHook` joins `ViewerDataChannel` using the signed viewer token. The `VirtualScrollHook` dispatches a `sensor-range-changed` CustomEvent alongside its existing `pushEvent`, which `SensorGridHook` intercepts to send visible sensor IDs to the channel via `set_visible_sensors`. The channel filters batches to visible sensors only and pushes them directly to the browser. `SensorDataAccumulator` now listens for `measurements-batch-event` window CustomEvents instead of `this.handleEvent("measurements_batch", ...)`. LobbyLive no longer calls `send_update` or `push_event` for any sensor data — it only monitors backpressure and manages quality levels.
 
 ### 4. Giant LiveView Modules — Solved by `attach_hook`
 
@@ -406,13 +406,13 @@ Based on the feedback, the biggest architectural improvement is moving the high-
 - JS `CompositeMeasurementHandler` dispatches to Svelte components directly via CustomEvents
 - LobbyLive `handle_info({:lens_batch, _})` now only handles `:sensors` action — ~130 lines removed (`process_lens_batch_for_composite/3`, `process_lens_batch_for_graph/2`, `process_lens_digest_for_composite/3`)
 
-### Phase 3: LiveView Cleanup — ✅ DONE (composite/graph views); 🔲 Partial (sensors grid)
+### Phase 3: LiveView Cleanup — ✅ DONE (all views)
 - Backpressure monitoring still active in sensors view (correct — still needed there)
 - `push_event`-based measurement delivery removed for composite/graph views
 - LobbyLive mailbox at 0 in all composite/graph views
 - `attach_hook` used for media, object3d, whiteboard, call, guided session handlers
 - Templates split into function components (`LensComponents`) — template reduced 37%
-- **Remaining**: sensors grid still uses `send_update` path; RoomShowLive not yet refactored with `attach_hook`
+- **Remaining**: RoomShowLive not yet refactored with `attach_hook`
 
 ### Phase 4: Async Historical Data — ✅ DONE
 - `start_async/4` implemented as `start_seed_data_async/2`

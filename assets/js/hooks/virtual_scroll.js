@@ -136,6 +136,9 @@ export const VirtualScrollHook = {
       this.isLoading = true;
       this.updateLoadingIndicator();
       this.pushEvent("visible_range_changed", payload);
+      window.dispatchEvent(new CustomEvent("sensor-range-changed", {
+        detail: { startIndex: startIndex, endIndex: endIndex },
+      }));
     } else {
       this.pendingRange = payload;
       if (!this.throttleTimer) {
@@ -147,6 +150,9 @@ export const VirtualScrollHook = {
             this.isLoading = true;
             this.updateLoadingIndicator();
             this.pushEvent("visible_range_changed", this.pendingRange);
+            window.dispatchEvent(new CustomEvent("sensor-range-changed", {
+              detail: { startIndex: this.pendingRange.start_index, endIndex: this.pendingRange.end_index },
+            }));
             this.pendingRange = null;
           }
         }, delay);

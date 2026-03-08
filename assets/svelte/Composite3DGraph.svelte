@@ -274,7 +274,6 @@
     node.vx = (node.vx || 0) + (Math.random() - 0.5) * jitter;
     node.vy = (node.vy || 0) + (Math.random() - 0.5) * jitter;
     node.vz = (node.vz || 0) + (Math.random() - 0.5) * jitter;
-    graph.d3ReheatSimulation();
   }
 
   function handleActivity(e: Event) {

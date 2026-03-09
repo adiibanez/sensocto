@@ -162,7 +162,7 @@
   ]}>
     <%!-- Left column: Media / 3D / Whiteboard / Polls --%>
     <div class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}>
-      <div class="flex items-center justify-center gap-1.5 mb-3">
+      <div class="flex flex-wrap items-center justify-center gap-1.5 mb-3">
         <button
           phx-click="switch_lobby_mode"
           phx-value-mode="media"

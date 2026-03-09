@@ -212,6 +212,7 @@ defmodule SensoctoWeb.Router do
     # Verify token and get user info - handle token verification in controller
     get "/auth/verify", MobileAuthController, :verify
     post "/auth/verify", MobileAuthController, :verify
+    post "/auth/exchange", MobileAuthController, :exchange
     get "/me", MobileAuthController, :me
     post "/auth/refresh", MobileAuthController, :refresh
   end

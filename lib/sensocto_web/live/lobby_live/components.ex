@@ -17,18 +17,18 @@ defmodule SensoctoWeb.LobbyLive.Components do
   def call_controls(assigns) do
     ~H"""
     <div class="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div class="flex items-center gap-3">
           <Heroicons.icon name="phone" type="solid" class="h-5 w-5 text-gray-300" />
           <span class="text-sm text-gray-300 font-medium">Voice/Video Call</span>
         </div>
 
         <%= if @in_call do %>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2">
             <div class="flex items-center gap-2 text-sm text-green-400">
               <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
               <span>Connected</span>
-              <span class="text-gray-500">
+              <span class="text-gray-500 whitespace-nowrap">
                 ({map_size(@call_participants) + 1} in call)
               </span>
             </div>

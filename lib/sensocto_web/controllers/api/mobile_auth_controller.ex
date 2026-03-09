@@ -413,6 +413,143 @@ defmodule SensoctoWeb.Api.MobileAuthController do
 
   defp parse_user_id_from_subject(sub), do: {:error, "Invalid subject format: #{inspect(sub)}"}
 
+  @doc """
+  POST /api/auth/exchange
+
+  Exchanges a Phoenix.Token (from deep link / QR code) for a JWT session token.
+  Accepts both `{"token": "..."}` body and `Authorization: Bearer ...` header.
+  """
+  def exchange(conn, params) do
+    token =
+      params["token"] ||
+        case Plug.Conn.get_req_header(conn, "authorization") do
+          [header] -> extract_bearer_token(header)
+          _ -> nil
+        end
+
+    case token do
+      nil ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{ok: false, error: "No token provided"})
+
+      token ->
+        Logger.info("Token exchange: verifying Phoenix.Token (len=#{String.length(token)})")
+
+        # First try as Phoenix.Token (mobile_auth salt, 10 min max age)
+        case Phoenix.Token.verify(SensoctoWeb.Endpoint, "mobile_auth", token, max_age: 600) do
+          {:ok, %{user_id: user_id} = _data} ->
+            Logger.info("Phoenix.Token verified, user_id=#{user_id}")
+
+            # Load the user
+            case load_user_by_id(user_id) do
+              {:ok, user} ->
+                # Issue a JWT for this user
+                case issue_jwt_for_user(user) do
+                  {:ok, jwt, user_info} ->
+                    conn
+                    |> put_status(:ok)
+                    |> json(%{ok: true, token: jwt, user: user_info})
+
+                  {:error, reason} ->
+                    conn
+                    |> put_status(:internal_server_error)
+                    |> json(%{ok: false, error: "Failed to issue JWT: #{reason}"})
+                end
+
+              {:error, reason} ->
+                conn
+                |> put_status(:unauthorized)
+                |> json(%{ok: false, error: reason})
+            end
+
+          {:error, :expired} ->
+            # Maybe it's already a JWT - try verifying as JWT
+            case verify_token_and_load_user(token) do
+              {:ok, user} ->
+                conn
+                |> put_status(:ok)
+                |> json(%{ok: true, token: token, user: %{
+                  id: user.id,
+                  email: user.email,
+                  display_name: Map.get(user, :display_name) || user.email
+                }})
+
+              {:error, _} ->
+                conn
+                |> put_status(:unauthorized)
+                |> json(%{ok: false, error: "Token expired"})
+            end
+
+          {:error, reason} ->
+            # Not a Phoenix.Token — try as JWT directly
+            case verify_token_and_load_user(token) do
+              {:ok, user} ->
+                conn
+                |> put_status(:ok)
+                |> json(%{ok: true, token: token, user: %{
+                  id: user.id,
+                  email: user.email,
+                  display_name: Map.get(user, :display_name) || user.email
+                }})
+
+              {:error, jwt_reason} ->
+                Logger.warning("Token exchange failed: Phoenix.Token=#{inspect(reason)}, JWT=#{jwt_reason}")
+                conn
+                |> put_status(:unauthorized)
+                |> json(%{ok: false, error: "Invalid token"})
+            end
+        end
+    end
+  end
+
+  # Load user by ID (string UUID)
+  defp load_user_by_id(user_id) when is_binary(user_id) do
+    import Ecto.Query
+    query = from u in "users",
+      where: u.id == type(^user_id, :binary_id),
+      select: %{id: type(u.id, :string), email: u.email}
+
+    case Sensocto.Repo.one(query) do
+      nil -> {:error, "User not found"}
+      user_data -> {:ok, %{id: user_data.id, email: user_data.email, display_name: user_data.email}}
+    end
+  rescue
+    e -> {:error, "DB error: #{Exception.message(e)}"}
+  end
+
+  # Issue a JWT for a user (works for both Ash structs and plain maps)
+  defp issue_jwt_for_user(%{id: id} = user) do
+    # Try Ash JWT first
+    case Ash.get(Sensocto.Accounts.User, id) do
+      {:ok, ash_user} ->
+        case AshAuthentication.Jwt.token_for_user(ash_user) do
+          {:ok, token, _claims} ->
+            {:ok, token, %{
+              id: ash_user.id,
+              email: ash_user.email,
+              display_name: Map.get(ash_user, :display_name) || ash_user.email
+            }}
+          {:error, reason} ->
+            {:error, inspect(reason)}
+        end
+
+      {:error, _} ->
+        # Guest user - generate a Phoenix.Token with long expiry as fallback
+        token = Phoenix.Token.sign(SensoctoWeb.Endpoint, "mobile_auth", %{
+          user_id: id,
+          email: Map.get(user, :email, "unknown"),
+          exp: DateTime.to_unix(DateTime.add(DateTime.utc_now(), 30 * 24 * 3600, :second)),
+          iat: DateTime.to_unix(DateTime.utc_now())
+        })
+        {:ok, token, %{
+          id: id,
+          email: Map.get(user, :email, "unknown"),
+          display_name: Map.get(user, :display_name) || Map.get(user, :email, "unknown")
+        }}
+    end
+  end
+
   # Extract token from "Bearer <token>" header
   defp extract_bearer_token("Bearer " <> token), do: token
   defp extract_bearer_token("bearer " <> token), do: token

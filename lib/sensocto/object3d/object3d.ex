@@ -153,8 +153,7 @@ defmodule Sensocto.Object3D do
       |> case do
         {:ok, item} ->
           item = Repo.preload(item, :added_by_user)
-          broadcast_playlist_update(playlist_id)
-          notify_item_added(playlist_id, item)
+          broadcast_and_notify_item_added(playlist_id, item)
           {:ok, item}
 
         {:error, changeset} ->
@@ -174,9 +173,11 @@ defmodule Sensocto.Object3D do
       item ->
         playlist_id = item.playlist_id
 
+        deleted_position = item.position
+
         case Repo.delete(item) do
           {:ok, _} ->
-            reorder_after_removal(playlist_id)
+            reorder_after_removal(playlist_id, deleted_position)
             broadcast_playlist_update(playlist_id)
             :ok
 
@@ -336,23 +337,11 @@ defmodule Sensocto.Object3D do
     (max_position || -1) + 1
   end
 
-  defp reorder_after_removal(playlist_id) do
-    items =
-      Repo.all(
-        from i in Object3DPlaylistItem,
-          where: i.playlist_id == ^playlist_id,
-          order_by: i.position
-      )
-
-    items
-    |> Enum.with_index()
-    |> Enum.each(fn {item, index} ->
-      if item.position != index do
-        item
-        |> Object3DPlaylistItem.position_changeset(index)
-        |> Repo.update!()
-      end
-    end)
+  defp reorder_after_removal(playlist_id, deleted_position) do
+    from(i in Object3DPlaylistItem,
+      where: i.playlist_id == ^playlist_id and i.position > ^deleted_position
+    )
+    |> Repo.update_all(inc: [position: -1])
   end
 
   defp broadcast_playlist_update(playlist_id) do
@@ -374,10 +363,18 @@ defmodule Sensocto.Object3D do
     end
   end
 
-  defp notify_item_added(playlist_id, item) do
+  defp broadcast_and_notify_item_added(playlist_id, item) do
     playlist = get_playlist(playlist_id)
 
     if playlist do
+      topic = if playlist.is_lobby, do: "object3d:lobby", else: "object3d:#{playlist.room_id}"
+
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        topic,
+        {:object3d_playlist_updated, %{playlist: playlist, items: playlist.items}}
+      )
+
       room_id = if playlist.is_lobby, do: :lobby, else: playlist.room_id
       Object3DPlayerServer.item_added(room_id, item)
     end

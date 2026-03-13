@@ -2273,9 +2273,8 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_event("toggle_lobby_layout", _params, socket) do
     new_layout =
       case socket.assigns.lobby_layout do
-        :stacked -> :side_by_side
-        :side_by_side -> :floating
-        :floating -> :stacked
+        :stacked -> :floating
+        _ -> :stacked
       end
 
     socket =
@@ -2295,7 +2294,6 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_event("restore_lobby_layout", %{"layout" => layout}, socket) do
     new_layout =
       case layout do
-        "side_by_side" -> :side_by_side
         "floating" -> :floating
         _ -> :stacked
       end

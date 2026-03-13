@@ -31,18 +31,12 @@
         <span class="hidden sm:inline">Guide</span>
       </button>
 
-      <%!-- Layout toggle: stacked → side-by-side → floating --%>
+      <%!-- Layout toggle: stacked ↔ floating --%>
       <div class="flex items-center gap-1.5">
         <span class="text-xs text-gray-500">Layout</span>
         <button
           phx-click="toggle_lobby_layout"
-          title={
-            case @lobby_layout do
-              :stacked -> "Switch to side-by-side layout"
-              :side_by_side -> "Switch to floating dock"
-              :floating -> "Switch to stacked layout"
-            end
-          }
+          title={if(@lobby_layout == :floating, do: "Switch to stacked layout", else: "Switch to floating dock")}
           class={[
             "p-1.5 rounded-lg hover:bg-gray-600 text-gray-300 hover:text-white transition-colors",
             if(@lobby_layout == :floating,
@@ -52,13 +46,7 @@
           ]}
         >
           <Heroicons.icon
-            name={
-              case @lobby_layout do
-                :stacked -> "view-columns"
-                :side_by_side -> "squares-plus"
-                :floating -> "bars-3"
-              end
-            }
+            name={if(@lobby_layout == :floating, do: "bars-3", else: "squares-plus")}
             type="outline"
             class="h-4 w-4"
           />

@@ -499,8 +499,7 @@ defmodule SensoctoWeb.Components.PollsPanelComponent do
   defp retract_existing_votes(poll_id, user_id) do
     Vote
     |> Ash.Query.filter(poll_id == ^poll_id and user_id == ^user_id)
-    |> Ash.read!(authorize?: false)
-    |> Enum.each(&Ash.destroy!(&1, authorize?: false))
+    |> Ash.bulk_destroy!(:destroy, %{}, authorize?: false)
   end
 
   defp new_poll_form do

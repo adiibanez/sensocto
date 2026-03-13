@@ -439,6 +439,35 @@ defmodule Sensocto.SimpleSensor do
     if queue_len > @mailbox_pressure_threshold do
       {:noreply, state}
     else
+      # Auto-register any unknown attributes (mirrors put_attribute logic)
+      new_attrs =
+        Enum.reduce(attributes, state.attributes, fn attribute, acc ->
+          if Map.has_key?(acc, attribute.attribute_id) do
+            acc
+          else
+            inferred_type = infer_attribute_type(attribute.attribute_id, attribute.payload)
+
+            Map.put(acc, attribute.attribute_id, %{
+              attribute_type: inferred_type,
+              attribute_id: attribute.attribute_id,
+              sampling_rate: 1
+            })
+          end
+        end)
+
+      state =
+        if new_attrs != state.attributes do
+          Phoenix.PubSub.broadcast(
+            Sensocto.PubSub,
+            "signal:#{sensor_id}",
+            {:new_state, sensor_id}
+          )
+
+          %{state | attributes: new_attrs}
+        else
+          state
+        end
+
       broadcast_messages_list =
         Enum.map(attributes, fn attribute ->
           AttributeStore.put_attribute(

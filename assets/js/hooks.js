@@ -42,7 +42,7 @@ Hooks.LobbyPreferences = {
 
         // Restore saved layout or auto-detect from screen width
         const savedLayout = localStorage.getItem('lobby_layout');
-        if (savedLayout && ['stacked', 'side_by_side'].includes(savedLayout)) {
+        if (savedLayout && ['stacked', 'side_by_side', 'floating'].includes(savedLayout)) {
             this.pushEvent('restore_lobby_layout', { layout: savedLayout });
         } else if (window.innerWidth >= 2000) {
             this.pushEvent('restore_lobby_layout', { layout: 'side_by_side' });
@@ -52,6 +52,32 @@ Hooks.LobbyPreferences = {
         this.handleEvent('save_lobby_layout', ({ layout }) => {
             localStorage.setItem('lobby_layout', layout);
         });
+    }
+};
+
+// Floating Sensor Dock Hook
+Hooks.FloatingDock = {
+    mounted() {
+        const strip = this.el.querySelector('[class*="overflow-x-auto"]');
+        if (!strip) return;
+
+        // Scroll-snap for smooth badge scrolling
+        strip.style.scrollSnapType = 'x mandatory';
+        strip.style.webkitOverflowScrolling = 'touch';
+
+        // Make badges snap
+        for (const badge of strip.querySelectorAll('button[phx-click="float_expand_sensor"]')) {
+            badge.style.scrollSnapAlign = 'start';
+        }
+    },
+
+    updated() {
+        // Re-apply snap on DOM update
+        const strip = this.el.querySelector('[class*="overflow-x-auto"]');
+        if (!strip) return;
+        for (const badge of strip.querySelectorAll('button[phx-click="float_expand_sensor"]')) {
+            badge.style.scrollSnapAlign = 'start';
+        }
     }
 };
 

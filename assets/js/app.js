@@ -473,7 +473,7 @@ Hooks.CompositeMeasurementHandler = {
       this._channelSocket = null;
     }
 
-    const socket = new Socket("/socket", { params: {} });
+    const socket = new Socket("/socket", { params: { token: window.userSocketToken || "" } });
     socket.connect();
     this._channelSocket = socket;
 
@@ -657,7 +657,7 @@ Hooks.SensorGridHook = {
       this._channelSocket = null;
     }
 
-    const socket = new Socket("/socket", { params: {} });
+    const socket = new Socket("/socket", { params: { token: window.userSocketToken || "" } });
     socket.connect();
     this._channelSocket = socket;
 

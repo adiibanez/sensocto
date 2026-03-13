@@ -26,6 +26,7 @@ defmodule SensoctoWeb.Router do
     plug :put_secure_browser_headers
     plug :sign_in_with_remember_me
     plug :load_from_session
+    plug :assign_user_socket_token
 
     plug SensoctoWeb.Plugs.RequestLogger
     plug SensoctoWeb.Plugs.Locale
@@ -225,8 +226,9 @@ defmodule SensoctoWeb.Router do
     end
   end
 
-  # Mobile API endpoints (non-auth routes - no rate limiting)
+  # Mobile API endpoints — authenticated via :api pipeline
   scope "/api", SensoctoWeb.Api do
+    pipe_through [:api]
     # Room REST API endpoints
     # GET /api/rooms - list user's rooms
     get "/rooms", RoomController, :index
@@ -289,6 +291,17 @@ defmodule SensoctoWeb.Router do
   end
 
   # end
+
+  defp assign_user_socket_token(conn, _opts) do
+    user_id =
+      case conn.assigns[:current_user] do
+        %{id: id} -> to_string(id)
+        _ -> "anonymous"
+      end
+
+    token = Phoenix.Token.sign(conn, "user_socket", user_id)
+    assign(conn, :user_socket_token, token)
+  end
 
   defp admin_basic_auth(conn, _opts) do
     username = System.fetch_env!("AUTH_USERNAME")

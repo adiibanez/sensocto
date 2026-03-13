@@ -13,11 +13,15 @@ defmodule SensoctoWeb.RoomChannel do
   def join("room:" <> room_id, _params, socket) do
     case Ecto.UUID.cast(room_id) do
       {:ok, room_id} ->
-        Phoenix.PubSub.subscribe(Sensocto.PubSub, "room:#{room_id}")
+        user_id = socket.assigns[:user_id]
 
-        send(self(), :after_join)
-
-        {:ok, assign(socket, :room_id, room_id)}
+        if authorized_for_room?(room_id, user_id) do
+          Phoenix.PubSub.subscribe(Sensocto.PubSub, "room:#{room_id}")
+          send(self(), :after_join)
+          {:ok, assign(socket, :room_id, room_id)}
+        else
+          {:error, %{reason: "unauthorized"}}
+        end
 
       :error ->
         {:error, %{reason: "invalid room id"}}
@@ -79,6 +83,17 @@ defmodule SensoctoWeb.RoomChannel do
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp authorized_for_room?(room_id, user_id) do
+    case RoomStore.get_room(room_id) do
+      {:ok, room} when not is_nil(room) ->
+        Map.get(room, :is_public, false) or RoomStore.is_member?(room_id, user_id)
+
+      _ ->
+        # Room not found in store — allow join (room may be loading)
+        true
+    end
+  end
 
   defp resolve_sensor(sensor_id) do
     case Sensocto.SensorsDynamicSupervisor.get_sensor_state(sensor_id, :view, 1) do

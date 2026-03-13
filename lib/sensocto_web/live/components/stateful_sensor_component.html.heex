@@ -1,8 +1,8 @@
 <div
   id={"sensor_#{@sensor_id}"}
   class={[
-    "sensor flex flex-col rounded-lg shadow-md cursor-pointer bg-dark-gray text-light-gray",
-    if(@view_mode == :summary, do: "p-1.5 h-auto min-h-24", else: "p-2 h-96")
+    "sensor group flex flex-col rounded-lg shadow-md cursor-pointer bg-dark-gray text-light-gray",
+    if(@view_mode == :summary, do: "p-1 h-auto min-h-[3.5rem]", else: "p-2 h-96")
   ]}
   style="border:0 solid green"
 >
@@ -13,9 +13,9 @@
     phx-target={@myself}
     data-sensor_id={@sensor_id}
   >
-    <div class="mb-1">
+    <div class={if(@view_mode == :summary, do: "mb-0.5", else: "mb-1")}>
       <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1 min-w-0">
           <.connection_status_badge
             status={@connection_status}
             last_data_at={@last_data_at}
@@ -33,7 +33,10 @@
         <.attention_badge level={@attention_level} />
       </div>
 
-      <div class="flex items-center gap-2 mt-1">
+      <div class={[
+        "flex items-center gap-2",
+        if(@view_mode == :summary, do: "hidden group-hover:flex mt-0.5", else: "mt-1")
+      ]}>
         <.link
           id={"detail_#{@sensor_id}"}
           navigate={~p"/lobby/sensors/#{@sensor_id}"}

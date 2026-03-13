@@ -758,7 +758,7 @@ export const CallHook = {
       }, 15000);
 
       this.socket = new Socket("/socket", {
-        params: {},
+        params: { token: window.userSocketToken || "" },
         reconnectAfterMs: (tries) => {
           // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
           return Math.min(1000 * Math.pow(2, tries - 1), 10000);

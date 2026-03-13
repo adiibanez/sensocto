@@ -437,15 +437,9 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     new_attrs = sensor[:attributes] || %{}
     attrs_changed = Map.keys(new_attrs) != Map.keys(old_attrs)
 
-    # Check if sensor has any data (lastvalue in any attribute)
-    has_data =
-      new_attrs
-      |> Map.values()
-      |> Enum.any?(fn attr -> attr[:lastvalue] != nil end)
-
-    # Update connection status if currently connecting and sensor has data
+    # Update connection status: sensor exists in registry → at least :connected
     socket =
-      if socket.assigns[:connection_status] == :connecting and has_data do
+      if socket.assigns[:connection_status] == :connecting do
         assign(socket, :connection_status, :connected)
       else
         socket

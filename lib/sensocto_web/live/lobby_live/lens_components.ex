@@ -53,8 +53,7 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
         phx-update="ignore"
         class="mt-3 px-3 py-2 bg-gray-800/40 rounded-lg border border-gray-700/50 flex items-center justify-center gap-3 flex-wrap text-xs"
       >
-        <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0">
-        </span>
+        <span id="midi-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
         <button
           id="midi-toggle-btn"
           class="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"

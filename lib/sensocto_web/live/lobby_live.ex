@@ -10,6 +10,7 @@ defmodule SensoctoWeb.LobbyLive do
   import SensoctoWeb.LiveHelpers.SensorData
   import SensoctoWeb.LobbyLive.Components
   import SensoctoWeb.LobbyLive.LensComponents
+  import SensoctoWeb.LobbyLive.FloatingDockComponents
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
@@ -38,7 +39,7 @@ defmodule SensoctoWeb.LobbyLive do
   @grid_cols_2xl_default 5
 
   # Virtual scroll configuration
-  @default_row_height 140
+  @default_row_height 90
   # Preload more sensors initially for smoother experience
   @default_visible_count 72
 
@@ -59,10 +60,12 @@ defmodule SensoctoWeb.LobbyLive do
   def mount(_params, _session, socket) do
     start = System.monotonic_time()
 
-    # Essential subscriptions only — needed before first render
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
+    # Subscribe only when connected (avoid double subscription on disconnected + connected mount)
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
+    end
 
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     sensors_count = Enum.count(sensors)
@@ -75,10 +78,13 @@ defmodule SensoctoWeb.LobbyLive do
     # Determine view mode: normal for <=3 sensors with few attributes, summary otherwise
     default_view_mode = determine_view_mode(sensors_count, max_attributes)
 
-    # Extract composite visualization data
+    # Extract composite visualization data (needs full sensors with lastvalue)
     {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
      skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
       extract_composite_data(sensors)
+
+    # Strip values lists from sensors before storing on socket (only lastvalue is read)
+    sensors = strip_sensor_values(sensors)
 
     # Compute available lenses based on actual sensor attributes
     available_lenses =
@@ -97,16 +103,15 @@ defmodule SensoctoWeb.LobbyLive do
     # Group sensors by connector (user)
     sensors_by_user = group_sensors_by_user(sensors)
 
-    # Get available rooms for join UI
+    # Defer DB queries to connected mount — avoid running them twice (disconnected + connected)
     user = socket.assigns[:current_user]
-    public_rooms = if user, do: Sensocto.Rooms.list_public_rooms(), else: []
 
-    # Load user's favorite sensors
-    favorite_sensors =
-      if user do
-        UserPreferences.get_ui_state(user.id, "favorite_sensors", [])
+    {public_rooms, favorite_sensors} =
+      if connected?(socket) and user do
+        {Sensocto.Rooms.list_public_rooms(),
+         UserPreferences.get_ui_state(user.id, "favorite_sensors", [])}
       else
-        []
+        {[], []}
       end
 
     # Check if there's an active call in the lobby
@@ -124,7 +129,6 @@ defmodule SensoctoWeb.LobbyLive do
         # Store full sensors map for LiveComponent rendering
         sensors: sensors,
         sensors_online_count: sensors_count,
-        sensors_online: %{},
         sensor_ids: sensor_ids,
         global_view_mode: default_view_mode,
         grid_cols_sm: min(@grid_cols_sm_default, max(1, sensors_count)),
@@ -148,6 +152,8 @@ defmodule SensoctoWeb.LobbyLive do
         join_code: "",
         # Call-related assigns
         lobby_layout: :stacked,
+        floating_expanded_sensors: [],
+        floating_dock_collapsed: false,
         lobby_mode: :media,
         call_active: call_active,
         in_call: false,
@@ -162,6 +168,8 @@ defmodule SensoctoWeb.LobbyLive do
         whiteboard_bump: false,
         avatar_bump: false,
         avatar_fullscreen: false,
+        avatar_world: :bioluminescent,
+        avatar_wind: 50,
         avatar_controller_user_id: nil,
         avatar_controller_user_name: nil,
         avatar_pending_request_user_id: nil,
@@ -255,16 +263,11 @@ defmodule SensoctoWeb.LobbyLive do
 
         {synced_users, solo_users} = get_sync_mode_users("lobby")
 
-        # Schedule refreshes to catch late-registered attributes
-        # Attributes are auto-registered on first data receipt, which may happen after mount
-        Process.send_after(self(), :refresh_available_lenses, 1000)
-        Process.send_after(self(), :refresh_available_lenses, 3000)
+        # Schedule single refresh to catch late-registered attributes (2s after mount)
+        Process.send_after(self(), :refresh_available_lenses, 2000)
 
         # Start performance logging timer
         Process.send_after(self(), :log_perf_stats, @perf_log_interval_ms)
-
-        # Start component flush timer (for LiveComponent measurement buffers)
-        Process.send_after(self(), :flush_component_measurements, @component_flush_interval_ms)
 
         # Register with PriorityLens for adaptive data streaming
         # Does NOT subscribe to the PubSub topic here — ViewerDataChannel handles composite/graph
@@ -450,14 +453,26 @@ defmodule SensoctoWeb.LobbyLive do
 
   # All composite and graph views: ViewerDataChannel delivers data directly to browser.
   # LobbyLive unsubscribes so its mailbox stays clean.
+  # Exception: floating mode with expanded tiles needs subscription for send_update.
   defp update_lens_subscription(socket, _action) do
     topic = socket.assigns[:priority_lens_topic]
 
-    if topic && socket.assigns[:lens_locally_subscribed] do
-      Phoenix.PubSub.unsubscribe(Sensocto.PubSub, topic)
-      assign(socket, :lens_locally_subscribed, false)
+    if socket.assigns.lobby_layout == :floating &&
+         socket.assigns.floating_expanded_sensors != [] do
+      # Stay subscribed for floating expanded tiles
+      if topic && !socket.assigns[:lens_locally_subscribed] do
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
+        assign(socket, :lens_locally_subscribed, true)
+      else
+        socket
+      end
     else
-      socket
+      if topic && socket.assigns[:lens_locally_subscribed] do
+        Phoenix.PubSub.unsubscribe(Sensocto.PubSub, topic)
+        assign(socket, :lens_locally_subscribed, false)
+      else
+        socket
+      end
     end
   end
 
@@ -677,6 +692,14 @@ defmodule SensoctoWeb.LobbyLive do
     {:noreply, socket}
   end
 
+  def handle_async(:refresh_sensors, {:ok, sensors}, socket) do
+    {:noreply, apply_sensors_refresh(socket, sensors)}
+  end
+
+  def handle_async(:refresh_sensors, {:exit, _reason}, socket) do
+    {:noreply, socket}
+  end
+
   defp calculate_max_attributes(sensors) do
     sensors
     |> Enum.map(fn {_id, sensor} -> map_size(sensor.attributes || %{}) end)
@@ -813,6 +836,59 @@ defmodule SensoctoWeb.LobbyLive do
   defp determine_view_mode(_sensors_count, _max_attributes) do
     # Always start in summary mode - users can expand individual tiles as needed
     :summary
+  end
+
+  # Strip `values` lists from sensor attributes before storing on socket.
+  # Only `lastvalue` is needed for rendering — `values` is never read from @sensors.
+  defp strip_sensor_values(sensors) do
+    Map.new(sensors, fn {sensor_id, sensor} ->
+      stripped_attrs =
+        Map.new(sensor.attributes || %{}, fn {attr_id, attr_data} ->
+          {attr_id, Map.delete(attr_data, :values)}
+        end)
+
+      {sensor_id, %{sensor | attributes: stripped_attrs}}
+    end)
+  end
+
+  defp apply_sensors_refresh(socket, sensors) do
+    # Extract composite data from full sensors (needs lastvalue), then strip for assign
+    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
+      extract_composite_data(sensors)
+
+    sensors = strip_sensor_values(sensors)
+
+    available_lenses =
+      compute_available_lenses(
+        heartrate_sensors,
+        imu_sensors,
+        location_sensors,
+        ecg_sensors,
+        battery_sensors,
+        skeleton_sensors,
+        respiration_sensors,
+        hrv_sensors,
+        gaze_sensors
+      )
+
+    sorted_sensor_ids =
+      sort_sensors(Map.keys(sensors), sensors, socket.assigns[:sort_by] || :name)
+
+    socket
+    |> assign(:sensors, sensors)
+    |> assign(:heartrate_sensors, heartrate_sensors)
+    |> assign(:imu_sensors, imu_sensors)
+    |> assign(:location_sensors, location_sensors)
+    |> assign(:ecg_sensors, ecg_sensors)
+    |> assign(:battery_sensors, battery_sensors)
+    |> assign(:skeleton_sensors, skeleton_sensors)
+    |> assign(:respiration_sensors, respiration_sensors)
+    |> assign(:hrv_sensors, hrv_sensors)
+    |> assign(:gaze_sensors, gaze_sensors)
+    |> assign(:available_lenses, available_lenses)
+    |> assign(:sensors_by_user, group_sensors_by_user(sensors))
+    |> assign(:sensor_ids, sorted_sensor_ids)
   end
 
   defp extract_composite_data(sensors) do
@@ -1220,12 +1296,13 @@ defmodule SensoctoWeb.LobbyLive do
           Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
         end)
 
-        sensors_online = Map.merge(socket.assigns.sensors_online, payload.joins)
-
-        # Update composite visualization data
+        # Update composite visualization data (needs full sensors)
         {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
          skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
           extract_composite_data(sensors)
+
+        # Strip values for socket assign
+        sensors = strip_sensor_values(sensors)
 
         # Recompute available lenses when sensors change
         available_lenses =
@@ -1248,7 +1325,6 @@ defmodule SensoctoWeb.LobbyLive do
           socket
           |> assign(:sensors, sensors)
           |> assign(:sensors_online_count, sensors_count)
-          |> assign(:sensors_online, sensors_online)
           |> assign(:sensor_ids, sorted_sensor_ids)
           |> assign(:heartrate_sensors, heartrate_sensors)
           |> assign(:imu_sensors, imu_sensors)
@@ -1492,8 +1568,8 @@ defmodule SensoctoWeb.LobbyLive do
     client_health = socket.assigns[:client_health]
     client_recommended = if client_health, do: client_health.current_quality, else: :high
 
-    # Sensor-count-based quality ceiling — honey badger: don't even try :high with many sensors
-    sensor_count = length(:pg.get_members(:sensocto_sensors, "sensors"))
+    # Use cached count instead of traversing :pg table on every check
+    sensor_count = socket.assigns.sensors_online_count
 
     sensor_ceiling =
       cond do
@@ -1724,93 +1800,24 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   def handle_info(:refresh_available_lenses, socket) do
-    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
-      extract_composite_data(sensors)
-
-    available_lenses =
-      compute_available_lenses(
-        heartrate_sensors,
-        imu_sensors,
-        location_sensors,
-        ecg_sensors,
-        battery_sensors,
-        skeleton_sensors,
-        respiration_sensors,
-        hrv_sensors,
-        gaze_sensors
-      )
-
-    sorted_sensor_ids =
-      sort_sensors(Map.keys(sensors), sensors, socket.assigns[:sort_by] || :name)
-
     {:noreply,
-     socket
-     |> assign(:sensors, sensors)
-     |> assign(:heartrate_sensors, heartrate_sensors)
-     |> assign(:imu_sensors, imu_sensors)
-     |> assign(:location_sensors, location_sensors)
-     |> assign(:ecg_sensors, ecg_sensors)
-     |> assign(:battery_sensors, battery_sensors)
-     |> assign(:skeleton_sensors, skeleton_sensors)
-     |> assign(:respiration_sensors, respiration_sensors)
-     |> assign(:hrv_sensors, hrv_sensors)
-     |> assign(:gaze_sensors, gaze_sensors)
-     |> assign(:available_lenses, available_lenses)
-     |> assign(:sensors_by_user, group_sensors_by_user(sensors))
-     |> assign(:sensor_ids, sorted_sensor_ids)}
+     start_async(socket, :refresh_sensors, fn ->
+       Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+     end)}
   end
 
   # Handle sensor state changes (e.g., new attributes registered)
   # This refreshes available lenses when attributes are auto-registered
   @impl true
   def handle_info({:new_state, _sensor_id}, socket) do
-    # Re-fetch all sensors and recompute available lenses
-    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-
-    {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-     skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
-      extract_composite_data(sensors)
-
-    available_lenses =
-      compute_available_lenses(
-        heartrate_sensors,
-        imu_sensors,
-        location_sensors,
-        ecg_sensors,
-        battery_sensors,
-        skeleton_sensors,
-        respiration_sensors,
-        hrv_sensors,
-        gaze_sensors
-      )
-
+    # Fetch sensors async to avoid blocking the LV process
     {:noreply,
-     socket
-     |> assign(:sensors, sensors)
-     |> assign(:heartrate_sensors, heartrate_sensors)
-     |> assign(:imu_sensors, imu_sensors)
-     |> assign(:location_sensors, location_sensors)
-     |> assign(:ecg_sensors, ecg_sensors)
-     |> assign(:battery_sensors, battery_sensors)
-     |> assign(:skeleton_sensors, skeleton_sensors)
-     |> assign(:respiration_sensors, respiration_sensors)
-     |> assign(:hrv_sensors, hrv_sensors)
-     |> assign(:gaze_sensors, gaze_sensors)
-     |> assign(:available_lenses, available_lenses)
-     |> assign(:sensors_by_user, group_sensors_by_user(sensors))}
+     start_async(socket, :refresh_sensors, fn ->
+       Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+     end)}
   end
 
-  # Measurement flush timer — sensor data now delivered via ViewerDataChannel → SensorGridHook.
-  # StatefulSensorComponent no longer buffers measurements, so this is a no-op.
-  # Timer kept running to avoid needing to stop it; overhead is negligible.
-  @impl true
-  def handle_info(:flush_component_measurements, socket) do
-    Process.send_after(self(), :flush_component_measurements, @component_flush_interval_ms)
-    {:noreply, socket}
-  end
+  # Flush timer removed — sensor data now delivered via ViewerDataChannel → SensorGridHook.
 
   # SyncComputer broadcasts real-time sync values — push them as composite_measurement
   # so MIDI hook and Svelte components receive breathing_sync/hrv_sync updates
@@ -1916,23 +1923,27 @@ defmodule SensoctoWeb.LobbyLive do
   def handle_event("join_room", %{"room_id" => room_id}, socket) do
     user = socket.assigns.current_user
 
-    case Sensocto.Rooms.get_room(room_id) do
-      {:ok, room} ->
-        case Sensocto.Rooms.join_room_with_sensors(room, user) do
-          {:ok, _room} ->
-            socket =
-              socket
-              |> put_flash(:info, "Joined room: #{room.name}")
-              |> push_navigate(to: ~p"/rooms/#{room_id}")
+    if is_nil(user) do
+      {:noreply, put_flash(socket, :error, "You must be signed in to join a room")}
+    else
+      case Sensocto.Rooms.get_room(room_id) do
+        {:ok, room} ->
+          case Sensocto.Rooms.join_room_with_sensors(room, user) do
+            {:ok, _room} ->
+              socket =
+                socket
+                |> put_flash(:info, "Joined room: #{room.name}")
+                |> push_navigate(to: ~p"/rooms/#{room_id}")
 
-            {:noreply, socket}
+              {:noreply, socket}
 
-          {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to join room")}
-        end
+            {:error, _reason} ->
+              {:noreply, put_flash(socket, :error, "Failed to join room")}
+          end
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Room not found")}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Room not found")}
+      end
     end
   end
 
@@ -2067,6 +2078,73 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   @impl true
+  def handle_event("avatar_switch_world", %{"world" => world}, socket) do
+    world_atom =
+      case world do
+        "bioluminescent" -> :bioluminescent
+        "inferno" -> :inferno
+        "meadow" -> :meadow
+        _ -> :bioluminescent
+      end
+
+    socket =
+      socket
+      |> assign(:avatar_world, world_atom)
+      |> push_event("avatar_switch_world", %{world: world})
+
+    # Broadcast world change to synced users
+    user = socket.assigns.current_user
+
+    if user && socket.assigns.sync_mode == :synced do
+      Phoenix.PubSub.broadcast(Sensocto.PubSub, "avatar:lobby", {
+        :avatar_world_changed,
+        %{world: world, from_user_id: user.id}
+      })
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("avatar_set_wind", %{"value" => val}, socket) do
+    case Integer.parse(val) do
+      {wind, _} when wind in 0..100 ->
+        socket =
+          socket
+          |> assign(:avatar_wind, wind)
+          |> push_event("avatar_set_wind", %{value: wind / 100})
+
+        user = socket.assigns.current_user
+
+        if user && socket.assigns.sync_mode == :synced do
+          Phoenix.PubSub.broadcast(Sensocto.PubSub, "avatar:lobby", {
+            :avatar_wind_changed,
+            %{value: wind, from_user_id: user.id}
+          })
+        end
+
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("avatar_camera_changed", %{"position" => pos, "target" => tgt}, socket) do
+    user = socket.assigns.current_user
+
+    if user && socket.assigns.sync_mode == :synced do
+      Phoenix.PubSub.broadcast(Sensocto.PubSub, "avatar:lobby", {
+        :avatar_camera_changed,
+        %{position: pos, target: tgt, from_user_id: user.id}
+      })
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("avatar_toggle_fullscreen", _, socket) do
     fullscreen = !socket.assigns.avatar_fullscreen
     event = if fullscreen, do: "avatar_enter_fullscreen", else: "avatar_exit_fullscreen"
@@ -2193,17 +2271,61 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   def handle_event("toggle_lobby_layout", _params, socket) do
-    new_layout = if socket.assigns.lobby_layout == :stacked, do: :side_by_side, else: :stacked
+    new_layout =
+      case socket.assigns.lobby_layout do
+        :stacked -> :side_by_side
+        :side_by_side -> :floating
+        :floating -> :stacked
+      end
 
-    {:noreply,
-     socket
-     |> assign(:lobby_layout, new_layout)
-     |> push_event("save_lobby_layout", %{layout: Atom.to_string(new_layout)})}
+    socket =
+      socket
+      |> assign(:lobby_layout, new_layout)
+      |> push_event("save_lobby_layout", %{layout: Atom.to_string(new_layout)})
+
+    # Clear expanded sensors when leaving floating mode
+    socket =
+      if new_layout != :floating,
+        do: assign(socket, :floating_expanded_sensors, []),
+        else: socket
+
+    {:noreply, socket}
   end
 
   def handle_event("restore_lobby_layout", %{"layout" => layout}, socket) do
-    new_layout = if layout == "side_by_side", do: :side_by_side, else: :stacked
+    new_layout =
+      case layout do
+        "side_by_side" -> :side_by_side
+        "floating" -> :floating
+        _ -> :stacked
+      end
+
     {:noreply, assign(socket, :lobby_layout, new_layout)}
+  end
+
+  def handle_event("toggle_floating_dock", _params, socket) do
+    {:noreply, assign(socket, :floating_dock_collapsed, !socket.assigns.floating_dock_collapsed)}
+  end
+
+  def handle_event("float_expand_sensor", %{"sensor-id" => sensor_id}, socket) do
+    expanded = socket.assigns.floating_expanded_sensors
+
+    expanded =
+      if sensor_id in expanded do
+        # Already expanded — collapse it (toggle behavior)
+        List.delete(expanded, sensor_id)
+      else
+        # Add to expanded, cap at 3 (drop oldest)
+        new = expanded ++ [sensor_id]
+        if length(new) > 3, do: tl(new), else: new
+      end
+
+    {:noreply, assign(socket, :floating_expanded_sensors, expanded)}
+  end
+
+  def handle_event("float_collapse_sensor", %{"sensor-id" => sensor_id}, socket) do
+    expanded = List.delete(socket.assigns.floating_expanded_sensors, sensor_id)
+    {:noreply, assign(socket, :floating_expanded_sensors, expanded)}
   end
 
   # Control request modal handlers
@@ -2795,7 +2917,16 @@ defmodule SensoctoWeb.LobbyLive do
       when type in ["breathing_rhythm", "focus_sensor", "take_break", "custom"] do
     if session_id = socket.assigns.guiding_session do
       user_id = socket.assigns.current_user.id
-      action = %{type: String.to_atom(type), text: text, data: params["data"] || %{}}
+
+      type_atom =
+        case type do
+          "breathing_rhythm" -> :breathing_rhythm
+          "focus_sensor" -> :focus_sensor
+          "take_break" -> :take_break
+          "custom" -> :custom
+        end
+
+      action = %{type: type_atom, text: text, data: params["data"] || %{}}
       Sensocto.Guidance.SessionServer.suggest_action(session_id, user_id, action)
     end
 
@@ -3033,6 +3164,10 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   # Apply a lobby mode switch: cleanup old mode, assign new mode, setup new mode
+  defp world_label(:bioluminescent), do: "Bioluminescent"
+  defp world_label(:inferno), do: "Inferno"
+  defp world_label(:meadow), do: "Meadow"
+
   defp apply_lobby_mode_switch(socket, new_mode, old_mode) do
     socket =
       if old_mode == :avatar and new_mode != :avatar do

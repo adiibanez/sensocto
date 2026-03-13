@@ -15,6 +15,9 @@
     </script>
     <script defer phx-track-static src={~p"/assets/app.js"}>
     </script>
+    <script>
+      window.userSocketToken = "<%= assigns[:user_socket_token] || "" %>";
+    </script>
     {Application.get_env(:live_debugger, :live_debugger_tags)}
   </head>
 

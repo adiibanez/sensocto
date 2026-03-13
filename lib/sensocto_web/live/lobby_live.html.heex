@@ -31,21 +31,34 @@
         <span class="hidden sm:inline">Guide</span>
       </button>
 
-      <%!-- Layout toggle: stacked ↔ side-by-side --%>
+      <%!-- Layout toggle: stacked → side-by-side → floating --%>
       <div class="flex items-center gap-1.5">
         <span class="text-xs text-gray-500">Layout</span>
         <button
           phx-click="toggle_lobby_layout"
           title={
-            if(@lobby_layout == :side_by_side,
-              do: "Switch to stacked layout",
-              else: "Switch to side-by-side layout"
-            )
+            case @lobby_layout do
+              :stacked -> "Switch to side-by-side layout"
+              :side_by_side -> "Switch to floating dock"
+              :floating -> "Switch to stacked layout"
+            end
           }
-          class="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
+          class={[
+            "p-1.5 rounded-lg hover:bg-gray-600 text-gray-300 hover:text-white transition-colors",
+            if(@lobby_layout == :floating,
+              do: "bg-violet-600/40 ring-1 ring-violet-500/50",
+              else: "bg-gray-700/50"
+            )
+          ]}
         >
           <Heroicons.icon
-            name={if(@lobby_layout == :side_by_side, do: "bars-3", else: "view-columns")}
+            name={
+              case @lobby_layout do
+                :stacked -> "view-columns"
+                :side_by_side -> "squares-plus"
+                :floating -> "bars-3"
+              end
+            }
             type="outline"
             class="h-4 w-4"
           />
@@ -161,7 +174,13 @@
     if(@lobby_layout == :side_by_side, do: "flex-row gap-6 items-start", else: "flex-col")
   ]}>
     <%!-- Left column: Media / 3D / Whiteboard / Polls --%>
-    <div class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}>
+    <div class={
+      case @lobby_layout do
+        :side_by_side -> "flex-1 min-w-0"
+        :floating -> "w-full"
+        _ -> ""
+      end
+    }>
       <div class="flex flex-wrap items-center justify-center gap-1.5 mb-3">
         <button
           phx-click="switch_lobby_mode"
@@ -366,6 +385,58 @@
               <% end %>
             <% end %>
           </div>
+          <%!-- World selector pills --%>
+          <div class="flex items-center gap-1">
+            <button
+              :for={world <- [:bioluminescent, :inferno, :meadow]}
+              phx-click="avatar_switch_world"
+              phx-value-world={world}
+              class={"px-2 py-0.5 rounded text-[10px] font-medium transition-all " <>
+                if(@avatar_world == world,
+                  do: "bg-violet-600 text-white",
+                  else: "bg-gray-700 text-gray-400 hover:bg-gray-600")}
+            >
+              {world_label(world)}
+            </button>
+          </div>
+          <%!-- Wind intensity slider --%>
+          <div class="flex items-center gap-1.5" title={"Wind: #{@avatar_wind}%"}>
+            <svg
+              class="w-3.5 h-3.5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M17.7 7.7A7.1 7.1 0 013 5m0 0h4m-4 0v4m18 4a7.1 7.1 0 01-14.7 2.7"
+              />
+            </svg>
+            <form phx-change="avatar_set_wind" class="flex items-center">
+              <input
+                type="range"
+                name="value"
+                min="0"
+                max="100"
+                value={@avatar_wind}
+                class="w-16 h-1 accent-violet-500 cursor-pointer"
+              />
+            </form>
+          </div>
+          <%!-- Sync mode toggle --%>
+          <button
+            :if={@current_user}
+            phx-click="toggle_sync_mode"
+            class={"px-2 py-0.5 rounded text-[10px] font-medium transition-all " <>
+              if(@sync_mode == :solo,
+                do: "bg-green-600 hover:bg-green-500 text-white",
+                else: "bg-slate-600 hover:bg-slate-500 text-white")}
+            title={if @sync_mode == :solo, do: "Join group sync", else: "Watch independently"}
+          >
+            {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
+          </button>
           <button
             phx-click="avatar_toggle_fullscreen"
             class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
@@ -407,14 +478,18 @@
             id="avatar-splat-viewer"
             phx-hook="AvatarSplatHook"
             phx-update="ignore"
+            data-world={@avatar_world}
             class="absolute inset-0"
           >
           </div>
         </div>
       </div>
     </div>
-    <%!-- Right column: Sensor lenses --%>
-    <div class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}>
+    <%!-- Right column: Sensor lenses (hidden in floating mode — sensors move to dock) --%>
+    <div
+      :if={@lobby_layout != :floating}
+      class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}
+    >
       <%!-- Lens Selector - styled like rooms --%>
       <div class="flex items-center mb-2">
         <div class="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -670,7 +745,7 @@
             "grid grid-cols-1",
             if(@global_view_mode == :summary,
               do:
-                "gap-1.5 sm:gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+                "gap-1 sm:gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8",
               else: "gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
             )
           ]}
@@ -1303,6 +1378,18 @@
               >
                 <Heroicons.icon name="view-columns" type="outline" class="h-3.5 w-3.5" />
               </button>
+              <button
+                phx-click="guide_set_layout"
+                phx-value-layout="floating"
+                class={"p-1.5 rounded transition-colors " <>
+                  if(@lobby_layout == :floating,
+                    do: "bg-purple-600 text-white",
+                    else: "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                  )}
+                title="Floating dock"
+              >
+                <Heroicons.icon name="squares-plus" type="outline" class="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
 
@@ -1658,6 +1745,105 @@
     </div>
   </div>
 <% end %>
+
+<%!-- ================================================================== --%>
+<%!-- FLOATING SENSOR DOCK — only in :floating layout mode            --%>
+<%!-- ================================================================== --%>
+<div
+  :if={@lobby_layout == :floating}
+  id="floating-sensor-dock"
+  phx-hook="FloatingDock"
+  class="fixed bottom-0 left-0 right-0 z-40"
+>
+  <%!-- Expanded overlay cards (max 3) --%>
+  <div :if={@floating_expanded_sensors != []} class="flex justify-center gap-3 mb-2 px-4">
+    <div
+      :for={sensor_id <- @floating_expanded_sensors}
+      class="w-72 bg-gray-900/95 backdrop-blur rounded-lg border border-gray-700/50 shadow-xl relative"
+    >
+      <.live_component
+        module={StatefulSensorComponent}
+        id={"floating_#{sensor_id}"}
+        sensor_id={sensor_id}
+        sensor={
+          Map.get(@sensors, sensor_id, %{
+            sensor_id: sensor_id,
+            sensor_name: sensor_id,
+            sensor_type: "unknown",
+            attributes: %{}
+          })
+        }
+        view_mode={:summary}
+        user_id={@current_user && @current_user.id}
+        is_favorite={sensor_id in @favorite_sensors}
+      />
+      <button
+        phx-click="float_collapse_sensor"
+        phx-value-sensor-id={sensor_id}
+        class="absolute top-1 right-1 p-0.5 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors z-10"
+      >
+        <Heroicons.icon name="x-mark" type="mini" class="h-3 w-3" />
+      </button>
+    </div>
+  </div>
+
+  <%!-- Dock strip --%>
+  <div
+    :if={!@floating_dock_collapsed}
+    class="bg-gray-900/95 backdrop-blur-md border-t border-gray-700/50 px-3 py-2"
+  >
+    <div class="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700">
+      <%!-- Collapse button --%>
+      <button
+        phx-click="toggle_floating_dock"
+        class="p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white shrink-0"
+        title="Collapse dock"
+      >
+        <Heroicons.icon name="chevron-down" type="mini" class="h-4 w-4" />
+      </button>
+
+      <%!-- Sensor count --%>
+      <span class="text-[10px] text-gray-500 shrink-0">
+        {@sensors_online_count} online
+      </span>
+
+      <%!-- Divider --%>
+      <div class="w-px h-5 bg-gray-700 shrink-0"></div>
+
+      <%!-- Mini sensor badges --%>
+      <.mini_sensor_badge
+        :for={sensor_id <- @sensor_ids}
+        sensor_id={sensor_id}
+        sensor={
+          Map.get(@sensors, sensor_id, %{
+            sensor_id: sensor_id,
+            sensor_name: sensor_id,
+            sensor_type: "unknown",
+            attributes: %{}
+          })
+        }
+        is_expanded={sensor_id in @floating_expanded_sensors}
+      />
+
+      <%!-- Empty state --%>
+      <span :if={@sensor_ids == []} class="text-xs text-gray-500 italic">
+        No sensors connected
+      </span>
+    </div>
+  </div>
+
+  <%!-- Collapsed pill --%>
+  <div :if={@floating_dock_collapsed} class="flex justify-center pb-3">
+    <button
+      phx-click="toggle_floating_dock"
+      class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-800/90 backdrop-blur border border-gray-700/50 text-gray-300 hover:text-white hover:bg-gray-700/90 transition-colors shadow-lg text-xs"
+    >
+      <Heroicons.icon name="signal" type="mini" class="h-3.5 w-3.5 text-green-400" />
+      <span>{@sensors_online_count} sensors</span>
+      <Heroicons.icon name="chevron-up" type="mini" class="h-3 w-3 text-gray-500" />
+    </button>
+  </div>
+</div>
 
 <.join_room_modal show={@show_join_modal} public_rooms={@public_rooms} join_code={@join_code} />
 

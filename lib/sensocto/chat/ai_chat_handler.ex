@@ -88,7 +88,9 @@ defmodule Sensocto.Chat.AIChatHandler do
         if timers[user_name], do: Process.cancel_timer(timers[user_name])
 
         ref = Process.send_after(self(), {:clear_typing, user_name}, 3000)
-        typing_users = Map.get(socket.assigns, :typing_users, MapSet.new()) |> MapSet.put(user_name)
+
+        typing_users =
+          Map.get(socket.assigns, :typing_users, MapSet.new()) |> MapSet.put(user_name)
 
         socket =
           socket

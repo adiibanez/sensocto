@@ -1182,7 +1182,6 @@ defmodule SensoctoWeb.RoomShowLive do
     socket =
       socket
       |> assign(:sensor_activity, activity)
-      |> maybe_refresh_lenses()
 
     # Push composite_measurement event when lens is active
     socket =
@@ -1216,7 +1215,6 @@ defmodule SensoctoWeb.RoomShowLive do
     socket =
       socket
       |> assign(:sensor_activity, activity)
-      |> maybe_refresh_lenses()
 
     {:noreply, socket}
   end
@@ -1229,7 +1227,6 @@ defmodule SensoctoWeb.RoomShowLive do
     socket =
       socket
       |> assign(:sensor_activity, activity)
-      |> maybe_refresh_lenses()
 
     # Push composite_measurement events when lens is active
     socket =
@@ -1275,7 +1272,6 @@ defmodule SensoctoWeb.RoomShowLive do
     socket =
       socket
       |> assign(:sensor_activity, activity)
-      |> maybe_refresh_lenses()
 
     {:noreply, socket}
   end
@@ -1329,7 +1325,7 @@ defmodule SensoctoWeb.RoomShowLive do
         |> assign(:available_lenses, new_lenses)
       end
 
-    {:noreply, assign(socket, :sensor_activity, socket.assigns.sensor_activity)}
+    {:noreply, socket}
   end
 
   # Handle global sensor online events - auto-join web connector sensors to room
@@ -1432,24 +1428,6 @@ defmodule SensoctoWeb.RoomShowLive do
     Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
     |> Map.values()
     |> Enum.reject(fn sensor -> MapSet.member?(room_sensor_ids, sensor.sensor_id) end)
-  end
-
-  # Refresh lenses from current sensor state - returns socket with updated lenses if changed
-  defp maybe_refresh_lenses(socket) do
-    sensors = socket.assigns.sensors
-    sensors_state = get_sensors_state(sensors)
-    new_lenses = extract_available_lenses(sensors_state)
-
-    current_lens_types = Enum.map(socket.assigns.available_lenses, & &1.type) |> MapSet.new()
-    new_lens_types = Enum.map(new_lenses, & &1.type) |> MapSet.new()
-
-    if MapSet.equal?(current_lens_types, new_lens_types) do
-      socket
-    else
-      socket
-      |> assign(:sensors_state, sensors_state)
-      |> assign(:available_lenses, new_lenses)
-    end
   end
 
   defp build_activity_map(sensors) do

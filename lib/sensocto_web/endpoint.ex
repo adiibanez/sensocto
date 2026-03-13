@@ -11,11 +11,12 @@ defmodule SensoctoWeb.Endpoint do
     store: :cookie,
     path: "/",
     key: "_sensocto_key",
-    signing_salt: "4mNzZysc",
-    encryption_salt: "k8Xp2vQe",
+    signing_salt: Application.compile_env(:sensocto, :session_signing_salt, "4mNzZysc"),
+    encryption_salt: Application.compile_env(:sensocto, :session_encryption_salt, "k8Xp2vQe"),
     same_site: "Lax",
     max_age: 315_360_000,
-    http_only: true
+    http_only: true,
+    secure: Application.compile_env(:sensocto, :env) == :prod
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

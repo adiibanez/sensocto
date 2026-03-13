@@ -1,9 +1,10 @@
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import * as THREE from 'three';
+import { WindField } from './wind_field.js';
+import { WindParticles } from './wind_particles.js';
 
-// Multi-world sensor-driven Gaussian Splat ecosystem.
-// Each world generates different procedural geometry, lights, and animations
-// but all respond to the same sensor data pipeline (heartrate, breathing, IMU).
+// Multi-world sensor-driven Gaussian Splat ecosystem with curl-noise wind simulation.
+// Each world generates procedural geometry, lights, and wind-driven particle effects.
 
 // --- Shared utilities ---
 
@@ -119,9 +120,21 @@ const BIO_MUSHROOM_POS = [[-1.0, 0, 0.5], [0.8, 0, -0.5], [-2.0, 0, 2.0], [2.5, 
 const BIO_FLOWER_POS = [[-1.5, 0, 1.5], [0.5, 0, 0.8], [2.0, 0, 0.0], [-0.5, 0, -1.5],
                         [1.0, 0, -2.5], [-2.5, 0, -2.0], [3.5, 0, -0.5], [-1.0, 0, -3.0]];
 
+// Scene sample points for curl noise (conceptual center of each scene group)
+const BIO_SAMPLE_PTS = [
+  { x: 0, y: 0, z: 0 },       // 0: ground (static)
+  { x: 0, y: 2.5, z: 0 },     // 1: trees (high, swaying)
+  { x: 0, y: 0.3, z: 0 },     // 2: mushrooms (low, subtle)
+  { x: 0, y: 0.2, z: 0 },     // 3: flowers (low, gentle)
+  { x: 0, y: 2.5, z: 0 },     // 4: spores (high, maximum drift)
+];
+
 const bioluminescent = {
   name: 'Bioluminescent',
   sceneCount: 5,
+  samplePoints: BIO_SAMPLE_PTS,
+  // How strongly each scene responds to wind [position_scale, scale_response]
+  windResponse: [0, 0.5, 0.2, 0.3, 1.0],
 
   build() {
     const ground = [];
@@ -196,9 +209,11 @@ const bioluminescent = {
   },
 
   animate(ctx) {
-    const { mesh, time, smooth, sensorState, lights } = ctx;
+    const { mesh, time, smooth, sensorState, lights, wind = 0, pulse = 0, wv } = ctx;
     if (!mesh || mesh.scenes.length < 5) return;
 
+    const w = wind;
+    const p = pulse;
     const bpmNorm = clamp((smooth.bpm - 50) / 130, 0, 1);
     const bps = smooth.bpm / 60.0;
     const heartPhase = time * bps * Math.PI * 2;
@@ -207,70 +222,84 @@ const bioluminescent = {
     const breathPhase = Math.sin(time * breathRate * Math.PI * 2);
     const accelNorm = clamp(smooth.accelMag / 15, 0, 1);
 
+    // Mushrooms: heartbeat pulse + curl wind + data glow
     const mushroomScene = mesh.getScene(2);
-    if (mushroomScene) {
-      const pulse = 1.0 + 0.04 * heartPulse * (0.5 + bpmNorm * 0.5);
-      mushroomScene.scale.set(1, pulse, 1);
+    if (mushroomScene && wv[2]) {
+      const sc = 1.0 + 0.06 * heartPulse * (0.5 + bpmNorm * 0.5) + w * wv[2].y * 0.1 + p * 0.1;
+      mushroomScene.position.set(wv[2].x * w * 0.2, 0, wv[2].z * w * 0.2);
+      mushroomScene.scale.set(1, sc, 1);
     }
 
+    // Spores: IMU drift + curl wind floating + data burst
     const sporeScene = mesh.getScene(4);
-    if (sporeScene) {
-      const drift = accelNorm * 0.15;
+    if (sporeScene && wv[4]) {
+      const drift = accelNorm * 0.3;
       sporeScene.position.set(
-        Math.sin(time * 0.2) * (0.05 + drift),
-        Math.sin(time * 0.12) * 0.03,
-        Math.cos(time * 0.18) * (0.05 + drift)
+        wv[4].x * w * 1.0 + Math.sin(time * 0.3) * drift,
+        wv[4].y * w * 0.4 + p * 0.15,
+        wv[4].z * w * 1.0 + Math.cos(time * 0.25) * drift
       );
     }
 
+    // Trees: breathing sway + curl wind sway
     const treeScene = mesh.getScene(1);
-    if (treeScene) {
-      const sway = breathPhase * 0.006;
-      treeScene.position.set(sway, 0, sway * 0.5);
+    if (treeScene && wv[1]) {
+      const breathSway = breathPhase * 0.02;
+      treeScene.position.set(
+        breathSway + wv[1].x * w * 0.5,
+        0,
+        breathSway * 0.5 + wv[1].z * w * 0.5
+      );
     }
 
+    // Flowers: breathing scale + curl wind bob + data bloom
     const flowerScene = mesh.getScene(3);
-    if (flowerScene) {
-      const s = 1.0 + breathPhase * 0.015;
+    if (flowerScene && wv[3]) {
+      const s = 1.0 + breathPhase * 0.03 + w * Math.abs(wv[3].y) * 0.12 + p * 0.06;
+      flowerScene.position.set(wv[3].x * w * 0.3, 0, wv[3].z * w * 0.3);
       flowerScene.scale.set(s, s, s);
     }
 
+    // Mushroom lights: heartrate hue + wind glow + data pulse glow
     if (lights.mushroom) {
       const hue = lerp(0.75, 0.88, bpmNorm);
       const [lr, lg, lb] = hslToRgb(hue, 0.9, 0.45 + 0.15 * heartPulse);
-      const baseIntensity = 0.3 + bpmNorm * 0.7;
+      const baseIntensity = w * 0.3 + bpmNorm * 0.7;
       for (let i = 0; i < lights.mushroom.length; i++) {
-        const light = lights.mushroom[i];
         const stagger = Math.sin(heartPhase + i * 0.9) * 0.5 + 0.5;
-        light.intensity = baseIntensity * (0.4 + 0.6 * stagger);
-        light.color.setRGB(lr / 255, lg / 255, lb / 255);
+        lights.mushroom[i].intensity = baseIntensity * (0.4 + 0.6 * stagger) + p * 0.8;
+        lights.mushroom[i].color.setRGB(lr / 255, lg / 255, lb / 255);
       }
     }
 
+    // Tree lights: breathing hue + data glow
     if (lights.tree) {
       const breathHue = lerp(0.35, 0.45, clamp(smooth.breathing, 0, 1));
       const [tr, tg, tb] = hslToRgb(breathHue, 0.7, 0.5);
       for (let i = 0; i < lights.tree.length; i++) {
-        const light = lights.tree[i];
         const phase = Math.sin(time * breathRate * Math.PI * 2 + i * 1.2);
-        light.intensity = 0.2 + 0.4 * (0.5 + 0.5 * phase);
-        light.color.setRGB(tr / 255, tg / 255, tb / 255);
+        lights.tree[i].intensity = w * 0.15 + 0.2 + 0.4 * (0.5 + 0.5 * phase) + p * 0.5;
+        lights.tree[i].color.setRGB(tr / 255, tg / 255, tb / 255);
       }
     }
 
+    // Spore light: IMU movement + data glow
     if (lights.spore) {
       const moveHue = lerp(0.55, 0.12, accelNorm);
       const [sr, sg, sb] = hslToRgb(moveHue, 0.8, 0.55);
-      lights.spore.intensity = 0.15 + accelNorm * 0.6;
+      lights.spore.intensity = w * 0.2 + 0.15 + accelNorm * 0.6 + p * 0.6;
       lights.spore.color.setRGB(sr / 255, sg / 255, sb / 255);
-      lights.spore.position.x = Math.sin(time * 0.3) * 2 + accelNorm * Math.sin(time * 2) * 0.5;
-      lights.spore.position.z = Math.cos(time * 0.2) * 2;
-      lights.spore.position.y = 2.5 + 0.5 * Math.sin(time * 0.15);
+      if (wv[4]) {
+        lights.spore.position.x = wv[4].x * w * 2 + accelNorm * Math.sin(time * 2) * 0.5;
+        lights.spore.position.z = wv[4].z * w * 2;
+        lights.spore.position.y = 2.5 + wv[4].y * w * 0.5;
+      }
     }
 
+    // Ambient: sensor presence + wind + data glow
     if (lights.ambient) {
       const presence = clamp(sensorState.sensorCount / 5, 0, 1);
-      lights.ambient.intensity = 0.08 + presence * 0.22;
+      lights.ambient.intensity = 0.08 + w * 0.15 + presence * 0.22 + p * 0.3;
     }
 
     mesh.updateTransforms();
@@ -285,12 +314,21 @@ const FIRE_COL_POS = [[-2.0, 0, -1.5], [1.5, 0, -2.0], [0.0, 0, 2.0], [2.5, 0, 0
 const ROCK_POS = [[-1.5, 0, 0.5], [1.0, 0, -0.8], [-2.5, 0, 2.5], [3.0, 0, -1.5],
                   [0.5, 0, -3.0], [-3.5, 0, -0.5], [2.0, 0, 2.5], [-0.5, 0, -2.0]];
 
+const INF_SAMPLE_PTS = [
+  { x: 0, y: 0, z: 0 },       // 0: lava ground (static)
+  { x: 0, y: 1.5, z: 0 },     // 1: fire columns (medium)
+  { x: 0, y: 2.5, z: 0 },     // 2: embers (high, turbulent)
+  { x: 0, y: 0.3, z: 0 },     // 3: rocks (static)
+  { x: 0, y: 3.5, z: 0 },     // 4: smoke (highest, maximum drift)
+];
+
 const inferno = {
   name: 'Inferno',
   sceneCount: 5,
+  samplePoints: INF_SAMPLE_PTS,
+  windResponse: [0, 0.4, 0.8, 0, 1.0],
 
   build() {
-    // Scene 0: Lava ground — dark obsidian with orange/red cracks
     const ground = [];
     for (let i = 0; i < 350; i++) {
       const x = (Math.random() - 0.5) * 12, z = (Math.random() - 0.5) * 12;
@@ -301,7 +339,6 @@ const inferno = {
         c[0], c[1], c[2], isLava ? 230 : 200));
     }
 
-    // Scene 1: Fire columns — tall vertical clusters
     const columns = [];
     for (const [fx, , fz] of FIRE_COL_POS) {
       const height = 2.0 + Math.random() * 1.5;
@@ -314,7 +351,6 @@ const inferno = {
       }
     }
 
-    // Scene 2: Embers — floating bright particles
     const embers = [];
     for (let i = 0; i < 120; i++) {
       const [r, g, b] = hslToRgb(Math.random() * 0.08, 1.0, 0.5 + Math.random() * 0.2);
@@ -324,7 +360,6 @@ const inferno = {
       ));
     }
 
-    // Scene 3: Obsidian rocks
     const rocks = [];
     for (const [rx, , rz] of ROCK_POS) {
       const rh = 0.3 + Math.random() * 0.5;
@@ -332,7 +367,6 @@ const inferno = {
         [30 + randn() * 10, 25 + randn() * 8, 22 + randn() * 8], 25, 0.05, 210);
     }
 
-    // Scene 4: Smoke plumes — translucent dark rising
     const smoke = [];
     for (const [fx, , fz] of FIRE_COL_POS) {
       for (let i = 0; i < 15; i++) {
@@ -369,9 +403,11 @@ const inferno = {
   },
 
   animate(ctx) {
-    const { mesh, time, smooth, sensorState, lights } = ctx;
+    const { mesh, time, smooth, sensorState, lights, wind = 0, pulse = 0, wv } = ctx;
     if (!mesh || mesh.scenes.length < 5) return;
 
+    const w = wind;
+    const p = pulse;
     const bpmNorm = clamp((smooth.bpm - 50) / 130, 0, 1);
     const bps = smooth.bpm / 60.0;
     const heartPhase = time * bps * Math.PI * 2;
@@ -380,47 +416,54 @@ const inferno = {
     const breathPhase = Math.sin(time * breathRate * Math.PI * 2);
     const accelNorm = clamp(smooth.accelMag / 15, 0, 1);
 
-    // Fire columns: scale pulse with heartbeat (flames grow with exertion)
+    // Fire columns: heartbeat pulse + curl wind flicker + data surge
     const colScene = mesh.getScene(1);
-    if (colScene) {
-      const pulse = 1.0 + 0.08 * heartPulse * (0.5 + bpmNorm * 0.5);
-      colScene.scale.set(1, pulse, 1);
-      colScene.position.set(Math.sin(time * 1.5) * 0.02, 0, Math.cos(time * 1.3) * 0.02);
-    }
-
-    // Embers: turbulent drift from IMU
-    const emberScene = mesh.getScene(2);
-    if (emberScene) {
-      const turb = accelNorm * 0.2;
-      emberScene.position.set(
-        Math.sin(time * 0.8) * (0.05 + turb),
-        Math.sin(time * 0.3) * 0.05,
-        Math.cos(time * 0.6) * (0.05 + turb)
+    if (colScene && wv[1]) {
+      const sc = 1.0 + 0.1 * heartPulse * (0.5 + bpmNorm * 0.5) + p * 0.15;
+      colScene.scale.set(1, sc, 1);
+      colScene.position.set(
+        wv[1].x * w * 0.4 + Math.sin(time * 1.5) * 0.05,
+        0,
+        wv[1].z * w * 0.4 + Math.cos(time * 1.3) * 0.05
       );
     }
 
-    // Smoke: drift upward with breathing
-    const smokeScene = mesh.getScene(4);
-    if (smokeScene) {
-      const rise = breathPhase * 0.03;
-      smokeScene.position.set(breathPhase * 0.01, rise, 0);
+    // Embers: IMU turbulence + curl wind rise + data burst
+    const emberScene = mesh.getScene(2);
+    if (emberScene && wv[2]) {
+      const turb = accelNorm * 0.3;
+      emberScene.position.set(
+        wv[2].x * w * 0.8 + Math.sin(time * 0.8) * turb,
+        wv[2].y * w * 0.5 + p * 0.15,
+        wv[2].z * w * 0.8 + Math.cos(time * 0.6) * turb
+      );
     }
 
-    // Fire lights: heartrate → intensity flicker + orange→red hue
+    // Smoke: breathing drift + curl wind continuous rise
+    const smokeScene = mesh.getScene(4);
+    if (smokeScene && wv[4]) {
+      smokeScene.position.set(
+        wv[4].x * w * 0.6 + breathPhase * 0.04,
+        wv[4].y * w * 0.4 + breathPhase * 0.08,
+        wv[4].z * w * 0.6
+      );
+    }
+
+    // Fire lights: heartrate flicker + data pulse
     if (lights.fire) {
       const hue = lerp(0.06, 0.01, bpmNorm);
       const [lr, lg, lb] = hslToRgb(hue, 1.0, 0.4 + 0.15 * heartPulse);
       for (let i = 0; i < lights.fire.length; i++) {
         const flicker = Math.sin(heartPhase + i * 1.3) * 0.5 + 0.5;
         const turbFlicker = Math.sin(time * 8 + i * 2.7) * 0.15;
-        lights.fire[i].intensity = (0.5 + bpmNorm * 0.8) * (0.5 + 0.5 * flicker) + turbFlicker;
+        lights.fire[i].intensity = w * 0.4 + (0.5 + bpmNorm * 0.8) * (0.5 + 0.5 * flicker) + turbFlicker + p * 1.0;
         lights.fire[i].color.setRGB(lr / 255, lg / 255, lb / 255);
       }
     }
 
-    // Lava glow: breathing drives intensity
+    // Lava glow: breathing + wind + data pulse
     if (lights.lava) {
-      lights.lava.intensity = 0.3 + 0.4 * (0.5 + 0.5 * breathPhase);
+      lights.lava.intensity = w * 0.2 + 0.3 + 0.4 * (0.5 + 0.5 * breathPhase) + p * 0.6;
       const lavaHue = lerp(0.04, 0.01, bpmNorm);
       const [r, g, b] = hslToRgb(lavaHue, 1.0, 0.35);
       lights.lava.color.setRGB(r / 255, g / 255, b / 255);
@@ -428,7 +471,7 @@ const inferno = {
 
     if (lights.ambient) {
       const presence = clamp(sensorState.sensorCount / 5, 0, 1);
-      lights.ambient.intensity = 0.05 + presence * 0.15;
+      lights.ambient.intensity = 0.05 + w * 0.15 + presence * 0.15 + p * 0.3;
     }
 
     mesh.updateTransforms();
@@ -444,12 +487,21 @@ const WILDFLOWER_POS = [[-1.5, 0, 0.5], [0.8, 0, -1.5], [-2.5, 0, 2.5], [2.0, 0,
                         [0.0, 0, -2.5], [-3.0, 0, -1.0], [1.5, 0, 2.0], [3.5, 0, 1.5],
                         [-1.0, 0, -1.5], [0.5, 0, 3.0]];
 
+const MDW_SAMPLE_PTS = [
+  { x: 0, y: 0, z: 0 },       // 0: ground (static)
+  { x: 0, y: 0.4, z: 0 },     // 1: grass (low, swaying)
+  { x: 0, y: 0.2, z: 0 },     // 2: flowers (low, gentle)
+  { x: 0, y: 1.2, z: 0 },     // 3: butterflies (medium, fluttery)
+  { x: 0, y: 0.3, z: 0 },     // 4: hills (static)
+];
+
 const meadow = {
   name: 'Meadow',
   sceneCount: 5,
+  samplePoints: MDW_SAMPLE_PTS,
+  windResponse: [0, 0.6, 0.3, 0.9, 0],
 
   build() {
-    // Scene 0: Grass ground — varied green base with height undulation
     const ground = [];
     for (let i = 0; i < 400; i++) {
       const x = (Math.random() - 0.5) * 12, z = (Math.random() - 0.5) * 12;
@@ -461,7 +513,6 @@ const meadow = {
         c[0], c[1], c[2], 210));
     }
 
-    // Scene 1: Grass tufts — tall, swaying clusters
     const grass = [];
     for (const [gx, , gz] of GRASS_POS) {
       const h = 0.4 + Math.random() * 0.3;
@@ -471,7 +522,6 @@ const meadow = {
         [60 + randn() * 10, 180 + randn() * 15, 40 + randn() * 10], 15, 0.015, 170);
     }
 
-    // Scene 2: Wildflowers — varied pastel colors
     const flowers = [];
     for (const [fx, , fz] of WILDFLOWER_POS) {
       const hue = Math.random();
@@ -481,7 +531,6 @@ const meadow = {
         [30 + randn() * 10, 100 + randn() * 15, 20 + randn() * 10], 5, 0.01, 180);
     }
 
-    // Scene 3: Butterflies — tiny bright splats floating above
     const butterflies = [];
     for (let i = 0; i < 50; i++) {
       const hue = Math.random();
@@ -491,7 +540,6 @@ const meadow = {
         0.015, 0.008, 0.02, r, g, b, 180 + Math.random() * 50));
     }
 
-    // Scene 4: Gentle hills (background terrain mounds)
     const hills = [];
     const hillCenters = [[-4, 0, -3], [4, 0, -2], [-3, 0, 4], [5, 0, 3], [0, 0, -5]];
     for (const [hx, , hz] of hillCenters) {
@@ -528,9 +576,11 @@ const meadow = {
   },
 
   animate(ctx) {
-    const { mesh, time, smooth, sensorState, lights } = ctx;
+    const { mesh, time, smooth, sensorState, lights, wind = 0, pulse = 0, wv } = ctx;
     if (!mesh || mesh.scenes.length < 5) return;
 
+    const w = wind;
+    const p = pulse;
     const bpmNorm = clamp((smooth.bpm - 50) / 130, 0, 1);
     const bps = smooth.bpm / 60.0;
     const heartPhase = time * bps * Math.PI * 2;
@@ -539,58 +589,65 @@ const meadow = {
     const breathPhase = Math.sin(time * breathRate * Math.PI * 2);
     const accelNorm = clamp(smooth.accelMag / 15, 0, 1);
 
-    // Grass sway with breathing
+    // Grass sway: breathing + curl wind
     const grassScene = mesh.getScene(1);
-    if (grassScene) {
-      const sway = breathPhase * 0.015;
-      grassScene.position.set(sway, 0, sway * 0.7);
-    }
-
-    // Flowers bloom scale with heartbeat
-    const flowerScene = mesh.getScene(2);
-    if (flowerScene) {
-      const bloom = 1.0 + 0.04 * heartPulse * (0.3 + bpmNorm * 0.7);
-      flowerScene.scale.set(bloom, bloom, bloom);
-    }
-
-    // Butterflies scatter with IMU
-    const butterflyScene = mesh.getScene(3);
-    if (butterflyScene) {
-      const scatter = accelNorm * 0.2;
-      butterflyScene.position.set(
-        Math.sin(time * 0.4) * (0.1 + scatter),
-        Math.sin(time * 0.25) * 0.08,
-        Math.cos(time * 0.35) * (0.1 + scatter)
+    if (grassScene && wv[1]) {
+      const breathSway = breathPhase * 0.04;
+      grassScene.position.set(
+        breathSway + wv[1].x * w * 0.6,
+        0,
+        breathSway * 0.7 + wv[1].z * w * 0.6
       );
     }
 
-    // Sun color shifts: warm at rest → bright at exertion
+    // Flowers: heartbeat bloom + curl wind bob + data bloom
+    const flowerScene = mesh.getScene(2);
+    if (flowerScene && wv[2]) {
+      const bloom = 1.0 + 0.06 * heartPulse * (0.3 + bpmNorm * 0.7) + p * 0.08;
+      flowerScene.position.set(wv[2].x * w * 0.3, 0, wv[2].z * w * 0.3);
+      flowerScene.scale.set(bloom, bloom, bloom);
+    }
+
+    // Butterflies: IMU scatter + curl wind flutter + data burst
+    const butterflyScene = mesh.getScene(3);
+    if (butterflyScene && wv[3]) {
+      const scatter = accelNorm * 0.3;
+      butterflyScene.position.set(
+        wv[3].x * w * 0.9 + Math.sin(time * 0.5) * scatter,
+        wv[3].y * w * 0.4 + p * 0.1,
+        wv[3].z * w * 0.9 + Math.cos(time * 0.4) * scatter
+      );
+    }
+
+    // Sun: breathing intensity + data flash
     if (lights.sun) {
       const sunHue = lerp(0.12, 0.15, bpmNorm);
       const [r, g, b] = hslToRgb(sunHue, 0.3, 0.9);
       lights.sun.color.setRGB(r / 255, g / 255, b / 255);
-      lights.sun.intensity = 0.5 + 0.3 * breathPhase * 0.5;
+      lights.sun.intensity = 0.5 + 0.3 * breathPhase * 0.5 + p * 0.4;
     }
 
-    // Flower lights: heartrate-synced gentle glow
+    // Flower lights: heartrate glow + data pulse
     if (lights.flower) {
       for (let i = 0; i < lights.flower.length; i++) {
         const phase = Math.sin(heartPhase + i * 1.1) * 0.5 + 0.5;
-        lights.flower[i].intensity = 0.1 + 0.3 * phase * bpmNorm;
+        lights.flower[i].intensity = w * 0.15 + 0.1 + 0.3 * phase * bpmNorm + p * 0.5;
       }
     }
 
-    // Butterfly light: IMU drives brightness and drift
+    // Butterfly light: IMU + wind drift + data glow
     if (lights.butterfly) {
-      lights.butterfly.intensity = 0.1 + accelNorm * 0.4;
-      lights.butterfly.position.x = Math.sin(time * 0.3) * 2;
-      lights.butterfly.position.z = Math.cos(time * 0.25) * 2;
-      lights.butterfly.position.y = 1.5 + Math.sin(time * 0.15) * 0.5;
+      lights.butterfly.intensity = w * 0.15 + 0.1 + accelNorm * 0.4 + p * 0.4;
+      if (wv[3]) {
+        lights.butterfly.position.x = wv[3].x * w * 2;
+        lights.butterfly.position.z = wv[3].z * w * 2;
+        lights.butterfly.position.y = 1.5 + wv[3].y * w * 0.5;
+      }
     }
 
     if (lights.ambient) {
       const presence = clamp(sensorState.sensorCount / 5, 0, 1);
-      lights.ambient.intensity = 0.25 + presence * 0.2;
+      lights.ambient.intensity = 0.25 + w * 0.15 + presence * 0.2 + p * 0.3;
     }
 
     mesh.updateTransforms();
@@ -614,6 +671,8 @@ const AvatarSplatHook = {
     this.time = 0;
     this._blobUrls = [];
     this._lights = {};
+    this._particles = null;
+    this._windField = new WindField();
     this._worldKey = this.el.dataset.world || 'bioluminescent';
     this._world = WORLDS[this._worldKey] || WORLDS.bioluminescent;
 
@@ -623,6 +682,9 @@ const AvatarSplatHook = {
     this._cameraRadius = 6.0;
     this._cameraLookAt = { x: 0, y: 1.5, z: 0 };
     this._sensorDriven = false;
+    this.wind = 0.5;
+    this.dataPulse = 0;
+    this._dt = 0;
 
     this._onMeasurement = this._handleMeasurementEvent.bind(this);
     window.addEventListener('composite-measurement-event', this._onMeasurement);
@@ -663,6 +725,25 @@ const AvatarSplatHook = {
       }
     });
 
+    this.handleEvent('avatar_set_wind', ({ value }) => {
+      this.wind = clamp(value, 0, 1);
+    });
+
+    this.handleEvent('avatar_update_camera', ({ position, target }) => {
+      if (!this.viewer || this._sensorDriven) return;
+      const controls = this.viewer.perspectiveControls || this.viewer.controls;
+      if (controls) controls.enabled = false;
+      const cam = this.viewer.camera;
+      cam.position.set(position[0], position[1], position[2]);
+      cam.lookAt(target[0], target[1], target[2]);
+      if (controls?.target) controls.target.set(target[0], target[1], target[2]);
+      if (controls) {
+        controls.update?.();
+        requestAnimationFrame(() => { controls.enabled = true; });
+      }
+    });
+
+    this._lastCameraPush = 0;
     this._tryInit();
   },
 
@@ -671,6 +752,10 @@ const AvatarSplatHook = {
     this._worldKey = worldKey;
     this._world = WORLDS[worldKey];
 
+    if (this._particles) {
+      this._particles.dispose();
+      this._particles = null;
+    }
     if (this._blobUrls) {
       for (const url of this._blobUrls) URL.revokeObjectURL(url);
       this._blobUrls = [];
@@ -678,6 +763,10 @@ const AvatarSplatHook = {
     if (this._canvasObserver) {
       this._canvasObserver.disconnect();
       this._canvasObserver = null;
+    }
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
     }
     if (this.viewer) {
       try { this.viewer.dispose(); } catch (_) {}
@@ -759,17 +848,43 @@ const AvatarSplatHook = {
 
       if (this.viewer.threeScene) {
         this._lights = this._world.setupLights(this.viewer.threeScene);
+        this._particles = new WindParticles(this.viewer.threeScene, this._worldKey);
       }
 
-      const origUpdate = this.viewer.selfDrivenUpdate.bind(this.viewer);
-      this.viewer.selfDrivenUpdate = () => {
-        this.time += 0.016;
-        this._animate();
-        origUpdate();
-        if (this._sensorDriven) this.viewer.forceRenderNextFrame();
-      };
+      // Throttled camera sync broadcast on OrbitControls change
+      const controls = this.viewer.perspectiveControls || this.viewer.controls;
+      if (controls) {
+        controls.addEventListener('change', () => {
+          const now = performance.now();
+          if (now - this._lastCameraPush < 100) return; // 10 Hz max
+          this._lastCameraPush = now;
+          const cam = this.viewer.camera;
+          const tgt = controls.target || { x: 0, y: 1.5, z: 0 };
+          this.pushEvent('avatar_camera_changed', {
+            position: [cam.position.x, cam.position.y, cam.position.z],
+            target: [tgt.x, tgt.y, tgt.z],
+          });
+        });
+      }
 
-      console.log(`[AvatarSplat] ${this._world.name} ready`);
+      // Own RAF loop for animation — viewer's selfDrivenUpdate handles rendering
+      this._lastTime = performance.now();
+      const hook = this;
+      const animLoop = () => {
+        if (!hook.viewer) return;
+        const now = performance.now();
+        const dt = (now - hook._lastTime) / 1000;
+        hook._lastTime = now;
+        hook._dt = dt;
+        hook.time += dt;
+        hook._animate();
+        hook.viewer.forceRenderNextFrame();
+        hook._rafId = requestAnimationFrame(animLoop);
+      };
+      this._rafId = requestAnimationFrame(animLoop);
+      this.el.__avatarHook = this;
+
+      console.log(`[AvatarSplat] ${this._world.name} ready with wind particles`);
     } catch (error) {
       console.error('[AvatarSplat] Init error:', error);
     }
@@ -811,6 +926,7 @@ const AvatarSplatHook = {
       }
     }
     this._aggregateSensorState();
+    this.dataPulse = Math.min(1, this.dataPulse + 0.3);
   },
 
   _aggregateSensorState() {
@@ -836,6 +952,10 @@ const AvatarSplatHook = {
 
   _animate() {
     const mesh = this.viewer?.splatMesh;
+    const dt = this._dt;
+
+    // Decay data pulse
+    this.dataPulse = Math.max(0, this.dataPulse - 0.02);
 
     const alpha = 0.05;
     this.smooth.bpm = lerp(this.smooth.bpm, this.sensorState.bpm, alpha);
@@ -843,6 +963,18 @@ const AvatarSplatHook = {
     this.smooth.accelMag = lerp(this.smooth.accelMag, this.sensorState.accelMag, alpha * 2);
     this.smooth.yaw = lerp(this.smooth.yaw, this.sensorState.yaw, alpha * 3);
     this.smooth.pitch = lerp(this.smooth.pitch, this.sensorState.pitch, alpha * 3);
+
+    // Gust-modulated effective wind
+    const gustMul = this._windField.gust(this.time);
+    const effectiveWind = this.wind * gustMul;
+
+    // Pre-sample curl noise at each scene's conceptual position
+    const wv = [];
+    if (this._world?.samplePoints) {
+      for (const pt of this._world.samplePoints) {
+        wv.push(this._windField.curl(pt.x, pt.y, pt.z, this.time));
+      }
+    }
 
     // Camera orbit driven by controller sensor orientation
     if (this._sensorDriven && this.viewer) {
@@ -865,16 +997,26 @@ const AvatarSplatHook = {
       if (controls) controls.enabled = true;
     }
 
-    // Delegate world-specific animation
+    // Delegate world-specific animation with curl noise vectors
     if (this._world && mesh) {
       this._world.animate({
         mesh, time: this.time, smooth: this.smooth,
         sensorState: this.sensorState, lights: this._lights, viewer: this.viewer,
+        wind: effectiveWind, pulse: this.dataPulse, wv,
       });
+    }
+
+    // Update wind particles
+    if (this._particles) {
+      this._particles.update(dt, this.time, effectiveWind, this._windField, this.dataPulse);
     }
   },
 
   destroyed() {
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
     if (this._onMeasurement) window.removeEventListener('composite-measurement-event', this._onMeasurement);
     if (this._handleResize) window.removeEventListener('resize', this._handleResize);
     if (this._onFullscreenChange) document.removeEventListener('fullscreenchange', this._onFullscreenChange);
@@ -882,6 +1024,10 @@ const AvatarSplatHook = {
     if (this._canvasObserver) {
       this._canvasObserver.disconnect();
       this._canvasObserver = null;
+    }
+    if (this._particles) {
+      this._particles.dispose();
+      this._particles = null;
     }
     if (this._blobUrls) {
       for (const url of this._blobUrls) URL.revokeObjectURL(url);

@@ -23,31 +23,31 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
     GenServer.start_link(__MODULE__, %__MODULE__{}, name: __MODULE__)
   end
 
-  def take_control(user_id, user_name) do
+  def take_control(user_id, user_name) when is_binary(user_id) do
     GenServer.call(__MODULE__, {:take_control, user_id, user_name})
   catch
     :exit, _ -> {:error, :not_found}
   end
 
-  def release_control(user_id) do
+  def release_control(user_id) when is_binary(user_id) do
     GenServer.call(__MODULE__, {:release_control, user_id})
   catch
     :exit, _ -> {:error, :not_found}
   end
 
-  def request_control(user_id, user_name) do
+  def request_control(user_id, user_name) when is_binary(user_id) do
     GenServer.call(__MODULE__, {:request_control, user_id, user_name})
   catch
     :exit, _ -> {:error, :not_found}
   end
 
-  def keep_control(user_id) do
+  def keep_control(user_id) when is_binary(user_id) do
     GenServer.call(__MODULE__, {:keep_control, user_id})
   catch
     :exit, _ -> {:error, :not_found}
   end
 
-  def cancel_request(user_id) do
+  def cancel_request(user_id) when is_binary(user_id) do
     GenServer.call(__MODULE__, {:cancel_request, user_id})
   catch
     :exit, _ -> {:error, :not_found}
@@ -84,8 +84,9 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
     {:reply, :ok, new_state}
   end
 
+  @impl true
   def handle_call({:release_control, user_id}, _from, state) do
-    if to_string(state.controller_user_id) == to_string(user_id) do
+    if state.controller_user_id == user_id do
       state = cancel_pending_request(state)
 
       new_state = %{state | controller_user_id: nil, controller_user_name: nil}
@@ -101,6 +102,7 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
     end
   end
 
+  @impl true
   def handle_call({:request_control, user_id, user_name}, _from, state) do
     cond do
       is_nil(state.controller_user_id) ->
@@ -113,7 +115,7 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
 
         {:reply, {:ok, :control_granted}, new_state}
 
-      to_string(state.controller_user_id) == to_string(user_id) ->
+      state.controller_user_id == user_id ->
         {:reply, {:ok, :already_controller}, state}
 
       true ->
@@ -142,9 +144,9 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
     end
   end
 
+  @impl true
   def handle_call({:keep_control, user_id}, _from, state) do
-    if to_string(state.controller_user_id) == to_string(user_id) &&
-         state.pending_request_user_id do
+    if state.controller_user_id == user_id && state.pending_request_user_id do
       requester_id = state.pending_request_user_id
       new_state = cancel_pending_request(state)
       broadcast(:avatar_control_request_denied, %{requester_id: requester_id})
@@ -154,9 +156,9 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
     end
   end
 
+  @impl true
   def handle_call({:cancel_request, user_id}, _from, state) do
-    if state.pending_request_user_id &&
-         to_string(state.pending_request_user_id) == to_string(user_id) do
+    if state.pending_request_user_id && state.pending_request_user_id == user_id do
       new_state = cancel_pending_request(state)
       {:reply, :ok, new_state}
     else
@@ -164,6 +166,7 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
     end
   end
 
+  @impl true
   def handle_call(:get_state, _from, state) do
     {:reply,
      %{
@@ -176,8 +179,7 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
 
   @impl true
   def handle_info({:control_request_timeout, requester_id}, state) do
-    if state.pending_request_user_id &&
-         to_string(state.pending_request_user_id) == to_string(requester_id) do
+    if state.pending_request_user_id && state.pending_request_user_id == requester_id do
       new_state = %{
         state
         | controller_user_id: state.pending_request_user_id,
@@ -201,6 +203,9 @@ defmodule Sensocto.Avatar.AvatarEcosystemServer do
       {:noreply, state}
     end
   end
+
+  @impl true
+  def code_change(_old_vsn, state, _extra), do: {:ok, state}
 
   # --- Private ---
 

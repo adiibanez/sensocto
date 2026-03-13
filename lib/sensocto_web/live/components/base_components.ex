@@ -180,14 +180,11 @@ defmodule SensoctoWeb.Live.BaseComponents do
     assigns = assign_new(assigns, :view_mode, fn -> :normal end)
 
     ~H"""
-    <div class="flex items-center m-0 p-0" id={"sensor_header_#{@sensor_id}"}>
-      <p
-        class={[
-          "flex-none font-bold",
-          if(@view_mode == :summary, do: "text-xs", else: "text-s")
-        ]}
-        style="border:0 solid white"
-      >
+    <div class="flex items-center m-0 p-0 min-w-0" id={"sensor_header_#{@sensor_id}"}>
+      <p class={[
+        "font-bold truncate",
+        if(@view_mode == :summary, do: "text-[11px] leading-tight", else: "text-s")
+      ]}>
         {@sensor_name}
       </p>
     </div>

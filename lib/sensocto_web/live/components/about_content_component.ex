@@ -769,7 +769,9 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
             <p class="leading-relaxed">
               {gettext("What if you could")}
               <%= for {{color, use_case}, index} <- Enum.with_index(visible_use_cases(@use_cases, @current_offset, @visible_count)) do %>
-                <.hl text={use_case} color={color} />{if index < @visible_count - 1, do: "? ", else: "?"}
+                <.hl text={use_case} color={color} />{if index < @visible_count - 1,
+                  do: "? ",
+                  else: "?"}
               <% end %>
             </p>
             <div class="flex items-center justify-center gap-2 mt-3 text-sm text-gray-500 group-hover:text-gray-400 transition-colors">

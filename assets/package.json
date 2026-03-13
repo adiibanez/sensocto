@@ -30,6 +30,7 @@
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "qrcode": "^1.5.4",
     "sigma": "^3.0.2",
+    "simplex-noise": "^4.0.3",
     "sortablejs": "^1.15.6",
     "three": "^0.160.0",
     "uuid": "^13.0.0"

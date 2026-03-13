@@ -11,9 +11,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   alias Sensocto.Media.MediaPlayerSupervisor
   alias Sensocto.Accounts.UserPreferences
 
-  # Playlist/playback write events that guests cannot trigger
-  @guest_restricted_events ~w[add_video remove_item reorder_playlist play pause next previous play_item client_seek]
-
   @impl true
   def mount(socket) do
     {:ok,
@@ -178,13 +175,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   def handle_event("test_hook_connection", params, socket) do
     Logger.info("TEST_HOOK_CONNECTION received: #{inspect(params)}")
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event(event, _params, %{assigns: %{current_user: %{is_guest: true}}} = socket)
-      when event in @guest_restricted_events do
-    {:noreply,
-     put_flash(socket, :error, "Guests cannot manage media. Please sign up for an account.")}
   end
 
   def handle_event("play", _, socket) do
@@ -790,7 +780,11 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
           <% end %>
 
           <%!-- Add Video Input --%>
-          <form :if={!(@current_user && Map.get(@current_user, :is_guest))} phx-submit="add_video" phx-target={@myself} class="mb-3">
+          <form
+            phx-submit="add_video"
+            phx-target={@myself}
+            class="mb-3"
+          >
             <label for="add-video-url" class="sr-only">YouTube video URL</label>
             <div class="flex gap-2">
               <input
@@ -857,7 +851,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                     class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-gray-700/50 border-l-4 border-gray-400", else: "hover:bg-gray-700"}"}
                   >
                     <%!-- Now Playing Indicator or Drag Handle --%>
-                    <% is_guest = @current_user && Map.get(@current_user, :is_guest) %>
                     <%= if is_current do %>
                       <div class="p-1 text-gray-300 flex-shrink-0">
                         <%= if is_playing do %>
@@ -871,15 +864,11 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                         <% end %>
                       </div>
                     <% else %>
-                      <%= if is_guest do %>
-                        <div class="p-1 flex-shrink-0 w-6"></div>
-                      <% else %>
-                        <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
-                          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-                          </svg>
-                        </div>
-                      <% end %>
+                      <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+                        </svg>
+                      </div>
                     <% end %>
                     <div class="relative flex-shrink-0">
                       <img
@@ -931,7 +920,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
                       </p>
                     </div>
                     <button
-                      :if={!is_guest}
                       phx-click="remove_item"
                       phx-value-item-id={item.id}
                       phx-target={@myself}

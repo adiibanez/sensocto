@@ -44,9 +44,13 @@ config :spark,
   ]
 
 config :sensocto,
+  env: config_env(),
   ecto_repos: [Sensocto.Repo, Sensocto.Repo.Replica],
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Sensocto.Accounts, Sensocto.Sensors, Sensocto.Collaboration, Sensocto.Guidance]
+
+# Filter sensitive parameters from Phoenix logs
+config :phoenix, :filter_parameters, ["password", "token", "secret", "bearer"]
 
 # Internationalization (i18n) configuration
 config :sensocto, SensoctoWeb.Gettext,

@@ -160,10 +160,17 @@ defmodule SensoctoWeb.LobbyLive do
         media_bump: false,
         object3d_bump: false,
         whiteboard_bump: false,
+        avatar_bump: false,
+        avatar_fullscreen: false,
+        avatar_controller_user_id: nil,
+        avatar_controller_user_name: nil,
+        avatar_pending_request_user_id: nil,
+        avatar_pending_request_user_name: nil,
         # Lobby mode presence counts
         media_viewers: 0,
         object3d_viewers: 0,
         whiteboard_viewers: 0,
+        avatar_viewers: 0,
         # Control request modal state
         control_request_modal: nil,
         media_control_request_modal: nil,
@@ -243,7 +250,9 @@ defmodule SensoctoWeb.LobbyLive do
         })
 
         # Get initial presence counts
-        {media_count, object3d_count, whiteboard_count} = count_room_mode_presence("lobby")
+        {media_count, object3d_count, whiteboard_count, avatar_count} =
+          count_room_mode_presence("lobby")
+
         {synced_users, solo_users} = get_sync_mode_users("lobby")
 
         # Schedule refreshes to catch late-registered attributes
@@ -287,6 +296,7 @@ defmodule SensoctoWeb.LobbyLive do
         |> assign(:media_viewers, media_count)
         |> assign(:object3d_viewers, object3d_count)
         |> assign(:whiteboard_viewers, whiteboard_count)
+        |> assign(:avatar_viewers, avatar_count)
         |> assign(:synced_users, synced_users)
         |> assign(:solo_users, solo_users)
         |> assign(:priority_lens_registered, priority_lens_registered)
@@ -328,6 +338,11 @@ defmodule SensoctoWeb.LobbyLive do
         :guided,
         :handle_info,
         &SensoctoWeb.LobbyLive.Hooks.GuidedSessionHook.on_handle_info/2
+      )
+      |> attach_hook(
+        :avatar,
+        :handle_info,
+        &SensoctoWeb.LobbyLive.Hooks.AvatarHook.on_handle_info/2
       )
 
     {:ok, new_socket}
@@ -372,6 +387,53 @@ defmodule SensoctoWeb.LobbyLive do
     else
       socket
     end
+  end
+
+  # Avatar tab: push viewer token so CompositeMeasurementHandler can join ViewerDataChannel.
+  defp push_viewer_token_for_avatar(socket) do
+    if socket.assigns[:priority_lens_registered] do
+      viewer_token = Phoenix.Token.sign(SensoctoWeb.Endpoint, "viewer_data", socket.id)
+      push_event(socket, "viewer_channel_token", %{token: viewer_token})
+    else
+      socket
+    end
+  end
+
+  # Avatar tab: register attention views for IMU + heartrate + respiration sensors
+  # so they broadcast to data:attention:* and flow through PriorityLens → ViewerDataChannel.
+  defp ensure_attention_for_avatar(socket) do
+    viewer_id = socket.id
+
+    sensor_ids =
+      Enum.uniq(
+        Enum.map(socket.assigns[:imu_sensors] || [], & &1.sensor_id) ++
+          Enum.map(socket.assigns[:heartrate_sensors] || [], & &1.sensor_id) ++
+          Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
+      )
+
+    Enum.each(sensor_ids, fn sensor_id ->
+      Sensocto.AttentionTracker.register_view(sensor_id, "composite_avatar", viewer_id)
+    end)
+
+    socket
+  end
+
+  # Avatar tab: unregister attention views when leaving avatar mode.
+  defp cleanup_avatar_attention(socket) do
+    viewer_id = socket.id
+
+    sensor_ids =
+      Enum.uniq(
+        Enum.map(socket.assigns[:imu_sensors] || [], & &1.sensor_id) ++
+          Enum.map(socket.assigns[:heartrate_sensors] || [], & &1.sensor_id) ++
+          Enum.map(socket.assigns[:respiration_sensors] || [], & &1.sensor_id)
+      )
+
+    Enum.each(sensor_ids, fn sensor_id ->
+      Sensocto.AttentionTracker.unregister_view(sensor_id, "composite_avatar", viewer_id)
+    end)
+
+    socket
   end
 
   # Sensors grid view: LobbyLive subscribes so it can call send_update on LiveComponents
@@ -714,14 +776,15 @@ defmodule SensoctoWeb.LobbyLive do
   defp count_room_mode_presence(room_id) do
     presences = Presence.list("room:#{room_id}:mode_presence")
 
-    Enum.reduce(presences, {0, 0, 0}, fn {_user_id, %{metas: metas}},
-                                         {media, object3d, whiteboard} ->
+    Enum.reduce(presences, {0, 0, 0, 0}, fn {_user_id, %{metas: metas}},
+                                            {media, object3d, whiteboard, avatar} ->
       # Get the most recent presence meta (last one)
       case List.last(metas) do
-        %{room_mode: :media} -> {media + 1, object3d, whiteboard}
-        %{room_mode: :object3d} -> {media, object3d + 1, whiteboard}
-        %{room_mode: :whiteboard} -> {media, object3d, whiteboard + 1}
-        _ -> {media, object3d, whiteboard}
+        %{room_mode: :media} -> {media + 1, object3d, whiteboard, avatar}
+        %{room_mode: :object3d} -> {media, object3d + 1, whiteboard, avatar}
+        %{room_mode: :whiteboard} -> {media, object3d, whiteboard + 1, avatar}
+        %{room_mode: :avatar} -> {media, object3d, whiteboard, avatar + 1}
+        _ -> {media, object3d, whiteboard, avatar}
       end
     end)
   end
@@ -1072,7 +1135,9 @@ defmodule SensoctoWeb.LobbyLive do
         },
         socket
       ) do
-    {media_count, object3d_count, whiteboard_count} = count_room_mode_presence("lobby")
+    {media_count, object3d_count, whiteboard_count, avatar_count} =
+      count_room_mode_presence("lobby")
+
     {synced_users, solo_users} = get_sync_mode_users("lobby")
 
     {:noreply,
@@ -1080,8 +1145,45 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:media_viewers, media_count)
      |> assign(:object3d_viewers, object3d_count)
      |> assign(:whiteboard_viewers, whiteboard_count)
+     |> assign(:avatar_viewers, avatar_count)
      |> assign(:synced_users, synced_users)
      |> assign(:solo_users, solo_users)}
+  end
+
+  # Handle lobby mode sync broadcast — follow synced users' tab switches
+  @impl true
+  def handle_info(
+        {:lobby_mode_sync, %{mode: new_mode, from_user_id: from_user_id}},
+        socket
+      ) do
+    current_user = socket.assigns.current_user
+    is_self = current_user && to_string(current_user.id) == to_string(from_user_id)
+
+    if !is_self && socket.assigns.sync_mode == :synced && socket.assigns.lobby_mode != new_mode do
+      old_mode = socket.assigns.lobby_mode
+      user = socket.assigns.current_user
+
+      # Release control when following a mode switch
+      if user do
+        release_control_for_mode(old_mode, user.id)
+      end
+
+      # Update presence
+      presence_key = socket.assigns[:presence_key]
+
+      if user && presence_key do
+        Presence.update(self(), "room:lobby:mode_presence", presence_key, %{
+          room_mode: new_mode,
+          user_id: user.id,
+          user_name: Map.get(user, :email) || Map.get(user, :display_name) || "Anonymous",
+          sync_mode: socket.assigns.sync_mode
+        })
+      end
+
+      {:noreply, apply_lobby_mode_switch(socket, new_mode, old_mode)}
+    else
+      {:noreply, socket}
+    end
   end
 
   # Handle sensor presence diffs
@@ -1592,6 +1694,8 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "call:lobby")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "object3d:lobby")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "avatar:lobby")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:mode_sync")
     Sensocto.Chat.ChatStore.subscribe("lobby")
 
     user = socket.assigns[:current_user]
@@ -1883,12 +1987,99 @@ defmodule SensoctoWeb.LobbyLive do
       })
     end
 
-    socket =
-      socket
-      |> assign(:lobby_mode, new_mode)
-      |> push_event("save_lobby_mode", %{mode: mode})
+    # Broadcast mode change to synced users
+    if user && socket.assigns.sync_mode == :synced && old_mode != new_mode do
+      Phoenix.PubSub.broadcast(Sensocto.PubSub, "lobby:mode_sync", {
+        :lobby_mode_sync,
+        %{mode: new_mode, from_user_id: user.id}
+      })
+    end
+
+    {:noreply, apply_lobby_mode_switch(socket, new_mode, old_mode)}
+  end
+
+  # --- Avatar ecosystem control ---
+
+  @impl true
+  def handle_event("avatar_take_control", _, socket) do
+    user = socket.assigns.current_user
+
+    if user do
+      user_name =
+        Map.get(user, :email) || Map.get(user, :display_name) || Map.get(user, :name) || "Unknown"
+
+      Sensocto.Avatar.AvatarEcosystemServer.take_control(user.id, user_name)
+    end
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("avatar_release_control", _, socket) do
+    user = socket.assigns.current_user
+
+    if user do
+      Sensocto.Avatar.AvatarEcosystemServer.release_control(user.id)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("avatar_request_control", _, socket) do
+    user = socket.assigns.current_user
+    controller_user_id = socket.assigns.avatar_controller_user_id
+
+    if user && controller_user_id && to_string(user.id) != to_string(controller_user_id) do
+      user_name =
+        Map.get(user, :email) || Map.get(user, :display_name) || Map.get(user, :name) ||
+          "Someone"
+
+      case Sensocto.Avatar.AvatarEcosystemServer.request_control(user.id, user_name) do
+        {:ok, :control_granted} ->
+          {:noreply, Phoenix.LiveView.put_flash(socket, :info, "You now have control")}
+
+        {:ok, :request_pending} ->
+          {:noreply,
+           Phoenix.LiveView.put_flash(
+             socket,
+             :info,
+             "Request sent — control transfers in 30s unless #{socket.assigns.avatar_controller_user_name} keeps control"
+           )}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("avatar_keep_control", _, socket) do
+    user = socket.assigns.current_user
+
+    if user do
+      Sensocto.Avatar.AvatarEcosystemServer.keep_control(user.id)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("avatar_toggle_fullscreen", _, socket) do
+    fullscreen = !socket.assigns.avatar_fullscreen
+    event = if fullscreen, do: "avatar_enter_fullscreen", else: "avatar_exit_fullscreen"
+
+    {:noreply,
+     socket
+     |> assign(:avatar_fullscreen, fullscreen)
+     |> push_event(event, %{})}
+  end
+
+  @impl true
+  def handle_event("avatar_fullscreen_changed", %{"fullscreen" => state}, socket) do
+    {:noreply, assign(socket, :avatar_fullscreen, state)}
   end
 
   # Quick join call from persistent call controls bar (one-click join)
@@ -2841,6 +3032,34 @@ defmodule SensoctoWeb.LobbyLive do
     idx1 > idx2
   end
 
+  # Apply a lobby mode switch: cleanup old mode, assign new mode, setup new mode
+  defp apply_lobby_mode_switch(socket, new_mode, old_mode) do
+    socket =
+      if old_mode == :avatar and new_mode != :avatar do
+        cleanup_avatar_attention(socket)
+      else
+        socket
+      end
+
+    socket =
+      socket
+      |> assign(:lobby_mode, new_mode)
+      |> push_event("save_lobby_mode", %{mode: Atom.to_string(new_mode)})
+
+    if new_mode == :avatar do
+      ctrl = Sensocto.Avatar.AvatarEcosystemServer.get_state()
+
+      ensure_attention_for_avatar(socket)
+      |> push_viewer_token_for_avatar()
+      |> assign(:avatar_controller_user_id, ctrl.controller_user_id)
+      |> assign(:avatar_controller_user_name, ctrl.controller_user_name)
+      |> assign(:avatar_pending_request_user_id, ctrl.pending_request_user_id)
+      |> assign(:avatar_pending_request_user_name, ctrl.pending_request_user_name)
+    else
+      socket
+    end
+  end
+
   # Release control for a specific mode when user navigates away
   # Playback continues without a controller - anyone can then take control
   @doc false
@@ -2861,6 +3080,12 @@ defmodule SensoctoWeb.LobbyLive do
   def release_control_for_mode(:whiteboard, user_id) do
     alias Sensocto.Whiteboard.WhiteboardServer
     WhiteboardServer.release_control(:lobby, user_id)
+  rescue
+    _ -> :ok
+  end
+
+  def release_control_for_mode(:avatar, user_id) do
+    Sensocto.Avatar.AvatarEcosystemServer.release_control(user_id)
   rescue
     _ -> :ok
   end

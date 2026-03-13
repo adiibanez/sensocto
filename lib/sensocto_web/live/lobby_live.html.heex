@@ -217,6 +217,21 @@
           <Heroicons.icon name="chart-bar-square" type="solid" class="h-3 w-3" /> Polls
         </button>
 
+        <button
+          phx-click="switch_lobby_mode"
+          phx-value-mode="avatar"
+          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        if(@lobby_mode == :avatar, do: "bg-violet-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+        >
+          <Heroicons.icon name="sparkles" type="solid" class="h-3 w-3" /> Avatar
+          <span
+            :if={@avatar_viewers > 0}
+            class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+          >
+            {@avatar_viewers}
+          </span>
+        </button>
+
         <%!-- Sync Status Indicator --%>
         <.live_component
           module={SensoctoWeb.Live.Components.SyncStatusComponent}
@@ -286,6 +301,116 @@
           id="lobby-polls-panel"
           current_user={@current_user}
         />
+      </div>
+
+      <%!-- Avatar Ecosystem Panel --%>
+      <div :if={@lobby_mode == :avatar} class="mb-6">
+        <%!-- Control bar --%>
+        <div class="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-700">
+          <div class="flex items-center gap-2 text-xs">
+            <%= if @avatar_controller_user_id do %>
+              <span class="text-gray-400">
+                <span class="font-medium text-violet-300">
+                  {@avatar_controller_user_name || "Someone"}
+                </span>
+                has control
+              </span>
+              <%= if @current_user && to_string(@current_user.id) == to_string(@avatar_controller_user_id) do %>
+                <button
+                  phx-click="avatar_release_control"
+                  class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                >
+                  Release
+                </button>
+                <%= if @avatar_pending_request_user_id do %>
+                  <span class="px-2 py-1 text-xs bg-amber-900/50 text-amber-200 rounded border border-amber-700">
+                    <Heroicons.icon name="hand-raised" type="solid" class="w-3 h-3 inline" />
+                    {@avatar_pending_request_user_name || "Someone"} requesting...
+                  </span>
+                  <button
+                    phx-click="avatar_keep_control"
+                    class="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors animate-pulse"
+                  >
+                    Keep
+                  </button>
+                <% end %>
+              <% else %>
+                <%= if @current_user do %>
+                  <%= if @avatar_pending_request_user_id && @avatar_pending_request_user_id == @current_user.id do %>
+                    <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded">
+                      Request pending...
+                    </span>
+                  <% else %>
+                    <button
+                      phx-click="avatar_request_control"
+                      class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
+                    >
+                      <Heroicons.icon
+                        name="hand-raised"
+                        type="outline"
+                        class="w-3.5 h-3.5"
+                      /> Request
+                    </button>
+                  <% end %>
+                <% end %>
+              <% end %>
+            <% else %>
+              <span class="text-gray-500">No one has control</span>
+              <%= if @current_user do %>
+                <button
+                  phx-click="avatar_take_control"
+                  class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
+                >
+                  Take Control
+                </button>
+              <% end %>
+            <% end %>
+          </div>
+          <button
+            phx-click="avatar_toggle_fullscreen"
+            class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+            title={
+              if @avatar_fullscreen,
+                do: "Exit fullscreen",
+                else: "Enter fullscreen"
+            }
+          >
+            <%= if @avatar_fullscreen do %>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+                />
+              </svg>
+            <% else %>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+                />
+              </svg>
+            <% end %>
+          </button>
+        </div>
+        <%!-- Scene container --%>
+        <div
+          id="avatar-splat-container"
+          phx-hook="CompositeMeasurementHandler"
+          class="relative w-full overflow-hidden bg-gray-900 rounded-b-lg"
+          style="height: 500px;"
+        >
+          <div
+            id="avatar-splat-viewer"
+            phx-hook="AvatarSplatHook"
+            phx-update="ignore"
+            class="absolute inset-0"
+          >
+          </div>
+        </div>
       </div>
     </div>
     <%!-- Right column: Sensor lenses --%>

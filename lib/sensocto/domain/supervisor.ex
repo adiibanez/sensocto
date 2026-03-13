@@ -104,6 +104,9 @@ defmodule Sensocto.Domain.Supervisor do
       # Whiteboard domain - collaborative drawing
       Sensocto.Whiteboard.WhiteboardSupervisor,
 
+      # Avatar ecosystem - bioluminescent splat scene control
+      Sensocto.Avatar.AvatarEcosystemServer,
+
       # Guidance domain - therapeutic guided sessions
       Sensocto.Guidance.SessionSupervisor,
 

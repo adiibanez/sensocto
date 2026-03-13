@@ -20,7 +20,7 @@ Hooks.LobbyPreferences = {
     mounted() {
         // Restore saved lobby mode on mount
         const savedMode = localStorage.getItem('lobby_mode');
-        if (savedMode && ['media', 'call', 'object3d'].includes(savedMode)) {
+        if (savedMode && ['media', 'call', 'object3d', 'avatar'].includes(savedMode)) {
             this.pushEvent('restore_lobby_mode', { mode: savedMode });
         }
 

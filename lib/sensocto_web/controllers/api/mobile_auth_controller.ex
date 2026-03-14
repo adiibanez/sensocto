@@ -303,29 +303,50 @@ defmodule SensoctoWeb.Api.MobileAuthController do
 
         # First try as Phoenix.Token (mobile_auth salt, 10 min max age)
         case Phoenix.Token.verify(SensoctoWeb.Endpoint, "mobile_auth", token, max_age: 600) do
-          {:ok, %{user_id: user_id} = _data} ->
+          {:ok, %{user_id: user_id} = data} ->
             Logger.debug("Phoenix.Token verified, user_id=#{user_id}")
 
-            # Load the user
-            case load_user_by_id(user_id) do
-              {:ok, user} ->
-                # Issue a JWT for this user
-                case issue_jwt_for_user(user) do
-                  {:ok, jwt, user_info} ->
-                    conn
-                    |> put_status(:ok)
-                    |> json(%{ok: true, token: jwt, user: user_info})
+            # Guest users have non-UUID IDs like "guest_xxx" — skip DB lookup
+            if String.starts_with?(to_string(user_id), "guest_") do
+              guest_user = %{
+                id: user_id,
+                email: Map.get(data, :email, "guest"),
+                display_name: Map.get(data, :email, "Guest"),
+                is_guest: true
+              }
 
-                  {:error, reason} ->
-                    conn
-                    |> put_status(:internal_server_error)
-                    |> json(%{ok: false, error: "Failed to issue JWT: #{reason}"})
-                end
+              case issue_jwt_for_user(guest_user) do
+                {:ok, jwt, user_info} ->
+                  conn
+                  |> put_status(:ok)
+                  |> json(%{ok: true, token: jwt, user: user_info})
 
-              {:error, reason} ->
-                conn
-                |> put_status(:unauthorized)
-                |> json(%{ok: false, error: reason})
+                {:error, reason} ->
+                  conn
+                  |> put_status(:internal_server_error)
+                  |> json(%{ok: false, error: "Failed to issue JWT: #{reason}"})
+              end
+            else
+              # Regular user — load from DB
+              case load_user_by_id(user_id) do
+                {:ok, user} ->
+                  case issue_jwt_for_user(user) do
+                    {:ok, jwt, user_info} ->
+                      conn
+                      |> put_status(:ok)
+                      |> json(%{ok: true, token: jwt, user: user_info})
+
+                    {:error, reason} ->
+                      conn
+                      |> put_status(:internal_server_error)
+                      |> json(%{ok: false, error: "Failed to issue JWT: #{reason}"})
+                  end
+
+                {:error, reason} ->
+                  conn
+                  |> put_status(:unauthorized)
+                  |> json(%{ok: false, error: reason})
+              end
             end
 
           {:error, :expired} ->

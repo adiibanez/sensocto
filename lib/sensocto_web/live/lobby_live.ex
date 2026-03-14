@@ -155,6 +155,8 @@ defmodule SensoctoWeb.LobbyLive do
         floating_expanded_sensors: [],
         floating_dock_collapsed: false,
         lobby_mode: :media,
+        content_panel_collapsed: false,
+        sensor_panel_collapsed: false,
         call_active: call_active,
         in_call: false,
         call_participants: %{},
@@ -1972,6 +1974,16 @@ defmodule SensoctoWeb.LobbyLive do
       {:error, _} ->
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("toggle_content_panel", _params, socket) do
+    {:noreply, assign(socket, content_panel_collapsed: !socket.assigns.content_panel_collapsed)}
+  end
+
+  @impl true
+  def handle_event("toggle_sensor_panel", _params, socket) do
+    {:noreply, assign(socket, sensor_panel_collapsed: !socket.assigns.sensor_panel_collapsed)}
   end
 
   # Lobby mode switching

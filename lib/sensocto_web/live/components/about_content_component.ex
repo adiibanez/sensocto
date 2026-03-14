@@ -543,8 +543,8 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
 
   # Renders a translated string with **highlighted** word in a colored span.
   # Translators can place the **word** anywhere in the sentence for natural grammar.
-  attr :text, :string, required: true
-  attr :color, :string, required: true
+  attr(:text, :string, required: true)
+  attr(:color, :string, required: true)
 
   defp hl(assigns) do
     case String.split(assigns.text, "**", parts: 3) do
@@ -560,11 +560,11 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     end
   end
 
-  attr :level, :atom, required: true
-  attr :current, :atom, required: true
-  attr :patch_base, :string, default: nil
-  attr :target, :any, default: nil
-  slot :inner_block, required: true
+  attr(:level, :atom, required: true)
+  attr(:current, :atom, required: true)
+  attr(:patch_base, :string, default: nil)
+  attr(:target, :any, default: nil)
+  slot(:inner_block, required: true)
 
   defp level_button(assigns) do
     assigns = assign(assigns, :class, level_button_class(assigns.level, assigns.current))
@@ -1527,12 +1527,26 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
         </div>
 
         <%!-- Footer CTA (optional, controlled by show_cta prop) --%>
-        <div :if={Map.get(assigns, :show_cta, true)} class="mt-12 text-center order-last">
+        <div
+          :if={Map.get(assigns, :show_cta, true)}
+          class="mt-12 flex items-center justify-center gap-4 order-last"
+        >
           <.link
             navigate={~p"/sign-in"}
             class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
           >
             <.icon name="hero-play" class="h-5 w-5" /> {gettext("Get Started")}
+          </.link>
+          <.link
+            href="https://github.com/adiibanez/sensocto/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+          >
+            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+            </svg>
+            GitHub
           </.link>
         </div>
       </div>

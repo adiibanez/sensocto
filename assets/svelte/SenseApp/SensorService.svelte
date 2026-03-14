@@ -344,7 +344,7 @@
             sensorChannels[fullChannelName] &&
             sensorChannels[fullChannelName].state == "joined"
         ) {
-            console.log("Reuse channel", sensorChannels[fullChannelName]);
+            logger.log(loggerCtxName, `Reuse channel ${fullChannelName}`);
             return sensorChannels[fullChannelName];
         }
 

@@ -42,10 +42,8 @@ Hooks.LobbyPreferences = {
 
         // Restore saved layout or auto-detect from screen width
         const savedLayout = localStorage.getItem('lobby_layout');
-        if (savedLayout && ['stacked', 'side_by_side', 'floating'].includes(savedLayout)) {
+        if (savedLayout && ['stacked', 'floating'].includes(savedLayout)) {
             this.pushEvent('restore_lobby_layout', { layout: savedLayout });
-        } else if (window.innerWidth >= 2000) {
-            this.pushEvent('restore_lobby_layout', { layout: 'side_by_side' });
         }
 
         // Listen for layout changes to save them

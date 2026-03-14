@@ -25,6 +25,8 @@ config :logger, level: :info
 # Note: HTTPS is NOT configured here because Fly.io handles TLS termination at the edge
 config :sensocto, SensoctoWeb.Endpoint,
   http: [ip: {0, 0, 0, 0}, port: 4000],
+  # Note: force_ssl is NOT used because Fly.io handles TLS termination at the edge.
+  # Internal health checks use HTTP and would fail with force_ssl enabled.
   # Enable origin checking in production - set PHX_HOST to your domain
   check_origin: [
     "https://sensocto.ddns.net",

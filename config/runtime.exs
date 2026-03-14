@@ -236,8 +236,7 @@ if config_env() == :prod do
   # "priv/ssl/server.key". For all supported SSL configuration
   # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
   #
-  # Force SSL — redirect HTTP to HTTPS and enable HSTS
-  config :sensocto, SensoctoWeb.Endpoint, force_ssl: [hsts: true]
+  # Force SSL is configured in prod.exs (compile-time) since Endpoint validates compile env
 
   # ## Configuring the mailer
   #

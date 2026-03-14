@@ -113,12 +113,12 @@
     });
 
     onMount(() => {
-        console.log("initialize socket in SenseApp", live);
+        logger.log(loggerCtxName, "initialize socket in SenseApp");
         socket = new Socket("/socket", {
             params: { user_token: "some_token" },
         });
         socket.connect();
-        console.log("connected to socket", socket);
+        logger.log(loggerCtxName, "connected to socket");
 
         deviceName = sensorService.getDeviceName();
         inputDeviceName = deviceName;

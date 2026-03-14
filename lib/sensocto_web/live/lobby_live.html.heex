@@ -36,7 +36,12 @@
         <span class="text-xs text-gray-500">Layout</span>
         <button
           phx-click="toggle_lobby_layout"
-          title={if(@lobby_layout == :floating, do: "Switch to stacked layout", else: "Switch to floating dock")}
+          title={
+            if(@lobby_layout == :floating,
+              do: "Switch to stacked layout",
+              else: "Switch to floating dock"
+            )
+          }
           class={[
             "p-1.5 rounded-lg hover:bg-gray-600 text-gray-300 hover:text-white transition-colors",
             if(@lobby_layout == :floating,
@@ -155,20 +160,35 @@
   />
 
   <%!-- ================================================================== --%>
-  <%!-- CONTENT TABS + SENSOR LENSES — toggleable side-by-side layout --%>
+  <%!-- CONTENT TABS + SENSOR LENSES --%>
   <%!-- ================================================================== --%>
-  <div class={[
-    "flex",
-    if(@lobby_layout == :side_by_side, do: "flex-row gap-6 items-start", else: "flex-col")
-  ]}>
+  <div class="flex flex-col">
     <%!-- Left column: Media / 3D / Whiteboard / Polls --%>
-    <div class={
-      case @lobby_layout do
-        :side_by_side -> "flex-1 min-w-0"
-        :floating -> "w-full"
-        _ -> ""
-      end
-    }>
+    <div class={if(@lobby_layout == :floating, do: "w-full", else: "")}>
+      <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden mb-3">
+        <%!-- Tile header with minimize toggle --%>
+        <button
+          phx-click="toggle_content_panel"
+          class="w-full flex items-center justify-between px-3 py-2 bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
+        >
+          <div class="flex items-center gap-2">
+            <Heroicons.icon name="squares-2x2" type="solid" class="w-4 h-4 text-gray-400" />
+            <span class="text-sm font-medium text-gray-300">Content</span>
+            <span class="text-xs text-gray-500">
+              {String.capitalize(to_string(@lobby_mode))}
+            </span>
+          </div>
+          <svg
+            class={"w-4 h-4 text-gray-400 transition-transform #{if @content_panel_collapsed, do: "rotate-180"}"}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div :if={!@content_panel_collapsed} class="p-3">
       <div class="flex flex-wrap items-center justify-center gap-1.5 mb-3">
         <button
           phx-click="switch_lobby_mode"
@@ -472,12 +492,38 @@
           </div>
         </div>
       </div>
+        </div>
+      </div>
     </div>
     <%!-- Right column: Sensor lenses (hidden in floating mode — sensors move to dock) --%>
     <div
       :if={@lobby_layout != :floating}
-      class={if(@lobby_layout == :side_by_side, do: "flex-1 min-w-0", else: "")}
+      class=""
     >
+      <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <%!-- Sensor tile header with minimize toggle --%>
+        <button
+          phx-click="toggle_sensor_panel"
+          class="w-full flex items-center justify-between px-3 py-2 bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
+        >
+          <div class="flex items-center gap-2">
+            <Heroicons.icon name="signal" type="solid" class="w-4 h-4 text-orange-400" />
+            <span class="text-sm font-medium text-gray-300">Sensors</span>
+            <span class="text-xs text-gray-500">
+              {String.capitalize(to_string(@live_action))}
+            </span>
+          </div>
+          <svg
+            class={"w-4 h-4 text-gray-400 transition-transform #{if @sensor_panel_collapsed, do: "rotate-180"}"}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div :if={!@sensor_panel_collapsed} class="p-3">
       <%!-- Lens Selector - styled like rooms --%>
       <div class="flex items-center mb-2">
         <div class="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -1101,6 +1147,8 @@
 
       <%!-- MIDI Output Panel — shared between graph and graph3d --%>
       <.midi_panel :if={@live_action in [:graph, :graph3d]} />
+        </div>
+      </div>
     </div>
   </div>
   <%!-- /Right column --%>
@@ -1353,18 +1401,6 @@
                 title="Stacked layout"
               >
                 <Heroicons.icon name="bars-3" type="outline" class="h-3.5 w-3.5" />
-              </button>
-              <button
-                phx-click="guide_set_layout"
-                phx-value-layout="side_by_side"
-                class={"p-1.5 rounded transition-colors " <>
-                  if(@lobby_layout == :side_by_side,
-                    do: "bg-purple-600 text-white",
-                    else: "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                  )}
-                title="Side-by-side layout"
-              >
-                <Heroicons.icon name="view-columns" type="outline" class="h-3.5 w-3.5" />
               </button>
               <button
                 phx-click="guide_set_layout"

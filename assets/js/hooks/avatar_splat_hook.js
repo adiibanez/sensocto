@@ -147,13 +147,36 @@ const bioluminescent = {
     }
 
     const trees = [];
-    for (const [tx, , tz] of BIO_TREE_POS) {
-      addCluster(trees, tx, 1.5, tz, 0.08, 0.6, 0.08, BIO_PALETTE.TREE.base, 80, 0.04, 180);
-      addCluster(trees, tx, 3.2, tz, 0.6, 0.3, 0.6, BIO_PALETTE.CANOPY.base, 120, 0.06, 160);
-      addCluster(trees, tx, 3.0, tz, 0.5, 0.25, 0.5, BIO_PALETTE.CANOPY.glow, 30, 0.03, 220);
-      for (let v = 0; v < 3; v++) {
-        const vx = tx + (Math.random() - 0.5) * 0.8, vz = tz + (Math.random() - 0.5) * 0.8;
-        addCluster(trees, vx, 2.0, vz, 0.02, 0.5, 0.02, BIO_PALETTE.VINE.glow, 20, 0.02, 180);
+    // Per-tree variation: height scale, trunk width, canopy spread, lean
+    const treeVariations = [
+      { hScale: 1.0,  trunkW: 1.0,  canopySpread: 1.0,  lean: [0, 0],       vineCount: 3 },
+      { hScale: 1.25, trunkW: 0.8,  canopySpread: 0.75, lean: [0.15, 0.1],  vineCount: 2 },
+      { hScale: 0.7,  trunkW: 1.3,  canopySpread: 1.4,  lean: [-0.1, 0.2],  vineCount: 4 },
+      { hScale: 1.4,  trunkW: 0.7,  canopySpread: 0.6,  lean: [0.08, -0.15], vineCount: 1 },
+      { hScale: 0.85, trunkW: 1.1,  canopySpread: 1.2,  lean: [-0.2, -0.1], vineCount: 5 },
+    ];
+    for (let ti = 0; ti < BIO_TREE_POS.length; ti++) {
+      const [tx, , tz] = BIO_TREE_POS[ti];
+      const v = treeVariations[ti % treeVariations.length];
+      const h = v.hScale;
+      const lx = v.lean[0], lz = v.lean[1];
+      // Trunk — taller trees get more splats
+      addCluster(trees, tx + lx * 0.3, 1.5 * h, tz + lz * 0.3,
+        0.08 * v.trunkW, 0.6 * h, 0.08 * v.trunkW,
+        BIO_PALETTE.TREE.base, Math.round(80 * h), 0.04 * v.trunkW, 180);
+      // Canopy base
+      addCluster(trees, tx + lx, 3.2 * h, tz + lz,
+        0.6 * v.canopySpread, 0.3 * v.canopySpread, 0.6 * v.canopySpread,
+        BIO_PALETTE.CANOPY.base, Math.round(120 * v.canopySpread), 0.06 * v.canopySpread, 160);
+      // Canopy glow
+      addCluster(trees, tx + lx, 3.0 * h, tz + lz,
+        0.5 * v.canopySpread, 0.25 * v.canopySpread, 0.5 * v.canopySpread,
+        BIO_PALETTE.CANOPY.glow, Math.round(30 * v.canopySpread), 0.03 * v.canopySpread, 220);
+      // Vines
+      for (let vi = 0; vi < v.vineCount; vi++) {
+        const vx = tx + lx * 0.5 + (Math.random() - 0.5) * 0.8 * v.canopySpread;
+        const vz = tz + lz * 0.5 + (Math.random() - 0.5) * 0.8 * v.canopySpread;
+        addCluster(trees, vx, 2.0 * h, vz, 0.02, 0.5 * h, 0.02, BIO_PALETTE.VINE.glow, 20, 0.02, 180);
       }
     }
 

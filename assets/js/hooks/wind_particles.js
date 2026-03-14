@@ -46,7 +46,7 @@ export const PARTICLE_CONFIGS = {
   bioluminescent: {
     count: 8000,
     colors: [[0.4, 0.85, 1.0], [0.6, 0.3, 1.0], [0.2, 0.95, 0.5], [0.7, 0.5, 1.0]],
-    sizeRange: [0.08, 0.25],
+    sizeRange: [0.048, 0.15],
     opacityRange: [0.25, 0.7],
     bounds: { x: 14, y: 5, z: 14 },
     maxLife: 14,

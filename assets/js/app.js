@@ -67,6 +67,9 @@ import MidiOutputHook from './hooks/midi_output_hook.js';
 // Avatar ecosystem - bioluminescent Gaussian splat scene driven by sensor data
 import AvatarSplatHook from './hooks/avatar_splat_hook.js';
 
+// Sensor background visualization for sign-in page
+import { SensorBackgroundHook } from './hooks/sensor_background_hook.js';
+
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
   window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
@@ -103,6 +106,9 @@ Hooks.MidiOutputHook = MidiOutputHook;
 
 // Avatar ecosystem hook
 Hooks.AvatarSplatHook = AvatarSplatHook;
+
+// Sensor background hook for sign-in page
+Hooks.SensorBackgroundHook = SensorBackgroundHook;
 
 // Vibrate hook - vibrates device and plays sound on every button press
 // Supports repetitive clicks on same button (uses timestamp to detect)

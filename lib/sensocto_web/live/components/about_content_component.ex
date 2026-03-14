@@ -566,21 +566,41 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
   attr(:target, :any, default: nil)
   slot(:inner_block, required: true)
 
+  @level_tooltips %{
+    spark: "The emotional hook — what SensOcto feels like. ~150 words, ~30 sec read",
+    story: "The philosophy and backstory. ~500 words, ~2 min read",
+    deep: "Technical deep dive — architecture, sensors, data. ~900 words, ~4 min read",
+    research: "Academic papers and scientific foundations. ~600 words, ~3 min read",
+    videos: "Demo videos and walkthroughs. ~5 min watch time"
+  }
+
   defp level_button(assigns) do
-    assigns = assign(assigns, :class, level_button_class(assigns.level, assigns.current))
+    assigns =
+      assigns
+      |> assign(:class, level_button_class(assigns.level, assigns.current))
+      |> assign(:tooltip, @level_tooltips[assigns.level])
 
     ~H"""
     <%= if @patch_base do %>
-      <.link
-        patch={if @level == :spark, do: @patch_base, else: "#{@patch_base}?tab=#{@level}"}
-        class={@class}
-      >
-        {render_slot(@inner_block)}
-      </.link>
+      <span class="css-tooltip-wrap" data-tooltip={@tooltip}>
+        <.link
+          patch={if @level == :spark, do: @patch_base, else: "#{@patch_base}?tab=#{@level}"}
+          class={@class}
+        >
+          {render_slot(@inner_block)}
+        </.link>
+      </span>
     <% else %>
-      <button phx-click="set_level" phx-value-level={@level} phx-target={@target} class={@class}>
-        {render_slot(@inner_block)}
-      </button>
+      <span class="css-tooltip-wrap" data-tooltip={@tooltip}>
+        <button
+          phx-click="set_level"
+          phx-value-level={@level}
+          phx-target={@target}
+          class={@class}
+        >
+          {render_slot(@inner_block)}
+        </button>
+      </span>
     <% end %>
     """
   end
@@ -648,10 +668,7 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     <div class="about-content">
       <%!-- Hero Section --%>
       <div class="relative overflow-hidden">
-        <div
-          class="absolute inset-0 bg-gradient-to-r from-blue-900/20 via-cyan-900/10 to-purple-900/20 animate-pulse"
-          style="animation-duration: 4s;"
-        >
+        <div class="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-cyan-900/5 to-purple-900/10">
         </div>
 
         <div class="relative max-w-4xl mx-auto px-4 py-12 sm:py-16 text-center">

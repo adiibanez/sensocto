@@ -24,6 +24,7 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
      |> assign(:stroke_color, "#22c55e")
      |> assign(:stroke_width, 3)
      |> assign(:show_color_picker, false)
+     |> assign(:show_export_menu, false)
      |> assign(:sync_mode, :synced)}
   end
 
@@ -339,6 +340,43 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
   end
 
   @impl true
+  def handle_event("wb_zoom_in", _, socket) do
+    {:noreply, push_event(socket, "whiteboard_zoom_in", %{})}
+  end
+
+  @impl true
+  def handle_event("wb_zoom_out", _, socket) do
+    {:noreply, push_event(socket, "whiteboard_zoom_out", %{})}
+  end
+
+  @impl true
+  def handle_event("wb_fit_view", _, socket) do
+    {:noreply, push_event(socket, "whiteboard_fit_view", %{})}
+  end
+
+  @impl true
+  def handle_event("toggle_export_menu", _, socket) do
+    {:noreply, assign(socket, :show_export_menu, !socket.assigns.show_export_menu)}
+  end
+
+  @valid_export_formats ~w(png jpg)
+  @valid_export_scales [1, 2]
+
+  @impl true
+  def handle_event("wb_export", %{"format" => format, "scale" => scale}, socket)
+      when format in @valid_export_formats do
+    scale = String.to_integer(scale)
+    scale = if scale in @valid_export_scales, do: scale, else: 1
+
+    {:noreply,
+     socket
+     |> assign(:show_export_menu, false)
+     |> push_event("whiteboard_export", %{format: format, scale: scale})}
+  end
+
+  def handle_event("wb_export", _, socket), do: {:noreply, socket}
+
+  @impl true
   def handle_event("request_whiteboard_sync", _params, socket) do
     case WhiteboardServer.get_state(socket.assigns.room_id) do
       {:ok, state} ->
@@ -416,6 +454,33 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
             style="touch-action: none;"
           >
           </canvas>
+          <%!-- Zoom Controls Overlay --%>
+          <div class="absolute bottom-2 right-2 z-10 flex gap-1 bg-gray-900/80 backdrop-blur-sm rounded-lg p-1 border border-gray-700/50">
+            <button
+              phx-click="wb_zoom_out"
+              phx-target={@myself}
+              class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors text-sm font-bold"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <button
+              phx-click="wb_fit_view"
+              phx-target={@myself}
+              class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors text-sm"
+              title="Fit to view"
+            >
+              <Heroicons.icon name="arrows-pointing-in" type="outline" class="w-3.5 h-3.5" />
+            </button>
+            <button
+              phx-click="wb_zoom_in"
+              phx-target={@myself}
+              class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors text-sm font-bold"
+              title="Zoom in"
+            >
+              +
+            </button>
+          </div>
         </div>
 
         <%!-- Tools --%>
@@ -555,6 +620,61 @@ defmodule SensoctoWeb.Live.Components.WhiteboardComponent do
               >
                 <Heroicons.icon name="trash" type="outline" class="w-4 h-4" />
               </button>
+              <%!-- Export --%>
+              <div class="relative">
+                <button
+                  phx-click="toggle_export_menu"
+                  phx-target={@myself}
+                  class="p-2 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors"
+                  title="Export image"
+                >
+                  <Heroicons.icon name="arrow-down-tray" type="outline" class="w-4 h-4" />
+                </button>
+                <%= if @show_export_menu do %>
+                  <div
+                    phx-click-away="toggle_export_menu"
+                    phx-target={@myself}
+                    class="absolute right-0 bottom-full mb-1 w-36 bg-gray-800 rounded-lg border border-gray-600 shadow-xl z-50 py-1"
+                  >
+                    <button
+                      phx-click="wb_export"
+                      phx-value-format="png"
+                      phx-value-scale="1"
+                      phx-target={@myself}
+                      class="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    >
+                      PNG 1x
+                    </button>
+                    <button
+                      phx-click="wb_export"
+                      phx-value-format="png"
+                      phx-value-scale="2"
+                      phx-target={@myself}
+                      class="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    >
+                      PNG 2x
+                    </button>
+                    <button
+                      phx-click="wb_export"
+                      phx-value-format="jpg"
+                      phx-value-scale="1"
+                      phx-target={@myself}
+                      class="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    >
+                      JPG 1x
+                    </button>
+                    <button
+                      phx-click="wb_export"
+                      phx-value-format="jpg"
+                      phx-value-scale="2"
+                      phx-target={@myself}
+                      class="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    >
+                      JPG 2x
+                    </button>
+                  </div>
+                <% end %>
+              </div>
             </div>
           </div>
 

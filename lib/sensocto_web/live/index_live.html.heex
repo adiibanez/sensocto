@@ -3,11 +3,63 @@
 </div>
 
 <div class="pb-20 sm:pb-16 space-y-8">
-  <%!-- Lobby Graph Preview --%>
+  <%!-- Lobby Preview (Graph / Animation) --%>
   <section>
-    <div class="relative bg-gradient-to-br from-blue-900/40 to-gray-800 rounded-xl border border-blue-700/30 overflow-hidden">
+    <div class="relative bg-gradient-to-br from-[#0f172a] to-[#1e293b] rounded-xl border border-blue-700/30 overflow-hidden">
+      <%!-- View Switcher --%>
+      <div class="absolute top-3 right-3 z-10 flex gap-1 bg-gray-900/70 backdrop-blur-sm rounded-lg p-1 border border-gray-700/50">
+        <button
+          phx-click="set_preview_mode"
+          phx-value-mode="graph"
+          class={"p-1.5 rounded transition-colors " <>
+            if(@preview_mode == :graph,
+              do: "bg-blue-600/80 text-white",
+              else: "text-gray-400 hover:text-white hover:bg-gray-700/50")}
+          title="Graph"
+        >
+          <Heroicons.icon name="share" type="outline" class="h-4 w-4" />
+        </button>
+        <button
+          phx-click="set_preview_mode"
+          phx-value-mode="animation"
+          class={"p-1.5 rounded transition-colors " <>
+            if(@preview_mode == :animation,
+              do: "bg-blue-600/80 text-white",
+              else: "text-gray-400 hover:text-white hover:bg-gray-700/50")}
+          title="Animation"
+        >
+          <Heroicons.icon name="sparkles" type="outline" class="h-4 w-4" />
+        </button>
+      </div>
+
+      <%!-- Theme pills (animation mode) --%>
       <div
-        :if={@sensor_ids != []}
+        :if={@preview_mode == :animation}
+        class="absolute top-3 left-3 z-10 flex gap-1 bg-gray-900/70 backdrop-blur-sm rounded-lg p-1 border border-gray-700/50"
+      >
+        <button
+          :for={
+            {label, theme} <- [
+              {"✦", "constellation"},
+              {"≈", "waveform"},
+              {"◐", "aurora"},
+              {"⁘", "particles"}
+            ]
+          }
+          phx-click="set_preview_theme"
+          phx-value-theme={theme}
+          class={"w-6 h-6 rounded flex items-center justify-center text-[11px] transition-colors " <>
+            if(@sensor_bg_theme == theme,
+              do: "bg-cyan-600 text-white",
+              else: "bg-gray-700/50 hover:bg-gray-600/50 text-gray-400")}
+        >
+          {label}
+        </button>
+      </div>
+
+      <%!-- Graph View --%>
+      <div
+        :if={@preview_mode == :graph and @sensor_ids != []}
         id="index-graph-view"
         class="h-[300px] w-full"
       >
@@ -19,7 +71,24 @@
         />
       </div>
 
-      <div :if={@sensor_ids == []} class="h-[200px] flex items-center justify-center">
+      <%!-- Animation View --%>
+      <div
+        :if={@preview_mode == :animation}
+        id="index-sensor-bg"
+        phx-hook="SensorBackgroundHook"
+        data-contained
+        data-theme={@sensor_bg_theme}
+        class="h-[300px] w-full"
+        phx-update="ignore"
+      >
+        <canvas class="w-full h-full"></canvas>
+      </div>
+
+      <%!-- Empty state (graph mode, no sensors) --%>
+      <div
+        :if={@preview_mode == :graph and @sensor_ids == []}
+        class="h-[200px] flex items-center justify-center"
+      >
         <div class="text-center text-gray-500">
           <Heroicons.icon name="signal-slash" type="outline" class="h-10 w-10 mx-auto mb-2" />
           <p class="text-sm">No sensors online</p>

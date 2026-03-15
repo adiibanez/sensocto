@@ -28,7 +28,8 @@ defmodule SensoctoWeb.UserSettingsLive do
     {"Español", "es"},
     {"Português (Brasil)", "pt_BR"},
     {"中文", "zh"},
-    {"日本語", "ja"}
+    {"日本語", "ja"},
+    {"العربية", "ar"}
   ]
 
   @impl true

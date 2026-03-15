@@ -11,6 +11,7 @@ defmodule SensoctoWeb.IndexLive do
   alias Sensocto.Rooms
   alias Sensocto.SystemLoadMonitor
   alias Sensocto.AttentionTracker
+  alias SensoctoWeb.LiveHelpers.SensorBackground
   import SensoctoWeb.LiveHelpers.SensorData
 
   on_mount {SensoctoWeb.LiveUserAuth, :ensure_authenticated}
@@ -52,7 +53,12 @@ defmodule SensoctoWeb.IndexLive do
         enriched_sensors: enriched_sensors,
         load_level: load_level,
         data_mode: :static,
-        snapshot_timer: nil
+        snapshot_timer: nil,
+        preview_mode: :graph,
+        sensor_activity: %{},
+        sensor_bg_count: 8,
+        sensor_bg_theme: "constellation",
+        bg_tick_timer: nil
       )
 
     socket =
@@ -75,6 +81,10 @@ defmodule SensoctoWeb.IndexLive do
 
     if sensor_ids != [] do
       AttentionTracker.unregister_views_bulk(sensor_ids, "composite_index_graph", socket.id)
+    end
+
+    if socket.assigns[:preview_mode] == :animation do
+      SensorBackground.unsubscribe()
     end
 
     :ok
@@ -161,9 +171,124 @@ defmodule SensoctoWeb.IndexLive do
     {:noreply, assign(socket, :sensors_online_count, max(new_count, 0))}
   end
 
+  # --- Animation mode handle_info (guarded on preview_mode: :animation) ---
+
+  @impl true
+  def handle_info(
+        {:measurement, %{sensor_id: sid}},
+        %{assigns: %{preview_mode: :animation}} = socket
+      ) do
+    activity = SensorBackground.handle_measurement(socket.assigns.sensor_activity, sid)
+    {:noreply, assign(socket, sensor_activity: activity)}
+  end
+
+  @impl true
+  def handle_info(
+        {:measurements_batch, {sid, measurements}},
+        %{assigns: %{preview_mode: :animation}} = socket
+      ) do
+    activity =
+      SensorBackground.handle_measurements_batch(
+        socket.assigns.sensor_activity,
+        sid,
+        length(measurements)
+      )
+
+    {:noreply, assign(socket, sensor_activity: activity)}
+  end
+
+  @impl true
+  def handle_info(
+        {:sensor_online, sensor_id, _config},
+        %{assigns: %{preview_mode: :animation}} = socket
+      ) do
+    activity = SensorBackground.handle_sensor_online(socket.assigns.sensor_activity, sensor_id)
+    {:noreply, assign(socket, sensor_activity: activity)}
+  end
+
+  @impl true
+  def handle_info({:sensor_offline, sensor_id}, %{assigns: %{preview_mode: :animation}} = socket) do
+    activity = SensorBackground.handle_sensor_offline(socket.assigns.sensor_activity, sensor_id)
+    {:noreply, assign(socket, sensor_activity: activity)}
+  end
+
+  @impl true
+  def handle_info(:bg_tick, %{assigns: %{preview_mode: :animation}} = socket) do
+    {sensors, decayed} =
+      SensorBackground.compute_tick(
+        socket.assigns.sensor_activity,
+        socket.assigns.sensor_bg_count
+      )
+
+    timer = SensorBackground.start_bg_tick()
+
+    {:noreply,
+     socket
+     |> assign(sensor_activity: decayed, bg_tick_timer: timer)
+     |> push_event("sensor_bg_update", %{sensors: sensors})}
+  end
+
+  @impl true
+  def handle_info(:bg_tick, socket), do: {:noreply, socket}
+
   @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
+  end
+
+  # --- Event handlers ---
+
+  @valid_themes ~w(constellation waveform aurora particles)
+
+  @impl true
+  def handle_event("set_preview_mode", %{"mode" => "animation"}, socket) do
+    {:noreply, activate_animation_mode(socket)}
+  end
+
+  @impl true
+  def handle_event("set_preview_mode", %{"mode" => "graph"}, socket) do
+    {:noreply, deactivate_animation_mode(socket)}
+  end
+
+  def handle_event("set_preview_mode", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("set_preview_theme", %{"theme" => theme}, socket)
+      when theme in @valid_themes do
+    {:noreply,
+     socket
+     |> assign(:sensor_bg_theme, theme)
+     |> push_event("sensor_bg_theme_change", %{theme: theme})}
+  end
+
+  def handle_event("set_preview_theme", _params, socket), do: {:noreply, socket}
+
+  # --- Animation mode helpers ---
+
+  defp activate_animation_mode(socket) do
+    SensorBackground.subscribe()
+    activity = SensorBackground.init_activity()
+    timer = SensorBackground.start_bg_tick()
+
+    assign(socket,
+      preview_mode: :animation,
+      sensor_activity: activity,
+      bg_tick_timer: timer
+    )
+  end
+
+  defp deactivate_animation_mode(socket) do
+    SensorBackground.unsubscribe()
+
+    if socket.assigns[:bg_tick_timer] do
+      Process.cancel_timer(socket.assigns.bg_tick_timer)
+    end
+
+    assign(socket,
+      preview_mode: :graph,
+      sensor_activity: %{},
+      bg_tick_timer: nil
+    )
   end
 
   # --- Components ---

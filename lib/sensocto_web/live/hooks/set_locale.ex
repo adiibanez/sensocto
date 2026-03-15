@@ -17,7 +17,7 @@ defmodule SensoctoWeb.Live.Hooks.SetLocale do
 
   alias Sensocto.Accounts.UserPreferences
 
-  @supported_locales ~w(en de gsw fr es pt_BR zh ja)
+  @supported_locales ~w(en de gsw fr es pt_BR zh ja ar)
 
   @locale_options [
     {"EN", "en"},
@@ -27,7 +27,8 @@ defmodule SensoctoWeb.Live.Hooks.SetLocale do
     {"ES", "es"},
     {"PT", "pt_BR"},
     {"中文", "zh"},
-    {"日本", "ja"}
+    {"日本", "ja"},
+    {"عربي", "ar"}
   ]
 
   def on_mount(:default, _params, session, socket) do

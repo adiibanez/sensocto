@@ -55,7 +55,7 @@ config :phoenix, :filter_parameters, ["password", "token", "secret", "bearer"]
 # Internationalization (i18n) configuration
 config :sensocto, SensoctoWeb.Gettext,
   default_locale: "en",
-  locales: ~w(en de gsw fr es pt_BR zh ja)
+  locales: ~w(en de gsw fr es pt_BR zh ja ar)
 
 # AttributeStore tiered storage limits (all in-memory)
 # Hot tier: fastest access, in Agent process memory

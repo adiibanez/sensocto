@@ -8,10 +8,22 @@ defmodule SensoctoWeb.CustomSignInLive do
   use SensoctoWeb, :live_view
   alias AshAuthentication.Phoenix.Components
   alias SensoctoWeb.Sensocto.Presence
+  alias SensoctoWeb.LiveHelpers.SensorBackground
 
   @presence_topic "signin_presence"
-  @bg_tick_interval 800
   @valid_themes ~w(off constellation waveform aurora particles)
+  @supported_locales ~w(en de gsw fr es pt_BR zh ja ar)
+  @locale_labels [
+    {"EN", "en"},
+    {"DE", "de"},
+    {"CH", "gsw"},
+    {"FR", "fr"},
+    {"ES", "es"},
+    {"PT", "pt_BR"},
+    {"中文", "zh"},
+    {"日本", "ja"},
+    {"عربي", "ar"}
+  ]
 
   @impl true
   def mount(_params, session, socket) do
@@ -35,10 +47,16 @@ defmodule SensoctoWeb.CustomSignInLive do
         send(self(), :init_sensor_bg)
       end
 
+      # Set locale from session (Locale plug already parsed cookie/header/query)
+      locale = session["locale"] || "en"
+      Gettext.put_locale(SensoctoWeb.Gettext, locale)
+
       socket =
         socket
         |> assign(:page_title, "Sign In")
         |> assign(:show_about, true)
+        |> assign(:locale, locale)
+        |> assign(:locales, @locale_labels)
         # Ball presence state
         |> assign(:balls, %{})
         |> assign(:own_ball_id, nil)
@@ -89,6 +107,15 @@ defmodule SensoctoWeb.CustomSignInLive do
   end
 
   def handle_event("set_bg_theme", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("change_locale", %{"locale" => locale}, socket) do
+    if locale in @supported_locales do
+      {:noreply, redirect(socket, to: "/sign-in?locale=#{locale}")}
+    else
+      {:noreply, socket}
+    end
+  end
 
   # Ball presence event handlers
   @impl true
@@ -145,106 +172,50 @@ defmodule SensoctoWeb.CustomSignInLive do
 
   @impl true
   def handle_info(:init_sensor_bg, socket) do
-    sensor_ids = Sensocto.SensorsDynamicSupervisor.get_device_names()
-
-    activity =
-      Map.new(sensor_ids, fn id ->
-        {id, %{name: id, hit_count: 0, last_ts: System.monotonic_time(:millisecond)}}
-      end)
-
-    Process.send_after(self(), :bg_tick, @bg_tick_interval)
+    activity = SensorBackground.init_activity()
+    SensorBackground.start_bg_tick()
     {:noreply, assign(socket, sensor_activity: activity)}
   end
 
-  # Single measurement from attention topics
   @impl true
   def handle_info({:measurement, %{sensor_id: sid}}, socket) do
-    activity = socket.assigns.sensor_activity
-
-    activity =
-      Map.update(
-        activity,
-        sid,
-        %{name: sid, hit_count: 1, last_ts: System.monotonic_time(:millisecond)},
-        fn entry ->
-          %{entry | hit_count: entry.hit_count + 1, last_ts: System.monotonic_time(:millisecond)}
-        end
-      )
-
+    activity = SensorBackground.handle_measurement(socket.assigns.sensor_activity, sid)
     {:noreply, assign(socket, sensor_activity: activity)}
   end
 
-  # Batch measurements from attention topics
   @impl true
   def handle_info({:measurements_batch, {sid, measurements}}, socket) do
-    activity = socket.assigns.sensor_activity
-    count = length(measurements)
-
     activity =
-      Map.update(
-        activity,
+      SensorBackground.handle_measurements_batch(
+        socket.assigns.sensor_activity,
         sid,
-        %{name: sid, hit_count: count, last_ts: System.monotonic_time(:millisecond)},
-        fn entry ->
-          %{
-            entry
-            | hit_count: entry.hit_count + count,
-              last_ts: System.monotonic_time(:millisecond)
-          }
-        end
+        length(measurements)
       )
 
     {:noreply, assign(socket, sensor_activity: activity)}
   end
 
-  # Sensor online/offline
   @impl true
   def handle_info({:sensor_online, sensor_id, _config}, socket) do
-    activity =
-      Map.put_new(socket.assigns.sensor_activity, sensor_id, %{
-        name: sensor_id,
-        hit_count: 0,
-        last_ts: System.monotonic_time(:millisecond)
-      })
-
+    activity = SensorBackground.handle_sensor_online(socket.assigns.sensor_activity, sensor_id)
     {:noreply, assign(socket, sensor_activity: activity)}
   end
 
   @impl true
   def handle_info({:sensor_offline, sensor_id}, socket) do
-    {:noreply,
-     assign(socket, sensor_activity: Map.delete(socket.assigns.sensor_activity, sensor_id))}
+    activity = SensorBackground.handle_sensor_offline(socket.assigns.sensor_activity, sensor_id)
+    {:noreply, assign(socket, sensor_activity: activity)}
   end
 
-  # Throttled push of top-N sensors to the client
   @impl true
   def handle_info(:bg_tick, socket) do
-    activity = socket.assigns.sensor_activity
-    n = socket.assigns.sensor_bg_count
+    {sensors, decayed} =
+      SensorBackground.compute_tick(
+        socket.assigns.sensor_activity,
+        socket.assigns.sensor_bg_count
+      )
 
-    top_n =
-      activity
-      |> Enum.sort_by(fn {_, v} -> v.hit_count end, :desc)
-      |> Enum.take(n)
-
-    max_activity =
-      case top_n do
-        [] -> 1
-        list -> max(1, list |> Enum.map(fn {_, v} -> v.hit_count end) |> Enum.max())
-      end
-
-    sensors =
-      Enum.map(top_n, fn {id, v} ->
-        %{id: id, name: v.name, intensity: v.hit_count / max_activity}
-      end)
-
-    # Decay hit_counts by 50% for temporal smoothing
-    decayed =
-      Map.new(activity, fn {id, v} ->
-        {id, %{v | hit_count: div(v.hit_count, 2)}}
-      end)
-
-    Process.send_after(self(), :bg_tick, @bg_tick_interval)
+    SensorBackground.start_bg_tick()
 
     {:noreply,
      socket
@@ -296,6 +267,11 @@ defmodule SensoctoWeb.CustomSignInLive do
     saturation = 70 + rem(hash, 20)
     lightness = 50 + rem(div(hash, 360), 15)
     "hsl(#{hue}, #{saturation}%, #{lightness}%)"
+  end
+
+  @doc false
+  def auth_translate(msgid, bindings \\ []) do
+    Gettext.dgettext(SensoctoWeb.Gettext, "default", msgid, Map.new(bindings))
   end
 
   defp transform_presences_to_balls(presences) do
@@ -357,11 +333,11 @@ defmodule SensoctoWeb.CustomSignInLive do
           <button
             :for={
               {label, theme, tip} <- [
-                {"—", "off", "No visualization"},
-                {"✦", "constellation", "Constellation"},
-                {"≈", "waveform", "Waveform"},
-                {"◐", "aurora", "Aurora"},
-                {"⁘", "particles", "Particles"}
+                {"—", "off", gettext("No visualization")},
+                {"✦", "constellation", gettext("Constellation")},
+                {"≈", "waveform", gettext("Waveform")},
+                {"◐", "aurora", gettext("Aurora")},
+                {"⁘", "particles", gettext("Particles")}
               ]
             }
             phx-click="set_bg_theme"
@@ -404,11 +380,14 @@ defmodule SensoctoWeb.CustomSignInLive do
             phx-click="toggle_about"
             class="lg:hidden w-full mb-4 px-4 py-2 text-sm text-gray-400 hover:text-white bg-gray-800/50 rounded-lg border border-gray-700"
           >
-            {if @show_about, do: "Hide About", else: "What is SensOcto?"}
+            {if @show_about, do: gettext("Hide About"), else: gettext("What is SensOcto?")}
           </button>
 
-          <div class="bg-gray-800/50 rounded-xl p-6 lg:p-8 border border-gray-700/50">
-            <h2 class="text-2xl font-bold text-white text-center mb-6">Welcome</h2>
+          <div
+            id="sign-in-form"
+            class="bg-gray-800/50 rounded-xl p-6 lg:p-8 border border-gray-700/50"
+          >
+            <h2 class="text-2xl font-bold text-white text-center mb-6">{gettext("Welcome")}</h2>
 
             <.live_component
               module={Components.SignIn}
@@ -416,6 +395,7 @@ defmodule SensoctoWeb.CustomSignInLive do
               otp_app={@otp_app}
               auth_routes_prefix="/auth"
               overrides={[SensoctoWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]}
+              gettext_fn={{SensoctoWeb.CustomSignInLive, :auth_translate}}
             />
 
             <%!-- Guest Sign In Section --%>
@@ -423,17 +403,32 @@ defmodule SensoctoWeb.CustomSignInLive do
               <button
                 phx-click="join_as_guest"
                 class="w-full flex items-center justify-center gap-2 group"
-                title="Browse without an account - session only"
+                title={gettext("Browse without an account - session only")}
               >
                 <.icon name="hero-user" class="h-5 w-5 text-gray-400 group-hover:text-white" />
                 <div class="text-left">
                   <div class="font-medium text-white group-hover:text-gray-200">
-                    Continue as Guest
+                    {gettext("Continue as Guest")}
                   </div>
                   <div class="text-xs text-gray-400 group-hover:text-gray-300">
-                    No account needed • Session only
+                    {gettext("No account needed")} • {gettext("Session only")}
                   </div>
                 </div>
+              </button>
+            </div>
+
+            <%!-- Language Toggle --%>
+            <div class="mt-4 flex flex-wrap justify-center gap-1">
+              <button
+                :for={{label, code} <- @locales}
+                phx-click="change_locale"
+                phx-value-locale={code}
+                class={"px-2 py-1 rounded text-xs transition-colors " <>
+                  if(@locale == code,
+                    do: "bg-cyan-600/80 text-white",
+                    else: "text-gray-500 hover:text-gray-300 hover:bg-gray-700/50")}
+              >
+                {label}
               </button>
             </div>
           </div>
@@ -445,8 +440,10 @@ defmodule SensoctoWeb.CustomSignInLive do
         <.live_component
           module={SensoctoWeb.Components.AboutContentComponent}
           id="about-content"
-          cta_link={~p"/lobby"}
-          cta_label={gettext("Enter Lobby")}
+          cta_scroll={true}
+          cta_scroll_target="#sign-in-form"
+          cta_label={gettext("Get Started")}
+          transparent_bg={@sensor_bg_theme != "off"}
         />
       </div>
     </div>
@@ -488,6 +485,18 @@ defmodule SensoctoWeb.CustomSignInLive do
         transform: translateX(-50%) scale(1);
       }
     </style>
+
+    <script>
+      document.addEventListener("js:scroll-focus", (e) => {
+        const target = document.querySelector(e.detail.target);
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => {
+          const input = target.querySelector("input:not([type=hidden])");
+          if (input) input.focus();
+        }, 500);
+      });
+    </script>
     """
   end
 end

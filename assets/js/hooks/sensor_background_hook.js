@@ -40,12 +40,16 @@ class BaseRenderer {
     this.h = canvas.height;
     this.sensors = [];
     this.sensorState = new Map(); // smoothed per-sensor state
+    this.sortedSensors = []; // stable-sorted array for index-dependent rendering
     this.noise3D = createNoise3D();
+    this.time = 0; // accumulated time (seconds), immune to frame drops
   }
 
   updateSensors(sensors) {
     this.sensors = sensors;
-    // Smooth intensity transitions
+    const activeIds = new Set(sensors.map(s => s.id));
+
+    // Update existing, add new (start at 0 intensity, lerp up)
     for (const s of sensors) {
       const prev = this.sensorState.get(s.id);
       if (prev) {
@@ -55,23 +59,31 @@ class BaseRenderer {
           id: s.id,
           name: s.name,
           hue: sensorHue(s.id),
-          intensity: s.intensity,
+          intensity: 0,
           targetIntensity: s.intensity,
           pos: sensorPosition(s.id, this.w, this.h),
         });
       }
     }
-    // Remove sensors no longer in list
-    const activeIds = new Set(sensors.map(s => s.id));
-    for (const [id] of this.sensorState) {
+
+    // Fade out removed sensors (set target to 0, prune when near 0)
+    for (const [id, s] of this.sensorState) {
       if (!activeIds.has(id)) {
-        this.sensorState.delete(id);
+        s.targetIntensity = 0;
+        if (s.intensity < 0.005) {
+          this.sensorState.delete(id);
+        }
       }
     }
+
+    // Maintain a stable sort by ID so array indices don't jump
+    this.sortedSensors = [...this.sensorState.values()].sort((a, b) =>
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    );
   }
 
   smoothStep(dt) {
-    const alpha = Math.min(1, dt * 3); // ~3Hz smoothing
+    const alpha = Math.min(1, dt * 2); // ~2Hz smoothing
     for (const [, s] of this.sensorState) {
       s.intensity = lerp(s.intensity, s.targetIntensity, alpha);
     }
@@ -80,7 +92,6 @@ class BaseRenderer {
   resize(w, h) {
     this.w = w;
     this.h = h;
-    // Recalculate positions
     for (const [, s] of this.sensorState) {
       s.pos = sensorPosition(s.id, w, h);
     }
@@ -93,13 +104,12 @@ class BaseRenderer {
 // ---------- Constellation ----------
 
 class ConstellationRenderer extends BaseRenderer {
-  draw(elapsed, dt) {
+  draw(t, dt) {
     const { ctx, w, h, noise3D } = this;
     this.smoothStep(dt);
 
     ctx.clearRect(0, 0, w, h);
-    const t = elapsed * 0.001;
-    const sensors = [...this.sensorState.values()];
+    const sensors = this.sortedSensors;
 
     // Ambient dots when no sensors
     if (sensors.length === 0) {
@@ -205,13 +215,12 @@ class ConstellationRenderer extends BaseRenderer {
 // ---------- Waveform ----------
 
 class WaveformRenderer extends BaseRenderer {
-  draw(elapsed, dt) {
+  draw(t, dt) {
     const { ctx, w, h } = this;
     this.smoothStep(dt);
 
     ctx.clearRect(0, 0, w, h);
-    const t = elapsed * 0.001;
-    const sensors = [...this.sensorState.values()];
+    const sensors = this.sortedSensors;
 
     if (sensors.length === 0) {
       this._drawAmbient(t);
@@ -219,15 +228,17 @@ class WaveformRenderer extends BaseRenderer {
     }
 
     ctx.globalCompositeOperation = 'lighter';
-    const count = sensors.length;
 
-    for (let si = 0; si < count; si++) {
-      const s = sensors[si];
-      const centerY = h * (0.35 + 0.3 * (si / Math.max(1, count - 1)));
+    for (const s of sensors) {
+      // Hash-based stable vertical position (independent of array index/count)
+      const centerY = h * (0.3 + 0.4 * (s.pos.y / h));
       const freq = 0.0008 + (s.hue / 360) * 0.003;
-      const amplitude = (20 + s.intensity * (h * 0.3));
-      const phase = t * (1.5 + si * 0.3) + s.hue;
-      const alpha = 0.15 + s.intensity * 0.45;
+      const amplitude = s.intensity * (20 + s.intensity * (h * 0.25));
+      // Phase uses hue (stable per sensor) not array index
+      const phase = t * (1.5 + (s.hue % 100) * 0.01) + s.hue;
+      const alpha = s.intensity * (0.15 + s.intensity * 0.45);
+
+      if (alpha < 0.005) continue;
 
       ctx.strokeStyle = `hsla(${s.hue}, 70%, 60%, ${alpha})`;
       ctx.lineWidth = 1.5 + s.intensity * 1.5;
@@ -277,32 +288,95 @@ class WaveformRenderer extends BaseRenderer {
 }
 
 // ---------- Aurora ----------
+// Fixed persistent bands that always flow. Sensor data modulates color/intensity/height
+// but bands never pop in/out — smooth continuous animation at all times.
 
 class AuroraRenderer extends BaseRenderer {
-  draw(elapsed, dt) {
-    const { ctx, w, h, noise3D } = this;
-    this.smoothStep(dt);
+  constructor(canvas, ctx) {
+    super(canvas, ctx);
+    this.bandCount = 6;
+    this.bands = [];
+    const baseHues = [190, 220, 260, 300, 340, 170];
+    for (let i = 0; i < this.bandCount; i++) {
+      this.bands.push({
+        yRatio: 0.3 + (i / (this.bandCount - 1)) * 0.4,
+        baseHue: baseHues[i],
+        hue: baseHues[i],
+        targetHue: baseHues[i],
+        intensity: 0.35,
+        targetIntensity: 0.35,
+        height: 90,
+        targetHeight: 90,
+        seed: i * 1.7,
+      });
+    }
+  }
 
-    ctx.clearRect(0, 0, w, h);
-    const t = elapsed * 0.001;
-    const sensors = [...this.sensorState.values()];
+  updateSensors(sensors) {
+    this.sensors = sensors;
+    const n = sensors ? sensors.length : 0;
 
-    if (sensors.length === 0) {
-      this._drawAmbient(t);
-      return;
+    // Global energy factor: more sensors → more vivid aurora
+    // 0 sensors = 0, 5 = ~0.45, 20 = ~0.8, 50+ = ~1.0
+    const energy = 1 - Math.exp(-n * 0.04);
+
+    // Baseline scales with energy: calm (0.2) when few sensors, vivid (0.7) when many
+    const baseIntensity = 0.2 + energy * 0.5;
+    const baseHeight = 60 + energy * 80;
+
+    for (const band of this.bands) {
+      band.targetIntensity = baseIntensity;
+      band.targetHue = band.baseHue;
+      band.targetHeight = baseHeight;
     }
 
+    if (n === 0) return;
+
+    // Distribute sensors across bands — each sensor boosts the nearest band
+    for (const s of sensors) {
+      const sensorY = ((hashCode(s.id) * 340573321) % 10000) / 10000;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < this.bandCount; i++) {
+        const d = Math.abs(this.bands[i].yRatio - sensorY);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      const band = this.bands[bestIdx];
+      band.targetIntensity = Math.min(1, band.targetIntensity + s.intensity * 0.15);
+      band.targetHeight = Math.min(250, band.targetHeight + s.intensity * 30);
+      band.targetHue = sensorHue(s.id);
+    }
+  }
+
+  draw(t, dt) {
+    const { ctx, w, h, noise3D } = this;
+
+    // Very slow smoothing — bands drift, never snap
+    const alpha = Math.min(1, dt * 0.4);
+    for (const band of this.bands) {
+      band.intensity = lerp(band.intensity, band.targetIntensity, alpha);
+      band.height = lerp(band.height, band.targetHeight, alpha);
+      // Hue wraparound-safe lerp
+      let dh = band.targetHue - band.hue;
+      if (dh > 180) dh -= 360;
+      if (dh < -180) dh += 360;
+      band.hue = (band.hue + dh * alpha + 360) % 360;
+    }
+
+    ctx.clearRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'screen';
 
-    for (const s of sensors) {
-      this._drawBand(s.pos.y, 60 + s.intensity * 100, s.hue, 0.04 + s.intensity * 0.12, t, s.hue * 0.01);
+    for (const band of this.bands) {
+      const bandY = band.yRatio * h;
+      const bandAlpha = 0.03 + band.intensity * 0.09;
+      this._drawBand(bandY, band.height, band.hue, bandAlpha, t, band.seed);
     }
 
     ctx.globalCompositeOperation = 'source-over';
   }
 
   _drawBand(bandY, bandHeight, hue, alpha, t, seed) {
-    const { ctx, w, h, noise3D } = this;
+    const { ctx, w, noise3D } = this;
     const step = 20;
     const points = [];
 
@@ -342,20 +416,6 @@ class AuroraRenderer extends BaseRenderer {
     ctx.closePath();
     ctx.fill();
   }
-
-  _drawAmbient(t) {
-    const { ctx, w, h, noise3D } = this;
-    ctx.globalCompositeOperation = 'screen';
-
-    const hues = [190, 240, 290, 340];
-    for (let bi = 0; bi < 4; bi++) {
-      const bandY = h * (0.2 + bi * 0.18);
-      const bandHeight = 100 + Math.sin(t * 0.2 + bi) * 20;
-      const alpha = 0.05 + Math.sin(t * 0.3 + bi * 2) * 0.02;
-      this._drawBand(bandY, bandHeight, hues[bi], alpha, t, bi * 0.5);
-    }
-    ctx.globalCompositeOperation = 'source-over';
-  }
 }
 
 // ---------- Particles ----------
@@ -369,13 +429,12 @@ class ParticlesRenderer extends BaseRenderer {
     this.spawnAccum = new Map();
   }
 
-  draw(elapsed, dt) {
+  draw(t, dt) {
     const { ctx, w, h, noise3D } = this;
     this.smoothStep(dt);
 
     ctx.clearRect(0, 0, w, h);
-    const t = elapsed * 0.001;
-    const sensors = [...this.sensorState.values()];
+    const sensors = this.sortedSensors;
 
     // Spawn particles
     if (sensors.length === 0) {
@@ -488,13 +547,19 @@ const SensorBackgroundHook = {
   mounted() {
     this.canvas = this.el.querySelector('canvas');
     this.ctx = this.canvas.getContext('2d');
-    this.theme = 'aurora';
+    this.contained = this.el.hasAttribute('data-contained');
+    this.theme = this.el.dataset.theme || 'aurora';
     this.renderer = new THEMES[this.theme](this.canvas, this.ctx);
     this.rafId = null;
     this.lastTime = performance.now();
 
-    this._resizeHandler = () => this._resize();
-    window.addEventListener('resize', this._resizeHandler);
+    if (this.contained) {
+      this._resizeObserver = new ResizeObserver(() => this._resize());
+      this._resizeObserver.observe(this.el);
+    } else {
+      this._resizeHandler = () => this._resize();
+      window.addEventListener('resize', this._resizeHandler);
+    }
     this._resize();
 
     this.handleEvent('sensor_bg_update', ({ sensors }) => {
@@ -512,14 +577,23 @@ const SensorBackgroundHook = {
 
   destroyed() {
     if (this.rafId) cancelAnimationFrame(this.rafId);
-    window.removeEventListener('resize', this._resizeHandler);
+    if (this._resizeObserver) this._resizeObserver.disconnect();
+    if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler);
     if (this.renderer.dispose) this.renderer.dispose();
   },
 
   _resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    let w, h;
+    if (this.contained) {
+      const rect = this.el.getBoundingClientRect();
+      w = rect.width;
+      h = rect.height;
+    } else {
+      w = window.innerWidth;
+      h = window.innerHeight;
+    }
+    if (w === 0 || h === 0) return;
     this.canvas.width = w * dpr;
     this.canvas.height = h * dpr;
     this.canvas.style.width = w + 'px';
@@ -541,7 +615,8 @@ const SensorBackgroundHook = {
     const loop = (now) => {
       const dt = Math.min((now - this.lastTime) / 1000, 0.1); // cap at 100ms
       this.lastTime = now;
-      this.renderer.draw(now, dt);
+      this.renderer.time += dt;
+      this.renderer.draw(this.renderer.time, dt);
       this.rafId = requestAnimationFrame(loop);
     };
     this.rafId = requestAnimationFrame(loop);

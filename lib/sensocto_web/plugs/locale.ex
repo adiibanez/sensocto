@@ -13,7 +13,7 @@ defmodule SensoctoWeb.Plugs.Locale do
   """
   import Plug.Conn
 
-  @supported_locales ~w(en de gsw fr es pt_BR zh ja)
+  @supported_locales ~w(en de gsw fr es pt_BR zh ja ar)
   @cookie_key "locale"
   @cookie_max_age 365 * 24 * 60 * 60
 
@@ -112,6 +112,9 @@ defmodule SensoctoWeb.Plugs.Locale do
 
       String.starts_with?(lang, "ja") ->
         "ja"
+
+      String.starts_with?(lang, "ar") ->
+        "ar"
 
       String.starts_with?(lang, "en") ->
         "en"

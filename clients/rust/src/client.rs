@@ -332,7 +332,9 @@ impl SensoctoClient {
             "attributes": config.attributes,
             "sampling_rate": config.sampling_rate_hz,
             "batch_size": config.batch_size,
-            "bearer_token": self.config.bearer_token.clone().unwrap_or_default()
+            "bearer_token": config.bearer_token.clone()
+                .or_else(|| self.config.bearer_token.clone())
+                .unwrap_or_default()
         });
 
         let channel = PhoenixChannel::new(self.socket.clone(), topic.clone(), join_params);

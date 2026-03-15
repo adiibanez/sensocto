@@ -91,14 +91,14 @@ msgstr "Salas"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:130
 #: lib/sensocto_web/components/layouts/app.html.heex:222
-#: lib/sensocto_web/live/user_settings_live.ex:236
+#: lib/sensocto_web/live/user_settings_live.ex:241
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Configurações"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:140
 #: lib/sensocto_web/components/layouts/app.html.heex:229
-#: lib/sensocto_web/live/user_settings_live.ex:414
+#: lib/sensocto_web/live/user_settings_live.ex:431
 #, elixir-autogen, elixir-format
 msgid "Sign Out"
 msgstr "Sair"
@@ -110,167 +110,167 @@ msgid "Sim"
 msgstr "Sim"
 
 #: lib/sensocto_web/live/profile_live.html.heex:313
-#: lib/sensocto_web/live/user_settings_live.ex:404
+#: lib/sensocto_web/live/user_settings_live.ex:421
 #, elixir-autogen, elixir-format
 msgid "Account"
 msgstr "Conta"
 
 #: lib/sensocto_web/live/profile_live.html.heex:321
-#: lib/sensocto_web/live/user_settings_live.ex:255
+#: lib/sensocto_web/live/user_settings_live.ex:260
 #, elixir-autogen, elixir-format
 msgid "Account ID"
 msgstr "ID da conta"
 
-#: lib/sensocto_web/live/user_settings_live.ex:269
+#: lib/sensocto_web/live/user_settings_live.ex:274
 #, elixir-autogen, elixir-format
 msgid "Choose your preferred language for the application interface."
 msgstr "Escolha seu idioma preferido para a interface do aplicativo."
 
-#: lib/sensocto_web/live/user_settings_live.ex:353
+#: lib/sensocto_web/live/user_settings_live.ex:358
 #, elixir-autogen, elixir-format
 msgid "Copied!"
 msgstr "Copiado!"
 
-#: lib/sensocto_web/live/user_settings_live.ex:353
+#: lib/sensocto_web/live/user_settings_live.ex:358
 #, elixir-autogen, elixir-format
 msgid "Copy"
 msgstr "Copiar"
 
 #: lib/sensocto_web/live/profile_live.html.heex:317
-#: lib/sensocto_web/live/user_settings_live.ex:248
+#: lib/sensocto_web/live/user_settings_live.ex:253
 #, elixir-autogen, elixir-format
 msgid "Email"
 msgstr "E-mail"
 
-#: lib/sensocto_web/live/user_settings_live.ex:321
+#: lib/sensocto_web/live/user_settings_live.ex:326
 #, elixir-autogen, elixir-format
 msgid "Expires in"
 msgstr "Expira em"
 
-#: lib/sensocto_web/live/user_settings_live.ex:330
+#: lib/sensocto_web/live/user_settings_live.ex:335
 #, elixir-autogen, elixir-format
 msgid "Generate new code"
 msgstr "Gerar novo código"
 
-#: lib/sensocto_web/live/user_settings_live.ex:364
+#: lib/sensocto_web/live/user_settings_live.ex:381
 #, elixir-autogen, elixir-format
 msgid "Go to Settings and tap \"Scan QR Code\""
 msgstr "Vá para Configurações e toque em \"Escanear código QR\""
 
-#: lib/sensocto_web/live/user_settings_live.ex:308
+#: lib/sensocto_web/live/user_settings_live.ex:313
 #, elixir-autogen, elixir-format
 msgid "Hide QR Code"
 msgstr "Ocultar código QR"
 
-#: lib/sensocto_web/live/user_settings_live.ex:361
+#: lib/sensocto_web/live/user_settings_live.ex:378
 #, elixir-autogen, elixir-format
 msgid "How to link your device:"
 msgstr "Como vincular seu dispositivo:"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:200
-#: lib/sensocto_web/live/user_settings_live.ex:263
+#: lib/sensocto_web/live/user_settings_live.ex:268
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr "Idioma"
 
-#: lib/sensocto_web/live/user_settings_live.ex:291
+#: lib/sensocto_web/live/user_settings_live.ex:296
 #, elixir-autogen, elixir-format
 msgid "Link Mobile Device"
 msgstr "Vincular dispositivo móvel"
 
-#: lib/sensocto_web/live/user_settings_live.ex:248
+#: lib/sensocto_web/live/user_settings_live.ex:253
 #, elixir-autogen, elixir-format
 msgid "Name"
 msgstr "Nome"
 
-#: lib/sensocto_web/live/user_settings_live.ex:363
+#: lib/sensocto_web/live/user_settings_live.ex:380
 #, elixir-autogen, elixir-format
 msgid "Open the SensOcto mobile app"
 msgstr "Abra o aplicativo móvel SensOcto"
 
-#: lib/sensocto_web/live/user_settings_live.ex:335
+#: lib/sensocto_web/live/user_settings_live.ex:340
 #, elixir-autogen, elixir-format
 msgid "Or copy the link:"
 msgstr "Ou copie o link:"
 
-#: lib/sensocto_web/live/user_settings_live.ex:365
+#: lib/sensocto_web/live/user_settings_live.ex:382
 #, elixir-autogen, elixir-format
 msgid "Point your camera at the QR code above"
 msgstr "Aponte sua câmera para o código QR acima"
 
 #: lib/sensocto_web/components/layouts/app.html.heex:124
 #: lib/sensocto_web/live/profile_live.html.heex:2
-#: lib/sensocto_web/live/user_settings_live.ex:241
+#: lib/sensocto_web/live/user_settings_live.ex:246
 #, elixir-autogen, elixir-format
 msgid "Profile"
 msgstr "Perfil"
 
-#: lib/sensocto_web/live/user_settings_live.ex:294
+#: lib/sensocto_web/live/user_settings_live.ex:299
 #, elixir-autogen, elixir-format
 msgid "Scan the QR code with the SensOcto mobile app to sign in on your mobile device."
 msgstr "Escaneie o código QR com o aplicativo móvel SensOcto para fazer login no seu dispositivo móvel."
 
-#: lib/sensocto_web/live/user_settings_live.ex:308
+#: lib/sensocto_web/live/user_settings_live.ex:313
 #, elixir-autogen, elixir-format
 msgid "Show QR Code"
 msgstr "Mostrar código QR"
 
-#: lib/sensocto_web/live/user_settings_live.ex:366
+#: lib/sensocto_web/live/user_settings_live.ex:383
 #, elixir-autogen, elixir-format
 msgid "You'll be automatically signed in"
 msgstr "Você será conectado automaticamente"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:801
+#: lib/sensocto_web/live/components/about_content_component.ex:830
 #, elixir-autogen, elixir-format
 msgid "\"Connection becomes tangible when you can feel someone's presence—their heartbeat, their calm, their stress—in real-time.\""
 msgstr "\"A conexão se torna tangível quando você consegue sentir a presença de alguém — seus batimentos cardíacos, sua calma, seu estresse — em tempo real.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:905
+#: lib/sensocto_web/live/components/about_content_component.ex:937
 #, elixir-autogen, elixir-format
 msgid "\"Dignity and agency restored through embodied communication.\""
 msgstr "\"Dignidade e autonomia restauradas por meio da comunicação corporal.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:971
+#: lib/sensocto_web/live/components/about_content_component.ex:1003
 #, elixir-autogen, elixir-format
 msgid "\"Emergent collective intelligence through shared physiology.\""
 msgstr "\"Inteligência coletiva emergente por meio da fisiologia compartilhada.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:993
+#: lib/sensocto_web/live/components/about_content_component.ex:1025
 #, elixir-autogen, elixir-format
 msgid "\"From coral reefs to urban gardens—sensing what matters.\""
 msgstr "\"De recifes de coral a hortas urbanas — sentindo o que importa.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:949
+#: lib/sensocto_web/live/components/about_content_component.ex:981
 #, elixir-autogen, elixir-format
 msgid "\"Presence you can feel, not just see.\""
 msgstr "\"Presença que você sente, não apenas vê.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:927
+#: lib/sensocto_web/live/components/about_content_component.ex:959
 #, elixir-autogen, elixir-format
 msgid "\"Prevention over crisis. Community as safety net.\""
 msgstr "\"Prevenção acima da crise. Comunidade como rede de proteção.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:883
+#: lib/sensocto_web/live/components/about_content_component.ex:915
 #, elixir-autogen, elixir-format
 msgid "\"See the nervous system respond before words form.\""
 msgstr "\"Veja o sistema nervoso responder antes que as palavras se formem.\""
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1044
+#: lib/sensocto_web/live/components/about_content_component.ex:1076
 #, elixir-autogen, elixir-format
 msgid "A live sensor network — each node is a person, each connection a shared signal."
 msgstr "Uma rede de sensores ao vivo — cada nó é uma pessoa, cada conexão um sinal compartilhado."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1176
+#: lib/sensocto_web/live/components/about_content_component.ex:1208
 #, elixir-autogen, elixir-format
 msgid "Alertness to anomalous data"
 msgstr "Alerta para dados anômalos"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1180
+#: lib/sensocto_web/live/components/about_content_component.ex:1212
 #, elixir-autogen, elixir-format
 msgid "Anticipates demand spikes"
 msgstr "Antecipa picos de demanda"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1105
+#: lib/sensocto_web/live/components/about_content_component.ex:1137
 #, elixir-autogen, elixir-format
 msgid "Architecture shapes incentives. We built Sensocto so that privacy and human dignity are structural guarantees, not policy promises."
 msgstr "A arquitetura molda os incentivos. Construímos o Sensocto para que privacidade e dignidade humana sejam garantias estruturais, não promessas de política."
@@ -280,27 +280,27 @@ msgstr "A arquitetura molda os incentivos. Construímos o Sensocto para que priv
 msgid "Argues that interpersonal synchrony functions as 'social glue' and presents a theoretical framework for studying group synchrony beyond dyads."
 msgstr "Argumenta que a sincronia interpessoal funciona como 'cola social' e apresenta um arcabouço teórico para o estudo da sincronia grupal para além das díades."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1187
+#: lib/sensocto_web/live/components/about_content_component.ex:1219
 #, elixir-autogen, elixir-format
 msgid "Attention-Aware Batching"
 msgstr "Agrupamento Consciente da Atenção"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1169
+#: lib/sensocto_web/live/components/about_content_component.ex:1201
 #, elixir-autogen, elixir-format
 msgid "Beneath the surface, Sensocto operates like a living organism—adapting, learning, self-regulating."
 msgstr "Por trás da superfície, o Sensocto opera como um organismo vivo — se adaptando, aprendendo, se autorregulando."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1166
+#: lib/sensocto_web/live/components/about_content_component.ex:1198
 #, elixir-autogen, elixir-format
 msgid "Biomimetic Intelligence"
 msgstr "Inteligência Biomimética"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1305
+#: lib/sensocto_web/live/components/about_content_component.ex:1337
 #, elixir-autogen, elixir-format
 msgid "Brief (~300 words)"
 msgstr "Resumido (~300 palavras)"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1204
+#: lib/sensocto_web/live/components/about_content_component.ex:1236
 #, elixir-autogen, elixir-format
 msgid "Built with"
 msgstr "Construído com"
@@ -324,10 +324,10 @@ msgstr ""
 msgid "Care Networks"
 msgstr "Redes de Cuidado"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1116
-#: lib/sensocto_web/live/components/about_content_component.ex:1128
-#: lib/sensocto_web/live/components/about_content_component.ex:1140
-#: lib/sensocto_web/live/components/about_content_component.ex:1152
+#: lib/sensocto_web/live/components/about_content_component.ex:1148
+#: lib/sensocto_web/live/components/about_content_component.ex:1160
+#: lib/sensocto_web/live/components/about_content_component.ex:1172
+#: lib/sensocto_web/live/components/about_content_component.ex:1184
 #, elixir-autogen, elixir-format
 msgid "Centralized Problem"
 msgstr "Problema Centralizado"
@@ -337,18 +337,18 @@ msgstr "Problema Centralizado"
 msgid "Change language"
 msgstr "Alterar idioma"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1191
+#: lib/sensocto_web/live/components/about_content_component.ex:1223
 #, elixir-autogen, elixir-format
 msgid "Circadian Scheduling"
 msgstr "Agendamento Circadiano"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:767
-#: lib/sensocto_web/live/components/about_content_component.ex:777
+#: lib/sensocto_web/live/components/about_content_component.ex:794
+#: lib/sensocto_web/live/components/about_content_component.ex:806
 #, elixir-autogen, elixir-format
 msgid "Click for more examples"
 msgstr "Clique para mais exemplos"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1196
+#: lib/sensocto_web/live/components/about_content_component.ex:1228
 #, elixir-autogen, elixir-format
 msgid "Competitive allocation"
 msgstr "Alocação competitiva"
@@ -358,27 +358,27 @@ msgstr "Alocação competitiva"
 msgid "Comprehensive review of cardiac physiological synchrony (CPS) mechanisms—cognitive, mechanical, and environmental—and their roles in empathy, stress, and anxiety."
 msgstr "Revisão abrangente dos mecanismos de sincronia fisiológica cardíaca (CPS) — cognitivos, mecânicos e ambientais — e seus papéis na empatia, estresse e ansiedade."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:988
+#: lib/sensocto_web/live/components/about_content_component.ex:1020
 #, elixir-autogen, elixir-format
 msgid "Coral reef restoration with edge AI cameras detecting fish species and health metrics. Environmental sensors tracking water quality, temperature, and ecosystem vitals. Real-time telemetry from remote locations."
 msgstr "Restauração de recifes de coral com câmeras de IA de borda detectando espécies de peixes e métricas de saúde. Sensores ambientais rastreando qualidade da água, temperatura e sinais vitais do ecossistema. Telemetria em tempo real de locais remotos."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1192
+#: lib/sensocto_web/live/components/about_content_component.ex:1224
 #, elixir-autogen, elixir-format
 msgid "Daily pattern learning"
 msgstr "Aprendizado de padrões diários"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1131
+#: lib/sensocto_web/live/components/about_content_component.ex:1163
 #, elixir-autogen, elixir-format
 msgid "Data harvesting for ad targeting"
 msgstr "Coleta de dados para direcionamento de anúncios"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1135
+#: lib/sensocto_web/live/components/about_content_component.ex:1167
 #, elixir-autogen, elixir-format
 msgid "Data stays on your devices. Privacy by structure."
 msgstr "Os dados ficam nos seus dispositivos. Privacidade por estrutura."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1331
+#: lib/sensocto_web/live/components/about_content_component.ex:1363
 #, elixir-autogen, elixir-format
 msgid "Deep Dive (~1800 words)"
 msgstr "Aprofundamento (~1800 palavras)"
@@ -388,12 +388,12 @@ msgstr "Aprofundamento (~1800 palavras)"
 msgid "Demonstrates that social anxiety reduces physiological synchrony during cooperative tasks, while task novelty increases it—contextual and individual factors shape autonomic alignment."
 msgstr "Demonstra que a ansiedade social reduz a sincronia fisiológica durante tarefas cooperativas, enquanto a novidade da tarefa a aumenta — fatores contextuais e individuais moldam o alinhamento autonômico."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1143
+#: lib/sensocto_web/live/components/about_content_component.ex:1175
 #, elixir-autogen, elixir-format
 msgid "Deplatforming and censorship risk"
 msgstr "Risco de remoção de plataforma e censura"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:897
+#: lib/sensocto_web/live/components/about_content_component.ex:929
 #, elixir-autogen, elixir-format
 msgid "Disability Care & Non-Verbal Communication"
 msgstr "Cuidado com Deficiência e Comunicação Não-Verbal"
@@ -408,22 +408,22 @@ msgstr "Estudo de hipervarredura EEG-BIO mostrando como o alinhamento moral entr
 msgid "Empathy"
 msgstr "Empatia"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1277
+#: lib/sensocto_web/live/components/about_content_component.ex:1309
 #, elixir-autogen, elixir-format
 msgid "Empathy Connectome: Insula, Amygdala, ACC"
 msgstr "Conectoma da Empatia: Ínsula, Amígdala, ACC"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1251
+#: lib/sensocto_web/live/components/about_content_component.ex:1283
 #, elixir-autogen, elixir-format
 msgid "Empathy Resonance & Control Networks"
 msgstr "Redes de Ressonância Empática e Controle"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1157
+#: lib/sensocto_web/live/components/about_content_component.ex:1189
 #, elixir-autogen, elixir-format
 msgid "End-to-end encryption native. Intimate data protected."
 msgstr "Criptografia ponta a ponta nativa. Dados íntimos protegidos."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:985
+#: lib/sensocto_web/live/components/about_content_component.ex:1017
 #, elixir-autogen, elixir-format
 msgid "Environmental Monitoring"
 msgstr "Monitoramento Ambiental"
@@ -443,7 +443,7 @@ msgstr "Examina como os sistemas fisiológicos dos parceiros se corregulam duran
 msgid "Explores how technology can enhance compassionate care in mental health treatment settings."
 msgstr "Explora como a tecnologia pode ampliar o cuidado compassivo em contextos de tratamento de saúde mental."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:662
+#: lib/sensocto_web/live/components/about_content_component.ex:689
 #, elixir-autogen, elixir-format
 msgid "Feel someone's presence. Not their performance."
 msgstr "Sinta a presença de alguém. Não sua performance."
@@ -453,12 +453,12 @@ msgstr "Sinta a presença de alguém. Não sua performance."
 msgid "Feelings, relationships, presence"
 msgstr "Sentimentos, relacionamentos, presença"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:900
+#: lib/sensocto_web/live/components/about_content_component.ex:932
 #, elixir-autogen, elixir-format
 msgid "For those who cannot speak their needs—non-verbal individuals, wheelchair users, those with chronic conditions—physiological signals become their voice. Caregivers sense when someone needs help before they ask."
 msgstr "Para aqueles que não conseguem verbalizar suas necessidades — pessoas não-verbais, cadeirantes, pessoas com condições crônicas — os sinais fisiológicos se tornam sua voz. Cuidadores percebem quando alguém precisa de ajuda antes de pedir."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1378
+#: lib/sensocto_web/live/components/about_content_component.ex:1410
 #, elixir-autogen, elixir-format
 msgid "Foundational Research (2001-2018)"
 msgstr "Pesquisa Fundamental (2001-2018)"
@@ -478,7 +478,9 @@ msgstr "Diversão"
 msgid "Games, play, entertainment"
 msgstr "Jogos, brincadeiras, entretenimento"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1533
+#: lib/sensocto_web/live/components/about_content_component.ex:1576
+#: lib/sensocto_web/live/components/about_content_component.ex:1584
+#: lib/sensocto_web/live/custom_sign_in_live.ex:501
 #, elixir-autogen, elixir-format
 msgid "Get Started"
 msgstr "Começar"
@@ -488,7 +490,7 @@ msgstr "Começar"
 msgid "Group Dynamics"
 msgstr "Dinâmicas de Grupo"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:963
+#: lib/sensocto_web/live/components/about_content_component.ex:995
 #, elixir-autogen, elixir-format
 msgid "Groups & Collective Presence"
 msgstr "Grupos e Presença Coletiva"
@@ -503,7 +505,7 @@ msgstr "Sincronização de HRV"
 msgid "Heart rate synchrony predicted correct group consensus with >70% cross-validation accuracy across 44 groups, providing a biomarker of interpersonal engagement."
 msgstr "A sincronia de frequência cardíaca previu o consenso correto do grupo com precisão de validação cruzada >70%% em 44 grupos, fornecendo um biomarcador de engajamento interpessoal."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1183
+#: lib/sensocto_web/live/components/about_content_component.ex:1215
 #, elixir-autogen, elixir-format
 msgid "Homeostatic Tuning"
 msgstr "Ajuste Homeostático"
@@ -535,7 +537,7 @@ msgstr ""
 msgid "Impact"
 msgstr "Impacto"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:941
+#: lib/sensocto_web/live/components/about_content_component.ex:973
 #, elixir-autogen, elixir-format
 msgid "Intimacy & Real Connection"
 msgstr "Intimidade e Conexão Real"
@@ -545,7 +547,7 @@ msgstr "Intimidade e Conexão Real"
 msgid "Major synthesis proposing a unified framework with six dimensions of synchrony form and four core functions: reducing complexity, accomplishing joint tasks, strengthening connection, and influencing partners."
 msgstr "Grande síntese propondo um arcabouço unificado com seis dimensões de forma de sincronia e quatro funções centrais: reduzir complexidade, realizar tarefas conjuntas, fortalecer conexões e influenciar parceiros."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:919
+#: lib/sensocto_web/live/components/about_content_component.ex:951
 #, elixir-autogen, elixir-format
 msgid "Mental Health & Trusted Networks"
 msgstr "Saúde Mental e Redes de Confiança"
@@ -555,45 +557,45 @@ msgstr "Saúde Mental e Redes de Confiança"
 msgid "Methods for detecting emotional states through autonomic nervous system monitoring via wearables."
 msgstr "Métodos para detectar estados emocionais por meio do monitoramento do sistema nervoso autônomo via dispositivos vestíveis."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1123
+#: lib/sensocto_web/live/components/about_content_component.ex:1155
 #, elixir-autogen, elixir-format
 msgid "Near-zero marginal cost. No need to harvest data."
 msgstr "Custo marginal quase zero. Sem necessidade de coletar dados."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1147
+#: lib/sensocto_web/live/components/about_content_component.ex:1179
 #, elixir-autogen, elixir-format
 msgid "No central authority. Communities cannot be silenced."
 msgstr "Sem autoridade central. Comunidades não podem ser silenciadas."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1081
+#: lib/sensocto_web/live/components/about_content_component.ex:1113
 #, elixir-autogen, elixir-format
 msgid "No harvesting. No surveillance. No algorithms deciding who sees what."
 msgstr "Sem coleta de dados. Sem vigilância. Sem algoritmos decidindo quem vê o quê."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1175
+#: lib/sensocto_web/live/components/about_content_component.ex:1207
 #, elixir-autogen, elixir-format
 msgid "Novelty Detection"
 msgstr "Detecção de Novidades"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1225
+#: lib/sensocto_web/live/components/about_content_component.ex:1257
 #, elixir-autogen, elixir-format
 msgid "Our approach is grounded in peer-reviewed research on physiological synchronization, care networks, and wearable technology for mental health."
 msgstr "Nossa abordagem é fundamentada em pesquisas revisadas por pares sobre sincronização fisiológica, redes de cuidado e tecnologia vestível para saúde mental."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1121
-#: lib/sensocto_web/live/components/about_content_component.ex:1133
-#: lib/sensocto_web/live/components/about_content_component.ex:1145
-#: lib/sensocto_web/live/components/about_content_component.ex:1155
+#: lib/sensocto_web/live/components/about_content_component.ex:1153
+#: lib/sensocto_web/live/components/about_content_component.ex:1165
+#: lib/sensocto_web/live/components/about_content_component.ex:1177
+#: lib/sensocto_web/live/components/about_content_component.ex:1187
 #, elixir-autogen, elixir-format
 msgid "P2P Solution"
 msgstr "Solução P2P"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:922
+#: lib/sensocto_web/live/components/about_content_component.ex:954
 #, elixir-autogen, elixir-format
 msgid "Peer support networks are reactive—friends don't know someone's in crisis until it's too late. With shared physiology, trusted contacts see rising stress patterns and can reach out proactively."
 msgstr "Redes de apoio entre pares são reativas — amigos não sabem que alguém está em crise até que seja tarde demais. Com a fisiologia compartilhada, contatos de confiança percebem padrões crescentes de estresse e podem entrar em contato proativamente."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1179
+#: lib/sensocto_web/live/components/about_content_component.ex:1211
 #, elixir-autogen, elixir-format
 msgid "Predictive Load Balancing"
 msgstr "Balanceamento de Carga Preditivo"
@@ -612,38 +614,38 @@ msgstr ""
 "\n"
 "No nível do mecanismo fisiológico, o estudo de Stuart e colegas de 2025 com 712 adultos na Psychophysiology revelou que a arritmia sinusal respiratória — um marcador de regulação vagal — aumenta durante conversas presenciais independentemente do tipo de relacionamento ou tema. Essa descoberta sugere que nossos sistemas nervosos autônomos se preparam ativamente para o engajamento social, um processo independente da intenção consciente. Boukarras e colegas descobriram que a ansiedade social atenua essa sincronização natural durante tarefas cooperativas, enquanto a novidade da tarefa a amplifica — apontando para alvos específicos de intervenção para o tratamento da ansiedade social. A revisão abrangente de Escobar mapeou três mecanismos de sincronia fisiológica cardíaca — cognitivo, mecânico e ambiental — para a expressão de empatia e manifestação de ansiedade. O estudo de hipervarredura EEG-BIO de Ciminaghi acrescentou uma descoberta impressionante: mesmo o alinhamento moral entre indivíduos modula tanto o acoplamento neural quanto o autonômico durante tarefas de persuasão, sugerindo que valores compartilhados criam ressonância fisiológica mais profunda."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1214
+#: lib/sensocto_web/live/components/about_content_component.ex:1246
 #, elixir-autogen, elixir-format
 msgid "RESEARCH"
 msgstr "PESQUISA"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:944
+#: lib/sensocto_web/live/components/about_content_component.ex:976
 #, elixir-autogen, elixir-format
 msgid "Real arousal, real connection. Digital lovers, musicians and audiences, actors and viewers, interviewers and guests, sensual caregivers—anyone sharing intimate moments across distance can finally feel each other's presence."
 msgstr "Excitação real, conexão real. Amantes digitais, músicos e plateias, atores e espectadores, entrevistadores e convidados, cuidadores sensuais — qualquer pessoa compartilhando momentos íntimos à distância finalmente pode sentir a presença um do outro."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1364
+#: lib/sensocto_web/live/components/about_content_component.ex:1396
 #, elixir-autogen, elixir-format
 msgid "Recent Research (2024-2025)"
 msgstr "Pesquisas Recentes (2024-2025)"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:132
-#: lib/sensocto_web/live/components/about_content_component.ex:697
+#: lib/sensocto_web/live/components/about_content_component.ex:724
 #, elixir-autogen, elixir-format
 msgid "Research"
 msgstr "Pesquisa"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1291
+#: lib/sensocto_web/live/components/about_content_component.ex:1323
 #, elixir-autogen, elixir-format
 msgid "Research Synthesis"
 msgstr "Síntese da Pesquisa"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1195
+#: lib/sensocto_web/live/components/about_content_component.ex:1227
 #, elixir-autogen, elixir-format
 msgid "Resource Arbitration"
 msgstr "Arbitragem de Recursos"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1188
+#: lib/sensocto_web/live/components/about_content_component.ex:1220
 #, elixir-autogen, elixir-format
 msgid "Respects user focus"
 msgstr "Respeita o foco do usuário"
@@ -658,7 +660,7 @@ msgstr "Revisa evidências de sincronia fisiológica entre terapeutas e clientes
 msgid "Science, analysis, discovery"
 msgstr "Ciência, análise, descoberta"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1184
+#: lib/sensocto_web/live/components/about_content_component.ex:1216
 #, elixir-autogen, elixir-format
 msgid "Self-adapting thresholds"
 msgstr "Limiares autoadaptativos"
@@ -668,12 +670,12 @@ msgstr "Limiares autoadaptativos"
 msgid "Sensors, protocols, data flows"
 msgstr "Sensores, protocolos, fluxos de dados"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1119
+#: lib/sensocto_web/live/components/about_content_component.ex:1151
 #, elixir-autogen, elixir-format
 msgid "Server costs create monetization pressure"
 msgstr "Custos de servidor geram pressão por monetização"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:787
+#: lib/sensocto_web/live/components/about_content_component.ex:816
 #, elixir-autogen, elixir-format
 msgid "Show"
 msgstr "Mostrar"
@@ -683,7 +685,7 @@ msgstr "Mostrar"
 msgid "Social good, accessibility, outcomes"
 msgstr "Bem social, acessibilidade, resultados"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1318
+#: lib/sensocto_web/live/components/about_content_component.ex:1350
 #, elixir-autogen, elixir-format
 msgid "Standard (~900 words)"
 msgstr "Padrão (~900 palavras)"
@@ -698,7 +700,7 @@ msgstr "Estuda como rituais de grupo produzem sincronização fisiológica e emo
 msgid "Study of 712 adults showing RSA increases during interpersonal conversations regardless of relationship type, connecting vagally mediated HRV to self-regulatory and interpersonal processes."
 msgstr "Estudo com 712 adultos mostrando que a RSA aumenta durante conversas interpessoais independentemente do tipo de relacionamento, conectando a HRV mediada vagalmente a processos autorregulatórios e interpessoais."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1154
+#: lib/sensocto_web/live/components/about_content_component.ex:1186
 #, elixir-autogen, elixir-format
 msgid "Surveillance by design"
 msgstr "Vigilância por design"
@@ -713,17 +715,17 @@ msgstr "Revisão sistemática definindo a fisiologia autonômica interpessoal e 
 msgid "Systematic review of peer support effectiveness in mental health care and community interventions."
 msgstr "Revisão sistemática da eficácia do apoio entre pares em cuidados de saúde mental e intervenções comunitárias."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1094
+#: lib/sensocto_web/live/components/about_content_component.ex:1126
 #, elixir-autogen, elixir-format
 msgid "THE DEEP DIVE"
 msgstr "O APROFUNDAMENTO"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:726
+#: lib/sensocto_web/live/components/about_content_component.ex:753
 #, elixir-autogen, elixir-format
 msgid "THE SPARK"
 msgstr "A CENTELHA"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:856
+#: lib/sensocto_web/live/components/about_content_component.ex:888
 #, elixir-autogen, elixir-format
 msgid "THE STORY"
 msgstr "A HISTÓRIA"
@@ -740,7 +742,7 @@ msgstr ""
 "\n"
 "A pesquisa de Tan e colegas de 2011 sobre biofeedback para ansiedade e TEPT na Applied Psychophysiology and Biofeedback estendeu essa percepção para a autorregulação. Suas evidências mostraram que o biofeedback de HRV — aprender a influenciar conscientemente a variabilidade da frequência cardíaca — produz melhorias significativas nos sintomas de ansiedade e na recuperação de trauma. O corpo não é apenas um local de sintomas; é um participante ativo na cura. Ensinar indivíduos a reconhecer e regular seus estados fisiológicos cria mudanças duradouras que abordagens cognitivas de cima para baixo frequentemente não conseguem alcançar sozinhas."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:966
+#: lib/sensocto_web/live/components/about_content_component.ex:998
 #, elixir-autogen, elixir-format
 msgid "Teams feel collective calm or tension. Meditation groups verify synchronization. Performers read live audience engagement. Rituals become measurable. Groups self-regulate as organisms."
 msgstr "Equipes sentem calma ou tensão coletiva. Grupos de meditação verificam a sincronização. Artistas leem o engajamento da plateia ao vivo. Rituais se tornam mensuráveis. Grupos se autorregulam como organismos."
@@ -750,22 +752,22 @@ msgstr "Equipes sentem calma ou tensão coletiva. Grupos de meditação verifica
 msgid "Technical"
 msgstr "Técnico"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:689
+#: lib/sensocto_web/live/components/about_content_component.ex:716
 #, elixir-autogen, elixir-format
 msgid "The Deep Dive"
 msgstr "O Aprofundamento"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1069
+#: lib/sensocto_web/live/components/about_content_component.ex:1101
 #, elixir-autogen, elixir-format
 msgid "The Promise"
 msgstr "A Promessa"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:673
+#: lib/sensocto_web/live/components/about_content_component.ex:700
 #, elixir-autogen, elixir-format
 msgid "The Spark"
 msgstr "A Centelha"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:681
+#: lib/sensocto_web/live/components/about_content_component.ex:708
 #, elixir-autogen, elixir-format
 msgid "The Story"
 msgstr "A História"
@@ -793,13 +795,13 @@ msgstr ""
 "\n"
 "O Sensocto sintetiza essas linhas de pesquisa em uma visão coerente: uma plataforma onde a presença é fisiológica, onde o apoio é proativo em vez de reativo, onde a intimidade transcende a distância e onde a tecnologia serve à conexão em vez da performance. Não estamos construindo mais uma rede social. Estamos construindo a infraestrutura para a sintonia humana genuína."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:878
+#: lib/sensocto_web/live/components/about_content_component.ex:910
 #, elixir-autogen, elixir-format
 msgid "Therapists see nervous system dysregulation in real-time. HRV, breathing patterns, heart rate—visible during sessions. Trust forms faster when bodies sync. Healing accelerates with biofeedback."
 msgstr "Terapeutas veem a desregulação do sistema nervoso em tempo real. HRV, padrões de respiração, frequência cardíaca — visíveis durante as sessões. A confiança se forma mais rápido quando os corpos se sincronizam. A cura se acelera com biofeedback."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:372
-#: lib/sensocto_web/live/components/about_content_component.ex:875
+#: lib/sensocto_web/live/components/about_content_component.ex:907
 #, elixir-autogen, elixir-format
 msgid "Therapy & Healing"
 msgstr "Terapia e Cura"
@@ -833,7 +835,7 @@ msgstr ""
 "\n"
 "A base científica é sólida. O hardware existe. A pesquisa está validada. O que faltava era uma plataforma projetada desde o início para servir ao florescimento humano em vez de extrair a atenção humana. É isso que o Sensocto pretende construir — e por que entender essa pesquisa importa para todos que o utilizam."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:734
+#: lib/sensocto_web/live/components/about_content_component.ex:761
 #, elixir-autogen, elixir-format
 msgid "We scroll, we perform, we feel more alone."
 msgstr "Rolamos a tela, performamos, nos sentimos mais sozinhos."
@@ -843,47 +845,47 @@ msgstr "Rolamos a tela, performamos, nos sentimos mais sozinhos."
 msgid "Wearables & Monitoring"
 msgstr "Vestíveis e Monitoramento"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:770
+#: lib/sensocto_web/live/components/about_content_component.ex:797
 #, elixir-autogen, elixir-format
 msgid "What if you could"
 msgstr "E se você pudesse"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1112
+#: lib/sensocto_web/live/components/about_content_component.ex:1144
 #, elixir-autogen, elixir-format
 msgid "Why Peer-to-Peer?"
 msgstr "Por que Ponto a Ponto?"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1205
+#: lib/sensocto_web/live/components/about_content_component.ex:1237
 #, elixir-autogen, elixir-format
 msgid "for humans who believe technology should serve connection, not extraction."
 msgstr "para humanos que acreditam que a tecnologia deve servir à conexão, não à extração."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:861
+#: lib/sensocto_web/live/components/about_content_component.ex:893
 #, elixir-autogen, elixir-format
 msgid "Built for humans who want to **truly** connect"
 msgstr "Feito para humanos que querem se conectar de **verdade**"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1072
+#: lib/sensocto_web/live/components/about_content_component.ex:1104
 #, elixir-autogen, elixir-format
 msgid "Connection measured in **heartbeats**, not dopamine hits."
 msgstr "Conexão medida em **batimentos cardíacos**, não em picos de dopamina."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1099
+#: lib/sensocto_web/live/components/about_content_component.ex:1131
 #, elixir-autogen, elixir-format
 msgid "Every technical decision is a **moral statement**"
 msgstr "Toda decisão técnica é uma **declaração moral**"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1219
+#: lib/sensocto_web/live/components/about_content_component.ex:1251
 #, elixir-autogen, elixir-format
 msgid "Scientific **foundations** for human connection"
 msgstr "**Fundamentos** científicos para a conexão humana"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:731
+#: lib/sensocto_web/live/components/about_content_component.ex:758
 #, elixir-autogen, elixir-format
 msgid "Technology promised connection and delivered **performance**."
 msgstr "A tecnologia prometeu conexão e entregou **desempenho**."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1077
+#: lib/sensocto_web/live/components/about_content_component.ex:1109
 #, elixir-autogen, elixir-format
 msgid "Technology that **amplifies empathy** instead of exploiting attention."
 msgstr "Tecnologia que **amplifica a empatia** em vez de explorar a atenção."
@@ -1238,7 +1240,7 @@ msgstr "**visualizar** trilhas GPS de caminhadas, ciclismo ou drones"
 msgid "**witness** trust forming in a therapy session"
 msgstr "**testemunhar** a confiança se formando em uma sessão terapêutica"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1520
+#: lib/sensocto_web/live/components/about_content_component.ex:1552
 #, elixir-autogen, elixir-format
 msgid "31 seconds"
 msgstr "31 segundos"
@@ -1269,7 +1271,7 @@ msgstr "Iniciante"
 msgid "Bio"
 msgstr "Bio"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1515
+#: lib/sensocto_web/live/components/about_content_component.ex:1547
 #, elixir-autogen, elixir-format
 msgid "Breathing"
 msgstr "Respiração"
@@ -1284,7 +1286,7 @@ msgstr "conectar"
 msgid "Display Name"
 msgstr "Nome de exibição"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1438
+#: lib/sensocto_web/live/components/about_content_component.ex:1470
 #, elixir-autogen, elixir-format
 msgid "ECG"
 msgstr "ECG"
@@ -1294,12 +1296,12 @@ msgstr "ECG"
 msgid "Expert"
 msgstr "Especialista"
 
-#: lib/sensocto_web/live/user_settings_live.ex:155
+#: lib/sensocto_web/live/user_settings_live.ex:156
 #, elixir-autogen, elixir-format
 msgid "Failed to update visibility"
 msgstr "Falha ao atualizar a visibilidade"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1518
+#: lib/sensocto_web/live/components/about_content_component.ex:1550
 #, elixir-autogen, elixir-format
 msgid "Gaze"
 msgstr "Olhar"
@@ -1309,13 +1311,13 @@ msgstr "Olhar"
 msgid "Go to Settings"
 msgstr "Ir para Configurações"
 
-#: lib/sensocto_web/live/user_settings_live.ex:132
+#: lib/sensocto_web/live/user_settings_live.ex:133
 #, elixir-autogen, elixir-format
 msgid "Guest users cannot change visibility"
 msgstr "Usuários convidados não podem alterar a visibilidade"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1441
-#: lib/sensocto_web/live/components/about_content_component.ex:1512
+#: lib/sensocto_web/live/components/about_content_component.ex:1473
+#: lib/sensocto_web/live/components/about_content_component.ex:1544
 #, elixir-autogen, elixir-format
 msgid "Heart Rate"
 msgstr "Frequência cardíaca"
@@ -1325,7 +1327,7 @@ msgstr "Frequência cardíaca"
 msgid "How others see you"
 msgstr "Como os outros te veem"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1444
+#: lib/sensocto_web/live/components/about_content_component.ex:1476
 #, elixir-autogen, elixir-format
 msgid "IMU"
 msgstr "IMU"
@@ -1340,22 +1342,22 @@ msgstr "Intermediário"
 msgid "Level"
 msgstr "Nível"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1429
+#: lib/sensocto_web/live/components/about_content_component.ex:1461
 #, elixir-autogen, elixir-format
 msgid "Live Sensor Graph — Real Movesense Data"
 msgstr "Gráfico de sensores ao vivo — Dados reais do Movesense"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1447
+#: lib/sensocto_web/live/components/about_content_component.ex:1479
 #, elixir-autogen, elixir-format
 msgid "Movesense"
 msgstr "Movesense"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1483
+#: lib/sensocto_web/live/components/about_content_component.ex:1515
 #, elixir-autogen, elixir-format
 msgid "Multi-Sensor Graph Visualization"
 msgstr "Visualização de grafo multissensor"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1432
+#: lib/sensocto_web/live/components/about_content_component.ex:1464
 #, elixir-autogen, elixir-format
 msgid "Multiple Movesense sensors streaming ECG, heart rate, and IMU data simultaneously. The force-directed graph visualizes connections between participants in real-time."
 msgstr "Múltiplos sensores Movesense transmitindo dados de ECG, frequência cardíaca e IMU simultaneamente. O grafo dirigido por força visualiza as conexões entre os participantes em tempo real."
@@ -1375,7 +1377,7 @@ msgstr "Nenhuma habilidade adicionada ainda."
 msgid "People you follow, collaborate with, or mentor."
 msgstr "Pessoas que você segue, com quem colabora ou orienta."
 
-#: lib/sensocto_web/live/user_settings_live.ex:375
+#: lib/sensocto_web/live/user_settings_live.ex:392
 #, elixir-autogen, elixir-format
 msgid "Privacy"
 msgstr "Privacidade"
@@ -1385,27 +1387,27 @@ msgstr "Privacidade"
 msgid "Profile Information"
 msgstr "Informações do perfil"
 
-#: lib/sensocto_web/live/user_settings_live.ex:150
+#: lib/sensocto_web/live/user_settings_live.ex:151
 #, elixir-autogen, elixir-format
 msgid "Profile hidden from directory"
 msgstr "Perfil oculto do diretório"
 
-#: lib/sensocto_web/live/user_settings_live.ex:149
+#: lib/sensocto_web/live/user_settings_live.ex:150
 #, elixir-autogen, elixir-format
 msgid "Profile is now visible in directory"
 msgstr "Perfil agora está visível no diretório"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1399
+#: lib/sensocto_web/live/components/about_content_component.ex:1431
 #, elixir-autogen, elixir-format
 msgid "Real sensor recordings capturing fascinating moments of human physiology. Each video tells a story through data."
 msgstr "Gravações reais de sensores que capturam momentos fascinantes da fisiologia humana. Cada vídeo conta uma história através dos dados."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1486
+#: lib/sensocto_web/live/components/about_content_component.ex:1518
 #, elixir-autogen, elixir-format
 msgid "Real-time heart rate, breathing, and gaze data rendered as an interactive force-directed graph. Watch how physiological signals create living, breathing patterns."
 msgstr "Dados em tempo real de frequência cardíaca, respiração e olhar renderizados como um grafo interativo dirigido por força. Veja como os sinais fisiológicos criam padrões vivos e respiratórios."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1396
+#: lib/sensocto_web/live/components/about_content_component.ex:1428
 #, elixir-autogen, elixir-format
 msgid "Recordings of Unique Human Experiences"
 msgstr "Gravações de experiências humanas únicas"
@@ -1430,7 +1432,7 @@ msgstr "Salvando..."
 msgid "Search by name or email..."
 msgstr "Buscar por nome ou e-mail..."
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1503
+#: lib/sensocto_web/live/components/about_content_component.ex:1535
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Show Clip"
 msgstr "Mostrar"
@@ -1466,27 +1468,27 @@ msgstr "Fuso horário"
 msgid "Users"
 msgstr "Usuários"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1393
+#: lib/sensocto_web/live/components/about_content_component.ex:1425
 #, elixir-autogen, elixir-format
 msgid "VIDEOS"
 msgstr "VÍDEOS"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:705
+#: lib/sensocto_web/live/components/about_content_component.ex:732
 #, elixir-autogen, elixir-format
 msgid "Videos"
 msgstr "Vídeos"
 
-#: lib/sensocto_web/live/user_settings_live.ex:381
+#: lib/sensocto_web/live/user_settings_live.ex:398
 #, elixir-autogen, elixir-format
 msgid "Visible in user directory"
 msgstr "Visível no diretório de usuários"
 
-#: lib/sensocto_web/live/components/about_content_component.ex:1506
+#: lib/sensocto_web/live/components/about_content_component.ex:1538
 #, elixir-autogen, elixir-format
 msgid "Watch Full Recording"
 msgstr "Assistir à gravação completa"
 
-#: lib/sensocto_web/live/user_settings_live.ex:384
+#: lib/sensocto_web/live/user_settings_live.ex:401
 #, elixir-autogen, elixir-format
 msgid "When enabled, other users can find your profile in the directory."
 msgstr "Quando ativado, outros usuários podem encontrar seu perfil no diretório."
@@ -1510,3 +1512,93 @@ msgstr "segue"
 #, elixir-autogen, elixir-format, fuzzy
 msgid "mentors"
 msgstr "monitorar"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:462
+#, elixir-autogen, elixir-format
+msgid "Browse without an account - session only"
+msgstr "Navegar sem conta – apenas esta sessão"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:467
+#, elixir-autogen, elixir-format
+msgid "Continue as Guest"
+msgstr "Continuar como convidado"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:439
+#, elixir-autogen, elixir-format
+msgid "Hide About"
+msgstr "Ocultar Sobre"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:470
+#, elixir-autogen, elixir-format
+msgid "No account needed"
+msgstr "Sem conta necessária"
+
+#: lib/sensocto_web/live/user_settings_live.ex:372
+#, elixir-autogen, elixir-format
+msgid "Open in App"
+msgstr ""
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:470
+#, elixir-autogen, elixir-format
+msgid "Session only"
+msgstr "Apenas esta sessão"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:446
+#, elixir-autogen, elixir-format
+msgid "Welcome"
+msgstr "Bem-vindo"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:439
+#, elixir-autogen, elixir-format
+msgid "What is SensOcto?"
+msgstr "O que é o SensOcto?"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:395
+#, elixir-autogen, elixir-format
+msgid "Aurora"
+msgstr "Aurora"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:393
+#, elixir-autogen, elixir-format
+msgid "Constellation"
+msgstr "Constelação"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:392
+#, elixir-autogen, elixir-format
+msgid "No visualization"
+msgstr "Sem visualização"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:396
+#, elixir-autogen, elixir-format
+msgid "Particles"
+msgstr "Partículas"
+
+#: lib/sensocto_web/live/custom_sign_in_live.ex:394
+#, elixir-autogen, elixir-format
+msgid "Waveform"
+msgstr "Onda"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:579
+#, elixir-autogen, elixir-format
+msgid "Academic papers and scientific foundations. ~600 words, ~3 min read"
+msgstr "Artigos acadêmicos e fundamentos científicos. ~600 palavras, ~3 min de leitura"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:582
+#, elixir-autogen, elixir-format
+msgid "Demo videos and walkthroughs. ~5 min watch time"
+msgstr "Vídeos de demonstração e tutoriais. ~5 min de visualização"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:576
+#, elixir-autogen, elixir-format
+msgid "Technical deep dive — architecture, sensors, data. ~900 words, ~4 min read"
+msgstr "Mergulho técnico — arquitetura, sensores, dados. ~900 palavras, ~4 min de leitura"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:570
+#, elixir-autogen, elixir-format
+msgid "The emotional hook — what SensOcto feels like. ~150 words, ~30 sec read"
+msgstr "O gancho emocional — como o SensOcto se sente. ~150 palavras, ~30 seg de leitura"
+
+#: lib/sensocto_web/live/components/about_content_component.ex:573
+#, elixir-autogen, elixir-format
+msgid "The philosophy and backstory. ~500 words, ~2 min read"
+msgstr "A filosofia e a história. ~500 palavras, ~2 min de leitura"

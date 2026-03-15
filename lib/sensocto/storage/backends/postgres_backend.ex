@@ -337,13 +337,12 @@ defmodule Sensocto.Storage.Backends.PostgresBackend do
     if existing do
       # Update role if changed
       role_string = Atom.to_string(normalize_role(role))
-      now = DateTime.utc_now()
 
       Sensocto.Repo.update_all(
         from(m in "room_memberships",
           where: m.room_id == ^room_uuid and m.user_id == ^user_uuid
         ),
-        set: [role: role_string, updated_at: now]
+        set: [role: role_string]
       )
     else
       RoomMembership

@@ -210,6 +210,11 @@ pub struct SensorConfig {
 
     /// Number of measurements to batch.
     pub batch_size: u32,
+
+    /// Optional bearer token override for channel-level auth.
+    /// When set, this token is sent as `bearer_token` in the sensor channel
+    /// join params instead of the client-level bearer token.
+    pub bearer_token: Option<String>,
 }
 
 impl SensorConfig {
@@ -222,6 +227,7 @@ impl SensorConfig {
             attributes: Vec::new(),
             sampling_rate_hz: 10,
             batch_size: 5,
+            bearer_token: None,
         }
     }
 
@@ -252,6 +258,14 @@ impl SensorConfig {
     /// Sets the batch size.
     pub fn with_batch_size(mut self, size: u32) -> Self {
         self.batch_size = size;
+        self
+    }
+
+    /// Sets an override bearer token for channel-level auth.
+    /// When set, this is used instead of the client-level bearer token
+    /// in the sensor channel join params.
+    pub fn with_bearer_token(mut self, token: impl Into<String>) -> Self {
+        self.bearer_token = Some(token.into());
         self
     }
 }

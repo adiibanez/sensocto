@@ -61,6 +61,10 @@
     let preloadStarted = false;
     let preloadPromise = null;
 
+    // Loading state for UI feedback
+    let initializing = false;
+    let initStatus = "";
+
     // Preload MediaPipe models in the background when component mounts
     // This significantly speeds up "Start" time since models are already cached
     async function preloadModels() {
@@ -151,79 +155,97 @@
         }
     }
 
+    // Race a promise against a timeout — returns the promise result or rejects on timeout
+    function withTimeout(promise, ms, label) {
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
+        ]);
+    }
+
     async function initLandmarkers() {
         const startTime = performance.now();
         logger.log(loggerCtxName, "Initializing landmarkers...");
+        initStatus = "Loading vision models...";
 
         try {
             // Use preloaded vision instance if available, otherwise load fresh
             let vision = preloadPromise ? await preloadPromise : null;
             if (!vision) {
                 logger.log(loggerCtxName, "No preloaded vision, loading fresh...");
-                vision = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+                vision = await withTimeout(
+                    FilesetResolver.forVisionTasks(
+                        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+                    ),
+                    15000,
+                    "WASM loading"
                 );
             }
             logger.log(loggerCtxName, `Vision ready in ${(performance.now() - startTime).toFixed(0)}ms`);
 
-            // Initialize PoseLandmarker (33 landmarks for full body)
-            // Always try GPU first, then fall back to CPU
-            const initPose = async () => {
-                try {
-                    const landmarker = await PoseLandmarker.createFromOptions(vision, {
-                        baseOptions: {
-                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                            delegate: "GPU"
-                        },
-                        runningMode: "VIDEO",
-                        numPoses: 1,
-                        minPoseDetectionConfidence: 0.5,
-                        minPosePresenceConfidence: 0.5,
-                        minTrackingConfidence: 0.5,
-                        outputSegmentationMasks: false
-                    });
-                    usingDelegate = "GPU";
-                    logger.log(loggerCtxName, `PoseLandmarker initialized with GPU in ${(performance.now() - startTime).toFixed(0)}ms`);
-                    return landmarker;
-                } catch (gpuError) {
-                    // GPU failed, fall back to CPU
-                    logger.warn(loggerCtxName, `GPU delegate failed for Pose, falling back to CPU:`, gpuError);
-                    const landmarker = await PoseLandmarker.createFromOptions(vision, {
-                        baseOptions: {
-                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-                            delegate: "CPU"
-                        },
-                        runningMode: "VIDEO",
-                        numPoses: 1,
-                        minPoseDetectionConfidence: 0.5,
-                        minPosePresenceConfidence: 0.5,
-                        minTrackingConfidence: 0.5,
-                        outputSegmentationMasks: false
-                    });
-                    usingDelegate = "CPU";
-                    logger.log(loggerCtxName, `PoseLandmarker initialized with CPU in ${(performance.now() - startTime).toFixed(0)}ms`);
-                    return landmarker;
-                }
+            const poseModelUrl = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+            const poseOptions = {
+                runningMode: "VIDEO",
+                numPoses: 1,
+                minPoseDetectionConfidence: 0.5,
+                minPosePresenceConfidence: 0.5,
+                minTrackingConfidence: 0.5,
+                outputSegmentationMasks: false
             };
 
-            // Initialize FaceLandmarker (468 landmarks for detailed face)
-            // Note: Face uses the same delegate as pose for consistency
-            const initFace = async (delegate) => {
+            // Try GPU with a 10s timeout — GPU delegate can hang on some systems
+            initStatus = "Initializing pose (GPU)...";
+            let gpuSucceeded = false;
+            try {
+                poseLandmarker = await withTimeout(
+                    PoseLandmarker.createFromOptions(vision, {
+                        baseOptions: { modelAssetPath: poseModelUrl, delegate: "GPU" },
+                        ...poseOptions
+                    }),
+                    10000,
+                    "GPU PoseLandmarker"
+                );
+                usingDelegate = "GPU";
+                gpuSucceeded = true;
+                logger.log(loggerCtxName, `PoseLandmarker initialized with GPU in ${(performance.now() - startTime).toFixed(0)}ms`);
+            } catch (gpuError) {
+                logger.warn(loggerCtxName, `GPU delegate failed for Pose, falling back to CPU:`, gpuError);
+                initStatus = "GPU unavailable, trying CPU...";
+                poseLandmarker = await withTimeout(
+                    PoseLandmarker.createFromOptions(vision, {
+                        baseOptions: { modelAssetPath: poseModelUrl, delegate: "CPU" },
+                        ...poseOptions
+                    }),
+                    15000,
+                    "CPU PoseLandmarker"
+                );
+                usingDelegate = "CPU";
+                logger.log(loggerCtxName, `PoseLandmarker initialized with CPU in ${(performance.now() - startTime).toFixed(0)}ms`);
+            }
+
+            // Start face initialization in background (optional, can fail)
+            initStatus = "Starting camera...";
+            const faceDelegate = usingDelegate;
+            const initFace = async () => {
                 try {
-                    const landmarker = await FaceLandmarker.createFromOptions(vision, {
-                        baseOptions: {
-                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-                            delegate: delegate
-                        },
-                        runningMode: "VIDEO",
-                        numFaces: 1,
-                        minFaceDetectionConfidence: 0.5,
-                        minFacePresenceConfidence: 0.5,
-                        minTrackingConfidence: 0.5,
-                        outputFaceBlendshapes: true,
-                        outputFacialTransformationMatrixes: false
-                    });
-                    logger.log(loggerCtxName, `FaceLandmarker initialized with ${delegate} in ${(performance.now() - startTime).toFixed(0)}ms`);
+                    const landmarker = await withTimeout(
+                        FaceLandmarker.createFromOptions(vision, {
+                            baseOptions: {
+                                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                                delegate: faceDelegate
+                            },
+                            runningMode: "VIDEO",
+                            numFaces: 1,
+                            minFaceDetectionConfidence: 0.5,
+                            minFacePresenceConfidence: 0.5,
+                            minTrackingConfidence: 0.5,
+                            outputFaceBlendshapes: true,
+                            outputFacialTransformationMatrixes: false
+                        }),
+                        15000,
+                        "FaceLandmarker"
+                    );
+                    logger.log(loggerCtxName, `FaceLandmarker initialized with ${faceDelegate} in ${(performance.now() - startTime).toFixed(0)}ms`);
                     return landmarker;
                 } catch (faceError) {
                     logger.warn(loggerCtxName, "Failed to initialize FaceLandmarker:", faceError);
@@ -231,12 +253,7 @@
                 }
             };
 
-            // Initialize pose first (required), then face in parallel once we know the delegate
-            poseLandmarker = await initPose();
-
-            // Start face initialization (optional, can fail)
-            // Don't await - let it run in background while we start pose detection
-            initFace(usingDelegate).then(fl => {
+            initFace().then(fl => {
                 faceLandmarker = fl;
                 if (fl) {
                     logger.log(loggerCtxName, `FaceLandmarker ready, total init time: ${(performance.now() - startTime).toFixed(0)}ms`);
@@ -247,6 +264,7 @@
             return true;
         } catch (error) {
             logger.error(loggerCtxName, "Failed to initialize landmarkers:", error);
+            initStatus = "";
             return false;
         }
     }
@@ -451,59 +469,69 @@
     }
 
     async function startPose() {
-        if (detecting) return;
+        if (detecting || initializing) return;
 
         logger.log(loggerCtxName, "Starting hybrid pose detection...");
+        initializing = true;
+        initStatus = "Initializing...";
         cameraError = null;
 
-        if (!poseLandmarker) {
-            const success = await initLandmarkers();
-            if (!success) {
-                logger.error(loggerCtxName, "Could not initialize landmarkers");
+        try {
+            if (!poseLandmarker) {
+                const success = await initLandmarkers();
+                if (!success) {
+                    logger.error(loggerCtxName, "Could not initialize landmarkers");
+                    cameraError = "Failed to initialize pose models. Please try again.";
+                    return;
+                }
+            }
+
+            initStatus = "Starting camera...";
+            const videoEl = await getVideoSource();
+            if (!videoEl) {
+                logger.error(loggerCtxName, "Could not find or create video source");
+                if (!cameraError) {
+                    cameraError = "No video source available. Join a call or allow camera access.";
+                }
                 return;
             }
-        }
 
-        const videoEl = await getVideoSource();
-        if (!videoEl) {
-            logger.error(loggerCtxName, "Could not find or create video source");
-            if (!cameraError) {
-                cameraError = "No video source available. Join a call or allow camera access.";
+            if (videoEl.readyState < 2) {
+                initStatus = "Waiting for camera...";
+                logger.log(loggerCtxName, "Waiting for video to be ready...");
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error("Video ready timeout")), 10000);
+                    videoEl.addEventListener("loadeddata", () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    }, { once: true });
+                }).catch(err => {
+                    logger.error(loggerCtxName, "Video ready timeout:", err);
+                    cameraError = "Video source not ready. Please try again.";
+                    return;
+                });
             }
-            return;
-        }
 
-        if (videoEl.readyState < 2) {
-            logger.log(loggerCtxName, "Waiting for video to be ready...");
-            await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => reject(new Error("Video ready timeout")), 10000);
-                videoEl.addEventListener("loadeddata", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                }, { once: true });
-            }).catch(err => {
-                logger.error(loggerCtxName, "Video ready timeout:", err);
-                cameraError = "Video source not ready. Please try again.";
-                return;
+            // Setup sensor channel with hybrid skeleton type
+            sensorService.setupChannel(channelIdentifier);
+            sensorService.registerAttribute(channelIdentifier, {
+                attribute_id: "pose_skeleton",
+                attribute_type: "skeleton",
+                sampling_rate: targetFps
             });
+
+            // Subscribe to backpressure updates
+            unsubscribeBackpressure = sensorService.onBackpressure(channelIdentifier, handleBackpressureConfig);
+
+            detecting = true;
+            currentMode = "full";
+
+            detectFrame(videoEl);
+            logger.log(loggerCtxName, `Hybrid pose detection started (${usingStandalone ? "standalone" : "call"} mode)`);
+        } finally {
+            initializing = false;
+            initStatus = "";
         }
-
-        // Setup sensor channel with hybrid skeleton type
-        sensorService.setupChannel(channelIdentifier);
-        sensorService.registerAttribute(channelIdentifier, {
-            attribute_id: "pose_skeleton",
-            attribute_type: "skeleton",
-            sampling_rate: targetFps
-        });
-
-        // Subscribe to backpressure updates
-        unsubscribeBackpressure = sensorService.onBackpressure(channelIdentifier, handleBackpressureConfig);
-
-        detecting = true;
-        currentMode = "full";
-
-        detectFrame(videoEl);
-        logger.log(loggerCtxName, `Hybrid pose detection started (${usingStandalone ? "standalone" : "call"} mode)`);
     }
 
     function detectFrame(videoEl) {
@@ -726,6 +754,7 @@
     }
 
     async function enablePose() {
+        if (initializing || detecting) return;
         sensorSettings.setSensorEnabled('hybrid_pose', true);
         await startPose();
         // If startPose failed (detecting is still false), reset the setting
@@ -863,29 +892,47 @@
         onclick={togglePose}
         class="icon-btn"
         class:active={detecting}
+        class:loading={initializing}
         class:standalone={detecting && usingStandalone}
         class:face-mode={detecting && currentMode === "face"}
         class:paused={detecting && backpressurePaused}
-        title={detecting
-            ? `Hybrid pose active (${currentMode} mode, ${usingStandalone ? "standalone" : "call"}, ${usingDelegate}, ${targetFps.toFixed(0)}fps${backpressurePaused ? " PAUSED" : ""})`
-            : "Start hybrid pose detection"}
+        disabled={initializing}
+        title={initializing
+            ? initStatus
+            : detecting
+                ? `Hybrid pose active (${currentMode} mode, ${usingStandalone ? "standalone" : "call"}, ${usingDelegate}, ${targetFps.toFixed(0)}fps${backpressurePaused ? " PAUSED" : ""})`
+                : "Start hybrid pose detection"}
     >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
-            {#if currentMode === "face" && detecting}
-                <!-- Face icon when in face mode -->
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-6c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm10 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-5 4c2.21 0 4-1.79 4-4h-8c0 2.21 1.79 4 4 4z"/>
-            {:else}
-                <!-- Body icon for full body mode -->
-                <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z"/>
-            {/if}
-        </svg>
+        {#if initializing}
+            <svg class="w-3.5 h-3.5 spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+        {:else}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
+                {#if currentMode === "face" && detecting}
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-6c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm10 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-5 4c2.21 0 4-1.79 4-4h-8c0 2.21 1.79 4 4 4z"/>
+                {:else}
+                    <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z"/>
+                {/if}
+            </svg>
+        {/if}
     </button>
     {#if cameraError}
         <span class="text-xs text-red-400 ml-1" title={cameraError}>!</span>
     {/if}
 {:else}
     <div class="flex items-center gap-2">
-        {#if detecting}
+        {#if initializing}
+            <button disabled class="btn btn-blue text-xs opacity-70 cursor-wait">
+                <span class="inline-flex items-center gap-1">
+                    <svg class="w-3 h-3 spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Initializing...
+                </span>
+            </button>
+            <span class="text-xs text-gray-500">{initStatus}</span>
+        {:else if detecting}
             <button onclick={disablePose} class="btn btn-blue text-xs">Stop Hybrid</button>
             <span class="text-xs text-gray-400">
                 {targetFps.toFixed(0)} FPS{isMobile ? ' (mobile)' : ''}{isEdge ? ' (Edge)' : ''}
@@ -952,8 +999,23 @@
         background: #f59e0b;
         animation: pulse 1.5s ease-in-out infinite;
     }
+    .icon-btn.loading {
+        background: #4b5563;
+        color: #60a5fa;
+        cursor: wait;
+    }
+    .icon-btn:disabled {
+        cursor: wait;
+    }
+    :global(.spin) {
+        animation: spin 1s linear infinite;
+    }
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.6; }
+    }
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
 </style>

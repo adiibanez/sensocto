@@ -560,25 +560,32 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     end
   end
 
+  defp level_tooltip(:spark),
+    do: gettext("The emotional hook — what SensOcto feels like. ~150 words, ~30 sec read")
+
+  defp level_tooltip(:story),
+    do: gettext("The philosophy and backstory. ~500 words, ~2 min read")
+
+  defp level_tooltip(:deep),
+    do: gettext("Technical deep dive — architecture, sensors, data. ~900 words, ~4 min read")
+
+  defp level_tooltip(:research),
+    do: gettext("Academic papers and scientific foundations. ~600 words, ~3 min read")
+
+  defp level_tooltip(:videos),
+    do: gettext("Demo videos and walkthroughs. ~5 min watch time")
+
   attr(:level, :atom, required: true)
   attr(:current, :atom, required: true)
   attr(:patch_base, :string, default: nil)
   attr(:target, :any, default: nil)
   slot(:inner_block, required: true)
 
-  @level_tooltips %{
-    spark: "The emotional hook — what SensOcto feels like. ~150 words, ~30 sec read",
-    story: "The philosophy and backstory. ~500 words, ~2 min read",
-    deep: "Technical deep dive — architecture, sensors, data. ~900 words, ~4 min read",
-    research: "Academic papers and scientific foundations. ~600 words, ~3 min read",
-    videos: "Demo videos and walkthroughs. ~5 min watch time"
-  }
-
   defp level_button(assigns) do
     assigns =
       assigns
       |> assign(:class, level_button_class(assigns.level, assigns.current))
-      |> assign(:tooltip, @level_tooltips[assigns.level])
+      |> assign(:tooltip, level_tooltip(assigns.level))
 
     ~H"""
     <%= if @patch_base do %>
@@ -668,7 +675,10 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     <div class="about-content">
       <%!-- Hero Section --%>
       <div class="relative overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-cyan-900/5 to-purple-900/10">
+        <div
+          :if={!Map.get(assigns, :transparent_bg, false)}
+          class="absolute inset-0 bg-gradient-to-r from-blue-800/30 via-cyan-900/10 to-purple-800/30"
+        >
         </div>
 
         <div class="relative max-w-4xl mx-auto px-4 py-12 sm:py-16 text-center">
@@ -847,7 +857,10 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
                 </picture>
               </div>
             <% end %>
-            <div class="absolute inset-0 bg-gradient-to-r from-gray-900/40 via-transparent to-gray-900/40 pointer-events-none" />
+            <div
+              :if={!Map.get(assigns, :transparent_bg, false)}
+              class="absolute inset-0 bg-gradient-to-r from-gray-900/40 via-transparent to-gray-900/40 pointer-events-none"
+            />
             <div class="absolute bottom-2 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <%= for i <- 0..4 do %>
                 <div class={[
@@ -1548,13 +1561,29 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
           :if={Map.get(assigns, :show_cta, true)}
           class="mt-12 flex items-center justify-center gap-4 order-last"
         >
-          <.link
-            navigate={Map.get(assigns, :cta_link, ~p"/sign-in")}
-            class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
-          >
-            <.icon name="hero-play" class="h-5 w-5" />
-            {Map.get(assigns, :cta_label, gettext("Get Started"))}
-          </.link>
+          <%= if Map.get(assigns, :cta_scroll, false) do %>
+            <% target = Map.get(assigns, :cta_scroll_target, "#sign-in-component") %>
+            <button
+              phx-click={
+                Phoenix.LiveView.JS.dispatch("js:scroll-focus",
+                  to: target,
+                  detail: %{target: target}
+                )
+              }
+              class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors cursor-pointer"
+            >
+              <.icon name="hero-play" class="h-5 w-5" />
+              {Map.get(assigns, :cta_label, gettext("Get Started"))}
+            </button>
+          <% else %>
+            <.link
+              navigate={Map.get(assigns, :cta_link, ~p"/sign-in")}
+              class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
+            >
+              <.icon name="hero-play" class="h-5 w-5" />
+              {Map.get(assigns, :cta_label, gettext("Get Started"))}
+            </.link>
+          <% end %>
           <.link
             href="https://github.com/adiibanez/sensocto/"
             target="_blank"

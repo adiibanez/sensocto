@@ -8,6 +8,7 @@ defmodule SensoctoWeb.UserSocket do
   channel("call:*", SensoctoWeb.CallChannel)
   channel("hydration:room:*", SensoctoWeb.HydrationChannel)
   channel("viewer:*", SensoctoWeb.ViewerDataChannel)
+  channel("lobby:*", SensoctoWeb.LobbyChannel)
 
   @impl true
   def connect(%{"token" => token}, socket, _connect_info) do

@@ -215,10 +215,14 @@ defmodule SensoctoWeb.UserSettingsLive do
     "sensocto://auth?token=#{token}"
   end
 
+  # Returns {:safe, svg} tuple — EQRCode.svg/2 output is trusted server-generated SVG
   defp generate_qr_code(content) do
-    content
-    |> EQRCode.encode()
-    |> EQRCode.svg(width: 200)
+    svg =
+      content
+      |> EQRCode.encode()
+      |> EQRCode.svg(width: 200)
+
+    {:safe, svg}
   end
 
   defp format_time(seconds) when seconds <= 0, do: "0:00"
@@ -311,7 +315,7 @@ defmodule SensoctoWeb.UserSettingsLive do
           <div :if={@show_qr} class="space-y-4">
             <div class="flex flex-col sm:flex-row gap-6 items-start">
               <div class="bg-white p-3 rounded-lg">
-                {Phoenix.HTML.raw(@qr_svg)}
+                {@qr_svg}
               </div>
 
               <div class="flex-1 space-y-4">
@@ -345,7 +349,7 @@ defmodule SensoctoWeb.UserSettingsLive do
                     <button
                       phx-click="copy_link"
                       phx-hook="CopyToClipboard"
-                      data-copy-target="deep-link-input"
+                      data-copy-text={@deep_link}
                       id="copy-btn"
                       class={"px-4 py-2 rounded-lg text-sm font-medium transition-colors " <>
                         if(@copied, do: "bg-green-600 text-white", else: "bg-gray-700 hover:bg-gray-600 text-white")}
@@ -354,6 +358,18 @@ defmodule SensoctoWeb.UserSettingsLive do
                     </button>
                   </div>
                 </div>
+
+                <a
+                  href={@deep_link}
+                  class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <Heroicons.icon
+                    name="device-phone-mobile"
+                    type="outline"
+                    class="h-4 w-4"
+                  />
+                  {gettext("Open in App")}
+                </a>
               </div>
             </div>
 

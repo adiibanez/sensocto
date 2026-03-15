@@ -342,10 +342,17 @@ defmodule Sensocto.Simulator.Manager do
         {:reply, {:error, :not_running}, state}
 
       scenario_info ->
-        # Stop all connectors for this scenario
-        Enum.each(scenario_info.connector_ids, fn connector_id ->
-          do_stop_connector(connector_id, Map.get(state.connectors, connector_id))
-        end)
+        # Stop all connectors in parallel (sequential was causing 30s+ blocks)
+        scenario_info.connector_ids
+        |> Task.async_stream(
+          fn connector_id ->
+            do_stop_connector(connector_id, Map.get(state.connectors, connector_id))
+          end,
+          max_concurrency: System.schedulers_online(),
+          timeout: 15_000,
+          on_timeout: :kill_task
+        )
+        |> Stream.run()
 
         # Remove connectors from state
         new_connectors = Map.drop(state.connectors, scenario_info.connector_ids)

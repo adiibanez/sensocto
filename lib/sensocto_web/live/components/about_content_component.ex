@@ -1543,16 +1543,17 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
           </div>
         </div>
 
-        <%!-- Footer CTA (optional, controlled by show_cta prop) --%>
+        <%!-- Footer CTA --%>
         <div
           :if={Map.get(assigns, :show_cta, true)}
           class="mt-12 flex items-center justify-center gap-4 order-last"
         >
           <.link
-            navigate={~p"/sign-in"}
+            navigate={Map.get(assigns, :cta_link, ~p"/sign-in")}
             class="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
           >
-            <.icon name="hero-play" class="h-5 w-5" /> {gettext("Get Started")}
+            <.icon name="hero-play" class="h-5 w-5" />
+            {Map.get(assigns, :cta_label, gettext("Get Started"))}
           </.link>
           <.link
             href="https://github.com/adiibanez/sensocto/"

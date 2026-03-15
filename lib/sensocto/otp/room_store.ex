@@ -450,6 +450,8 @@ defmodule Sensocto.RoomStore do
       # Broadcast to cluster for multi-node sync
       broadcast_cluster_room_created(room_id)
       broadcast_cluster_room_sync(room)
+      # Broadcast to lobby channels
+      broadcast_lobby_room_created(room)
 
       {:reply, {:ok, room}, new_state}
     end
@@ -508,6 +510,8 @@ defmodule Sensocto.RoomStore do
         HydrationManager.snapshot_room(room_id, updated_room)
 
         broadcast_room_update(room_id, :room_updated)
+        # Broadcast to lobby channels
+        broadcast_lobby_room_updated(updated_room)
 
         {:reply, {:ok, updated_room}, new_state}
     end
@@ -535,6 +539,8 @@ defmodule Sensocto.RoomStore do
         broadcast_room_update(room_id, :room_deleted)
         # Broadcast to cluster for multi-node sync
         broadcast_cluster_room_deleted(room_id)
+        # Broadcast to lobby channels
+        broadcast_lobby_room_deleted(room_id)
 
         {:reply, :ok, new_state}
     end
@@ -598,6 +604,7 @@ defmodule Sensocto.RoomStore do
           HydrationManager.snapshot_room(room_id, updated_room)
 
           broadcast_room_update(room_id, {:member_joined, user_id, role})
+          broadcast_lobby_membership_changed(room_id, :joined, user_id)
 
           {:reply, {:ok, updated_room}, new_state}
         end
@@ -630,6 +637,7 @@ defmodule Sensocto.RoomStore do
           HydrationManager.snapshot_room(room_id, updated_room)
 
           broadcast_room_update(room_id, {:member_left, user_id})
+          broadcast_lobby_membership_changed(room_id, :left, user_id)
 
           {:reply, :ok, new_state}
         end
@@ -815,6 +823,7 @@ defmodule Sensocto.RoomStore do
             HydrationManager.snapshot_room(room_id, updated_room)
 
             broadcast_room_update(room_id, {:member_kicked, user_id})
+            broadcast_lobby_membership_changed(room_id, :kicked, user_id)
 
             {:reply, {:ok, updated_room}, new_state}
         end
@@ -941,6 +950,29 @@ defmodule Sensocto.RoomStore do
     end
   end
 
+  # Non-blocking version of remove_sensor for use in terminate/2 callbacks.
+  # Avoids cascade timeouts when many sensors shut down simultaneously.
+  @impl true
+  def handle_cast({:remove_sensor, room_id, sensor_id}, state) do
+    case Map.get(state.rooms, room_id) do
+      nil ->
+        {:noreply, state}
+
+      room ->
+        updated_room =
+          room
+          |> update_in([Access.key(:sensor_ids)], &MapSet.delete(&1, sensor_id))
+          |> Map.put(:updated_at, DateTime.utc_now())
+
+        new_state = put_in(state, [Access.key(:rooms), room_id], updated_room)
+
+        HydrationManager.snapshot_room(room_id, updated_room)
+        broadcast_room_update(room_id, {:sensor_removed, sensor_id})
+
+        {:noreply, new_state}
+    end
+  end
+
   # ============================================================================
   # Private Functions
   # ============================================================================
@@ -1004,6 +1036,31 @@ defmodule Sensocto.RoomStore do
       Sensocto.PubSub,
       "rooms:cluster",
       {:room_state_sync, room_for_broadcast, node()}
+    )
+  end
+
+  # ============================================================================
+  # Lobby Broadcasts (for LobbyChannel subscribers)
+  # ============================================================================
+
+  defp broadcast_lobby_room_created(room) do
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "rooms:lobby", {:lobby_room_created, room})
+  end
+
+  defp broadcast_lobby_room_deleted(room_id) do
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "rooms:lobby", {:lobby_room_deleted, room_id})
+  end
+
+  defp broadcast_lobby_room_updated(room) do
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "rooms:lobby", {:lobby_room_updated, room})
+  end
+
+  defp broadcast_lobby_membership_changed(room_id, action, user_id) do
+    # Notify the specific user's lobby channel
+    Phoenix.PubSub.broadcast(
+      Sensocto.PubSub,
+      "lobby:#{user_id}",
+      {:membership_changed, room_id, action, user_id}
     )
   end
 

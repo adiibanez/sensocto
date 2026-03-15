@@ -52,12 +52,13 @@ export const PARTICLE_CONFIGS = {
     maxLife: 14,
     speed: 0.8,
     upBias: -0.45,
+    // Heights match canopy base (3.2 * hScale) from treeVariations in avatar_splat_hook.js
     sources: [
-      { x: -2.5, z: -1.5, height: 3.2 },
-      { x:  1.8, z: -2.0, height: 3.0 },
-      { x: -0.5, z:  2.5, height: 3.4 },
-      { x:  3.0, z:  1.0, height: 2.8 },
-      { x: -3.5, z:  0.5, height: 3.1 },
+      { x: -2.5, z: -1.5, height: 3.2 },   // tree 0: hScale 1.0  → 3.2 * 1.0  = 3.2
+      { x:  1.8, z: -2.0, height: 4.0 },   // tree 1: hScale 1.25 → 3.2 * 1.25 = 4.0
+      { x: -0.5, z:  2.5, height: 2.24 },  // tree 2: hScale 0.7  → 3.2 * 0.7  = 2.24
+      { x:  3.0, z:  1.0, height: 4.48 },  // tree 3: hScale 1.4  → 3.2 * 1.4  = 4.48
+      { x: -3.5, z:  0.5, height: 2.72 },  // tree 4: hScale 0.85 → 3.2 * 0.85 = 2.72
     ],
     sourceRatio: 0.8,
     sourceSpread: 0.7,

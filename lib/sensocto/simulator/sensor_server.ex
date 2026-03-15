@@ -296,8 +296,11 @@ defmodule Sensocto.Simulator.SensorServer do
     # Use Map.get for backwards compatibility with old processes that may not have room_id
     room_id = Map.get(state, :room_id)
 
+    # Use cast (non-blocking) during terminate to avoid 5s timeout per sensor.
+    # RoomStore.remove_sensor is a GenServer.call — in terminate/2 with many sensors
+    # shutting down simultaneously, this blocks and causes cascade timeouts.
     if room_id && state.real_sensor_started do
-      Sensocto.RoomStore.remove_sensor(room_id, state.sensor_id)
+      GenServer.cast(Sensocto.RoomStore, {:remove_sensor, room_id, state.sensor_id})
     end
 
     # Remove the real sensor when simulator sensor stops

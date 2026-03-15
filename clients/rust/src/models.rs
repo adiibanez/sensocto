@@ -182,11 +182,40 @@ pub struct Room {
     pub name: String,
     pub description: Option<String>,
     pub join_code: Option<String>,
+    #[serde(default)]
     pub is_public: bool,
+    #[serde(default)]
     pub calls_enabled: bool,
     pub owner_id: String,
     #[serde(default)]
     pub configuration: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub sensors: Vec<RoomSensor>,
+    #[serde(default)]
+    pub member_count: u64,
+    pub created_at: Option<String>,
+}
+
+/// A sensor attached to a room.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomSensor {
+    pub sensor_id: String,
+    pub sensor_name: Option<String>,
+    pub sensor_type: Option<String>,
+    pub connector_id: Option<String>,
+    pub connector_name: Option<String>,
+    pub activity_status: Option<String>,
+    #[serde(default)]
+    pub attributes: Vec<SensorAttribute>,
+}
+
+/// A sensor attribute with its last known value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SensorAttribute {
+    pub id: String,
+    pub attribute_type: Option<String>,
+    pub attribute_name: Option<String>,
+    pub last_value: Option<serde_json::Value>,
 }
 
 /// A user in Sensocto.

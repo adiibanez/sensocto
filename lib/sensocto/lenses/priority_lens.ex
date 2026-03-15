@@ -139,6 +139,8 @@ defmodule Sensocto.Lenses.PriorityLens do
       [{^socket_id, state}] -> state
       [] -> nil
     end
+  rescue
+    ArgumentError -> nil
   end
 
   @doc """
@@ -188,6 +190,10 @@ defmodule Sensocto.Lenses.PriorityLens do
           :ok
       end
     end)
+  rescue
+    ArgumentError ->
+      # ETS tables don't exist yet (PriorityLens restarting after crash)
+      :ok
   end
 
   @doc """
@@ -209,6 +215,10 @@ defmodule Sensocto.Lenses.PriorityLens do
           :ok
       end
     end)
+  rescue
+    ArgumentError ->
+      # ETS tables don't exist yet (PriorityLens restarting after crash)
+      :ok
   end
 
   @doc """
@@ -501,8 +511,12 @@ defmodule Sensocto.Lenses.PriorityLens do
 
   @impl true
   def terminate(_reason, state) do
+    # Don't call Router.unregister_lens synchronously here — it can timeout
+    # if Router is busy processing measurements, causing cascading failures.
+    # Router already monitors us via Process.monitor and will auto-unregister
+    # when it receives the :DOWN message.
     if state.registered_with_router do
-      Sensocto.Lenses.Router.unregister_lens(self())
+      Logger.debug("PriorityLens terminating (Router will auto-unregister via :DOWN monitor)")
     end
 
     :ok
@@ -521,6 +535,8 @@ defmodule Sensocto.Lenses.PriorityLens do
       [{^sensor_id, socket_ids}] -> MapSet.to_list(socket_ids)
       [] -> []
     end
+  rescue
+    ArgumentError -> []
   end
 
   # Update the reverse index when a socket's sensor subscriptions change

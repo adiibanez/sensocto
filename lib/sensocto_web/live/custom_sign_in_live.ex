@@ -11,7 +11,7 @@ defmodule SensoctoWeb.CustomSignInLive do
 
   @presence_topic "signin_presence"
   @bg_tick_interval 800
-  @valid_themes ~w(constellation waveform aurora particles)
+  @valid_themes ~w(off constellation waveform aurora particles)
 
   @impl true
   def mount(_params, session, socket) do
@@ -333,50 +333,58 @@ defmodule SensoctoWeb.CustomSignInLive do
     >
     </div>
 
-    <%!-- Background Controls — slide-out drawer from left edge, centered vertically --%>
+    <%!-- Background Controls — slide-out drawer from left edge --%>
     <div
       id="bg-controls-drawer"
-      class="bg-controls-drawer fixed top-1/2 z-30 flex items-center"
+      class="bg-controls-drawer fixed top-1/2 z-30 flex items-stretch"
     >
       <%!-- Panel --%>
-      <div class="bg-gray-900/60 backdrop-blur-sm rounded-r-lg p-3 border border-l-0 border-gray-700/50 text-xs text-gray-400 space-y-2 w-[220px] shrink-0">
-        <div class="flex items-center gap-2">
-          <span class="whitespace-nowrap text-gray-500">Sensors</span>
-          <form phx-change="set_bg_count" class="flex items-center gap-2 flex-1">
+      <div class="bg-gray-900/70 backdrop-blur-sm rounded-r-lg p-2 border border-l-0 border-gray-700/50 text-xs text-gray-400 space-y-2 shrink-0">
+        <div class="flex items-center gap-1.5">
+          <form phx-change="set_bg_count" class="flex items-center gap-1.5 flex-1">
             <input
               type="range"
               min="1"
               max="100"
               value={@sensor_bg_count}
               name="count"
-              class="w-full h-1 accent-cyan-500 cursor-pointer"
+              class="w-20 h-1 accent-cyan-500 cursor-pointer"
             />
-            <span class="w-5 text-center text-gray-300">{@sensor_bg_count}</span>
+            <span class="w-4 text-[10px] text-center text-gray-500">{@sensor_bg_count}</span>
           </form>
         </div>
-        <div class="flex gap-1">
+        <div class="flex gap-0.5">
           <button
-            :for={theme <- ~w(constellation waveform aurora particles)}
+            :for={
+              {label, theme, tip} <- [
+                {"—", "off", "No visualization"},
+                {"✦", "constellation", "Constellation"},
+                {"≈", "waveform", "Waveform"},
+                {"◐", "aurora", "Aurora"},
+                {"⁘", "particles", "Particles"}
+              ]
+            }
             phx-click="set_bg_theme"
             phx-value-theme={theme}
-            class={"px-2 py-1 rounded text-[10px] capitalize transition-colors " <>
+            data-tip={tip}
+            class={"bg-tip relative w-6 h-6 rounded flex items-center justify-center text-[11px] transition-colors " <>
               if(@sensor_bg_theme == theme,
-                do: "bg-cyan-600 text-white",
-                else: "bg-gray-700/50 hover:bg-gray-600/50 text-gray-300")}
+                do: (if theme == "off", do: "bg-gray-600 text-white", else: "bg-cyan-600 text-white"),
+                else: "bg-gray-700/50 hover:bg-gray-600/50 text-gray-400")}
           >
-            {theme}
+            {label}
           </button>
         </div>
       </div>
       <%!-- Tab handle --%>
-      <div class="bg-gray-900/50 backdrop-blur-sm rounded-r-lg px-2 py-3 border border-l-0 border-gray-700/40 cursor-pointer shrink-0">
+      <div class="bg-gray-900/60 backdrop-blur-sm rounded-r px-1 py-2 border border-l-0 border-gray-700/40 cursor-pointer shrink-0 flex items-center">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"
           stroke-width="1.5"
           stroke="currentColor"
-          class="h-4 w-4 text-gray-400"
+          class="h-3 w-3 text-gray-500"
         >
           <path
             stroke-linecap="round"
@@ -389,7 +397,7 @@ defmodule SensoctoWeb.CustomSignInLive do
 
     <div class="relative z-10 min-h-screen flex flex-col">
       <%!-- Sign In Form (always on top) --%>
-      <div class="flex items-center justify-center p-4 lg:p-8 bg-gray-900/50">
+      <div class="flex items-center justify-center p-4 lg:p-8">
         <div class="w-full max-w-md">
           <%!-- Mobile toggle for about section --%>
           <button
@@ -437,7 +445,8 @@ defmodule SensoctoWeb.CustomSignInLive do
         <.live_component
           module={SensoctoWeb.Components.AboutContentComponent}
           id="about-content"
-          show_cta={false}
+          cta_link={~p"/lobby"}
+          cta_label={gettext("Enter Lobby")}
         />
       </div>
     </div>
@@ -452,11 +461,31 @@ defmodule SensoctoWeb.CustomSignInLive do
       }
       .bg-controls-drawer {
         left: 0;
-        transform: translateY(-50%) translateX(calc(-100% + 34px));
+        transform: translateY(-50%) translateX(calc(-100% + 21px));
         transition: transform 0.3s ease-out;
       }
       .bg-controls-drawer:hover {
         transform: translateY(-50%) translateX(0);
+      }
+      .bg-tip::after {
+        content: attr(data-tip);
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%) scale(0.9);
+        padding: 2px 6px;
+        background: rgba(0,0,0,0.85);
+        color: #d1d5db;
+        font-size: 9px;
+        white-space: nowrap;
+        border-radius: 4px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s, transform 0.15s;
+      }
+      .bg-tip:hover::after {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
       }
     </style>
     """

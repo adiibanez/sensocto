@@ -307,6 +307,8 @@ defmodule SensoctoWeb.Api.MobileAuthController do
             Logger.debug("Phoenix.Token verified, user_id=#{user_id}")
 
             # Guest users have non-UUID IDs like "guest_xxx" — skip DB lookup
+            socket_token = Phoenix.Token.sign(SensoctoWeb.Endpoint, "user_socket", user_id)
+
             if String.starts_with?(to_string(user_id), "guest_") do
               guest_user = %{
                 id: user_id,
@@ -319,7 +321,7 @@ defmodule SensoctoWeb.Api.MobileAuthController do
                 {:ok, jwt, user_info} ->
                   conn
                   |> put_status(:ok)
-                  |> json(%{ok: true, token: jwt, user: user_info})
+                  |> json(%{ok: true, token: jwt, socket_token: socket_token, user: user_info})
 
                 {:error, reason} ->
                   conn
@@ -334,7 +336,7 @@ defmodule SensoctoWeb.Api.MobileAuthController do
                     {:ok, jwt, user_info} ->
                       conn
                       |> put_status(:ok)
-                      |> json(%{ok: true, token: jwt, user: user_info})
+                      |> json(%{ok: true, token: jwt, socket_token: socket_token, user: user_info})
 
                     {:error, reason} ->
                       conn
@@ -353,11 +355,14 @@ defmodule SensoctoWeb.Api.MobileAuthController do
             # Maybe it's already a JWT - try verifying as JWT
             case verify_token_and_load_user(token) do
               {:ok, user} ->
+                st = Phoenix.Token.sign(SensoctoWeb.Endpoint, "user_socket", user.id)
+
                 conn
                 |> put_status(:ok)
                 |> json(%{
                   ok: true,
                   token: token,
+                  socket_token: st,
                   user: %{
                     id: user.id,
                     email: user.email,
@@ -375,11 +380,14 @@ defmodule SensoctoWeb.Api.MobileAuthController do
             # Not a Phoenix.Token — try as JWT directly
             case verify_token_and_load_user(token) do
               {:ok, user} ->
+                st = Phoenix.Token.sign(SensoctoWeb.Endpoint, "user_socket", user.id)
+
                 conn
                 |> put_status(:ok)
                 |> json(%{
                   ok: true,
                   token: token,
+                  socket_token: st,
                   user: %{
                     id: user.id,
                     email: user.email,

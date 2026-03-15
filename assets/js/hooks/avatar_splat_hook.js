@@ -160,10 +160,21 @@ const bioluminescent = {
       const v = treeVariations[ti % treeVariations.length];
       const h = v.hScale;
       const lx = v.lean[0], lz = v.lean[1];
-      // Trunk — taller trees get more splats
+      // Trunk — extends from ground to canopy
       addCluster(trees, tx + lx * 0.3, 1.5 * h, tz + lz * 0.3,
-        0.08 * v.trunkW, 0.6 * h, 0.08 * v.trunkW,
-        BIO_PALETTE.TREE.base, Math.round(80 * h), 0.04 * v.trunkW, 180);
+        0.08 * v.trunkW, 1.5 * h, 0.08 * v.trunkW,
+        BIO_PALETTE.TREE.base, Math.round(100 * h), 0.04 * v.trunkW, 180);
+      // Roots — spread outward at ground level
+      const rootCount = 4 + Math.floor(v.trunkW * 3);
+      for (let ri = 0; ri < rootCount; ri++) {
+        const angle = (ri / rootCount) * Math.PI * 2 + ti * 0.7;
+        const rootLen = 0.3 + Math.random() * 0.5 * v.trunkW;
+        const rx = Math.cos(angle) * rootLen;
+        const rz = Math.sin(angle) * rootLen;
+        addCluster(trees, tx + rx * 0.5, 0.08, tz + rz * 0.5,
+          Math.abs(rx) * 0.4 + 0.02, 0.06, Math.abs(rz) * 0.4 + 0.02,
+          BIO_PALETTE.TREE.base, Math.round(12 * v.trunkW), 0.035 * v.trunkW, 170);
+      }
       // Canopy base
       addCluster(trees, tx + lx, 3.2 * h, tz + lz,
         0.6 * v.canopySpread, 0.3 * v.canopySpread, 0.6 * v.canopySpread,

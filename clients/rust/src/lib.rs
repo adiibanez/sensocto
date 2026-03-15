@@ -58,13 +58,17 @@ pub mod channel;
 pub mod client;
 pub mod config;
 pub mod error;
+pub mod lobby;
 pub mod models;
+pub mod room_session;
 pub mod socket;
 
 // Re-exports
 pub use client::SensoctoClient;
 pub use config::{SensoctoConfig, SensorConfig};
 pub use error::{Result, SensoctoError};
+pub use lobby::{LobbyEvent, LobbySession};
+pub use room_session::{RoomEvent, RoomSession};
 pub use models::*;
 
 #[cfg(test)]

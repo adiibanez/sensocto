@@ -35,6 +35,33 @@ defmodule SensoctoWeb.SimulatorLive do
   end
 
   @impl true
+  def handle_async(:stop_scenario, {:ok, :ok}, socket) do
+    scenario = socket.assigns[:stopping_scenario]
+
+    {:noreply,
+     socket
+     |> assign(:stopping_scenario, nil)
+     |> put_flash(:info, "Stopped scenario: #{scenario}")
+     |> assign_status()}
+  end
+
+  def handle_async(:stop_scenario, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stopping_scenario, nil)
+     |> put_flash(:error, "Failed to stop scenario: #{inspect(reason)}")
+     |> assign_status()}
+  end
+
+  def handle_async(:stop_scenario, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stopping_scenario, nil)
+     |> put_flash(:error, "Stop timed out: #{inspect(reason)}")
+     |> assign_status()}
+  end
+
+  @impl true
   def handle_event("reload_config", _params, socket) do
     case Manager.reload_config() do
       :ok ->
@@ -165,22 +192,12 @@ defmodule SensoctoWeb.SimulatorLive do
 
   @impl true
   def handle_event("stop_scenario", %{"scenario" => scenario_name}, socket) do
-    case Manager.stop_scenario(scenario_name) do
-      :ok ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Stopped scenario: #{scenario_name}")
-         |> assign_status()}
+    socket =
+      socket
+      |> assign(:stopping_scenario, scenario_name)
+      |> start_async(:stop_scenario, fn -> Manager.stop_scenario(scenario_name) end)
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to stop scenario: #{inspect(reason)}")}
-    end
-  catch
-    :exit, {:timeout, _} ->
-      {:noreply,
-       socket
-       |> put_flash(:warning, "Stopping scenario is taking longer than expected, please wait...")
-       |> assign_status()}
+    {:noreply, put_flash(socket, :info, "Stopping scenario: #{scenario_name}...")}
   end
 
   @impl true

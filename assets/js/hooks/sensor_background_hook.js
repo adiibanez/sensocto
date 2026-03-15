@@ -295,31 +295,52 @@ class AuroraRenderer extends BaseRenderer {
     ctx.globalCompositeOperation = 'screen';
 
     for (const s of sensors) {
-      const bandY = (s.pos.y / h) * h;
-      const bandHeight = 60 + s.intensity * 100;
-      const alpha = 0.04 + s.intensity * 0.12;
-
-      // Draw band as a series of horizontal slices for organic shape
-      for (let x = 0; x < w; x += 4) {
-        const noiseVal = noise3D(x * 0.002, s.hue * 0.01, t * 0.2);
-        const yOffset = noiseVal * 50;
-        const widthMod = 0.7 + noise3D(x * 0.003, s.hue * 0.02, t * 0.15) * 0.3;
-        const localH = bandHeight * widthMod;
-        const y = bandY + yOffset - localH / 2;
-
-        const gradient = ctx.createLinearGradient(x, y, x, y + localH);
-        gradient.addColorStop(0, `hsla(${s.hue}, 70%, 55%, 0)`);
-        gradient.addColorStop(0.3, `hsla(${s.hue}, 70%, 60%, ${alpha})`);
-        gradient.addColorStop(0.5, `hsla(${s.hue}, 80%, 65%, ${alpha * 1.2})`);
-        gradient.addColorStop(0.7, `hsla(${s.hue}, 70%, 60%, ${alpha})`);
-        gradient.addColorStop(1, `hsla(${s.hue}, 70%, 55%, 0)`);
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x, y, 5, localH);
-      }
+      this._drawBand(s.pos.y, 60 + s.intensity * 100, s.hue, 0.04 + s.intensity * 0.12, t, s.hue * 0.01);
     }
 
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  _drawBand(bandY, bandHeight, hue, alpha, t, seed) {
+    const { ctx, w, h, noise3D } = this;
+    const step = 20;
+    const points = [];
+
+    for (let x = 0; x <= w; x += step) {
+      const noiseVal = noise3D(x * 0.002, seed, t * 0.2);
+      const yOffset = noiseVal * 50;
+      const widthMod = 0.7 + noise3D(x * 0.003, seed * 2, t * 0.15) * 0.3;
+      points.push({ x, y: bandY + yOffset, h: bandHeight * widthMod });
+    }
+
+    const gradient = ctx.createLinearGradient(0, bandY - bandHeight, 0, bandY + bandHeight);
+    gradient.addColorStop(0, `hsla(${hue}, 70%, 55%, 0)`);
+    gradient.addColorStop(0.3, `hsla(${hue}, 70%, 60%, ${alpha})`);
+    gradient.addColorStop(0.5, `hsla(${hue}, 80%, 65%, ${alpha * 1.2})`);
+    gradient.addColorStop(0.7, `hsla(${hue}, 70%, 60%, ${alpha})`);
+    gradient.addColorStop(1, `hsla(${hue}, 70%, 55%, 0)`);
+    ctx.fillStyle = gradient;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y - points[0].h / 2);
+    for (let i = 1; i < points.length; i++) {
+      const cx = (points[i - 1].x + points[i].x) / 2;
+      const cy = (points[i - 1].y - points[i - 1].h / 2 + points[i].y - points[i].h / 2) / 2;
+      ctx.quadraticCurveTo(points[i - 1].x, points[i - 1].y - points[i - 1].h / 2, cx, cy);
+    }
+    const last = points[points.length - 1];
+    ctx.lineTo(last.x, last.y - last.h / 2);
+
+    ctx.lineTo(last.x, last.y + last.h / 2);
+    for (let i = points.length - 2; i >= 0; i--) {
+      const next = points[i + 1];
+      const cx = (next.x + points[i].x) / 2;
+      const cy = (next.y + next.h / 2 + points[i].y + points[i].h / 2) / 2;
+      ctx.quadraticCurveTo(next.x, next.y + next.h / 2, cx, cy);
+    }
+    ctx.lineTo(points[0].x, points[0].y + points[0].h / 2);
+    ctx.closePath();
+    ctx.fill();
   }
 
   _drawAmbient(t) {
@@ -331,24 +352,7 @@ class AuroraRenderer extends BaseRenderer {
       const bandY = h * (0.2 + bi * 0.18);
       const bandHeight = 100 + Math.sin(t * 0.2 + bi) * 20;
       const alpha = 0.05 + Math.sin(t * 0.3 + bi * 2) * 0.02;
-
-      for (let x = 0; x < w; x += 4) {
-        const noiseVal = noise3D(x * 0.002, bi * 0.5, t * 0.12);
-        const yOffset = noiseVal * 50;
-        const widthMod = 0.7 + noise3D(x * 0.003, bi * 0.3, t * 0.08) * 0.3;
-        const localH = bandHeight * widthMod;
-        const y = bandY + yOffset - localH / 2;
-
-        const gradient = ctx.createLinearGradient(x, y, x, y + localH);
-        gradient.addColorStop(0, `hsla(${hues[bi]}, 55%, 55%, 0)`);
-        gradient.addColorStop(0.3, `hsla(${hues[bi]}, 55%, 58%, ${alpha})`);
-        gradient.addColorStop(0.5, `hsla(${hues[bi]}, 60%, 62%, ${alpha * 1.2})`);
-        gradient.addColorStop(0.7, `hsla(${hues[bi]}, 55%, 58%, ${alpha})`);
-        gradient.addColorStop(1, `hsla(${hues[bi]}, 55%, 55%, 0)`);
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x, y, 5, localH);
-      }
+      this._drawBand(bandY, bandHeight, hues[bi], alpha, t, bi * 0.5);
     }
     ctx.globalCompositeOperation = 'source-over';
   }
@@ -459,9 +463,19 @@ class ParticlesRenderer extends BaseRenderer {
   }
 }
 
+// ---------- Off Renderer (blank canvas) ----------
+
+class OffRenderer {
+  constructor(canvas, ctx) { this.ctx = ctx; this.w = canvas.width; this.h = canvas.height; this.sensors = []; }
+  resize(w, h) { this.w = w; this.h = h; this.ctx.clearRect(0, 0, w, h); }
+  updateSensors(s) { this.sensors = s; }
+  draw() { this.ctx.clearRect(0, 0, this.w, this.h); }
+}
+
 // ---------- Theme Registry ----------
 
 const THEMES = {
+  off: OffRenderer,
   constellation: ConstellationRenderer,
   waveform: WaveformRenderer,
   aurora: AuroraRenderer,

@@ -97,7 +97,16 @@ impl SensoctoConfig {
             .ok_or_else(|| SensoctoError::InvalidConfig("Server URL must have a host".into()))?;
         let port = base.port().map(|p| format!(":{}", p)).unwrap_or_default();
 
-        Ok(format!("{}://{}{}/socket/websocket", protocol, host, port))
+        let token_param = self
+            .bearer_token
+            .as_deref()
+            .map(|t| format!("&token={}", t))
+            .unwrap_or_default();
+
+        Ok(format!(
+            "{}://{}{}/socket/websocket?vsn=1.0.0{}",
+            protocol, host, port, token_param
+        ))
     }
 }
 

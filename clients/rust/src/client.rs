@@ -3,6 +3,8 @@
 use crate::channel::{CallSession, PhoenixChannel, SensorStream};
 use crate::config::{SensoctoConfig, SensoctoConfigBuilder, SensorConfig};
 use crate::error::{Result, SensoctoError};
+use crate::lobby::{LobbyEvent, LobbySession};
+use crate::room_session::{RoomEvent, RoomSession};
 use crate::models::{BackpressureConfig, CallEvent, ConnectionEvent, ConnectionState, SensorEvent};
 use crate::socket::PhoenixSocket;
 use std::collections::HashMap;
@@ -434,6 +436,97 @@ impl SensoctoClient {
         // Extract the session from Arc (we know there's only one reference)
         let session = Arc::try_unwrap(session_arc)
             .map_err(|_| SensoctoError::Other("Failed to unwrap session".into()))?;
+
+        Ok((session, event_rx))
+    }
+
+    /// Joins the lobby channel for a user. Returns the session and an event receiver.
+    /// The lobby provides the initial room list and live updates as rooms change.
+    pub async fn join_lobby(
+        &self,
+        user_id: &str,
+    ) -> Result<(LobbySession, mpsc::Receiver<LobbyEvent>)> {
+        if !self.is_connected().await {
+            return Err(SensoctoError::Disconnected);
+        }
+
+        let topic = format!("lobby:{}", user_id);
+        let join_params = serde_json::json!({});
+
+        let channel = PhoenixChannel::new(self.socket.clone(), topic.clone(), join_params);
+
+        // Create session and event sender separately.
+        // Handlers get clones of the sender (cheap), not the session.
+        let (session, event_tx, event_rx) = LobbySession::new(channel, user_id.to_string());
+
+        // Register handlers BEFORE join so we don't miss the lobby_state push.
+        {
+            let socket = self.socket.read().await;
+            for event in &[
+                "lobby_state",
+                "room_added",
+                "room_removed",
+                "room_updated",
+                "membership_changed",
+            ] {
+                let tx = event_tx.clone();
+                let event_name = event.to_string();
+                socket
+                    .on(&topic, event, move |payload| {
+                        crate::lobby::handle_lobby_event_sync(&tx, &event_name, payload);
+                    })
+                    .await;
+            }
+        }
+
+        // Now join — handlers are already listening
+        session.join().await?;
+
+        info!("Joined lobby channel for user: {}", user_id);
+
+        Ok((session, event_rx))
+    }
+
+    /// Joins a room channel for live sensor/member updates.
+    /// Returns the session and an event receiver.
+    pub async fn join_room(
+        &self,
+        room_id: &str,
+    ) -> Result<(RoomSession, mpsc::Receiver<RoomEvent>)> {
+        if !self.is_connected().await {
+            return Err(SensoctoError::Disconnected);
+        }
+
+        let topic = format!("room:{}", room_id);
+        let join_params = serde_json::json!({});
+
+        let channel = PhoenixChannel::new(self.socket.clone(), topic.clone(), join_params);
+        let (session, event_tx, event_rx) = RoomSession::new(channel, room_id.to_string());
+
+        // Register handlers BEFORE join so we don't miss room_state push.
+        {
+            let socket = self.socket.read().await;
+            for event in &[
+                "room_state",
+                "sensor_added",
+                "sensor_removed",
+                "member_joined",
+                "member_left",
+                "room_closed",
+            ] {
+                let tx = event_tx.clone();
+                let event_name = event.to_string();
+                let rid = room_id.to_string();
+                socket
+                    .on(&topic, event, move |payload| {
+                        crate::room_session::handle_room_event_sync(&tx, &rid, &event_name, payload);
+                    })
+                    .await;
+            }
+        }
+
+        session.join().await?;
+        info!("Joined room channel: {}", room_id);
 
         Ok((session, event_rx))
     }

@@ -477,25 +477,58 @@ defmodule Sensocto.SystemLoadMonitor do
   end
 
   defp calculate_memory_pressure do
+    case read_cgroup_memory() do
+      {:ok, current, limit} ->
+        current / limit
+
+      :error ->
+        # Fallback to :memsup (accurate on bare metal, less so in containers)
+        calculate_memory_pressure_memsup()
+    end
+  end
+
+  # cgroup v2 paths (used by Fly.io, Docker with cgroup v2)
+  defp read_cgroup_memory do
+    with {:ok, max_str} <- File.read("/sys/fs/cgroup/memory.max"),
+         {:ok, cur_str} <- File.read("/sys/fs/cgroup/memory.current"),
+         {limit, _} when limit > 0 <- Integer.parse(String.trim(max_str)),
+         {current, _} <- Integer.parse(String.trim(cur_str)) do
+      {:ok, current, limit}
+    else
+      # cgroup v1 fallback
+      _ ->
+        with {:ok, limit_str} <- File.read("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+             {:ok, usage_str} <- File.read("/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+             {limit, _} when limit > 0 <- Integer.parse(String.trim(limit_str)),
+             {current, _} <- Integer.parse(String.trim(usage_str)) do
+          # Ignore unrealistic limits (host memory leak-through, e.g. 2^63)
+          if limit > 128 * 1024 * 1024 * 1024, do: :error, else: {:ok, current, limit}
+        else
+          _ -> :error
+        end
+    end
+  end
+
+  defp calculate_memory_pressure_memsup do
     mem_data = :erlang.memory()
     total = Keyword.get(mem_data, :total, 0)
     processes = Keyword.get(mem_data, :processes, 0)
 
-    # Get system memory info if available
     case :memsup.get_system_memory_data() do
       data when is_list(data) ->
         free = Keyword.get(data, :free_memory, 0)
+        cached = Keyword.get(data, :cached_memory, 0)
+        buffered = Keyword.get(data, :buffered_memory, 0)
         total_sys = Keyword.get(data, :total_memory, 1)
-        1.0 - free / total_sys
+        # Include cached+buffered as available (reclaimable by OS)
+        available = free + cached + buffered
+        1.0 - available / total_sys
 
       _ ->
-        # Fallback: estimate based on BEAM memory growth
-        # This is a rough heuristic
         process_ratio = processes / max(total, 1)
         min(process_ratio * 2, 1.0)
     end
   rescue
-    # :memsup might not be available
     _ -> 0.3
   end
 

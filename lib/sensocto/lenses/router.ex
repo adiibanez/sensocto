@@ -115,10 +115,10 @@ defmodule Sensocto.Lenses.Router do
   # Writes directly to PriorityLens ETS tables — bypasses PriorityLens GenServer mailbox
   @impl true
   def handle_info({:measurement, measurement}, state) do
-    sensor_id = Map.get(measurement, :sensor_id)
-
-    # Direct ETS write via PriorityLens public functions
-    Sensocto.Lenses.PriorityLens.buffer_for_sensor(sensor_id, measurement)
+    if MapSet.size(state.registered_lenses) > 0 do
+      sensor_id = Map.get(measurement, :sensor_id)
+      Sensocto.Lenses.PriorityLens.buffer_for_sensor(sensor_id, measurement)
+    end
 
     {:noreply, state}
   end
@@ -127,8 +127,9 @@ defmodule Sensocto.Lenses.Router do
   # Writes directly to PriorityLens ETS tables — bypasses PriorityLens GenServer mailbox
   @impl true
   def handle_info({:measurements_batch, {sensor_id, measurements}}, state) do
-    # Direct ETS write via PriorityLens public functions
-    Sensocto.Lenses.PriorityLens.buffer_batch_for_sensor(sensor_id, measurements)
+    if MapSet.size(state.registered_lenses) > 0 do
+      Sensocto.Lenses.PriorityLens.buffer_batch_for_sensor(sensor_id, measurements)
+    end
 
     {:noreply, state}
   end

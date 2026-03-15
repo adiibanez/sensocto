@@ -466,6 +466,8 @@ const WhiteboardHook = {
             this.redrawCanvas();
             this.applyViewport();
             this.drawShapePreview(this.currentStroke.points[0], point);
+            this.currentStroke.points[1] = point;
+            this.sendStrokeProgress();
         }
     },
 
@@ -487,7 +489,7 @@ const WhiteboardHook = {
 
         if (this.currentTool === 'line' || this.currentTool === 'rect') {
             const point = this.getCanvasPoint(e);
-            this.currentStroke.points.push(point);
+            this.currentStroke.points[1] = point;
         }
 
         if (this.currentStroke.points.length >= 1) {

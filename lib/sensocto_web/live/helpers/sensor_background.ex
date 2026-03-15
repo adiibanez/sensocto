@@ -84,7 +84,10 @@ defmodule SensoctoWeb.LiveHelpers.SensorBackground do
 
     sensors =
       Enum.map(top_n, fn {id, v} ->
-        %{id: id, name: v.name, intensity: v.hit_count / max_activity}
+        # Floor of 0.15 so all selected sensors show a faint waveform;
+        # active sensors scale up to 1.0
+        raw = v.hit_count / max_activity
+        %{id: id, name: v.name, intensity: 0.15 + raw * 0.85}
       end)
 
     decayed =

@@ -162,9 +162,11 @@
   <%!-- ================================================================== --%>
   <%!-- CONTENT TABS + SENSOR LENSES --%>
   <%!-- ================================================================== --%>
-  <div class="flex flex-col">
+  <div class={
+    if(@lobby_layout == :floating, do: "flex flex-col lg:flex-row gap-3", else: "flex flex-col")
+  }>
     <%!-- Left column: Media / 3D / Whiteboard / Polls --%>
-    <div class={if(@lobby_layout == :floating, do: "w-full", else: "")}>
+    <div class={if(@lobby_layout == :floating, do: "lg:w-1/2", else: "")}>
       <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden mb-3">
         <%!-- Tile header with minimize toggle --%>
         <button
@@ -184,322 +186,328 @@
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </button>
 
         <div :if={!@content_panel_collapsed} class="p-3">
-      <div class="flex flex-wrap items-center justify-center gap-1.5 mb-3">
-        <button
-          phx-click="switch_lobby_mode"
-          phx-value-mode="media"
-          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+          <div class="flex flex-wrap items-center justify-center gap-1.5 mb-3">
+            <button
+              phx-click="switch_lobby_mode"
+              phx-value-mode="media"
+              class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :media, do: "bg-blue-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@media_bump, do: " animate-bump ring-1 ring-blue-300/50", else: "")}
-        >
-          <Heroicons.icon name="play" type="solid" class="h-3 w-3" /> Media
-          <span :if={@media_viewers > 0} class="px-1 py-0.5 text-[10px] rounded-full bg-white/20">
-            {@media_viewers}
-          </span>
-        </button>
+            >
+              <Heroicons.icon name="play" type="solid" class="h-3 w-3" /> Media
+              <span
+                :if={@media_viewers > 0}
+                class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+              >
+                {@media_viewers}
+              </span>
+            </button>
 
-        <button
-          phx-click="switch_lobby_mode"
-          phx-value-mode="object3d"
-          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+            <button
+              phx-click="switch_lobby_mode"
+              phx-value-mode="object3d"
+              class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :object3d, do: "bg-cyan-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@object3d_bump, do: " animate-bump ring-1 ring-cyan-300/50", else: "")}
-        >
-          <Heroicons.icon name="cube-transparent" type="solid" class="h-3 w-3" /> 3D Object
-          <span
-            :if={@object3d_viewers > 0}
-            class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
-          >
-            {@object3d_viewers}
-          </span>
-        </button>
+            >
+              <Heroicons.icon name="cube-transparent" type="solid" class="h-3 w-3" /> 3D Object
+              <span
+                :if={@object3d_viewers > 0}
+                class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+              >
+                {@object3d_viewers}
+              </span>
+            </button>
 
-        <button
-          phx-click="switch_lobby_mode"
-          phx-value-mode="whiteboard"
-          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+            <button
+              phx-click="switch_lobby_mode"
+              phx-value-mode="whiteboard"
+              class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
         if(@lobby_mode == :whiteboard, do: "bg-green-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600") <>
         if(@whiteboard_bump, do: " animate-bump ring-1 ring-green-300/50", else: "")}
-        >
-          <Heroicons.icon name="pencil-square" type="solid" class="h-3 w-3" /> Whiteboard
-          <span
-            :if={@whiteboard_viewers > 0}
-            class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
-          >
-            {@whiteboard_viewers}
-          </span>
-        </button>
-
-        <button
-          phx-click="switch_lobby_mode"
-          phx-value-mode="polls"
-          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
-        if(@lobby_mode == :polls, do: "bg-purple-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="chart-bar-square" type="solid" class="h-3 w-3" /> Polls
-        </button>
-
-        <button
-          phx-click="switch_lobby_mode"
-          phx-value-mode="avatar"
-          class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
-        if(@lobby_mode == :avatar, do: "bg-violet-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-        >
-          <Heroicons.icon name="sparkles" type="solid" class="h-3 w-3" /> Avatar
-          <span
-            :if={@avatar_viewers > 0}
-            class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
-          >
-            {@avatar_viewers}
-          </span>
-        </button>
-
-        <%!-- Sync Status Indicator --%>
-        <.live_component
-          module={SensoctoWeb.Live.Components.SyncStatusComponent}
-          id="lobby-sync-status"
-          synced_users={@synced_users}
-          solo_users={@solo_users}
-          controller_user_id={@media_controller_user_id}
-          current_user={@current_user}
-        />
-      </div>
-
-      <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
-      <div
-        id="call-hook-persistent"
-        phx-hook="CallHook"
-        data-room-id="lobby"
-        data-user-id={@current_user.id}
-        data-user-name={
-          Map.get(@current_user, :email) || Map.get(@current_user, :display_name) |> to_string()
-        }
-        data-in-call={to_string(@in_call)}
-        class="hidden"
-      >
-      </div>
-
-      <%!-- Media Player Panel --%>
-      <div :if={@lobby_mode == :media} class="mb-6">
-        <.live_component
-          module={SensoctoWeb.Live.Components.MediaPlayerComponent}
-          id="lobby-media-player"
-          is_lobby={true}
-          current_user={@current_user}
-          can_manage={true}
-          sync_mode={@sync_mode}
-        />
-      </div>
-
-      <%!-- 3D Object Viewer Panel --%>
-      <div :if={@lobby_mode == :object3d} class="mb-6">
-        <.live_component
-          module={SensoctoWeb.Live.Components.Object3DPlayerComponent}
-          id="lobby-object3d-player"
-          is_lobby={true}
-          current_user={@current_user}
-          can_manage={true}
-          sync_mode={@sync_mode}
-          socket_id={@socket_id}
-        />
-      </div>
-
-      <%!-- Whiteboard Panel --%>
-      <div :if={@lobby_mode == :whiteboard} class="mb-6">
-        <.live_component
-          module={SensoctoWeb.Live.Components.WhiteboardComponent}
-          id="lobby-whiteboard"
-          is_lobby={true}
-          current_user={@current_user}
-          can_manage={true}
-          sync_mode={@sync_mode}
-        />
-      </div>
-
-      <%!-- Polls Panel --%>
-      <div :if={@lobby_mode == :polls} class="mb-6">
-        <.live_component
-          module={SensoctoWeb.Components.PollsPanelComponent}
-          id="lobby-polls-panel"
-          current_user={@current_user}
-        />
-      </div>
-
-      <%!-- Avatar Ecosystem Panel --%>
-      <div :if={@lobby_mode == :avatar} class="mb-6">
-        <%!-- Control bar --%>
-        <div class="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-700">
-          <div class="flex items-center gap-2 text-xs">
-            <%= if @avatar_controller_user_id do %>
-              <span class="text-gray-400">
-                <span class="font-medium text-violet-300">
-                  {@avatar_controller_user_name || "Someone"}
-                </span>
-                has control
+            >
+              <Heroicons.icon name="pencil-square" type="solid" class="h-3 w-3" /> Whiteboard
+              <span
+                :if={@whiteboard_viewers > 0}
+                class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+              >
+                {@whiteboard_viewers}
               </span>
-              <%= if @current_user && to_string(@current_user.id) == to_string(@avatar_controller_user_id) do %>
-                <button
-                  phx-click="avatar_release_control"
-                  class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                >
-                  Release
-                </button>
-                <%= if @avatar_pending_request_user_id do %>
-                  <span class="px-2 py-1 text-xs bg-amber-900/50 text-amber-200 rounded border border-amber-700">
-                    <Heroicons.icon name="hand-raised" type="solid" class="w-3 h-3 inline" />
-                    {@avatar_pending_request_user_name || "Someone"} requesting...
-                  </span>
-                  <button
-                    phx-click="avatar_keep_control"
-                    class="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors animate-pulse"
-                  >
-                    Keep
-                  </button>
-                <% end %>
-              <% else %>
-                <%= if @current_user do %>
-                  <%= if @avatar_pending_request_user_id && @avatar_pending_request_user_id == @current_user.id do %>
-                    <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded">
-                      Request pending...
+            </button>
+
+            <button
+              phx-click="switch_lobby_mode"
+              phx-value-mode="polls"
+              class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        if(@lobby_mode == :polls, do: "bg-purple-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="chart-bar-square" type="solid" class="h-3 w-3" /> Polls
+            </button>
+
+            <button
+              phx-click="switch_lobby_mode"
+              phx-value-mode="avatar"
+              class={"px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1.5 " <>
+        if(@lobby_mode == :avatar, do: "bg-violet-600 text-white", else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+            >
+              <Heroicons.icon name="sparkles" type="solid" class="h-3 w-3" /> Avatar
+              <span
+                :if={@avatar_viewers > 0}
+                class="px-1 py-0.5 text-[10px] rounded-full bg-white/20"
+              >
+                {@avatar_viewers}
+              </span>
+            </button>
+
+            <%!-- Sync Status Indicator --%>
+            <.live_component
+              module={SensoctoWeb.Live.Components.SyncStatusComponent}
+              id="lobby-sync-status"
+              synced_users={@synced_users}
+              solo_users={@solo_users}
+              controller_user_id={@media_controller_user_id}
+              current_user={@current_user}
+            />
+          </div>
+
+          <%!-- Persistent Call Hook Container - ALWAYS mounted to handle join_call events --%>
+          <div
+            id="call-hook-persistent"
+            phx-hook="CallHook"
+            data-room-id="lobby"
+            data-user-id={@current_user.id}
+            data-user-name={
+              Map.get(@current_user, :email) ||
+                Map.get(@current_user, :display_name) |> to_string()
+            }
+            data-in-call={to_string(@in_call)}
+            class="hidden"
+          >
+          </div>
+
+          <%!-- Media Player Panel --%>
+          <div :if={@lobby_mode == :media} class="mb-6">
+            <.live_component
+              module={SensoctoWeb.Live.Components.MediaPlayerComponent}
+              id="lobby-media-player"
+              is_lobby={true}
+              current_user={@current_user}
+              can_manage={true}
+              sync_mode={@sync_mode}
+            />
+          </div>
+
+          <%!-- 3D Object Viewer Panel --%>
+          <div :if={@lobby_mode == :object3d} class="mb-6">
+            <.live_component
+              module={SensoctoWeb.Live.Components.Object3DPlayerComponent}
+              id="lobby-object3d-player"
+              is_lobby={true}
+              current_user={@current_user}
+              can_manage={true}
+              sync_mode={@sync_mode}
+              socket_id={@socket_id}
+            />
+          </div>
+
+          <%!-- Whiteboard Panel --%>
+          <div :if={@lobby_mode == :whiteboard} class="mb-6">
+            <.live_component
+              module={SensoctoWeb.Live.Components.WhiteboardComponent}
+              id="lobby-whiteboard"
+              is_lobby={true}
+              current_user={@current_user}
+              can_manage={true}
+              sync_mode={@sync_mode}
+            />
+          </div>
+
+          <%!-- Polls Panel --%>
+          <div :if={@lobby_mode == :polls} class="mb-6">
+            <.live_component
+              module={SensoctoWeb.Components.PollsPanelComponent}
+              id="lobby-polls-panel"
+              current_user={@current_user}
+            />
+          </div>
+
+          <%!-- Avatar Ecosystem Panel --%>
+          <div :if={@lobby_mode == :avatar} class="mb-6">
+            <%!-- Control bar --%>
+            <div class="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-700">
+              <div class="flex items-center gap-2 text-xs">
+                <%= if @avatar_controller_user_id do %>
+                  <span class="text-gray-400">
+                    <span class="font-medium text-violet-300">
+                      {@avatar_controller_user_name || "Someone"}
                     </span>
-                  <% else %>
+                    has control
+                  </span>
+                  <%= if @current_user && to_string(@current_user.id) == to_string(@avatar_controller_user_id) do %>
                     <button
-                      phx-click="avatar_request_control"
-                      class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
+                      phx-click="avatar_release_control"
+                      class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
                     >
-                      <Heroicons.icon
-                        name="hand-raised"
-                        type="outline"
-                        class="w-3.5 h-3.5"
-                      /> Request
+                      Release
+                    </button>
+                    <%= if @avatar_pending_request_user_id do %>
+                      <span class="px-2 py-1 text-xs bg-amber-900/50 text-amber-200 rounded border border-amber-700">
+                        <Heroicons.icon name="hand-raised" type="solid" class="w-3 h-3 inline" />
+                        {@avatar_pending_request_user_name || "Someone"} requesting...
+                      </span>
+                      <button
+                        phx-click="avatar_keep_control"
+                        class="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors animate-pulse"
+                      >
+                        Keep
+                      </button>
+                    <% end %>
+                  <% else %>
+                    <%= if @current_user do %>
+                      <%= if @avatar_pending_request_user_id && @avatar_pending_request_user_id == @current_user.id do %>
+                        <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded">
+                          Request pending...
+                        </span>
+                      <% else %>
+                        <button
+                          phx-click="avatar_request_control"
+                          class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
+                        >
+                          <Heroicons.icon
+                            name="hand-raised"
+                            type="outline"
+                            class="w-3.5 h-3.5"
+                          /> Request
+                        </button>
+                      <% end %>
+                    <% end %>
+                  <% end %>
+                <% else %>
+                  <span class="text-gray-500">No one has control</span>
+                  <%= if @current_user do %>
+                    <button
+                      phx-click="avatar_take_control"
+                      class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
+                    >
+                      Take Control
                     </button>
                   <% end %>
                 <% end %>
-              <% end %>
-            <% else %>
-              <span class="text-gray-500">No one has control</span>
-              <%= if @current_user do %>
+              </div>
+              <%!-- World selector pills --%>
+              <div class="flex items-center gap-1">
                 <button
-                  phx-click="avatar_take_control"
-                  class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
-                >
-                  Take Control
-                </button>
-              <% end %>
-            <% end %>
-          </div>
-          <%!-- World selector pills --%>
-          <div class="flex items-center gap-1">
-            <button
-              :for={world <- [:bioluminescent, :inferno, :meadow]}
-              phx-click="avatar_switch_world"
-              phx-value-world={world}
-              class={"px-2 py-0.5 rounded text-[10px] font-medium transition-all " <>
+                  :for={world <- [:bioluminescent, :inferno, :meadow]}
+                  phx-click="avatar_switch_world"
+                  phx-value-world={world}
+                  class={"px-2 py-0.5 rounded text-[10px] font-medium transition-all " <>
                 if(@avatar_world == world,
                   do: "bg-violet-600 text-white",
                   else: "bg-gray-700 text-gray-400 hover:bg-gray-600")}
-            >
-              {world_label(world)}
-            </button>
-          </div>
-          <%!-- Wind intensity slider --%>
-          <div class="flex items-center gap-1.5" title={"Wind: #{@avatar_wind}%"}>
-            <svg
-              class="w-3.5 h-3.5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M17.7 7.7A7.1 7.1 0 013 5m0 0h4m-4 0v4m18 4a7.1 7.1 0 01-14.7 2.7"
-              />
-            </svg>
-            <form phx-change="avatar_set_wind" class="flex items-center">
-              <input
-                type="range"
-                name="value"
-                min="0"
-                max="100"
-                value={@avatar_wind}
-                class="w-16 h-1 accent-violet-500 cursor-pointer"
-              />
-            </form>
-          </div>
-          <%!-- Sync mode toggle --%>
-          <button
-            :if={@current_user}
-            phx-click="toggle_sync_mode"
-            class={"px-2 py-0.5 rounded text-[10px] font-medium transition-all " <>
+                >
+                  {world_label(world)}
+                </button>
+              </div>
+              <%!-- Wind intensity slider --%>
+              <div class="flex items-center gap-1.5" title={"Wind: #{@avatar_wind}%"}>
+                <svg
+                  class="w-3.5 h-3.5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M17.7 7.7A7.1 7.1 0 013 5m0 0h4m-4 0v4m18 4a7.1 7.1 0 01-14.7 2.7"
+                  />
+                </svg>
+                <form phx-change="avatar_set_wind" class="flex items-center">
+                  <input
+                    type="range"
+                    name="value"
+                    min="0"
+                    max="100"
+                    value={@avatar_wind}
+                    class="w-16 h-1 accent-violet-500 cursor-pointer"
+                  />
+                </form>
+              </div>
+              <%!-- Sync mode toggle --%>
+              <button
+                :if={@current_user}
+                phx-click="toggle_sync_mode"
+                class={"px-2 py-0.5 rounded text-[10px] font-medium transition-all " <>
               if(@sync_mode == :solo,
                 do: "bg-green-600 hover:bg-green-500 text-white",
                 else: "bg-slate-600 hover:bg-slate-500 text-white")}
-            title={if @sync_mode == :solo, do: "Join group sync", else: "Watch independently"}
-          >
-            {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
-          </button>
-          <button
-            phx-click="avatar_toggle_fullscreen"
-            class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-            title={
-              if @avatar_fullscreen,
-                do: "Exit fullscreen",
-                else: "Enter fullscreen"
-            }
-          >
-            <%= if @avatar_fullscreen do %>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
-                />
-              </svg>
-            <% else %>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                />
-              </svg>
-            <% end %>
-          </button>
-        </div>
-        <%!-- Scene container --%>
-        <div
-          id="avatar-splat-container"
-          phx-hook="CompositeMeasurementHandler"
-          class="relative w-full overflow-hidden bg-gray-900 rounded-b-lg"
-          style="height: 500px;"
-        >
-          <div
-            id="avatar-splat-viewer"
-            phx-hook="AvatarSplatHook"
-            phx-update="ignore"
-            data-world={@avatar_world}
-            class="absolute inset-0"
-          >
+                title={if @sync_mode == :solo, do: "Join group sync", else: "Watch independently"}
+              >
+                {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
+              </button>
+              <button
+                phx-click="avatar_toggle_fullscreen"
+                class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+                title={
+                  if @avatar_fullscreen,
+                    do: "Exit fullscreen",
+                    else: "Enter fullscreen"
+                }
+              >
+                <%= if @avatar_fullscreen do %>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+                    />
+                  </svg>
+                <% else %>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+                    />
+                  </svg>
+                <% end %>
+              </button>
+            </div>
+            <%!-- Scene container --%>
+            <div
+              id="avatar-splat-container"
+              phx-hook="CompositeMeasurementHandler"
+              class="relative w-full overflow-hidden bg-gray-900 rounded-b-lg"
+              style="height: 500px;"
+            >
+              <div
+                id="avatar-splat-viewer"
+                phx-hook="AvatarSplatHook"
+                phx-update="ignore"
+                data-world={@avatar_world}
+                class="absolute inset-0"
+              >
+              </div>
+            </div>
           </div>
         </div>
       </div>
-        </div>
-      </div>
     </div>
-    <%!-- Right column: Sensor lenses (hidden in floating mode — sensors move to dock) --%>
-    <div
-      :if={@lobby_layout != :floating}
-      class=""
-    >
+    <%!-- Right column: Sensor lenses (side-by-side in floating mode, stacked otherwise) --%>
+    <div class={if(@lobby_layout == :floating, do: "lg:w-1/2", else: "")}>
       <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         <%!-- Sensor tile header with minimize toggle --%>
         <button
@@ -519,634 +527,656 @@
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </button>
 
         <div :if={!@sensor_panel_collapsed} class="p-3">
-      <%!-- Lens Selector - styled like rooms --%>
-      <div class="flex items-center mb-2">
-        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-          <%!-- Quick lens chips - only show lenses with actual sensor data --%>
-          <nav
-            aria-label="Lobby view modes"
-            class="flex flex-wrap items-center gap-2"
-            role="tablist"
-          >
-            <.link
-              patch={~p"/lobby"}
-              role="tab"
-              aria-selected={to_string(@live_action == :sensors)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+          <%!-- Lens Selector - styled like rooms --%>
+          <div class="mb-2">
+            <div class="flex flex-col gap-2">
+              <%!-- Quick lens chips - only show lenses with actual sensor data --%>
+              <nav
+                aria-label="Lobby view modes"
+                class="flex flex-wrap items-center gap-2"
+                role="tablist"
+              >
+                <.link
+                  patch={~p"/lobby"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :sensors)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :sensors,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
-            </.link>
-            <.link
-              patch={~p"/lobby/users"}
-              role="tab"
-              aria-selected={to_string(@live_action == :users)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
+                </.link>
+                <.link
+                  patch={~p"/lobby/users"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :users)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :users,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
-            </.link>
-            <.link
-              patch={~p"/lobby/hierarchy"}
-              role="tab"
-              aria-selected={to_string(@live_action == :hierarchy)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
+                </.link>
+                <.link
+                  patch={~p"/lobby/hierarchy"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :hierarchy)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :hierarchy,
               do: "bg-purple-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="rectangle-group" type="outline" class="h-3 w-3" /> Hierarchy
-            </.link>
-            <.link
-              :if={@favorite_sensors != []}
-              patch={~p"/lobby/favorites"}
-              role="tab"
-              aria-selected={to_string(@live_action == :favorites)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="rectangle-group" type="outline" class="h-3 w-3" />
+                  Hierarchy
+                </.link>
+                <.link
+                  :if={@favorite_sensors != []}
+                  patch={~p"/lobby/favorites"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :favorites)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :favorites,
               do: "bg-yellow-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
-            </.link>
-            <.link
-              :if={:heartrate in @available_lenses}
-              patch={~p"/lobby/heartrate"}
-              role="tab"
-              aria-selected={to_string(@live_action == :heartrate)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
+                </.link>
+                <.link
+                  :if={:heartrate in @available_lenses}
+                  patch={~p"/lobby/heartrate"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :heartrate)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :heartrate,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
-            </.link>
-            <.link
-              :if={:ecg in @available_lenses}
-              patch={~p"/lobby/ecg"}
-              role="tab"
-              aria-selected={to_string(@live_action == :ecg)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
+                </.link>
+                <.link
+                  :if={:ecg in @available_lenses}
+                  patch={~p"/lobby/ecg"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :ecg)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :ecg,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
-            </.link>
-            <.link
-              :if={:battery in @available_lenses}
-              patch={~p"/lobby/battery"}
-              role="tab"
-              aria-selected={to_string(@live_action == :battery)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
+                </.link>
+                <.link
+                  :if={:battery in @available_lenses}
+                  patch={~p"/lobby/battery"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :battery)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :battery,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
-            </.link>
-            <.link
-              :if={:imu in @available_lenses}
-              patch={~p"/lobby/imu"}
-              role="tab"
-              aria-selected={to_string(@live_action == :imu)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
+                </.link>
+                <.link
+                  :if={:imu in @available_lenses}
+                  patch={~p"/lobby/imu"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :imu)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :imu,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="cube" type="outline" class="h-3 w-3" /> IMU
-            </.link>
-            <.link
-              :if={:location in @available_lenses}
-              patch={~p"/lobby/location"}
-              role="tab"
-              aria-selected={to_string(@live_action == :location)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="cube" type="outline" class="h-3 w-3" /> IMU
+                </.link>
+                <.link
+                  :if={:location in @available_lenses}
+                  patch={~p"/lobby/location"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :location)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :location,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
-            </.link>
-            <.link
-              :if={:skeleton in @available_lenses}
-              patch={~p"/lobby/skeleton"}
-              role="tab"
-              aria-selected={to_string(@live_action == :skeleton)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
+                </.link>
+                <.link
+                  :if={:skeleton in @available_lenses}
+                  patch={~p"/lobby/skeleton"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :skeleton)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :skeleton,
               do: "bg-purple-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
-            </.link>
-            <.link
-              :if={:respiration in @available_lenses}
-              patch={~p"/lobby/breathing"}
-              role="tab"
-              aria-selected={to_string(@live_action == :respiration)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
+                </.link>
+                <.link
+                  :if={:respiration in @available_lenses}
+                  patch={~p"/lobby/breathing"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :respiration)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :respiration,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
-            </.link>
-            <.link
-              :if={:hrv in @available_lenses}
-              patch={~p"/lobby/hrv"}
-              role="tab"
-              aria-selected={to_string(@live_action == :hrv)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
+                </.link>
+                <.link
+                  :if={:hrv in @available_lenses}
+                  patch={~p"/lobby/hrv"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :hrv)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :hrv,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
-            </.link>
-            <.link
-              :if={:gaze in @available_lenses}
-              patch={~p"/lobby/gaze"}
-              role="tab"
-              aria-selected={to_string(@live_action == :gaze)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
+                </.link>
+                <.link
+                  :if={:gaze in @available_lenses}
+                  patch={~p"/lobby/gaze"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :gaze)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :gaze,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="eye" type="outline" class="h-3 w-3" /> Gaze
-            </.link>
-            <.link
-              patch={~p"/lobby/graph"}
-              role="tab"
-              aria-selected={to_string(@live_action == :graph)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="eye" type="outline" class="h-3 w-3" /> Gaze
+                </.link>
+                <.link
+                  patch={~p"/lobby/graph"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :graph)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph,
               do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
-            </.link>
-            <.link
-              patch={~p"/lobby/graph3d"}
-              role="tab"
-              aria-selected={to_string(@live_action == :graph3d)}
-              class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+                >
+                  <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
+                </.link>
+                <.link
+                  patch={~p"/lobby/graph3d"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :graph3d)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
             if(@live_action == :graph3d,
               do: "bg-blue-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              <Heroicons.icon name="cube-transparent" type="outline" class="h-3 w-3" /> 3D Graph
-            </.link>
-          </nav>
+                >
+                  <Heroicons.icon name="cube-transparent" type="outline" class="h-3 w-3" />
+                  3D Graph
+                </.link>
+              </nav>
 
-          <%!-- Sort Controls — only relevant for sensor list views --%>
-          <div
-            :if={@live_action in [:sensors, :users, :favorites]}
-            class="flex items-center gap-1.5 ml-4"
-          >
-            <span class="text-xs text-gray-500 mr-1">Sort:</span>
-            <button
-              phx-click="set_sort"
-              phx-value-sort="activity"
-              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+              <%!-- Sort Controls — only relevant for sensor list views --%>
+              <div
+                :if={@live_action in [:sensors, :users, :favorites]}
+                class="flex items-center gap-1.5"
+              >
+                <span class="text-xs text-gray-500 mr-1">Sort:</span>
+                <button
+                  phx-click="set_sort"
+                  phx-value-sort="activity"
+                  class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :activity,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              Activity
-            </button>
-            <button
-              phx-click="set_sort"
-              phx-value-sort="name"
-              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+                >
+                  Activity
+                </button>
+                <button
+                  phx-click="set_sort"
+                  phx-value-sort="name"
+                  class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :name,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              Name
-            </button>
-            <button
-              phx-click="set_sort"
-              phx-value-sort="type"
-              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+                >
+                  Name
+                </button>
+                <button
+                  phx-click="set_sort"
+                  phx-value-sort="type"
+                  class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :type,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              Type
-            </button>
-            <button
-              :if={:battery in @available_lenses}
-              phx-click="set_sort"
-              phx-value-sort="battery"
-              class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
+                >
+                  Type
+                </button>
+                <button
+                  :if={:battery in @available_lenses}
+                  phx-click="set_sort"
+                  phx-value-sort="battery"
+                  class={"px-2 py-0.5 text-xs rounded-full transition-colors " <>
             if(@sort_by == :battery,
               do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-            >
-              Battery
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div :if={@live_action == :sensors}>
-        <%!-- SensorGridHook anchor: joins ViewerDataChannel and delivers sensor data directly to DOM --%>
-        <div id="sensor-grid-channel-hook" phx-hook="SensorGridHook" class="hidden"></div>
-
-        <%!-- Virtual scroll sensor grid --%>
-        <% {rows_before, visible_sensor_ids, rows_after, sensors_remaining} =
-          partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
-
-        <div
-          id="sensor-virtual-scroll"
-          phx-hook="VirtualScrollHook"
-          data-total-sensors={length(@sensor_ids)}
-          data-sensor-ids={Jason.encode!(@sensor_ids)}
-          data-row-height={@row_height}
-          class={[
-            "grid grid-cols-1",
-            if(@global_view_mode == :summary,
-              do:
-                "gap-1 sm:gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8",
-              else: "gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-            )
-          ]}
-        >
-          <%!-- Top spacer for sensors above viewport --%>
-          <div
-            :if={rows_before > 0}
-            id="virtual-scroll-top-spacer"
-            style={"height: #{rows_before * @row_height}px"}
-            class="col-span-full"
-            aria-hidden="true"
-          />
-
-          <%!-- Visible sensors - rendered as LiveComponents for efficient virtual scrolling --%>
-          <div
-            :for={sensor_id <- visible_sensor_ids}
-            id={"sensor_container_#{sensor_id}"}
-          >
-            <.live_component
-              module={StatefulSensorComponent}
-              id={"sensor_#{sensor_id}"}
-              sensor_id={sensor_id}
-              sensor={
-                Map.get(@sensors, sensor_id, %{
-                  sensor_id: sensor_id,
-                  sensor_name: sensor_id,
-                  sensor_type: "unknown",
-                  attributes: %{}
-                })
-              }
-              view_mode={@global_view_mode}
-              user_id={@current_user && @current_user.id}
-              is_favorite={sensor_id in @favorite_sensors}
-            />
-          </div>
-
-          <%!-- Bottom spacer for sensors below viewport --%>
-          <div
-            :if={rows_after > 0}
-            id="virtual-scroll-bottom-spacer"
-            style={"height: #{rows_after * @row_height}px"}
-            class="col-span-full"
-            aria-hidden="true"
-          />
-
-          <%!-- Scroll/loading indicator - always present so JS can control it --%>
-          <div
-            id="virtual-scroll-indicator"
-            class="col-span-full flex items-center justify-center py-4 text-gray-300"
-          >
-            <%!-- Loading spinner (shown by JS when loading, or server-rendered during initial load) --%>
-            <div class={[
-              "loading-spinner flex items-center gap-2",
-              if(@virtual_scroll_loading, do: "", else: "hidden")
-            ]}>
-              <svg
-                class="animate-spin h-5 w-5 text-orange-400"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
                 >
-                </circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                >
-                </path>
-              </svg>
-              <span class="text-sm">Loading sensors...</span>
-            </div>
-            <%!-- "More below" indicator (shown when there are sensors remaining and not loading) --%>
-            <div
-              :if={sensors_remaining > 0}
-              class={[
-                "more-text flex items-center gap-2 text-xs text-gray-500",
-                if(@virtual_scroll_loading, do: "hidden", else: "")
-              ]}
-            >
-              <Heroicons.icon name="chevron-down" type="outline" class="h-4 w-4 animate-bounce" />
-              <span>
-                {sensors_remaining} more sensor{if sensors_remaining > 1, do: "s", else: ""} below
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div
-          :if={@sensor_ids == []}
-          class="text-center py-12 text-gray-300"
-        >
-          <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
-          <p class="text-lg">No sensors connected</p>
-          <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
-        </div>
-      </div>
-
-      <.composite_lens
-        :if={@live_action == :heartrate}
-        svelte_name="CompositeHeartrate"
-        container_id="composite-heartrate"
-        sensors={@heartrate_sensors}
-        props={%{sensors: @heartrate_sensors}}
-        socket={@socket}
-        empty_icon="heart"
-        empty_message="No heartrate sensors connected"
-        empty_hint="Connect a sensor with heartrate capability"
-      />
-
-      <.composite_lens
-        :if={@live_action == :imu}
-        svelte_name="CompositeIMU"
-        container_id="composite-imu"
-        sensors={@imu_sensors}
-        props={%{sensors: @imu_sensors}}
-        socket={@socket}
-        empty_icon="cube"
-        empty_message="No IMU sensors connected"
-        empty_hint="Connect a sensor with IMU capability"
-      />
-
-      <.composite_lens
-        :if={@live_action == :location}
-        svelte_name="CompositeMap"
-        container_id="composite-location"
-        sensors={@location_sensors}
-        props={%{positions: @location_sensors}}
-        socket={@socket}
-        svelte_class="w-full h-96"
-        empty_icon="map-pin"
-        empty_message="No location sensors connected"
-        empty_hint="Connect a sensor with geolocation capability"
-      />
-
-      <.composite_lens
-        :if={@live_action == :ecg}
-        svelte_name="CompositeECG"
-        container_id="composite-ecg"
-        sensors={@ecg_sensors}
-        props={%{sensors: @ecg_sensors}}
-        socket={@socket}
-        empty_icon="chart-bar"
-        empty_message="No ECG sensors connected"
-        empty_hint="Connect a sensor with ECG capability"
-      />
-
-      <.composite_lens
-        :if={@live_action == :battery}
-        svelte_name="CompositeBattery"
-        container_id="composite-battery"
-        sensors={@battery_sensors}
-        props={%{sensors: @battery_sensors}}
-        socket={@socket}
-        empty_icon="battery-50"
-        empty_message="No battery sensors connected"
-        empty_hint="Connect a sensor with battery monitoring"
-      />
-
-      <.composite_lens
-        :if={@live_action == :skeleton}
-        svelte_name="CompositeSkeletons"
-        container_id="composite-skeleton"
-        sensors={@skeleton_sensors}
-        props={%{sensors: @skeleton_sensors}}
-        socket={@socket}
-        container_class="h-[min(70vh,600px)] min-h-[250px]"
-        svelte_class="w-full h-full"
-        empty_icon="user"
-        empty_message="No skeleton/pose sensors connected"
-        empty_hint="Connect a sensor with pose detection enabled"
-      />
-
-      <%!-- Breathing/Respiration Composite View --%>
-      <.composite_lens
-        :if={@live_action == :respiration}
-        svelte_name="CompositeBreathing"
-        container_id="composite-breathing"
-        sensors={@respiration_sensors}
-        props={%{sensors: @respiration_sensors}}
-        socket={@socket}
-        container_class="h-[min(70vh,600px)] min-h-[250px]"
-        svelte_class="w-full h-full"
-        empty_icon="signal"
-        empty_message="No breathing sensors connected"
-        empty_hint="Connect a sensor with respiration/breathing data"
-      />
-
-      <%!-- HRV Composite View --%>
-      <.composite_lens
-        :if={@live_action == :hrv}
-        svelte_name="CompositeHRV"
-        container_id="composite-hrv"
-        sensors={@hrv_sensors}
-        props={%{sensors: @hrv_sensors}}
-        socket={@socket}
-        container_class="h-[min(70vh,600px)] min-h-[250px]"
-        svelte_class="w-full h-full"
-        empty_icon="chart-bar-square"
-        empty_message="No HRV sensors connected"
-        empty_hint="Connect a sensor with HRV data"
-      />
-
-      <%!-- Gaze Composite View --%>
-      <.composite_lens
-        :if={@live_action == :gaze}
-        svelte_name="CompositeGaze"
-        container_id="composite-gaze"
-        sensors={@gaze_sensors}
-        props={%{sensors: @gaze_sensors}}
-        socket={@socket}
-        container_class="w-full"
-        empty_icon="eye"
-        empty_message="No eye tracking sensors connected"
-        empty_hint="Connect a Pupil Neon or similar eye tracker"
-      />
-
-      <%!-- Favorites View --%>
-      <div :if={@live_action == :favorites}>
-        <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-300">
-          <Heroicons.icon name="star" type="outline" class="h-12 w-12 mx-auto mb-4" />
-          <p class="text-lg">No favorite sensors</p>
-          <p class="text-sm mt-2">Click the star icon on any sensor to add it to favorites</p>
-        </div>
-        <div
-          :if={@favorite_sensors != []}
-          id="favorites-grid"
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-        >
-          <div
-            :for={sensor_id <- @favorite_sensors}
-            :if={sensor_id in @sensor_ids}
-            id={"sensor_fav_container_#{sensor_id}"}
-          >
-            {live_render(@socket, StatefulSensorLive,
-              id: "stateful_sensor_fav_#{sensor_id}",
-              session: %{
-                "parent_pid" => self(),
-                "sensor_id" => sensor_id,
-                "user_id" => @current_user && @current_user.id,
-                "is_favorite" => true
-              }
-            )}
-          </div>
-        </div>
-      </div>
-
-      <%!-- Users/Connectors Summary View with Video Presence --%>
-      <div :if={@live_action == :users}>
-        <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
-          <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
-          <p class="text-lg">No users connected</p>
-          <p class="text-sm mt-2">Connect a sensor to see user summaries</p>
-        </div>
-
-        <div
-          :if={@sensors_by_user != []}
-          class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-        >
-          <%= for user <- @sensors_by_user do %>
-            <.live_component
-              module={SensoctoWeb.Live.Components.UserVideoCardComponent}
-              id={"user-video-card-#{user.connector_id}"}
-              user={user}
-              in_call={user_in_call?(@call_participants, user.connector_id)}
-              video_tier={get_user_video_tier(@call_participants, user.connector_id)}
-              speaking={user_speaking?(@call_participants, user.connector_id)}
-            />
-          <% end %>
-        </div>
-      </div>
-
-      <%!-- Hierarchy View: User > Connector > Sensor tree --%>
-      <div :if={@live_action == :hierarchy} class="p-4 space-y-3">
-        <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
-          <Heroicons.icon
-            name="rectangle-group"
-            type="outline"
-            class="h-12 w-12 mx-auto mb-4"
-          />
-          <p class="text-lg">No sensors connected</p>
-          <p class="text-sm mt-2">Connect sensors to see the hierarchy</p>
-        </div>
-
-        <div :for={user <- @sensors_by_user} class="bg-gray-800 rounded-lg border border-gray-700">
-          <details open class="group">
-            <summary class="flex items-center gap-3 p-3 cursor-pointer select-none hover:bg-gray-750">
-              <Heroicons.icon
-                name="chevron-right"
-                type="solid"
-                class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-90"
-              />
-              <Heroicons.icon name="user" type="solid" class="h-5 w-5 text-purple-400" />
-              <span class="text-white font-medium">{user.connector_name}</span>
-              <span class="text-xs text-gray-500">
-                {length(user.sensors)} sensor{if length(user.sensors) != 1,
-                  do: "s"}
-              </span>
-            </summary>
-
-            <div class="pl-8 pr-3 pb-3 space-y-2">
-              <div
-                :for={sensor <- user.sensors}
-                class="flex items-center gap-2 p-2 bg-gray-700/50 rounded"
-              >
-                <div class="w-2 h-2 rounded-full bg-green-500" />
-                <span class="text-sm text-gray-300">{sensor.sensor_name}</span>
-                <span :if={sensor[:sensor_type]} class="text-xs text-gray-500 ml-auto">
-                  {sensor[:sensor_type]}
-                </span>
+                  Battery
+                </button>
               </div>
             </div>
-          </details>
-        </div>
-      </div>
+          </div>
 
-      <%!-- Graph Visualization --%>
-      <div
-        :if={@live_action == :graph}
-        id="lobby-graph-view"
-        phx-hook="CompositeMeasurementHandler"
-        class="p-4"
-      >
-        <.svelte
-          name="LobbyGraph"
-          props={
-            %{
-              rooms: [],
-              users: @sensors_by_user,
-              sensors: enrich_sensors_with_attention(@sensors)
-            }
-          }
-          socket={@socket}
-          class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
-        />
-      </div>
+          <div :if={@live_action == :sensors}>
+            <%!-- SensorGridHook anchor: joins ViewerDataChannel and delivers sensor data directly to DOM --%>
+            <div id="sensor-grid-channel-hook" phx-hook="SensorGridHook" class="hidden"></div>
 
-      <%!-- 3D Graph Visualization --%>
-      <div
-        :if={@live_action == :graph3d}
-        id="lobby-graph3d-view"
-        phx-hook="CompositeMeasurementHandler"
-        class="p-4"
-      >
-        <.svelte
-          name="Composite3DGraph"
-          props={
-            %{
-              rooms: [],
-              users: @sensors_by_user,
-              sensors: enrich_sensors_with_attention(@sensors)
-            }
-          }
-          socket={@socket}
-          class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
-        />
-      </div>
+            <%!-- Virtual scroll sensor grid --%>
+            <% {rows_before, visible_sensor_ids, rows_after, sensors_remaining} =
+              partition_sensors_for_virtual_scroll(@sensor_ids, @visible_range, @cols) %>
 
-      <%!-- MIDI Output Panel — shared between graph and graph3d --%>
-      <.midi_panel :if={@live_action in [:graph, :graph3d]} />
+            <div
+              id="sensor-virtual-scroll"
+              phx-hook="VirtualScrollHook"
+              data-total-sensors={length(@sensor_ids)}
+              data-sensor-ids={Jason.encode!(@sensor_ids)}
+              data-row-height={@row_height}
+              class={[
+                "grid grid-cols-1",
+                cond do
+                  @lobby_layout == :floating && @global_view_mode == :summary ->
+                    "gap-1.5 sm:gap-2 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3"
+
+                  @lobby_layout == :floating ->
+                    "gap-2 sm:gap-3 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2"
+
+                  @global_view_mode == :summary ->
+                    "gap-1 sm:gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
+
+                  true ->
+                    "gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+                end
+              ]}
+            >
+              <%!-- Top spacer for sensors above viewport --%>
+              <div
+                :if={rows_before > 0}
+                id="virtual-scroll-top-spacer"
+                style={"height: #{rows_before * @row_height}px"}
+                class="col-span-full"
+                aria-hidden="true"
+              />
+
+              <%!-- Visible sensors - rendered as LiveComponents for efficient virtual scrolling --%>
+              <div
+                :for={sensor_id <- visible_sensor_ids}
+                id={"sensor_container_#{sensor_id}"}
+              >
+                <.live_component
+                  module={StatefulSensorComponent}
+                  id={"sensor_#{sensor_id}"}
+                  sensor_id={sensor_id}
+                  sensor={
+                    Map.get(@sensors, sensor_id, %{
+                      sensor_id: sensor_id,
+                      sensor_name: sensor_id,
+                      sensor_type: "unknown",
+                      attributes: %{}
+                    })
+                  }
+                  view_mode={@global_view_mode}
+                  user_id={@current_user && @current_user.id}
+                  is_favorite={sensor_id in @favorite_sensors}
+                />
+              </div>
+
+              <%!-- Bottom spacer for sensors below viewport --%>
+              <div
+                :if={rows_after > 0}
+                id="virtual-scroll-bottom-spacer"
+                style={"height: #{rows_after * @row_height}px"}
+                class="col-span-full"
+                aria-hidden="true"
+              />
+
+              <%!-- Scroll/loading indicator - always present so JS can control it --%>
+              <div
+                id="virtual-scroll-indicator"
+                class="col-span-full flex items-center justify-center py-4 text-gray-300"
+              >
+                <%!-- Loading spinner (shown by JS when loading, or server-rendered during initial load) --%>
+                <div class={[
+                  "loading-spinner flex items-center gap-2",
+                  if(@virtual_scroll_loading, do: "", else: "hidden")
+                ]}>
+                  <svg
+                    class="animate-spin h-5 w-5 text-orange-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    >
+                    </circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    >
+                    </path>
+                  </svg>
+                  <span class="text-sm">Loading sensors...</span>
+                </div>
+                <%!-- "More below" indicator (shown when there are sensors remaining and not loading) --%>
+                <div
+                  :if={sensors_remaining > 0}
+                  class={[
+                    "more-text flex items-center gap-2 text-xs text-gray-500",
+                    if(@virtual_scroll_loading, do: "hidden", else: "")
+                  ]}
+                >
+                  <Heroicons.icon
+                    name="chevron-down"
+                    type="outline"
+                    class="h-4 w-4 animate-bounce"
+                  />
+                  <span>
+                    {sensors_remaining} more sensor{if sensors_remaining > 1, do: "s", else: ""} below
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              :if={@sensor_ids == []}
+              class="text-center py-12 text-gray-300"
+            >
+              <Heroicons.icon name="signal-slash" type="outline" class="h-12 w-12 mx-auto mb-4" />
+              <p class="text-lg">No sensors connected</p>
+              <p class="text-sm mt-2">Connect a sensor using the connectors below</p>
+            </div>
+          </div>
+
+          <.composite_lens
+            :if={@live_action == :heartrate}
+            svelte_name="CompositeHeartrate"
+            container_id="composite-heartrate"
+            sensors={@heartrate_sensors}
+            props={%{sensors: @heartrate_sensors}}
+            socket={@socket}
+            empty_icon="heart"
+            empty_message="No heartrate sensors connected"
+            empty_hint="Connect a sensor with heartrate capability"
+          />
+
+          <.composite_lens
+            :if={@live_action == :imu}
+            svelte_name="CompositeIMU"
+            container_id="composite-imu"
+            sensors={@imu_sensors}
+            props={%{sensors: @imu_sensors}}
+            socket={@socket}
+            empty_icon="cube"
+            empty_message="No IMU sensors connected"
+            empty_hint="Connect a sensor with IMU capability"
+          />
+
+          <.composite_lens
+            :if={@live_action == :location}
+            svelte_name="CompositeMap"
+            container_id="composite-location"
+            sensors={@location_sensors}
+            props={%{positions: @location_sensors}}
+            socket={@socket}
+            svelte_class="w-full h-96"
+            empty_icon="map-pin"
+            empty_message="No location sensors connected"
+            empty_hint="Connect a sensor with geolocation capability"
+          />
+
+          <.composite_lens
+            :if={@live_action == :ecg}
+            svelte_name="CompositeECG"
+            container_id="composite-ecg"
+            sensors={@ecg_sensors}
+            props={%{sensors: @ecg_sensors}}
+            socket={@socket}
+            empty_icon="chart-bar"
+            empty_message="No ECG sensors connected"
+            empty_hint="Connect a sensor with ECG capability"
+          />
+
+          <.composite_lens
+            :if={@live_action == :battery}
+            svelte_name="CompositeBattery"
+            container_id="composite-battery"
+            sensors={@battery_sensors}
+            props={%{sensors: @battery_sensors}}
+            socket={@socket}
+            empty_icon="battery-50"
+            empty_message="No battery sensors connected"
+            empty_hint="Connect a sensor with battery monitoring"
+          />
+
+          <.composite_lens
+            :if={@live_action == :skeleton}
+            svelte_name="CompositeSkeletons"
+            container_id="composite-skeleton"
+            sensors={@skeleton_sensors}
+            props={%{sensors: @skeleton_sensors}}
+            socket={@socket}
+            container_class="h-[min(70vh,600px)] min-h-[250px]"
+            svelte_class="w-full h-full"
+            empty_icon="user"
+            empty_message="No skeleton/pose sensors connected"
+            empty_hint="Connect a sensor with pose detection enabled"
+          />
+
+          <%!-- Breathing/Respiration Composite View --%>
+          <.composite_lens
+            :if={@live_action == :respiration}
+            svelte_name="CompositeBreathing"
+            container_id="composite-breathing"
+            sensors={@respiration_sensors}
+            props={%{sensors: @respiration_sensors}}
+            socket={@socket}
+            container_class="h-[min(70vh,600px)] min-h-[250px]"
+            svelte_class="w-full h-full"
+            empty_icon="signal"
+            empty_message="No breathing sensors connected"
+            empty_hint="Connect a sensor with respiration/breathing data"
+          />
+
+          <%!-- HRV Composite View --%>
+          <.composite_lens
+            :if={@live_action == :hrv}
+            svelte_name="CompositeHRV"
+            container_id="composite-hrv"
+            sensors={@hrv_sensors}
+            props={%{sensors: @hrv_sensors}}
+            socket={@socket}
+            container_class="h-[min(70vh,600px)] min-h-[250px]"
+            svelte_class="w-full h-full"
+            empty_icon="chart-bar-square"
+            empty_message="No HRV sensors connected"
+            empty_hint="Connect a sensor with HRV data"
+          />
+
+          <%!-- Gaze Composite View --%>
+          <.composite_lens
+            :if={@live_action == :gaze}
+            svelte_name="CompositeGaze"
+            container_id="composite-gaze"
+            sensors={@gaze_sensors}
+            props={%{sensors: @gaze_sensors}}
+            socket={@socket}
+            container_class="w-full"
+            empty_icon="eye"
+            empty_message="No eye tracking sensors connected"
+            empty_hint="Connect a Pupil Neon or similar eye tracker"
+          />
+
+          <%!-- Favorites View --%>
+          <div :if={@live_action == :favorites}>
+            <div :if={@favorite_sensors == []} class="text-center py-12 text-gray-300">
+              <Heroicons.icon name="star" type="outline" class="h-12 w-12 mx-auto mb-4" />
+              <p class="text-lg">No favorite sensors</p>
+              <p class="text-sm mt-2">Click the star icon on any sensor to add it to favorites</p>
+            </div>
+            <div
+              :if={@favorite_sensors != []}
+              id="favorites-grid"
+              class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+            >
+              <div
+                :for={sensor_id <- @favorite_sensors}
+                :if={sensor_id in @sensor_ids}
+                id={"sensor_fav_container_#{sensor_id}"}
+              >
+                {live_render(@socket, StatefulSensorLive,
+                  id: "stateful_sensor_fav_#{sensor_id}",
+                  session: %{
+                    "parent_pid" => self(),
+                    "sensor_id" => sensor_id,
+                    "user_id" => @current_user && @current_user.id,
+                    "is_favorite" => true
+                  }
+                )}
+              </div>
+            </div>
+          </div>
+
+          <%!-- Users/Connectors Summary View with Video Presence --%>
+          <div :if={@live_action == :users}>
+            <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
+              <Heroicons.icon name="users" type="outline" class="h-12 w-12 mx-auto mb-4" />
+              <p class="text-lg">No users connected</p>
+              <p class="text-sm mt-2">Connect a sensor to see user summaries</p>
+            </div>
+
+            <div
+              :if={@sensors_by_user != []}
+              class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+            >
+              <%= for user <- @sensors_by_user do %>
+                <.live_component
+                  module={SensoctoWeb.Live.Components.UserVideoCardComponent}
+                  id={"user-video-card-#{user.connector_id}"}
+                  user={user}
+                  in_call={user_in_call?(@call_participants, user.connector_id)}
+                  video_tier={get_user_video_tier(@call_participants, user.connector_id)}
+                  speaking={user_speaking?(@call_participants, user.connector_id)}
+                />
+              <% end %>
+            </div>
+          </div>
+
+          <%!-- Hierarchy View: User > Connector > Sensor tree --%>
+          <div :if={@live_action == :hierarchy} class="p-4 space-y-3">
+            <div :if={@sensors_by_user == []} class="text-center py-12 text-gray-300">
+              <Heroicons.icon
+                name="rectangle-group"
+                type="outline"
+                class="h-12 w-12 mx-auto mb-4"
+              />
+              <p class="text-lg">No sensors connected</p>
+              <p class="text-sm mt-2">Connect sensors to see the hierarchy</p>
+            </div>
+
+            <div
+              :for={user <- @sensors_by_user}
+              class="bg-gray-800 rounded-lg border border-gray-700"
+            >
+              <details open class="group">
+                <summary class="flex items-center gap-3 p-3 cursor-pointer select-none hover:bg-gray-750">
+                  <Heroicons.icon
+                    name="chevron-right"
+                    type="solid"
+                    class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-90"
+                  />
+                  <Heroicons.icon name="user" type="solid" class="h-5 w-5 text-purple-400" />
+                  <span class="text-white font-medium">{user.connector_name}</span>
+                  <span class="text-xs text-gray-500">
+                    {length(user.sensors)} sensor{if length(user.sensors) != 1,
+                      do: "s"}
+                  </span>
+                </summary>
+
+                <div class="pl-8 pr-3 pb-3 space-y-2">
+                  <div
+                    :for={sensor <- user.sensors}
+                    class="flex items-center gap-2 p-2 bg-gray-700/50 rounded"
+                  >
+                    <div class="w-2 h-2 rounded-full bg-green-500" />
+                    <span class="text-sm text-gray-300">{sensor.sensor_name}</span>
+                    <span :if={sensor[:sensor_type]} class="text-xs text-gray-500 ml-auto">
+                      {sensor[:sensor_type]}
+                    </span>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <%!-- Graph Visualization --%>
+          <div
+            :if={@live_action == :graph}
+            id="lobby-graph-view"
+            phx-hook="CompositeMeasurementHandler"
+            class="p-4"
+          >
+            <.svelte
+              name="LobbyGraph"
+              props={
+                %{
+                  rooms: [],
+                  users: @sensors_by_user,
+                  sensors: enrich_sensors_with_attention(@sensors)
+                }
+              }
+              socket={@socket}
+              class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
+            />
+          </div>
+
+          <%!-- 3D Graph Visualization --%>
+          <div
+            :if={@live_action == :graph3d}
+            id="lobby-graph3d-view"
+            phx-hook="CompositeMeasurementHandler"
+            class="p-4"
+          >
+            <.svelte
+              name="Composite3DGraph"
+              props={
+                %{
+                  rooms: [],
+                  users: @sensors_by_user,
+                  sensors: enrich_sensors_with_attention(@sensors)
+                }
+              }
+              socket={@socket}
+              class="w-full h-[calc(100vh-200px)] min-h-[500px] rounded-lg overflow-hidden"
+            />
+          </div>
+
+          <%!-- MIDI Output Panel — shared between graph and graph3d --%>
+          <.midi_panel :if={@live_action in [:graph, :graph3d]} />
         </div>
       </div>
     </div>
@@ -1769,105 +1799,6 @@
     </div>
   </div>
 <% end %>
-
-<%!-- ================================================================== --%>
-<%!-- FLOATING SENSOR DOCK — only in :floating layout mode            --%>
-<%!-- ================================================================== --%>
-<div
-  :if={@lobby_layout == :floating}
-  id="floating-sensor-dock"
-  phx-hook="FloatingDock"
-  class="fixed bottom-0 left-0 right-0 z-40"
->
-  <%!-- Expanded overlay cards (max 3) --%>
-  <div :if={@floating_expanded_sensors != []} class="flex justify-center gap-3 mb-2 px-4">
-    <div
-      :for={sensor_id <- @floating_expanded_sensors}
-      class="w-72 bg-gray-900/95 backdrop-blur rounded-lg border border-gray-700/50 shadow-xl relative"
-    >
-      <.live_component
-        module={StatefulSensorComponent}
-        id={"floating_#{sensor_id}"}
-        sensor_id={sensor_id}
-        sensor={
-          Map.get(@sensors, sensor_id, %{
-            sensor_id: sensor_id,
-            sensor_name: sensor_id,
-            sensor_type: "unknown",
-            attributes: %{}
-          })
-        }
-        view_mode={:summary}
-        user_id={@current_user && @current_user.id}
-        is_favorite={sensor_id in @favorite_sensors}
-      />
-      <button
-        phx-click="float_collapse_sensor"
-        phx-value-sensor-id={sensor_id}
-        class="absolute top-1 right-1 p-0.5 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors z-10"
-      >
-        <Heroicons.icon name="x-mark" type="mini" class="h-3 w-3" />
-      </button>
-    </div>
-  </div>
-
-  <%!-- Dock strip --%>
-  <div
-    :if={!@floating_dock_collapsed}
-    class="bg-gray-900/95 backdrop-blur-md border-t border-gray-700/50 px-3 py-2"
-  >
-    <div class="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700">
-      <%!-- Collapse button --%>
-      <button
-        phx-click="toggle_floating_dock"
-        class="p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white shrink-0"
-        title="Collapse dock"
-      >
-        <Heroicons.icon name="chevron-down" type="mini" class="h-4 w-4" />
-      </button>
-
-      <%!-- Sensor count --%>
-      <span class="text-[10px] text-gray-500 shrink-0">
-        {@sensors_online_count} online
-      </span>
-
-      <%!-- Divider --%>
-      <div class="w-px h-5 bg-gray-700 shrink-0"></div>
-
-      <%!-- Mini sensor badges --%>
-      <.mini_sensor_badge
-        :for={sensor_id <- @sensor_ids}
-        sensor_id={sensor_id}
-        sensor={
-          Map.get(@sensors, sensor_id, %{
-            sensor_id: sensor_id,
-            sensor_name: sensor_id,
-            sensor_type: "unknown",
-            attributes: %{}
-          })
-        }
-        is_expanded={sensor_id in @floating_expanded_sensors}
-      />
-
-      <%!-- Empty state --%>
-      <span :if={@sensor_ids == []} class="text-xs text-gray-500 italic">
-        No sensors connected
-      </span>
-    </div>
-  </div>
-
-  <%!-- Collapsed pill --%>
-  <div :if={@floating_dock_collapsed} class="flex justify-center pb-3">
-    <button
-      phx-click="toggle_floating_dock"
-      class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-800/90 backdrop-blur border border-gray-700/50 text-gray-300 hover:text-white hover:bg-gray-700/90 transition-colors shadow-lg text-xs"
-    >
-      <Heroicons.icon name="signal" type="mini" class="h-3.5 w-3.5 text-green-400" />
-      <span>{@sensors_online_count} sensors</span>
-      <Heroicons.icon name="chevron-up" type="mini" class="h-3 w-3 text-gray-500" />
-    </button>
-  </div>
-</div>
 
 <.join_room_modal show={@show_join_modal} public_rooms={@public_rooms} join_code={@join_code} />
 

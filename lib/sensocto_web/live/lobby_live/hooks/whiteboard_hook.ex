@@ -17,6 +17,14 @@ defmodule SensoctoWeb.LobbyLive.Hooks.WhiteboardHook do
       )
     end
 
+    socket =
+      if not socket.assigns.whiteboard_bump do
+        Process.send_after(self(), :clear_whiteboard_bump, 300)
+        assign(socket, :whiteboard_bump, true)
+      else
+        socket
+      end
+
     {:halt, socket}
   end
 

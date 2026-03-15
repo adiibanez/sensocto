@@ -717,6 +717,9 @@ Hooks.SensorGridHook = {
             attrList.push(m);
           }
         }
+        if (attrId === "button") {
+          this._handleButtonEvents(sensorId, items);
+        }
       }
       if (attrList.length > 0) {
         window.dispatchEvent(new CustomEvent("measurements-batch-event", {
@@ -724,6 +727,106 @@ Hooks.SensorGridHook = {
         }));
       }
     }
+  },
+
+  // Button colors matching server-side @button_colors
+  _buttonColors: {
+    1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#22c55e",
+    5: "#14b8a6", 6: "#3b82f6", 7: "#6366f1", 8: "#a855f7"
+  },
+
+  _handleButtonEvents(sensorId, items) {
+    for (const item of items) {
+      if (item == null || item.event == null) continue;
+      const btnId = parseInt(item.payload, 10);
+      if (isNaN(btnId) || btnId < 1 || btnId > 8) continue;
+
+      if (item.event === "press") {
+        this._triggerButtonVibrate(sensorId, btnId, item.timestamp);
+        this._flashButtonIndicator(sensorId, btnId);
+      }
+    }
+  },
+
+  _triggerButtonVibrate(sensorId, btnId, timestamp) {
+    // Update vibrate element data attributes for the press event
+    const vibrateEl = document.getElementById(`vibrate_${sensorId}_button`);
+    if (vibrateEl) {
+      vibrateEl.dataset.value = String(btnId);
+      vibrateEl.dataset.event = "press";
+      vibrateEl.dataset.timestamp = String(timestamp);
+    }
+
+    // Vibrate
+    const duration = btnId * 100;
+    if (navigator.vibrate) navigator.vibrate(duration);
+
+    // Play sound using the Vibrate hook's audio logic
+    this._playButtonSound(btnId);
+  },
+
+  // Flash timers per sensor+button to auto-reset
+  _flashTimers: {},
+
+  _flashButtonIndicator(sensorId, btnId) {
+    const vibrateEl = document.getElementById(`vibrate_${sensorId}_button`);
+    if (!vibrateEl) return;
+
+    const indicators = vibrateEl.querySelectorAll("div[style]");
+    const el = indicators[btnId - 1];
+    if (!el) return;
+
+    const color = this._buttonColors[btnId];
+    el.style.cssText = `background-color: ${color}; color: white; box-shadow: 0 0 12px 2px ${color}, 0 0 4px 1px ${color}; transform: scale(0.9); transition: all 0.1s;`;
+
+    // Reset after 300ms
+    const key = `${sensorId}_${btnId}`;
+    if (this._flashTimers[key]) clearTimeout(this._flashTimers[key]);
+    this._flashTimers[key] = setTimeout(() => {
+      el.style.cssText = "background-color: #4b5563; color: #9ca3af; box-shadow: none; transform: scale(1); transition: all 0.3s;";
+      delete this._flashTimers[key];
+    }, 300);
+  },
+
+  _buttonAudioCtx: null,
+
+  _playButtonSound(btnId) {
+    try {
+      if (!this._buttonAudioCtx) {
+        this._buttonAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = this._buttonAudioCtx;
+      const now = ctx.currentTime;
+      const freqs = { 1: 261.6, 2: 293.7, 3: 329.6, 4: 392.0, 5: 440.0, 6: 523.3, 7: 587.3, 8: 659.3 };
+      const baseFreq = freqs[btnId] || 392.0;
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      osc1.connect(filter); osc2.connect(filter);
+      filter.connect(gain); gain.connect(ctx.destination);
+
+      osc1.type = "triangle"; osc2.type = "sine";
+      osc1.frequency.setValueAtTime(baseFreq * 1.5, now);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, now + 0.08);
+      osc2.frequency.setValueAtTime(baseFreq * 3, now);
+      osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.6, now + 0.06);
+
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(2000, now);
+      filter.frequency.exponentialRampToValueAtTime(400, now + 0.15);
+      filter.Q.value = 2;
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.25, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.08, now + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      osc1.start(now); osc2.start(now);
+      osc1.stop(now + 0.3); osc2.stop(now + 0.3);
+    } catch (_) {}
   },
 };
 

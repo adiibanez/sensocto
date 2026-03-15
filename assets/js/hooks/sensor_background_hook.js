@@ -117,7 +117,7 @@ class ConstellationRenderer extends BaseRenderer {
       return;
     }
 
-    const lineThreshold = Math.min(w, h) * 0.35;
+    const lineThreshold = Math.min(w, h) * 0.45;
 
     // Draw connecting lines
     ctx.globalCompositeOperation = 'lighter';
@@ -131,9 +131,11 @@ class ConstellationRenderer extends BaseRenderer {
         const by = b.pos.y + noise3D(1, b.hue * 0.01, t * 0.3) * 20;
         const dist = Math.hypot(ax - bx, ay - by);
         if (dist < lineThreshold) {
-          const opacity = (1 - dist / lineThreshold) * Math.sqrt(a.intensity * b.intensity) * 0.3;
-          ctx.strokeStyle = `hsla(${(a.hue + b.hue) / 2}, 60%, 60%, ${opacity})`;
-          ctx.lineWidth = 1;
+          const falloff = 1 - dist / lineThreshold;
+          const opacity = falloff * falloff * Math.sqrt(a.intensity * b.intensity) * 0.6;
+          const hue = (a.hue + b.hue) / 2;
+          ctx.strokeStyle = `hsla(${hue}, 65%, 60%, ${opacity})`;
+          ctx.lineWidth = 1 + falloff * 1.5;
           ctx.beginPath();
           ctx.moveTo(ax, ay);
           ctx.lineTo(bx, by);
@@ -228,25 +230,42 @@ class WaveformRenderer extends BaseRenderer {
     }
 
     ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Adaptive step: more sensors → coarser sampling to keep frame budget
+    const step = sensors.length > 50 ? 6 : sensors.length > 20 ? 4 : 3;
 
     for (const s of sensors) {
-      // Hash-based stable vertical position (independent of array index/count)
-      const centerY = h * (0.3 + 0.4 * (s.pos.y / h));
+      // Spread waveforms across 10%-90% of canvas height
+      const yRatio = (s.pos.y - h * 0.1) / (h * 0.8);
+      const centerY = h * (0.1 + 0.8 * yRatio);
       const freq = 0.0008 + (s.hue / 360) * 0.003;
-      const amplitude = s.intensity * (20 + s.intensity * (h * 0.25));
-      // Phase uses hue (stable per sensor) not array index
+      // Min amplitude 30px so all sensors are visible; active ones go bigger
+      const amplitude = 30 + s.intensity * (h * 0.12);
       const phase = t * (1.5 + (s.hue % 100) * 0.01) + s.hue;
-      const alpha = s.intensity * (0.15 + s.intensity * 0.45);
+      const alpha = 0.08 + s.intensity * 0.4;
 
       if (alpha < 0.005) continue;
 
+      // Glow: draw a thicker, more transparent line underneath for soft glow effect
+      // Much cheaper than shadowBlur
+      ctx.strokeStyle = `hsla(${s.hue}, 80%, 60%, ${alpha * 0.25})`;
+      ctx.lineWidth = 4 + s.intensity * 4;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += step * 2) {
+        const y = centerY + amplitude * Math.sin(x * freq + phase) +
+                  amplitude * 0.3 * Math.sin(x * freq * 2.3 + phase * 1.5);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Crisp line on top
       ctx.strokeStyle = `hsla(${s.hue}, 70%, 60%, ${alpha})`;
       ctx.lineWidth = 1.5 + s.intensity * 1.5;
-      ctx.shadowColor = `hsla(${s.hue}, 80%, 60%, ${alpha * 0.5})`;
-      ctx.shadowBlur = 8;
-
       ctx.beginPath();
-      for (let x = 0; x <= w; x += 3) {
+      for (let x = 0; x <= w; x += step) {
         const y = centerY + amplitude * Math.sin(x * freq + phase) +
                   amplitude * 0.3 * Math.sin(x * freq * 2.3 + phase * 1.5);
         if (x === 0) ctx.moveTo(x, y);
@@ -255,13 +274,14 @@ class WaveformRenderer extends BaseRenderer {
       ctx.stroke();
     }
 
-    ctx.shadowBlur = 0;
     ctx.globalCompositeOperation = 'source-over';
   }
 
   _drawAmbient(t) {
     const { ctx, w, h } = this;
     ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     for (let i = 0; i < 5; i++) {
       const centerY = h * (0.35 + 0.3 * (i / 4));
@@ -269,10 +289,20 @@ class WaveformRenderer extends BaseRenderer {
       const freq = 0.0008 + i * 0.0006;
       const amplitude = 40 + Math.sin(t * 0.3 + i) * 25;
       const alpha = 0.08 + Math.sin(t * 0.4 + i * 1.5) * 0.03;
+
+      ctx.strokeStyle = `hsla(${hue}, 60%, 55%, ${alpha * 0.3})`;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 6) {
+        const y = centerY + amplitude * Math.sin(x * freq + t * 0.5 + i * 2) +
+                  amplitude * 0.2 * Math.sin(x * freq * 2.5 + t * 0.8 + i);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
       ctx.strokeStyle = `hsla(${hue}, 55%, 58%, ${alpha})`;
       ctx.lineWidth = 1.5;
-      ctx.shadowColor = `hsla(${hue}, 60%, 55%, ${alpha * 0.4})`;
-      ctx.shadowBlur = 6;
       ctx.beginPath();
       for (let x = 0; x <= w; x += 3) {
         const y = centerY + amplitude * Math.sin(x * freq + t * 0.5 + i * 2) +
@@ -282,7 +312,6 @@ class WaveformRenderer extends BaseRenderer {
       }
       ctx.stroke();
     }
-    ctx.shadowBlur = 0;
     ctx.globalCompositeOperation = 'source-over';
   }
 }

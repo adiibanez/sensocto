@@ -1316,7 +1316,10 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
           </div>
 
           <%!-- Research Summary with depth levels --%>
-          <div class="mb-8 bg-gradient-to-br from-amber-900/20 via-gray-800/50 to-purple-900/20 rounded-xl p-6 border border-amber-500/20">
+          <div
+            class="mb-8 rounded-xl p-6 border border-amber-500/20 backdrop-blur-sm"
+            style="background: linear-gradient(135deg, rgba(120,53,15,0.4) 0%, rgba(31,41,55,0.85) 50%, rgba(88,28,135,0.4) 100%)"
+          >
             <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
               <h4 class="text-lg font-medium text-white">
                 <.icon name="hero-document-text" class="h-5 w-5 inline-block mr-2 text-amber-400" />

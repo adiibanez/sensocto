@@ -323,13 +323,15 @@ impl SensoctoClient {
         let sensor_id = config.sensor_id.clone();
         let topic = format!("sensocto:sensor:{}", sensor_id);
 
+        // Send attributes as empty map on join — matches web bluetooth pattern.
+        // Attributes auto-register on the server when first measurements arrive.
         let join_params = serde_json::json!({
             "connector_id": self.config.connector_id,
             "connector_name": self.config.connector_name,
             "sensor_id": sensor_id,
             "sensor_name": config.sensor_name,
             "sensor_type": config.sensor_type,
-            "attributes": config.attributes,
+            "attributes": {},
             "sampling_rate": config.sampling_rate_hz,
             "batch_size": config.batch_size,
             "bearer_token": config.bearer_token.clone()

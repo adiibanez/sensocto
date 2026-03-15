@@ -10,7 +10,6 @@ defmodule SensoctoWeb.LobbyLive do
   import SensoctoWeb.LiveHelpers.SensorData
   import SensoctoWeb.LobbyLive.Components
   import SensoctoWeb.LobbyLive.LensComponents
-  import SensoctoWeb.LobbyLive.FloatingDockComponents
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
@@ -1502,7 +1501,7 @@ defmodule SensoctoWeb.LobbyLive do
       true ->
         socket = assign(socket, :data_mode, :realtime)
         # Data delivery is handled by ViewerDataChannel → SensorGridHook → DOM.
-        # No send_update calls needed here.
+        # Button events are handled in JS via _handleButtonEvents in SensorGridHook.
         {:noreply, socket}
     end
   end

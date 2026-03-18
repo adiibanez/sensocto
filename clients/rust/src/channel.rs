@@ -128,6 +128,18 @@ impl SensorStream {
         sensor_id: String,
         config: SensorConfig,
     ) -> (Self, mpsc::Receiver<SensorEvent>) {
+        Self::with_backpressure(channel, sensor_id, config, None)
+    }
+
+    /// Creates a new sensor stream with a shared backpressure config.
+    /// When `backpressure` is provided, the stream shares the Arc with the
+    /// socket's backpressure_config event handler, so server updates propagate.
+    pub(crate) fn with_backpressure(
+        channel: PhoenixChannel,
+        sensor_id: String,
+        config: SensorConfig,
+        backpressure: Option<Arc<RwLock<BackpressureConfig>>>,
+    ) -> (Self, mpsc::Receiver<SensorEvent>) {
         let (event_tx, event_rx) = mpsc::channel(100);
 
         let stream = Self {
@@ -135,7 +147,8 @@ impl SensorStream {
             sensor_id,
             config,
             batch_buffer: Arc::new(RwLock::new(Vec::new())),
-            backpressure: Arc::new(RwLock::new(BackpressureConfig::default())),
+            backpressure: backpressure
+                .unwrap_or_else(|| Arc::new(RwLock::new(BackpressureConfig::default()))),
             event_tx,
         };
 

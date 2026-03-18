@@ -9,7 +9,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   alias Sensocto.Media
   alias Sensocto.Media.MediaPlayerServer
   alias Sensocto.Media.MediaPlayerSupervisor
-  alias Sensocto.Accounts.UserPreferences
 
   @impl true
   def mount(socket) do
@@ -25,7 +24,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
      |> assign(:show_playlist, true)
      |> assign(:add_video_url, "")
      |> assign(:add_video_error, nil)
-     |> assign(:collapsed, false)
      |> assign(:pending_request_user_id, nil)
      |> assign(:pending_request_user_name, nil)
      |> assign(:show_request_modal, false)
@@ -46,16 +44,12 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
     old_state = socket.assigns[:player_state]
     old_position = socket.assigns[:position_seconds]
 
-    # Get initial_collapsed prop (used as fallback when no saved preference)
-    initial_collapsed = assigns[:initial_collapsed] || socket.assigns[:initial_collapsed] || false
-
     socket =
       socket
       |> assign(:room_id, room_id)
       |> assign(:is_lobby, assigns[:is_lobby] || socket.assigns[:is_lobby] || false)
       |> assign(:current_user, assigns[:current_user] || socket.assigns[:current_user])
       |> assign(:can_manage, assigns[:can_manage] || socket.assigns[:can_manage] || false)
-      |> assign(:initial_collapsed, initial_collapsed)
 
     # Handle incremental updates from send_update (PubSub events)
     # These override the current state with the new values
@@ -77,23 +71,7 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
       if is_first_update and room_id do
         socket = ensure_player_started(socket, room_id)
 
-        # Load saved collapsed state from user preferences (fallback to initial_collapsed prop)
-        if user = socket.assigns[:current_user] do
-          room_key = if socket.assigns.is_lobby, do: "lobby", else: room_id
-          default_collapsed = socket.assigns[:initial_collapsed] || false
-
-          saved_collapsed =
-            UserPreferences.get_ui_state(
-              user.id,
-              "media_player_collapsed_#{room_key}",
-              default_collapsed
-            )
-
-          assign(socket, :collapsed, saved_collapsed)
-        else
-          # No user - use initial_collapsed prop
-          assign(socket, :collapsed, socket.assigns[:initial_collapsed] || false)
-        end
+        socket
       else
         socket
       end
@@ -152,19 +130,6 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
   # ============================================================================
   # Event Handlers
   # ============================================================================
-
-  @impl true
-  def handle_event("toggle_collapsed", _, socket) do
-    new_collapsed = !socket.assigns.collapsed
-
-    # Persist collapsed state to database if user is logged in
-    if user = socket.assigns[:current_user] do
-      room_key = if socket.assigns.is_lobby, do: "lobby", else: socket.assigns.room_id
-      UserPreferences.set_ui_state(user.id, "media_player_collapsed_#{room_key}", new_collapsed)
-    end
-
-    {:noreply, assign(socket, :collapsed, new_collapsed)}
-  end
 
   @impl true
   def handle_event("toggle_playlist", _, socket) do
@@ -521,27 +486,11 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
           <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
           </svg>
-          <%= if @collapsed && @current_item do %>
-            <%!-- Collapsed: show thumbnail and title --%>
-            <img
-              src={@current_item.thumbnail_url || "https://via.placeholder.com/40x24?text=Video"}
-              alt=""
-              class="w-10 h-6 object-cover rounded flex-shrink-0"
-            />
-            <span class="text-sm text-white truncate" title={@current_item.title}>
-              {@current_item.title || "Unknown"}
-            </span>
-            <%= if @player_state == :playing do %>
-              <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></span>
-            <% end %>
-          <% else %>
-            <%!-- Expanded: show label and playing indicator --%>
-            <span class="text-sm text-gray-300">
-              Collab Media Playback
-            </span>
-            <%= if @player_state == :playing do %>
-              <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            <% end %>
+          <span class="text-sm text-gray-300">
+            Collab Media Playback
+          </span>
+          <%= if @player_state == :playing do %>
+            <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
           <% end %>
         </div>
         <div class="flex items-center gap-1 flex-shrink-0">
@@ -582,366 +531,345 @@ defmodule SensoctoWeb.Live.Components.MediaPlayerComponent do
               </svg>
             </button>
           <% end %>
-          <button
-            phx-click="toggle_collapsed"
-            phx-target={@myself}
-            class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-          >
-            <svg
-              class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
         </div>
       </div>
 
-      <%= unless @collapsed do %>
-        <%!-- YouTube Player Container --%>
-        <div class="relative aspect-video bg-black">
-          <%!-- phx-update="ignore" on outer container to prevent LiveView from touching the iframe --%>
+      <%!-- YouTube Player Container --%>
+      <div class="relative aspect-video bg-black">
+        <%!-- phx-update="ignore" on outer container to prevent LiveView from touching the iframe --%>
+        <div
+          id={"youtube-player-container-#{@room_id}"}
+          phx-update="ignore"
+          class="w-full h-full"
+        >
           <div
-            id={"youtube-player-container-#{@room_id}"}
-            phx-update="ignore"
+            id={"youtube-player-wrapper-#{@room_id}"}
             class="w-full h-full"
+            data-video-id={@current_item && @current_item.youtube_video_id}
+            data-autoplay={if @player_state == :playing, do: "1", else: "0"}
+            data-start={round(@position_seconds || 0)}
           >
             <div
-              id={"youtube-player-wrapper-#{@room_id}"}
+              id={"youtube-player-#{@room_id}"}
               class="w-full h-full"
-              data-video-id={@current_item && @current_item.youtube_video_id}
-              data-autoplay={if @player_state == :playing, do: "1", else: "0"}
-              data-start={round(@position_seconds || 0)}
             >
-              <div
-                id={"youtube-player-#{@room_id}"}
-                class="w-full h-full"
-              >
-              </div>
             </div>
           </div>
-          <%!-- Overlay when no video --%>
-          <%= unless @current_item do %>
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-black z-10">
-              <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.5"
-                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.5"
-                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <p class="text-sm">Add a video to get started</p>
-            </div>
-          <% end %>
         </div>
-
-        <%!-- Controls --%>
-        <div class="p-3 border-t border-gray-700">
-          <%!-- Now Playing Info with Duration --%>
-          <%= if @current_item do %>
-            <div class="mb-3">
-              <p class="text-sm text-white font-medium truncate" title={@current_item.title}>
-                {@current_item.title || "Unknown Title"}
-              </p>
-
-              <%!-- Time Display (no seek bar) --%>
-              <% current_pos = @current_position || @position_seconds || 0 %>
-              <% duration = @current_item.duration_seconds %>
-              <p class="text-xs text-gray-400 mt-1">
-                {format_duration(round(current_pos))}{if duration && duration > 0,
-                  do: " / #{format_duration(duration)}",
-                  else: ""}
-              </p>
-            </div>
-          <% end %>
-
-          <%!-- Controller Info & Take Control --%>
-          <div class="mb-3 flex items-center justify-between">
-            <%= if @controller_user_id do %>
-              <div class="flex items-center gap-2 text-sm">
-                <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                <span class="text-gray-300">
-                  Controlled by
-                  <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
-                </span>
-              </div>
-              <%= if @current_user && @current_user.id == @controller_user_id do %>
-                <button
-                  phx-click="release_control"
-                  phx-target={@myself}
-                  class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                >
-                  Release
-                </button>
-              <% else %>
-                <%= if @current_user do %>
-                  <%= if @pending_request_user_id && to_string(@pending_request_user_id) == to_string(@current_user.id) do %>
-                    <%!-- Show pending request with countdown --%>
-                    <div
-                      id={"media-request-countdown-#{@room_id}"}
-                      phx-hook="CountdownTimer"
-                      role="timer"
-                      aria-live="polite"
-                      aria-atomic="true"
-                      data-seconds="30"
-                      class="flex items-center gap-2"
-                    >
-                      <span class="px-2 py-1 text-xs bg-amber-700 text-amber-200 rounded flex items-center gap-1">
-                        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle
-                            class="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            stroke-width="4"
-                          >
-                          </circle>
-                          <path
-                            class="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          >
-                          </path>
-                        </svg>
-                        <span class="countdown-display">30</span>s
-                      </span>
-                      <button
-                        phx-click="cancel_request"
-                        phx-target={@myself}
-                        class="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                        title="Cancel request"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  <% else %>
-                    <button
-                      phx-click="request_control"
-                      phx-target={@myself}
-                      class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
-                    >
-                      Request
-                    </button>
-                  <% end %>
-                <% end %>
-              <% end %>
-            <% else %>
-              <div class="text-sm text-gray-400">No one has control</div>
-              <%= if @current_user do %>
-                <button
-                  phx-click="take_control"
-                  phx-target={@myself}
-                  class="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                >
-                  Take Control
-                </button>
-              <% end %>
-            <% end %>
-          </div>
-
-          <%!-- Sync Mode Toggle --%>
-          <%= if @current_user do %>
-            <div class="mb-3 flex items-center justify-between">
-              <div class="flex items-center gap-2 text-sm">
-                <%= if @sync_mode == :solo do %>
-                  <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
-                  <span class="text-slate-400">Watching Solo</span>
-                <% else %>
-                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                  <span class="text-gray-300">Synced with group</span>
-                <% end %>
-              </div>
-              <button
-                phx-click="toggle_sync_mode"
-                class={"px-3 py-1 text-xs rounded transition-colors " <>
-                  if @sync_mode == :solo,
-                    do: "bg-green-600 hover:bg-green-500 text-white",
-                    else: "bg-slate-600 hover:bg-slate-500 text-white"}
-                title={if @sync_mode == :solo, do: "Join group sync", else: "Watch independently"}
-              >
-                {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
-              </button>
-            </div>
-          <% end %>
-
-          <%!-- Add Video Input --%>
-          <form
-            phx-submit="add_video"
-            phx-target={@myself}
-            class="mb-3"
-          >
-            <label for="add-video-url" class="sr-only">YouTube video URL</label>
-            <div class="flex gap-2">
-              <input
-                type="text"
-                name="url"
-                id="add-video-url"
-                value={@add_video_url}
-                phx-change="update_add_url"
-                phx-target={@myself}
-                placeholder="Paste YouTube URL..."
-                aria-label="YouTube video URL"
-                class="flex-1 bg-gray-700 border border-gray-600 text-white text-sm rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <button
-                type="submit"
-                class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm rounded transition-colors"
-              >
-                Add
-              </button>
-            </div>
-            <%= if @add_video_error do %>
-              <p class="text-red-400 text-xs mt-1">{@add_video_error}</p>
-            <% end %>
-          </form>
-
-          <%!-- Playlist Toggle --%>
-          <button
-            phx-click="toggle_playlist"
-            phx-target={@myself}
-            class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white py-2"
-          >
-            <span>Playlist ({length(@playlist_items)})</span>
-            <svg
-              class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+        <%!-- Overlay when no video --%>
+        <%= unless @current_item do %>
+          <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-black z-10">
+            <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
+                stroke-width="1.5"
+                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-          </button>
+            <p class="text-sm">Add a video to get started</p>
+          </div>
+        <% end %>
+      </div>
 
-          <%!-- Playlist Items --%>
-          <%= if @show_playlist do %>
-            <div
-              id={"playlist-items-#{@room_id}"}
-              phx-hook="SortablePlaylist"
-              phx-target={@myself}
-              class="max-h-60 overflow-y-auto space-y-1"
-            >
-              <%= if Enum.empty?(@playlist_items) do %>
-                <p class="text-gray-500 text-sm text-center py-4">No videos in playlist</p>
-              <% else %>
-                <%= for item <- @playlist_items do %>
-                  <% is_current = @current_item && @current_item.id == item.id %>
-                  <% is_playing = is_current && @player_state == :playing %>
+      <%!-- Controls --%>
+      <div class="p-3 border-t border-gray-700">
+        <%!-- Now Playing Info with Duration --%>
+        <%= if @current_item do %>
+          <div class="mb-3">
+            <p class="text-sm text-white font-medium truncate" title={@current_item.title}>
+              {@current_item.title || "Unknown Title"}
+            </p>
+
+            <%!-- Time Display (no seek bar) --%>
+            <% current_pos = @current_position || @position_seconds || 0 %>
+            <% duration = @current_item.duration_seconds %>
+            <p class="text-xs text-gray-400 mt-1">
+              {format_duration(round(current_pos))}{if duration && duration > 0,
+                do: " / #{format_duration(duration)}",
+                else: ""}
+            </p>
+          </div>
+        <% end %>
+
+        <%!-- Controller Info & Take Control --%>
+        <div class="mb-3 flex items-center justify-between">
+          <%= if @controller_user_id do %>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+              <span class="text-gray-300">
+                Controlled by
+                <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
+              </span>
+            </div>
+            <%= if @current_user && @current_user.id == @controller_user_id do %>
+              <button
+                phx-click="release_control"
+                phx-target={@myself}
+                class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+              >
+                Release
+              </button>
+            <% else %>
+              <%= if @current_user do %>
+                <%= if @pending_request_user_id && to_string(@pending_request_user_id) == to_string(@current_user.id) do %>
+                  <%!-- Show pending request with countdown --%>
                   <div
-                    data-item-id={item.id}
-                    class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-gray-700/50 border-l-4 border-gray-400", else: "hover:bg-gray-700"}"}
+                    id={"media-request-countdown-#{@room_id}"}
+                    phx-hook="CountdownTimer"
+                    role="timer"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    data-seconds="30"
+                    class="flex items-center gap-2"
                   >
-                    <%!-- Now Playing Indicator or Drag Handle --%>
-                    <%= if is_current do %>
-                      <div class="p-1 text-gray-300 flex-shrink-0">
-                        <%= if is_playing do %>
-                          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                          </svg>
-                        <% else %>
-                          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        <% end %>
-                      </div>
-                    <% else %>
-                      <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-                        </svg>
-                      </div>
-                    <% end %>
-                    <div class="relative flex-shrink-0">
-                      <img
-                        src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
-                        alt=""
-                        class={"w-16 h-9 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-gray-400"}"}
-                        phx-click="play_item"
-                        phx-value-item-id={item.id}
-                        phx-target={@myself}
-                      />
+                    <span class="px-2 py-1 text-xs bg-amber-700 text-amber-200 rounded flex items-center gap-1">
+                      <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          stroke-width="4"
+                        >
+                        </circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        >
+                        </path>
+                      </svg>
+                      <span class="countdown-display">30</span>s
+                    </span>
+                    <button
+                      phx-click="cancel_request"
+                      phx-target={@myself}
+                      class="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                      title="Cancel request"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                <% else %>
+                  <button
+                    phx-click="request_control"
+                    phx-target={@myself}
+                    class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
+                  >
+                    Request
+                  </button>
+                <% end %>
+              <% end %>
+            <% end %>
+          <% else %>
+            <div class="text-sm text-gray-400">No one has control</div>
+            <%= if @current_user do %>
+              <button
+                phx-click="take_control"
+                phx-target={@myself}
+                class="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+              >
+                Take Control
+              </button>
+            <% end %>
+          <% end %>
+        </div>
+
+        <%!-- Sync Mode Toggle --%>
+        <%= if @current_user do %>
+          <div class="mb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-sm">
+              <%= if @sync_mode == :solo do %>
+                <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
+                <span class="text-slate-400">Watching Solo</span>
+              <% else %>
+                <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                <span class="text-gray-300">Synced with group</span>
+              <% end %>
+            </div>
+            <button
+              phx-click="toggle_sync_mode"
+              class={"px-3 py-1 text-xs rounded transition-colors " <>
+                  if @sync_mode == :solo,
+                    do: "bg-green-600 hover:bg-green-500 text-white",
+                    else: "bg-slate-600 hover:bg-slate-500 text-white"}
+              title={if @sync_mode == :solo, do: "Join group sync", else: "Watch independently"}
+            >
+              {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
+            </button>
+          </div>
+        <% end %>
+
+        <%!-- Add Video Input --%>
+        <form
+          phx-submit="add_video"
+          phx-target={@myself}
+          class="mb-3"
+        >
+          <label for="add-video-url" class="sr-only">YouTube video URL</label>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              name="url"
+              id="add-video-url"
+              value={@add_video_url}
+              phx-change="update_add_url"
+              phx-target={@myself}
+              placeholder="Paste YouTube URL..."
+              aria-label="YouTube video URL"
+              class="flex-1 bg-gray-700 border border-gray-600 text-white text-sm rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm rounded transition-colors"
+            >
+              Add
+            </button>
+          </div>
+          <%= if @add_video_error do %>
+            <p class="text-red-400 text-xs mt-1">{@add_video_error}</p>
+          <% end %>
+        </form>
+
+        <%!-- Playlist Toggle --%>
+        <button
+          phx-click="toggle_playlist"
+          phx-target={@myself}
+          class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white py-2"
+        >
+          <span>Playlist ({length(@playlist_items)})</span>
+          <svg
+            class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
+
+        <%!-- Playlist Items --%>
+        <%= if @show_playlist do %>
+          <div
+            id={"playlist-items-#{@room_id}"}
+            phx-hook="SortablePlaylist"
+            phx-target={@myself}
+            class="max-h-60 overflow-y-auto space-y-1"
+          >
+            <%= if Enum.empty?(@playlist_items) do %>
+              <p class="text-gray-500 text-sm text-center py-4">No videos in playlist</p>
+            <% else %>
+              <%= for item <- @playlist_items do %>
+                <% is_current = @current_item && @current_item.id == item.id %>
+                <% is_playing = is_current && @player_state == :playing %>
+                <div
+                  data-item-id={item.id}
+                  class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-gray-700/50 border-l-4 border-gray-400", else: "hover:bg-gray-700"}"}
+                >
+                  <%!-- Now Playing Indicator or Drag Handle --%>
+                  <%= if is_current do %>
+                    <div class="p-1 text-gray-300 flex-shrink-0">
                       <%= if is_playing do %>
-                        <div class="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
-                          <div class="flex gap-0.5">
-                            <div
-                              class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
-                              style="animation-delay: 0ms"
-                            >
-                            </div>
-                            <div
-                              class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
-                              style="animation-delay: 150ms"
-                            >
-                            </div>
-                            <div
-                              class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
-                              style="animation-delay: 300ms"
-                            >
-                            </div>
-                          </div>
-                        </div>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                        </svg>
+                      <% else %>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
                       <% end %>
                     </div>
-                    <div
-                      class="flex-1 min-w-0 cursor-pointer"
+                  <% else %>
+                    <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+                      </svg>
+                    </div>
+                  <% end %>
+                  <div class="relative flex-shrink-0">
+                    <img
+                      src={item.thumbnail_url || "https://via.placeholder.com/120x68?text=Video"}
+                      alt=""
+                      class={"w-16 h-9 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-gray-400"}"}
                       phx-click="play_item"
                       phx-value-item-id={item.id}
                       phx-target={@myself}
-                    >
-                      <p class={"text-sm truncate #{if is_current, do: "text-gray-100 font-medium", else: "text-white"}"}>
-                        {item.title || "Unknown"}
-                      </p>
-                      <p class={"text-xs #{if is_current, do: "text-gray-400", else: "text-gray-400"}"}>
-                        {if item.duration_seconds,
-                          do: format_duration(item.duration_seconds),
-                          else: ""}
-                        <%= if is_current do %>
-                          <span class="ml-1">- {if is_playing, do: "Playing", else: "Paused"}</span>
-                        <% end %>
-                      </p>
-                    </div>
-                    <button
-                      phx-click="remove_item"
-                      phx-value-item-id={item.id}
-                      phx-target={@myself}
-                      class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 transition-all"
-                      title="Remove"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
+                    />
+                    <%= if is_playing do %>
+                      <div class="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
+                        <div class="flex gap-0.5">
+                          <div
+                            class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
+                            style="animation-delay: 0ms"
+                          >
+                          </div>
+                          <div
+                            class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
+                            style="animation-delay: 150ms"
+                          >
+                          </div>
+                          <div
+                            class="w-1 h-3 bg-gray-300 rounded-full animate-bounce"
+                            style="animation-delay: 300ms"
+                          >
+                          </div>
+                        </div>
+                      </div>
+                    <% end %>
                   </div>
-                <% end %>
+                  <div
+                    class="flex-1 min-w-0 cursor-pointer"
+                    phx-click="play_item"
+                    phx-value-item-id={item.id}
+                    phx-target={@myself}
+                  >
+                    <p class={"text-sm truncate #{if is_current, do: "text-gray-100 font-medium", else: "text-white"}"}>
+                      {item.title || "Unknown"}
+                    </p>
+                    <p class={"text-xs #{if is_current, do: "text-gray-400", else: "text-gray-400"}"}>
+                      {if item.duration_seconds,
+                        do: format_duration(item.duration_seconds),
+                        else: ""}
+                      <%= if is_current do %>
+                        <span class="ml-1">- {if is_playing, do: "Playing", else: "Paused"}</span>
+                      <% end %>
+                    </p>
+                  </div>
+                  <button
+                    phx-click="remove_item"
+                    phx-value-item-id={item.id}
+                    phx-target={@myself}
+                    class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 transition-all"
+                    title="Remove"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               <% end %>
-            </div>
-          <% end %>
-        </div>
-      <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
 
       <%!-- Control Request Modal - Shows to controller when someone requests control --%>
       <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>

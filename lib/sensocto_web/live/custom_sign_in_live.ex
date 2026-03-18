@@ -12,6 +12,8 @@ defmodule SensoctoWeb.CustomSignInLive do
 
   @presence_topic "signin_presence"
   @valid_themes ~w(off constellation waveform aurora particles)
+  @cycle_themes ~w(constellation waveform aurora particles)
+  @cycle_interval_ms 30_000
   @supported_locales ~w(en de gsw fr es pt_BR zh ja ar)
   @locale_labels [
     {"EN", "en"},
@@ -64,6 +66,7 @@ defmodule SensoctoWeb.CustomSignInLive do
         |> assign(:sensor_activity, %{})
         |> assign(:sensor_bg_count, 8)
         |> assign(:sensor_bg_theme, "aurora")
+        |> assign(:sensor_bg_cycling, false)
 
       {:ok, socket, layout: {SensoctoWeb.Layouts, :auth}}
     end
@@ -103,10 +106,21 @@ defmodule SensoctoWeb.CustomSignInLive do
     {:noreply,
      socket
      |> assign(:sensor_bg_theme, theme)
+     |> assign(:sensor_bg_cycling, false)
      |> push_event("sensor_bg_theme_change", %{theme: theme})}
   end
 
   def handle_event("set_bg_theme", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("toggle_bg_cycle", _params, socket) do
+    if socket.assigns.sensor_bg_cycling do
+      {:noreply, assign(socket, :sensor_bg_cycling, false)}
+    else
+      Process.send_after(self(), :cycle_bg_theme, @cycle_interval_ms)
+      {:noreply, assign(socket, :sensor_bg_cycling, true)}
+    end
+  end
 
   @impl true
   def handle_event("change_locale", %{"locale" => locale}, socket) do
@@ -236,6 +250,24 @@ defmodule SensoctoWeb.CustomSignInLive do
   end
 
   @impl true
+  def handle_info(:cycle_bg_theme, socket) do
+    if socket.assigns.sensor_bg_cycling do
+      current = socket.assigns.sensor_bg_theme
+      idx = Enum.find_index(@cycle_themes, &(&1 == current)) || -1
+      next = Enum.at(@cycle_themes, rem(idx + 1, length(@cycle_themes)))
+
+      Process.send_after(self(), :cycle_bg_theme, @cycle_interval_ms)
+
+      {:noreply,
+       socket
+       |> assign(:sensor_bg_theme, next)
+       |> push_event("sensor_bg_theme_change", %{theme: next})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", payload: diff}, socket) do
     balls = socket.assigns.balls
 
@@ -349,6 +381,16 @@ defmodule SensoctoWeb.CustomSignInLive do
                 else: "bg-gray-700/50 hover:bg-gray-600/50 text-gray-400")}
           >
             {label}
+          </button>
+          <button
+            phx-click="toggle_bg_cycle"
+            data-tip={gettext("Auto-cycle")}
+            class={"bg-tip relative w-6 h-6 rounded flex items-center justify-center text-[11px] transition-colors " <>
+              if(@sensor_bg_cycling,
+                do: "bg-cyan-600 text-white",
+                else: "bg-gray-700/50 hover:bg-gray-600/50 text-gray-400")}
+          >
+            ↻
           </button>
         </div>
       </div>

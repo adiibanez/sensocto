@@ -29,7 +29,6 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
      |> assign(:show_playlist, true)
      |> assign(:add_object_url, "")
      |> assign(:add_object_error, nil)
-     |> assign(:collapsed, false)
      |> assign(:loading, false)
      |> assign(:sync_mode, :synced)
      |> assign(:fullscreen, false)}
@@ -185,11 +184,6 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
   # ============================================================================
   # Event Handlers
   # ============================================================================
-
-  @impl true
-  def handle_event("toggle_collapsed", _, socket) do
-    {:noreply, assign(socket, :collapsed, !socket.assigns.collapsed)}
-  end
 
   @impl true
   def handle_event("toggle_fullscreen", _, socket) do
@@ -502,24 +496,14 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             type="solid"
             class="w-4 h-4 text-cyan-500 flex-shrink-0"
           />
-          <%= if @collapsed && @current_item do %>
-            <span class="text-sm text-white truncate" title={@current_item.name}>
-              {@current_item.name || "3D Object"}
-            </span>
-            <%= if @loading do %>
-              <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse flex-shrink-0"></span>
-            <% end %>
-          <% else %>
-            <span class="text-sm text-gray-300">
-              Collab 3D Object Viewer
-            </span>
-            <%= if @loading do %>
-              <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
-            <% end %>
+          <span class="text-sm text-gray-300">
+            Collab 3D Object Viewer
+          </span>
+          <%= if @loading do %>
+            <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
           <% end %>
         </div>
         <button
-          :if={!@collapsed}
           phx-click="toggle_fullscreen"
           phx-target={@myself}
           class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
@@ -545,361 +529,344 @@ defmodule SensoctoWeb.Live.Components.Object3DPlayerComponent do
             </svg>
           <% end %>
         </button>
-        <button
-          phx-click="toggle_collapsed"
-          phx-target={@myself}
-          class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+      </div>
+
+      <%!-- 3D Viewer Container --%>
+      <div class="relative aspect-video bg-black overflow-hidden">
+        <div
+          id={"object3d-viewer-container-#{@room_id}"}
+          phx-update="ignore"
+          data-object3d-viewer="true"
+          class="absolute inset-0"
+          style="z-index: 1;"
         >
+        </div>
+        <%!-- Overlay when no object - pointer-events-none so it doesn't block canvas --%>
+        <%= unless @current_item do %>
+          <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-black z-10 pointer-events-none">
+            <Heroicons.icon name="cube-transparent" type="outline" class="w-12 h-12 mb-2" />
+            <p class="text-sm">Add a 3D object to get started</p>
+          </div>
+        <% end %>
+        <%!-- Loading overlay - pointer-events-none so it doesn't block canvas --%>
+        <%= if @loading do %>
+          <div class="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none">
+            <div class="flex flex-col items-center">
+              <div class="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin">
+              </div>
+              <span class="text-sm text-white mt-2">Loading...</span>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <%!-- Controls --%>
+      <div class="p-3 border-t border-gray-700">
+        <%!-- Camera Controls --%>
+        <%= if @current_item do %>
+          <div class="flex items-center justify-end gap-2 mb-3">
+            <button
+              phx-click="center_object"
+              phx-target={@myself}
+              class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
+              title="Center camera on object"
+            >
+              <Heroicons.icon name="viewfinder-circle" type="outline" class="w-3.5 h-3.5" /> Center
+            </button>
+            <button
+              phx-click="reset_camera"
+              phx-target={@myself}
+              class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
+              title="Reset camera to default position"
+            >
+              <Heroicons.icon name="arrow-path" type="outline" class="w-3.5 h-3.5" /> Reset View
+            </button>
+          </div>
+        <% end %>
+
+        <%!-- Now Viewing Info --%>
+        <%= if @current_item do %>
+          <div class="mb-3">
+            <p class="text-sm text-white font-medium truncate" title={@current_item.name}>
+              {@current_item.name || "3D Object"}
+            </p>
+            <%= if @current_item.description do %>
+              <p class="text-xs text-gray-400 mt-1 line-clamp-2">{@current_item.description}</p>
+            <% end %>
+            <%= if @current_item.source_url do %>
+              <a
+                href={@current_item.source_url}
+                target="_blank"
+                class="text-xs text-cyan-400 hover:text-cyan-300 mt-1 inline-block"
+              >
+                View source
+              </a>
+            <% end %>
+          </div>
+        <% end %>
+
+        <%!-- Controller Info & Take Control --%>
+        <div class="mb-3">
+          <div class="flex items-center justify-between">
+            <%= if @controller_user_id do %>
+              <div class="flex items-center gap-2 text-sm">
+                <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+                <span class="text-gray-300">
+                  Controlled by
+                  <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
+                </span>
+              </div>
+              <%= if @current_user && @current_user.id == @controller_user_id do %>
+                <%= if @pending_request_user_id do %>
+                  <button
+                    phx-click="keep_control"
+                    phx-target={@myself}
+                    class="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors animate-pulse"
+                  >
+                    Keep Control
+                  </button>
+                <% else %>
+                  <button
+                    phx-click="release_control"
+                    phx-target={@myself}
+                    class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                  >
+                    Release
+                  </button>
+                <% end %>
+              <% else %>
+                <%= if @current_user do %>
+                  <%= if @pending_request_user_id && @pending_request_user_id == @current_user.id do %>
+                    <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded flex items-center gap-1">
+                      <span>Pending</span>
+                      <span
+                        id={"countdown-requester-#{@room_id}"}
+                        phx-hook="CountdownTimer"
+                        role="timer"
+                        aria-live="polite"
+                        aria-atomic="true"
+                        data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
+                        class="font-mono font-bold tabular-nums"
+                      >
+                        {countdown_remaining_seconds(@pending_request_started_at)}s
+                      </span>
+                    </span>
+                  <% else %>
+                    <button
+                      phx-click="request_control"
+                      phx-target={@myself}
+                      class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
+                      title="Send a polite request to the current controller"
+                    >
+                      <Heroicons.icon name="hand-raised" type="outline" class="w-3.5 h-3.5" /> Request
+                    </button>
+                  <% end %>
+                <% end %>
+              <% end %>
+            <% else %>
+              <div class="text-sm text-gray-400">No one has control</div>
+              <%= if @current_user do %>
+                <button
+                  phx-click="take_control"
+                  phx-target={@myself}
+                  class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
+                >
+                  Take Control
+                </button>
+              <% end %>
+            <% end %>
+          </div>
+          <%!-- Pending Request Alert for Controller --%>
+          <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>
+            <div class="mt-2 px-3 py-2 bg-amber-900/50 border border-amber-600 rounded text-xs text-amber-200 flex items-center gap-2">
+              <Heroicons.icon
+                name="hand-raised"
+                type="solid"
+                class="w-4 h-4 text-amber-400 flex-shrink-0"
+              />
+              <span class="flex-1">
+                <span class="font-medium">{@pending_request_user_name || "Someone"}</span>
+                is requesting control
+              </span>
+              <span
+                id={"countdown-controller-#{@room_id}"}
+                phx-hook="CountdownTimer"
+                role="timer"
+                aria-live="polite"
+                aria-atomic="true"
+                data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
+                class="font-mono text-amber-300 font-bold tabular-nums"
+              >
+                {countdown_remaining_seconds(@pending_request_started_at)}s
+              </span>
+            </div>
+          <% end %>
+        </div>
+
+        <%!-- Sync Mode Toggle --%>
+        <%= if @current_user do %>
+          <div class="mb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-sm">
+              <%= if @sync_mode == :solo do %>
+                <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
+                <span class="text-slate-400">Exploring Solo</span>
+              <% else %>
+                <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                <span class="text-gray-300">Synced with group</span>
+              <% end %>
+            </div>
+            <button
+              phx-click="toggle_sync_mode"
+              class={"px-3 py-1 text-xs rounded transition-colors " <>
+                  if @sync_mode == :solo,
+                    do: "bg-green-600 hover:bg-green-500 text-white",
+                    else: "bg-slate-600 hover:bg-slate-500 text-white"}
+              title={if @sync_mode == :solo, do: "Join group sync", else: "Explore independently"}
+            >
+              {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
+            </button>
+          </div>
+        <% end %>
+
+        <%!-- Add Object Input --%>
+        <form phx-submit="add_object" phx-target={@myself} class="mb-3">
+          <label for="add-object-url" class="sr-only">3D object URL</label>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              name="url"
+              id="add-object-url"
+              value={@add_object_url}
+              phx-change="update_add_url"
+              phx-target={@myself}
+              placeholder="Paste 3D object URL (.ply, .splat)..."
+              aria-label="3D object URL"
+              class="flex-1 bg-gray-700 border border-gray-600 text-white text-sm rounded px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500"
+            />
+            <button
+              type="submit"
+              class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded transition-colors"
+            >
+              Add
+            </button>
+          </div>
+          <%= if @add_object_error do %>
+            <p class="text-red-400 text-xs mt-1">{@add_object_error}</p>
+          <% end %>
+        </form>
+
+        <%!-- Playlist Toggle --%>
+        <button
+          phx-click="toggle_playlist"
+          phx-target={@myself}
+          class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white py-2"
+        >
+          <span>Objects ({length(@playlist_items)})</span>
           <svg
-            class={"w-4 h-4 transition-transform #{if @collapsed, do: "rotate-180"}"}
+            class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </button>
-      </div>
 
-      <%= unless @collapsed do %>
-        <%!-- 3D Viewer Container --%>
-        <div class="relative aspect-video bg-black overflow-hidden">
+        <%!-- Playlist Items --%>
+        <%= if @show_playlist do %>
           <div
-            id={"object3d-viewer-container-#{@room_id}"}
-            phx-update="ignore"
-            data-object3d-viewer="true"
-            class="absolute inset-0"
-            style="z-index: 1;"
-          >
-          </div>
-          <%!-- Overlay when no object - pointer-events-none so it doesn't block canvas --%>
-          <%= unless @current_item do %>
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-black z-10 pointer-events-none">
-              <Heroicons.icon name="cube-transparent" type="outline" class="w-12 h-12 mb-2" />
-              <p class="text-sm">Add a 3D object to get started</p>
-            </div>
-          <% end %>
-          <%!-- Loading overlay - pointer-events-none so it doesn't block canvas --%>
-          <%= if @loading do %>
-            <div class="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none">
-              <div class="flex flex-col items-center">
-                <div class="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin">
-                </div>
-                <span class="text-sm text-white mt-2">Loading...</span>
-              </div>
-            </div>
-          <% end %>
-        </div>
-
-        <%!-- Controls --%>
-        <div class="p-3 border-t border-gray-700">
-          <%!-- Camera Controls --%>
-          <%= if @current_item do %>
-            <div class="flex items-center justify-end gap-2 mb-3">
-              <button
-                phx-click="center_object"
-                phx-target={@myself}
-                class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
-                title="Center camera on object"
-              >
-                <Heroicons.icon name="viewfinder-circle" type="outline" class="w-3.5 h-3.5" /> Center
-              </button>
-              <button
-                phx-click="reset_camera"
-                phx-target={@myself}
-                class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
-                title="Reset camera to default position"
-              >
-                <Heroicons.icon name="arrow-path" type="outline" class="w-3.5 h-3.5" /> Reset View
-              </button>
-            </div>
-          <% end %>
-
-          <%!-- Now Viewing Info --%>
-          <%= if @current_item do %>
-            <div class="mb-3">
-              <p class="text-sm text-white font-medium truncate" title={@current_item.name}>
-                {@current_item.name || "3D Object"}
-              </p>
-              <%= if @current_item.description do %>
-                <p class="text-xs text-gray-400 mt-1 line-clamp-2">{@current_item.description}</p>
-              <% end %>
-              <%= if @current_item.source_url do %>
-                <a
-                  href={@current_item.source_url}
-                  target="_blank"
-                  class="text-xs text-cyan-400 hover:text-cyan-300 mt-1 inline-block"
-                >
-                  View source
-                </a>
-              <% end %>
-            </div>
-          <% end %>
-
-          <%!-- Controller Info & Take Control --%>
-          <div class="mb-3">
-            <div class="flex items-center justify-between">
-              <%= if @controller_user_id do %>
-                <div class="flex items-center gap-2 text-sm">
-                  <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                  <span class="text-gray-300">
-                    Controlled by
-                    <span class="text-white font-medium">{@controller_user_name || "Someone"}</span>
-                  </span>
-                </div>
-                <%= if @current_user && @current_user.id == @controller_user_id do %>
-                  <%= if @pending_request_user_id do %>
-                    <button
-                      phx-click="keep_control"
-                      phx-target={@myself}
-                      class="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors animate-pulse"
-                    >
-                      Keep Control
-                    </button>
-                  <% else %>
-                    <button
-                      phx-click="release_control"
-                      phx-target={@myself}
-                      class="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                    >
-                      Release
-                    </button>
-                  <% end %>
-                <% else %>
-                  <%= if @current_user do %>
-                    <%= if @pending_request_user_id && @pending_request_user_id == @current_user.id do %>
-                      <span class="px-3 py-1 text-xs bg-amber-700 text-amber-200 rounded flex items-center gap-1">
-                        <span>Pending</span>
-                        <span
-                          id={"countdown-requester-#{@room_id}"}
-                          phx-hook="CountdownTimer"
-                          role="timer"
-                          aria-live="polite"
-                          aria-atomic="true"
-                          data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
-                          class="font-mono font-bold tabular-nums"
-                        >
-                          {countdown_remaining_seconds(@pending_request_started_at)}s
-                        </span>
-                      </span>
-                    <% else %>
-                      <button
-                        phx-click="request_control"
-                        phx-target={@myself}
-                        class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors flex items-center gap-1"
-                        title="Send a polite request to the current controller"
-                      >
-                        <Heroicons.icon name="hand-raised" type="outline" class="w-3.5 h-3.5" />
-                        Request
-                      </button>
-                    <% end %>
-                  <% end %>
-                <% end %>
-              <% else %>
-                <div class="text-sm text-gray-400">No one has control</div>
-                <%= if @current_user do %>
-                  <button
-                    phx-click="take_control"
-                    phx-target={@myself}
-                    class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors"
-                  >
-                    Take Control
-                  </button>
-                <% end %>
-              <% end %>
-            </div>
-            <%!-- Pending Request Alert for Controller --%>
-            <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>
-              <div class="mt-2 px-3 py-2 bg-amber-900/50 border border-amber-600 rounded text-xs text-amber-200 flex items-center gap-2">
-                <Heroicons.icon
-                  name="hand-raised"
-                  type="solid"
-                  class="w-4 h-4 text-amber-400 flex-shrink-0"
-                />
-                <span class="flex-1">
-                  <span class="font-medium">{@pending_request_user_name || "Someone"}</span>
-                  is requesting control
-                </span>
-                <span
-                  id={"countdown-controller-#{@room_id}"}
-                  phx-hook="CountdownTimer"
-                  role="timer"
-                  aria-live="polite"
-                  aria-atomic="true"
-                  data-seconds={countdown_remaining_seconds(@pending_request_started_at)}
-                  class="font-mono text-amber-300 font-bold tabular-nums"
-                >
-                  {countdown_remaining_seconds(@pending_request_started_at)}s
-                </span>
-              </div>
-            <% end %>
-          </div>
-
-          <%!-- Sync Mode Toggle --%>
-          <%= if @current_user do %>
-            <div class="mb-3 flex items-center justify-between">
-              <div class="flex items-center gap-2 text-sm">
-                <%= if @sync_mode == :solo do %>
-                  <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
-                  <span class="text-slate-400">Exploring Solo</span>
-                <% else %>
-                  <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                  <span class="text-gray-300">Synced with group</span>
-                <% end %>
-              </div>
-              <button
-                phx-click="toggle_sync_mode"
-                class={"px-3 py-1 text-xs rounded transition-colors " <>
-                  if @sync_mode == :solo,
-                    do: "bg-green-600 hover:bg-green-500 text-white",
-                    else: "bg-slate-600 hover:bg-slate-500 text-white"}
-                title={if @sync_mode == :solo, do: "Join group sync", else: "Explore independently"}
-              >
-                {if @sync_mode == :solo, do: "Join Sync", else: "Go Solo"}
-              </button>
-            </div>
-          <% end %>
-
-          <%!-- Add Object Input --%>
-          <form phx-submit="add_object" phx-target={@myself} class="mb-3">
-            <label for="add-object-url" class="sr-only">3D object URL</label>
-            <div class="flex gap-2">
-              <input
-                type="text"
-                name="url"
-                id="add-object-url"
-                value={@add_object_url}
-                phx-change="update_add_url"
-                phx-target={@myself}
-                placeholder="Paste 3D object URL (.ply, .splat)..."
-                aria-label="3D object URL"
-                class="flex-1 bg-gray-700 border border-gray-600 text-white text-sm rounded px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500"
-              />
-              <button
-                type="submit"
-                class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded transition-colors"
-              >
-                Add
-              </button>
-            </div>
-            <%= if @add_object_error do %>
-              <p class="text-red-400 text-xs mt-1">{@add_object_error}</p>
-            <% end %>
-          </form>
-
-          <%!-- Playlist Toggle --%>
-          <button
-            phx-click="toggle_playlist"
+            id={"object3d-playlist-items-#{@room_id}"}
+            phx-hook="SortablePlaylist"
             phx-target={@myself}
-            class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white py-2"
+            class="max-h-60 overflow-y-auto space-y-1"
           >
-            <span>Objects ({length(@playlist_items)})</span>
-            <svg
-              class={"w-4 h-4 transition-transform #{if @show_playlist, do: "rotate-180"}"}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
-
-          <%!-- Playlist Items --%>
-          <%= if @show_playlist do %>
-            <div
-              id={"object3d-playlist-items-#{@room_id}"}
-              phx-hook="SortablePlaylist"
-              phx-target={@myself}
-              class="max-h-60 overflow-y-auto space-y-1"
-            >
-              <%= if Enum.empty?(@playlist_items) do %>
-                <p class="text-gray-500 text-sm text-center py-4">No 3D objects in playlist</p>
-              <% else %>
-                <%= for item <- @playlist_items do %>
-                  <% is_current = @current_item && @current_item.id == item.id %>
-                  <div
-                    data-item-id={item.id}
-                    class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-gray-700/50 border-l-4 border-cyan-400", else: "hover:bg-gray-700"}"}
-                  >
-                    <%!-- Drag Handle --%>
-                    <%= unless is_current do %>
-                      <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-                        </svg>
-                      </div>
+            <%= if Enum.empty?(@playlist_items) do %>
+              <p class="text-gray-500 text-sm text-center py-4">No 3D objects in playlist</p>
+            <% else %>
+              <%= for item <- @playlist_items do %>
+                <% is_current = @current_item && @current_item.id == item.id %>
+                <div
+                  data-item-id={item.id}
+                  class={"flex items-center gap-2 p-2 rounded group transition-all #{if is_current, do: "bg-gray-700/50 border-l-4 border-cyan-400", else: "hover:bg-gray-700"}"}
+                >
+                  <%!-- Drag Handle --%>
+                  <%= unless is_current do %>
+                    <div class="drag-handle cursor-grab active:cursor-grabbing p-1 text-gray-500 hover:text-gray-300 flex-shrink-0">
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm8-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+                      </svg>
+                    </div>
+                  <% else %>
+                    <div class="p-1 text-cyan-400 flex-shrink-0">
+                      <Heroicons.icon name="cube-transparent" type="solid" class="w-4 h-4" />
+                    </div>
+                  <% end %>
+                  <%!-- Thumbnail or Icon --%>
+                  <div class="relative flex-shrink-0">
+                    <%= if item.thumbnail_url do %>
+                      <img
+                        src={item.thumbnail_url}
+                        alt=""
+                        class={"w-12 h-12 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-cyan-400"}"}
+                        phx-click="view_item"
+                        phx-value-item-id={item.id}
+                        phx-target={@myself}
+                      />
                     <% else %>
-                      <div class="p-1 text-cyan-400 flex-shrink-0">
-                        <Heroicons.icon name="cube-transparent" type="solid" class="w-4 h-4" />
+                      <div
+                        class={"w-12 h-12 bg-gray-700 rounded flex items-center justify-center cursor-pointer #{if is_current, do: "ring-2 ring-cyan-400"}"}
+                        phx-click="view_item"
+                        phx-value-item-id={item.id}
+                        phx-target={@myself}
+                      >
+                        <Heroicons.icon
+                          name="cube-transparent"
+                          type="outline"
+                          class="w-6 h-6 text-gray-500"
+                        />
                       </div>
                     <% end %>
-                    <%!-- Thumbnail or Icon --%>
-                    <div class="relative flex-shrink-0">
-                      <%= if item.thumbnail_url do %>
-                        <img
-                          src={item.thumbnail_url}
-                          alt=""
-                          class={"w-12 h-12 object-cover rounded cursor-pointer #{if is_current, do: "ring-2 ring-cyan-400"}"}
-                          phx-click="view_item"
-                          phx-value-item-id={item.id}
-                          phx-target={@myself}
-                        />
-                      <% else %>
-                        <div
-                          class={"w-12 h-12 bg-gray-700 rounded flex items-center justify-center cursor-pointer #{if is_current, do: "ring-2 ring-cyan-400"}"}
-                          phx-click="view_item"
-                          phx-value-item-id={item.id}
-                          phx-target={@myself}
-                        >
-                          <Heroicons.icon
-                            name="cube-transparent"
-                            type="outline"
-                            class="w-6 h-6 text-gray-500"
-                          />
-                        </div>
-                      <% end %>
-                    </div>
-                    <div
-                      class="flex-1 min-w-0 cursor-pointer"
-                      phx-click="view_item"
-                      phx-value-item-id={item.id}
-                      phx-target={@myself}
-                    >
-                      <p class={"text-sm truncate #{if is_current, do: "text-cyan-100 font-medium", else: "text-white"}"}>
-                        {item.name || "3D Object"}
-                      </p>
-                      <%= if item.description do %>
-                        <p class="text-xs text-gray-400 truncate">{item.description}</p>
-                      <% end %>
-                    </div>
-                    <button
-                      phx-click="remove_item"
-                      phx-value-item-id={item.id}
-                      phx-target={@myself}
-                      class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 transition-all"
-                      title="Remove"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
                   </div>
-                <% end %>
+                  <div
+                    class="flex-1 min-w-0 cursor-pointer"
+                    phx-click="view_item"
+                    phx-value-item-id={item.id}
+                    phx-target={@myself}
+                  >
+                    <p class={"text-sm truncate #{if is_current, do: "text-cyan-100 font-medium", else: "text-white"}"}>
+                      {item.name || "3D Object"}
+                    </p>
+                    <%= if item.description do %>
+                      <p class="text-xs text-gray-400 truncate">{item.description}</p>
+                    <% end %>
+                  </div>
+                  <button
+                    phx-click="remove_item"
+                    phx-value-item-id={item.id}
+                    phx-target={@myself}
+                    class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 transition-all"
+                    title="Remove"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               <% end %>
-            </div>
-          <% end %>
-        </div>
-      <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
 
       <%!-- Control Request Modal - Shows to controller when someone requests control --%>
       <%= if @pending_request_user_id && @current_user && @current_user.id == @controller_user_id do %>

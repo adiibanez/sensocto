@@ -1602,3 +1602,15 @@ msgstr "L'accroche émotionnelle — ce que SensOcto fait ressentir. ~150 mots, 
 #, elixir-autogen, elixir-format
 msgid "The philosophy and backstory. ~500 words, ~2 min read"
 msgstr "La philosophie et l'histoire. ~500 mots, ~2 min de lecture"
+
+msgid "Sign in with Google"
+msgstr "Se connecter avec Google"
+
+msgid "Request magic link"
+msgstr "Demander un lien magique"
+
+msgid "Auto-cycle"
+msgstr "Cycle automatique"
+
+msgid "Toggle Theme"
+msgstr "Changer de thème"

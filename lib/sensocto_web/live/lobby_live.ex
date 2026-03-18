@@ -32,6 +32,10 @@ defmodule SensoctoWeb.LobbyLive do
   # Component flush interval - how often to flush measurement buffers to JS
   @component_flush_interval_ms 100
 
+  # Throttle interval for server-rendered text updates (BPM, battery %, etc.)
+  # via send_update to LiveComponents. Channel handles high-freq chart data.
+  @text_throttle_ms 2_000
+
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
   @grid_cols_xl_default 4
@@ -64,6 +68,7 @@ defmodule SensoctoWeb.LobbyLive do
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "presence:all")
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:lobby")
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:favorites")
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "discovery:sensors")
     end
 
     sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
@@ -105,12 +110,18 @@ defmodule SensoctoWeb.LobbyLive do
     # Defer DB queries to connected mount — avoid running them twice (disconnected + connected)
     user = socket.assigns[:current_user]
 
-    {public_rooms, favorite_sensors} =
+    {public_rooms, favorite_sensors, content_panel_collapsed, sensor_panel_collapsed} =
       if connected?(socket) and user do
+        connect_params = get_connect_params(socket)
+
         {Sensocto.Rooms.list_public_rooms(),
-         UserPreferences.get_ui_state(user.id, "favorite_sensors", [])}
+         UserPreferences.get_ui_state(user.id, "favorite_sensors", []),
+         UserPreferences.get_ui_state(user.id, "content_panel_collapsed", false) ||
+           connect_params["content_panel_collapsed"] == true,
+         UserPreferences.get_ui_state(user.id, "sensor_panel_collapsed", false) ||
+           connect_params["sensor_panel_collapsed"] == true}
       else
-        {[], []}
+        {[], [], false, false}
       end
 
     # Check if there's an active call in the lobby
@@ -154,8 +165,8 @@ defmodule SensoctoWeb.LobbyLive do
         floating_expanded_sensors: [],
         floating_dock_collapsed: false,
         lobby_mode: :media,
-        content_panel_collapsed: false,
-        sensor_panel_collapsed: false,
+        content_panel_collapsed: content_panel_collapsed,
+        sensor_panel_collapsed: sensor_panel_collapsed,
         call_active: call_active,
         in_call: false,
         call_participants: %{},
@@ -204,6 +215,8 @@ defmodule SensoctoWeb.LobbyLive do
         sort_by: :name,
         # Timer for debouncing activity re-sort on attention changes
         sort_timer: nil,
+        # Per-sensor throttle timestamps for text value push to LiveComponents
+        lv_text_last_pushed: %{},
         # Client health monitoring for adaptive streaming
         client_health: SensoctoWeb.ClientHealth.init(),
         # PriorityLens integration for adaptive data delivery
@@ -227,15 +240,11 @@ defmodule SensoctoWeb.LobbyLive do
         guided_session: nil,
         guiding_session: nil,
         available_guided_session: nil,
-        show_guide_modal: false,
-        guide_invite_code: nil,
-        guide_share_url: nil,
         guided_following: true,
         guided_presence: %{guide_connected: false, follower_connected: false},
         guided_annotations: [],
         guided_suggestion: nil,
-        guided_focused_sensor_id: nil,
-        guide_panel_expanded: true
+        guided_focused_sensor_id: nil
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -376,6 +385,9 @@ defmodule SensoctoWeb.LobbyLive do
     # needs the token to join ViewerDataChannel. Push events are delivered after the DOM
     # patch so the hook's handleEvent is registered before the event fires.
     socket = push_viewer_token_for_composite(socket, action)
+
+    # When guiding, broadcast lens change to followers
+    socket = broadcast_guide_lens(socket, action)
 
     {:noreply, socket}
   end
@@ -839,6 +851,76 @@ defmodule SensoctoWeb.LobbyLive do
     :summary
   end
 
+  # Re-fetch sensor list and update assigns if changed
+  defp refresh_sensor_list(socket) do
+    sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
+    sensors_count = Enum.count(sensors)
+
+    new_sensor_ids = sensors |> Map.keys() |> Enum.sort()
+    current_sensor_ids = socket.assigns.sensor_ids
+
+    if new_sensor_ids != current_sensor_ids do
+      new_sensors = new_sensor_ids -- current_sensor_ids
+
+      Enum.each(new_sensors, fn sensor_id ->
+        Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
+      end)
+
+      {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
+       skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
+        extract_composite_data(sensors)
+
+      sensors = strip_sensor_values(sensors)
+
+      available_lenses =
+        compute_available_lenses(
+          heartrate_sensors,
+          imu_sensors,
+          location_sensors,
+          ecg_sensors,
+          battery_sensors,
+          skeleton_sensors,
+          respiration_sensors,
+          hrv_sensors,
+          gaze_sensors
+        )
+
+      sorted_sensor_ids =
+        sort_sensors(new_sensor_ids, sensors, socket.assigns[:sort_by] || :name)
+
+      updated_socket =
+        socket
+        |> assign(:sensors, sensors)
+        |> assign(:sensors_online_count, sensors_count)
+        |> assign(:sensor_ids, sorted_sensor_ids)
+        |> assign(:heartrate_sensors, heartrate_sensors)
+        |> assign(:imu_sensors, imu_sensors)
+        |> assign(:location_sensors, location_sensors)
+        |> assign(:ecg_sensors, ecg_sensors)
+        |> assign(:battery_sensors, battery_sensors)
+        |> assign(:skeleton_sensors, skeleton_sensors)
+        |> assign(:respiration_sensors, respiration_sensors)
+        |> assign(:hrv_sensors, hrv_sensors)
+        |> assign(:gaze_sensors, gaze_sensors)
+        |> assign(:available_lenses, available_lenses)
+        |> assign(:sensors_by_user, group_sensors_by_user(sensors))
+
+      if updated_socket.assigns[:priority_lens_registered] do
+        Sensocto.Lenses.PriorityLens.set_sensors(updated_socket.id, new_sensor_ids)
+      end
+
+      ensure_attention_for_composite_sensors(updated_socket, updated_socket.assigns.live_action)
+
+      {:noreply, updated_socket}
+    else
+      if sensors_count != socket.assigns.sensors_online_count do
+        {:noreply, assign(socket, :sensors_online_count, sensors_count)}
+      else
+        {:noreply, socket}
+      end
+    end
+  end
+
   # Strip `values` lists from sensor attributes before storing on socket.
   # Only `lastvalue` is needed for rendering — `values` is never read from @sensors.
   defp strip_sensor_values(sensors) do
@@ -1280,85 +1362,19 @@ defmodule SensoctoWeb.LobbyLive do
         "Lobby presence Joins: #{Enum.count(payload.joins)}, Leaves: #{Enum.count(payload.leaves)}"
       )
 
-      sensors = Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
-      sensors_count = Enum.count(sensors)
-
-      # Only update sensor_ids if the set of sensors has changed
-      # This prevents child LiveViews from being re-mounted when only sensor data changes
-      new_sensor_ids = sensors |> Map.keys() |> Enum.sort()
-      current_sensor_ids = socket.assigns.sensor_ids
-
-      # Only update if sensor list actually changed
-      if new_sensor_ids != current_sensor_ids do
-        # Subscribe to signal topics for any new sensors (data comes via PriorityLens)
-        new_sensors = new_sensor_ids -- current_sensor_ids
-
-        Enum.each(new_sensors, fn sensor_id ->
-          Phoenix.PubSub.subscribe(Sensocto.PubSub, "signal:#{sensor_id}")
-        end)
-
-        # Update composite visualization data (needs full sensors)
-        {heartrate_sensors, imu_sensors, location_sensors, ecg_sensors, battery_sensors,
-         skeleton_sensors, respiration_sensors, hrv_sensors, gaze_sensors} =
-          extract_composite_data(sensors)
-
-        # Strip values for socket assign
-        sensors = strip_sensor_values(sensors)
-
-        # Recompute available lenses when sensors change
-        available_lenses =
-          compute_available_lenses(
-            heartrate_sensors,
-            imu_sensors,
-            location_sensors,
-            ecg_sensors,
-            battery_sensors,
-            skeleton_sensors,
-            respiration_sensors,
-            hrv_sensors,
-            gaze_sensors
-          )
-
-        sorted_sensor_ids =
-          sort_sensors(new_sensor_ids, sensors, socket.assigns[:sort_by] || :name)
-
-        updated_socket =
-          socket
-          |> assign(:sensors, sensors)
-          |> assign(:sensors_online_count, sensors_count)
-          |> assign(:sensor_ids, sorted_sensor_ids)
-          |> assign(:heartrate_sensors, heartrate_sensors)
-          |> assign(:imu_sensors, imu_sensors)
-          |> assign(:location_sensors, location_sensors)
-          |> assign(:ecg_sensors, ecg_sensors)
-          |> assign(:battery_sensors, battery_sensors)
-          |> assign(:skeleton_sensors, skeleton_sensors)
-          |> assign(:respiration_sensors, respiration_sensors)
-          |> assign(:hrv_sensors, hrv_sensors)
-          |> assign(:gaze_sensors, gaze_sensors)
-          |> assign(:available_lenses, available_lenses)
-          |> assign(:sensors_by_user, group_sensors_by_user(sensors))
-
-        # Update PriorityLens with new sensor list for adaptive streaming
-        if updated_socket.assigns[:priority_lens_registered] do
-          Sensocto.Lenses.PriorityLens.set_sensors(updated_socket.id, new_sensor_ids)
-        end
-
-        # Re-register attention for new sensors so they broadcast to data:attention:*
-        # Without this, sensors added after handle_params stay at attention_level :none
-        ensure_attention_for_composite_sensors(updated_socket, updated_socket.assigns.live_action)
-
-        {:noreply, updated_socket}
-      else
-        # Sensor list unchanged - only update count if it actually changed
-        # Avoid updating sensors_online map to prevent template re-evaluation
-        if sensors_count != socket.assigns.sensors_online_count do
-          {:noreply, assign(socket, :sensors_online_count, sensors_count)}
-        else
-          {:noreply, socket}
-        end
-      end
+      refresh_sensor_list(socket)
     end
+  end
+
+  # Handle sensor discovery events (sensor registered/unregistered)
+  @impl true
+  def handle_info({:sensor_registered, _sensor_id, _view_state, _node}, socket) do
+    refresh_sensor_list(socket)
+  end
+
+  @impl true
+  def handle_info({:sensor_unregistered, _sensor_id, _node}, socket) do
+    refresh_sensor_list(socket)
   end
 
   @impl true
@@ -1496,21 +1512,42 @@ defmodule SensoctoWeb.LobbyLive do
 
         {:noreply, socket}
 
-      # Normal processing — ViewerDataChannel delivers data to all views directly.
-      # LobbyLive only receives batches in :sensors view (for backpressure monitoring).
+      # Normal processing — hybrid delivery:
+      # - Charts/viz: ViewerDataChannel → SensorGridHook → JS (full speed)
+      # - Text values: throttled send_update → HEEx re-render (every @text_throttle_ms)
       true ->
-        socket = assign(socket, :data_mode, :realtime)
-        # Data delivery is handled by ViewerDataChannel → SensorGridHook → DOM.
-        # Button events are handled in JS via _handleButtonEvents in SensorGridHook.
+        socket =
+          socket
+          |> assign(:data_mode, :realtime)
+          |> push_text_values_to_components(batch_data)
+
         {:noreply, socket}
     end
   end
 
   # Handle PriorityLens digest data (low/minimal quality)
-  # All views receive digest via ViewerDataChannel; LobbyLive only tracks data_mode.
+  # Digests contain aggregate stats per attribute including `latest` value.
+  # Convert to measurement format and push text values to components.
   @impl true
-  def handle_info({:lens_digest, _digests}, socket) do
-    {:noreply, assign(socket, :data_mode, :digest)}
+  def handle_info({:lens_digest, digests}, socket) do
+    now_ms = System.system_time(:millisecond)
+
+    batch_like =
+      Map.new(digests, fn {sensor_id, attrs} ->
+        converted =
+          attrs
+          |> Enum.reject(fn {_attr_id, digest} -> is_nil(digest.latest) end)
+          |> Map.new(fn {attr_id, digest} ->
+            {attr_id, %{timestamp: now_ms, payload: digest.latest}}
+          end)
+
+        {sensor_id, converted}
+      end)
+
+    {:noreply,
+     socket
+     |> assign(:data_mode, :digest)
+     |> push_text_values_to_components(batch_like)}
   end
 
   # Recovery check for paused quality mode
@@ -1773,6 +1810,7 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "avatar:lobby")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:mode_sync")
+    Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:puppets")
     Sensocto.Chat.ChatStore.subscribe("lobby")
 
     user = socket.assigns[:current_user]
@@ -1808,10 +1846,10 @@ defmodule SensoctoWeb.LobbyLive do
   end
 
   # Handle sensor state changes (e.g., new attributes registered)
-  # This refreshes available lenses when attributes are auto-registered
+  # This refreshes sensor structure (available lenses, attribute lists).
+  # Text values (BPM, battery %) are populated by the throttled lens_batch path.
   @impl true
   def handle_info({:new_state, _sensor_id}, socket) do
-    # Fetch sensors async to avoid blocking the LV process
     {:noreply,
      start_async(socket, :refresh_sensors, fn ->
        Sensocto.SensorsDynamicSupervisor.get_all_sensors_state(:view)
@@ -1832,6 +1870,20 @@ defmodule SensoctoWeb.LobbyLive do
       })
 
     {:noreply, socket}
+  end
+
+  # -- Puppet Easter Egg PubSub --
+
+  def handle_info({:puppets_activated, _user_id}, socket) do
+    {:noreply, push_event(socket, "puppets_activated", %{})}
+  end
+
+  def handle_info({:puppet_move, data}, socket) do
+    {:noreply, push_event(socket, "puppet_moved", data)}
+  end
+
+  def handle_info(:puppets_dismissed, socket) do
+    {:noreply, push_event(socket, "puppets_dismissed", %{})}
   end
 
   @impl true
@@ -1977,12 +2029,34 @@ defmodule SensoctoWeb.LobbyLive do
 
   @impl true
   def handle_event("toggle_content_panel", _params, socket) do
-    {:noreply, assign(socket, content_panel_collapsed: !socket.assigns.content_panel_collapsed)}
+    new_value = !socket.assigns.content_panel_collapsed
+
+    if user = socket.assigns[:current_user] do
+      UserPreferences.set_ui_state(user.id, "content_panel_collapsed", new_value)
+    end
+
+    broadcast_guide_panel(socket, :content_panel_collapsed, new_value)
+
+    {:noreply,
+     socket
+     |> assign(content_panel_collapsed: new_value)
+     |> push_event("store_ui_preference", %{key: "content_panel_collapsed", value: new_value})}
   end
 
   @impl true
   def handle_event("toggle_sensor_panel", _params, socket) do
-    {:noreply, assign(socket, sensor_panel_collapsed: !socket.assigns.sensor_panel_collapsed)}
+    new_value = !socket.assigns.sensor_panel_collapsed
+
+    if user = socket.assigns[:current_user] do
+      UserPreferences.set_ui_state(user.id, "sensor_panel_collapsed", new_value)
+    end
+
+    broadcast_guide_panel(socket, :sensor_panel_collapsed, new_value)
+
+    {:noreply,
+     socket
+     |> assign(sensor_panel_collapsed: new_value)
+     |> push_event("store_ui_preference", %{key: "sensor_panel_collapsed", value: new_value})}
   end
 
   # Lobby mode switching
@@ -2292,6 +2366,7 @@ defmodule SensoctoWeb.LobbyLive do
       socket
       |> assign(:lobby_layout, new_layout)
       |> push_event("save_lobby_layout", %{layout: Atom.to_string(new_layout)})
+      |> broadcast_guide_layout(new_layout)
 
     # Clear expanded sensors when leaving floating mode
     socket =
@@ -2435,7 +2510,8 @@ defmodule SensoctoWeb.LobbyLive do
      socket
      |> assign(:sort_by, sort_by)
      |> assign(:sensor_ids, sorted)
-     |> push_event("save_sort_by", %{sort_by: sort_str})}
+     |> push_event("save_sort_by", %{sort_by: sort_str})
+     |> broadcast_guide_sort(sort_by)}
   end
 
   # Restore sort_by from localStorage (via JS hook)
@@ -2460,10 +2536,23 @@ defmodule SensoctoWeb.LobbyLive do
         %{"start_index" => start_idx, "end_index" => end_idx, "cols" => cols},
         socket
       ) do
+    # GC throttle map: drop entries for sensors no longer visible.
+    # Newly visible sensors have no entry → immediate text update on next lens_batch.
+    new_visible =
+      socket.assigns.sensor_ids
+      |> Enum.slice(start_idx, end_idx - start_idx)
+      |> MapSet.new()
+
+    cleaned =
+      Map.filter(socket.assigns.lv_text_last_pushed, fn {sid, _} ->
+        MapSet.member?(new_visible, sid)
+      end)
+
     {:noreply,
      socket
      |> assign(:visible_range, {start_idx, end_idx})
      |> assign(:cols, max(1, cols))
+     |> assign(:lv_text_last_pushed, cleaned)
      |> assign(:virtual_scroll_loading, false)
      |> push_event("virtual_scroll_loaded", %{})}
   end
@@ -2708,6 +2797,7 @@ defmodule SensoctoWeb.LobbyLive do
       socket
       |> assign(:quality_override, nil)
       |> push_event("quality_changed", %{level: :auto, reason: "Switched to automatic mode"})
+      |> broadcast_guide_quality(:auto)
 
     {:noreply, socket}
   end
@@ -2726,6 +2816,7 @@ defmodule SensoctoWeb.LobbyLive do
       |> assign(:quality_override, quality)
       |> assign(:current_quality, quality)
       |> push_event("quality_changed", %{level: quality, reason: "Manual override"})
+      |> broadcast_guide_quality(quality)
 
     {:noreply, socket}
   end
@@ -2734,252 +2825,88 @@ defmodule SensoctoWeb.LobbyLive do
   # Guided Session Events (from UI)
   # ============================================================================
 
-  def handle_event("start_guided_session", _params, socket) do
+  def handle_event("toggle_guiding", _params, socket) do
     user = socket.assigns[:current_user]
-
     is_guest = user && Map.get(user, :is_guest, false)
 
-    if user && !is_guest && is_nil(socket.assigns.guiding_session) &&
-         is_nil(socket.assigns.guided_session) do
-      case Ash.create(Sensocto.Guidance.GuidedSession, %{guide_user_id: user.id},
-             action: :create,
-             authorize?: false
-           ) do
-        {:ok, session} ->
-          invite_code = session.invite_code
-          share_url = SensoctoWeb.Endpoint.url() <> "/guide/join?code=#{invite_code}"
+    cond do
+      # Stop guiding
+      socket.assigns.guiding_session ->
+        session_id = socket.assigns.guiding_session
+        Sensocto.Guidance.SessionServer.end_session(session_id, user.id)
 
-          Sensocto.Guidance.SessionSupervisor.get_or_start_session(session.id,
-            guide_user_id: user.id
-          )
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          "lobby:guidance:available",
+          {:guidance_unavailable, %{session_id: session_id}}
+        )
 
-          Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session.id}")
-          Sensocto.Guidance.SessionServer.connect(session.id, user.id)
+        {:noreply,
+         socket
+         |> assign(:guiding_session, nil)
+         |> assign(:guided_following, true)
+         |> assign(:guided_presence, %{guide_connected: false, follower_connected: false})}
 
-          guide_name = user.display_name || "A guide"
+      # Start guiding
+      user && !is_guest && is_nil(socket.assigns.guided_session) ->
+        # End any stale pending sessions from this guide
+        end_stale_pending_sessions(user.id)
 
-          Phoenix.PubSub.broadcast(
-            Sensocto.PubSub,
-            "lobby:guidance:available",
-            {:guidance_available,
-             %{session_id: session.id, guide_user_id: user.id, guide_name: guide_name}}
-          )
+        case Ash.create(Sensocto.Guidance.GuidedSession, %{guide_user_id: user.id},
+               action: :create,
+               authorize?: false
+             ) do
+          {:ok, session} ->
+            Sensocto.Guidance.SessionSupervisor.get_or_start_session(session.id,
+              guide_user_id: user.id
+            )
 
-          {:noreply,
-           socket
-           |> assign(:guiding_session, session.id)
-           |> assign(:show_guide_modal, true)
-           |> assign(:guide_invite_code, invite_code)
-           |> assign(:guide_share_url, share_url)}
+            Phoenix.PubSub.subscribe(Sensocto.PubSub, "guidance:#{session.id}")
+            Sensocto.Guidance.SessionServer.connect(session.id, user.id)
 
-        {:error, reason} ->
-          require Logger
-          Logger.error("Failed to create guided session: #{inspect(reason)}")
-          {:noreply, put_flash(socket, :error, "Failed to start guided session")}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
+            guide_name = user.display_name || "A guide"
 
-  def handle_event("close_guide_modal", _params, socket) do
-    {:noreply, assign(socket, :show_guide_modal, false)}
-  end
+            Phoenix.PubSub.broadcast(
+              Sensocto.PubSub,
+              "lobby:guidance:available",
+              {:guidance_available,
+               %{session_id: session.id, guide_user_id: user.id, guide_name: guide_name}}
+            )
 
-  def handle_event("toggle_guide_panel", _params, socket) do
-    {:noreply, assign(socket, :guide_panel_expanded, !socket.assigns.guide_panel_expanded)}
-  end
+            {:noreply, assign(socket, :guiding_session, session.id)}
 
-  def handle_event("open_guide_share", _params, socket) do
-    {:noreply, assign(socket, :show_guide_modal, true)}
-  end
-
-  def handle_event("share_guide_to_chat", _params, socket) do
-    user = socket.assigns[:current_user]
-    share_url = socket.assigns.guide_share_url
-
-    if user && share_url do
-      display_name = user.email || user.display_name || "Guide"
-
-      Sensocto.Chat.ChatStore.add_message("lobby", %{
-        user_id: to_string(user.id),
-        user_name: display_name,
-        text: "Join my guided session: #{share_url}",
-        type: :system
-      })
-    end
-
-    {:noreply,
-     socket
-     |> assign(:show_guide_modal, false)
-     |> put_flash(:info, "Shared to chat!")}
-  end
-
-  def handle_event("guide_set_lens", %{"lens" => lens_str}, socket) do
-    with lens when lens != nil <- safe_to_lens(lens_str),
-         session_id when session_id != nil <- socket.assigns.guiding_session do
-      user_id = socket.assigns.current_user.id
-      Sensocto.Guidance.SessionServer.set_lens(session_id, user_id, lens)
-      {:noreply, push_patch(socket, to: lens_to_path(lens))}
-    else
-      _ -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("guide_focus_sensor", %{"sensor_id" => sensor_id}, socket) do
-    if session_id = socket.assigns.guiding_session do
-      user_id = socket.assigns.current_user.id
-      Sensocto.Guidance.SessionServer.set_focused_sensor(session_id, user_id, sensor_id)
-    end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("guide_set_layout", %{"layout" => layout_str}, socket) do
-    if session_id = socket.assigns.guiding_session do
-      layout = String.to_existing_atom(layout_str)
-      user_id = socket.assigns.current_user.id
-      Sensocto.Guidance.SessionServer.set_layout(session_id, user_id, layout)
-
-      {:noreply,
-       socket
-       |> assign(:lobby_layout, layout)
-       |> push_event("save_lobby_layout", %{layout: layout_str})}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("guide_set_quality", %{"quality" => quality_str}, socket) do
-    if session_id = socket.assigns.guiding_session do
-      user_id = socket.assigns.current_user.id
-
-      socket =
-        if quality_str == "auto" do
-          Sensocto.Guidance.SessionServer.set_quality(session_id, user_id, :auto)
-
-          socket
-          |> assign(:quality_override, nil)
-          |> push_event("quality_changed", %{level: :auto, reason: "Guide override"})
-        else
-          quality = String.to_existing_atom(quality_str)
-          Sensocto.Guidance.SessionServer.set_quality(session_id, user_id, quality)
-
-          if socket.assigns[:priority_lens_registered] do
-            Sensocto.Lenses.PriorityLens.set_quality(socket.id, quality)
-          end
-
-          socket
-          |> assign(:quality_override, quality)
-          |> assign(:current_quality, quality)
-          |> push_event("quality_changed", %{level: quality, reason: "Guide override"})
+          {:error, reason} ->
+            Logger.error("Failed to create guided session: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to start guided session")}
         end
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
+      true ->
+        {:noreply, socket}
     end
-  end
-
-  def handle_event("guide_set_sort", %{"sort_by" => sort_str}, socket)
-      when sort_str in ["activity", "name", "type", "battery"] do
-    if session_id = socket.assigns.guiding_session do
-      sort_by = String.to_existing_atom(sort_str)
-      user_id = socket.assigns.current_user.id
-      Sensocto.Guidance.SessionServer.set_sort(session_id, user_id, sort_by)
-
-      sorted = sort_sensors(socket.assigns.sensor_ids, socket.assigns.sensors, sort_by)
-
-      {:noreply,
-       socket
-       |> assign(:sort_by, sort_by)
-       |> assign(:sensor_ids, sorted)
-       |> push_event("save_sort_by", %{sort_by: sort_str})}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("guide_set_lobby_mode", %{"mode" => mode_str}, socket) do
-    if session_id = socket.assigns.guiding_session do
-      new_mode = String.to_existing_atom(mode_str)
-      user_id = socket.assigns.current_user.id
-      Sensocto.Guidance.SessionServer.set_lobby_mode(session_id, user_id, new_mode)
-
-      old_mode = socket.assigns.lobby_mode
-      user = socket.assigns.current_user
-
-      if user && old_mode != new_mode do
-        release_control_for_mode(old_mode, user.id)
-      end
-
-      {:noreply,
-       socket
-       |> assign(:lobby_mode, new_mode)
-       |> push_event("save_lobby_mode", %{mode: mode_str})}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("guide_suggest", %{"type" => type, "text" => text} = params, socket)
-      when type in ["breathing_rhythm", "focus_sensor", "take_break", "custom"] do
-    if session_id = socket.assigns.guiding_session do
-      user_id = socket.assigns.current_user.id
-
-      type_atom =
-        case type do
-          "breathing_rhythm" -> :breathing_rhythm
-          "focus_sensor" -> :focus_sensor
-          "take_break" -> :take_break
-          "custom" -> :custom
-        end
-
-      action = %{type: type_atom, text: text, data: params["data"] || %{}}
-      Sensocto.Guidance.SessionServer.suggest_action(session_id, user_id, action)
-    end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("guide_end_session", _params, socket) do
-    session_id = socket.assigns.guiding_session || socket.assigns.guided_session
-
-    if session_id do
-      user_id = socket.assigns.current_user.id
-      Sensocto.Guidance.SessionServer.end_session(session_id, user_id)
-
-      Phoenix.PubSub.broadcast(
-        Sensocto.PubSub,
-        "lobby:guidance:available",
-        {:guidance_unavailable, %{session_id: session_id}}
-      )
-    end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("dismiss_available_guided_session", _params, socket) do
-    {:noreply, assign(socket, :available_guided_session, nil)}
   end
 
   def handle_event("join_guided_session", %{"session_id" => session_id}, socket) do
     user = socket.assigns.current_user
 
-    with false <- is_nil(user),
-         false <- Map.get(user, :is_guest, false),
+    is_guest = Map.get(user, :is_guest, false)
+
+    with true <- !is_nil(user),
          true <- is_nil(socket.assigns.guided_session),
          true <- is_nil(socket.assigns.guiding_session),
          {:ok, session} <-
            Ash.get(Sensocto.Guidance.GuidedSession, session_id, authorize?: false),
-         true <- session.status == :pending,
-         {:ok, session} <-
-           Ash.update(session, %{follower_user_id: user.id},
-             action: :assign_follower,
-             authorize?: false
-           ),
-         {:ok, session} <- Ash.update(session, %{}, action: :accept, authorize?: false) do
-      follower_name = user.display_name || "Follower"
+         true <- session.status == :pending do
+      follower_name = Map.get(user, :display_name) || "Follower"
+
+      # For non-guest users, persist follower in DB and activate session
+      unless is_guest do
+        Ash.update(session, %{follower_user_id: user.id},
+          action: :assign_follower,
+          authorize?: false
+        )
+
+        Ash.update(session, %{}, action: :accept, authorize?: false)
+      end
 
       Sensocto.Guidance.SessionSupervisor.get_or_start_session(session.id,
         guide_user_id: session.guide_user_id,
@@ -3007,7 +2934,9 @@ defmodule SensoctoWeb.LobbyLive do
        |> assign(:guided_session, session.id)
        |> assign(:available_guided_session, nil)}
     else
-      _ -> {:noreply, socket}
+      other ->
+        Logger.warning("[GuidedSession] join_guided_session failed: #{inspect(other)}")
+        {:noreply, socket}
     end
   end
 
@@ -3059,6 +2988,30 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:guided_suggestion, nil)
      |> assign(:guided_focused_sensor_id, nil)
      |> assign(:guided_presence, %{guide_connected: false, follower_connected: false})}
+  end
+
+  # -- Puppet Easter Egg --
+
+  def handle_event("activate_puppets", _params, socket) do
+    user_id = get_in(socket.assigns, [:current_user, Access.key(:id)])
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "lobby:puppets", {:puppets_activated, user_id})
+    {:noreply, socket}
+  end
+
+  def handle_event("puppet_move", %{"puppet" => puppet, "x" => x, "y" => y}, socket) do
+    user_id = get_in(socket.assigns, [:current_user, Access.key(:id)])
+
+    Phoenix.PubSub.broadcast_from(Sensocto.PubSub, self(), "lobby:puppets", {
+      :puppet_move,
+      %{puppet: puppet, x: x, y: y, user_id: user_id}
+    })
+
+    {:noreply, socket}
+  end
+
+  def handle_event("dismiss_puppets", _params, socket) do
+    Phoenix.PubSub.broadcast(Sensocto.PubSub, "lobby:puppets", :puppets_dismissed)
+    {:noreply, socket}
   end
 
   @impl true
@@ -3140,6 +3093,60 @@ defmodule SensoctoWeb.LobbyLive do
   defp downgrade_quality(:low), do: :minimal
   defp downgrade_quality(:minimal), do: :minimal
   defp downgrade_quality(:paused), do: :paused
+
+  # Push low-frequency measurement values to visible StatefulSensorComponents
+  # for server-rendered text (heartrate BPM, battery %, temperature, etc.).
+  # Throttled to @text_throttle_ms per sensor. High-frequency data (ECG lists,
+  # delta-encoded data) is skipped — those flow exclusively via ViewerDataChannel.
+  defp push_text_values_to_components(socket, batch_data) do
+    now = System.monotonic_time(:millisecond)
+    last_pushed = socket.assigns.lv_text_last_pushed
+
+    # Compute visible sensor IDs from virtual scroll range
+    {start_idx, end_idx} = socket.assigns.visible_range
+
+    visible_ids =
+      socket.assigns.sensor_ids
+      |> Enum.slice(start_idx, end_idx - start_idx)
+      |> MapSet.new()
+
+    {updated_timestamps, sensors_to_push} =
+      Enum.reduce(batch_data, {last_pushed, []}, fn {sensor_id, attrs}, {ts_acc, push_acc} ->
+        if MapSet.member?(visible_ids, sensor_id) do
+          sensor_last = Map.get(ts_acc, sensor_id, now - @text_throttle_ms - 1)
+
+          if now - sensor_last >= @text_throttle_ms do
+            measurements =
+              attrs
+              |> Enum.reject(fn {_attr_id, value} ->
+                is_list(value) or
+                  (is_map(value) and is_map_key(value, :__delta_encoded__))
+              end)
+              |> Enum.map(fn {_attr_id, measurement} -> measurement end)
+
+            if measurements != [] do
+              {Map.put(ts_acc, sensor_id, now), [{sensor_id, measurements} | push_acc]}
+            else
+              {ts_acc, push_acc}
+            end
+          else
+            {ts_acc, push_acc}
+          end
+        else
+          {ts_acc, push_acc}
+        end
+      end)
+
+    Enum.each(sensors_to_push, fn {sensor_id, measurements} ->
+      send_update(
+        SensoctoWeb.Live.Components.StatefulSensorComponent,
+        id: "sensor_#{sensor_id}",
+        measurements_batch: measurements
+      )
+    end)
+
+    assign(socket, :lv_text_last_pushed, updated_timestamps)
+  end
 
   # Drain all pending lens batch/digest messages from the mailbox in one shot.
   # Returns count of drained messages. This prevents each queued message from
@@ -3285,12 +3292,33 @@ defmodule SensoctoWeb.LobbyLive do
 
   defp discover_available_guided_session(socket, user) do
     if is_nil(socket.assigns.guided_session) && is_nil(socket.assigns.guiding_session) do
-      case Ash.read(Sensocto.Guidance.GuidedSession,
-             action: :pending_for_others,
-             args: [user_id: user.id],
-             authorize?: false
-           ) do
-        {:ok, [session | _]} ->
+      is_guest = Map.get(user, :is_guest, false)
+
+      pending_sessions =
+        if is_guest do
+          # Guests can't be guides, so just find any pending session
+          case Ash.read(Sensocto.Guidance.GuidedSession, authorize?: false) do
+            {:ok, sessions} ->
+              Enum.filter(sessions, fn s ->
+                s.status == :pending and is_nil(s.follower_user_id)
+              end)
+
+            _ ->
+              []
+          end
+        else
+          case Ash.read(Sensocto.Guidance.GuidedSession,
+                 action: :pending_for_others,
+                 args: [user_id: user.id],
+                 authorize?: false
+               ) do
+            {:ok, sessions} -> sessions
+            _ -> []
+          end
+        end
+
+      case pending_sessions do
+        [session | _] ->
           guide_name =
             case Ash.get(Sensocto.Accounts.User, session.guide_user_id, authorize?: false) do
               {:ok, u} -> u.display_name || "A guide"
@@ -3332,23 +3360,6 @@ defmodule SensoctoWeb.LobbyLive do
     end
   end
 
-  defp safe_to_lens("sensors"), do: :sensors
-  defp safe_to_lens("heartrate"), do: :heartrate
-  defp safe_to_lens("imu"), do: :imu
-  defp safe_to_lens("location"), do: :location
-  defp safe_to_lens("ecg"), do: :ecg
-  defp safe_to_lens("battery"), do: :battery
-  defp safe_to_lens("skeleton"), do: :skeleton
-  defp safe_to_lens("respiration"), do: :respiration
-  defp safe_to_lens("hrv"), do: :hrv
-  defp safe_to_lens("gaze"), do: :gaze
-  defp safe_to_lens("favorites"), do: :favorites
-  defp safe_to_lens("users"), do: :users
-  defp safe_to_lens("graph"), do: :graph
-  defp safe_to_lens("graph3d"), do: :graph3d
-  defp safe_to_lens("hierarchy"), do: :hierarchy
-  defp safe_to_lens(_), do: nil
-
   defp lens_to_path(:sensors), do: ~p"/lobby"
   defp lens_to_path(:heartrate), do: ~p"/lobby/heartrate"
   defp lens_to_path(:imu), do: ~p"/lobby/imu"
@@ -3365,4 +3376,71 @@ defmodule SensoctoWeb.LobbyLive do
   defp lens_to_path(:graph3d), do: ~p"/lobby/graph3d"
   defp lens_to_path(:hierarchy), do: ~p"/lobby/hierarchy"
   defp lens_to_path(_), do: ~p"/lobby"
+
+  # End any stale pending sessions from this guide before creating a new one.
+  defp end_stale_pending_sessions(guide_user_id) do
+    case Ash.read(Sensocto.Guidance.GuidedSession, authorize?: false) do
+      {:ok, sessions} ->
+        sessions
+        |> Enum.filter(fn s ->
+          s.status == :pending and to_string(s.guide_user_id) == to_string(guide_user_id)
+        end)
+        |> Enum.each(fn s ->
+          Ash.update(s, %{}, action: :end_session, authorize?: false)
+          Sensocto.Guidance.SessionSupervisor.stop_session(s.id)
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  # Broadcast guide actions to followers when guiding.
+  # Called from normal lobby action handlers so guide doesn't need a separate panel.
+
+  defp broadcast_guide_lens(socket, action) do
+    if session_id = socket.assigns[:guiding_session] do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_lens(session_id, user_id, action)
+    end
+
+    socket
+  end
+
+  defp broadcast_guide_layout(socket, layout) do
+    if session_id = socket.assigns[:guiding_session] do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_layout(session_id, user_id, layout)
+    end
+
+    socket
+  end
+
+  defp broadcast_guide_quality(socket, quality) do
+    if session_id = socket.assigns[:guiding_session] do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_quality(session_id, user_id, quality)
+    end
+
+    socket
+  end
+
+  defp broadcast_guide_panel(socket, panel_key, collapsed) do
+    if session_id = socket.assigns[:guiding_session] do
+      Phoenix.PubSub.broadcast(
+        Sensocto.PubSub,
+        "guidance:#{session_id}",
+        {:guided_panel_changed, %{panel: panel_key, collapsed: collapsed}}
+      )
+    end
+  end
+
+  defp broadcast_guide_sort(socket, sort_by) do
+    if session_id = socket.assigns[:guiding_session] do
+      user_id = socket.assigns.current_user.id
+      Sensocto.Guidance.SessionServer.set_sort(session_id, user_id, sort_by)
+    end
+
+    socket
+  end
 end

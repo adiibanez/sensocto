@@ -1602,3 +1602,15 @@ msgstr "Der emotionale Einstieg — wie sich SensOcto anfühlt. ~150 Wörter, ~3
 #, elixir-autogen, elixir-format
 msgid "The philosophy and backstory. ~500 words, ~2 min read"
 msgstr "Die Philosophie und Hintergrundgeschichte. ~500 Wörter, ~2 Min. Lesezeit"
+
+msgid "Sign in with Google"
+msgstr "Mit Google anmelden"
+
+msgid "Request magic link"
+msgstr "Magic-Link anfordern"
+
+msgid "Auto-cycle"
+msgstr "Automatisch wechseln"
+
+msgid "Toggle Theme"
+msgstr "Thema wechseln"

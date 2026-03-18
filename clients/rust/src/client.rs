@@ -341,7 +341,8 @@ impl SensoctoClient {
 
         let channel = PhoenixChannel::new(self.socket.clone(), topic.clone(), join_params);
 
-        // Set up backpressure handler before joining
+        // Set up shared backpressure config — same Arc is used by both the socket
+        // event handler and the SensorStream, so server updates propagate correctly.
         let socket = self.socket.read().await;
         let backpressure_config = Arc::new(RwLock::new(BackpressureConfig::default()));
         let bp_config = backpressure_config.clone();
@@ -350,8 +351,6 @@ impl SensoctoClient {
             .on(&topic, "backpressure_config", move |payload| {
                 if let Ok(config) = serde_json::from_value::<BackpressureConfig>(payload) {
                     debug!("Received backpressure config: {:?}", config);
-                    // Note: This is a simplified approach. In production, you'd want
-                    // to properly propagate this to the SensorStream.
                     let bp = bp_config.clone();
                     tokio::spawn(async move {
                         *bp.write().await = config;
@@ -364,7 +363,12 @@ impl SensoctoClient {
         // Join the channel
         channel.join().await?;
 
-        let (stream, event_rx) = SensorStream::new(channel, sensor_id, config);
+        let (stream, event_rx) = SensorStream::with_backpressure(
+            channel,
+            sensor_id,
+            config,
+            Some(backpressure_config),
+        );
 
         info!("Registered sensor: {}", stream.sensor_id());
 

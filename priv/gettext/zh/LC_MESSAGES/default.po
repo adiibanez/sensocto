@@ -1602,3 +1602,15 @@ msgstr "情感触发——SensOcto的感受。约150词，约30秒阅读"
 #, elixir-autogen, elixir-format
 msgid "The philosophy and backstory. ~500 words, ~2 min read"
 msgstr "理念与背景故事。约500词，约2分钟阅读"
+
+msgid "Sign in with Google"
+msgstr "使用Google登录"
+
+msgid "Request magic link"
+msgstr "请求魔法链接"
+
+msgid "Auto-cycle"
+msgstr "自动切换"
+
+msgid "Toggle Theme"
+msgstr "切换主题"

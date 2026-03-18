@@ -70,6 +70,12 @@ import AvatarSplatHook from './hooks/avatar_splat_hook.js';
 // Sensor background visualization for sign-in page
 import { SensorBackgroundHook } from './hooks/sensor_background_hook.js';
 
+// IMU tile hook — updates IMU visualization in sensor grid from JS data events
+import { ImuTileHook } from './hooks/imu_tile_hook.js';
+
+// Easter egg — puppet show
+import { PuppetShowHook, OctopusLogoHook } from './hooks/puppet_show_hook.js';
+
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
   window.workerStorage = new Worker('/assets/worker-storage.js?' + Math.random(), { type: 'module' });
@@ -109,6 +115,51 @@ Hooks.AvatarSplatHook = AvatarSplatHook;
 
 // Sensor background hook for sign-in page
 Hooks.SensorBackgroundHook = SensorBackgroundHook;
+
+// IMU tile hook - live updates for IMU visualization in sensor grid
+Hooks.ImuTileHook = ImuTileHook;
+
+// Easter egg hooks
+Hooks.PuppetShow = PuppetShowHook;
+Hooks.OctopusLogo = OctopusLogoHook;
+
+// Theme toggle hook — manages light/dark theme with localStorage persistence
+// and OS preference auto-detection
+Hooks.ThemeToggle = {
+  mounted() {
+    this._updateIcon();
+    // Listen for OS theme changes
+    this._mql = window.matchMedia('(prefers-color-scheme: light)');
+    this._mqlHandler = (e) => {
+      if (!localStorage.getItem('sensocto-theme')) {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+        this._updateIcon();
+      }
+    };
+    this._mql.addEventListener('change', this._mqlHandler);
+    this.el.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('sensocto-theme', next);
+      this._updateIcon();
+    });
+  },
+  destroyed() {
+    if (this._mql && this._mqlHandler) {
+      this._mql.removeEventListener('change', this._mqlHandler);
+    }
+  },
+  _updateIcon() {
+    const theme = document.documentElement.getAttribute('data-theme');
+    const sun = document.getElementById('theme-icon-sun');
+    const moon = document.getElementById('theme-icon-moon');
+    if (sun && moon) {
+      sun.classList.toggle('hidden', theme === 'light');
+      moon.classList.toggle('hidden', theme === 'dark');
+    }
+  }
+};
 
 // Vibrate hook - vibrates device and plays sound on every button press
 // Supports repetitive clicks on same button (uses timestamp to detect)
@@ -1278,7 +1329,20 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 // Merge all hooks: Svelte component hooks, base hooks from hooks.js (includes MediaPlayerHook), and app.js hooks
 let mergedHooks = { ...getHooks(Components), ...BaseHooks, ...Hooks };
 
-let liveSocket = new LiveSocket("/live", Socket, { hooks: mergedHooks, params: { _csrf_token: csrfToken } })
+let liveSocket = new LiveSocket("/live", Socket, {
+  hooks: mergedHooks,
+  params: () => ({
+    _csrf_token: csrfToken,
+    content_panel_collapsed: localStorage.getItem("ui:content_panel_collapsed") === "true",
+    sensor_panel_collapsed: localStorage.getItem("ui:sensor_panel_collapsed") === "true"
+  })
+})
+
+// Guest preference persistence via localStorage
+window.addEventListener("phx:store_ui_preference", (e) => {
+  const { key, value } = e.detail;
+  localStorage.setItem(`ui:${key}`, JSON.stringify(value));
+});
 
 // Show progress bar on live navigation and form submits
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })

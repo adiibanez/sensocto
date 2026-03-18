@@ -236,45 +236,70 @@ class WaveformRenderer extends BaseRenderer {
     // Adaptive step: more sensors → coarser sampling to keep frame budget
     const step = sensors.length > 50 ? 6 : sensors.length > 20 ? 4 : 3;
 
+    // Global energy: more sensors → stronger amplification for heroes
+    const n = sensors.length;
+    const energy = 1 - Math.exp(-n * 0.04);
+
+    // Hero selection: always at least 1 hero, up to 5 for large counts
+    const heroCount = n === 0 ? 0 : Math.max(1, Math.min(Math.ceil(n * 0.15), 5));
+    const heroIds = new Set();
+    if (heroCount > 0) {
+      const byIntensity = [...sensors].sort((a, b) => b.intensity - a.intensity);
+      for (let i = 0; i < heroCount; i++) heroIds.add(byIntensity[i].id);
+    }
+
+    // Draw non-heroes first (background layer)
     for (const s of sensors) {
-      // Spread waveforms across 10%-90% of canvas height
-      const yRatio = (s.pos.y - h * 0.1) / (h * 0.8);
-      const centerY = h * (0.1 + 0.8 * yRatio);
-      const freq = 0.0008 + (s.hue / 360) * 0.003;
-      // Min amplitude 30px so all sensors are visible; active ones go bigger
-      const amplitude = 30 + s.intensity * (h * 0.12);
-      const phase = t * (1.5 + (s.hue % 100) * 0.01) + s.hue;
-      const alpha = 0.08 + s.intensity * 0.4;
+      if (heroIds.has(s.id)) continue;
+      this._drawWaveform(ctx, s, w, h, t, step, 1.0, 0, 80, 70, 60);
+    }
 
-      if (alpha < 0.005) continue;
-
-      // Glow: draw a thicker, more transparent line underneath for soft glow effect
-      // Much cheaper than shadowBlur
-      ctx.strokeStyle = `hsla(${s.hue}, 80%, 60%, ${alpha * 0.25})`;
-      ctx.lineWidth = 4 + s.intensity * 4;
-      ctx.beginPath();
-      for (let x = 0; x <= w; x += step * 2) {
-        const y = centerY + amplitude * Math.sin(x * freq + phase) +
-                  amplitude * 0.3 * Math.sin(x * freq * 2.3 + phase * 1.5);
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Crisp line on top
-      ctx.strokeStyle = `hsla(${s.hue}, 70%, 60%, ${alpha})`;
-      ctx.lineWidth = 1.5 + s.intensity * 1.5;
-      ctx.beginPath();
-      for (let x = 0; x <= w; x += step) {
-        const y = centerY + amplitude * Math.sin(x * freq + phase) +
-                  amplitude * 0.3 * Math.sin(x * freq * 2.3 + phase * 1.5);
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+    // Draw heroes on top (foreground, amplified)
+    const heroAmp = 1.0 + energy * 1.5;
+    const heroGlowSat = Math.round(80 + energy * 10);
+    const heroCrispSat = Math.round(70 + energy * 15);
+    const heroLight = Math.round(60 + energy * 10);
+    for (const s of sensors) {
+      if (!heroIds.has(s.id)) continue;
+      this._drawWaveform(ctx, s, w, h, t, step, heroAmp, energy, heroGlowSat, heroCrispSat, heroLight);
     }
 
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  _drawWaveform(ctx, s, w, h, t, step, amp, energy, glowSat, crispSat, lightness) {
+    const yRatio = (s.pos.y - h * 0.1) / (h * 0.8);
+    const centerY = h * (0.1 + 0.8 * yRatio);
+    const freq = 0.0008 + (s.hue / 360) * 0.003;
+    const amplitude = (30 + s.intensity * (h * 0.12)) * amp;
+    const phase = t * (1.5 + (s.hue % 100) * 0.01) + s.hue;
+    const alpha = Math.min(0.85, (0.08 + s.intensity * 0.4) * amp);
+
+    if (alpha < 0.005) return;
+
+    // Glow: thicker, more transparent line underneath
+    ctx.strokeStyle = `hsla(${s.hue}, ${glowSat}%, ${lightness}%, ${alpha * 0.25})`;
+    ctx.lineWidth = (4 + s.intensity * 4) * amp;
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += step * 2) {
+      const y = centerY + amplitude * Math.sin(x * freq + phase) +
+                amplitude * 0.3 * Math.sin(x * freq * 2.3 + phase * 1.5);
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Crisp line on top
+    ctx.strokeStyle = `hsla(${s.hue}, ${crispSat}%, ${lightness}%, ${alpha})`;
+    ctx.lineWidth = (1.5 + s.intensity * 1.5) * amp;
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += step) {
+      const y = centerY + amplitude * Math.sin(x * freq + phase) +
+                amplitude * 0.3 * Math.sin(x * freq * 2.3 + phase * 1.5);
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
   }
 
   _drawAmbient(t) {
@@ -397,7 +422,7 @@ class AuroraRenderer extends BaseRenderer {
 
     for (const band of this.bands) {
       const bandY = band.yRatio * h;
-      const bandAlpha = 0.03 + band.intensity * 0.09;
+      const bandAlpha = 0.06 + band.intensity * 0.16;
       this._drawBand(bandY, band.height, band.hue, bandAlpha, t, band.seed);
     }
 
@@ -417,11 +442,11 @@ class AuroraRenderer extends BaseRenderer {
     }
 
     const gradient = ctx.createLinearGradient(0, bandY - bandHeight, 0, bandY + bandHeight);
-    gradient.addColorStop(0, `hsla(${hue}, 70%, 55%, 0)`);
-    gradient.addColorStop(0.3, `hsla(${hue}, 70%, 60%, ${alpha})`);
-    gradient.addColorStop(0.5, `hsla(${hue}, 80%, 65%, ${alpha * 1.2})`);
-    gradient.addColorStop(0.7, `hsla(${hue}, 70%, 60%, ${alpha})`);
-    gradient.addColorStop(1, `hsla(${hue}, 70%, 55%, 0)`);
+    gradient.addColorStop(0, `hsla(${hue}, 75%, 55%, 0)`);
+    gradient.addColorStop(0.3, `hsla(${hue}, 75%, 60%, ${alpha})`);
+    gradient.addColorStop(0.5, `hsla(${hue}, 85%, 65%, ${alpha * 1.4})`);
+    gradient.addColorStop(0.7, `hsla(${hue}, 75%, 60%, ${alpha})`);
+    gradient.addColorStop(1, `hsla(${hue}, 75%, 55%, 0)`);
     ctx.fillStyle = gradient;
 
     ctx.beginPath();

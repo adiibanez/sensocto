@@ -1538,3 +1538,15 @@ msgstr "الجاذبية العاطفية — كيف يبدو الشعور بـ 
 #, elixir-autogen, elixir-format
 msgid "The philosophy and backstory. ~500 words, ~2 min read"
 msgstr "الفلسفة والقصة. ~500 كلمة، ~دقيقتان قراءة"
+
+msgid "Sign in with Google"
+msgstr "تسجيل الدخول عبر Google"
+
+msgid "Request magic link"
+msgstr "طلب رابط سحري"
+
+msgid "Auto-cycle"
+msgstr "دوران تلقائي"
+
+msgid "Toggle Theme"
+msgstr "تبديل السمة"

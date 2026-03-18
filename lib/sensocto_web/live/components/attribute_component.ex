@@ -254,7 +254,10 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
     ~H"""
     <div
+      id={"imu_tile_#{@sensor_id}_#{@attribute_id}"}
       class="flex items-center justify-between text-xs py-0.5"
+      phx-hook="ImuTileHook"
+      phx-update="ignore"
       data-sensor_id={@sensor_id}
       data-attribute_id={@attribute_id}
     >
@@ -263,17 +266,24 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           name="device-phone-mobile"
           type="outline"
           class="h-3 w-3 text-indigo-400"
+          data-imu="phone"
           style={"transform: rotate(#{@imu_data.tilt_display}deg)"}
         /> IMU
       </span>
-      <div :if={@lastvalue} class="flex items-center gap-2">
+      <div
+        data-imu="data"
+        class="flex items-center gap-2"
+        style={if(is_nil(@lastvalue), do: "display:none")}
+      >
         <%!-- Acceleration magnitude bar --%>
         <div
           class="flex items-center gap-1"
+          data-imu="accel-wrap"
           title={"Acceleration: #{Float.round(@imu_data.accel_magnitude, 1)} m/s²"}
         >
           <div class="w-8 h-2 bg-gray-700 rounded-full overflow-hidden">
             <div
+              data-imu="accel-bar"
               class={"h-full rounded-full #{accel_color(@imu_data.accel_magnitude)}"}
               style={"width: #{min(100, @imu_data.accel_magnitude * 10)}%"}
             >
@@ -283,32 +293,42 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         <%!-- Tilt indicator (pitch/roll visualization) --%>
         <div
           class="relative w-5 h-5 rounded-full border border-gray-600 bg-gray-800"
+          data-imu="tilt-wrap"
           title={"Pitch: #{round(@imu_data.pitch)}° Roll: #{round(@imu_data.roll)}°"}
         >
           <div
+            data-imu="tilt-ball-small"
             class="absolute w-2 h-2 bg-indigo-400 rounded-full"
             style={"top: 50%; left: 50%; transform: translate(#{@imu_data.roll_display}%, #{@imu_data.pitch_display}%) translate(-50%, -50%)"}
           />
         </div>
         <%!-- Compass direction --%>
-        <div class="flex items-center gap-0.5" title={"Heading: #{round(@imu_data.heading)}°"}>
+        <div
+          class="flex items-center gap-0.5"
+          data-imu="compass-wrap"
+          title={"Heading: #{round(@imu_data.heading)}°"}
+        >
           <Heroicons.icon
             name="arrow-up"
             type="solid"
             class="h-3 w-3 text-cyan-400"
+            data-imu="compass-arrow"
             style={"transform: rotate(#{@imu_data.heading}deg)"}
           />
-          <span class="text-cyan-400 text-[10px] w-4">{heading_to_dir(@imu_data.heading)}</span>
+          <span data-imu="compass-dir" class="text-cyan-400 text-[10px] w-4">
+            {heading_to_dir(@imu_data.heading)}
+          </span>
         </div>
       </div>
-      <.loading_spinner :if={is_nil(@lastvalue)} />
+      <div data-imu="spinner" style={if(@lastvalue, do: "display:none")}>
+        <.loading_spinner />
+      </div>
     </div>
     """
   end
 
   @impl true
   def render(%{:attribute_type => "imu"} = assigns) do
-    Logger.debug("AttributeComponent imu render #{inspect(assigns)}")
     assigns = assign(assigns, :imu_data, parse_imu_payload(assigns[:lastvalue]))
 
     ~H"""
@@ -328,99 +348,126 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
         >
         </.render_attribute_header>
 
-        <div :if={is_nil(@lastvalue)} class="loading"></div>
-
-        <div :if={@lastvalue} class="py-2">
-          <%!-- Main visualization row: Tilt sphere, Compass, Acceleration --%>
-          <div class="flex items-center justify-around gap-4 mb-3">
-            <%!-- Tilt/Inclination sphere --%>
-            <div class="flex flex-col items-center">
-              <div class="relative w-16 h-16 rounded-full border-2 border-gray-600 bg-gray-800 overflow-hidden">
-                <%!-- Cross hairs --%>
-                <div class="absolute top-1/2 left-0 w-full h-px bg-gray-700"></div>
-                <div class="absolute left-1/2 top-0 h-full w-px bg-gray-700"></div>
-                <%!-- Tilt indicator ball --%>
-                <div
-                  class="absolute w-4 h-4 bg-indigo-500 rounded-full shadow-lg"
-                  style={"top: 50%; left: 50%; transform: translate(#{@imu_data.roll_display * 0.7}%, #{@imu_data.pitch_display * 0.7}%) translate(-50%, -50%)"}
-                />
-              </div>
-              <span class="text-[10px] text-gray-500 mt-1">Tilt</span>
-            </div>
-
-            <%!-- Compass --%>
-            <div class="flex flex-col items-center">
-              <div class="relative w-16 h-16">
-                <div class="absolute inset-0 rounded-full border-2 border-gray-600">
-                  <span class="absolute top-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
-                    N
-                  </span>
-                  <span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
-                    S
-                  </span>
-                  <span class="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
-                    W
-                  </span>
-                  <span class="absolute right-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
-                    E
-                  </span>
-                </div>
-                <Heroicons.icon
-                  name="arrow-up"
-                  type="solid"
-                  class="absolute top-1/2 left-1/2 w-6 h-6 text-cyan-400"
-                  style={"transform: translate(-50%, -50%) rotate(#{@imu_data.heading}deg)"}
-                />
-              </div>
-              <span class="text-[10px] text-gray-500 mt-1">
-                {round(@imu_data.heading)}° {heading_to_dir(@imu_data.heading)}
-              </span>
-            </div>
-
-            <%!-- Acceleration magnitude --%>
-            <div class="flex flex-col items-center">
-              <div class="relative w-16 h-16 flex items-center justify-center">
-                <div class={"text-2xl font-bold #{accel_color(@imu_data.accel_magnitude)}"}>
-                  {Float.round(@imu_data.accel_magnitude, 1)}
-                </div>
-                <span class="text-[10px] text-gray-500 absolute bottom-0">m/s²</span>
-              </div>
-              <span class="text-[10px] text-gray-500 mt-1">Accel</span>
-            </div>
+        <div
+          id={"imu_exp_#{@sensor_id}_#{@attribute_id}"}
+          phx-hook="ImuTileHook"
+          phx-update="ignore"
+          data-sensor_id={@sensor_id}
+          data-attribute_id={@attribute_id}
+        >
+          <div data-imu="spinner" style={if(@lastvalue, do: "display:none")}>
+            <div class="loading"></div>
           </div>
 
-          <%!-- Detailed values grid --%>
-          <div class="grid grid-cols-3 gap-2 text-xs">
-            <%!-- Pitch --%>
-            <div class="bg-gray-800 rounded p-2 text-center">
-              <div class="text-red-400 text-[10px]">Pitch</div>
-              <div class="text-white font-mono">{Float.round(@imu_data.pitch, 1)}°</div>
-            </div>
-            <%!-- Roll --%>
-            <div class="bg-gray-800 rounded p-2 text-center">
-              <div class="text-green-400 text-[10px]">Roll</div>
-              <div class="text-white font-mono">{Float.round(@imu_data.roll, 1)}°</div>
-            </div>
-            <%!-- Yaw --%>
-            <div class="bg-gray-800 rounded p-2 text-center">
-              <div class="text-blue-400 text-[10px]">Yaw</div>
-              <div class="text-white font-mono">{Float.round(@imu_data.yaw, 1)}°</div>
-            </div>
-          </div>
+          <div data-imu="data" class="py-2" style={if(is_nil(@lastvalue), do: "display:none")}>
+            <%!-- Main visualization row: Tilt sphere, Compass, Acceleration --%>
+            <div class="flex items-center justify-around gap-4 mb-3">
+              <%!-- Tilt/Inclination sphere --%>
+              <div class="flex flex-col items-center">
+                <div class="relative w-16 h-16 rounded-full border-2 border-gray-600 bg-gray-800 overflow-hidden">
+                  <%!-- Cross hairs --%>
+                  <div class="absolute top-1/2 left-0 w-full h-px bg-gray-700"></div>
+                  <div class="absolute left-1/2 top-0 h-full w-px bg-gray-700"></div>
+                  <%!-- Tilt indicator ball --%>
+                  <div
+                    data-imu="tilt-ball"
+                    class="absolute w-4 h-4 bg-indigo-500 rounded-full shadow-lg"
+                    style={"top: 50%; left: 50%; transform: translate(#{@imu_data.roll_display * 0.7}%, #{@imu_data.pitch_display * 0.7}%) translate(-50%, -50%)"}
+                  />
+                </div>
+                <span class="text-[10px] text-gray-500 mt-1">Tilt</span>
+              </div>
 
-          <%!-- Acceleration components --%>
-          <div class="grid grid-cols-3 gap-2 text-xs mt-2">
-            <div class="bg-gray-800/50 rounded p-1.5 text-center">
-              <div class="text-gray-500 text-[10px]">Ax</div>
-              <div class="text-white font-mono text-[11px]">{Float.round(@imu_data.ax, 2)}</div>
+              <%!-- Compass --%>
+              <div class="flex flex-col items-center">
+                <div class="relative w-16 h-16">
+                  <div class="absolute inset-0 rounded-full border-2 border-gray-600">
+                    <span class="absolute top-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+                      N
+                    </span>
+                    <span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+                      S
+                    </span>
+                    <span class="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+                      W
+                    </span>
+                    <span class="absolute right-0.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+                      E
+                    </span>
+                  </div>
+                  <Heroicons.icon
+                    name="arrow-up"
+                    type="solid"
+                    class="absolute top-1/2 left-1/2 w-6 h-6 text-cyan-400"
+                    data-imu="compass-arrow-lg"
+                    style={"transform: translate(-50%, -50%) rotate(#{@imu_data.heading}deg)"}
+                  />
+                </div>
+                <span data-imu="heading-text" class="text-[10px] text-gray-500 mt-1">
+                  {round(@imu_data.heading)}° {heading_to_dir(@imu_data.heading)}
+                </span>
+              </div>
+
+              <%!-- Acceleration magnitude --%>
+              <div class="flex flex-col items-center">
+                <div class="relative w-16 h-16 flex items-center justify-center">
+                  <div
+                    data-imu="accel-mag"
+                    class={"text-2xl font-bold #{accel_color(@imu_data.accel_magnitude)}"}
+                  >
+                    {Float.round(@imu_data.accel_magnitude, 1)}
+                  </div>
+                  <span class="text-[10px] text-gray-500 absolute bottom-0">m/s²</span>
+                </div>
+                <span class="text-[10px] text-gray-500 mt-1">Accel</span>
+              </div>
             </div>
-            <div class="bg-gray-800/50 rounded p-1.5 text-center">
-              <div class="text-gray-500 text-[10px]">Ay</div>
-              <div class="text-white font-mono text-[11px]">{Float.round(@imu_data.ay, 2)}</div>
+
+            <%!-- Detailed values grid --%>
+            <div class="grid grid-cols-3 gap-2 text-xs">
+              <%!-- Pitch --%>
+              <div class="bg-gray-800 rounded p-2 text-center">
+                <div class="text-red-400 text-[10px]">Pitch</div>
+                <div data-imu="pitch" class="text-white font-mono">
+                  {Float.round(@imu_data.pitch, 1)}°
+                </div>
+              </div>
+              <%!-- Roll --%>
+              <div class="bg-gray-800 rounded p-2 text-center">
+                <div class="text-green-400 text-[10px]">Roll</div>
+                <div data-imu="roll" class="text-white font-mono">
+                  {Float.round(@imu_data.roll, 1)}°
+                </div>
+              </div>
+              <%!-- Yaw --%>
+              <div class="bg-gray-800 rounded p-2 text-center">
+                <div class="text-blue-400 text-[10px]">Yaw</div>
+                <div data-imu="yaw" class="text-white font-mono">
+                  {Float.round(@imu_data.yaw, 1)}°
+                </div>
+              </div>
             </div>
-            <div class="bg-gray-800/50 rounded p-1.5 text-center">
-              <div class="text-gray-500 text-[10px]">Az</div>
-              <div class="text-white font-mono text-[11px]">{Float.round(@imu_data.az, 2)}</div>
+
+            <%!-- Acceleration components --%>
+            <div class="grid grid-cols-3 gap-2 text-xs mt-2">
+              <div class="bg-gray-800/50 rounded p-1.5 text-center">
+                <div class="text-gray-500 text-[10px]">Ax</div>
+                <div data-imu="ax" class="text-white font-mono text-[11px]">
+                  {Float.round(@imu_data.ax, 2)}
+                </div>
+              </div>
+              <div class="bg-gray-800/50 rounded p-1.5 text-center">
+                <div class="text-gray-500 text-[10px]">Ay</div>
+                <div data-imu="ay" class="text-white font-mono text-[11px]">
+                  {Float.round(@imu_data.ay, 2)}
+                </div>
+              </div>
+              <div class="bg-gray-800/50 rounded p-1.5 text-center">
+                <div class="text-gray-500 text-[10px]">Az</div>
+                <div data-imu="az" class="text-white font-mono text-[11px]">
+                  {Float.round(@imu_data.az, 2)}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2214,39 +2261,16 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   def render(%{:attribute_type => "hydro_api", :view_mode => :summary} = assigns) do
     ~H"""
     <div
-      id={"cnt_summary_#{@sensor_id}_#{@attribute_id}"}
-      class="text-xs py-0.5"
+      class="flex items-center justify-between text-xs py-0.5"
       data-sensor_id={@sensor_id}
       data-attribute_id={@attribute_id}
-      phx-hook="SensorDataAccumulator"
     >
-      <div class="flex items-center justify-between">
-        <span class="text-gray-400">{hydro_label(@attribute_id)}</span>
-        <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
-          {hydro_format(@attribute_id, @lastvalue.payload)}
-          <span class="text-gray-500 text-[10px]">{hydro_unit(@attribute_id)}</span>
-        </span>
-        <.loading_spinner :if={is_nil(@lastvalue)} />
-      </div>
-      <div :if={@lastvalue} class="w-full mt-0.5">
-        <.svelte
-          name="SparklineWasm"
-          props={
-            %{
-              height: 20,
-              id: "cnt_summary_#{@sensor_id}_#{@attribute_id}",
-              sensor_id: @sensor_id,
-              attribute_id: @attribute.attribute_id,
-              samplingrate: @attribute.sampling_rate,
-              timewindow: 21_600_000,
-              minvalue: 0,
-              maxvalue: 0
-            }
-          }
-          socket={@socket}
-          class="w-full m-0 p-0"
-        />
-      </div>
+      <span class="text-gray-400">{hydro_label(@attribute_id)}</span>
+      <span :if={@lastvalue} class="text-white font-mono flex items-center gap-1">
+        {hydro_format(@attribute_id, @lastvalue.payload)}
+        <span class="text-gray-500 text-[10px]">{hydro_unit(@attribute_id)}</span>
+      </span>
+      <.loading_spinner :if={is_nil(@lastvalue)} />
     </div>
     """
   end
@@ -3177,7 +3201,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   # Acceleration color based on magnitude
   defp accel_color(magnitude) when magnitude < 2, do: "text-green-400 bg-green-500"
   defp accel_color(magnitude) when magnitude < 5, do: "text-yellow-400 bg-yellow-500"
-  defp accel_color(magnitude) when magnitude < 10, do: "text-orange bg-orange"
+  defp accel_color(magnitude) when magnitude < 10, do: "text-orange-400 bg-orange-500"
   defp accel_color(_), do: "text-red-400 bg-red-500"
 
   defp container(assigns) do

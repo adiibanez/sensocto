@@ -1,17 +1,54 @@
-# Sensocto
+<p align="center">
+  <img src="priv/static/images/octopus_simplified.png" alt="Sensocto" width="200" />
+</p>
 
-A real-time sensor data platform built with Phoenix/Elixir, featuring intelligent back-pressure control, multi-user collaboration rooms, and seamless sensor simulation.
+<h1 align="center">Sensocto</h1>
+
+<p align="center">
+  <em>Feel someone's presence. Not their performance.</em>
+</p>
+
+<p align="center">
+  A real-time sensor data platform that makes human connection visible — streaming ECG, heart rate, breathing, motion, and environmental data between people, places, and research tools.
+</p>
+
+---
+
+<p align="center">
+  <img src="priv/static/images/graph_2.jpg" alt="Sensocto sensor network graph" width="700" />
+</p>
+
+## What is Sensocto?
+
+Sensocto connects wearable sensors, environmental monitors, and research instruments into a shared, real-time experience. Built on the science of **interpersonal physiological synchronization** — the finding that hearts, breathing, and nervous systems measurably align during meaningful human interaction — the platform turns invisible signals into shared awareness.
+
+Stream a Movesense ECG at 100 Hz. Visualize GPS tracks from a cycling group. Monitor coral reef health through underwater hydrophones. Feel a meditation circle's breathing synchronize. All through the same platform, all in real-time.
+
+### Who is it for?
+
+| | |
+|---|---|
+| **Researchers** | Quantify group synchronization in meditation studies. Measure HRV responses to therapeutic interventions. Correlate physiological data with mood reports. |
+| **Therapists** | Witness trust forming in a session through co-regulation dynamics. Support mental health with biofeedback and peer networks. |
+| **Conservationists** | Monitor coral reef ecosystems with AI. Track marine migration via bioacoustics. Process live video inference on underwater feeds. |
+| **Makers & Tinkerers** | Connect Nordic Thingy:52 via Web Bluetooth. Capture 9-axis IMU quaternions. Trigger actuators from sensor threshold rules. |
+| **Friends & Communities** | Play sensor-driven party games. Create music from collective heartbeats. Breathe together and watch your sync grow. |
 
 ## Features
 
-- **Real-time Sensor Monitoring** - LiveView-powered dashboard with sub-second updates
-- **Attention-Aware Back-Pressure** - Intelligent batching based on user viewport/focus
-- **Collaboration Rooms** - Share sensor data with team members via QR codes
-- **P2P Storage** - Distributed room state via Iroh document sync
-- **Video/Voice Calls** - WebRTC calling via Membrane RTC Engine
-- **Sensor Simulation** - Built-in simulator for development and testing
-- **Hot Code Deployment** - Zero-downtime updates on Fly.io
-- **Biomimetic Resource Management** - Adaptive system load balancing
+- **Real-time Sensor Streaming** — LiveView dashboard with sub-second updates for ECG, heart rate, HRV, respiration, IMU, GPS, temperature, and more
+- **Attention-Aware Back-Pressure** — Intelligent batching that adapts to user viewport, focus, and system load
+- **Collaboration Rooms** — Share sensor data with team members via QR codes, with video/voice calling
+- **Sensor Network Graph** — Interactive visualization of sensor relationships and data flow
+- **Composite Lenses** — Purpose-built views for heartrate, ECG waveforms, breathing, HRV, motion, gaze tracking, and battery monitoring
+- **Sensor Simulation** — Built-in simulator with 50+ configurable virtual sensors for development
+- **Multi-Language** — Available in English, German, French, Spanish, Portuguese, Japanese, Chinese, and Alsatian
+- **P2P Sync** — Distributed room state via Iroh document sync
+- **Hot Code Deployment** — Zero-downtime updates on Fly.io
+
+<p align="center">
+  <img src="priv/static/images/graph_0.jpg" alt="Sensocto full sensor network" width="700" />
+</p>
 
 ## Quick Start
 
@@ -30,6 +67,17 @@ Visit [http://localhost:4000](http://localhost:4000)
 
 See [docs/getting-started.md](docs/getting-started.md) for detailed setup instructions.
 
+## Technology Stack
+
+- **Backend:** Elixir 1.19.4, OTP 28, Phoenix 1.8, Ash Framework 3.0
+- **Frontend:** Phoenix LiveView 1.1, Svelte 5, Tailwind CSS, DaisyUI
+- **Database:** PostgreSQL with Ecto
+- **Real-time:** Phoenix Channels, PubSub, adaptive PriorityLens streaming
+- **P2P:** Iroh distributed document sync
+- **WebRTC:** Membrane RTC Engine with ex_webrtc
+- **Sensors:** Web Bluetooth, WebSocket, HTTP — Movesense, Nordic Thingy, custom devices
+- **Deployment:** Fly.io with hot code upgrades
+
 ## Documentation
 
 | Document | Description |
@@ -44,16 +92,6 @@ See [docs/getting-started.md](docs/getting-started.md) for detailed setup instru
 | [BEAM VM Tuning](docs/beam-vm-tuning.md) | BEAM VM optimization guide |
 | [Clustering Plan](docs/CLUSTERING_PLAN.md) | Distributed clustering roadmap |
 
-## Technology Stack
-
-- **Backend:** Elixir 1.19.4, OTP 27, Phoenix 1.7, Ash Framework 3.0
-- **Frontend:** Phoenix LiveView 1.0, Svelte 5, Tailwind CSS, DaisyUI
-- **Database:** PostgreSQL with Ecto
-- **Real-time:** Phoenix Channels, PubSub
-- **P2P:** Iroh distributed document sync
-- **WebRTC:** Membrane RTC Engine with ex_webrtc
-- **Deployment:** Fly.io with hot code upgrades
-
 ## Project Structure
 
 ```
@@ -65,6 +103,7 @@ lib/
 │   ├── bio/               # Biomimetic layer
 │   ├── domain/            # Domain supervisor
 │   ├── otp/               # GenServers, supervisors
+│   ├── lenses/            # PriorityLens, Router, adaptive streaming
 │   ├── sensors/           # Ash resources
 │   ├── rooms/             # Collaboration
 │   ├── calls/             # WebRTC calling
@@ -74,6 +113,17 @@ lib/
     ├── components/        # UI components
     └── channels/          # WebSocket handlers
 ```
+
+## Research Foundation
+
+Sensocto is informed by peer-reviewed research in interpersonal physiological synchronization:
+
+- Sharika et al. (2024) — Heart rate synchrony predicts group decision-making accuracy with 70%+ reliability
+- Gordon (2025) — Interpersonal synchrony research across human groups
+- daSilva & Wood (2025) — Unified framework for synchrony: 6 dimensions, 4 core functions
+- Palumbo et al. (2017) — Systematic review of interpersonal autonomic physiology
+
+See the full list of 16 cited papers on the [About page](http://localhost:4000/about).
 
 ## Development
 

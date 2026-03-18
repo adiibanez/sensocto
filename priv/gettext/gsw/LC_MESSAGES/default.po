@@ -1538,3 +1538,15 @@ msgstr "Dr emotionali Iischtieg — wie sich SensOcto aafühlt. ~150 Wörter, ~3
 #, elixir-autogen, elixir-format
 msgid "The philosophy and backstory. ~500 words, ~2 min read"
 msgstr "D Philosophii un Hintergrundgschicht. ~500 Wörter, ~2 Min. Läsezit"
+
+msgid "Sign in with Google"
+msgstr "Mit Google amälde"
+
+msgid "Request magic link"
+msgstr "Magic-Link afordere"
+
+msgid "Auto-cycle"
+msgstr "Automatisch wächsle"
+
+msgid "Toggle Theme"
+msgstr "Thema wächsle"

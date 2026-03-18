@@ -1,8 +1,21 @@
-<html lang={Gettext.get_locale(SensoctoWeb.Gettext)} dir={if Gettext.get_locale(SensoctoWeb.Gettext) == "ar", do: "rtl", else: "ltr"} class="h-full bg-gray-900 text-white">
+<html
+  lang={Gettext.get_locale(SensoctoWeb.Gettext)}
+  dir={if Gettext.get_locale(SensoctoWeb.Gettext) == "ar", do: "rtl", else: "ltr"}
+  class="h-full"
+  data-theme="dark"
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content={get_csrf_token()} />
+    <%!-- Inline theme detection — runs before CSS to prevent flash --%>
+    <script>
+      (function() {
+        var saved = localStorage.getItem('sensocto-theme');
+        var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
     <.live_title>
       {assigns[:page_title] || "Sensocto"}
     </.live_title>

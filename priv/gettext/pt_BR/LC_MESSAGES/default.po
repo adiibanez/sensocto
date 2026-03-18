@@ -1602,3 +1602,15 @@ msgstr "O gancho emocional — como o SensOcto se sente. ~150 palavras, ~30 seg 
 #, elixir-autogen, elixir-format
 msgid "The philosophy and backstory. ~500 words, ~2 min read"
 msgstr "A filosofia e a história. ~500 palavras, ~2 min de leitura"
+
+msgid "Sign in with Google"
+msgstr "Entrar com Google"
+
+msgid "Request magic link"
+msgstr "Solicitar link mágico"
+
+msgid "Auto-cycle"
+msgstr "Ciclo automático"
+
+msgid "Toggle Theme"
+msgstr "Alternar tema"

@@ -28,7 +28,9 @@ export const VirtualScrollHook = {
     this.pendingRange = null;  // Store pending range during throttle
     this.throttleTimer = null;  // Timer for delayed update
     this.isLoading = false;  // Track loading state
+    this.overlayEl = null;  // Floating overlay element
 
+    this.createOverlay();
     this.detectColumns();
 
     // Use requestAnimationFrame for smoother scroll handling
@@ -64,6 +66,7 @@ export const VirtualScrollHook = {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
     if (this.throttleTimer) clearTimeout(this.throttleTimer);
+    if (this.overlayEl) this.overlayEl.remove();
   },
 
   updated() {
@@ -72,6 +75,20 @@ export const VirtualScrollHook = {
       this.totalItems = newTotal;
       this.calculateVisibleRange();
     }
+  },
+
+  createOverlay() {
+    this.overlayEl = document.createElement('div');
+    this.overlayEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:40;pointer-events:none;opacity:0;transition:opacity 150ms ease;';
+    this.overlayEl.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;background:rgba(17,24,39,0.85);backdrop-filter:blur(12px);color:#e5e7eb;padding:24px 32px;border-radius:12px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);border:1px solid rgba(75,85,99,0.5);">
+        <svg style="animation:spin 1s linear infinite;height:32px;width:32px;color:#fb923c;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle style="opacity:0.25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path style="opacity:0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span style="font-size:14px;font-weight:500;">Loading sensors...</span>
+      </div>`;
+    document.body.appendChild(this.overlayEl);
   },
 
   detectColumns() {
@@ -161,18 +178,20 @@ export const VirtualScrollHook = {
   },
 
   updateLoadingIndicator() {
-    const indicator = document.getElementById('virtual-scroll-indicator');
-    if (indicator) {
-      const spinner = indicator.querySelector('.loading-spinner');
-      const moreText = indicator.querySelector('.more-text');
+    if (!this.overlayEl) return;
 
-      if (this.isLoading) {
-        if (spinner) spinner.classList.remove('hidden');
-        if (moreText) moreText.classList.add('hidden');
-      } else {
-        if (spinner) spinner.classList.add('hidden');
-        if (moreText) moreText.classList.remove('hidden');
-      }
+    // Position the overlay centered over the grid
+    const rect = this.el.getBoundingClientRect();
+    const gridVisible = rect.bottom > 0 && rect.top < window.innerHeight;
+
+    if (this.isLoading && gridVisible) {
+      const centerY = Math.max(rect.top, 0) + Math.min(rect.height, window.innerHeight - Math.max(rect.top, 0)) / 2;
+      const centerX = rect.left + rect.width / 2;
+      this.overlayEl.style.top = centerY + 'px';
+      this.overlayEl.style.left = centerX + 'px';
+      this.overlayEl.style.opacity = '1';
+    } else {
+      this.overlayEl.style.opacity = '0';
     }
   }
 };

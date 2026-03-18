@@ -101,6 +101,14 @@ defmodule SensoctoWeb.LobbyLive.Hooks.GuidedSessionHook do
     end
   end
 
+  def on_handle_info({:guided_panel_changed, %{panel: panel, collapsed: collapsed}}, socket) do
+    if socket.assigns.guided_session && socket.assigns.guided_following do
+      {:halt, assign(socket, panel, collapsed)}
+    else
+      {:halt, socket}
+    end
+  end
+
   def on_handle_info({:guided_break_away, _payload}, socket) do
     if socket.assigns.guiding_session do
       {:halt, assign(socket, :guided_following, false)}

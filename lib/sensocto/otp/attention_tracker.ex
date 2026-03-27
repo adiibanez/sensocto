@@ -32,8 +32,8 @@ defmodule Sensocto.AttentionTracker do
   # like pose tracking, while still providing some back-pressure savings.
   # The max_window of 500ms ensures at least 2 updates/second even with bio multipliers.
   @attention_config %{
-    high: %{window_multiplier: 0.2, min_window: 100, max_window: 500},
-    medium: %{window_multiplier: 0.4, min_window: 150, max_window: 500},
+    high: %{window_multiplier: 0.2, min_window: 30, max_window: 500},
+    medium: %{window_multiplier: 0.4, min_window: 80, max_window: 500},
     low: %{window_multiplier: 4.0, min_window: 2000, max_window: 10000},
     none: %{window_multiplier: 10.0, min_window: 5000, max_window: 30000}
   }

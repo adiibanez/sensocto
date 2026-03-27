@@ -78,7 +78,9 @@ defmodule Sensocto.Lenses.PriorityLens do
   # Degradation only occurs based on actual backpressure (mailbox depth).
 
   # High-frequency attributes that need all samples preserved
-  @high_frequency_attributes ~w(ecg respiration button buttons)
+  @high_frequency_attributes ~w(ecg respiration button buttons
+    accelerometer accelerometer_x accelerometer_y accelerometer_z
+    gyroscope gyroscope_x gyroscope_y gyroscope_z imu motion)
 
   # Dead socket cleanup interval (1 minute)
   @gc_interval_ms :timer.minutes(1)

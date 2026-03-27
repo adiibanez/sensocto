@@ -37,12 +37,20 @@
     id: string;
     label: string;
     cx: number; cy: number;
+    // Current smoothed values (used for field/radial/cubes viz + wave writes)
     x: number; y: number; z: number;
+    // Raw target values — set directly on data arrival, smoothed toward per-frame
+    rawX: number; rawY: number; rawZ: number;
+    // Velocity from integrating acceleration (for cubes mode)
+    vx: number; vy: number; vz: number;
+    // Displacement from integrating velocity
+    px: number; py: number; pz: number;
     mag: number;
     peak: number;
     trail: Array<{ x: number; y: number; mag: number }>;
     waveX: Float32Array; waveY: Float32Array; waveZ: Float32Array;
     waveHead: number;
+    waveLastWriteTime: number;
     hue: number;
     lastUpdate: number;
   }
@@ -50,11 +58,14 @@
   const sensorMap: Map<string, SensorState> = new Map();
   let sensorList: SensorState[] = [];
   const TRAIL_LEN = 40;
-  const WAVE_LEN = 200;
-  const SMOOTHING = 0.25;
+  const WAVE_LEN = 512;
+  // Per-frame interpolation speed toward raw target (0→1). Higher = more responsive.
+  // At 60fps, 0.35 gives ~95% convergence in ~8 frames (~133ms) — smooth but responsive.
+  const FRAME_SMOOTHING = 0.35;
   const MAG_SMOOTHING = 0.15;
   const PEAK_DECAY = 0.93;
   const STALE_MS = 3000;
+  const WAVE_SAMPLES_PER_SEC = 60;
 
   const IMU_ATTRS = new Set([
     'imu', 'accelerometer', 'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
@@ -75,12 +86,16 @@
         id, label: shortLabel(id),
         cx: 0, cy: 0,
         x: 0, y: 0, z: 0,
+        rawX: 0, rawY: 0, rawZ: 0,
+        vx: 0, vy: 0, vz: 0,
+        px: 0, py: 0, pz: 0,
         mag: 0, peak: 0,
         trail: [],
         waveX: new Float32Array(WAVE_LEN),
         waveY: new Float32Array(WAVE_LEN),
         waveZ: new Float32Array(WAVE_LEN),
         waveHead: 0,
+        waveLastWriteTime: 0,
         hue: nextHue(),
         lastUpdate: Date.now(),
       };
@@ -120,34 +135,62 @@
   }
 
   // ── Data ingestion ────────────────────────────────────────────────
+  // Sets raw target values. Smoothing + wave writes happen per-frame in
+  // advanceWaveBuffers(), completely decoupled from network arrival timing.
   function ingestMeasurement(sensorId: string, attributeId: string, payload: any) {
     const s = getOrCreateSensor(sensorId);
     s.lastUpdate = Date.now();
 
     if (typeof payload === 'number') {
-      let axis: 'x' | 'y' | 'z';
-      if (attributeId.endsWith('_x')) axis = 'x';
-      else if (attributeId.endsWith('_y')) axis = 'y';
-      else if (attributeId.endsWith('_z')) axis = 'z';
-      else if (attributeId.startsWith('accel')) axis = 'x';
-      else if (attributeId.startsWith('gyro')) axis = 'y';
-      else if (attributeId === 'motion') axis = 'z';
-      else axis = 'x';
-      s[axis] += (payload - s[axis]) * SMOOTHING;
-      const arr = axis === 'x' ? s.waveX : axis === 'y' ? s.waveY : s.waveZ;
-      arr[s.waveHead % WAVE_LEN] = payload;
+      if (attributeId.endsWith('_x')) s.rawX = payload;
+      else if (attributeId.endsWith('_y')) s.rawY = payload;
+      else if (attributeId.endsWith('_z')) s.rawZ = payload;
+      else if (attributeId.startsWith('accel')) s.rawX = payload;
+      else if (attributeId.startsWith('gyro')) s.rawY = payload;
+      else if (attributeId === 'motion') s.rawZ = payload;
+      else s.rawX = payload;
     } else if (payload && typeof payload === 'object') {
-      if ('x' in payload) { s.x += (payload.x - s.x) * SMOOTHING; s.waveX[s.waveHead % WAVE_LEN] = payload.x; }
-      if ('y' in payload) { s.y += (payload.y - s.y) * SMOOTHING; s.waveY[s.waveHead % WAVE_LEN] = payload.y; }
-      if ('z' in payload) { s.z += (payload.z - s.z) * SMOOTHING; s.waveZ[s.waveHead % WAVE_LEN] = payload.z; }
+      if ('x' in payload) s.rawX = payload.x;
+      if ('y' in payload) s.rawY = payload.y;
+      if ('z' in payload) s.rawZ = payload.z;
     }
-    s.waveHead++;
+  }
 
-    const rawMag = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
-    const prevMag = s.mag;
-    s.mag += (rawMag - s.mag) * MAG_SMOOTHING;
-    if (rawMag > prevMag * 1.3 && rawMag > 0.3) {
-      s.peak = Math.min(1.0, rawMag / 3);
+  // Called once per render frame. Smoothly interpolates x/y/z toward raw targets,
+  // then writes the interpolated values into wave buffers at a constant rate.
+  // This produces smooth, continuous waveforms regardless of bursty data arrival.
+  function advanceWaveBuffers(now: number) {
+    const msPerSample = 1000 / WAVE_SAMPLES_PER_SEC;
+
+    for (const s of sensorList) {
+      // Per-frame interpolation: x/y/z chase rawX/rawY/rawZ smoothly
+      s.x += (s.rawX - s.x) * FRAME_SMOOTHING;
+      s.y += (s.rawY - s.y) * FRAME_SMOOTHING;
+      s.z += (s.rawZ - s.z) * FRAME_SMOOTHING;
+
+      // Update magnitude
+      const rawMag = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
+      const prevMag = s.mag;
+      s.mag += (rawMag - s.mag) * MAG_SMOOTHING;
+      if (rawMag > prevMag * 1.3 && rawMag > 0.3) {
+        s.peak = Math.min(1.0, rawMag / 3);
+      }
+
+      // Time-driven wave write
+      if (s.waveLastWriteTime === 0) { s.waveLastWriteTime = now; continue; }
+      const elapsed = now - s.waveLastWriteTime;
+      const samplesToWrite = Math.floor(elapsed / msPerSample);
+      if (samplesToWrite <= 0) continue;
+
+      const n = Math.min(samplesToWrite, 4);
+      for (let i = 0; i < n; i++) {
+        const idx = s.waveHead % WAVE_LEN;
+        s.waveX[idx] = s.x;
+        s.waveY[idx] = s.y;
+        s.waveZ[idx] = s.z;
+        s.waveHead++;
+      }
+      s.waveLastWriteTime = now - (elapsed % msPerSample);
     }
   }
 
@@ -202,7 +245,8 @@
     const n = sensorList.length;
     if (n === 0) { ctx!.fillStyle='#6b7280'; ctx!.font='12px Inter,system-ui,sans-serif'; ctx!.textAlign='center'; ctx!.fillText('Waiting for IMU data…',W/2,H/2); return; }
     const rowH = Math.min(H / n, 120), labelW = 90, chartW = W - labelW - 16;
-    const samples = Math.min(WAVE_LEN, Math.floor(chartW / 2));
+    // Draw up to 1 sample per pixel for crisp waveforms
+    const samples = Math.min(WAVE_LEN, Math.floor(chartW));
     for (let i = 0; i < n; i++) {
       const s = sensorList[i]; const stale = now - s.lastUpdate > STALE_MS;
       const y0 = i * rowH, mid = y0 + rowH / 2, amp = rowH * 0.35;
@@ -210,20 +254,22 @@
       ctx!.fillStyle = stale ? 'rgba(107,114,128,0.4)' : `hsla(${s.hue},60%,75%,0.9)`;
       ctx!.font='10px Inter,system-ui,sans-serif'; ctx!.textAlign='left'; ctx!.fillText(s.label, 8, mid-8);
       ctx!.font='9px monospace'; ctx!.fillStyle=stale?'rgba(107,114,128,0.3)':'rgba(156,163,175,0.6)';
-      ctx!.fillText(`x:${s.x.toFixed(1)} y:${s.y.toFixed(1)}`, 8, mid+6);
+      ctx!.fillText(`x:${s.x.toFixed(2)} y:${s.y.toFixed(2)} z:${s.z.toFixed(2)}`, 8, mid+6);
       const barW = Math.min(70, s.mag * 20);
       ctx!.fillStyle=`hsla(${s.hue},70%,50%,${stale?0.15:0.3})`; ctx!.fillRect(8, mid+12, barW, 3);
       const head = s.waveHead;
+      // Only draw as many samples as we've actually written
+      const available = Math.min(head, samples);
       const channels: [Float32Array, string][] = [
-        [s.waveX, `hsla(${s.hue},80%,65%,${stale?0.15:0.8})`],
-        [s.waveY, `hsla(${(s.hue+120)%360},70%,60%,${stale?0.1:0.5})`],
+        [s.waveX, `hsla(${s.hue},80%,65%,${stale?0.15:0.85})`],
+        [s.waveY, `hsla(${(s.hue+120)%360},70%,60%,${stale?0.1:0.6})`],
+        [s.waveZ, `hsla(${(s.hue+240)%360},60%,55%,${stale?0.1:0.4})`],
       ];
-      if (s.waveZ.some(v => v !== 0)) channels.push([s.waveZ, `hsla(${(s.hue+240)%360},60%,55%,${stale?0.1:0.35})`]);
       for (const [wave, color] of channels) {
         ctx!.beginPath(); let started = false;
-        for (let j = 0; j < samples; j++) {
-          const idx = ((head - samples + j) % WAVE_LEN + WAVE_LEN) % WAVE_LEN;
-          const sx = labelW + (j / samples) * chartW;
+        for (let j = 0; j < available; j++) {
+          const idx = ((head - available + j) % WAVE_LEN + WAVE_LEN) % WAVE_LEN;
+          const sx = labelW + (j / available) * chartW;
           const sy = mid - Math.tanh(wave[idx] / 3) * amp;
           if (!started) { ctx!.moveTo(sx, sy); started = true; } else ctx!.lineTo(sx, sy);
         }
@@ -494,15 +540,45 @@
       const gx = (col - (cols - 1) / 2) * spacing;
       const gz = (row - (Math.ceil(n / cols) - 1) / 2) * spacing;
 
-      mesh.position.set(gx, 0, gz);
+      // Integrate acceleration → velocity → position (simple Euler)
+      const dt = 0.016; // ~60fps timestep
+      const accelScale = 0.08; // tune how responsive movement is
+      const friction = 0.92; // velocity damping (simulates drag)
+      const boundRadius = 2.5; // elastic boundary distance from grid home
 
-      // Rotation driven by IMU values
-      mesh.rotation.x += (s.y * 0.3 - mesh.rotation.x) * 0.1;
-      mesh.rotation.y += (s.x * 0.3 - mesh.rotation.y) * 0.1;
-      mesh.rotation.z += (s.z * 0.2 - mesh.rotation.z) * 0.1;
+      // Accelerometer values drive velocity (x=lateral, y=vertical, z=depth)
+      s.vx += s.x * accelScale * dt;
+      s.vy += s.y * accelScale * dt;
+      s.vz += s.z * accelScale * dt;
+
+      // Apply friction so cubes don't drift forever
+      s.vx *= friction;
+      s.vy *= friction;
+      s.vz *= friction;
+
+      // Integrate velocity → position
+      s.px += s.vx;
+      s.py += s.vy;
+      s.pz += s.vz;
+
+      // Elastic tether: pull back toward grid home when too far
+      const dist = Math.sqrt(s.px * s.px + s.py * s.py + s.pz * s.pz);
+      if (dist > boundRadius) {
+        const pull = (dist - boundRadius) * 0.05;
+        s.px -= (s.px / dist) * pull;
+        s.py -= (s.py / dist) * pull;
+        s.pz -= (s.pz / dist) * pull;
+      }
+
+      mesh.position.set(gx + s.px, s.py, gz + s.pz);
+
+      // Gyroscope drives rotation (angular velocity)
+      mesh.rotation.x += s.y * 0.02;
+      mesh.rotation.y += s.x * 0.02;
+      mesh.rotation.z += s.z * 0.01;
 
       // Scale pulsation from magnitude
-      const scale = 1.0 + Math.min(0.8, s.mag * 0.3);
+      const scale = 1.0 + Math.min(0.5, s.mag * 0.2);
       mesh.scale.setScalar(scale);
 
       // Emissive intensity for activity
@@ -514,15 +590,15 @@
       label.position.set(gx, -2.0, gz);
       label.material.opacity = stale ? 0.3 : 0.8;
 
-      // Trail update
-      s.trail.push({ x: gx + Math.tanh(s.x) * 0.5, y: s.mag * 0.5, mag: s.mag });
+      // Trail follows actual 3D position
+      s.trail.push({ x: mesh.position.x, y: mesh.position.y, mag: mesh.position.z });
       if (s.trail.length > TRAIL_LEN) s.trail.shift();
       const positions = trail.geometry.attributes.position as THREE.BufferAttribute;
       for (let j = 0; j < TRAIL_LEN; j++) {
         if (j < s.trail.length) {
-          positions.setXYZ(j, s.trail[j].x, s.trail[j].y, gz + Math.tanh(s.trail[j].mag) * 0.3);
+          positions.setXYZ(j, s.trail[j].x, s.trail[j].y, s.trail[j].mag);
         } else {
-          positions.setXYZ(j, gx, 0, gz);
+          positions.setXYZ(j, mesh.position.x, mesh.position.y, mesh.position.z);
         }
       }
       positions.needsUpdate = true;
@@ -575,6 +651,9 @@
   // ── Main render loop ──────────────────────────────────────────────
   function render() {
     const now = Date.now();
+
+    // Write current smoothed values into wave buffers at constant rate
+    advanceWaveBuffers(now);
 
     // Handle mode transitions
     if (mode !== prevMode) {

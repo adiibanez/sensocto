@@ -3292,7 +3292,7 @@
     }
 
     if (rebuildTimer) clearTimeout(rebuildTimer);
-    rebuildTimer = setTimeout(() => {
+    rebuildTimer = setTimeout(() => {  // debounce: batch rapid sensor arrivals
       // First build: full rebuild needed (no graph or sigma yet)
       if (isInitialBuild || !graph || !sigma) {
         isInitialBuild = false;
@@ -3317,19 +3317,8 @@
       prevSensorSet = currentSensorSet;
       prevUserSet = currentUserSet;
 
-      // If too many changes (>30% of graph), do full rebuild
-      const changeCount = addedSensors.length + removedSensors.length + addedUsers.length + removedUsers.length;
-      const totalNodes = graph.order;
-      if (changeCount > totalNodes * 0.3 || changeCount > 50) {
-        cleanupVisual(visualMode);
-        cleanupAnimationState();
-        buildGraph();
-        if (container) {
-          initSigma();
-          applyViewMode(visualMode);
-        }
-        return;
-      }
+      // Always use incremental updates — full rebuilds cause visible blanking.
+      // Even large batches of adds/removes are handled gracefully below.
 
       // Calculate scale for new nodes
       const scale = scaledNodeSizes.sensor / baseNodeSizes.sensor;
@@ -3465,8 +3454,20 @@
         applyLayout(layoutMode);
       }
       sigma?.refresh();
-    }, 500);
+    }, 150);
   });
+
+  // Full rebuild helper — used for theme changes or other cases that need a fresh graph
+  function fullRebuild() {
+    if (!graph || !sigma) return;
+    cleanupVisual(visualMode);
+    cleanupAnimationState();
+    buildGraph();
+    if (container) {
+      initSigma();
+      applyViewMode(visualMode);
+    }
+  }
 
   onMount(() => {
     // Initial build is handled by the $effect when props arrive.
@@ -3475,6 +3476,19 @@
     window.addEventListener("graph-activity-event", handleGraphActivity as EventListener);
     window.addEventListener("attention-changed-event", handleAttentionChanged as EventListener);
     window.addEventListener("keydown", onKeydown);
+
+    // Watch for light/dark theme changes and rebuild graph with new colors
+    const themeObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.attributeName === 'data-theme') {
+          setTimeout(() => fullRebuild(), 100);
+          break;
+        }
+      }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    // Store for cleanup
+    (window as any).__graphThemeObserver = themeObserver;
 
     // Restore persisted settings
     try {
@@ -3511,6 +3525,11 @@
   });
 
   onDestroy(() => {
+    // Disconnect theme observer
+    if ((window as any).__graphThemeObserver) {
+      (window as any).__graphThemeObserver.disconnect();
+      delete (window as any).__graphThemeObserver;
+    }
     stopCycleTimer();
     if (isRecording) stopRecording();
     if (glowRaf !== null) { cancelAnimationFrame(glowRaf); glowRaf = null; }

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="priv/static/images/octopus_simplified.png" alt="Sensocto" width="200" />
+  <img src="docs/images/octopus_simplified.png" alt="Sensocto" width="200" />
 </p>
 
 <h1 align="center">Sensocto</h1>
@@ -15,7 +15,7 @@
 ---
 
 <p align="center">
-  <img src="priv/static/images/graph_2.jpg" alt="Sensocto sensor network graph" width="700" />
+  <img src="docs/images/graph_2.jpg" alt="Sensocto sensor network graph" width="700" />
 </p>
 
 ## What is Sensocto?
@@ -47,7 +47,7 @@ Stream a Movesense ECG at 100 Hz. Visualize GPS tracks from a cycling group. Mon
 - **Hot Code Deployment** — Zero-downtime updates on Fly.io
 
 <p align="center">
-  <img src="priv/static/images/graph_0.jpg" alt="Sensocto full sensor network" width="700" />
+  <img src="docs/images/graph_0.jpg" alt="Sensocto full sensor network" width="700" />
 </p>
 
 ## Quick Start

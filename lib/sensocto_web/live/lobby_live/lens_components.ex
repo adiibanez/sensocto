@@ -28,7 +28,9 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
   def composite_lens(assigns) do
     ~H"""
     <div id={@container_id} phx-hook="CompositeMeasurementHandler" class={@container_class}>
-      <.svelte name={@svelte_name} props={@props} socket={@socket} class={@svelte_class} />
+      <div id={"#{@container_id}-svelte"} phx-update="ignore">
+        <.svelte name={@svelte_name} props={@props} socket={@socket} class={@svelte_class} />
+      </div>
       <div :if={@sensors == []} class="text-center py-12 text-gray-300">
         <Heroicons.icon name={@empty_icon} type="outline" class="h-12 w-12 mx-auto mb-4" />
         <p class="text-lg">{@empty_message}</p>

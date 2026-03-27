@@ -29,7 +29,7 @@ defmodule Sensocto.Types.SafeKeys do
     joined_at deleted deleted_at owner_id join_code
     created_at updated_at sensors members settings
     is_public max_members status type
-    mode interval speed duration heart_rate dummy_data
+    mode interval speed duration heart_rate dummy_data batch_window
     min_value max_value track_file altitude
     start_battery drain_rate charge_rate eco2 tvoc
     track_mode start_lat start_lng playback_speed random_start no_loop

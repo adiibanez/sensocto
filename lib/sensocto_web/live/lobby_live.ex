@@ -588,11 +588,13 @@ defmodule SensoctoWeb.LobbyLive do
 
     # Use bulk registration for graph (all sensors) to avoid thundering herd.
     # Single cast vs N individual casts — critical when N > 50 sensors.
+    # Composite lens views register as focus (not just view) for :high attention,
+    # since the user is actively watching this specific data type.
     if action in [:graph, :graph3d] do
       Sensocto.AttentionTracker.register_views_bulk(sensor_ids, attr_key, viewer_id)
     else
       Enum.each(sensor_ids, fn sensor_id ->
-        Sensocto.AttentionTracker.register_view(sensor_id, attr_key, viewer_id)
+        Sensocto.AttentionTracker.register_focus(sensor_id, attr_key, viewer_id)
       end)
     end
 
@@ -3138,7 +3140,7 @@ defmodule SensoctoWeb.LobbyLive do
         Sensocto.AttentionTracker.unregister_views_bulk(sensor_ids, attr_key, viewer_id)
       else
         Enum.each(sensor_ids, fn sensor_id ->
-          Sensocto.AttentionTracker.unregister_view(sensor_id, attr_key, viewer_id)
+          Sensocto.AttentionTracker.unregister_focus(sensor_id, attr_key, viewer_id)
         end)
       end
     end

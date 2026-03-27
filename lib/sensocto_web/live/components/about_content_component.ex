@@ -898,17 +898,17 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
             <div class="bg-gray-800/30 rounded-xl p-8 border border-gray-700/30 mb-10">
               <p class="text-gray-300 leading-relaxed mb-4">
                 {gettext(
-                  "For hundreds of thousands of years, humans lived in small groups where physiological co-regulation was constant. We breathed together around fires. We synced our heartbeats through touch and proximity. Oxytocin flowed through eye contact, shared meals, and collective movement. Our nervous systems evolved to be completed by others—the vagus nerve, our deepest calming mechanism, is activated not by willpower but by the felt presence of safe others."
+                  "Human nervous systems are fundamentally social. For most of our species' history, we lived in small groups where physical proximity was constant—shared breath, touch, movement, and eye contact were the medium of daily life. These conditions shaped a physiology built for co-regulation: our heart rate, breathing, and vagal tone synchronize during social interaction. The vagus nerve—our deepest calming pathway—responds not to willpower but to the felt presence of safe others."
                 )}
               </p>
               <p class="text-gray-300 leading-relaxed mb-4">
                 {gettext(
-                  "Modern life has systematically dismantled these mechanisms. We sit in separate rooms, stare at separate screens, and communicate through text stripped of breath and heartbeat. Our cortisol stays elevated because we lack the co-regulation that our biology expects. Loneliness is not a feeling—it is a physiological state, measurable in inflammation markers, immune suppression, and cardiovascular strain. The epidemic of anxiety and depression is, at its root, a disconnection from the somatic feedback loops that kept our ancestors regulated."
+                  "Modern life has reduced opportunities for the kind of co-regulation our biology responds to. We spend more time alone and communicate through channels that carry no physiological signal. Loneliness is not merely a feeling—it is a physiological state measurable in inflammation, immune function, and cardiovascular strain. Many of us are chronically under-regulated because we are chronically under-connected."
                 )}
               </p>
               <p class="text-gray-300 leading-relaxed">
                 {gettext(
-                  "The challenges ahead—climate crisis, polarization, collective trauma—require exactly the kind of deep coordination our physiology was built for but our infrastructure suppresses. We cannot solve collective problems with isolated nervous systems. Sensocto exists because we believe technology should restore what it has broken: the ability to feel each other, to co-regulate across distance, and to act as the connected organisms we have always been."
+                  "Research shows that physiological synchrony improves group decision-making, strengthens social bonds, and supports emotional regulation. But most technology ignores the body entirely. Sensocto is built on a different premise: that sharing physiological signals—heartbeat, breath, movement—can restore co-regulation between people, whether they are in the same room or across the world."
                 )}
               </p>
             </div>

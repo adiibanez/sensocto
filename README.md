@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/images/octopus_simplified.png" alt="Sensocto" width="200" />
+  <img src="docs/images/octopus_simplified.png" alt="SensOcto" width="200" />
 </p>
 
-<h1 align="center">Sensocto</h1>
+<h1 align="center">SensOcto</h1>
 
 <p align="center">
   <em>Feel someone's presence. Not their performance.</em>

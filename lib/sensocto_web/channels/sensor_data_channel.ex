@@ -120,6 +120,9 @@ defmodule SensoctoWeb.SensorDataChannel do
           # {:error, reason}
       end
 
+      # Subscribe to command topic for bidirectional sensors (e.g. buttplug)
+      Phoenix.PubSub.subscribe(Sensocto.PubSub, "sensor_command:#{sensor_id}")
+
       # Subscribe to attention changes for this sensor (backpressure protocol)
       Phoenix.PubSub.subscribe(Sensocto.PubSub, "attention:#{sensor_id}")
 
@@ -416,6 +419,16 @@ defmodule SensoctoWeb.SensorDataChannel do
 
         {:noreply, socket}
     end
+  end
+
+  # Relay device commands from PubSub to the connector client
+  def handle_info({:device_command, sensor_id, command}, socket) do
+    if Map.get(socket.assigns, :sensor_id) == sensor_id do
+      push(socket, "device_command", command)
+      Logger.debug("Relayed device_command to connector for sensor #{sensor_id}")
+    end
+
+    {:noreply, socket}
   end
 
   # Security: Validate bearer tokens against stored credentials

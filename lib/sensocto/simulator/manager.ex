@@ -342,17 +342,25 @@ defmodule Sensocto.Simulator.Manager do
         {:reply, {:error, :not_running}, state}
 
       scenario_info ->
-        # Stop all connectors in parallel (sequential was causing 30s+ blocks)
+        # Phase 1: Terminate connector processes in parallel
+        # (ConnectorServer.terminate will attempt to clean up its sensors)
         scenario_info.connector_ids
         |> Task.async_stream(
           fn connector_id ->
-            do_stop_connector(connector_id, Map.get(state.connectors, connector_id))
+            terminate_connector_process(connector_id)
           end,
           max_concurrency: System.schedulers_online(),
           timeout: 15_000,
           on_timeout: :kill_task
         )
         |> Stream.run()
+
+        # Phase 2: Always run orphan cleanup, even if connector termination timed out.
+        # This catches SimpleSensor processes left behind when SensorServer.terminate
+        # didn't run (e.g. ConnectorServer shutdown exceeded 5s and children were :killed).
+        Enum.each(scenario_info.connector_ids, fn connector_id ->
+          cleanup_orphaned_sensors(connector_id, Map.get(state.connectors, connector_id))
+        end)
 
         # Remove connectors from state
         new_connectors = Map.drop(state.connectors, scenario_info.connector_ids)
@@ -697,7 +705,15 @@ defmodule Sensocto.Simulator.Manager do
   end
 
   defp do_stop_connector(connector_id, connector_config) do
-    # First, terminate the connector process (which attempts to clean up its sensors)
+    terminate_connector_process(connector_id)
+
+    # Safety net: directly remove any SimpleSensor processes that may have survived
+    # the termination chain (e.g. if ConnectorServer.terminate timed out with many sensors).
+    # This is idempotent — remove_sensor returns :error for already-removed sensors.
+    cleanup_orphaned_sensors(connector_id, connector_config)
+  end
+
+  defp terminate_connector_process(connector_id) do
     case Registry.lookup(Sensocto.Simulator.Registry, "connector_#{connector_id}") do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(Sensocto.Simulator.ConnectorSupervisor, pid)
@@ -706,11 +722,6 @@ defmodule Sensocto.Simulator.Manager do
       [] ->
         Logger.debug("Connector #{connector_id} not found in registry")
     end
-
-    # Safety net: directly remove any SimpleSensor processes that may have survived
-    # the termination chain (e.g. if ConnectorServer.terminate timed out with many sensors).
-    # This is idempotent — remove_sensor returns :error for already-removed sensors.
-    cleanup_orphaned_sensors(connector_id, connector_config)
   end
 
   defp cleanup_orphaned_sensors(_connector_id, nil), do: :ok
@@ -812,7 +823,8 @@ defmodule Sensocto.Simulator.Manager do
           path: path,
           description: stats.description,
           sensor_count: stats.sensor_count,
-          attribute_count: stats.attribute_count
+          attribute_count: stats.attribute_count,
+          intimate: stats.intimate
         }
       end)
       |> Enum.sort_by(& &1.attribute_count)
@@ -878,11 +890,12 @@ defmodule Sensocto.Simulator.Manager do
         %{
           description: description,
           sensor_count: sensor_count,
-          attribute_count: attribute_count
+          attribute_count: attribute_count,
+          intimate: config["intimate"] == true
         }
 
       {:error, _} ->
-        %{description: "", sensor_count: 0, attribute_count: 0}
+        %{description: "", sensor_count: 0, attribute_count: 0, intimate: false}
     end
   end
 

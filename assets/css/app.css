@@ -14,35 +14,215 @@
   color-scheme: dark;
 }
 
+/*
+ * Olive-green light theme palette:
+ *   page-bg:     #f4f6f0   (pale sage)
+ *   surface:     #fafbf8   (warm white)
+ *   card:        #ffffff
+ *   header:      #3d4a2e   (dark olive)
+ *   tile-header: #e8ece2   (light sage)
+ *   border:      #d4dac8   (sage border)
+ *   border-soft: #e2e8d8
+ *   text-primary:#2c3320   (dark olive)
+ *   text-secondary:#5a6648  (medium olive)
+ *   text-muted:  #7d8b6a   (muted sage)
+ *   pill-bg:     #dce3d0   (sage pill)
+ *   pill-hover:  #c8d1b8
+ */
+
 /* Body & root backgrounds */
 [data-theme="light"] html,
-[data-theme="light"] body { background-color: #f5f5f5; color: #1f2937; }
+[data-theme="light"] body { background-color: #f4f6f0; color: #2c3320; }
 
-/* Remap primary surface colors used as backgrounds */
-[data-theme="light"] .bg-gray-900  { background-color: #f9fafb; }
+/* ── Surface / background colors ── */
+[data-theme="light"] .bg-gray-900  { background-color: #eef1e8; }
 [data-theme="light"] .bg-gray-800  { background-color: #ffffff; }
-[data-theme="light"] .bg-gray-700  { background-color: #f3f4f6; }
-[data-theme="light"] .bg-gray-700\/50 { background-color: rgba(243,244,246,0.5); }
-[data-theme="light"] .bg-gray-600  { background-color: #e5e7eb; }
+[data-theme="light"] .bg-gray-700  { background-color: #dce3d0; }
+[data-theme="light"] .bg-gray-600  { background-color: #c8d1b8; }
+[data-theme="light"] .bg-gray-500  { background-color: #9ca88c; }
 
-/* Remap text colors */
-[data-theme="light"] .text-white   { color: #111827; }
-[data-theme="light"] .text-gray-300 { color: #4b5563; }
-[data-theme="light"] .text-gray-400 { color: #6b7280; }
-[data-theme="light"] .text-gray-500 { color: #9ca3af; }
+/* Opacity variants — tiles, cards, headers */
+[data-theme="light"] .bg-gray-900\/50  { background-color: rgba(238,241,232,0.6); }
+[data-theme="light"] .bg-gray-900\/70  { background-color: rgba(238,241,232,0.8); }
+[data-theme="light"] .bg-gray-800\/50  { background-color: rgba(255,255,255,0.7); }
+[data-theme="light"] .bg-gray-800\/80  { background-color: rgba(255,255,255,0.9); }
+[data-theme="light"] .bg-gray-700\/50  { background-color: rgba(220,227,208,0.5); }
+[data-theme="light"] .bg-gray-700\/80  { background-color: rgba(220,227,208,0.8); }
+[data-theme="light"] .bg-gray-600\/50  { background-color: rgba(200,209,184,0.5); }
 
-/* Borders */
-[data-theme="light"] .border-gray-600 { border-color: #d1d5db; }
-[data-theme="light"] .border-gray-700 { border-color: #e5e7eb; }
-[data-theme="light"] .border-gray-700\/50 { border-color: rgba(229,231,235,0.5); }
+/* ── Text colors ── */
+[data-theme="light"] .text-white   { color: #2c3320; }
+[data-theme="light"] .text-gray-100 { color: #2c3320; }
+[data-theme="light"] .text-gray-200 { color: #3d4a2e; }
+[data-theme="light"] .text-gray-300 { color: #5a6648; }
+[data-theme="light"] .text-gray-400 { color: #7d8b6a; }
+[data-theme="light"] .text-gray-500 { color: #9ca88c; }
 
-/* Hover states */
-[data-theme="light"] .hover\:text-white:hover { color: #111827; }
-[data-theme="light"] .hover\:bg-gray-600:hover { background-color: #d1d5db; }
-[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e5e7eb; }
+/* ── Borders — sage-tinted ── */
+[data-theme="light"] .border-gray-500 { border-color: #9ca88c; }
+[data-theme="light"] .border-gray-600 { border-color: #c8d1b8; }
+[data-theme="light"] .border-gray-700 { border-color: #d4dac8; }
+[data-theme="light"] .border-gray-800 { border-color: #e2e8d8; }
+[data-theme="light"] .border-gray-700\/50 { border-color: rgba(212,218,200,0.5); }
+[data-theme="light"] .border-gray-600\/30 { border-color: rgba(200,209,184,0.3); }
+[data-theme="light"] .border-gray-600\/50 { border-color: rgba(200,209,184,0.5); }
 
-/* Shadows get softer in light mode */
-[data-theme="light"] .shadow-lg { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.05); }
+/* ── Hover states ── */
+[data-theme="light"] .hover\:text-white:hover { color: #2c3320; }
+[data-theme="light"] .hover\:text-gray-300:hover { color: #5a6648; }
+[data-theme="light"] .hover\:bg-gray-600:hover { background-color: #c8d1b8; }
+[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #dce3d0; }
+[data-theme="light"] .hover\:bg-gray-900\/70:hover { background-color: rgba(238,241,232,0.8); }
+
+/* ── Ring / outline colors ── */
+[data-theme="light"] .ring-gray-600  { --tw-ring-color: #c8d1b8; }
+[data-theme="light"] .ring-gray-700  { --tw-ring-color: #d4dac8; }
+
+/* ── Shadows — olive-tinted for warmth ── */
+[data-theme="light"] .shadow-lg {
+  box-shadow: 0 4px 6px -1px rgba(61,74,46,0.08), 0 2px 4px -2px rgba(61,74,46,0.04);
+}
+[data-theme="light"] .shadow-xl {
+  box-shadow: 0 8px 16px -4px rgba(61,74,46,0.1), 0 4px 6px -2px rgba(61,74,46,0.05);
+}
+
+/* ── Tile card treatment — subtle olive shadow ── */
+[data-theme="light"] .rounded-xl.border {
+  box-shadow: 0 1px 3px rgba(61,74,46,0.07), 0 1px 2px rgba(61,74,46,0.04);
+}
+
+/* ── Tile headers — sage wash ── */
+[data-theme="light"] .bg-gray-900\/50 {
+  background-color: rgba(232,236,226,0.7);
+  border-bottom: 1px solid #d4dac8;
+}
+
+/* ── Inactive tab pills — sage green ── */
+[data-theme="light"] .bg-gray-700.text-gray-300 {
+  background-color: #dce3d0;
+  color: #5a6648;
+}
+[data-theme="light"] .bg-gray-700.text-gray-300:hover {
+  background-color: #c8d1b8;
+  color: #3d4a2e;
+}
+
+/* ── Dropdown menus ── */
+[data-theme="light"] .absolute.bg-gray-800.border.border-gray-700 {
+  background-color: #ffffff;
+  border-color: #d4dac8;
+  box-shadow: 0 8px 24px rgba(61,74,46,0.12);
+}
+
+/* ── Colored accent backgrounds — warm for olive context ── */
+[data-theme="light"] .bg-amber-900\/50 { background-color: rgba(251,191,36,0.15); }
+[data-theme="light"] .text-amber-200 { color: #92400e; }
+[data-theme="light"] .border-amber-700 { border-color: #d97706; }
+
+/* ── Input / kbd overrides ── */
+[data-theme="light"] kbd, [data-theme="light"] .bg-gray-800.rounded {
+  background-color: #dce3d0;
+  color: #5a6648;
+}
+
+/* ── Header nav bar — dark olive ── */
+[data-theme="light"] header.bg-gray-800 {
+  background-color: #3d4a2e;
+  border-bottom: 1px solid #2c3320;
+  box-shadow: 0 2px 8px rgba(44,51,32,0.15);
+}
+/* Header text stays light on dark olive header */
+[data-theme="light"] header.bg-gray-800 .text-white,
+[data-theme="light"] header.bg-gray-800 .text-gray-300,
+[data-theme="light"] header.bg-gray-800 .text-gray-400,
+[data-theme="light"] header.bg-gray-800 .text-gray-500 {
+  color: #d4dac8;
+}
+[data-theme="light"] header.bg-gray-800 .hover\:text-white:hover {
+  color: #ffffff;
+}
+[data-theme="light"] header.bg-gray-800 .bg-gray-700\/50 {
+  background-color: rgba(255,255,255,0.1);
+}
+[data-theme="light"] header.bg-gray-800 .hover\:bg-gray-700:hover {
+  background-color: rgba(255,255,255,0.15);
+}
+[data-theme="light"] header.bg-gray-800 .border-gray-600 {
+  border-color: rgba(255,255,255,0.15);
+}
+[data-theme="light"] header.bg-gray-800 .bg-gray-800 {
+  background-color: rgba(255,255,255,0.1);
+}
+
+/* ── Breadcrumb area ── */
+[data-theme="light"] .text-gray-300.hover\:text-white:hover { color: #2c3320; }
+
+/* ── Tooltip overrides ── */
+[data-theme="light"] .css-tooltip-wrap::after {
+  background: rgba(255,255,255,0.96);
+  color: #3d4a2e;
+  border-color: rgba(212,218,200,0.6);
+  box-shadow: 0 4px 12px rgba(61,74,46,0.12);
+}
+[data-theme="light"] .css-tooltip-wrap::before {
+  border-top-color: rgba(255,255,255,0.96);
+}
+
+/* ── Scrollbar styling — sage ── */
+[data-theme="light"] ::-webkit-scrollbar-track { background: #eef1e8; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c8d1b8; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #9ca88c; }
+
+/* ── Focus ring visibility ── */
+[data-theme="light"] .focus\:ring-gray-600:focus { --tw-ring-color: #9ca88c; }
+
+/* ── Custom color overrides (sensor cards, etc.) ── */
+[data-theme="light"] .bg-dark-gray  { background-color: #ffffff; }
+[data-theme="light"] .bg-near-black { background-color: #fafbf8; }
+[data-theme="light"] .bg-charcoal   { background-color: #eef1e8; }
+[data-theme="light"] .bg-dark-charcoal { background-color: #dce3d0; }
+[data-theme="light"] .bg-deep-blue  { background-color: #eef1e8; }
+[data-theme="light"] .bg-medium-blue { background-color: #e2e8d8; }
+[data-theme="light"] .text-light-gray { color: #2c3320; }
+[data-theme="light"] .text-off-white  { color: #3d4a2e; }
+
+/* ── Sensor card tiles — white with sage border + olive shadow ── */
+[data-theme="light"] .sensor.bg-dark-gray {
+  background-color: #ffffff;
+  border: 1px solid #d4dac8;
+  box-shadow: 0 1px 3px rgba(61,74,46,0.08), 0 1px 2px rgba(61,74,46,0.04);
+}
+[data-theme="light"] .sensor.bg-dark-gray:hover {
+  box-shadow: 0 4px 8px rgba(61,74,46,0.12), 0 2px 4px rgba(61,74,46,0.06);
+  border-color: #c8d1b8;
+}
+
+/* ── Mobile footer tab bar ── */
+[data-theme="light"] .bg-gray-900.border-t {
+  background-color: #fafbf8;
+  border-top-color: #d4dac8;
+}
+[data-theme="light"] .bg-gray-900.border-t .border-gray-800 {
+  border-color: #e2e8d8;
+}
+
+/* ── Chat sidebar ── */
+[data-theme="light"] .bg-gray-800.border-l {
+  background-color: #ffffff;
+  border-left-color: #d4dac8;
+}
+
+/* ── SVG icons — ensure visibility ── */
+[data-theme="light"] .text-gray-300 svg,
+[data-theme="light"] .text-gray-400 svg {
+  opacity: 0.85;
+}
+
+/* ── Loading spinner — sage track ── */
+[data-theme="light"] .loading::before {
+  border-color: #c8d1b8;
+  border-top-color: #5a6648;
+}
 
 /* This file is for your main application CSS */
 

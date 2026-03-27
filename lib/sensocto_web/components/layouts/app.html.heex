@@ -36,11 +36,9 @@
 
 <header class="bg-gray-800 px-4 py-1 flex justify-between items-center">
   <div class="flex items-center gap-4">
-    <div id="octopus-logo" phx-hook="OctopusLogo" phx-update="ignore">
-      <.link navigate={~p"/"} class="flex items-center">
-        <img src={~p"/images/octopus_simplified.svg"} alt="Sensocto" class="h-28 w-28" />
-      </.link>
-    </div>
+    <.link navigate={~p"/"} class="flex items-center">
+      <img src={~p"/images/octopus_simplified.svg"} alt="Sensocto" class="h-28 w-28" />
+    </.link>
     <.live_component module={SensoctoWeb.SystemMetricsComponent} id="system-metrics" />
   </div>
   <%!-- Desktop navigation --%>

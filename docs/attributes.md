@@ -92,12 +92,6 @@ Attribute types are organized into categories for easier navigation. Each type h
 
 ---
 
-## Specialty
-
-| Type | Payload Fields | Visualization | Description |
-|------|----------------|---------------|-------------|
-| `buttplug` | `command` | Control | Haptic device control |
-
 ---
 
 ## Adding New Attribute Types

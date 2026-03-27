@@ -1,12 +1,13 @@
 defmodule SensoctoWeb.MidiOutputRegressionTest do
   @moduledoc """
-  Regression tests for MIDI output data flow.
+  Regression tests for MIDI/graph data flow.
 
-  Guards against:
-  - composite_measurement push_events not being emitted on /lobby/graph
-  - MIDI-relevant attributes being dropped or misformatted
-  - Non-MIDI attributes leaking into composite_measurement events
-  - Measurement format handling (single map vs list of maps)
+  After the ViewerDataChannel migration, composite_measurement events are
+  dispatched as JS CustomEvents by the CompositeMeasurementHandler hook —
+  no longer as LiveView push_events. These tests verify:
+  - LobbyLive handles :lens_batch without crashing in graph view
+  - midi_toggled hook events are accepted without errors
+  - Graph view mounts successfully and renders expected content
   """
 
   use SensoctoWeb.ConnCase
@@ -14,8 +15,6 @@ defmodule SensoctoWeb.MidiOutputRegressionTest do
   import Phoenix.LiveViewTest
 
   @moduletag :integration
-
-  @midi_attributes ["respiration", "hrv", "breathing_sync", "hrv_sync", "heartrate", "hr"]
 
   setup %{conn: conn} do
     email = "midi_test_#{System.unique_integer([:positive])}@example.com"
@@ -39,8 +38,8 @@ defmodule SensoctoWeb.MidiOutputRegressionTest do
     {:ok, conn: conn, user: user}
   end
 
-  describe "graph view composite_measurement push_events" do
-    test "pushes composite_measurement for heartrate (single map)", %{conn: conn} do
+  describe "graph view lens_batch handling" do
+    test "handles lens_batch with single map measurement without crash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/lobby/graph")
 
       batch = %{
@@ -51,15 +50,11 @@ defmodule SensoctoWeb.MidiOutputRegressionTest do
 
       send(view.pid, {:lens_batch, batch})
 
-      assert_push_event(view, "composite_measurement", %{
-        sensor_id: "sensor-1",
-        attribute_id: "heartrate",
-        payload: 72,
-        timestamp: 1_234_567_890
-      })
+      # View should still be alive and rendering
+      assert render(view) =~ "LobbyGraph"
     end
 
-    test "pushes composite_measurement for respiration (list of maps)", %{conn: conn} do
+    test "handles lens_batch with list-of-maps measurement without crash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/lobby/graph")
 
       batch = %{
@@ -73,82 +68,10 @@ defmodule SensoctoWeb.MidiOutputRegressionTest do
 
       send(view.pid, {:lens_batch, batch})
 
-      assert_push_event(view, "composite_measurement", %{
-        sensor_id: "sensor-1",
-        attribute_id: "respiration",
-        payload: 85.5,
-        timestamp: 1_234_567_890
-      })
-
-      assert_push_event(view, "composite_measurement", %{
-        sensor_id: "sensor-1",
-        attribute_id: "respiration",
-        payload: 86.0,
-        timestamp: 1_234_567_891
-      })
+      assert render(view) =~ "LobbyGraph"
     end
 
-    test "pushes composite_measurement for all MIDI attribute types", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby/graph")
-
-      ts = System.system_time(:millisecond)
-
-      batch = %{
-        "sensor-1" =>
-          Map.new(@midi_attributes, fn attr ->
-            {attr, %{payload: 50.0, timestamp: ts}}
-          end)
-      }
-
-      send(view.pid, {:lens_batch, batch})
-
-      for attr <- @midi_attributes do
-        assert_push_event(view, "composite_measurement", %{
-          sensor_id: "sensor-1",
-          attribute_id: ^attr
-        })
-      end
-    end
-
-    test "does NOT push composite_measurement for non-MIDI attributes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby/graph")
-
-      batch = %{
-        "sensor-1" => %{
-          "battery" => %{payload: 85, timestamp: 1_234_567_890},
-          "temperature" => %{payload: 22.5, timestamp: 1_234_567_890},
-          "imu" => %{payload: %{x: 1, y: 2, z: 3}, timestamp: 1_234_567_890}
-        }
-      }
-
-      send(view.pid, {:lens_batch, batch})
-
-      # graph_activity should still be pushed (it's always pushed for graph view)
-      assert_push_event(view, "graph_activity", %{sensor_id: "sensor-1"})
-
-      # But no composite_measurement should be pushed for non-MIDI attributes
-      refute_push_event(view, "composite_measurement", %{attribute_id: "battery"})
-      refute_push_event(view, "composite_measurement", %{attribute_id: "temperature"})
-      refute_push_event(view, "composite_measurement", %{attribute_id: "imu"})
-    end
-
-    test "pushes graph_activity alongside composite_measurement", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby/graph")
-
-      batch = %{
-        "sensor-1" => %{
-          "heartrate" => %{payload: 72, timestamp: 1_234_567_890}
-        }
-      }
-
-      send(view.pid, {:lens_batch, batch})
-
-      # Both events should be pushed
-      assert_push_event(view, "graph_activity", %{sensor_id: "sensor-1"})
-      assert_push_event(view, "composite_measurement", %{sensor_id: "sensor-1"})
-    end
-
-    test "handles multiple sensors in a single batch", %{conn: conn} do
+    test "handles lens_batch with multiple sensors without crash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/lobby/graph")
 
       batch = %{
@@ -158,33 +81,28 @@ defmodule SensoctoWeb.MidiOutputRegressionTest do
 
       send(view.pid, {:lens_batch, batch})
 
-      assert_push_event(view, "composite_measurement", %{sensor_id: "sensor-1", payload: 72})
-      assert_push_event(view, "composite_measurement", %{sensor_id: "sensor-2", payload: 80})
+      assert render(view) =~ "LobbyGraph"
     end
 
-    test "handles mixed MIDI and non-MIDI attributes in same sensor", %{conn: conn} do
+    test "handles lens_batch with mixed attribute types without crash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/lobby/graph")
 
       batch = %{
         "sensor-1" => %{
           "heartrate" => %{payload: 72, timestamp: 1_000},
-          "battery" => %{payload: 85, timestamp: 1_000}
+          "battery" => %{payload: 85, timestamp: 1_000},
+          "imu" => %{payload: %{x: 1, y: 2, z: 3}, timestamp: 1_000}
         }
       }
 
       send(view.pid, {:lens_batch, batch})
 
-      assert_push_event(view, "composite_measurement", %{
-        attribute_id: "heartrate",
-        payload: 72
-      })
-
-      refute_push_event(view, "composite_measurement", %{attribute_id: "battery"})
+      assert render(view) =~ "LobbyGraph"
     end
   end
 
-  describe "non-graph views do NOT push composite_measurement for graph data" do
-    test "sensors view does not push composite_measurement", %{conn: conn} do
+  describe "sensors view lens_batch handling" do
+    test "handles lens_batch in sensors view without crash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/lobby")
 
       batch = %{
@@ -195,7 +113,8 @@ defmodule SensoctoWeb.MidiOutputRegressionTest do
 
       send(view.pid, {:lens_batch, batch})
 
-      refute_push_event(view, "composite_measurement", %{attribute_id: "heartrate"}, 200)
+      # Sensors view should still be alive
+      assert render(view) =~ "lobby"
     end
   end
 

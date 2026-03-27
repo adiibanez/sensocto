@@ -145,7 +145,7 @@ defmodule SensoctoWeb.Router do
       live "/lobby/users", LobbyLive, :users
       live "/lobby/graph", LobbyLive, :graph
       live "/lobby/graph3d", LobbyLive, :graph3d
-      live "/lobby/hierarchy", LobbyLive, :hierarchy
+
       # My Devices page (standalone)
       live "/devices", DevicesLive, :index
       # Single sensor detail view (full-page, from lobby context)

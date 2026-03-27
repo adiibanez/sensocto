@@ -1,65 +1,213 @@
 # Sensocto API Client Development Report
 
 **Generated:** 2026-01-24
-**Last Updated:** 2026-03-01
-**Status:** Comprehensive Review with Dependency Updates, New Routes, and Cross-SDK Audit
+**Last Updated:** 2026-03-25
+**Status:** Major Rust SDK Expansion -- Lobby and Room Session Channels, New Server Channels Fully Supported
 
 ---
 
 ## Executive Summary
 
-The Sensocto platform provides four client SDKs (Unity/C#, Rust, Python, TypeScript/Three.js) for connecting to the sensor streaming platform. All SDKs are functionally complete for core use cases including sensor data streaming, video/voice calls, and backpressure handling. However, a critical cross-SDK model mismatch remains: the server sends `backpressure_config` events with 8 fields, but only Rust and TypeScript SDKs model all key fields. Unity and Python SDKs are missing critical fields (`paused`, `system_load`, `load_multiplier`), and ALL SDKs are missing `memory_protection_active`.
+The Sensocto platform provides four client SDKs (Unity/C#, Rust, Python, TypeScript/Three.js) for connecting to the sensor streaming platform. The Rust SDK has undergone a significant expansion since the last review, adding two new channel modules (`lobby.rs`, `room_session.rs`) with full event handling, new data models (`Room`, `RoomSensor`, `SensorAttribute`, `RoomRole`), and corresponding `join_lobby`/`join_room` methods on the main client. These additions align with two new server-side channels (`LobbyChannel`, `RoomChannel`) that were added to the `UserSocket`.
 
-Since the last review (2026-02-24), development focus has been on platform resilience, UI improvements (graphs, whiteboard, profiles, privacy, audio/MIDI), new lobby routes (`/lobby/graph3d`, `/lobby/hierarchy`), poll features, user profiles, and dependency maintenance across all SDKs. A Connector REST API (`GET/PUT/DELETE /api/connectors`) and token refresh (`POST /api/auth/refresh`) endpoint are now documented in the OpenAPI spec. No new WebSocket channel events or REST endpoints were added in this period.
+The backpressure model mismatch between SDKs remains: Unity and Python are still missing critical fields (`paused`, `system_load`, `load_multiplier`), and ALL SDKs are still missing `memory_protection_active`.
 
-### Key Findings (2026-03-01)
+### Key Findings (2026-03-25)
 
 | Area | Status | Priority |
 |------|--------|----------|
 | BackpressureConfig Model Mismatch | Unity + Python missing critical fields | **Critical** |
 | `memory_protection_active` field | Missing from ALL SDKs | **Critical** |
+| Rust SDK: Lobby + Room Session | **NEW -- Fully implemented** | Resolved |
+| Server: LobbyChannel + RoomChannel | **NEW -- Deployed on UserSocket** | Resolved |
+| Lobby/Room channels missing from Unity, Python, TypeScript | No support in other SDKs | **High** |
 | New Attribute Types (Eye Tracking) | `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` not in any SDK model | High |
 | New Attribute Type (Skeleton) | `skeleton` not in any SDK model | High |
 | `update_connector` event | Server supports it, NO SDK exposes it | High |
-| HydrationChannel | New channel, no SDK support or docs | High |
-| SyncComputer (Kuramoto Sync) | Server-side sync data exposed via composite events, no SDK access | Medium |
+| HydrationChannel | Channel exists, no SDK support or docs | High |
+| Guided Sessions -- No REST API | Feature exists, LiveView-only, no mobile SDK access | **High** |
+| SyncComputer (Kuramoto Sync) | Server-side sync data, no SDK access | Medium |
 | Test Coverage | Python SDK tests still empty | Medium |
 | Python Reconnection Logic | Config exists but not implemented | Medium |
 | `request_quality_tier` event | Undocumented in SDKs | Medium |
-| Guided Sessions -- No REST API | Feature exists, LiveView-only, no mobile SDK access | **High** |
 | Package Publishing | Not published to registries | Low |
 
-### Changes Since Last Review (2026-02-24 to 2026-03-01)
+### Changes Since Last Review (2026-03-01 to 2026-03-25)
 
 | Change | Impact |
 |--------|--------|
-| Rust SDK: `bytes` bumped 1.11.0 to 1.11.1 (PR #63) | Minor dependency maintenance, no API change |
-| Rust SDK: `SDK_NAME` constant added as `"sensocto-rust"` (PR #49) | Rust now has identification constant; Unity, Python, TypeScript still lack one |
-| Three.js SDK: `rollup` bumped 4.55.1 to 4.59.0 (PR #64) | Build tooling update, no runtime change |
-| Three.js SDK: `esbuild`, `@vitest/coverage-v8`, `vitest` bumped (PR #55) | Dev dependency update, no runtime change |
-| Python SDK: `aiohttp` bumped 3.10.11 to 3.13.3 (PR #54) | Runtime dependency update; drops Python 3.8 support in aiohttp itself |
-| Python SDK: minimum Python version bumped to 3.9 in `pyproject.toml` | `requires-python = ">=3.9"` now; classifiers still list 3.8 (stale) |
-| Python SDK: `uv.lock` revision updated from 1 to 3, drops Python <3.9 resolution markers | Lock file simplified, no longer resolves for Python 3.8 |
-| New lobby routes: `/lobby/graph3d`, `/lobby/hierarchy` | LiveView-only, no SDK impact |
-| Guided session improvements (commit `ce729b2`: "improvements to guide, whiteboard") | Continued iteration on guided sessions; still LiveView-only |
-| User profiles, graph views, privacy features (commit `e53fb41`) | LiveView-only, no SDK impact |
-| Audio/MIDI system improvements | Client-side JS only, no SDK impact |
-| Poll system | Collaboration domain; no REST API endpoints for polls yet |
-| Chat component fixes | LiveView-only, no SDK impact |
-| `ash_admin` bumped 0.13.24 to 0.13.26 (PR #72) | Admin UI only, no SDK impact |
-
-### Python SDK: Version Mismatch Warning
-
-The `pyproject.toml` now specifies `requires-python = ">=3.9"` and the `uv.lock` no longer resolves dependencies for Python 3.8. However, the classifiers list still includes `"Programming Language :: Python :: 3.8"` and the tool configs (`[tool.black]`, `[tool.ruff]`, `[tool.mypy]`) still target Python 3.8. These should be updated to 3.9 for consistency:
-
-- `classifiers`: Remove `"Programming Language :: Python :: 3.8"`
-- `[tool.black] target-version`: Change to `["py39", "py310", "py311", "py312"]`
-- `[tool.ruff] target-version`: Change to `"py39"`
-- `[tool.mypy] python_version`: Change to `"3.9"`
+| **Rust SDK: `lobby.rs` added** | New `LobbySession` + `LobbyEvent` enum (LobbyState, RoomAdded, RoomRemoved, RoomUpdated, MembershipChanged). Full mpsc event channel with `handle_lobby_event_sync` parser. |
+| **Rust SDK: `room_session.rs` added** | New `RoomSession` + `RoomEvent` enum (RoomState, SensorAdded, SensorRemoved, MemberJoined, MemberLeft, RoomClosed). Full mpsc event channel with `handle_room_event_sync` parser. |
+| **Rust SDK: `models.rs` expanded** | New structs: `Room` (with `RoomRole`, `configuration`, `sensors`, `member_count`), `RoomSensor` (with `activity_status`, `attributes`), `SensorAttribute` (with `last_value`). Also: `User` struct added. |
+| **Rust SDK: `client.rs` refactored** | New `join_lobby(user_id)` and `join_room(room_id)` methods. Both register event handlers BEFORE channel join to avoid missing initial state pushes. |
+| **Rust SDK: `lib.rs` updated** | New module declarations (`lobby`, `room_session`). New re-exports: `LobbyEvent`, `LobbySession`, `RoomEvent`, `RoomSession`. |
+| **Server: `LobbyChannel` added** | New channel on `lobby:*` topic. Pushes `lobby_state`, `room_added`, `room_removed`, `room_updated`, `membership_changed`. Subscribes to `rooms:lobby` and `lobby:{user_id}` PubSub topics. Authorization: user_id must match socket assigns. |
+| **Server: `RoomChannel` added** | New channel on `room:*` topic. Pushes `room_state`, `sensor_added`, `sensor_removed`, `member_joined`, `member_left`, `room_closed`. Authorization: room must be public or user must be member. UUID validation on room_id. |
+| **Server: `UserSocket` updated** | Now registers 6 channels: `sensocto:*`, `room:*`, `call:*`, `hydration:room:*`, `viewer:*`, `lobby:*` |
+| i18n and UI changes (translations, guide mode) | LiveView-only, no SDK impact |
 
 ---
 
-## CRITICAL FINDING: BackpressureConfig Model Mismatch
+## Rust SDK: New Lobby and Room Session Architecture
+
+### Overview
+
+The Rust SDK now supports three distinct channel session types beyond sensor data streaming:
+
+1. **`SensorStream`** -- Bidirectional sensor measurement channel (existing)
+2. **`CallSession`** -- WebRTC signaling channel (existing)
+3. **`LobbySession`** -- Read-only room list with live updates (NEW)
+4. **`RoomSession`** -- Read-only room detail with sensor/member updates (NEW)
+
+All new sessions follow the same pattern established by `CallSession`: create session + mpsc channel, register handlers before join, receive typed events via `mpsc::Receiver`.
+
+### LobbySession (`clients/rust/src/lobby.rs`)
+
+**Topic:** `lobby:{user_id}`
+
+**Event Model:**
+
+```rust
+pub enum LobbyEvent {
+    LobbyState { my_rooms: Vec<Room>, public_rooms: Vec<Room> },
+    RoomAdded(Room),
+    RoomRemoved { room_id: String },
+    RoomUpdated(Room),
+    MembershipChanged { room_id: String, action: String, user_id: String },
+}
+```
+
+**Server Channel Mapping (verified against `lobby_channel.ex`):**
+
+| Server PubSub Event | Channel Push | Rust LobbyEvent | Match |
+|---------------------|-------------|-----------------|-------|
+| `:after_join` | `lobby_state` | `LobbyState` | Yes |
+| `{:lobby_room_created, room}` | `room_added` | `RoomAdded(Room)` | Yes |
+| `{:lobby_room_deleted, room_id}` | `room_removed` | `RoomRemoved` | Yes |
+| `{:lobby_room_updated, room}` | `room_updated` | `RoomUpdated(Room)` | Yes |
+| `{:membership_changed, room_id, action, user_id}` | `membership_changed` | `MembershipChanged` | Yes |
+
+**Client Usage:**
+
+```rust
+let (lobby, mut events) = client.join_lobby("user-uuid").await?;
+
+tokio::spawn(async move {
+    while let Some(event) = events.recv().await {
+        match event {
+            LobbyEvent::LobbyState { my_rooms, public_rooms } => { /* initial load */ }
+            LobbyEvent::RoomAdded(room) => { /* new room appeared */ }
+            LobbyEvent::RoomRemoved { room_id } => { /* room gone */ }
+            LobbyEvent::RoomUpdated(room) => { /* metadata changed */ }
+            LobbyEvent::MembershipChanged { room_id, action, user_id } => { /* member change */ }
+        }
+    }
+});
+
+// Later:
+lobby.close().await?;
+```
+
+### RoomSession (`clients/rust/src/room_session.rs`)
+
+**Topic:** `room:{room_id}`
+
+**Event Model:**
+
+```rust
+pub enum RoomEvent {
+    RoomState { room_id: String, sensors: Vec<RoomSensor>, member_count: u64 },
+    SensorAdded { room_id: String, sensor: RoomSensor },
+    SensorRemoved { room_id: String, sensor_id: String },
+    MemberJoined { room_id: String, user_id: String },
+    MemberLeft { room_id: String, user_id: String },
+    RoomClosed { room_id: String },
+}
+```
+
+**Server Channel Mapping (verified against `room_channel.ex`):**
+
+| Server PubSub Event | Channel Push | Rust RoomEvent | Match |
+|---------------------|-------------|----------------|-------|
+| `:after_join` | `room_state` | `RoomState` | Yes |
+| `{:sensor_added, sensor_id}` | `sensor_added` | `SensorAdded` | Yes |
+| `{:sensor_removed, sensor_id}` | `sensor_removed` | `SensorRemoved` | Yes |
+| `{:member_joined, user_id, role}` | `member_joined` | `MemberJoined` | Partial -- `role` not captured |
+| `{:member_left, user_id}` | `member_left` | `MemberLeft` | Yes |
+| `:room_closed` | `room_closed` | `RoomClosed` | Yes |
+
+**Gap Found:** The server's `member_joined` event pushes a `role` field that the Rust `RoomEvent::MemberJoined` does not capture. This is a minor omission -- the role information is lost.
+
+### New Data Models (`clients/rust/src/models.rs`)
+
+```rust
+pub struct Room {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub join_code: Option<String>,
+    pub is_public: bool,          // #[serde(default)]
+    pub calls_enabled: bool,      // #[serde(default)]
+    pub owner_id: String,
+    pub configuration: HashMap<String, serde_json::Value>,  // #[serde(default)]
+    pub sensors: Vec<RoomSensor>, // #[serde(default)]
+    pub member_count: u64,        // #[serde(default)]
+    pub created_at: Option<String>,
+}
+
+pub struct RoomSensor {
+    pub sensor_id: String,
+    pub sensor_name: Option<String>,
+    pub sensor_type: Option<String>,
+    pub connector_id: Option<String>,
+    pub connector_name: Option<String>,
+    pub activity_status: Option<String>,
+    pub attributes: Vec<SensorAttribute>,  // #[serde(default)]
+}
+
+pub struct SensorAttribute {
+    pub id: String,
+    pub attribute_type: Option<String>,
+    pub attribute_name: Option<String>,
+    pub last_value: Option<serde_json::Value>,
+}
+
+pub enum RoomRole { Owner, Admin, Member }
+```
+
+**Server JSON Match (verified against `lobby_channel.ex` `room_to_json/1` and `sensor_to_json/1`):**
+
+| Server Field | Rust Field | Match |
+|-------------|-----------|-------|
+| `id` | `id` | Yes |
+| `name` | `name` | Yes |
+| `description` | `description` | Yes |
+| `owner_id` | `owner_id` | Yes |
+| `join_code` | `join_code` | Yes |
+| `is_public` | `is_public` | Yes |
+| `created_at` | `created_at` | Yes |
+| `sensors` | `sensors` | Yes |
+| `member_count` | `member_count` | Yes |
+| `calls_enabled` | `calls_enabled` | No server field -- Rust has it, server does not push it |
+| `configuration` | `configuration` | No server field -- Rust has it, server does not push it |
+
+The `calls_enabled` and `configuration` fields in the Rust `Room` struct have `#[serde(default)]`, so they will deserialize as `false` and empty map respectively when absent from the server payload. This is safe but potentially misleading -- developers may think these fields are populated.
+
+### Client Integration Pattern
+
+The `join_lobby` and `join_room` methods in `client.rs` follow a robust pattern:
+
+1. Create `PhoenixChannel` with the socket
+2. Create session + event sender/receiver via `::new()`
+3. Register ALL event handlers on the socket BEFORE calling `join()` -- this prevents missing the initial `lobby_state` / `room_state` push that the server sends via `send(self(), :after_join)`
+4. Call `session.join()` which triggers the channel join
+5. Return `(Session, Receiver)` to caller
+
+This is the correct approach for Phoenix channels where the server pushes initial state immediately after join.
+
+---
+
+## CRITICAL FINDING: BackpressureConfig Model Mismatch (Unchanged)
 
 ### Server Payload (sensor_data_channel.ex)
 
@@ -110,7 +258,7 @@ When memory protection is active, non-paused sensors (high/medium attention) rec
 **Rust SDK** (`clients/rust/src/models.rs`, `channel.rs`):
 - `BackpressureConfig` includes `paused`, `system_load` (as `SystemLoadLevel` enum), `load_multiplier`
 - `should_pause()` and `effective_batch_window()` helper methods
-- Checks `paused` before `send_measurement` (returns error)
+- Checks `paused` before `send_measurement` (returns `Ok(false)`)
 - Checks `paused` before auto-flush in `add_to_batch`
 - Checks `paused` before `flush_batch` (unless `force`)
 - Exposes `is_paused()` async method
@@ -157,6 +305,57 @@ No SDK currently includes models for these attribute types. While the SDKs can s
 ### Composite View Coverage
 
 The server's `has_composite_view?/1` function recognizes these attribute types for composite (multi-sensor) visualization: `heartrate`, `hr`, `imu`, `geolocation`, `ecg`, `battery`, `spo2`, `skeleton`, `respiration`, `hrv`, `eye_gaze`, `eye_aperture`.
+
+---
+
+## Server-Side Channel Architecture (Current State)
+
+### UserSocket Channel Registry
+
+The `UserSocket` (`lib/sensocto_web/channels/user_socket.ex`) now registers 6 channel patterns:
+
+```elixir
+channel("sensocto:*", SensoctoWeb.SensorDataChannel)
+channel("room:*", SensoctoWeb.RoomChannel)
+channel("call:*", SensoctoWeb.CallChannel)
+channel("hydration:room:*", SensoctoWeb.HydrationChannel)
+channel("viewer:*", SensoctoWeb.ViewerDataChannel)
+channel("lobby:*", SensoctoWeb.LobbyChannel)
+```
+
+### SDK Coverage of Server Channels
+
+| Server Channel | Topic Pattern | Rust | TypeScript | Unity | Python |
+|---------------|--------------|------|------------|-------|--------|
+| SensorDataChannel | `sensocto:sensor:*` | Yes | Yes | Yes | Yes |
+| SensorDataChannel | `sensocto:connector:*` | Yes | Yes | Yes | Yes |
+| CallChannel | `call:*` | Yes | Yes | Partial | No |
+| **LobbyChannel** | `lobby:*` | **Yes (NEW)** | No | No | No |
+| **RoomChannel** | `room:*` | **Yes (NEW)** | No | No | No |
+| HydrationChannel | `hydration:room:*` | No | No | No | No |
+| ViewerDataChannel | `viewer:*` | No | No | No | No |
+
+The Rust SDK is now the most complete client, being the only one with Lobby and Room channel support. Other SDKs should be updated to match.
+
+### LobbyChannel Server Implementation Details
+
+**File:** `lib/sensocto_web/channels/lobby_channel.ex`
+
+- **Authorization:** Validates `socket.assigns.user_id == user_id` from topic
+- **PubSub subscriptions:** `rooms:lobby` (global room events) + `lobby:{user_id}` (user-specific events)
+- **Room resolution:** Calls `RoomStore.list_user_rooms/1` and `RoomStore.list_public_rooms/0`
+- **Sensor resolution:** For each room, resolves live sensor state via `SensorsDynamicSupervisor.get_sensor_state/3`, including attributes with `last_value`
+- **Sensor JSON shape:** `{sensor_id, sensor_name, sensor_type, connector_id, connector_name, activity_status, attributes: [{id, attribute_type, attribute_name, last_value}]}`
+
+### RoomChannel Server Implementation Details
+
+**File:** `lib/sensocto_web/channels/room_channel.ex`
+
+- **Authorization:** Room must be public OR user must be a member (via `RoomStore.is_member?/2`). Falls back to allowing join if room not found in store (room may be loading).
+- **UUID validation:** Validates `room_id` with `Ecto.UUID.cast/1`
+- **PubSub subscription:** `room:{room_id}`
+- **Note:** The `member_joined` event includes a `role` field that the Rust SDK does not currently capture
+- **Note:** `sensor_measurement` events are received but intentionally ignored (`:ok` -- no push to client)
 
 ---
 
@@ -219,6 +418,7 @@ The Guided Sessions feature enables a **guide** to lead a **follower** through t
 | `:end_session` | update | (none) | Sets status `:ended`, sets `ended_at` |
 | `:by_invite_code` | read | arg `invite_code` | Finds pending/active session by code |
 | `:active_for_user` | read | arg `user_id` | Lists active sessions where user is guide or follower |
+| `:pending_for_others` | read | (none) | Finds pending sessions not owned by current user with no follower |
 
 ### SessionServer: Real-Time State
 
@@ -295,8 +495,6 @@ There are **no REST endpoints** and **no dedicated WebSocket channel** for guide
 
 ### Recommended WebSocket Channel for Real-Time Events
 
-REST endpoints alone are insufficient for the follower experience. A dedicated Guidance Channel is recommended:
-
 ```elixir
 # In user_socket.ex
 channel "guidance:*", SensoctoWeb.GuidanceChannel
@@ -351,6 +549,8 @@ Channel events would map directly to existing PubSub events:
 | **Internationalization** | Gettext with 8 languages | `priv/gettext/` |
 | **Connector REST API** | Full CRUD with OpenAPI specs | `/api/connectors` |
 | **Token Refresh** | HttpOnly cookie auth + refresh endpoint | `/api/auth/refresh` |
+| **Lobby Channel** | Real-time room list for mobile clients | `lobby:*` on UserSocket |
+| **Room Channel** | Real-time room detail for mobile clients | `room:*` on UserSocket |
 
 ### Client-Side Resilience Patterns Required
 
@@ -484,6 +684,8 @@ On reconnect, clients must:
 | Research Sync Metrics | None | Add report viewer | None | Add analysis API | Medium |
 | TURN/Cloudflare | Verify ICE config | Verify ICE config | Verify ICE config | Verify ICE config | Low |
 | Guided Sessions | Add guide+follower API | Add guide+follower API | Add guide+follower API | Add programmatic guide API | High |
+| **Lobby Channel** | **Done** | Add lobby session | Add lobby session | Add lobby session | **High** |
+| **Room Channel** | **Done** | Add room session | Add room session | Add room session | **High** |
 
 ---
 
@@ -495,14 +697,17 @@ On reconnect, clients must:
 
 **Endpoint:** `wss://{server}/socket/websocket`
 
-| Channel Topic | Handler | Purpose |
-|--------------|---------|---------|
-| `sensocto:sensor:{sensor_id}` | SensorDataChannel | Real-time sensor data streaming |
-| `sensocto:connector:{connector_id}` | SensorDataChannel | Connector registration |
-| `sensocto:lvntest:{connector_id}` | SensorDataChannel | LiveView Native test connector |
-| `call:{room_id}` | CallChannel | WebRTC signaling for video/voice calls |
-| `hydration:room:{room_id}` | HydrationChannel | Client-side room snapshot storage |
-| `guidance:{session_id}` | *(not yet implemented)* | Guided session real-time events (proposed) |
+| Channel Topic | Handler | Purpose | Rust SDK |
+|--------------|---------|---------|----------|
+| `sensocto:sensor:{sensor_id}` | SensorDataChannel | Real-time sensor data streaming | Yes |
+| `sensocto:connector:{connector_id}` | SensorDataChannel | Connector registration | Yes |
+| `sensocto:lvntest:{connector_id}` | SensorDataChannel | LiveView Native test connector | No |
+| `call:{room_id}` | CallChannel | WebRTC signaling for video/voice calls | Yes |
+| `hydration:room:{room_id}` | HydrationChannel | Client-side room snapshot storage | No |
+| `viewer:{lv_socket_id}` | ViewerDataChannel | Sensor data batches to browser viewers | No |
+| `lobby:{user_id}` | LobbyChannel | Room list with live updates | **Yes (NEW)** |
+| `room:{room_id}` | RoomChannel | Room detail with sensor/member updates | **Yes (NEW)** |
+| `guidance:{session_id}` | *(not yet implemented)* | Guided session real-time events (proposed) | No |
 
 #### Bridge Socket (`/bridge/websocket`)
 
@@ -575,7 +780,7 @@ LiveView routes require browser sessions with CSRF protection:
 ### Unity/C# SDK
 
 **Location:** `clients/unity/SensoctoSDK/`
-**Status:** Production-ready but missing critical backpressure fields
+**Status:** Production-ready but missing critical backpressure fields and new channels
 
 **Strengths:** Unity-idiomatic ScriptableObject config, async/await, event-driven, thread-safe, auto-reconnection (1s-30s backoff), serial port integration, deep link auth, `ShouldFlushImmediate()` for high attention
 
@@ -586,19 +791,30 @@ LiveView routes require browser sessions with CSRF protection:
 - Missing `SDK_NAME` and `VERSION` constants
 - No models for new attribute types (eye tracking, skeleton)
 - No Connector REST API methods
+- **No LobbyChannel or RoomChannel support**
 
 ### Rust SDK
 
 **Location:** `clients/rust/`
-**Status:** Most complete SDK alongside TypeScript
+**Status:** Most complete SDK -- now with lobby and room session channels
 
-**Strengths:** Idiomatic Rust, async tokio, builder pattern, thiserror errors, `SDK_NAME = "sensocto-rust"`, full backpressure with `paused`/`system_load`/`load_multiplier`, `should_pause()` + `effective_batch_window()`, pause checks in all send paths, force-flush on close
+**Strengths:** Idiomatic Rust, async tokio, builder pattern, thiserror errors, `SDK_NAME = "sensocto-rust"`, full backpressure with `paused`/`system_load`/`load_multiplier`, `should_pause()` + `effective_batch_window()`, pause checks in all send paths, force-flush on close. **NEW:** `LobbySession` for room list updates, `RoomSession` for room detail updates, `Room`/`RoomSensor`/`SensorAttribute` models, proper handler-before-join pattern.
 
-**Issues:** Missing `memory_protection_active`, `blocking` feature flag not implemented, examples commented out, no models for new attribute types (eye tracking, skeleton), no Connector REST API methods
+**Issues:**
+- Missing `memory_protection_active` in BackpressureConfig
+- `blocking` feature flag not implemented
+- Examples commented out
+- No models for new attribute types (eye tracking, skeleton)
+- No Connector REST API methods
+- `RoomEvent::MemberJoined` does not capture `role` field from server
+- `Room` struct has `calls_enabled` and `configuration` fields that server does not currently push (always default values)
 
-**Recent Changes:**
-- `bytes` dependency bumped 1.11.0 to 1.11.1 (PR #63, minor maintenance)
-- `SDK_NAME` constant added as `"sensocto-rust"` (PR #49)
+**Recent Changes (2026-03-01 to 2026-03-25):**
+- `lobby.rs` added -- full lobby session with typed events and mpsc channel
+- `room_session.rs` added -- full room session with typed events and mpsc channel
+- `models.rs` expanded -- `Room`, `RoomSensor`, `SensorAttribute`, `RoomRole`, `User` structs
+- `client.rs` refactored -- `join_lobby()` and `join_room()` methods with handler-before-join pattern
+- `lib.rs` updated -- new module declarations and re-exports
 
 ### Python SDK
 
@@ -614,22 +830,37 @@ LiveView routes require browser sessions with CSRF protection:
 - Missing `SDK_NAME`
 - No models for new attribute types (eye tracking, skeleton)
 - No Connector REST API methods
+- **No LobbyChannel or RoomChannel support**
 
-**Recent Changes:**
+**Previous Changes:**
 - `aiohttp` bumped 3.10.11 to 3.13.3 (PR #54) -- significant upgrade
 - Minimum Python version bumped to 3.9 in `requires-python` but tool configs still target 3.8 (inconsistency)
 - `uv.lock` simplified: no longer resolves for Python <3.9
 
+### Python SDK: Version Mismatch Warning
+
+The `pyproject.toml` now specifies `requires-python = ">=3.9"` and the `uv.lock` no longer resolves dependencies for Python 3.8. However, the classifiers list still includes `"Programming Language :: Python :: 3.8"` and the tool configs (`[tool.black]`, `[tool.ruff]`, `[tool.mypy]`) still target Python 3.8. These should be updated to 3.9 for consistency:
+
+- `classifiers`: Remove `"Programming Language :: Python :: 3.8"`
+- `[tool.black] target-version`: Change to `["py39", "py310", "py311", "py312"]`
+- `[tool.ruff] target-version`: Change to `"py39"`
+- `[tool.mypy] python_version`: Change to `"3.9"`
+
 ### TypeScript/Three.js SDK
 
 **Location:** `clients/threejs/`
-**Status:** Feature-complete with best backpressure handling
+**Status:** Feature-complete for sensor streaming, missing new channels
 
 **Strengths:** Full TypeScript, `BackpressureConfig` with `paused`/`systemLoad`/`loadMultiplier`, `parseBackpressureConfig()`, `isPaused` getter, pause checks everywhere, force-flush on close, handler unsubscribe pattern, ESM + CJS
 
-**Issues:** Missing `memory_protection_active`, missing `SDK_NAME`, no models for new attribute types (eye tracking, skeleton), no Connector REST API methods
+**Issues:**
+- Missing `memory_protection_active`
+- Missing `SDK_NAME`
+- No models for new attribute types (eye tracking, skeleton)
+- No Connector REST API methods
+- **No LobbyChannel or RoomChannel support**
 
-**Recent Changes:**
+**Previous Changes:**
 - `rollup` bumped 4.55.1 to 4.59.0 (PR #64)
 - `esbuild`, `@vitest/coverage-v8`, `vitest` bumped (PR #55)
 
@@ -678,6 +909,46 @@ LiveView routes require browser sessions with CSRF protection:
 }
 ```
 
+### Lobby Channel Protocol
+
+#### Server-to-Client Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `lobby_state` | `{my_rooms: Room[], public_rooms: Room[]}` | Initial room list on join |
+| `room_added` | `Room` | A room was created or user was invited |
+| `room_removed` | `{room_id: string}` | Room deleted or user removed |
+| `room_updated` | `Room` | Room metadata changed |
+| `membership_changed` | `{room_id, action, user_id}` | Member join/leave in user's rooms |
+
+**Room JSON Shape:**
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "description": "string|null",
+  "owner_id": "uuid",
+  "join_code": "string|null",
+  "is_public": false,
+  "created_at": "ISO8601|null",
+  "sensors": [{ "sensor_id", "sensor_name", "sensor_type", "connector_id", "connector_name", "activity_status", "attributes": [{ "id", "attribute_type", "attribute_name", "last_value" }] }],
+  "member_count": 0
+}
+```
+
+### Room Channel Protocol
+
+#### Server-to-Client Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `room_state` | `{room_id, sensors: RoomSensor[], member_count}` | Initial state on join |
+| `sensor_added` | `{room_id, sensor: RoomSensor}` | Sensor added to room |
+| `sensor_removed` | `{room_id, sensor_id}` | Sensor removed from room |
+| `member_joined` | `{room_id, user_id, role}` | Member joined |
+| `member_left` | `{room_id, user_id}` | Member left |
+| `room_closed` | `{room_id}` | Room was closed |
+
 ### Call Channel Protocol
 
 #### Client-to-Server Events
@@ -689,9 +960,9 @@ LiveView routes require browser sessions with CSRF protection:
 | `media_event` | `{data: {...}}` | WebRTC signaling |
 | `toggle_audio` | `{enabled: bool}` | Toggle audio |
 | `toggle_video` | `{enabled: bool}` | Toggle video |
-| `set_quality` | `{quality: "high\|medium\|low"}` | Set quality |
+| `set_quality` | `{quality: "high|medium|low"}` | Set quality |
 | `speaking_state` | `{speaking: bool}` | Voice activity |
-| `attention_state` | `{level: "high\|medium\|low"}` | Viewer attention |
+| `attention_state` | `{level: "high|medium|low"}` | Viewer attention |
 | `video_snapshot` | `{data, width, height, timestamp}` | Snapshot for low-tier |
 | `get_participants` | none | Request participant list |
 | `request_quality_tier` | `{target_user_id, tier}` | Request quality adjustment |
@@ -735,7 +1006,7 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 | Basic Auth | Env vars | Admin routes |
 | Magic Link | Email-based authentication | Sign-in flow |
 
-**Socket-Level:** UserSocket accepts ALL connections. Auth deferred to channel join. BridgeSocket has optional token validation.
+**Socket-Level:** UserSocket accepts ALL connections (with warning for missing/invalid tokens during migration period). Auth deferred to channel join. Lobby and Room channels validate `user_id` from socket assigns. BridgeSocket has optional token validation.
 
 **Rate Limiting:** ETS sliding window. Auth: 10/60s, Registration: 5/60s, API auth: 20/60s, Guest: 10/60s. POST only. Headers: `X-RateLimit-*`, `Retry-After`.
 
@@ -753,7 +1024,6 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 | Environment | `temperature`, `humidity`, `pressure`, `light`, `proximity`, `gas`, `air_quality`, `color` | 8 |
 | Device | `battery`, `button`, `led`, `speaker`, `microphone`, `body_location`, `rich_presence` | 7 |
 | Activity | `steps`, `calories`, `distance` | 3 |
-| Specialty | `buttplug` | 1 |
 | Eye Tracking | `eye_gaze`, `eye_blink`, `eye_worn`, `eye_aperture` | 4 |
 
 ### Eye Tracking Payload Fields
@@ -784,38 +1054,42 @@ Server-to-client: `snapshot:request`, `snapshot:store`, `snapshot:delete`
 
 ### Short-term Actions (Priority: High)
 
-5. **Add Guided Sessions REST API + WebSocket channel** -- Create `/api/guidance/*` endpoints and `guidance:*` channel on UserSocket so mobile clients can participate as guide or follower
-6. **Add GuidedSession and GuidedSessionState models** to Unity and TypeScript SDKs (primary mobile platforms)
-7. **Add eye tracking attribute models** (`EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`) to all SDKs
-8. **Add skeleton/pose attribute model** (`Skeleton` with `landmarks` field) to all SDKs
-9. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
-10. **Add Python SDK tests** -- Currently empty directory
-11. **Expose `update_connector` event in SDKs**
-12. **Add Connector REST API methods** to all SDKs (`GET/PUT/DELETE /api/connectors`)
-13. **Fix Python SDK version config inconsistency** -- Update tool configs from 3.8 to 3.9 targets
-14. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
-15. **Document adaptive video quality events** in SDK call session classes
+5. **Add LobbyChannel support to TypeScript, Unity, and Python SDKs** -- Rust implementation is the reference. Port `LobbySession`/`LobbyEvent` pattern to each platform.
+6. **Add RoomChannel support to TypeScript, Unity, and Python SDKs** -- Rust implementation is the reference. Port `RoomSession`/`RoomEvent` pattern to each platform.
+7. **Add `role` field to Rust `RoomEvent::MemberJoined`** -- Server sends it but Rust SDK drops it
+8. **Remove or document `calls_enabled`/`configuration` fields** on Rust `Room` struct -- Server does not push these fields; they always have default values
+9. **Add Guided Sessions REST API + WebSocket channel** -- Create `/api/guidance/*` endpoints and `guidance:*` channel on UserSocket so mobile clients can participate as guide or follower
+10. **Add GuidedSession and GuidedSessionState models** to Unity and TypeScript SDKs (primary mobile platforms)
+11. **Add eye tracking attribute models** (`EyeGaze`, `EyeBlink`, `EyeWorn`, `EyeAperture`) to all SDKs
+12. **Add skeleton/pose attribute model** (`Skeleton` with `landmarks` field) to all SDKs
+13. **Implement Python reconnection logic** -- Config exists but socket has no reconnection code
+14. **Add Python SDK tests** -- Currently empty directory
+15. **Expose `update_connector` event in SDKs**
+16. **Add Connector REST API methods** to all SDKs (`GET/PUT/DELETE /api/connectors`)
+17. **Fix Python SDK version config inconsistency** -- Update tool configs from 3.8 to 3.9 targets
+18. **Add SDK_NAME and VERSION constants** to Unity, Python, and TypeScript SDKs
+19. **Document adaptive video quality events** in SDK call session classes
 
 ### Medium-term Actions (Priority: Medium)
 
-16. **Prepare delta decoders** for each SDK ahead of delta encoding rollout
-17. **Publish SDKs** to package registries (crates.io, PyPI, npm, OpenUPM)
-18. **Add `blocking` API** to Rust SDK
-19. **Add sync wrapper** for Python SDK
-20. **Create cross-SDK backpressure handling guide**
-21. **Add sensor listing API** when Distributed Discovery ships
-22. **Document HydrationChannel protocol** in SDK docs
-23. **Document marine/coral attribute types** in SDK attribute enums (currently in docs but not in `AttributeType` module)
+20. **Prepare delta decoders** for each SDK ahead of delta encoding rollout
+21. **Publish SDKs** to package registries (crates.io, PyPI, npm, OpenUPM)
+22. **Add `blocking` API** to Rust SDK
+23. **Add sync wrapper** for Python SDK
+24. **Create cross-SDK backpressure handling guide**
+25. **Add sensor listing API** when Distributed Discovery ships
+26. **Document HydrationChannel protocol** in SDK docs
+27. **Document marine/coral attribute types** in SDK attribute enums (currently in docs but not in `AttributeType` module)
 
 ### Long-term Actions (Priority: Low)
 
-24. **Create Elixir/Livebook SDK** with Kino integration
-25. **Add binary protocol option** for high-frequency data
-26. **Implement API versioning** strategy
-27. **Build developer portal** with interactive docs
-28. **Add WebWorker support** to TypeScript SDK
-29. **Add sync report API** to Python SDK when research sync metrics ship
-30. **Verify ICE server propagation** across all SDKs for TURN support
+28. **Create Elixir/Livebook SDK** with Kino integration
+29. **Add binary protocol option** for high-frequency data
+30. **Implement API versioning** strategy
+31. **Build developer portal** with interactive docs
+32. **Add WebWorker support** to TypeScript SDK
+33. **Add sync report API** to Python SDK when research sync metrics ship
+34. **Verify ICE server propagation** across all SDKs for TURN support
 
 ---
 
@@ -855,6 +1129,22 @@ interface ConnectorJoinParams {
 }
 ```
 
+### Lobby Channel
+```typescript
+interface LobbyJoinParams {
+  // No params required -- user_id is extracted from topic "lobby:{user_id}"
+  // and validated against socket.assigns.user_id
+}
+```
+
+### Room Channel
+```typescript
+interface RoomJoinParams {
+  // No params required -- room_id is extracted from topic "room:{room_id}"
+  // Authorization: room must be public or user must be member
+}
+```
+
 ### Hydration Channel
 ```typescript
 interface HydrationJoinParams {
@@ -877,6 +1167,7 @@ interface HydrationJoinParams {
 | `call_full` | Call | Room at capacity | Yes (wait) |
 | `not_room_member` | Auth | User not in room | No |
 | `not_in_call` | State | Action requires being in call | Yes (join first) |
+| `invalid room id` | Validation | Room ID is not a valid UUID (RoomChannel) | No |
 
 ---
 
@@ -891,14 +1182,31 @@ interface HydrationJoinParams {
 | Python | `clients/python/sensocto/` |
 | TypeScript | `clients/threejs/src/` |
 
+### Rust SDK Module Map
+
+| Module | File | Purpose |
+|--------|------|---------|
+| `client` | `clients/rust/src/client.rs` | Main `SensoctoClient` with connect, register_sensor, join_lobby, join_room, join_call |
+| `config` | `clients/rust/src/config.rs` | `SensoctoConfig` builder + `SensorConfig` |
+| `channel` | `clients/rust/src/channel.rs` | `PhoenixChannel`, `SensorStream`, `CallSession` |
+| `socket` | `clients/rust/src/socket.rs` | `PhoenixSocket` WebSocket transport with heartbeat |
+| `models` | `clients/rust/src/models.rs` | All data models (Room, RoomSensor, BackpressureConfig, etc.) |
+| `lobby` | `clients/rust/src/lobby.rs` | `LobbySession` + `LobbyEvent` + event parser |
+| `room_session` | `clients/rust/src/room_session.rs` | `RoomSession` + `RoomEvent` + event parser |
+| `error` | `clients/rust/src/error.rs` | `SensoctoError` enum with thiserror |
+| `lib` | `clients/rust/src/lib.rs` | Module declarations, re-exports, `SDK_NAME` constant |
+
 ### Server Channel Files
 
 | Channel | Location |
 |---------|----------|
 | SensorDataChannel | `lib/sensocto_web/channels/sensor_data_channel.ex` |
 | CallChannel | `lib/sensocto_web/channels/call_channel.ex` |
+| LobbyChannel | `lib/sensocto_web/channels/lobby_channel.ex` |
+| RoomChannel | `lib/sensocto_web/channels/room_channel.ex` |
 | BridgeChannel | `lib/sensocto_web/channels/bridge_channel.ex` |
 | HydrationChannel | `lib/sensocto_web/channels/hydration_channel.ex` |
+| ViewerDataChannel | `lib/sensocto_web/channels/viewer_data_channel.ex` |
 | UserSocket | `lib/sensocto_web/channels/user_socket.ex` |
 | BridgeSocket | `lib/sensocto_web/channels/bridge_socket.ex` |
 
@@ -944,4 +1252,4 @@ interface HydrationJoinParams {
 ---
 
 *Report generated by api-client-developer agent*
-*Last review: 2026-03-01*
+*Last review: 2026-03-25*

@@ -1,0 +1,73 @@
+# Buttplug.io Device Simulation - simulated intimate haptic devices
+# Use case: Testing buttplug.io integration without physical hardware
+# Requires sensualocto flag on user account
+#
+# Simulates two devices with vibrate/battery attributes,
+# generating oscillating vibration patterns and battery drain.
+
+intimate: true
+
+connectors:
+  buttplug_sim:
+    connector_id: "buttplug_sim"
+    connector_name: "Buttplug_Simulator"
+    sensors:
+      buttplug_device_1:
+        sensor_id: "buttplug:sim:Vibrator_A"
+        sensor_name: "Vibrator A (Simulated)"
+        sensor_type: "buttplug"
+        attributes:
+          vibrate:
+            attribute_id: "vibrate"
+            sensor_type: "buttplug_vibrate"
+            batch_size: 1
+            batch_window: 500
+            duration: 0
+            sampling_rate: 2
+            min_value: 0.0
+            max_value: 1.0
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 40
+            max_value: 85
+            dummy_data: true
+          status:
+            attribute_id: "status"
+            sensor_type: "buttplug_status"
+            batch_size: 1
+            batch_window: 30000
+            duration: 0
+            sampling_rate: 0.033
+            dummy_data: true
+
+      buttplug_device_2:
+        sensor_id: "buttplug:sim:Linear_B"
+        sensor_name: "Linear B (Simulated)"
+        sensor_type: "buttplug"
+        attributes:
+          linear:
+            attribute_id: "linear"
+            sensor_type: "buttplug_linear"
+            batch_size: 1
+            batch_window: 500
+            duration: 0
+            sampling_rate: 2
+            min_value: 0.0
+            max_value: 1.0
+            dummy_data: true
+          battery:
+            attribute_id: "battery"
+            sensor_type: "battery"
+            batch_size: 1
+            batch_window: 10000
+            duration: 0
+            sampling_rate: 0.1
+            min_value: 55
+            max_value: 95
+            dummy_data: true

@@ -1,5 +1,5 @@
 # Iroh Integration -- Team Report
-*Last updated: 2026-03-08*
+*Last updated: 2026-03-25*
 
 ## Goals
 
@@ -11,23 +11,46 @@
 
 ---
 
-## Current Status (2026-03-05)
+## Current Status (2026-03-25)
 
-### What Has Changed Since 2026-03-01
+### What Has Changed Since 2026-03-08
 
 **iroh modules**: No changes. The iroh code in `lib/sensocto/iroh/` has been stable since the ConnectionManager consolidation (commit `4d12618`, 2026-02-08). All 5 modules (`connection_manager.ex`, `room_store.ex`, `room_sync.ex`, `room_state_crdt.ex`, `room_state_bridge.ex`) are unchanged.
 
-**iroh_ex dependency**: Updated to `~> 0.0.16` (Hex). NIF binary targets include `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, and `x86_64-pc-windows-msvc`. The `NodeConfig` struct now includes a `secret_key` field (enforced key), which may resolve the identity persistence blocker.
+**iroh_ex dependency**: Unchanged at `~> 0.0.16`.
 
-**Significant surrounding changes (Mar 1 - Mar 5):**
+**Significant surrounding changes (Mar 8 - Mar 25):**
 
-- **Fullscreen 3D object viewer** (commit `076abf7`): Improvements to the Object3D viewer and graph visualizations. The 3D viewer is one of the state types synchronized via `RoomStateBridge` -> `RoomStateCRDT`. No change to the iroh integration pattern.
+- **New: Rust SDK with lobby and room session management** -- A full Rust client SDK now exists at `clients/rust/`. It uses Phoenix Channels over WebSocket (not iroh) and includes:
+  - `LobbySession` (lobby.rs): joins `lobby:{user_id}`, receives `lobby_state`, `room_added`, `room_removed`, `room_updated`, `membership_changed` events
+  - `RoomSession` (room_session.rs): joins `room:{room_id}`, receives `room_state`, `sensor_added`, `sensor_removed`, `member_joined`, `member_left`, `room_closed` events
+  - Full backpressure model (`BackpressureConfig`, `AttentionLevel`, `SystemLoadLevel`) mirroring the server-side system
+  - Auto-reconnect with exponential backoff and jitter
+  - Call session (WebRTC signaling via channel)
 
-- **PriorityLens: respiration added to high-frequency attributes** (commit `076abf7`): `@high_frequency_attributes` in `priority_lens.ex` now includes `"respiration"` alongside `"ecg"`, `"button"`, and `"buttons"`. This means respiration waveform data now accumulates in lists (preserving all samples between flushes) rather than keeping only the latest value. This increases per-flush payload size for respiration sensors and is relevant to the delta encoding opportunity (#5) -- respiration data could benefit from the same delta encoding as ECG.
+  **Impact on iroh planning**: This Rust SDK is the **primary integration target for iroh**. It already speaks WebSocket/Channel to the server. Adding iroh as a secondary transport for sensor data would mean: Rust SDK uses WebSocket for control plane (lobby, room join/leave, calls) and optionally iroh-gossip for data plane (sensor measurements). The SDK's existing `BackpressureConfig` model maps cleanly to gossip topic subscription -- a paused sensor would not subscribe to the gossip topic.
 
-- **Composite lens tuple now 9 elements**: `extract_composite_data/1` in `lobby_live.ex` returns a 9-tuple: `{heartrate, imu, location, ecg, battery, skeleton, respiration, hrv, gaze}`. The HRV and gaze lenses were added in earlier commits but are now stable. These are additional data types flowing through the same `SimpleSensor -> PubSub -> Router -> PriorityLens -> LobbyLive` pipeline.
+- **New: LobbyChannel** (`lib/sensocto_web/channels/lobby_channel.ex`): Read-only Phoenix Channel for the room list. Subscribes to `rooms:lobby` and `lobby:{user_id}` PubSub topics. Pushes `lobby_state`, `room_added`, `room_removed`, `room_updated`, `membership_changed` events. This is the server-side counterpart to the Rust `LobbySession`.
 
-**Key takeaway:** The platform continues to grow in features (fullscreen 3D, graph improvements) and the data pipeline is handling more data types (respiration as high-frequency, HRV, gaze). All of this is pure server-mediated. iroh remains in its "foundation laid but not actively used" state. The expanding data types make the eventual case for delta encoding (#5) stronger -- more high-frequency attributes means more bandwidth to save.
+- **New: RoomChannel** (`lib/sensocto_web/channels/room_channel.ex`): Phoenix Channel for live room updates (sensor add/remove, member changes). Joins `room:{room_id}`, subscribes to `room:#{room_id}` PubSub. Validates room access via `authorized_for_room?/2` (public rooms or membership check). This is the server-side counterpart to the Rust `RoomSession`.
+
+- **RoomStore: lobby broadcast hooks** -- `room_store.ex` now broadcasts to lobby-specific PubSub topics on room CRUD and membership changes: `broadcast_lobby_room_created/1`, `broadcast_lobby_room_deleted/1`, `broadcast_lobby_room_updated/1`, `broadcast_lobby_membership_changed/3`. These feed the LobbyChannel. Also added a non-blocking `handle_cast({:remove_sensor, ...})` for use in `terminate/2` callbacks to avoid cascade timeouts during bulk sensor shutdown.
+
+- **Router: early exit guard** -- `handle_info({:measurement, ...})` and `handle_info({:measurements_batch, ...})` now check `MapSet.size(state.registered_lenses) > 0` before calling `PriorityLens.buffer_for_sensor/2`. Avoids unnecessary ETS writes when no lenses are registered. Small but important optimization for idle servers.
+
+- **PriorityLens: crash resilience** -- Multiple public functions (`get_socket_state/1`, `buffer_for_sensor/2`, `buffer_batch_for_sensor/2`, `subscriptions_for_sensor/1`) now rescue `ArgumentError` to handle the window between PriorityLens restart and ETS table recreation. `terminate/2` no longer calls `Router.unregister_lens/1` synchronously (which could timeout under load); it relies on Router's `:DOWN` monitor for cleanup.
+
+- **ViewerDataChannel: visible sensor filtering** -- Now supports `set_visible_sensors` incoming event from the browser. In sensors grid mode, only pushes data for visible sensor IDs (MapSet filter). Composite/graph modes push all sensors. This reduces per-push payload size significantly for large sensor grids.
+
+- **SystemLoadMonitor: container-aware memory** -- `calculate_memory_pressure/0` now reads cgroup v2 (`/sys/fs/cgroup/memory.max`, `/sys/fs/cgroup/memory.current`) and cgroup v1 (`/sys/fs/cgroup/memory/memory.limit_in_bytes`) before falling back to `:memsup`. Memsup fallback now counts cached+buffered memory as available. This makes memory protection thresholds accurate on Fly.io (container environment). Also includes `code_change/3` for hot upgrades.
+
+- **SimpleSensor: auto-register attributes in batch path** -- `handle_cast(:put_batch_attributes, ...)` now auto-registers unknown attributes (infers type from attribute_id and payload), matching the existing single-measurement path. Broadcasts `:new_state` on attribute discovery. Also includes `code_change/3`.
+
+- **SensorDataChannel: backpressure and memory protection** -- Channel now handles `{:memory_protection_changed, %{active: active}}` messages, immediately pushing updated backpressure config to connectors when memory pressure changes. The `get_backpressure_config/1` function incorporates memory protection state with 5x throttling multiplier for surviving sensors.
+
+- **UserSocket: expanded channel routing** -- Now routes `room:*`, `call:*`, `hydration:room:*`, `viewer:*`, `lobby:*` channels alongside the existing `sensocto:*`.
+
+**Key takeaway:** The platform has gained a proper **control plane for native clients** (LobbyChannel + RoomChannel + Rust SDK). The data pipeline is more resilient (crash-safe ETS access, non-blocking terminate, container-aware memory pressure). The Rust SDK provides a clean integration surface for adding iroh as an optional data transport layer. The control plane (room management, membership, calls) will stay on WebSocket/Channels; the data plane (sensor measurements) is where iroh-gossip adds value.
 
 ### Module-by-Module Assessment
 
@@ -58,6 +81,19 @@ Storage.Supervisor (:rest_for_one, 3/5s)
   |-- RoomPresenceServer         -- room presence tracking
 ```
 
+### Channel Architecture (Updated)
+
+```
+UserSocket
+  |-- sensocto:connector:{id}   -> SensorDataChannel  (sensor registration + data ingestion)
+  |-- sensocto:sensor:{id}      -> SensorDataChannel  (per-sensor measurement channel)
+  |-- room:{room_id}            -> RoomChannel         (NEW: live room updates for native clients)
+  |-- call:{room_id}            -> CallChannel         (WebRTC signaling)
+  |-- hydration:room:{room_id}  -> HydrationChannel    (historical data seeding)
+  |-- viewer:{token}            -> ViewerDataChannel   (high-freq sensor data to browser)
+  |-- lobby:{user_id}           -> LobbyChannel        (NEW: room list updates for native clients)
+```
+
 ### Sensor Data Pipeline (Current Architecture)
 
 The pipeline has zero iroh involvement and is highly optimized:
@@ -65,6 +101,7 @@ The pipeline has zero iroh involvement and is highly optimized:
 ```
 SimpleSensor GenServer
   |-- put_attribute/put_batch_attributes cast
+  |-- Auto-registers unknown attributes (infers type from id + payload)
   |-- AttributeStoreTiered: ETS write (hot data)
   |-- PubSub broadcast: "data:{sensor_id}" (per-sensor, always)
   |-- Attention gate: if attention_level != :none
@@ -74,30 +111,37 @@ SimpleSensor GenServer
   |
 Router GenServer (singleton)
   |-- Subscribes to 3 attention topics (demand-driven: only when lenses registered)
+  |-- Early exit: skips ETS write if no lenses registered
   |-- Writes directly to PriorityLens ETS tables (bypasses GenServer mailbox)
   |
 PriorityLens GenServer
   |-- 4 ETS tables: buffers, sockets, digests, sensor_subscriptions (all :public)
+  |-- Crash-resilient: rescues ArgumentError on ETS access during restart window
   |-- Reverse index: sensor_id -> MapSet<socket_id> (O(1) lookup)
   |-- High-frequency attributes (ecg, respiration, button, buttons): accumulate lists
   |-- Other attributes: keep-latest-only
   |-- Flush timer per socket: broadcasts to "lens:priority:{socket_id}"
   |-- Quality levels: high(64ms), medium(128ms), low(250ms), minimal(500ms), paused
   |-- Delta encoding integration: maybe_delta_encode_batch/1 on flush (feature-flagged OFF)
+  |-- Terminate: relies on Router :DOWN monitor (no sync call)
   |
-LobbyLive LiveView (per-browser-tab)
-  |-- Subscribes to "lens:priority:{socket_id}" (personalized stream)
-  |-- Receives :lens_batch or :lens_digest events
-  |-- Push events to Svelte 5 components for rendering
+ViewerDataChannel (per-browser-tab)
+  |-- Subscribes to "lens:priority:{lv_socket_id}" via signed token
+  |-- Sensors grid: filters to visible_sensor_ids MapSet (set_visible_sensors event)
+  |-- Composite/graph: pushes all sensors
+  |-- Pushes "sensor_batch" and "sensor_digest" to browser
 ```
 
 Key efficiency features:
 - **Attention-aware routing**: Sensors with `attention_level: :none` do not broadcast to the attention-sharded topics at all
-- **Demand-driven subscriptions**: Router only subscribes to attention topics when PriorityLens has registered sockets; PriorityLens only registers with Router when browser tabs are connected
+- **Demand-driven subscriptions**: Router only subscribes to attention topics when PriorityLens has registered sockets; Router skips ETS writes when no lenses registered
 - **GenServer-free hot path**: Router writes directly to PriorityLens ETS tables, no mailbox contention
+- **Visible sensor filtering**: ViewerDataChannel only pushes data for sensors visible in the browser viewport (sensors grid mode)
 - **Source-side batch throttling**: Under elevated+ system load, SimpleSensor buffers measurements and flushes as batches (configurable intervals by load_level x attention_level)
 - **Mailbox self-protection**: SimpleSensor drops measurements when its own mailbox exceeds 500 messages
 - **Hibernation**: Sensors with low/no attention hibernate after 5 minutes of inactivity
+- **Container-aware memory protection**: SystemLoadMonitor reads cgroup v2/v1 for accurate memory pressure on Fly.io; triggers 5x backpressure multiplier on surviving sensors
+- **Crash resilience**: PriorityLens ETS access wrapped in rescue, non-blocking terminate avoids cascade timeouts
 
 ### Sensor Registry Architecture (Stable)
 
@@ -154,16 +198,22 @@ Key efficiency features:
 
 **Honest assessment:** This is likely a half-day task now, down from "blocked." The iroh_ex v0.0.16 upgrade appears to have resolved the API gap. This is the prerequisite for Phase 1 of the P2P sensor data routing plan.
 
-### Opportunity 4: Sensor Data Gossip Bridge (for Native Clients)
+### Opportunity 4: Sensor Data Gossip Bridge (for Native Clients) -- UPDATED
 **Impact: HIGH for mobile/native clients; ZERO for web LiveView**
 **Effort: 2-3 days**
 **Needs Linux NIF: Yes (for production), No (for dev demo)**
 
 **What:** A new `SensorGossipPublisher` GenServer that subscribes to the sharded PubSub topics (`"data:attention:high"`, etc.) and republishes measurements to per-room iroh gossip topics. Native clients receive sensor data P2P instead of going through the server.
 
-**Updated context:** The sensor data pipeline is now even more sophisticated than when this opportunity was first documented. Source-side batch throttling (load_level x attention_level intervals), mailbox self-protection, demand-driven routing, and high-frequency attribute accumulation (ECG + respiration now) all work together to manage the data flow. A gossip bridge would tap into the same attention-sharded topics the Router uses, benefiting from all the same backpressure mechanisms.
+**Updated context (2026-03-25):** The Rust SDK now exists at `clients/rust/` and already implements the full WebSocket/Channel protocol with `SensorStream`, `BackpressureConfig`, `LobbySession`, and `RoomSession`. This SDK is the **primary integration target for iroh-gossip**. The architecture would be:
+- **Control plane**: WebSocket/Channels (lobby, room management, calls, backpressure) -- unchanged
+- **Data plane**: iroh-gossip for sensor measurements -- new, optional, additive
 
-**Honest assessment:** This is a significant engineering effort with a dependency chain: it needs identity persistence (#3), a Linux NIF, and a native client with iroh support. For web-only users (LiveView), this provides zero benefit. Only matters once native clients consuming sensor data directly exist.
+The Rust SDK's `BackpressureConfig` model (paused, attention_level, recommended_batch_window) maps directly to gossip subscription behavior: a paused sensor does not join the gossip topic. The `RoomSession` already knows which room it belongs to, providing the room-to-gossip-topic mapping.
+
+**New efficiency features to leverage:** Router's early-exit guard (no ETS writes when no lenses registered) and ViewerDataChannel's visible-sensor filtering both reduce server-side work. These make the "server as gossip participant" strategy (Strategy A) even cheaper -- the server only processes gossip data when someone is actually viewing it.
+
+**Honest assessment:** The Rust SDK makes this opportunity more concrete. The control plane is already built over Channels. Adding gossip as the data plane for the Rust client is a well-defined, isolated change. But it still needs identity persistence (#3), a Linux NIF, and the Rust SDK to be embedded in a real native app.
 
 ### Opportunity 5: Delta Encoding for ECG and Respiration Data (NOT iroh -- Pure Server) -- PARTIALLY DONE
 **Impact: HIGH for interactive experience**
@@ -174,7 +224,7 @@ Key efficiency features:
 
 **Status:** The Elixir encoder module exists at `lib/sensocto/encoding/delta_encoder.ex` (148 lines). Feature-flagged off. Binary protocol with version byte and reset markers. The `maybe_delta_encode_batch/1` function in PriorityLens is already wired in (`flush_batch/2`) but guards on `DeltaEncoder.enabled?()`.
 
-**New since last report:** Respiration data is now accumulated as a high-frequency attribute in PriorityLens (`@high_frequency_attributes ~w(ecg respiration button buttons)`). This means the delta encoding system, once enabled, should also target respiration data -- not just ECG. The `supported_attributes` config in DeltaEncoder currently defaults to `["ecg"]` and should be extended to `["ecg", "respiration"]`.
+**New since last report:** ViewerDataChannel now handles the sensor_batch delivery, so the delta-encoded payloads would flow through `push(socket, "sensor_batch", ...)` in the channel rather than through LiveView push_event. This is actually better for delta encoding -- channel pushes are raw binary-friendly.
 
 **Performance note:** `DeltaEncoder.enabled?/0` calls `Application.get_env` on every invocation in the hot path (`flush_batch`). Before enabling, this should migrate to `:persistent_term` for zero-cost reads.
 
@@ -208,6 +258,31 @@ Key efficiency features:
 
 **What:** The `GossipTopic` and `CrdtDocument` modules exist but are not supervised. They need to be added to the supervision tree (either statically or via a DynamicSupervisor) and connected together. The room_markdown directory also contains `TigrisStorage` and `BackupWorker`, suggesting there is already thinking about persisting room documents to object storage.
 
+### Opportunity 10: Rust SDK iroh-gossip Data Transport (NEW)
+**Impact: HIGH for native mobile experience**
+**Effort: 3-5 days (Rust side) + 2-3 days (server side)**
+**Needs Linux NIF: Yes (for production server)**
+**Depends on: #3 (identity persistence), #4 (server-side gossip bridge)**
+
+**What:** Extend the Rust SDK (`clients/rust/`) to optionally receive sensor data via iroh-gossip alongside or instead of WebSocket. The SDK already has the room context (via `RoomSession`) and backpressure model. Adding iroh would mean:
+
+1. Rust SDK embeds `iroh-gossip` crate (Rust-native, no NIF needed on client side)
+2. On `join_room`, SDK requests a gossip ticket from the server (via the room channel or REST API -- `RoomTicket` already generates these)
+3. SDK subscribes to the room's gossip topic
+4. Sensor measurements arrive via gossip (binary encoded, ~50-80 bytes vs ~200+ JSON via WebSocket)
+5. Backpressure config continues to arrive via WebSocket channel (control plane)
+
+**Architecture:**
+```
+Control plane (always WebSocket):   lobby, room join/leave, backpressure, calls
+Data plane (WebSocket OR gossip):   sensor measurements
+Gossip advantage:                   P2P between native clients on same LAN (~1ms)
+Gossip fallback:                    relay through server's iroh node (~50ms)
+WebSocket fallback:                 existing ViewerDataChannel path (always works)
+```
+
+**Honest assessment:** This is the logical evolution of the existing Rust SDK. The control plane is built. The server-side gossip bridge (#4) is designed. The missing piece is the Rust client's iroh integration and the identity persistence (#3). This becomes the highest-impact iroh opportunity once a real native app is being built with the Rust SDK.
+
 ---
 
 ## Summary Matrix
@@ -217,20 +292,21 @@ Key efficiency features:
 | 1 | IrohConnectionManager | 1-2 days | CRITICAL | No | **DONE** |
 | 2 | Complete Bridge bidirectional sync | 2-4 hours | HIGH | No | **DONE** |
 | 3 | Persist node identity/namespaces | 2-4 hours | HIGH | No | **POSSIBLY UNBLOCKED** (iroh_ex v0.0.16 has secret_key) |
-| 4 | Sensor data gossip bridge | 3-5 days | HIGH (native only) | Yes (prod) | **DESIGNED** (see P2P plan) |
+| 4 | Sensor data gossip bridge (server) | 3-5 days | HIGH (native only) | Yes (prod) | **DESIGNED** (see P2P plan) |
 | 5 | Delta encoding for ECG + respiration | 1-2 days remaining | HIGH (all users) | No | Encoder done, JS decoder pending |
 | 6 | Guided Session P2P extension | 1-2 days | MEDIUM | No | Planned (PubSub sufficient) |
 | 7 | Research-grade sync visualizations | 5-10 days | HIGH (differentiation) | No | Planned (not iroh) |
 | 8 | Historical data as blobs | 3-5 days | MEDIUM | Yes (P2P) | Planned |
 | 9 | Room markdown CRDT sync | 1-2 days | MEDIUM | No | Planned |
+| 10 | Rust SDK iroh-gossip transport | 5-8 days | HIGH (native) | Yes (server) | **NEW** -- depends on #3, #4 |
 
 **Recommended execution order:**
 1. **#5 Delta encoding** -- highest impact-to-effort ratio, zero dependencies, benefits all users immediately. Now covers both ECG and respiration.
 2. **#3 Identity persistence** -- enables real P2P continuity (blocked on iroh_ex change)
 3. **#7 Research visualizations** -- product differentiation, independent of iroh
 4. **#9 Room markdown sync** -- close to working, just needs supervision + wiring
-5. **#6 Guided Session P2P** -- only if non-clustered or native support needed
-6. **#4 Sensor gossip bridge** -- only after Linux NIF is available and native clients exist
+5. **#4 + #10 Sensor gossip bridge + Rust SDK gossip** -- execute together when native app development begins
+6. **#6 Guided Session P2P** -- only if non-clustered or native support needed
 7. **#8 Historical data blobs** -- only at scale
 
 ---
@@ -281,13 +357,16 @@ Is there a precompiled binary for `x86_64-unknown-linux-gnu` or a documented cro
 ### 6. NodeConfig secret_key Support
 The `NodeConfig` Rust struct needs a `secret_key: Option<String>` field to support identity persistence. The `generate_secretkey/0` NIF function exists but there is no way to use the result when creating a node. We can submit a PR if the iroh team agrees with this approach.
 
+### 7. Rust SDK iroh-gossip Integration (NEW)
+We are building a Rust native SDK (`clients/rust/`) that currently uses Phoenix Channels over WebSocket. We want to add iroh-gossip as an optional data transport for sensor measurements. Is there a recommended pattern for embedding iroh-gossip in a Rust application alongside an existing WebSocket connection? Specifically: can we create an iroh node in the same tokio runtime as the WebSocket client, or do they need separate runtimes?
+
 ---
 
 ## Cost/Scale Analysis
 
 ### Current Architecture Cost Projections
 
-The sensor data pipeline uses attention-aware sharded PubSub, ETS direct-writes, source-side batch throttling, and mailbox self-protection -- making the server-only path highly efficient. The data flow is demand-driven end-to-end: no subscriptions unless someone is watching, no broadcasts unless attention_level is non-zero.
+The sensor data pipeline uses attention-aware sharded PubSub, ETS direct-writes, source-side batch throttling, mailbox self-protection, container-aware memory pressure, and visible-sensor filtering -- making the server-only path highly efficient. The data flow is demand-driven end-to-end: no subscriptions unless someone is watching, no broadcasts unless attention_level is non-zero, no ETS writes unless lenses are registered, no sensor_batch pushes unless sensors are visible in viewport.
 
 | Sensor Count | Active (20%) | Viewers | Server I/O | Est. Monthly Cost (Fly.io) |
 |-------------|-------------|---------|------------|---------------------------|
@@ -298,7 +377,10 @@ The sensor data pipeline uses attention-aware sharded PubSub, ETS direct-writes,
 
 Assumptions: 50Hz average, 200 bytes/measurement, attention-aware routing = 20% active.
 
-**New consideration:** With respiration now treated as high-frequency (accumulating all samples between flushes), per-socket payload sizes increase. At 64ms flush interval (high quality), a respiration sensor at 25Hz produces ~1.6 samples per flush -- modest. At lower quality levels, accumulation is larger but flush frequency is lower, so net bandwidth is similar. The real impact is that there are now *more* high-frequency data streams requiring careful buffer management.
+**New efficiency gains since last report:**
+- Router early-exit guard: eliminates ETS writes when server is idle (0 lenses). Reduces CPU on servers not actively rendering.
+- ViewerDataChannel visible-sensor filtering: for a grid showing 20 of 200 sensors, 90% of batch data is not pushed to the browser. Significant bandwidth savings for large deployments.
+- Container-aware memory protection: accurate thresholds on Fly.io prevent OOM kills, keeping the server alive under extreme load instead of crashing.
 
 ### With Delta Encoding (#5) -- Immediate Win
 
@@ -311,7 +393,7 @@ ECG + respiration data (the highest-bandwidth attributes) compressed by ~84%:
 
 This applies to ALL users (web and native) immediately, no iroh needed.
 
-### With iroh-gossip (#4) -- Native Clients Only
+### With iroh-gossip (#4 + #10) -- Native Clients Only
 
 | Sensor Count | Server I/O (orchestration only) | Est. Monthly Cost | Savings vs Current |
 |-------------|-------------------------------|-------------------|---------|
@@ -331,15 +413,18 @@ The current architecture is well-optimized for single-server deployment:
 - **Attention routing** eliminates 80% of potential broadcasts (only 20% of sensors are watched at any time)
 - **Source-side batch throttling** reduces PubSub message count under load by 2-8x
 - **ETS direct-write** removes GenServer bottleneck from the hot path
+- **Router early-exit** eliminates ETS writes when no viewer is connected
+- **Visible-sensor filtering** reduces per-push payload by 80-90% for large sensor grids
 - **Demand-driven everything** means zero overhead when no one is watching
+- **Container-aware memory protection** prevents crash-restart cycles on Fly.io
 
-**The honest assessment:** At current feature set and expected near-term scale (hundreds of sensors, tens of viewers), the server-only architecture is sufficient and well-optimized. iroh adds value at:
+**The honest assessment:** At current feature set and expected near-term scale (hundreds of sensors, tens of viewers), the server-only architecture is sufficient and well-optimized. The recent efficiency improvements (Router early-exit, visible-sensor filtering, container-aware memory) push the "iroh becomes worth it" threshold even higher. iroh adds value at:
 - **1,000+ sensors with 50+ concurrent viewers** -- where server I/O becomes the bottleneck
-- **Native mobile clients** -- where server round-trip latency degrades interactive experience
+- **Native mobile clients (Rust SDK)** -- where server round-trip latency degrades interactive experience and P2P on same LAN gives sub-millisecond latency
 - **Multi-region deployment** -- where Erlang clustering is impractical and P2P data flow reduces cross-region traffic
 - **Offline/edge scenarios** -- where clients need to continue collecting and viewing data without server connectivity
 
-None of these scenarios are imminent priorities. The correct path is to complete the non-iroh wins (#5 delta encoding, #7 research visualizations) first and revisit iroh integration when a concrete use case emerges that the server-only architecture cannot handle.
+None of these scenarios are imminent priorities. The correct path is to complete the non-iroh wins (#5 delta encoding, #7 research visualizations) first and revisit iroh integration when a concrete use case emerges that the server-only architecture cannot handle. The Rust SDK provides the natural integration surface when that time comes.
 
 ---
 
@@ -350,12 +435,17 @@ None of these scenarios are imminent priorities. The correct path is to complete
 - [ ] Extend delta encoding to respiration data (config change + JS decoder)
 - [ ] Migrate `DeltaEncoder.enabled?/0` from `Application.get_env` to `:persistent_term`
 - [ ] Research-grade sync visualizations P1 tier (`plans/PLAN-research-grade-synchronization.md`)
-- [ ] Sensor component migration: LiveView to LiveComponent (`plans/PLAN-sensor-component-migration.md`)
+- [x] LobbyChannel + RoomChannel for native client control plane
+- [x] Rust SDK: lobby, room session, backpressure, auto-reconnect
+- [x] ViewerDataChannel visible-sensor filtering
+- [x] Container-aware memory protection in SystemLoadMonitor
+- [x] Router early-exit guard (no ETS writes when idle)
+- [x] PriorityLens crash resilience (ArgumentError rescue, non-blocking terminate)
 
 ### Phase 1: iroh Foundation
 - [x] Implement `IrohConnectionManager` -- single shared node (2026-02-08)
 - [x] Complete `RoomStateBridge` bidirectional sync (2026-02-08)
-- [ ] Persist node identity across restarts (BLOCKED: iroh_ex needs secret_key in NodeConfig)
+- [ ] Persist node identity across restarts (BLOCKED: iroh_ex needs secret_key validation)
 - [ ] Persist namespace IDs for document continuity (depends on identity persistence)
 
 ### Phase 2: Production Readiness
@@ -370,15 +460,18 @@ None of these scenarios are imminent priorities. The correct path is to complete
 - [ ] Wire gossip receive to `CrdtDocument` merge
 - [ ] Connect room_markdown changes to LiveView via PubSub
 
-### Phase 4: Sensor Data P2P
-- [ ] Implement `SensorGossipPublisher` (subscribes to `data:attention:*` topics)
+### Phase 4: Sensor Data P2P (Server + Rust SDK)
+- [ ] Implement `SensorGossipBridge` (subscribes to `data:attention:*` topics)
 - [ ] Build reverse index `sensor_id -> room_id` in ETS
-- [ ] Add iroh dependency to Rust client
-- [ ] Binary encoding for gossip measurements
+- [ ] Extend `RoomTicket` to include sensor gossip topic
+- [ ] Add `iroh-gossip` crate to Rust SDK (`clients/rust/Cargo.toml`)
+- [ ] Implement `GossipTransport` in Rust SDK (optional data plane alongside WebSocket)
+- [ ] Binary encoding for gossip measurements (~50-80 bytes vs ~200+ JSON)
+- [ ] Backpressure-aware gossip subscription (paused sensors do not join gossip)
 
 ### Phase 5: Advanced Distribution
 - [ ] Historical data as iroh-blobs
-- [ ] Client-side iroh for mobile apps
+- [ ] Client-side iroh for mobile apps (iOS/Android via Rust FFI)
 - [ ] Guided session P2P extension (if needed beyond PubSub)
 - [ ] Adaptive video quality with iroh signaling (`plans/PLAN-adaptive-video-quality.md`)
 
@@ -391,8 +484,17 @@ The sensor data pipeline has evolved significantly since the initial iroh assess
 - **Source-side batch throttling** (SimpleSensor): load_level x attention_level determines whether measurements broadcast immediately or buffer into batches. Under elevated+ load, SimpleSensor batches measurements before broadcasting to PubSub, reducing message count.
 - **High-frequency attribute accumulation** (PriorityLens): ECG and respiration data now accumulate as lists between flushes (preserving waveform fidelity) rather than keep-latest-only.
 - **Delta encoding integration point** (PriorityLens): `maybe_delta_encode_batch/1` is already wired into `flush_batch/2` but guarded by feature flag.
+- **Router early-exit**: No ETS writes when no lenses registered. This means the gossip bridge (#4) would be the only consumer of attention-sharded PubSub data when no web viewers are connected -- clean separation.
+- **ViewerDataChannel visible-sensor filtering**: Reduces bandwidth for web clients. The gossip bridge would not need this filtering since native clients manage their own rendering.
 
 These optimizations reduce the urgency of iroh for server-side efficiency. The main remaining argument for iroh is native client support and offline scenarios.
+
+### Rust SDK (`clients/rust/`)
+The Rust SDK is the primary native client implementation. It currently handles:
+- **Control plane**: lobby (room discovery), room sessions (sensor/member updates), calls (WebRTC signaling), backpressure (attention + load config)
+- **Data plane**: sensor measurement ingestion via `SensorStream` over Phoenix Channels
+
+The iroh integration target is clear: add gossip as an alternative data plane transport. The control plane stays on Channels. The SDK's architecture (tokio-based async, mpsc event channels, Arc-wrapped shared state) is well-suited for embedding an iroh node.
 
 ### Discovery Module (`lib/sensocto/discovery/`, `plans/PLAN-distributed-discovery.md`)
 The Discovery module provides ETS-cached cluster-wide entity listing with background `SyncWorker`. Uses `:pg` for sensor discovery, Horde for rooms/connectors. This is **complementary** to iroh -- Discovery handles Erlang cluster topology, while iroh handles server-to-native-client and peer-to-peer data flows. Both are needed at different scales.
@@ -431,6 +533,10 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 | Room ticket generation | `lib/sensocto/p2p/room_ticket.ex` |
 | Bridge socket | `lib/sensocto_web/channels/bridge_socket.ex` |
 | Bridge channel | `lib/sensocto_web/channels/bridge_channel.ex` |
+| Lobby channel | `lib/sensocto_web/channels/lobby_channel.ex` |
+| Room channel | `lib/sensocto_web/channels/room_channel.ex` |
+| Sensor data channel | `lib/sensocto_web/channels/sensor_data_channel.ex` |
+| Viewer data channel | `lib/sensocto_web/channels/viewer_data_channel.ex` |
 | Ticket API controller | `lib/sensocto_web/controllers/api/room_ticket_controller.ex` |
 | Gossip test page | `lib/sensocto_web/live/iroh_gossip_live.ex` |
 | Per-room gossip topics | `lib/sensocto/room_markdown/gossip_topic.ex` |
@@ -448,7 +554,17 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 | Sensor data router | `lib/sensocto/lenses/router.ex` |
 | Priority lens (buffer) | `lib/sensocto/lenses/priority_lens.ex` |
 | SimpleSensor (broadcast) | `lib/sensocto/otp/simple_sensor.ex` |
+| RoomStore (in-memory) | `lib/sensocto/otp/room_store.ex` |
+| SystemLoadMonitor | `lib/sensocto/otp/system_load_monitor.ex` |
 | Delta encoder | `lib/sensocto/encoding/delta_encoder.ex` |
+| **Rust SDK** | `clients/rust/src/` |
+| Rust SDK: client | `clients/rust/src/client.rs` |
+| Rust SDK: lobby session | `clients/rust/src/lobby.rs` |
+| Rust SDK: room session | `clients/rust/src/room_session.rs` |
+| Rust SDK: models | `clients/rust/src/models.rs` |
+| Rust SDK: channel/stream | `clients/rust/src/channel.rs` |
+| Rust SDK: socket | `clients/rust/src/socket.rs` |
+| Rust SDK: config | `clients/rust/src/config.rs` |
 | Architecture design doc | `docs/iroh-room-storage-architecture.md` |
 | Migration plan | `plans/PLAN-room-iroh-migration.md` |
 | Distributed discovery plan | `plans/PLAN-distributed-discovery.md` |
@@ -458,14 +574,13 @@ The scalability doc focuses on the AttentionTracker bottleneck. The recommended 
 | Research sync plan | `plans/PLAN-research-grade-synchronization.md` |
 | Sensor scaling plan | `plans/PLAN-sensor-scaling-refactor.md` |
 | Adaptive video plan | `plans/PLAN-adaptive-video-quality.md` |
-| Sensor component plan | `plans/PLAN-sensor-component-migration.md` |
 | TURN/Cloudflare plan | `plans/PLAN-turn-cloudflare.md` |
 | Automerge tests | `test/sensocto/iroh/iroh_automerge_test.exs` |
 | RoomStateCRDT tests | `test/sensocto/iroh/room_state_crdt_test.exs` |
 
 ---
 
-## P2P Sensor Data Routing -- Architectural Plan (2026-03-08)
+## P2P Sensor Data Routing -- Architectural Plan (2026-03-08, updated 2026-03-25)
 
 ### Problem Statement
 
@@ -513,30 +628,27 @@ However, the critical architecture choice is where the iroh node lives:
 |--------|------|------|
 | **A. Server-side iroh node only** (mobiles connect via WebSocket/Channel, server publishes to gossip) | Simplest to implement, web clients unchanged | Server still handles all data, just adds gossip as secondary transport |
 | **B. Native mobile iroh + server iroh node** | True P2P between native apps, server participates as one gossip peer for persistence | Requires iroh SDK on each mobile platform (iOS/Android), web browsers cannot participate in P2P |
-| **C. Server-mediated relay: one mobile streams to server, server gossips to room** | Reduces upstream bandwidth (1 device → server instead of N), other devices receive from server via gossip or WebSocket | Still server-mediated for first hop |
+| **C. Server-mediated relay: one mobile streams to server, server gossips to room** | Reduces upstream bandwidth (1 device to server instead of N), other devices receive from server via gossip or WebSocket | Still server-mediated for first hop |
 
 **Recommendation: Option A (Phase 1), then Option B (Phase 2).**
 
-Phase 1 (server-side gossip publisher) is achievable with the current stack. Phase 2 (native mobile iroh) requires iroh mobile SDKs which are not yet production-ready.
+Phase 1 (server-side gossip publisher) is achievable with the current stack. Phase 2 (native mobile iroh) is now more concrete thanks to the Rust SDK -- the Rust client already has the async runtime and connection management needed to embed an iroh node.
 
 #### 3. How does a mobile browser/native app connect to iroh?
 
-This is the hardest question and the answer depends on the client type:
-
-**Native mobile apps (iOS/Android):**
-- iroh is a Rust library that cross-compiles to iOS (aarch64-apple-ios) and Android (aarch64-linux-android)
-- The mobile app embeds iroh directly, connects to the server's iroh node via QUIC
+**Native mobile apps (iOS/Android) -- via Rust SDK:**
+- The Rust SDK at `clients/rust/` already runs on tokio and manages Phoenix Channel connections
+- Adding `iroh-gossip` as a Cargo dependency gives native gossip support in the same process
 - On same LAN: iroh uses local network discovery (mDNS) for direct connections (~1ms latency)
 - Different networks: iroh holepunches (success rate ~90%) or falls back to relay (~50-100ms added latency)
 - The `RoomTicket` at `lib/sensocto/p2p/room_ticket.ex` already generates bootstrap data: docs namespace, gossip topic, bootstrap peers, relay URL
 
 **Browser (web) clients:**
 - iroh compiles to WASM but ALL connections must flow through a relay (browsers cannot send UDP)
-- iroh-gossip supports browser builds since v0.33
-- Latency: browser-to-relay-to-peer adds ~50-100ms vs direct QUIC between native clients
-- For web clients, the existing WebSocket/Channel path (ViewerDataChannel) will likely remain the lowest-latency option since the Phoenix server is already a single hop
+- For web clients, the existing ViewerDataChannel path will remain the lowest-latency option since the Phoenix server is already a single hop
+- No change needed for web clients
 
-**Practical implication:** P2P sensor data routing primarily benefits native mobile apps. Web browsers gain little because they already communicate through the server via WebSocket. The plan should not break the existing web path.
+**Practical implication:** P2P sensor data routing primarily benefits native mobile apps using the Rust SDK. Web browsers gain little because they already communicate through the server via WebSocket. The plan should not break the existing web path.
 
 #### 4. What happens when devices are NOT on the same LAN?
 
@@ -559,7 +671,7 @@ For the Sensocto use case, the "same room" scenario splits into two:
 - **Physical same room**: Devices on same WiFi network. mDNS discovery gives direct QUIC connections. This is the best case -- sub-millisecond latency between devices.
 - **Virtual same room**: Devices in different locations joined to the same Sensocto room. Holepunching or relay. Still better than server round-trip if the server is geographically distant.
 
-**Server fallback**: If iroh connectivity fails entirely (rare, but possible behind very restrictive corporate NATs), the existing WebSocket/Channel path remains available. The `BridgeChannel` at `lib/sensocto_web/channels/bridge_channel.ex` already bridges Phoenix PubSub to external systems.
+**Server fallback**: If iroh connectivity fails entirely (rare, but possible behind very restrictive corporate NATs), the existing WebSocket/Channel path remains available. The Rust SDK already implements auto-reconnect with exponential backoff for the WebSocket path.
 
 #### 5. How does the server learn about sensor data if P2P bypasses it?
 
@@ -576,7 +688,7 @@ Mobile A --gossip--> Server iroh node (via gossip, same topic)
                     PubSub "data:attention:{level}" (existing pipeline)
 ```
 
-This means the server sees 100% of the data with no additional mobile upload cost -- gossip distributes the data, and the server is just another subscriber.
+This means the server sees 100% of the data with no additional mobile upload cost -- gossip distributes the data, and the server is just another subscriber. The Router's early-exit guard ensures no ETS writes happen unless a web viewer is actually connected.
 
 **Strategy B: Elected uploader**
 One mobile device is elected (by the server) to upload sensor data via the existing WebSocket path. Other devices receive P2P. If the elected device goes offline, another is elected. This reduces upstream bandwidth by (N-1)/N.
@@ -598,7 +710,14 @@ Mobile devices only send periodic digests (1Hz summaries instead of 25Hz raw dat
 
 2. **Small change: extend `RoomTicket.generate/2`** to include sensor gossip topic alongside the existing docs namespace and CRDT gossip topic
 
-No changes needed to: SimpleSensor, Router, PriorityLens, LobbyLive, ViewerDataChannel, or any Svelte components. The existing pipeline is completely preserved.
+No changes needed to: SimpleSensor, Router, PriorityLens, LobbyLive, ViewerDataChannel, LobbyChannel, RoomChannel, or any Svelte components. The existing pipeline is completely preserved.
+
+**Phase 2: Rust SDK gossip integration** (~300-400 lines Rust)
+1. Add `iroh-gossip` crate dependency
+2. New `GossipTransport` struct that creates an iroh node, joins room gossip topics
+3. `SensorStream` gains ability to publish via gossip instead of (or in addition to) WebSocket
+4. `RoomSession` gains ability to receive sensor data via gossip subscription
+5. Fallback: if gossip connection fails, sensor data flows over WebSocket (existing path)
 
 ### Architecture Diagram
 
@@ -623,11 +742,13 @@ graph TB
         R[Router]
         PL[PriorityLens<br/>ETS]
         VDC[ViewerDataChannel<br/>WebSocket]
+        LC[LobbyChannel<br/>room list]
+        RC[RoomChannel<br/>room updates]
 
         SGB <-->|gossip subscribe/<br/>publish| CM
         SGB -->|incoming gossip<br/>measurements| PS
         PS -->|existing pipeline| R
-        R -->|ETS write| PL
+        R -->|ETS write<br/>(if lenses registered)| PL
         PL -->|flush| VDC
     end
 
@@ -637,336 +758,59 @@ graph TB
         WS --> LV
     end
 
+    subgraph "Rust SDK (native client)"
+        RS[SensoctoClient]
+        WS2[WebSocket<br/>control plane]
+        GT[GossipTransport<br/>data plane]
+        RS --> WS2
+        RS --> GT
+    end
+
     IA <-->|iroh gossip<br/>P2P or relay| IB
     IA <-->|iroh gossip| CM
     IB <-->|iroh gossip| CM
     VDC <-->|WebSocket| WS
+    WS2 <-->|Channels| LC
+    WS2 <-->|Channels| RC
+    GT <-->|iroh gossip| CM
 
     style SGB fill:#f9f,stroke:#333,stroke-width:2px
+    style GT fill:#f9f,stroke:#333,stroke-width:2px
     style IA fill:#bbf,stroke:#333
     style IB fill:#bbf,stroke:#333
     style CM fill:#bbf,stroke:#333
 ```
 
-### Data Flow: Same-Room P2P Scenario
-
-#### Happy Path (devices on same WiFi)
-
-```
-1. Mobile A starts sensor recording
-   - Sensor hardware produces measurements at 25Hz
-   - Mobile A's iroh node subscribes to room gossip topic (from RoomTicket)
-
-2. Mobile B joins room
-   - Gets RoomTicket via API (contains gossip_topic, bootstrap_peers, relay_url)
-   - Mobile B's iroh node connects to gossip topic
-   - mDNS discovers Mobile A on same LAN
-   - Direct QUIC connection established (~1ms)
-
-3. Sensor data flows P2P
-   - Mobile A broadcasts measurement to gossip topic
-   - iroh-gossip delivers to Mobile B directly (sub-ms on LAN)
-   - iroh-gossip also delivers to server's iroh node (may be relay if server is remote)
-
-4. Server receives via gossip
-   - SensorGossipBridge receives gossip message
-   - Decodes binary measurement
-   - Publishes to PubSub "data:attention:{level}"
-   - Existing pipeline handles web client delivery
-
-5. Web browser receives normally
-   - PriorityLens flushes batch to ViewerDataChannel
-   - No change to web client experience
-```
-
-#### Degraded Path (P2P fails)
-
-```
-1. iroh connection fails (strict NAT, no relay reachable)
-   - Mobile detects gossip topic has no peers after timeout (5s)
-   - Falls back to WebSocket upload to server (existing BridgeChannel)
-   - Server publishes to gossip for other mobile devices
-
-2. Server iroh node is down (NIF unavailable)
-   - SensorGossipBridge gracefully degrades (checks ConnectionManager.available?())
-   - Sensor data still flows through standard PubSub pipeline
-   - Mobile devices fall back to WebSocket
-   - System operates exactly as it does today
-```
-
-### Binary Encoding for Gossip Messages
-
-Sensor data over gossip needs a compact binary format. JSON is too heavy at 25Hz.
-
-```
-Gossip Sensor Message (variable length):
-+--------+--------+--------+--------+--------+--------+
-| version| msg_typ| room_id_len     | room_id (UTF-8) |
-| 1 byte | 1 byte | 2 bytes (u16be) | variable        |
-+--------+--------+-----------------+-----------------+
-| sensor_id_len   | sensor_id (UTF-8)                  |
-| 2 bytes (u16be) | variable                           |
-+-----------------+------------------------------------+
-| timestamp_ms (u64be)    | attr_count (u16be)          |
-| 8 bytes                 | 2 bytes                     |
-+-------------------------+-----------------------------+
-| For each attribute:                                   |
-| attr_id_len (u8) | attr_id (UTF-8) | value_type (u8) |
-| value (variable: f64=8B, i64=8B, string=len+data)    |
-+-------------------------------------------------------+
-
-Message types:
-  0x01 = single measurement
-  0x02 = batch (multiple measurements)
-  0x03 = digest (summary: count, avg, min, max, latest)
-```
-
-This gives ~50-80 bytes per single heartrate measurement vs ~200+ bytes for JSON. At 25Hz * 10 devices, that is 12.5-20 KB/s of gossip traffic per room -- trivial for a LAN.
-
-### Fallback Strategy
-
-The system must work in four modes, selected automatically:
-
-| Mode | When | Server I/O | Mobile Latency |
-|------|------|-----------|----------------|
-| **P2P Direct** | Same LAN, mDNS works | Gossip only (server as subscriber) | <1ms |
-| **P2P Relayed** | Different networks, holepunch fails | Gossip via relay | 50-100ms |
-| **Hybrid** | Some devices P2P, some WebSocket | Mixed | Varies |
-| **Server-only** | iroh unavailable, corporate NAT, web browser | Full server pipeline (current) | 20-50ms (WebSocket RTT) |
-
-Selection logic on mobile:
-
-```
-1. Attempt gossip topic join (from RoomTicket)
-2. Wait 5s for at least one peer neighbor
-3. If peers found: P2P mode (direct or relayed, iroh handles transparently)
-4. If no peers: fall back to WebSocket upload via BridgeChannel
-5. Periodically retry gossip join (every 30s) in case peers come online
-```
-
-The web browser always uses the server-only path. No change to web experience.
-
-### Phased Implementation Plan
-
-#### Phase 1: Server-Side Gossip Bridge (Minimal, 3-5 days)
-
-**Goal**: Server publishes sensor data to iroh gossip topics. Native clients can subscribe. No mobile app changes yet -- this is infrastructure.
-
-**Prerequisites**:
-- iroh_ex v0.0.16 (already in mix.exs -- `secret_key` field now available in NodeConfig)
-- ConnectionManager must persist node identity (use the new `secret_key` field)
-
-**Deliverables**:
-
-1. **`lib/sensocto/iroh/sensor_gossip_bridge.ex`** (~200 lines)
-   - GenServer started in `Storage.Supervisor` after `ConnectionManager`
-   - Subscribes to PubSub `"data:attention:high"`, `"data:attention:medium"`, `"data:attention:low"`
-   - Maintains a mapping of `room_id -> gossip_topic_id` (from `RoomTicket.derive_namespace`)
-   - On measurement batch from PubSub: encode to binary, `Native.broadcast_message(node_ref, topic, encoded)`
-   - Handles incoming gossip messages: decode binary, publish to PubSub for PriorityLens
-   - Rate limiting: batch measurements per room (configurable, default 10ms window)
-   - Graceful degradation: no-op if `ConnectionManager.available?()` returns false
-
-2. **Identity persistence in ConnectionManager** (~50 lines)
-   - On first start: `Native.generate_secretkey()`, store to `priv/iroh/node_secret.key`
-   - On subsequent starts: read key, pass via `NodeConfig.build(secret_key: key)`
-   - This resolves the long-standing blocker (#3 in the report)
-
-3. **Extend `RoomTicket`** (~20 lines)
-   - Add `sensor_gossip_topic` field to the ticket struct
-   - Derive it from `room_id` + `"sensor_gossip"` salt (same HMAC pattern)
-   - Include in QR code / deep link payload
-
-4. **Binary encoder/decoder module** (`lib/sensocto/encoding/gossip_codec.ex`, ~150 lines)
-   - Encode/decode functions for the binary message format described above
-   - Property-based tests for round-trip encoding
-
-5. **Integration test** (~100 lines)
-   - Start sensor, verify gossip bridge publishes to topic
-   - Simulate incoming gossip message, verify it flows through PriorityLens to ViewerDataChannel
-
-**What this does NOT include**: Any mobile app changes, any browser changes, any modifications to the existing sensor pipeline. It is purely additive infrastructure.
-
-#### Phase 2: Native Mobile P2P (2-4 weeks, depends on mobile SDK)
-
-**Goal**: Native iOS/Android apps exchange sensor data P2P via iroh-gossip.
-
-**Prerequisites**:
-- Phase 1 complete
-- iroh compiled as a library for iOS (aarch64-apple-ios) and Android (aarch64-linux-android)
-- Swift/Kotlin wrapper for iroh gossip (subscribe, broadcast, peer management)
-
-**Deliverables**:
-
-1. **iroh Rust library for mobile** (cross-compilation)
-   - Build iroh with `--target aarch64-apple-ios` / `aarch64-linux-android`
-   - Expose C FFI: `iroh_create_node()`, `iroh_join_topic()`, `iroh_broadcast()`, `iroh_set_callback()`
-   - Swift and Kotlin wrappers
-
-2. **Mobile sensor data publisher**
-   - On sensor data from BLE/internal sensors: encode to binary, broadcast to gossip topic
-   - On incoming gossip: decode, feed to local visualization pipeline
-
-3. **Connection manager on mobile**
-   - Parse `RoomTicket` from QR code / deep link
-   - Create iroh node with `secret_key` (generated once, stored in Keychain/Keystore)
-   - Join gossip topic from ticket
-   - Monitor peer count, fall back to WebSocket if no peers after 5s
-
-4. **Dual-path data flow**
-   - If gossip topic has peers: publish via gossip only
-   - If no peers: publish via WebSocket (BridgeChannel)
-   - Server always receives (either via gossip subscriber or WebSocket)
-
-5. **Bandwidth optimization**
-   - Only one device needs to upload to server (elected by server, or self-elected based on lowest latency)
-   - Other devices receive P2P and skip WebSocket upload
-   - Server tracks which rooms have P2P-connected devices to avoid duplicate data
-
-### Key Risks and Open Questions
-
-#### Risk 1: Browser clients get no benefit (ACCEPTED)
-
-Web browsers cannot participate in iroh P2P -- all browser iroh connections must go through a relay, which adds latency vs the existing direct WebSocket to Phoenix. For web clients, the current pipeline is already optimal. This plan explicitly accepts this and does not attempt to change the web client path.
-
-**Mitigation**: None needed. The web path is already good. P2P sensor routing is a native mobile optimization.
-
-#### Risk 2: iroh_ex NIF stability under high-frequency gossip
-
-The iroh_ex NIF has been tested primarily with room-state CRDT operations (low frequency, ~1/second). Publishing sensor data at 25Hz per sensor per room is a different load profile. The NIF must handle:
-- 250 calls/second to `broadcast_message/3` (10 sensors * 25Hz, before batching)
-- Concurrent reads from multiple BEAM processes (the `node_ref` is shared)
-
-**Mitigation**: The `SensorGossipBridge` should batch measurements per room (10ms window) before publishing, reducing to ~100 gossip broadcasts/second. This is well within what iroh-gossip's PlumTree can handle, but the NIF call overhead needs benchmarking.
-
-**Question for iroh team (#7)**: What is the maximum sustained message rate for `broadcast_message` through the NIF? Are there thread-safety concerns with concurrent `broadcast_message` + `subscribe_to_topic` calls on the same `node_ref`?
-
-#### Risk 3: Gossip topic lifecycle management
-
-Each active room needs a gossip topic. With 100 concurrent rooms, that is 100 gossip topics on the server's iroh node. iroh-gossip's HyParView maintains per-topic peer state.
-
-**Question for iroh team (#8)**: What is the memory footprint per gossip topic? At 100-1000 topics with 2-20 peers each, is there a practical limit?
-
-**Mitigation**: Only create gossip topics for rooms that have active mobile P2P devices. Rooms with only web clients skip gossip entirely. Use a topic activity timeout (5 minutes of no messages) to unsubscribe and reclaim resources.
-
-#### Risk 4: iroh mobile SDK maturity
-
-The iroh team has discussed mobile SDKs (see GitHub discussion #517) but there is no production-ready Swift/Kotlin wrapper as of this writing. Cross-compiling Rust for iOS/Android is well-understood, but the iroh-specific FFI surface needs design work.
-
-**Mitigation**: Phase 1 is entirely server-side and can be completed regardless of mobile SDK readiness. Phase 2 is blocked on mobile SDK availability. If the iroh team does not ship mobile SDKs, we can build a thin C FFI wrapper ourselves (~1-2 weeks for basic gossip operations).
-
-#### Risk 5: Message ordering and loss tolerance
-
-iroh-gossip provides probabilistic delivery -- "messages eventually reach most or all subscribers." For sensor data, this is acceptable: a missed heartrate reading at t=1.04s does not matter if t=1.08s arrives. ECG waveform data is more sensitive to gaps, but the client-side rendering already interpolates.
-
-**Mitigation**: Add sequence numbers to the binary gossip messages. The receiver can detect gaps and request retransmission via a separate gossip message, or simply interpolate. Do not attempt reliable delivery -- it defeats the purpose of gossip.
-
-#### Risk 6: NodeConfig secret_key -- has the blocker been resolved?
-
-The report has documented since 2026-02-08 that `iroh_ex` NodeConfig lacked a `secret_key` field. However, examining the current `deps/iroh_ex/lib/native.ex`, the `NodeConfig` struct now includes `secret_key` as an enforced key, and `mix.exs` pins `iroh_ex` at `~> 0.0.16`. This suggests the blocker may have been resolved in the upgrade from 0.0.15 to 0.0.16.
-
-**Action needed**: Test that passing a `secret_key` to `NodeConfig.build/1` actually results in the same node identity across restarts. This is a 30-minute validation task.
-
-### New Questions for the iroh Team
-
-**Question 7**: What is the maximum sustained `broadcast_message` rate through the NIF? We plan ~100 gossip broadcasts/second from the server node (batched sensor data for ~10 rooms). Is there a known performance ceiling?
-
-**Question 8**: What is the memory cost per gossip topic? We may have 100-1000 concurrent topics (one per active room) with 2-20 peers each. Are there practical limits or recommended maximums?
-
-**Question 9**: For the mobile SDK roadmap: is there a recommended pattern for exposing iroh-gossip via C FFI for consumption by Swift/Kotlin? We are considering building a thin wrapper for sensor data gossip specifically.
-
-**Question 10**: Does iroh-gossip support a "lightweight subscriber" mode where a node receives messages but does not participate in the spanning tree construction? This would be useful for the server node, which only needs to observe sensor data, not actively participate in the broadcast tree.
-
-### Cost Impact Analysis
-
-#### Phase 1 (server gossip bridge, no mobile changes)
-
-Server cost: **no savings**. The server still processes all sensor data through the existing pipeline. The gossip bridge adds ~5% CPU overhead for encoding/broadcasting. The benefit is infrastructure readiness -- native clients can start receiving P2P once they embed iroh.
-
-#### Phase 2 (native mobile P2P active)
-
-With 10 mobile devices in a room at 25Hz:
-
-| Metric | Server-only (today) | With P2P (Phase 2) |
-|--------|--------------------|--------------------|
-| Server inbound I/O | 50 KB/s (10 devices * 25Hz * 200B) | 5 KB/s (server receives via gossip, 1 hop) |
-| Server outbound I/O | 450 KB/s (10 devices * 9 viewers * 25Hz * 200B / dedup) | 50 KB/s (web viewers only, mobile viewers receive P2P) |
-| Server total I/O | ~500 KB/s per room | ~55 KB/s per room (89% reduction) |
-| Mobile-to-mobile latency | 40-80ms (mobile -> server -> mobile) | <1ms (same LAN) to 50ms (relayed) |
-| Server CPU (per room) | Moderate (PubSub, Router, PriorityLens) | Low (gossip subscription only for web viewers) |
-
-At 100 concurrent rooms: 50 MB/s server I/O today vs 5.5 MB/s with P2P = 89% reduction.
-
-The savings are proportional to the fraction of viewers that are native mobile apps vs web browsers. If all viewers are web browsers, savings are zero (data still goes through server to WebSocket).
-
 ---
 
 ## Changelog
 
-### 2026-03-08: P2P Sensor Data Routing Plan
-- Added comprehensive architectural plan for routing sensor data through iroh gossip
-- Answered all 6 design questions with specific technical analysis
-- Designed two-phase implementation: Phase 1 (server gossip bridge, 3-5 days), Phase 2 (native mobile P2P, 2-4 weeks)
-- Identified iroh-gossip as the correct primitive (not iroh-docs/Automerge) for ephemeral sensor streams
-- Discovered iroh_ex v0.0.16 now includes `secret_key` in NodeConfig -- the identity persistence blocker may be resolved
-- Designed binary encoding format for gossip sensor messages (~50-80 bytes vs ~200+ bytes JSON)
-- Documented star topology with server as gossip participant (not pure relay) -- server sees 100% of data
-- Quantified cost impact: 89% server I/O reduction when native mobile P2P is active
-- Added 4 new questions for iroh team (#7-#10): NIF broadcast rate, per-topic memory, mobile FFI, lightweight subscriber mode
-- Explicitly accepted that web browser clients get no benefit from this plan (already optimal via WebSocket)
-- Architecture diagram (mermaid) showing SensorGossipBridge as the only new server component
+### 2026-03-25
+- Added analysis of new Rust SDK (`clients/rust/`), LobbyChannel, RoomChannel
+- Added Opportunity #10: Rust SDK iroh-gossip data transport
+- Updated channel architecture diagram (new channels)
+- Updated data pipeline documentation (Router early-exit, PriorityLens crash resilience, ViewerDataChannel visible-sensor filtering)
+- Updated cost analysis with new efficiency gains
+- Updated RoomStore analysis (lobby broadcasts, non-blocking remove_sensor)
+- Updated SystemLoadMonitor analysis (container-aware memory, code_change)
+- Added Question #7 for iroh team (Rust SDK integration pattern)
+- Updated Phase 4 roadmap to include Rust SDK gossip integration
+- Updated architecture diagram to include Rust SDK and new channels
 
-### 2026-03-05: Report Refresh
-- No iroh code changes since 2026-02-08; all 5 iroh modules remain unchanged
-- iroh_ex remains at v0.0.15, NIF binary aarch64-apple-darwin only (38.6 MB)
-- Significant pipeline change: respiration added to `@high_frequency_attributes` in PriorityLens, now accumulates as list (like ECG)
-- Updated Opportunity #5: delta encoding should now target respiration data alongside ECG
-- Added detailed sensor data pipeline documentation with ASCII diagram showing full data flow
-- Added source-side batch throttling details to pipeline documentation
-- Added "Server-Only Breakpoint Analysis" section to Cost/Scale Analysis -- honest assessment of when iroh becomes necessary
-- Updated composite lens context: now 9-tuple (heartrate, imu, location, ecg, battery, skeleton, respiration, hrv, gaze)
-- Added Phase 0 task: migrate DeltaEncoder.enabled?/0 from Application.get_env to :persistent_term
-- Added "Data Pipeline Optimizations" section under Key Relationships
-- All blockers remain unchanged: no secret_key in NodeConfig, no Linux NIF, list_all_rooms still broken
-- All 6 questions for iroh team remain unanswered
+### 2026-03-08
+- Added P2P Sensor Data Routing architectural plan
+- Research on iroh browser/mobile capabilities
+- Identified iroh-gossip (not iroh-docs) as the correct primitive for sensor data
+- Designed server-as-gossip-participant strategy
+- Added architecture diagram
 
-### 2026-03-01: Report Refresh
-- No iroh code changes since 2026-02-08; all 5 iroh modules remain unchanged
-- iroh_ex remains at v0.0.15, NIF binary aarch64-apple-darwin only
-- New platform features since last update: Guided Sessions, Discovery module, TURN/Cloudflare integration, graph views, audio/MIDI, breathing lens
-- Added Opportunity #6: Guided Session P2P Extension (low priority, PubSub sufficient)
-- Renumbered opportunities: Research visualizations is now #7, Historical blobs #8, Room markdown #9
-- Updated all plan file paths: moved from root to `plans/` directory
-- Added Discovery module, Guidance module, TURN plan to file locations appendix
-- Added sensor registry architecture section (confirmed stable at :pg + local Registry)
-- Added "Key Relationships" entries for Discovery module and Guided Sessions
-- All blockers remain unchanged
-- All 6 questions for iroh team remain unanswered
+### 2026-03-05
+- Updated for iroh_ex v0.0.16 (secret_key, Linux targets)
+- Added respiration as high-frequency attribute
+- Updated composite lens tuple to 9 elements
 
-### 2026-02-20: Report Refresh
-- No iroh code changes since 2026-02-08; all iroh modules remain unchanged
-- Recent commits (12841b8-9207440): audio/MIDI, polls, user profiles, delta encoding -- none touch iroh
-- Delta encoding encoder module now exists, upgraded Opportunity #5 to "partially done"
-- Updated cost model: delta encoding + attention routing push iroh breakpoint from ~1,000 to ~10,000 sensors
-
-### 2026-02-16: Report Refresh and Context Update
-- No iroh code changes since 2026-02-08; all iroh modules remain unchanged
-- Updated data pipeline documentation: PubSub now uses sharded attention topics
-- Updated sensor registry context: sensors use :pg + local Registry (not Horde)
-- Added ETS direct-write optimization to pipeline description
-- Noted GossipTopic and CrdtDocument are unsupervised
-- Added relationships with clustering plan, Membrane WebRTC, scalability guide
-
-### 2026-02-08: Implementation Progress
-- Implemented `Iroh.ConnectionManager` -- consolidated 4 separate iroh nodes into 1 shared GenServer
-- Completed `RoomStateBridge` bidirectional sync -- CRDT-to-local direction with echo suppression
-- Updated all 4 consumer modules to use ConnectionManager
-- Updated `Storage.Supervisor` to start ConnectionManager first
-- Discovered blocker: iroh_ex v0.0.15 NodeConfig has no `secret_key` field
-- All tests pass (324 tests, 0 failures)
-
-### 2026-02-08: Initial Report
-- Inventoried all iroh modules, tests, plans, and architecture documents
-- Identified critical architectural issues (4 nodes, no persistence, unidirectional bridge)
-- Built cost model showing P2P savings become significant at 1,000+ sensors
-- Documented 5 open questions for iroh team
+### 2026-03-01
+- Initial comprehensive report
+- Consolidated from previous partial assessments
+- Module-by-module assessment
+- Cost/scale analysis

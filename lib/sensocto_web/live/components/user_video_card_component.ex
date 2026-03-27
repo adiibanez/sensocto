@@ -163,11 +163,6 @@ defmodule SensoctoWeb.Live.Components.UserVideoCardComponent do
             {@user.sensor_count} sensor{if @user.sensor_count != 1, do: "s"} · {@user.total_attributes} attributes
           </p>
         </div>
-        <div class="flex-shrink-0">
-          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-600/50 text-gray-300">
-            Offline
-          </span>
-        </div>
       </div>
 
       <%!-- Sensors List --%>

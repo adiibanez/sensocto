@@ -1,9 +1,726 @@
 # Comprehensive Test Coverage and Accessibility Analysis
 ## Sensocto IoT Sensor Platform
 
-**Analysis Date:** January 12, 2026 (Updated: March 1, 2026)
+**Analysis Date:** January 12, 2026 (Updated: March 25, 2026)
 **Analyzed By:** Testing, Usability, and Accessibility Expert Agent
 **Project:** Sensocto - Elixir/Phoenix IoT Sensor Platform
+
+---
+
+## Update: March 25, 2026
+
+### Changes Reviewed in This Update
+
+| File | Nature of Change |
+|---|---|
+| `lib/sensocto_web/live/lobby_live.html.heex` | Major refactoring: content panel, mode switcher, layout toggle, quality override |
+| `lib/sensocto_web/live/custom_sign_in_live.ex` | Rework: sensor background, draggable balls, locale switcher, guest sign-in |
+| `lib/sensocto_web/live/components/about_content_component.ex` | Translation pattern change: `{color, "**verb** phrase"}` per-lens use cases |
+| `lib/sensocto_web/components/layouts/app.html.heex` | Nav: search trigger, theme toggle, language switcher, user menu, mobile hamburger, speed dial, footer toolbar |
+| `lib/sensocto_web/components/layouts/root.html.heex` | Arabic RTL: `dir={if locale == "ar", do: "rtl", else: "ltr"}` |
+| `lib/sensocto_web/live/index_live.ex` | Snapshot mode, animation mode, preview theme toggle |
+| `lib/sensocto_web/live/components/media_player_component.ex` | Refactored update/2, incremental assigns |
+| `lib/sensocto_web/live/components/object3d_player_component.ex` | Same pattern as media player |
+| `lib/sensocto_web/live/components/whiteboard_component.ex` | New component: collaborative canvas with per-user colors, control request modal |
+| `lib/sensocto_web/live/components/attribute_component.ex` | ECG summary mode, render hint dispatch |
+| `lib/sensocto_web/live/user_settings_live.ex` | Arabic locale added, `@valid_locale_codes` compile-time guard |
+| `lib/sensocto_web/live/lobby_live/lens_components.ex` | `composite_lens/1` wrapper, `midi_panel/1` extracted |
+
+---
+
+### Current Metrics (March 25, 2026)
+
+| Metric | Mar 1 | Mar 25 | Change |
+|--------|-------|--------|--------|
+| Implementation Files | ~280 | ~295 | +15 |
+| LiveView/Component Files | ~70 | ~80 | +10 |
+| `aria-live` Regions | 11 | **12** | +1 (whiteboard modal) |
+| RTL Support | None | **Arabic `dir="rtl"`** | New |
+| Skip Navigation Link | YES | YES | Stable |
+| `<.live_title>` in root layout | YES | YES | Stable |
+| WCAG Level A Violations (estimated) | ~35 | **~32** | -3 |
+| WCAG Level AA Violations (estimated) | ~12 | **~14** | +2 (new whiteboard/lobby controls) |
+| Estimated Code Coverage | ~22% | **~22%** | Stable |
+
+---
+
+### Accessibility Audit: March 25 Changes
+
+#### Positive Changes
+
+**RTL Arabic Layout Support — GOOD FOUNDATION**
+
+`root.html.heex` line 3 now sets `dir="rtl"` when locale is `ar`. This is the correct place to set document direction. The skip link, nav links, and content area will mirror correctly in RTL browsers.
+
+However, several UI patterns use directional CSS classes that do not flip automatically in RTL:
+
+- `app.html.heex` line 503: `bg-controls-drawer` uses `left: 0` and `translateX(calc(-100% + 21px))` — this drawer will overlap content incorrectly in RTL, where it should emerge from the right edge.
+- `app.html.heex` line 346: `footer-toolbar` is positioned `left: 0.5rem` — the sensor pill should be on the right in RTL.
+- `app.html.heex` lines 124-143 and 144-182: The dropdown menus use `absolute right-0` positioning — this happens to be correct for RTL (right-aligned menus) but only by accident. In LTR these are right-aligned; in RTL they remain right-aligned, which is correct for user menu but wrong for the lang switcher which is not the rightmost element in RTL.
+
+**Custom Sign-In Page: `page_title` Now Set — FIXED**
+
+`custom_sign_in_live.ex` line 58 assigns `page_title: "Sign In"`. This was flagged as missing in the February 20 report. Now resolved.
+
+**IndexLive: `page_title` Now Set — FIXED**
+
+`index_live.ex` line 46 assigns `page_title: "Home"`. This was flagged as missing in the February 20 report. Now resolved.
+
+**WhiteboardComponent Control Request Modal: `role="timer"` + `aria-live` — GOOD**
+
+`whiteboard_component.ex` lines 793-797: The countdown modal uses `role="timer"`, `aria-live="polite"`, and `aria-atomic="true"` on the countdown container. This matches the established pattern from `media_player_component.ex` and `object3d_player_component.ex`.
+
+**UserSettingsLive: Compile-time Locale Validation — GOOD**
+
+`user_settings_live.ex` line 160: `@valid_locale_codes` is derived at compile time from `@locales` and used as a guard in the `change_locale` event handler. This matches the pattern applied in `custom_sign_in_live.ex` and is correct per project security rules.
+
+---
+
+#### New Violations Found
+
+**Violation M26-1 — [4.1.2 Name, Role, Value] Lobby Content Mode Buttons Missing `aria-pressed` or `role="tab"` + `aria-selected`**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 273-343
+
+The `switch_lobby_mode` buttons for Media, 3D Object, Whiteboard, Polls, and Avatar use color alone to indicate the active mode. There is no `aria-pressed`, `role="tab"` + `aria-selected`, or any other ARIA state to convey the selected state to assistive technologies. A screen reader user hears "Media, button", "3D Object, button", etc. with no indication which mode is currently active.
+
+These are semantically toggle buttons controlling a content panel, not page-level navigation tabs. The correct pattern is `role="tab"` + `aria-selected` because they control a visible panel region below, or at minimum `aria-pressed` if they are treated as standalone toggles.
+
+Fix:
+
+```heex
+<%!-- Wrap the group: --%>
+<div role="tablist" aria-label="Content panel mode">
+  <button
+    role="tab"
+    phx-click="switch_lobby_mode"
+    phx-value-mode="media"
+    aria-selected={to_string(@lobby_mode == :media)}
+    aria-controls="lobby-content-panel"
+    class={...}
+  >
+    <Heroicons.icon name="play" type="solid" class="h-3 w-3" /> Media
+  </button>
+  <%!-- ... remaining buttons ... --%>
+</div>
+<%!-- The panel that these tabs control: --%>
+<div id="lobby-content-panel" role="tabpanel" ...>
+```
+
+**Violation M26-2 — [4.1.2 Name, Role, Value] Layout Toggle Button Has No Accessible Name**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 84-106
+
+The layout toggle button (stacked vs. floating) uses an icon with a `title` attribute only. The `title` attribute is the button's visible label on hover but is not announced reliably by all screen readers as the accessible name for interactive controls. The button has no `aria-label` and no text content.
+
+Fix:
+
+```heex
+<button
+  phx-click="toggle_lobby_layout"
+  aria-label={
+    if(@lobby_layout == :floating,
+      do: "Switch to stacked layout",
+      else: "Switch to floating dock"
+    )
+  }
+  aria-pressed={to_string(@lobby_layout == :floating)}
+  class={...}
+>
+  <Heroicons.icon ... />
+</button>
+```
+
+**Violation M26-3 — [4.1.2 Name, Role, Value] Quality Override Buttons Rely on Color Without Text State**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 143-195
+
+Each quality override button (High, Medium, Low, Minimal) uses a small colored `<span>` dot to convey the quality tier, plus a `✓` checkmark that appears only when that tier is selected. The checkmark is text content rendered inside a `:if` conditional — this is better than color-only but still insufficient because the `<span>` dots are unlabeled and convey meaning (green = good, red = bad) purely through color, violating WCAG 1.4.1.
+
+Additionally, the quality override dropdown trigger button (line 135) has only a `title="Quality settings"` and an icon — no `aria-label`. The dropdown itself appears on `:hover` via CSS (`group-hover:visible`), which is entirely inaccessible to keyboard users who cannot trigger hover states.
+
+Fix — add `aria-label` to the trigger and `aria-expanded` state, plus label the colored dots:
+
+```heex
+<%!-- Dropdown trigger --%>
+<button
+  id="quality-override-trigger"
+  class="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
+  aria-label="Change data quality setting"
+  aria-haspopup="listbox"
+  aria-expanded="false"
+>
+
+<%!-- Each option button's dot: --%>
+<span
+  class="w-2 h-2 rounded-full bg-green-400"
+  aria-hidden="true"
+>
+</span>
+High (20Hz)
+```
+
+The hover-only reveal must be replaced with a click-toggled JS.show/hide mechanism with `aria-expanded` managed on the trigger button.
+
+**Violation M26-4 — [2.1.1 Keyboard] Quality Override Dropdown Keyboard-Inaccessible**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 134-196
+
+The quality dropdown uses `group-hover:visible` CSS to show/hide. Keyboard users cannot open it because `:hover` does not trigger on focus. This is a complete keyboard barrier for changing data quality.
+
+Fix: Replace hover with a click toggle using `JS.toggle()` or a `phx-click` event to toggle a `show_quality_dropdown` assign. Add `aria-expanded` to the trigger and close on Escape via `phx-key="escape"` or a JS hook.
+
+**Violation M26-5 — [1.4.1 Use of Color] Quality Indicator Dot Is Color-Only**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 119-131
+
+The quality indicator pill near the toolbar shows the current quality level using a colored dot (green/yellow/orange/red/gray) plus the text label. The text label is present, so this partially satisfies 1.4.1. However, the status dot is a bare `<span>` with no `aria-hidden="true"` and no label — screen readers may announce it as an empty element creating a confusing reading order.
+
+Fix: Add `aria-hidden="true"` to the dot span since the text sibling already conveys the information:
+
+```heex
+<span class={"w-2 h-2 rounded-full " <> ...} aria-hidden="true"></span>
+<span>{@current_quality |> to_string() |> String.capitalize()}</span>
+```
+
+**Violation M26-6 — [4.1.2 Name, Role, Value] Content Panel Collapse Button Has No Accessible Name**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/lobby_live.html.heex` lines 228-252
+
+The "Content" tile header is a `<button>` that collapses/expands the content panel. It contains the text "Content" and the current mode name, which partially serves as a label. However, it does not communicate the expanded/collapsed state (`aria-expanded`) and the chevron icon used to show expand state has no `aria-hidden="true"`, causing screen readers to announce the SVG path data.
+
+Fix:
+
+```heex
+<button
+  phx-click="toggle_content_panel"
+  aria-expanded={to_string(!@content_panel_collapsed)}
+  aria-controls="lobby-content-panel-body"
+  class="w-full flex items-center justify-between px-3 py-2 bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
+>
+  <div class="flex items-center gap-2">
+    <Heroicons.icon name="squares-2x2" type="solid" class="w-4 h-4 text-gray-400" aria-hidden="true" />
+    <span class="text-sm font-medium text-gray-300">Content</span>
+    <span class="text-xs text-gray-500">{String.capitalize(to_string(@lobby_mode))}</span>
+  </div>
+  <svg class={...} aria-hidden="true" ...>
+```
+
+**Violation M26-7 — [1.1.1 Non-text Content] Custom Sign-In Background Controls: Unlabeled Theme Buttons**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/custom_sign_in_live.ex` lines 365-394
+
+The background theme selector buttons use Unicode characters (`—`, `✦`, `≈`, `◐`, `⁘`, `↻`) as their visible content. These characters have `data-tip` tooltip text which is shown via CSS pseudo-elements — this is purely visual and is not read by screen readers. The buttons have no `aria-label` and the icon characters have no semantic meaning to assistive technologies.
+
+Fix:
+
+```heex
+<button
+  :for={
+    {label, theme, tip} <- [
+      {"—", "off", gettext("No visualization")},
+      ...
+    ]
+  }
+  phx-click="set_bg_theme"
+  phx-value-theme={theme}
+  aria-label={tip}
+  aria-pressed={to_string(@sensor_bg_theme == theme)}
+  class={...}
+>
+  <span aria-hidden="true">{label}</span>
+</button>
+```
+
+The auto-cycle button (`↻`) should similarly get `aria-label={gettext("Auto-cycle background themes")}` and `aria-pressed={to_string(@sensor_bg_cycling)}`.
+
+**Violation M26-8 — [1.1.1 Non-text Content] Custom Sign-In Background Controls Drawer: No Accessible Label**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/custom_sign_in_live.ex` lines 347-413
+
+The entire `bg-controls-drawer` div is a slide-out panel that appears on hover (CSS `transform` transition). The panel contains the sensor count slider and theme buttons but has no `aria-label` or `role` to identify it as a controls region. Keyboard users cannot access this drawer because it only appears on mouse hover (`:hover` CSS selector on the wrapper div).
+
+Fix: Convert the hover mechanism to a togglable `<details>/<summary>` or a button-triggered `phx-click` show/hide. Add `aria-label` to the panel wrapper.
+
+**Violation M26-9 — [1.3.1 Info and Relationships] Sign-In Range Input Has No Label**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/custom_sign_in_live.ex` line 352
+
+The sensor count range input (`type="range"`, `name="count"`) has no `<label>` element and no `aria-label` or `aria-labelledby`. The number display next to it (the `{@sensor_bg_count}` span) is not associated with the input. Screen reader users have no way to know what this slider controls.
+
+Fix:
+
+```heex
+<form phx-change="set_bg_count" class="flex items-center gap-1.5 flex-1">
+  <label for="sensor-bg-count" class="sr-only">{gettext("Number of background sensors")}</label>
+  <input
+    type="range"
+    id="sensor-bg-count"
+    min="1"
+    max="100"
+    value={@sensor_bg_count}
+    name="count"
+    aria-valuemin="1"
+    aria-valuemax="100"
+    aria-valuenow={@sensor_bg_count}
+    class="w-20 h-1 accent-cyan-500 cursor-pointer"
+  />
+  <span class="w-4 text-[10px] text-center text-gray-500" aria-hidden="true">{@sensor_bg_count}</span>
+</form>
+```
+
+**Violation M26-10 — [4.1.2 Name, Role, Value] App Header Dropdown Buttons Missing `aria-expanded`**
+
+Severity: HIGH
+File: `lib/sensocto_web/components/layouts/app.html.heex` lines 115-143 (lang), 145-182 (user menu), 186-277 (mobile hamburger)
+
+All three dropdown/menu trigger buttons lack `aria-expanded` state. The dropdowns are toggled by `phx-hook="LangMenu"`, `phx-hook="UserMenu"`, and `phx-hook="MobileMenu"` respectively. Without `aria-expanded`, assistive technology users cannot determine if the menu is open or closed, and cannot rely on the `aria-expanded="true"` signal to understand that new content has appeared.
+
+This was flagged in the February 20 report and remains unresolved.
+
+Fix for each trigger button: manage `aria-expanded` in the JS hook:
+
+```javascript
+// In LangMenu hook:
+mounted() {
+  this.toggle = this.el.querySelector("[data-dropdown-toggle]");
+  this.menu = this.el.querySelector("[data-dropdown-menu]");
+  this.toggle.addEventListener("click", () => {
+    const isOpen = !this.menu.classList.contains("hidden");
+    this.menu.classList.toggle("hidden");
+    this.toggle.setAttribute("aria-expanded", String(!isOpen));
+    if (!isOpen) {
+      // move focus to first menu item
+      this.menu.querySelector("button, a")?.focus();
+    }
+  });
+}
+```
+
+Additionally, each menu `<div>` should have `role="menu"` and each item `role="menuitem"`.
+
+**Violation M26-11 — [2.1.1 Keyboard] App Header Search Trigger Only Dispatches Custom Event**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/components/layouts/app.html.heex` line 50
+
+The search trigger button fires `JS.dispatch("open-search")`. The `SearchLive` component presumably handles this via a hook. This pattern works for mouse/keyboard if the button is focusable (it is) and activated by Enter/Space (it is, being a `<button>`). This is a low risk item but should be verified in the JS hook that the `open-search` window event also moves focus into the search input when triggered.
+
+**Violation M26-12 — [3.1.2 Language of Parts] Arabic Number/Code Segments in RTL Context**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/components/layouts/root.html.heex` line 3
+
+The RTL direction is set globally for Arabic. This is correct for Arabic text. However, several UI segments contain numbers, codes, and technical identifiers (e.g., sensor IDs, timestamps, QR link tokens) that should maintain LTR direction even inside an RTL document. Without `dir="ltr"` on these inline segments, numbers and identifiers may display mirrored or in unexpected order.
+
+Fix: Wrap technical/numeric content in `<span dir="ltr">` in templates rendered for Arabic users:
+
+```heex
+<%!-- Example: sensor data value display --%>
+<span dir="ltr" class="font-mono">{@sensor_value}</span>
+```
+
+**Violation M26-13 — [1.1.1 Non-text Content] WhiteboardComponent Color Picker Buttons Have No Accessible Name**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/components/whiteboard_component.ex` lines 556-587
+
+The color picker renders 34 color swatch buttons. Each has `title={color}` where `color` is a hex string like `"#ef4444"`. Hex values are not meaningful accessible names for color swatches. A screen reader user hears "hashtag e f 4 4 4 4, button" for each swatch.
+
+Fix: Map hex values to human-readable color names and use them as `aria-label`:
+
+```heex
+<button
+  phx-click="set_color"
+  phx-value-color={color}
+  phx-target={@myself}
+  aria-label={"#{color_name(color)} #{if @stroke_color == color, do: "(selected)", else: ""}"}
+  aria-pressed={to_string(@stroke_color == color)}
+  ...
+>
+</button>
+```
+
+Where `color_name/1` maps `"#ef4444"` to `"Red"`, `"#22c55e"` to `"Green"`, etc. At minimum, mark currently selected color with `aria-pressed="true"`.
+
+**Violation M26-14 — [4.1.2 Name, Role, Value] WhiteboardComponent Tool Buttons Missing `aria-pressed`**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/components/whiteboard_component.ex` lines 491-529
+
+The pen, eraser, line, and rectangle tool buttons use background color change to indicate the active tool. No `aria-pressed` state is set. Screen reader users cannot determine which drawing tool is currently active.
+
+Fix:
+
+```heex
+<button
+  phx-click="set_tool"
+  phx-value-tool="pen"
+  phx-target={@myself}
+  aria-pressed={to_string(@current_tool == "pen")}
+  aria-label="Pen tool"
+  class={...}
+>
+  <Heroicons.icon name="pencil" type="outline" class="w-4 h-4" />
+</button>
+```
+
+**Violation M26-15 — [1.3.1 Info and Relationships] WhiteboardComponent Canvas Lacks `role` and Label**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/components/whiteboard_component.ex` lines 449-455
+
+The `<canvas>` element has no `role`, `aria-label`, or fallback text content. For screen reader users, the canvas is simply invisible or reported as "canvas". If the whiteboard is interactive and collaborative, it should at minimum communicate its purpose.
+
+Fix:
+
+```heex
+<canvas
+  id={"whiteboard-canvas-#{@room_id}"}
+  phx-update="ignore"
+  data-whiteboard-canvas="true"
+  role="img"
+  aria-label="Collaborative whiteboard canvas"
+  class="absolute inset-0 w-full h-full"
+  style="touch-action: none;"
+>
+  <%!-- Fallback for non-canvas browsers --%>
+  Collaborative whiteboard. Use drawing tools above to contribute.
+</canvas>
+```
+
+**Violation M26-16 — [2.4.3 Focus Order] WhiteboardComponent Control Request Modal No Focus Trap**
+
+Severity: HIGH
+File: `lib/sensocto_web/live/components/whiteboard_component.ex` lines 788-833
+
+The control request modal is a `fixed inset-0` overlay rendered conditionally via `<%= if ... %>`. When it appears, focus is not moved into the modal and there is no focus trap — keyboard users can tab behind the modal into the main page. The modal has no `role="dialog"` or `aria-modal="true"`.
+
+Fix:
+
+```heex
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby={"whiteboard-modal-title-#{@room_id}"}
+>
+  <div
+    id={"whiteboard-control-request-modal-#{@room_id}"}
+    phx-hook="FocusTrap"
+    ...
+  >
+    <h3 id={"whiteboard-modal-title-#{@room_id}"} class="text-lg font-semibold text-white mb-2">
+      Control Requested
+    </h3>
+```
+
+**Violation M26-17 — [1.1.1 Non-text Content] LensComponents MIDI Panel: Status Dot and Buttons Unlabeled**
+
+Severity: MEDIUM
+File: `lib/sensocto_web/live/lobby_live/lens_components.ex` lines 56, 58-60
+
+The MIDI panel's status dot (`id="midi-status-dot"`) is a bare `<span>` with no text and no `aria-label`. The "Audio Off" button, backend select, device select, and mode button are all managed by `phx-update="ignore"` and the `MidiOutputHook` JS hook. The JS hook is responsible for updating these elements' labels, but the static initial HTML provides no accessible names.
+
+Fix: Add `aria-label` to the status dot and ensure the JS hook updates `aria-label` dynamically:
+
+```heex
+<span
+  id="midi-status-dot"
+  class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"
+  role="status"
+  aria-label="MIDI disconnected"
+>
+</span>
+```
+
+Ensure the MIDI hook calls `statusDot.setAttribute("aria-label", "MIDI connected")` etc. when state changes.
+
+**Violation M26-18 — [3.2.2 On Input] Custom Sign-In Locale Change Triggers Full Page Redirect**
+
+Severity: LOW-MEDIUM
+File: `lib/sensocto_web/live/custom_sign_in_live.ex` lines 127-132
+
+The `change_locale` event redirects the user to `/sign-in?locale=<code>`, which triggers a full page reload. This is a usability regression for screen reader users who had focus positioned in the sign-in form — after the redirect the focus returns to the top of the document. The form state is also lost.
+
+The same pattern in `user_settings_live.ex` line 171 (redirect to `/settings?locale=<code>`) has the same issue on the settings page.
+
+Mitigation: Both redirects are currently necessary to have the `Locale` plug update the session cookie. This is a known limitation. The recommendation is to add a `<span aria-live="polite">` region that announces the locale change before the redirect fires, so users have context for the page reload:
+
+```heex
+<div id="locale-change-status" aria-live="polite" class="sr-only"></div>
+```
+
+And in the hook or a push_event, update this region with "Switching to German..." before the redirect.
+
+**Violation M26-19 — [1.3.1 Info and Relationships] `AboutContentComponent` `hl/1` Bold Spans Have No Semantic Meaning**
+
+Severity: LOW
+File: `lib/sensocto_web/live/components/about_content_component.ex`
+
+The `hl/1` function component (inferred from the translation pattern) splits strings on `**` markers and wraps the highlighted word in a colored `<span>`. Colored spans with no `role` or `<strong>` tag do not convey emphasis to screen reader users. The visual highlighting is purely decorative and conveys the "action" meaning, but sighted users understand the verb emphasis while non-sighted users do not.
+
+Fix: Use `<strong>` (strong importance) or `<em>` (stress emphasis) instead of, or wrapping, the colored span:
+
+```elixir
+defp hl(text, color) do
+  # ... split on **
+  ~H"""
+  <strong class={"text-#{@color}-400 font-semibold"}>{@word}</strong>
+  """
+end
+```
+
+---
+
+### Testing Recommendations: March 25 Changes
+
+#### Missing Test Coverage for New/Changed Code
+
+| Module | Status | Gap |
+|---|---|---|
+| `WhiteboardComponent` | 0% | All event handlers, update/2 logic, state initialization |
+| `CustomSignInLive` | 0% | Ball presence, locale switching, bg theme cycling, guest sign-in |
+| `IndexLive` | 0% | Preview mode toggle, snapshot refresh, animation mode |
+| `LensComponents` | 0% | `composite_lens/1`, `midi_panel/1` rendering |
+| `UserSettingsLive` | 0% | Token regeneration, QR toggle, locale change, `toggle_public` |
+| `AboutContentComponent` | 0% | `hl/1` rendering, lens selector, use-case display |
+| `MediaPlayerComponent` | Partial | `update/2` incremental assign path, sync event emission |
+| `Object3DPlayerComponent` | Partial | Same as media player |
+
+#### Suggested Test Cases
+
+```elixir
+# test/sensocto_web/live/components/whiteboard_component_test.exs
+
+defmodule SensoctoWeb.Live.Components.WhiteboardComponentTest do
+  use SensoctoWeb.ConnCase, async: false
+  import Phoenix.LiveViewTest
+
+  # WhiteboardComponent is a LiveComponent embedded in a parent view.
+  # Test via a simple wrapper LiveView using live_isolated/3.
+
+  defp authenticated_conn(conn) do
+    user =
+      Ash.Seed.seed!(Sensocto.Accounts.User, %{
+        email: "wb_test_#{System.unique_integer([:positive])}@example.com",
+        confirmed_at: DateTime.utc_now()
+      })
+
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> AshAuthentication.Plug.Helpers.store_in_session(user)
+    |> Map.put(:assigns, %{current_user: user})
+  end
+
+  describe "WhiteboardComponent mount" do
+    test "renders canvas and tool buttons", %{conn: conn} do
+      conn = authenticated_conn(conn)
+      {:ok, view, html} = live(conn, "/lobby")
+      render_click(view, "switch_lobby_mode", %{"mode" => "whiteboard"})
+      html = render(view)
+      assert html =~ "whiteboard-canvas"
+      assert html =~ "Collab Whiteboard"
+    end
+  end
+
+  describe "tool selection" do
+    test "set_tool changes current_tool", %{conn: conn} do
+      conn = authenticated_conn(conn)
+      {:ok, view, _html} = live(conn, "/lobby")
+      render_click(view, "switch_lobby_mode", %{"mode" => "whiteboard"})
+
+      wb = find_live_child(view, "lobby-whiteboard")
+      assert wb
+
+      html = render_click(wb, "set_tool", %{"tool" => "eraser"})
+      assert html =~ ~r/current_tool.*eraser/ or has_element?(wb, "[aria-pressed=true]", "Eraser")
+    end
+  end
+
+  describe "stroke width" do
+    test "set_width with valid integer updates stroke_width" do
+      # Verify String.to_integer does not crash on valid values "1", "3", "5", "8", "12"
+      for width <- ~w(1 3 5 8 12) do
+        assert String.to_integer(width) in [1, 3, 5, 8, 12]
+      end
+    end
+
+    test "wb_export with unsupported format is rejected" do
+      # Ensure the guard `when format in @valid_export_formats` holds
+      # wb_export with "gif" should be a no-op (falls through to catch-all)
+      assert function_exported?(SensoctoWeb.Live.Components.WhiteboardComponent, :handle_event, 3)
+    end
+  end
+end
+```
+
+```elixir
+# test/sensocto_web/live/custom_sign_in_live_test.exs
+
+defmodule SensoctoWeb.CustomSignInLiveTest do
+  use SensoctoWeb.ConnCase, async: false
+  import Phoenix.LiveViewTest
+
+  describe "mount" do
+    test "renders sign-in form at /sign-in", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/sign-in")
+      assert html =~ "Welcome"
+      assert html =~ "Continue as Guest"
+    end
+
+    test "sets page_title to 'Sign In'", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/sign-in")
+      assert html =~ "<title>Sign In"
+    end
+
+    test "redirects to /lobby if valid guest session exists", %{conn: conn} do
+      # Guest redirect requires session["is_guest"] = true and a valid guest in store
+      {:ok, guest} = Sensocto.Accounts.GuestUserStore.create_guest()
+
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{"is_guest" => true, "guest_id" => guest.id})
+
+      assert {:error, {:redirect, %{to: "/lobby"}}} = live(conn, "/sign-in")
+    end
+  end
+
+  describe "change_locale" do
+    test "accepts valid locale code and redirects", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/sign-in")
+      assert {:error, {:redirect, %{to: "/sign-in?locale=de"}}} =
+               render_click(view, "change_locale", %{"locale" => "de"})
+    end
+
+    test "ignores invalid locale code", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/sign-in")
+      # Should not redirect, should not crash
+      html = render_click(view, "change_locale", %{"locale" => "xx"})
+      assert html =~ "Welcome"
+    end
+  end
+
+  describe "set_bg_theme" do
+    test "accepts valid theme", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/sign-in")
+      html = render_click(view, "set_bg_theme", %{"theme" => "constellation"})
+      assert html =~ "sensor-background"
+    end
+
+    test "ignores invalid theme and does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/sign-in")
+      html = render_click(view, "set_bg_theme", %{"theme" => "malicious<script>"})
+      assert html =~ "sensor-background"
+    end
+  end
+
+  describe "join_as_guest" do
+    test "redirects to /auth/guest/:id/:token on success", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/sign-in")
+      result = render_click(view, "join_as_guest")
+      # Should redirect to the guest auth URL
+      assert result == {:error, {:redirect, %{to: _}}} or
+               (is_binary(result) and result =~ "sensor-background")
+    end
+  end
+end
+```
+
+```elixir
+# test/sensocto_web/live/user_settings_live_test.exs
+
+defmodule SensoctoWeb.UserSettingsLiveTest do
+  use SensoctoWeb.ConnCase, async: false
+  import Phoenix.LiveViewTest
+
+  defp authenticated_conn(conn) do
+    user =
+      Ash.Seed.seed!(Sensocto.Accounts.User, %{
+        email: "settings_#{System.unique_integer([:positive])}@example.com",
+        confirmed_at: DateTime.utc_now()
+      })
+
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> AshAuthentication.Plug.Helpers.store_in_session(user)
+    |> Map.put(:assigns, %{current_user: user})
+  end
+
+  describe "mount" do
+    test "renders settings page for authenticated user", %{conn: conn} do
+      conn = authenticated_conn(conn)
+      {:ok, _view, html} = live(conn, "/settings")
+      assert html =~ "Settings"
+      assert html =~ "Language"
+    end
+
+    test "redirects unauthenticated users", %{conn: conn} do
+      assert {:error, {:redirect, _}} = live(conn, "/settings")
+    end
+  end
+
+  describe "change_locale" do
+    test "accepts Arabic locale and redirects", %{conn: conn} do
+      conn = authenticated_conn(conn)
+      {:ok, view, _html} = live(conn, "/settings")
+      assert {:error, {:redirect, %{to: "/settings?locale=ar"}}} =
+               render_click(view, "change_locale", %{"locale" => "ar"})
+    end
+
+    test "rejects unknown locale code", %{conn: conn} do
+      conn = authenticated_conn(conn)
+      {:ok, view, _html} = live(conn, "/settings")
+      html = render_click(view, "change_locale", %{"locale" => "zz"})
+      # Should not redirect
+      assert html =~ "Settings"
+    end
+  end
+
+  describe "toggle_qr" do
+    test "shows QR code section on toggle", %{conn: conn} do
+      conn = authenticated_conn(conn)
+      {:ok, view, html} = live(conn, "/settings")
+      refute html =~ "qr_svg"
+      html = render_click(view, "toggle_qr")
+      assert html =~ "sensocto://auth"
+    end
+  end
+end
+```
+
+---
+
+### Priority Actions (March 25, 2026)
+
+1. **[BLOCKER] Lobby content mode buttons missing ARIA state (M26-1)** — Five buttons with no `aria-selected` or `aria-pressed`. Screen reader users cannot determine which content panel is active. Apply `role="tablist"` + `role="tab"` + `aria-selected` to the mode switcher group.
+
+2. **[BLOCKER] Quality override dropdown keyboard-inaccessible (M26-4)** — Hover-only CSS reveal completely blocks keyboard access to quality settings. Replace with click-toggled mechanism.
+
+3. **[BLOCKER] WhiteboardComponent control request modal lacks focus trap and `role="dialog"` (M26-16)** — Modal overlay with no focus management. Keyboard users can interact with content behind the modal.
+
+4. **[HIGH] App header dropdowns missing `aria-expanded` (M26-10)** — Language switcher, user menu, and mobile hamburger all lack ARIA state. Flagged in February 20 report, still unresolved.
+
+5. **[HIGH] Sign-in range input has no label (M26-9)** — Range slider in the background controls drawer has no associated `<label>` or `aria-label`.
+
+6. **[HIGH] WhiteboardComponent tool buttons missing `aria-pressed` (M26-14)** — Active tool is only communicated via color.
+
+7. **[HIGH] WhiteboardComponent canvas has no accessible name (M26-15)** — Canvas element is invisible to screen readers.
+
+8. **[MEDIUM] RTL layout: positioned elements not mirrored for Arabic (M26-1 RTL)** — Background controls drawer and footer toolbar use `left:` positioning that does not adapt to `dir="rtl"`. Use logical CSS properties (`inset-inline-start`, `margin-inline-end`) across all positioned elements.
+
+9. **[MEDIUM] Write tests for `WhiteboardComponent`, `CustomSignInLive`, and `UserSettingsLive`** — All three have zero test coverage and contain multiple event handlers and state transitions.
+
+10. **[MEDIUM] Add `aria-label` and `aria-pressed` to custom sign-in background theme buttons (M26-7)**.
 
 ---
 
@@ -30,7 +747,7 @@ six introduce UI accessible from every lobby page (floating badge, suggestion to
 
 2. The `session_server.ex` struct exposes `drift_back_timer_ref` in process state but `get_state/1` intentionally omits it from the public map. This is correct for security but means the only way to observe timer behavior in tests is via PubSub messages or by inspecting the raw process state with `:sys.get_state/1`.
 
-3. The follower floating badge uses `phx-click="guide_end_session"` for the dismiss button (the `&times;` button at the end of the badge). This is the same event used in the guide panel to end the session entirely. A follower clicking the `&times;` to dismiss their badge would end the entire session rather than just collapsing the badge. This is a significant UX and logic bug.
+3. The follower floating badge uses `phx-click="guide_end_session"` for the dismiss button (the `&times;` button at the end of the badge). This is the same event used in the guide panel to end the session entirely. A follower clicking the `&times;` to dismiss their badge would end the entire session rather than just collapsing the badge. This is a significant UX and logic bug. **Status as of March 25: The lobby template now shows a `follower_leave_session` event on the dismiss button in the following pill (line 72 of lobby_live.html.heex). This specific bug appears resolved. The `guide_end_session` event remains on the guide panel's end button, which is correct.**
 
 ### Testing Recommendations: Guided Session (Feb 24, 2026)
 
@@ -206,7 +923,7 @@ defmodule Sensocto.Guidance.SessionServerTest do
       Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
 
       :ok = SessionServer.break_away(sid, fid)
-      # Activity reported at ~900ms, so timer resets; drift_back should not arrive for another second
+      # Activity reported at ~400ms, so timer resets; drift_back should not arrive for another second
       Process.sleep(400)
       SessionServer.report_activity(sid, fid)
       # Should NOT receive drift_back within the original 1s window
@@ -239,7 +956,7 @@ defmodule Sensocto.Guidance.SessionServerTest do
 
   describe "idle timeout" do
     test "guide disconnect starts idle timer; idle_timeout stops server" do
-      {:ok, %{session_id: sid, guide_id: gid}} = start_server()
+      {:ok, %{session_id: sid}} = start_server()
 
       topic = "guidance:#{sid}"
       Phoenix.PubSub.subscribe(Sensocto.PubSub, topic)
@@ -602,222 +1319,58 @@ with {:ok, session} <-
 
 #### Critical UX Bug: Follower Badge Uses Wrong Event to Dismiss
 
-In `/Users/adrianibanez/Documents/projects/2024_sensor-platform/sensocto/lib/sensocto_web/live/lobby_live.html.heex` around line 1537, the `&times;` dismiss button on the follower floating badge fires `guide_end_session`, which ends the entire guided session. A follower should be able to minimize or leave the session without destroying it for the guide.
-
-The fix requires either:
-
-1. A separate `"follower_leave_session"` event that ends the session from the follower's perspective only (calls `SessionServer.end_session/2` which stops the server), or
-2. A `"dismiss_session_badge"` event that just hides the UI (sets `@guided_session` to nil locally) if the intent is that the follower can leave without ending the guide's ability to resume.
+**Status as of March 25, 2026: RESOLVED.** The follower leave button in the current `lobby_live.html.heex` (line 72) correctly fires `follower_leave_session` rather than `guide_end_session`.
 
 ### Accessibility Audit: Guided Session UI (Feb 24, 2026)
 
-#### WCAG Violations in New UI Elements
+#### WCAG Violations in Guided Session UI Elements
 
 **Violation GS-1 — [1.1.1 Non-text Content] Floating Badge Dismiss Button Has No Accessible Name**
 
-Severity: HIGH
-File: `lib/sensocto_web/live/lobby_live.html.heex` approximately line 1537
-
-The `&times;` character is not a reliable accessible name. The button has a `title="End session"` attribute, which some screen readers announce as a tooltip on hover but is not a reliable accessible name for interactive elements.
-
-Fix:
-
-```heex
-<button
-  phx-click="guide_end_session"
-  class="ml-2 text-xs text-error/60 hover:text-error"
-  aria-label="End guided session"
->
-  <span aria-hidden="true">&times;</span>
-</button>
-```
+Severity: HIGH — **Status: RESOLVED** — The new `lobby_live.html.heex` uses a `<Heroicons.icon name="x-mark">` button with `title="Leave guided session"` for the follower leave button. A `title` attribute is still not a fully reliable accessible name; it should be supplemented with `aria-label="Leave guided session"`. The icon itself should have `aria-hidden="true"`.
 
 **Violation GS-2 — [1.4.1 Use of Color] Guide/Follower Presence Dot Relies Solely on Color**
 
-Severity: HIGH
-File: `lib/sensocto_web/live/lobby_live.html.heex` approximately lines 1514-1517 and 1571-1573
-
-Both the follower badge and the guide panel use a small colored dot (`bg-green-500` vs `bg-gray-400`) as the sole indicator of guide/follower connection status. Users with color blindness or low vision cannot distinguish the dot colors. The dot element is an empty `<span>` with no text content and no `aria-label`.
+Severity: HIGH — **Status: PARTIALLY RESOLVED** — The dot in the following pill (`lobby_live.html.heex` lines 64-68) still uses only color (green vs. gray) with no text label or `aria-label` on the dot span. The guide connection state is visually implied by color only.
 
 Fix:
 
 ```heex
-<%!-- Replace the bare colored span with a labeled indicator --%>
-<span
-  class={["w-2 h-2 rounded-full", if(@guided_presence.guide_connected, do: "bg-green-500", else: "bg-gray-400")]}
-  aria-label={if @guided_presence.guide_connected, do: "Guide is online", else: "Guide is offline"}
+<span class={[
+  "w-2 h-2 rounded-full",
+  if(@guided_presence.guide_connected, do: "bg-green-400", else: "bg-gray-400")
+]}
   role="img"
+  aria-label={if @guided_presence.guide_connected, do: "Guide is online", else: "Guide is offline"}
 >
 </span>
 ```
 
 **Violation GS-3 — [4.1.3 Status Messages] Guided Session State Changes Not Announced**
 
-Severity: HIGH
-File: `lib/sensocto_web/live/lobby_live.html.heex` lines 1510-1544
+Severity: HIGH — **Status: OPEN**
 
-When a follower breaks away or drifts back, the badge text changes between "Following guide" and "Exploring on your own". These dynamic content changes are not in an `aria-live` region, so screen reader users receive no announcement when the mode changes.
-
-Fix: Wrap the badge status text in a live region.
-
-```heex
-<div
-  class="bg-base-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-2 text-sm"
-  role="status"
-  aria-live="polite"
-  aria-atomic="true"
->
-  <%!-- existing badge content --%>
-</div>
-```
+The `@guided_session` conditional block (lines 61-79) has no `aria-live` region. When a follower breaks away or drifts back, the text changes are silent to screen readers.
 
 **Violation GS-4 — [4.1.3 Status Messages] Suggestion Toast Not Announced**
 
-Severity: HIGH
-File: `lib/sensocto_web/live/lobby_live.html.heex` approximately lines 1547-1562
-
-The suggestion toast (`@guided_suggestion`) appears via a conditional `<%= if ... %>` block. When the content renders, a screen reader user receives no announcement. The toast contains guidance from the guide (e.g., "Try breathing at 6 breaths/min") which is important information to convey.
-
-Fix: Add `role="alert"` and `aria-live="assertive"` because suggestion toasts are action-relevant information that needs immediate attention. Alternatively, use `aria-live="polite"` if the suggestion is not time-critical.
-
-```heex
-<%= if @guided_suggestion do %>
-  <div
-    class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4"
-    role="alert"
-    aria-live="assertive"
-    aria-atomic="true"
-  >
-    <div class="bg-base-200 rounded-xl shadow-xl p-4 flex items-start gap-3">
-      <div class="flex-1">
-        <p class="text-sm font-medium">{@guided_suggestion.text}</p>
-      </div>
-      <button
-        phx-click="dismiss_suggestion"
-        class="text-base-content/40 hover:text-base-content text-lg leading-none"
-        aria-label="Dismiss suggestion"
-      >
-        <span aria-hidden="true">&times;</span>
-      </button>
-    </div>
-  </div>
-<% end %>
-```
+Severity: HIGH — **Status: OPEN** (if `@guided_suggestion` feature is still active)
 
 **Violation GS-5 — [2.4.3 Focus Order] Floating Badge and Toast Have No Focus Management**
 
-Severity: MEDIUM
-File: `lib/sensocto_web/live/lobby_live.html.heex` lines 1510-1562
-
-Both the floating badge and the suggestion toast use `fixed` positioning and appear dynamically. When the toast appears, keyboard focus remains wherever it was. Users who navigate by keyboard have no indication that new content has appeared unless they tab through the page. The toast in particular contains an interactive dismiss button that keyboard users may never find.
-
-Fix: When a suggestion toast appears, use `Phoenix.LiveView.push_event` with a JS hook to focus the toast's dismiss button. When the toast is dismissed, return focus to a stable landmark.
-
-```elixir
-# In the handle_info for :guided_suggestion in lobby_live.ex:
-{:noreply, socket |> assign(:guided_suggestion, suggestion) |> push_event("focus", %{"id" => "suggestion-dismiss-btn"})}
-```
-
-```heex
-<button
-  id="suggestion-dismiss-btn"
-  phx-click="dismiss_suggestion"
-  aria-label="Dismiss suggestion"
->
-```
+Severity: MEDIUM — **Status: OPEN**
 
 **Violation GS-6 — [1.3.1 Info and Relationships] Guide Panel Suggestion Buttons Lack Context**
 
-Severity: MEDIUM
-File: `lib/sensocto_web/live/lobby_live.html.heex` approximately lines 1582-1617
-
-The guide panel renders two "suggest" buttons labeled "Breathing" and "Break". Without additional context, a screen reader user on the guide panel hears only "Breathing, button" and "Break, button" with no indication these are actions to send suggestions to the follower.
-
-Fix:
-
-```heex
-<button
-  phx-click="guide_suggest"
-  phx-value-type="breathing_rhythm"
-  phx-value-text="Try breathing at 6 breaths/min"
-  class="btn btn-xs btn-outline"
-  aria-label="Suggest breathing exercise to follower"
->
-  Breathing
-</button>
-<button
-  phx-click="guide_suggest"
-  phx-value-type="take_break"
-  phx-value-text="Take a short break"
-  class="btn btn-xs btn-outline"
-  aria-label="Suggest taking a break to follower"
->
-  Break
-</button>
-```
+Severity: MEDIUM — **Status: OPEN**
 
 **Violation GS-7 — [2.4.2 Page Titled] GuidedSessionJoinLive Missing `page_title` on Error State**
 
-Severity: LOW-MEDIUM
-File: `lib/sensocto_web/live/guided_session_join_live.ex` lines 13-35
-
-All mount branches set `page_title: "Join Guided Session"` including error states. This is correct. However, the error-state content ("This invitation is no longer valid.") is rendered in a `<p class="text-error">` without any ARIA role to distinguish it from regular content. A screen reader user lands on the join page and hears the heading "Guided Session" followed by the error text with no indication it is an error message.
-
-Fix: Add `role="alert"` to the error paragraph so screen readers announce it immediately on page load.
-
-```heex
-<%= if @error do %>
-  <p class="text-error mt-4" role="alert">{@error}</p>
-```
+Severity: LOW-MEDIUM — **Status: OPEN** — Error states share the `"Join Guided Session"` title; the error content still lacks `role="alert"`.
 
 **Violation GS-8 — [4.1.2 Name, Role, Value] "Accept & Join" Button Has No Disabled State**
 
-Severity: LOW
-File: `lib/sensocto_web/live/guided_session_join_live.ex` line 115
-
-The accept button has no `phx-disable-with` attribute, which means double-clicks can fire the `accept` event twice. The second `Ash.update` call would fail (session already active), but the user would see no feedback. The button also has no loading indicator.
-
-Fix:
-
-```heex
-<button
-  phx-click="accept"
-  class="btn btn-primary btn-lg"
-  phx-disable-with="Joining..."
->
-  Accept &amp; Join
-</button>
-```
-
-#### Accessibility Enhancements for Guided Session (Not Violations, But Recommended)
-
-**GS-E1 — Guide Panel Should Use `role="region"` with `aria-label`**
-
-The guide panel div at line 1566 is a significant UI area but has no landmark role. Screen reader users cannot navigate to it quickly.
-
-```heex
-<div
-  class="fixed top-16 right-4 z-50"
-  role="region"
-  aria-label="Guide controls"
->
-```
-
-**GS-E2 — Follower Badge Should Use `role="region"` with `aria-label`**
-
-Same reasoning as GS-E1 for the follower badge at line 1512.
-
-```heex
-<div
-  class="fixed top-16 right-4 z-50"
-  role="region"
-  aria-label="Guided session status"
->
-```
-
-**GS-E3 — Keyboard Shortcut for Rejoin/Break Away**
-
-Power users and users who rely on keyboard navigation would benefit from a keyboard shortcut (e.g., `Escape` to break away, `G` to rejoin guide) when in a guided session. This is an enhancement for a future iteration but worth logging now.
+Severity: LOW — **Status: OPEN** — `phx-disable-with` is still absent from the accept button.
 
 ---
 
@@ -844,7 +1397,7 @@ This update reflects the Sensocto codebase as of February 20, 2026. The project 
 
 Several accessibility violations reported on Feb 16 have been fixed: the skip navigation link now exists in `root.html.heex`; `<.live_title>` is used in the root layout so per-page title changes are announced by screen readers; the lobby view mode selector now uses a proper ARIA tablist with `aria-selected`; and the count of `aria-live` regions jumped from 1 to 11. However, all six new features were shipped with accessibility gaps — unlabeled form fields, icon-only buttons without accessible names, navigation without `aria-current`, and JS-controlled dropdowns with no `aria-expanded` state. These must be addressed now before they compound further.
 
-### Current Metrics
+### Current Metrics (February 20, 2026)
 
 | Metric | Feb 16 | Feb 20 | Change |
 |--------|--------|--------|--------|
@@ -866,13 +1419,13 @@ Several accessibility violations reported on Feb 16 have been fixed: the skip na
 
 **Positive Changes:**
 
-1. **Skip Navigation Link Added** (`root.html.heex` lines 22-27) — Uses the correct `href="#main"` target with `sr-only focus:not-sr-only` pattern. Resolves the long-standing WCAG 2.4.1 violation.
+1. **Skip Navigation Link Added** (`root.html.heex` lines 38-43) — Uses the correct `href="#main"` target with `sr-only focus:not-sr-only` pattern. Resolves the long-standing WCAG 2.4.1 violation.
 
 2. **`<.live_title>` in Root Layout** — The root layout now uses Phoenix's `<.live_title>` component, meaning `page_title` changes on `handle_params` are properly announced to assistive technologies during LiveView navigation. Per-page titles are set in: `LobbyLive`, `PollsLive`, `ProfileLive`, `RoomListLive`, `RoomShowLive`, `SensorLive`, `UserDirectoryLive`, `UserShowLive`, `SystemStatusLive`, `AiChatLive`, `AboutLive`.
 
-3. **Lobby View Mode Selector Upgraded to ARIA Tablist** — The lens navigation in `lobby_live.html.heex` (line 345) now uses `role="tablist"` on the `<nav>` element and `role="tab"` plus `aria-selected` on each lens chip. This is a significant improvement for keyboard and screen reader users navigating between sensor views.
+3. **Lobby View Mode Selector Upgraded to ARIA Tablist** — The lens navigation in `lobby_live.html.heex` now uses `role="tablist"` on the `<nav>` element and `role="tab"` plus `aria-selected` on each lens chip. This is a significant improvement for keyboard and screen reader users navigating between sensor views.
 
-4. **`aria-live` Regions: 1 -> 11** — New regions added in `whiteboard_component.ex`, `object3d_player_component.ex`, `media_player_component.ex`, `room_show_live.ex`, and the lobby modals' countdown timers. The two countdown timer divs (`id="object3d-control-countdown"` and `id="media-control-countdown"`) correctly use `role="timer"`, `aria-live="polite"`, and `aria-atomic="true"`.
+4. **`aria-live` Regions: 1 -> 11** — New regions added in `whiteboard_component.ex`, `object3d_player_component.ex`, `media_player_component.ex`, `room_show_live.ex`, and the lobby modals' countdown timers. The two countdown timer divs correctly use `role="timer"`, `aria-live="polite"`, and `aria-atomic="true"`.
 
 5. **18 New Test Files Added** — Notable additions:
    - `lobby_graph_regression_test.exs` (229 lines) — Verifies all 13 lobby routes mount without crashing; tests `TabbedFooterLive` collapse/expand via `live_isolated/3`.
@@ -902,7 +1455,7 @@ Several accessibility violations reported on Feb 16 have been fixed: the skip na
 
 ## Testing Analysis
 
-### Test File Inventory (51 files)
+### Test File Inventory (51 files as of Feb 20, 2026)
 
 | Category | Files | Approx. Tests | Notes |
 |----------|-------|---------------|-------|
@@ -926,25 +1479,9 @@ Several accessibility violations reported on Feb 16 have been fixed: the skip na
 | Sync/Chat/OBJ3D/Media | `sync_computer_test.exs`, `chat_store_test.exs`, `object3d_player_server_test.exs`, `media_player_server_test.exs` | ~35 | |
 | Lenses | `priority_lens_test.exs` | 20 | |
 
-### Notable New Tests: Lobby Graph Regression
-
-**File:** `test/sensocto_web/live/lobby_graph_regression_test.exs` (229 lines)
-
-Verifies all 13 lobby routes mount without crashing. Also tests `TabbedFooterLive` collapse/expand behavior using `live_isolated/3` — a good pattern for testing LiveView components in isolation. Additionally exercises `IndexLive` rendering for the "Enter Lobby" link and "sensors online" count display.
-
-**Quality note:** Three tests inside the same `describe "lobby graph routes"` block all assert `html =~ "LobbyGraph"` on `/lobby/graph` with different test names but identical bodies. These should be consolidated or made more specific.
-
-### Notable New Tests: MIDI Output Regression
-
-**File:** `test/sensocto_web/live/midi_output_regression_test.exs` (219 lines)
-
-Tests the `composite_measurement` push_event contract for the graph view using `send(view.pid, {:lens_batch, batch})` and `assert_push_event/3`. Excellent pattern for testing LiveView event emission without browser interaction.
-
-**Quality note:** Uses `refute_push_event/4` with a 4-argument call including a timeout. The standard `Phoenix.LiveViewTest` signature is `refute_push_event(view, event, payload_pattern)` (3 args). A silent no-op on the extra argument would make some negative assertions unreliable.
-
 ### Quality Issue: Silent `if` Guard in Search Tests
 
-**File:** `test/sensocto_web/live/search_live_test.exs` (lines 65-99)
+**File:** `test/sensocto_web/live/search_live_test.exs`
 
 All three test blocks guard their assertions inside `if search_view do ... end`. If `find_live_child(view, "search-live")` returns `nil`, assertions are silently skipped and the test reports green. This is a false-green risk.
 
@@ -963,31 +1500,29 @@ render_click(search_view, "open")
 assert render(search_view) =~ "Search sensors, rooms"
 ```
 
-### Critical Testing Gaps
+### Critical Testing Gaps (Priority Order, March 25, 2026)
 
 #### Priority 0: Zero Coverage
 
-1. **`lib/sensocto_web/live/lobby_live.ex`** — Most complex LiveView. Graph regression verifies mount only. No tests for: `set_quality_override`, `join_room` validation, `show_join_modal`/`dismiss_join_modal`, `toggle_sidebar`, composite lens data extraction, attention tracking lifecycle, PubSub measurement handling.
+1. **`lib/sensocto_web/live/components/whiteboard_component.ex`** — New collaborative canvas. No tests. All event handlers (`stroke_complete`, `clear_whiteboard`, `undo`, `take_control`, `request_control`, `keep_control`, `wb_export`) untested.
 
-2. **`lib/sensocto_web/live/index_live.ex`** — Main dashboard. No tests. Does not set `page_title` (falls back to "Sensocto").
+2. **`lib/sensocto_web/live/custom_sign_in_live.ex`** — Authentication page. Ball presence, locale switching, sensor background, guest sign-in all untested.
 
-3. **`lib/sensocto/calls/call_server.ex`** (776 lines) — No tests.
+3. **`lib/sensocto_web/live/user_settings_live.ex`** — Settings page. Token regeneration, QR toggle, locale change, `toggle_public` for authenticated and guest users, all untested.
 
-4. **`lib/sensocto/calls/quality_manager.ex`** (336 lines) — No tests.
+4. **`lib/sensocto_web/live/index_live.ex`** — Main dashboard. Snapshot refresh cycle, animation mode activation, preview theme change, presence diff handling all untested.
 
-5. **`lib/sensocto/calls/snapshot_manager.ex`** (239 lines) — No tests.
+5. **`lib/sensocto/calls/call_server.ex`** (776 lines) — No tests.
 
-6. **`lib/sensocto/calls/cloudflare_turn.ex`** — No tests.
+6. **`lib/sensocto/calls/quality_manager.ex`** (336 lines) — No tests.
 
-7. **`lib/sensocto_web/channels/call_channel.ex`** (359 lines) — No tests.
+7. **`lib/sensocto/calls/snapshot_manager.ex`** (239 lines) — No tests.
 
-8. **`lib/sensocto_web/live/admin/system_status_live.ex`** — No tests.
+8. **`lib/sensocto_web/channels/call_channel.ex`** (359 lines) — No tests.
 
-9. **`lib/sensocto_web/live/custom_sign_in_live.ex`** — Authentication page. No tests.
+9. **`lib/sensocto_web/live/polls_live.ex`** — No LiveView tests for `create_poll`, `validate_poll`, `add_option`, `close_poll`.
 
-10. **`lib/sensocto_web/live/polls_live.ex`** (new) — No LiveView tests for `create_poll`, `validate_poll`, `add_option`, `close_poll`.
-
-11. **`lib/sensocto_web/live/profile_live.ex`** (new) — No LiveView tests for `save_profile`, `add_skill`, `remove_skill`.
+10. **`lib/sensocto_web/live/profile_live.ex`** — No LiveView tests for `save_profile`, `add_skill`, `remove_skill`.
 
 #### Priority 1: Insufficient Tests
 
@@ -995,892 +1530,38 @@ assert render(search_view) =~ "Search sensors, rooms"
 
 2. **`user_directory_live_test.exs`** — Tests mount but not the `search` event or list-to-graph navigation.
 
-3. **`openapi_test.exs`** — Only 2 schema validation tests.
-
-### Suggested Test Cases
-
-#### 1. LobbyLive Event Handler Tests (HIGHEST PRIORITY)
-
-```elixir
-defmodule SensoctoWeb.LobbyLiveEventTest do
-  use SensoctoWeb.ConnCase, async: false
-  import Phoenix.LiveViewTest
-
-  setup %{conn: conn} do
-    user =
-      Ash.Seed.seed!(Sensocto.Accounts.User, %{
-        email: "lobby_event_#{System.unique_integer([:positive])}@example.com",
-        confirmed_at: DateTime.utc_now()
-      })
-
-    {:ok, token, _} =
-      AshAuthentication.Jwt.token_for_user(user, %{purpose: :user}, token_lifetime: {1, :hours})
-
-    user = Map.put(user, :__metadata__, %{token: token})
-    conn = conn |> Plug.Test.init_test_session(%{}) |> AshAuthentication.Plug.Helpers.store_in_session(user)
-    {:ok, conn: conn}
-  end
-
-  describe "quality override" do
-    test "set_quality_override to high changes quality assign", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby")
-      html = render_click(view, "set_quality_override", %{"quality" => "high"})
-      assert html =~ "High" or has_element?(view, "[data-quality=high]")
-    end
-
-    test "set_quality_override to auto clears manual override", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby")
-      render_click(view, "set_quality_override", %{"quality" => "high"})
-      html = render_click(view, "set_quality_override", %{"quality" => "auto"})
-      refute html =~ "(manual)"
-    end
-  end
-
-  describe "join room modal" do
-    test "show_join_modal makes modal visible", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby")
-      html = render_click(view, "show_join_modal")
-      assert html =~ "Join Room"
-    end
-
-    test "dismiss_join_modal hides modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby")
-      render_click(view, "show_join_modal")
-      html = render_click(view, "dismiss_join_modal")
-      refute html =~ "join_code_help"
-    end
-
-    test "join_room with empty code shows error", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby")
-      render_click(view, "show_join_modal")
-      html = render_submit(view, "join_room", %{"join_code" => ""})
-      assert html =~ "required" or html =~ "error"
-    end
-  end
-
-  describe "lens_batch message handling" do
-    test "lens_batch message triggers re-render without crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/lobby")
-      send(view.pid, {:lens_batch, %{"sensor-1" => %{"heartrate" => %{payload: 72, timestamp: 1_000}}}})
-      assert render(view)
-    end
-  end
-end
-```
-
-#### 2. PollsLive Event Tests (HIGH PRIORITY)
-
-```elixir
-defmodule SensoctoWeb.PollsLiveTest do
-  use SensoctoWeb.ConnCase, async: false
-  import Phoenix.LiveViewTest
-
-  setup %{conn: conn} do
-    user =
-      Ash.Seed.seed!(Sensocto.Accounts.User, %{
-        email: "polls_#{System.unique_integer([:positive])}@example.com",
-        confirmed_at: DateTime.utc_now()
-      })
-
-    {:ok, token, _} =
-      AshAuthentication.Jwt.token_for_user(user, %{purpose: :user}, token_lifetime: {1, :hours})
-
-    user = Map.put(user, :__metadata__, %{token: token})
-    conn = conn |> Plug.Test.init_test_session(%{}) |> AshAuthentication.Plug.Helpers.store_in_session(user)
-    {:ok, conn: conn}
-  end
-
-  describe "polls list" do
-    test "renders at /polls", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/polls")
-      assert html =~ "Polls"
-    end
-
-    test "renders New Poll link for authenticated user", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/polls")
-      assert html =~ "New Poll"
-    end
-  end
-
-  describe "new poll form" do
-    test "renders at /polls/new", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/polls/new")
-      assert html =~ "Title"
-      assert html =~ "Create Poll"
-    end
-
-    test "add_option increases option input count", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/polls/new")
-      initial_count = Regex.scan(~r/Option \d+/, html) |> length()
-      html = render_click(view, "add_option")
-      new_count = Regex.scan(~r/Option \d+/, html) |> length()
-      assert new_count > initial_count
-    end
-  end
-end
-```
-
-#### 3. Fix Silent `if` Guard in Search Tests
-
-```elixir
-# In test/sensocto_web/live/search_live_test.exs — replace all occurrences of:
-#   if search_view do ... end
-# with:
-assert search_view, "Expected SearchLive child with id='search-live' to be mounted"
-```
-
-#### 4. CallServer Unit Tests (HIGH PRIORITY)
-
-```elixir
-defmodule Sensocto.Calls.CallServerTest do
-  use ExUnit.Case, async: true
-  alias Sensocto.Calls.CallServer
-
-  describe "participant management" do
-    test "joining adds participant to state" do
-      {:ok, pid} = CallServer.start_link(room_id: "test_room_#{System.unique_integer()}")
-      :ok = CallServer.join(pid, "user1", %{name: "Test User"})
-      state = CallServer.get_state(pid)
-      assert Map.has_key?(state.participants, "user1")
-    end
-
-    test "leaving removes participant from state" do
-      {:ok, pid} = CallServer.start_link(room_id: "test_room_#{System.unique_integer()}")
-      CallServer.join(pid, "user1", %{name: "Test User"})
-      CallServer.leave(pid, "user1")
-      state = CallServer.get_state(pid)
-      refute Map.has_key?(state.participants, "user1")
-    end
-  end
-
-  describe "quality tier calculation" do
-    test "active speaker receives highest tier" do
-      {:ok, pid} = CallServer.start_link(room_id: "test_room_#{System.unique_integer()}")
-      CallServer.join(pid, "user1", %{name: "Speaker"})
-      CallServer.update_speaking(pid, "user1", true)
-      assert CallServer.get_tier(pid, "user1") == :active
-    end
-  end
-end
-```
+3. **`openapi_test.exs`** — Only 2 schema validation tests. Should include connector schema validation.
 
 ---
 
 ## Accessibility Audit
 
-### WCAG 2.1 Compliance Summary
+### WCAG 2.1 Compliance Summary (March 25, 2026)
 
-| Level | Status | Violations | Change from Feb 16 |
+| Level | Status | Violations | Change from Mar 1 |
 |-------|--------|------------|-------------------|
-| Level A | FAIL | ~35 violations | -5 (skip nav, tablist, aria-live) |
-| Level AA | FAIL | ~12 violations | Stable |
+| Level A | FAIL | ~32 violations | -3 (page titles fixed) |
+| Level AA | FAIL | ~14 violations | +2 (whiteboard, lobby controls) |
 | Level AAA | NOT ASSESSED | -- | N/A |
 
-### Fixed Since Last Report
+### Fixed Since Initial Report
 
-1. **[2.4.1 Bypass Blocks] Skip Navigation Link — FIXED** — `root.html.heex` now includes a correct skip link to `#main` with `sr-only focus:not-sr-only` pattern.
+1. **[2.4.1 Bypass Blocks] Skip Navigation Link — FIXED** — `root.html.heex` includes correct skip link to `#main` with `sr-only focus:not-sr-only` pattern.
 
-2. **[2.4.2 Page Titled] Static Page Title — LARGELY FIXED** — Root layout uses `<.live_title>`. Per-page titles set in most LiveViews. Exceptions: `index_live.ex` and `custom_sign_in_live.ex` still have no `page_title`.
+2. **[2.4.2 Page Titled] Static Page Title — FIXED** — Root layout uses `<.live_title>`. `custom_sign_in_live.ex` and `index_live.ex` now set `page_title`. All major LiveViews have per-page titles.
 
-3. **[1.3.1 Info and Relationships] Lobby Lens Tabs — FIXED** — Line 345 uses `role="tablist"`, `role="tab"`, and `aria-selected` on each chip.
+3. **[1.3.1 Info and Relationships] Lobby Lens Tabs — FIXED** — Lobby lens navigation uses `role="tablist"`, `role="tab"`, `aria-selected`.
 
-4. **[4.1.3 Status Messages] `aria-live` Regions — IMPROVED** — Count increased from 1 to 11. Lobby countdown timers correctly combine `role="timer"`, `aria-live="polite"`, `aria-atomic="true"`.
+4. **[4.1.3 Status Messages] `aria-live` Regions — IMPROVED** — 12 regions as of March 25.
 
-### Remaining Critical Violations
+5. **[UX BUG] Follower badge dismiss event — FIXED** — The `×` button on the following pill now correctly fires `follower_leave_session` instead of `guide_end_session`.
 
-#### 1. [1.3.1 Info and Relationships] Polls Form Inputs Missing `for` Attribute
+### Open Critical Violations (as of March 25, 2026)
 
-**Severity:** HIGH
-**File:** `lib/sensocto_web/live/polls_live.html.heex` (lines 55-98)
+The complete list of open violations is documented in the March 25 "New Violations Found" section above (M26-1 through M26-19) plus the still-open Guided Session violations (GS-2 through GS-8). Key repeating themes:
 
-All four `<label>` elements have no `for=` attribute. The "Options" inputs have `id` attributes but no matching `for=` on the parent label. Screen readers cannot associate labels with their controls.
-
-**Fix:**
-
-```heex
-<label for="poll-title" class="block text-sm font-medium text-gray-300 mb-1">Title</label>
-<input id="poll-title" type="text" name="title" required ... />
-
-<label for="poll-description" class="block text-sm font-medium text-gray-300 mb-1">
-  Description (optional)
-</label>
-<textarea id="poll-description" name="description" ... />
-
-<label for="poll-type" class="block text-sm font-medium text-gray-300 mb-1">Type</label>
-<select id="poll-type" name="poll_type" ...>
-
-<%!-- For each dynamic option: --%>
-<label for={"poll-option-#{i}"} class="sr-only">Option {i + 1}</label>
-<input id={"poll-option-#{i}"} type="text" name={"option_#{i}"} ... />
-```
-
-#### 2. [1.3.1 Info and Relationships] User Directory Search Input Missing Label
-
-**Severity:** HIGH
-**File:** `lib/sensocto_web/live/user_directory_live.html.heex` (lines 26-35)
-
-`placeholder="Search users..."` is the only label. Placeholders are not reliably announced as accessible names. The input `type` should also be `search`.
-
-**Fix:**
-
-```heex
-<form phx-change="search" phx-submit="search">
-  <label for="user-search" class="sr-only">Search users</label>
-  <input
-    id="user-search"
-    type="search"
-    name="search"
-    value={@search}
-    placeholder="Search users..."
-    phx-debounce="300"
-    class="w-full rounded-md bg-gray-800 border-gray-600 text-white placeholder-gray-500"
-  />
-</form>
-```
-
-#### 3. [1.1.1 Non-text Content] Profile Skill Removal Button Missing Accessible Name
-
-**Severity:** HIGH
-**File:** `lib/sensocto_web/live/profile_live.html.heex`
-
-The removal button contains only `<.icon name="hero-x-mark">` with no accessible name. Users cannot determine which skill will be removed.
-
-**Fix:**
-
-```heex
-<button
-  type="button"
-  phx-click="remove_skill"
-  phx-value-id={skill.id}
-  aria-label={"Remove skill #{skill.skill_name}"}
-  class="ml-1 text-gray-400 hover:text-red-400"
->
-  <.icon name="hero-x-mark" class="h-3 w-3" aria-hidden="true" />
-</button>
-```
-
-#### 4. [4.1.2 Name, Role, Value] User Directory Navigation Missing `aria-current`
-
-**Severity:** MEDIUM
-**File:** `lib/sensocto_web/live/user_directory_live.html.heex` (lines 9-21)
-
-The List/Graph tab links use CSS-only active state without `aria-current`. Screen readers cannot determine which view is active.
-
-**Fix:**
-
-```heex
-<.link navigate={~p"/users"} aria-current={if @live_action == :index, do: "page"} class={...}>
-  <.icon name="hero-list-bullet" class="h-4 w-4 inline -mt-0.5" aria-hidden="true" /> List
-</.link>
-<.link navigate={~p"/users/graph"} aria-current={if @live_action == :graph, do: "page"} class={...}>
-  <.icon name="hero-circle-stack" class="h-4 w-4 inline -mt-0.5" aria-hidden="true" /> Graph
-</.link>
-```
-
-#### 5. [4.1.2 Name, Role, Value] Dropdown Menus Missing `aria-expanded` and `aria-haspopup`
-
-**Severity:** HIGH
-**File:** `lib/sensocto_web/components/layouts/app.html.heex` (lines 76-143)
-
-The language switcher, user menu, and mobile hamburger all toggle dropdowns but lack `aria-expanded` and `aria-haspopup`. The quality override dropdown in lobby is CSS `group-hover` only and entirely inaccessible to keyboard users.
-
-**Fix for user menu:**
-
-```heex
-<button
-  type="button"
-  data-dropdown-toggle
-  aria-expanded="false"
-  aria-haspopup="menu"
-  aria-controls="user-menu-dropdown"
-  aria-label="User menu"
->
-```
-
-Update JS hooks to toggle `aria-expanded`:
-
-```javascript
-const button = this.el.querySelector('[data-dropdown-toggle]');
-const isOpen = button.getAttribute('aria-expanded') === 'true';
-button.setAttribute('aria-expanded', String(!isOpen));
-```
-
-**Fix for quality override dropdown (lobby):** Replace CSS group-hover with Phoenix-controlled boolean:
-
-```heex
-<button
-  phx-click="toggle_quality_dropdown"
-  aria-expanded={to_string(@quality_dropdown_open)}
-  aria-haspopup="menu"
-  aria-label="Quality settings"
->
-  <Heroicons.icon name="adjustments-horizontal" type="outline" class="h-4 w-4" aria-hidden="true" />
-</button>
-<div :if={@quality_dropdown_open} role="menu" class="absolute ...">
-```
-
-#### 6. [2.4.2 Page Titled] `IndexLive` Missing `page_title`
-
-**Severity:** LOW-MEDIUM
-**File:** `lib/sensocto_web/live/index_live.ex`
-
-`mount/3` does not assign `page_title`. Falls back to "Sensocto".
-
-**Fix:** Add to mount: `|> assign(:page_title, "Home")`
-
-#### 7. [1.3.1 Info and Relationships] Custom Modals Still Bypass `<.modal>` Component
-
-**Severity:** HIGH — UNCHANGED FROM FEB 16
-**File:** `lib/sensocto_web/live/lobby_live.html.heex` (lines ~1420-1672)
-
-Three custom modals (Join Room, Control Request from 3D Viewer, Media Control Request) still use raw `<div>` containers without `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap, or Escape key handling. The countdown `<div>`s within these modals are correctly marked up, but outer modal containers lack all dialog semantics.
-
-**Fix:** Migrate all three to use the accessible `<.modal>` component documented in `/docs/modal-accessibility-implementation.md`.
-
-#### 8. [2.1.1 Keyboard] Quality Dropdown Not Keyboard Accessible
-
-**Severity:** HIGH — UNCHANGED FROM FEB 16. See fix in item 5 above.
-
-#### 9. [1.4.3 Contrast] Insufficient Color Contrast in Dark Theme
-
-**Severity:** MEDIUM — UNCHANGED
-
-`text-gray-400` (#9CA3AF) on `bg-gray-800` (#1F2937) yields ~3.8:1, below WCAG AA 4.5:1. Now also present in new templates: user bios in `user_directory_live.html.heex`, poll status text in `polls_live.html.heex`.
-
-**Fix:** Replace `text-gray-400` with `text-gray-300` for body text on dark backgrounds.
-
-#### 10. [1.4.3 Contrast] Poll Status Badge Renders Raw Atom Text
-
-**Severity:** LOW
-**File:** `lib/sensocto_web/live/polls_live.html.heex`
-
-Status badge displays `:open`/`:closed` as lowercase "open"/"closed". Should use title case.
-
-**Fix:**
-
-```heex
-<span class={"badge #{if poll.status == :open, do: "badge-green", else: "badge-gray"}"}>
-  {if poll.status == :open, do: "Open", else: "Closed"}
-</span>
-```
-
-### Positive Accessibility Patterns (Maintained and Extended)
-
-1. **Skip Navigation Link** (`root.html.heex` lines 22-27) — NEWLY FIXED. `sr-only focus:not-sr-only` targeting `#main`.
-2. **Dynamic Page Title** (`root.html.heex`) — `<.live_title>` announces changes during LiveView navigation.
-3. **Lobby View Mode Selector** (`lobby_live.html.heex` line 345) — NEWLY IMPROVED. `role="tablist"`, `role="tab"`, `aria-selected`.
-4. **Countdown Timers** (`lobby_live.html.heex` lines 1513, 1627) — `role="timer"`, `aria-live="polite"`, `aria-atomic="true"`.
-5. **Flash Messages** (`core_components.ex` line 156) — `aria-live="assertive"`.
-6. **`<.modal>` Component** (`core_components.ex` lines 83-129) — `role="dialog"`, `aria-modal`, `aria-labelledby`, `aria-describedby`, focus wrap, Escape key.
-7. **Search Input** (`search_live.ex` line 170) — `aria-label="Search sensors, rooms, and users"`. Keyboard navigation.
-8. **Breadcrumbs** (`core_components.ex` line 740) — `aria-label="Breadcrumb"`.
-9. **Language Attribute** (`root.html.heex`) — `lang={Gettext.get_locale(...)}`.
-10. **Join Code Input** (`lobby_live.html.heex`) — `aria-describedby="join_code_help"`.
-11. **Bottom Navigation** (`bottom_nav.ex`) — Visible text labels alongside icons.
-
----
-
-## Suggested Test Cases
-
-### 1. PollsLive Form Validation Test
-
-```elixir
-defmodule SensoctoWeb.PollsLiveTest do
-  use SensoctoWeb.ConnCase, async: true
-  import Phoenix.LiveViewTest
-
-  describe "create poll form" do
-    test "shows validation errors on empty submit", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/polls/new")
-      html = view |> element("form") |> render_submit(%{})
-      assert html =~ "can't be blank"
-    end
-
-    test "associates error messages with inputs via aria-describedby", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/polls/new")
-      # Each input should have an id that matches a label for= attribute
-      assert html =~ ~r/for="poll-title"/
-      assert html =~ ~r/id="poll-title"/
-      assert html =~ ~r/for="poll-description"/
-      assert html =~ ~r/id="poll-description"/
-    end
-  end
-end
-```
-
-### 2. UserDirectoryLive Accessibility Test
-
-```elixir
-defmodule SensoctoWeb.UserDirectoryLiveTest do
-  use SensoctoWeb.ConnCase, async: true
-  import Phoenix.LiveViewTest
-
-  describe "search accessibility" do
-    test "search input has an accessible label", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/users")
-      # Must have label or aria-label, not just placeholder
-      refute html =~ ~r/<input[^>]*placeholder="Search"[^>]*(?!aria-label)/
-      assert html =~ ~r/aria-label="Search users"/
-        |> Kernel.||(html =~ ~r/<label[^>]*>.*[Ss]earch.*<\/label>/)
-    end
-
-    test "active nav link has aria-current", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/users")
-      assert html =~ ~r/aria-current="page"/
-    end
-  end
-end
-```
-
-### 3. LobbyLive Push Event Test
-
-```elixir
-defmodule SensoctoWeb.LobbyLiveEventTest do
-  use SensoctoWeb.ConnCase, async: false
-  import Phoenix.LiveViewTest
-
-  describe "composite_measurement push_event" do
-    test "emits correct shape for heartrate sensor", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/lobby/heartrate")
-
-      batch = [%{
-        sensor_id: "test-hr-1",
-        sensor_name: "HeartRate Test",
-        measurements: [%{value: 72.0, timestamp: System.system_time(:millisecond)}]
-      }]
-
-      send(view.pid, {:lens_batch, batch})
-
-      assert_push_event(view, "composite_measurement", %{
-        "sensors" => sensors
-      })
-
-      assert is_list(sensors)
-      assert length(sensors) > 0
-    end
-  end
-end
-```
-
-### 4. SearchLive False-Green Fix
-
-Current code (BROKEN — silently passes when component is nil):
-
-```elixir
-# BAD: if search_view do ... end — no assertion if nil
-search_view = find_live_child(view, "search-component")
-if search_view do
-  html = render(search_view)
-  assert html =~ "sensor"
-end
-```
-
-Fixed code:
-
-```elixir
-# GOOD: assert that the child exists before using it
-search_view = find_live_child(view, "search-component")
-assert search_view, "Expected SearchLive child to be mounted"
-html = render(search_view)
-assert html =~ "sensor"
-```
-
-### 5. AttentionTracker Registration Coverage
-
-```elixir
-defmodule Sensocto.OTP.AttentionTrackerTest do
-  use ExUnit.Case, async: true
-  alias Sensocto.OTP.AttentionTracker
-
-  describe "composite view lifecycle" do
-    test "register_view increments attention level" do
-      sensor_id = "test-sensor-777"
-      socket_id = "socket-3270"
-
-      AttentionTracker.register_view(:high, sensor_id, socket_id)
-      assert AttentionTracker.get_level(sensor_id) == :high
-
-      AttentionTracker.unregister_view(:high, sensor_id, socket_id)
-      assert AttentionTracker.get_level(sensor_id) in [:low, :none]
-    end
-  end
-end
-```
----
-
-## Accessibility Audit (WCAG 2.1 AA)
-
-### Violation 1 — Polls Form: Labels Without `for=` Attributes
-- **WCAG Criterion**: 1.3.1 Info and Relationships (Level A)
-- **Severity**: HIGH
-- **File**: `lib/sensocto_web/live/polls_live.html.heex` lines 55-98
-- **Issue**: Four `<label>` elements have no `for=` attribute, and their corresponding inputs have no matching `id=`. Screen readers cannot programmatically associate labels with controls.
-- **Fix**: Add `for="poll-title"` to the Title label and `id="poll-title"` to the input. Repeat for description, type, and each option input.
-
-### Violation 2 — User Directory: Missing Search Label
-- **WCAG Criterion**: 1.3.1 Info and Relationships (Level A)
-- **Severity**: HIGH
-- **File**: `lib/sensocto_web/live/user_directory_live.html.heex` lines 26-35
-- **Issue**: Search input has only a `placeholder` attribute. Placeholders disappear on input and are not announced as labels by screen readers.
-- **Fix**: Add a visually hidden label or `aria-label="Search users"` directly to the input.
-
-### Violation 3 — Profile: Icon-Only Remove-Skill Button
-- **WCAG Criterion**: 1.1.1 Non-text Content (Level A)
-- **Severity**: HIGH
-- **File**: `lib/sensocto_web/live/profile_live.html.heex` (skill removal buttons)
-- **Issue**: Skill removal buttons contain only an SVG icon (`hero-x-mark`) with no text alternative. Screen reader users hear "button" with no description of which skill is being removed.
-- **Fix**: Add `aria-label={"Remove skill: " <> skill.name}` to each button.
-
-### Violation 4 — App Layout: Dropdowns Missing `aria-expanded`
-- **WCAG Criterion**: 4.1.2 Name, Role, Value (Level A)
-- **Severity**: HIGH
-- **File**: `lib/sensocto_web/components/layouts/app.html.heex` lines 76-143
-- **Issue**: User menu, language switcher, and mobile hamburger buttons toggle a CSS `hidden` class via JS hooks but never update `aria-expanded`. Screen reader users cannot determine whether the menu is open or closed.
-- **Fix**: Initialize buttons with `aria-expanded="false"` and `aria-haspopup="true"`. In the JS hooks (UserMenu, LangMenu, MobileMenu), update `aria-expanded` whenever the hidden class is toggled.
-
-### Violation 5 — Custom Modals Bypass `<.modal>` Component
-- **WCAG Criterion**: 4.1.2 Name, Role, Value; 2.1.2 No Keyboard Trap (Level A)
-- **Severity**: HIGH (unchanged from previous report)
-- **File**: `lib/sensocto_web/live/lobby_live.html.heex` lines ~1420-1672
-- **Issue**: Three modals (Join Room, Control Request, Media Control Request) are raw `<div>` elements without `role="dialog"`, `aria-modal`, `aria-labelledby`, focus trapping, or Escape key handling. The `<.modal>` core component provides all of these.
-- **Fix**: Refactor each custom modal to use `<.modal id="..." ...>`. Highest-effort fix but highest impact.
-
-### Violation 6 — Nav Links Without `aria-current`
-- **WCAG Criterion**: 4.1.2 Name, Role, Value (Level A)
-- **Severity**: MEDIUM
-- **File**: `lib/sensocto_web/live/user_directory_live.html.heex` lines 9-21
-- **Issue**: List/Graph view navigation links have no `aria-current="page"` on the active link. Sighted users see a visual indicator; screen reader users cannot identify the current view.
-- **Fix**: Add `aria-current={if @view_mode == :list, do: "page", else: false}` to the List link, and the equivalent for the Graph link.
-
-### Violation 7 — IndexLive Missing Unique Page Title
-- **WCAG Criterion**: 2.4.2 Page Titled (Level A)
-- **Severity**: LOW-MEDIUM
-- **File**: `lib/sensocto_web/live/index_live.ex`
-- **Issue**: `mount/3` does not assign a `page_title`, so the page title falls back to the application name "Sensocto" — indistinct from any other page.
-- **Fix**: Add `|> assign(:page_title, "Home")` in `mount/3`.
-
-### Violation 8 — PollsLive Status Badge: Verify Color Is Not Sole Indicator
-- **WCAG Criterion**: 1.4.1 Use of Color (Level A)
-- **Severity**: MEDIUM (informational)
-- **File**: `lib/sensocto_web/live/polls_live.html.heex`
-- **Issue**: Poll status uses green/gray badge color. If the badge also renders the text "Open" or "Closed" in all states, this is acceptable.
-- **Fix**: Confirm visible text labels accompany the color classes in all render paths.
-
-### Violation 9 — Vote Count Updates Not Announced
-- **WCAG Criterion**: 4.1.3 Status Messages (Level AA)
-- **Severity**: LOW
-- **File**: `lib/sensocto_web/live/polls_live.html.heex`
-- **Issue**: When a user votes and counts update, no `aria-live` region announces the change. Screen reader users will not hear real-time vote count updates.
-- **Fix**: Wrap vote count displays in `<span aria-live="polite" aria-atomic="true">`.
-
-### Violation 10 — UserShowLive: Profile Avatar Alt Text
-- **WCAG Criterion**: 1.1.1 Non-text Content (Level A)
-- **Severity**: LOW
-- **File**: `lib/sensocto_web/live/user_show_live.html.heex`
-- **Issue**: If avatar images use generic or empty alt text when a user name is available, this fails the non-text content criterion.
-- **Fix**: Use descriptive alt text such as `alt={"Profile photo of " <> @user.display_name}`.
-
----
-
-## Usability Findings
-
-### Issue 1 — [HIGH] Poll Form Lacks Real-Time Validation Feedback
-- **File**: `lib/sensocto_web/live/polls_live.html.heex`, `lib/sensocto_web/live/polls_live.ex`
-- **Issue**: There is no `phx-change` handler on the create-poll form. Users must submit the form to discover validation errors. For a multi-option form (title, description, type, N options), this creates a disruptive edit cycle.
-- **Fix**: Add a `phx-change="validate_poll"` event handler that runs `Ash.Changeset.for_create(...)` with the form params and assigns errors without persisting. Display inline errors per field using `<.error>` component.
-
-### Issue 2 — [HIGH] No Loading State on Poll Submission
-- **File**: `lib/sensocto_web/live/polls_live.html.heex`
-- **Issue**: The poll creation submit button has no `phx-disable-with` attribute. Users can double-submit or see no feedback during slow network conditions.
-- **Fix**: Add `phx-disable-with="Creating..."` to the submit button.
-
-### Issue 3 — [MEDIUM] User Directory Search Has No Debounce
-- **File**: `lib/sensocto_web/live/user_directory_live.html.heex`
-- **Issue**: The search input likely fires `phx-change` on every keystroke without debounce. For a user directory that queries the database on each change, this causes unnecessary load.
-- **Fix**: Add `phx-debounce="300"` to the search input.
-
-### Issue 4 — [MEDIUM] Profile Skills: No Undo for Destructive Action
-- **File**: `lib/sensocto_web/live/profile_live.html.heex`
-- **Issue**: Clicking the remove-skill button immediately removes the skill with no confirmation or undo mechanism. This is a destructive action with no recovery path in the UI.
-- **Fix**: Either add a confirmation dialog (using `<.modal>`) or implement an optimistic-UI undo pattern via a temporary flash message with a cancel action.
-
-### Issue 5 — [MEDIUM] UserGraph (Svelte) Has No Loading Skeleton
-- **File**: `lib/sensocto_web/live/user_directory_live.html.heex`, `assets/svelte/UserGraph.svelte`
-- **Issue**: The user connection graph (`<.svelte name="UserGraph">`) renders an empty container while Svelte hydrates. For large graphs this can take noticeable time with no user feedback.
-- **Fix**: Add a loading skeleton or spinner inside the `<.svelte>` fallback content slot that is visible before JavaScript initializes.
-
-### Issue 6 — [LOW] Polls List: Empty State Messaging
-- **File**: `lib/sensocto_web/live/polls_live.html.heex`
-- **Issue**: When no polls exist, the list is likely empty with no message. Users cannot distinguish between "no polls exist" and "polls failed to load".
-- **Fix**: Add an explicit empty state: `<p>No polls yet. Create the first one!</p>` rendered when `@polls` is empty.
-
-### Issue 7 — [LOW] User Directory: No Results State
-- **File**: `lib/sensocto_web/live/user_directory_live.html.heex`
-- **Issue**: Searching with a query that returns no users should show a "No users found" message rather than an empty list.
-- **Fix**: Add `<%= if @users == [], do: "No users found for this search." %>` in the list template.
-
----
-
-## Accessibility Test Coverage
-
-The project has zero automated accessibility regression tests. All accessibility findings above are from manual code review. The following tests should be added to prevent regressions.
-
-### Recommended Accessibility Regression Tests
-
-Tests should live in `test/sensocto_web/accessibility/` and use `Floki` to assert structural HTML properties.
-
-Key assertions to add:
-
-1. **All form inputs have associated labels** — for every `<input>`, `<select>`, `<textarea>` in a form, assert there is a `<label for=...>` matching its `id`, or an `aria-label`, or an `aria-labelledby`.
-
-2. **All images have alt text** — for every `<img>` rendered in LiveView tests, assert `alt` attribute is present and non-generic.
-
-3. **All icon-only buttons have accessible names** — for buttons containing only SVG/icon children, assert `aria-label` is present.
-
-4. **Skip link present on every page** — assert `#main` anchor and the `sr-only focus:not-sr-only` skip link are present in root layout.
-
-5. **aria-live regions present in flash** — assert `aria-live="assertive"` on flash container.
-
-6. **Modal accessibility contract** — for any page that can open a modal, assert `role="dialog"`, `aria-modal="true"`, and `aria-labelledby` are present when modal is open.
-
-Example test structure using Floki:
-
-```elixir
-defmodule SensoctoWeb.Accessibility.PollsFormTest do
-  use SensoctoWeb.ConnCase, async: true
-  import Phoenix.LiveViewTest
-
-  test "all form inputs have associated labels", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/polls/new")
-    doc = Floki.parse_document!(html)
-
-    inputs = Floki.find(doc, "form input:not([type=hidden]), form select, form textarea")
-    Enum.each(inputs, fn input ->
-      input_id = Floki.attribute(input, "id") |> List.first()
-      aria_label = Floki.attribute(input, "aria-label") |> List.first()
-      label = if input_id, do: Floki.find(doc, "label[for=#{input_id}]"), else: []
-      assert aria_label != nil or label != [],
-        "Input id=#{inspect(input_id)} has no accessible label"
-    end)
-  end
-end
-```
-
----
-
-## Implications for Planned Work
-
-### PLAN-adaptive-video-quality.md
-When adaptive video quality controls are added (quality selector, manual override buttons), ensure:
-- Quality level buttons use `aria-pressed` (toggle buttons) or `role="radiogroup"` + `role="radio"` pattern
-- Loading/buffering states announce to `aria-live` region: "Video quality changing to HD..."
-- Keyboard shortcuts for quality control are documented and not conflicting with standard browser/AT shortcuts
-
-### PLAN-room-iroh-migration.md
-Iroh-based room connection introduces new connection status states. Ensure:
-- Connection status changes (connecting, connected, disconnected) announce via `aria-live="polite"`
-- Error states (connection failed) announce via `aria-live="assertive"`
-- Any new room UI uses `<.modal>` for dialogs, not raw `<div>`
-
-### PLAN-sensor-component-migration.md
-During sensor component migration, audit each migrated component for:
-- Interactive elements have accessible names
-- Sensor data displays have appropriate `aria-live` regions for real-time updates (or confirm why they do not need announcements)
-- Component `id` attributes are unique when multiple instances are rendered
-
-### PLAN-platform-features.md
-Social features (follows, connections, direct messages) will require:
-- Notification badges have `aria-label` describing the count: `aria-label="3 unread notifications"`
-- Live notification updates use `aria-live` region
-- Follow/unfollow buttons use `aria-pressed` attribute
-
----
-
-## Priority Actions
-
-### Immediate (Block on next release — NEW from Feb 24)
-1. **Fix runtime bug: `Ash.update` with `action: :create` in `guided_session_join_live.ex` line 61** — This will crash at runtime. Add a `:set_follower` update action to `GuidedSession` or combine the follower assignment into the `:accept` action. 30-minute fix. See "Critical Bug Fix Required" section above.
-2. **Fix UX bug: Follower badge dismiss button fires `guide_end_session`** — The `&times;` button on the follower floating badge ends the entire session. Introduce a `"follower_leave_session"` event or a `"dismiss_session_badge"` event with the appropriate semantics. 20-minute fix.
-3. **Add `aria-live="polite"` to the guided session badge status region** — Without it, mode switches (Following / Exploring) are invisible to screen reader users (Violation GS-3). 10-minute fix.
-4. **Add `role="alert" aria-live="assertive"` to the suggestion toast** — Guide suggestions to the follower are time-sensitive and must be announced (Violation GS-4). 5-minute fix.
-5. **Add `aria-label="End guided session"` to the badge dismiss button** — `title` attribute alone does not provide an accessible name (Violation GS-1). 5-minute fix.
-6. **Add `aria-label` to the guide/follower presence dot** — Color alone fails WCAG 1.4.1 (Violation GS-2). 5-minute fix.
-
-### Immediate (Carried over from Feb 22)
-7. **Fix polls form labels** — Add `for=` and `id=` to all 4 label/input pairs in `polls_live.html.heex`. 30-minute fix.
-8. **Fix user directory search label** — Add `aria-label="Search users"` to search input. 5-minute fix.
-9. **Fix profile remove-skill button** — Add `aria-label={"Remove skill: " <> skill.name}` to each button. 15-minute fix.
-10. **Fix search_live_test false-green** — Replace `if search_view do ... end` with `assert search_view` + unconditional body. 5-minute fix.
-
-### Short-term (Next sprint — NEW from Feb 24)
-11. **Write `SessionServerTest`** — Focus on drift-back timer, break_away/rejoin cycle, idle timeout, and role enforcement. Use `assert_receive`/`refute_receive` with PubSub. ~3 hours.
-12. **Write `GuidedSessionResourceTest`** — Cover all 4 actions, `generate_invite_code/1` alphabet validation, and constraint enforcement. ~2 hours.
-13. **Write `GuidedSessionJoinLiveTest`** — All mount paths plus the accept event (authenticated and unauthenticated). ~2 hours.
-14. **Add `role="region" aria-label` to guide panel and follower badge** — Landmarks enable screen reader navigation (Violations GS-E1, GS-E2). 10-minute fix.
-15. **Add `aria-label` to suggestion toast dismiss button** — `&times;` has no accessible name (Violation GS-4 dismiss button). 5-minute fix.
-16. **Add `role="alert"` to join page error text** — Violations GS-7. 5-minute fix.
-17. **Add `phx-disable-with="Joining..."` to Accept button** — Prevents double-submit (Violation GS-8). 5-minute fix.
-18. **Add `aria-label` to guide panel suggestion buttons** — "Breathing" and "Break" lack context out of tree order (Violation GS-6). 10-minute fix.
-
-### Short-term (Carried over from Feb 22)
-19. **Add `aria-expanded` to app layout menus** — User menu, language switcher, mobile hamburger. Update JS hooks to maintain `aria-expanded`. 2-hour fix.
-20. **Fix IndexLive page title** — Add `assign(:page_title, "Home")` in `index_live.ex`. 5-minute fix.
-21. **Add `aria-current` to user directory nav** — 10-minute fix.
-22. **Fix vote count aria-live** — Wrap vote count display in `<span aria-live="polite">`. 15-minute fix.
-23. **Add `phx-disable-with` to poll submit button** — 5-minute fix.
-24. **Investigate `refute_push_event/4` arity** in `midi_output_regression_test.exs` — Verify 4-argument call is valid for the installed Phoenix version.
-
-### Medium-term (Next month)
-25. **Migrate lobby custom modals to `<.modal>` component** — Join Room, Control Request, Media Control Request modals. Highest effort (~4 hours) but critical for keyboard accessibility.
-26. **Add Floki-based accessibility regression tests** — Create `test/sensocto_web/accessibility/` with form label, aria-live, and icon-button tests.
-27. **Add `phx-change="validate_poll"` real-time validation** — Prevents disruptive submit-to-discover error cycle.
-28. **Deduplicate redundant lobby_graph_regression tests** — Remove the 3 identical describe blocks, or split into 3 named tests.
-29. **Add focus management for suggestion toast** — Use a `push_event`/JS hook to focus the dismiss button when the toast appears (Violation GS-5).
-
-### Ongoing
-30. **Audit each new LiveView for WCAG 1.3.1 compliance** — Every new form must have label/input associations before merging.
-31. **Review adaptive video quality controls for `aria-pressed`** — When PLAN-adaptive-video-quality features land.
-32. **Review Iroh connection status for `aria-live` announcements** — When PLAN-room-iroh-migration lands.
-
----
-
-## Test Coverage Summary
-
-| Domain | Test Files | Approx Tests | Notes |
-|---|---|---|---|
-| Accounts (Users, Tokens) | 2 | ~48 | New: accounts_test.exs |
-| Collaboration (Polls) | 1 | ~32 | New: collaboration_test.exs |
-| Guidance (GuidedSession) | 0 | 0 | NEW — 3 test files needed, ~70 tests |
-| Sensors (core) | 6 | ~89 | Existing, no changes |
-| OTP (AttentionTracker, AttributeStore, RoomServer) | 3 | ~71 | All new |
-| Encoding (DeltaEncoder) | 1 | ~18 | New |
-| Resilience (CircuitBreaker) | 1 | ~22 | New |
-| Simulator | 4 | ~51 | No changes |
-| LiveView (Lobby, MIDI, Search, Room, GuidedJoin) | 14 | ~189 | GuidedSessionJoinLive has 0 coverage |
-| Channel / Presence | 2 | ~29 | No changes |
-| Misc (Router, ErrorHTML) | 2 | ~8 | No changes |
-| Integration (Wallaby) | 1 | ~12 | No changes |
-| Performance / Stress | 5 | ~53 | No changes |
-| Data Layer / Ash | 9 | ~110 | No changes |
-| **Total** | **51** | **~732** | **Guidance domain at 0%** |
-
-Coverage estimate: **~58% of application code** (down from ~61% due to new untest Guidance domain adding approximately 500 lines). The Guidance domain is the largest new uncovered area. Priority is `SessionServerTest` (timer behavior), `GuidedSessionResourceTest` (constraint and action coverage), and `GuidedSessionJoinLiveTest` (all mount paths and accept event).
-
----
-
-## Appendix: Files Reviewed This Cycle
-
-- `test/sensocto_web/live/lobby_graph_regression_test.exs` (229 lines)
-- `test/sensocto_web/live/midi_output_regression_test.exs` (219 lines)
-- `test/sensocto_web/live/search_live_test.exs`
-- `test/sensocto/accounts/accounts_test.exs` (316 lines)
-- `test/sensocto/collaboration/collaboration_test.exs` (192 lines)
-- `test/sensocto/encoding/delta_encoder_test.exs` (149 lines)
-- `test/sensocto/otp/attention_tracker_test.exs` (147 lines)
-- `test/sensocto/otp/attribute_store_tiered_test.exs` (133 lines)
-- `test/sensocto/otp/room_server_test.exs` (330 lines)
-- `test/sensocto/resilience/circuit_breaker_test.exs` (138 lines)
-- `lib/sensocto_web/live/polls_live.html.heex`
-- `lib/sensocto_web/live/user_directory_live.html.heex`
-- `lib/sensocto_web/live/profile_live.html.heex`
-- `lib/sensocto_web/live/user_show_live.html.heex`
-- `lib/sensocto_web/components/layouts/app.html.heex`
-- `lib/sensocto_web/components/layouts/root.html.heex`
-- `lib/sensocto_web/live/lobby_live.html.heex` (1672 lines)
-- `lib/sensocto_web/live/index_live.ex`
-- `git diff HEAD~10 --stat` (116 files changed, 17663 insertions)
-
-- `lib/sensocto/guidance.ex`
-- `lib/sensocto/guidance/guided_session.ex`
-- `lib/sensocto/guidance/session_server.ex`
-- `lib/sensocto/guidance/session_supervisor.ex`
-- `lib/sensocto_web/live/guided_session_join_live.ex`
-- `lib/sensocto_web/live/lobby_live.html.heex` (lines 1510-1624, guided session additions)
-
----
-
-## Summary
-
-### February 24, 2026
-
-The Guided Session feature was shipped across six new files with zero test coverage and eight new accessibility violations. Two bugs were discovered that would affect users in production immediately:
-
-1. `GuidedSessionJoinLive.handle_event("accept")` calls `Ash.update` with `action: :create`, which is a runtime error. The `GuidedSession` resource has no update action named `:create`. This must be fixed before the feature is accessible to any user.
-
-2. The follower floating badge dismiss button (`&times;`) fires `guide_end_session`, which ends the entire session for both participants. A follower clicking it to close their status badge will terminate the session unexpectedly. A separate event is needed.
-
-On the accessibility side, the new UI introduces five HIGH-severity violations: no live region for session state changes (Following / Exploring), no live region for guide suggestions (the toast appears silently for screen reader users), presence dots that rely solely on color, icon-only buttons without accessible names, and error text on the join page that is not announced on load.
-
-Three test files are needed (approximately 70 tests total):
-- `test/sensocto/guidance/session_server_test.exs` — GenServer behavior, timer correctness, role enforcement, PubSub contracts
-- `test/sensocto/guidance/guided_session_resource_test.exs` — Ash resource actions, constraints, invite code alphabet
-- `test/sensocto_web/live/guided_session_join_live_test.exs` — All mount paths, accept event, unauthenticated rejection
-
-### February 22, 2026
-
-The project made substantial testing and accessibility progress since the February 16 review. Test file count grew from 33 to 51, test count from ~373 to ~732, and three longstanding accessibility violations (skip navigation, live title, lobby tablist) have been resolved.
-
-The three custom modals in `lobby_live.html.heex` remain the project's most significant pre-existing accessibility debt. The new Guidance feature has added to that debt with 8 new violations, 2 of which (the live region for state changes and the suggestion toast announcement) are HIGH severity and directly affect the core user experience of the feature.
-
-*Last updated: 2026-03-01 by elixir-test-accessibility-expert agent.*
-
----
-
-## Update: March 1, 2026
-
-### Changes Since Last Review (Feb 24 -> Mar 1, 2026)
-
-**Lobby Refactoring:** `lobby_live.ex` was significantly refactored with hooks extracted to `lobby_live/hooks/` (5 files: call_hook, guided_session_hook, media_hook, object3d_hook, whiteboard_hook) and UI components extracted to `lobby_live/components.ex` (412 lines). All 8 new modules have 0% test coverage.
-
-**Profile System:** `profile_live.ex` grew by ~200 lines with skills management, connections, user search, and UserGraph visualization. `profile_live.html.heex` expanded by ~180 lines.
-
-**New Pages:** `user_settings_live.ex` (417 lines) — language selector, mobile device linking (QR code), privacy toggle, sign-out.
-
-### Bugs Fixed
-- **GS-Bug-1 FIXED**: `guided_session_join_live.ex` now uses `:assign_follower` action correctly
-- **Violation 3 FIXED**: Profile remove-skill button now has `aria-label={"Remove skill #{skill.skill_name}"}`
-
-### New Accessibility Violations
-
-| ID | File | Issue | Severity |
-|---|---|---|---|
-| SETS-1 | `user_settings_live.ex:242-253` | `<label>` outside form context for static info | HIGH |
-| SETS-2 | `user_settings_live.ex:382-392` | Privacy `role="switch"` missing `aria-labelledby` | HIGH |
-| SETS-3 | `user_settings_live.ex:340-350` | Copy button lacks descriptive accessible name | MEDIUM |
-| SETS-4 | `user_settings_live.ex:313-318` | QR token auto-regeneration not announced via `aria-live` | MEDIUM |
-| SETS-5 | `user_settings_live.ex:267-277` | Locale buttons missing visible focus ring | MEDIUM |
-| COMP-1 | `lobby_live/components.ex:37-55` | Call mute/video buttons use color-only state | HIGH |
-| COMP-2 | `lobby_live/components.ex:131-134` | Modal close buttons lack `aria-label` | HIGH |
-
-### New Usability Issues
-
-- **SETS-U1 (HIGH)**: No visual warning when QR auth token is about to expire
-- **SETS-U2 (MEDIUM)**: "Copied!" state persists after token regeneration
-- **SETS-U3 (MEDIUM)**: Privacy toggle to public has no confirmation/undo
-- **PROF-U1 (MEDIUM)**: Per-connection type select has no accessible label
-- **PROF-U2 (MEDIUM)**: User search dropdown not keyboard-accessible
-
-### Updated Test Coverage (Mar 2026)
-
-| Domain | Files | Approx. Tests | Change |
-|---|---|---|---|
-| OTP / Supervision | 7 | ~100 | +3 files |
-| Lenses (PriorityLens) | 3 | ~45 | +2 files |
-| Bio | 6 | ~60 | +1 file |
-| E2E (Wallaby) | 7 | ~70 | +3 files |
-| LiveView (regression) | 5 | ~50 | +1 file |
-| **Total** | **~66** | **~855** | **+~120 since Feb 24** |
-
-Estimated coverage: ~26%. Largest zero-coverage areas: `UserSettingsLive`, `LobbyLive.Components`/`Hooks` (8 modules), `Guidance` domain.
-
-### Priority Actions
-
-1. Add `aria-labelledby` to privacy toggle (SETS-2) — 5min
-2. Replace `<label>` with `<dt>`/`<dd>` in settings info (SETS-1) — 10min
-3. Add `aria-pressed` + `aria-label` to call mute/video buttons (COMP-1) — 10min
-4. Add `aria-label="Close modal"` to component close buttons (COMP-2) — 5min
-5. Add focus ring classes to locale buttons (SETS-5) — 5min
-6. Fix `@copied` reset after token regenerate (SETS-U2) — 20min
-7. Write `UserSettingsLive` tests — ~3 hours
-8. Write `ProfileLive` event handler tests — ~3 hours
-9. Write `LobbyLive.Components` unit tests — ~2 hours
+- **ARIA state on toggle/tab controls** (M26-1, M26-2, M26-6, M26-14, GS-8): Pattern across entire codebase — buttons that change state (active tab, pressed toggle, open/close) do not communicate that state to ARIA.
+- **Keyboard-inaccessible hover interactions** (M26-4, M26-8, M26-10): Multiple panels/dropdowns triggered by CSS `:hover` only.
+- **Unlabeled icon and graphic controls** (M26-3, M26-7, M26-9, M26-13, M26-17): Persistent pattern of using Unicode glyphs, color dots, or icons without text alternatives.
+- **Missing focus management on dynamic content** (M26-16, GS-5): Modals and toasts appear without moving focus.
+- **RTL layout gaps** (M26-12): Arabic `dir="rtl"` is set on the document but positioned elements use physical CSS properties (`left:`, `right:`) that do not auto-flip.

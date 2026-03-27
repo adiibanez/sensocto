@@ -208,6 +208,5 @@ defmodule SensoctoWeb.LobbyLive.Hooks.GuidedSessionHook do
   defp lens_to_path(:users), do: ~p"/lobby/users"
   defp lens_to_path(:graph), do: ~p"/lobby/graph"
   defp lens_to_path(:graph3d), do: ~p"/lobby/graph3d"
-  defp lens_to_path(:hierarchy), do: ~p"/lobby/hierarchy"
   defp lens_to_path(_), do: ~p"/lobby"
 end

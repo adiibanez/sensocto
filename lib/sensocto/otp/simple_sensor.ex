@@ -222,6 +222,19 @@ defmodule Sensocto.SimpleSensor do
     )
   end
 
+  @doc """
+  Sends a command to a bidirectional sensor (e.g. buttplug devices).
+  Validates the command via SensorRegistry, then broadcasts to the
+  sensor's command PubSub topic so the connector client can relay it.
+  """
+  def send_command(sensor_id, command) do
+    GenServer.call(
+      via_tuple(sensor_id),
+      {:send_command, command},
+      @call_timeout
+    )
+  end
+
   def put_attribute(sensor_id, attribute) do
     GenServer.cast(
       via_tuple(sensor_id),
@@ -276,6 +289,26 @@ defmodule Sensocto.SimpleSensor do
     }
 
     {:reply, sensor_state, state}
+  end
+
+  @impl true
+  def handle_call({:send_command, command}, _from, state) do
+    sensor_type = Map.get(state, :sensor_type, "generic")
+    context = %{sensor_id: state.sensor_id}
+
+    case Sensocto.Sensors.SensorRegistry.handle_command(sensor_type, command, context) do
+      {:ok, validated_cmd} ->
+        Phoenix.PubSub.broadcast(
+          Sensocto.PubSub,
+          "sensor_command:#{state.sensor_id}",
+          {:device_command, state.sensor_id, validated_cmd}
+        )
+
+        {:reply, {:ok, validated_cmd}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true

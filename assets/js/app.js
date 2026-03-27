@@ -73,8 +73,9 @@ import { SensorBackgroundHook } from './hooks/sensor_background_hook.js';
 // IMU tile hook — updates IMU visualization in sensor grid from JS data events
 import { ImuTileHook } from './hooks/imu_tile_hook.js';
 
-// Easter egg — puppet show
-import { PuppetShowHook, OctopusLogoHook } from './hooks/puppet_show_hook.js';
+// Buttplug.io bridge — connects to Intiface Central for haptic device control
+import { ButtplugBridgeHook } from './hooks/buttplug_bridge.js';
+
 
 // Safari has limited support for module workers - wrap in try/catch to prevent app crash
 try {
@@ -116,12 +117,13 @@ Hooks.AvatarSplatHook = AvatarSplatHook;
 // Sensor background hook for sign-in page
 Hooks.SensorBackgroundHook = SensorBackgroundHook;
 
+// Buttplug.io bridge hook
+Hooks.ButtplugBridge = ButtplugBridgeHook;
+
 // IMU tile hook - live updates for IMU visualization in sensor grid
 Hooks.ImuTileHook = ImuTileHook;
 
-// Easter egg hooks
-Hooks.PuppetShow = PuppetShowHook;
-Hooks.OctopusLogo = OctopusLogoHook;
+
 
 // Theme toggle hook — manages light/dark theme with localStorage persistence
 // and OS preference auto-detection
@@ -584,7 +586,7 @@ Hooks.CompositeMeasurementHandler = {
       'composite-respiration': new Set(['respiration', 'breathing_sync']),
       'composite-hrv': new Set(['hrv', 'hrv_sync']),
       'composite-battery': new Set(['battery']),
-      'composite-imu': new Set(['imu']),
+      'composite-imu': new Set(['imu', 'accelerometer', 'accelerometer_x', 'accelerometer_y', 'accelerometer_z', 'gyroscope', 'gyroscope_x', 'gyroscope_y', 'gyroscope_z', 'motion']),
       'composite-location': new Set(['geolocation']),
       'composite-skeleton': new Set(['skeleton']),
       'composite-gaze': new Set(['eye_gaze', 'eye_aperture', 'eye_blink', 'eye_worn']),

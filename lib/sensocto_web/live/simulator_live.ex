@@ -254,12 +254,31 @@ defmodule SensoctoWeb.SimulatorLive do
     # Count running connectors
     running_count = Enum.count(connectors, fn {_id, c} -> c.status == :running end)
 
+    # Filter intimate scenarios unless user has sensualocto flag
+    user = socket.assigns[:current_user]
+    sensualocto = user && Map.get(user, :sensualocto, false)
+
+    {visible_scenarios, visible_running} =
+      if sensualocto do
+        {scenarios, running_scenarios}
+      else
+        intimate_names =
+          scenarios
+          |> Enum.filter(& &1[:intimate])
+          |> MapSet.new(& &1.name)
+
+        {
+          Enum.reject(scenarios, & &1[:intimate]),
+          Map.reject(running_scenarios, fn {name, _} -> MapSet.member?(intimate_names, name) end)
+        }
+      end
+
     socket
     |> assign(:connectors, connectors)
     |> assign(:config, config)
     |> assign(:running_count, running_count)
-    |> assign(:scenarios, scenarios)
-    |> assign(:running_scenarios, running_scenarios)
+    |> assign(:scenarios, visible_scenarios)
+    |> assign(:running_scenarios, visible_running)
     |> assign(:startup_phase, startup_phase)
   end
 

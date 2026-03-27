@@ -6,15 +6,19 @@
 # - Blink detection: 30Hz (captures full blink dynamics)
 # - Eye aperture: 30Hz (synchronized with blink)
 # - Worn detection: 1Hz (device state)
-# - IMU: 110Hz (accelerometer + gyroscope for head movement)
+# - IMU: 110Hz (accelerometer + gyroscope for head movement, all 3 axes)
 # - Battery: 0.1Hz (every 10 seconds)
+#
+# Activity profiles:
+# - Participant 1 (Reader): Seated, minimal head movement, calm reading
+# - Participant 2 (Explorer): Active head scanning, frequent turns, physical search
 
 connectors:
   pupil_neon_demo:
     connector_id: "pupil_neon_demo"
     connector_name: "Pupil_Neon_Eye_Tracker"
     sensors:
-      # Participant 1: Reading task (longer fixations, concentrated gaze)
+      # Participant 1: Reading task — seated, calm, minimal head movement
       neon_reader_1:
         sensor_id: "neon_reader_1"
         sensor_name: "Neon_Reader_P1"
@@ -51,22 +55,56 @@ connectors:
             duration: 0
             sampling_rate: 1
             dummy_data: true
-          accelerometer:
-            attribute_id: "accelerometer"
+          # IMU — 3 accelerometer axes (calm seated reading)
+          accelerometer_x:
+            attribute_id: "accelerometer_x"
             sensor_type: "accelerometer_x"
             batch_size: 5
             batch_window: 45
             duration: 0
             sampling_rate: 110
-            dummy_data: true
-          gyroscope:
-            attribute_id: "gyroscope"
+            activity_level: 0.2
+          accelerometer_y:
+            attribute_id: "accelerometer_y"
+            sensor_type: "accelerometer_y"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.15
+          accelerometer_z:
+            attribute_id: "accelerometer_z"
+            sensor_type: "accelerometer_z"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.1
+          # IMU — 3 gyroscope axes (calm seated reading)
+          gyroscope_x:
+            attribute_id: "gyroscope_x"
             sensor_type: "gyroscope_x"
             batch_size: 5
             batch_window: 45
             duration: 0
             sampling_rate: 110
-            dummy_data: true
+            activity_level: 0.15
+          gyroscope_y:
+            attribute_id: "gyroscope_y"
+            sensor_type: "gyroscope_y"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.1
+          gyroscope_z:
+            attribute_id: "gyroscope_z"
+            sensor_type: "gyroscope_z"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.1
           battery:
             attribute_id: "battery"
             sensor_type: "battery"
@@ -77,7 +115,7 @@ connectors:
             min_value: 65
             max_value: 85
 
-      # Participant 2: Visual search task (rapid saccades, shorter fixations)
+      # Participant 2: Active visual search — walking, scanning, turning head
       neon_explorer_2:
         sensor_id: "neon_explorer_2"
         sensor_name: "Neon_Explorer_P2"
@@ -114,22 +152,56 @@ connectors:
             duration: 0
             sampling_rate: 1
             dummy_data: true
-          accelerometer:
-            attribute_id: "accelerometer"
+          # IMU — 3 accelerometer axes (active walking/scanning)
+          accelerometer_x:
+            attribute_id: "accelerometer_x"
             sensor_type: "accelerometer_x"
             batch_size: 5
             batch_window: 45
             duration: 0
             sampling_rate: 110
-            dummy_data: true
-          gyroscope:
-            attribute_id: "gyroscope"
+            activity_level: 0.9
+          accelerometer_y:
+            attribute_id: "accelerometer_y"
+            sensor_type: "accelerometer_y"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.7
+          accelerometer_z:
+            attribute_id: "accelerometer_z"
+            sensor_type: "accelerometer_z"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.5
+          # IMU — 3 gyroscope axes (active head scanning)
+          gyroscope_x:
+            attribute_id: "gyroscope_x"
             sensor_type: "gyroscope_x"
             batch_size: 5
             batch_window: 45
             duration: 0
             sampling_rate: 110
-            dummy_data: true
+            activity_level: 0.8
+          gyroscope_y:
+            attribute_id: "gyroscope_y"
+            sensor_type: "gyroscope_y"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 0.6
+          gyroscope_z:
+            attribute_id: "gyroscope_z"
+            sensor_type: "gyroscope_z"
+            batch_size: 5
+            batch_window: 45
+            duration: 0
+            sampling_rate: 110
+            activity_level: 1.0
           battery:
             attribute_id: "battery"
             sensor_type: "battery"

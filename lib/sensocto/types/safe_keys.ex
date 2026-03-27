@@ -34,7 +34,7 @@ defmodule Sensocto.Types.SafeKeys do
     start_battery drain_rate charge_rate eco2 tvoc
     track_mode start_lat start_lng playback_speed random_start no_loop
     track_duration track_name generate_track base_lat base_lng base_alt unit
-    motion_type blink_rate fixation_duration saccade_duration
+    motion_type blink_rate fixation_duration saccade_duration activity_level
     sensor_pid connector_pid
     hydro_station_id hydro_parameter
   )

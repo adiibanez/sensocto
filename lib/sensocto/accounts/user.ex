@@ -413,6 +413,12 @@ defmodule Sensocto.Accounts.User do
       require_atomic? false
     end
 
+    update :set_sensualocto do
+      description "Admin-only: set the sensualocto flag for a user"
+      accept [:sensualocto]
+      require_atomic? false
+    end
+
     read :list_public do
       description "List publicly visible users for directory"
       filter expr(is_public == true and not is_nil(confirmed_at))
@@ -426,6 +432,11 @@ defmodule Sensocto.Accounts.User do
 
     policy action(:update_profile) do
       authorize_if expr(id == ^actor(:id))
+    end
+
+    policy action(:set_sensualocto) do
+      description "Admin-only: protected by basic auth at router level"
+      authorize_if always()
     end
 
     policy action(:list_public) do
@@ -480,6 +491,13 @@ defmodule Sensocto.Accounts.User do
     attribute :is_public, :boolean do
       allow_nil? false
       default false
+    end
+
+    attribute :sensualocto, :boolean do
+      allow_nil? false
+      default false
+
+      description "Whitelist flag for access to intimate/buttplug.io device features. Set by admins only."
     end
   end
 

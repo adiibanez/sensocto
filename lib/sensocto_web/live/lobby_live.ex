@@ -10,6 +10,7 @@ defmodule SensoctoWeb.LobbyLive do
   import SensoctoWeb.LiveHelpers.SensorData
   import SensoctoWeb.LobbyLive.Components
   import SensoctoWeb.LobbyLive.LensComponents
+  import SensoctoWeb.LobbyLive.ButtplugControlComponent
   alias SensoctoWeb.StatefulSensorLive
   # Used in template when @use_sensor_components is true
   alias SensoctoWeb.Live.Components.StatefulSensorComponent, warn: false
@@ -244,7 +245,11 @@ defmodule SensoctoWeb.LobbyLive do
         guided_presence: %{guide_connected: false, follower_connected: false},
         guided_annotations: [],
         guided_suggestion: nil,
-        guided_focused_sensor_id: nil
+        guided_focused_sensor_id: nil,
+        # Buttplug.io integration state
+        buttplug_status: "disconnected",
+        buttplug_devices: [],
+        buttplug_error: nil
       )
 
     # Track and subscribe to room mode presence (lobby is treated as room_id "lobby")
@@ -500,7 +505,6 @@ defmodule SensoctoWeb.LobbyLive do
   defp lens_page_title(:gaze), do: "Gaze"
   defp lens_page_title(:graph), do: "Graph"
   defp lens_page_title(:graph3d), do: "3D Graph"
-  defp lens_page_title(:hierarchy), do: "Hierarchy"
   defp lens_page_title(_), do: "Lobby"
 
   # Set focused sensor for PriorityLens based on current live_action
@@ -999,19 +1003,22 @@ defmodule SensoctoWeb.LobbyLive do
         %{sensor_id: sensor_id, bpm: bpm}
       end)
 
+    imu_types =
+      ~w(imu accelerometer accelerometer_x accelerometer_y accelerometer_z gyroscope gyroscope_x gyroscope_y gyroscope_z motion)
+
     imu_sensors =
       sensors
       |> Enum.filter(fn {_id, sensor} ->
         attrs = sensor.attributes || %{}
 
         Enum.any?(attrs, fn {_attr_id, attr} ->
-          attr.attribute_type == "imu"
+          attr.attribute_type in imu_types
         end)
       end)
       |> Enum.map(fn {sensor_id, sensor} ->
         imu_attr =
           Enum.find(sensor.attributes || %{}, fn {_attr_id, attr} ->
-            attr.attribute_type == "imu"
+            attr.attribute_type in imu_types
           end)
 
         orientation =
@@ -1810,7 +1817,7 @@ defmodule SensoctoWeb.LobbyLive do
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "whiteboard:lobby")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "avatar:lobby")
     Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:mode_sync")
-    Phoenix.PubSub.subscribe(Sensocto.PubSub, "lobby:puppets")
+
     Sensocto.Chat.ChatStore.subscribe("lobby")
 
     user = socket.assigns[:current_user]
@@ -1870,20 +1877,6 @@ defmodule SensoctoWeb.LobbyLive do
       })
 
     {:noreply, socket}
-  end
-
-  # -- Puppet Easter Egg PubSub --
-
-  def handle_info({:puppets_activated, _user_id}, socket) do
-    {:noreply, push_event(socket, "puppets_activated", %{})}
-  end
-
-  def handle_info({:puppet_move, data}, socket) do
-    {:noreply, push_event(socket, "puppet_moved", data)}
-  end
-
-  def handle_info(:puppets_dismissed, socket) do
-    {:noreply, push_event(socket, "puppets_dismissed", %{})}
   end
 
   @impl true
@@ -2990,31 +2983,109 @@ defmodule SensoctoWeb.LobbyLive do
      |> assign(:guided_presence, %{guide_connected: false, follower_connected: false})}
   end
 
-  # -- Puppet Easter Egg --
-
-  def handle_event("activate_puppets", _params, socket) do
-    user_id = get_in(socket.assigns, [:current_user, Access.key(:id)])
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, "lobby:puppets", {:puppets_activated, user_id})
-    {:noreply, socket}
-  end
-
-  def handle_event("puppet_move", %{"puppet" => puppet, "x" => x, "y" => y}, socket) do
-    user_id = get_in(socket.assigns, [:current_user, Access.key(:id)])
-
-    Phoenix.PubSub.broadcast_from(Sensocto.PubSub, self(), "lobby:puppets", {
-      :puppet_move,
-      %{puppet: puppet, x: x, y: y, user_id: user_id}
-    })
-
-    {:noreply, socket}
-  end
-
-  def handle_event("dismiss_puppets", _params, socket) do
-    Phoenix.PubSub.broadcast(Sensocto.PubSub, "lobby:puppets", :puppets_dismissed)
-    {:noreply, socket}
-  end
-
   @impl true
+  # --- Buttplug.io integration events ---
+
+  def handle_event("buttplug_connect", _params, socket) do
+    {:noreply, push_event(socket, "buttplug_connect", %{url: "ws://127.0.0.1:12345"})}
+  end
+
+  def handle_event("buttplug_disconnect", _params, socket) do
+    {:noreply, push_event(socket, "buttplug_disconnect", %{})}
+  end
+
+  def handle_event("buttplug_start_scan", _params, socket) do
+    {:noreply, push_event(socket, "buttplug_start_scan", %{})}
+  end
+
+  def handle_event("buttplug_stop_scan", _params, socket) do
+    {:noreply, push_event(socket, "buttplug_stop_scan", %{})}
+  end
+
+  def handle_event("buttplug_vibrate", %{"speed" => speed, "sensor-id" => sensor_id}, socket) do
+    speed_float = String.to_integer(speed) / 100.0
+
+    case Sensocto.SimpleSensor.send_command(sensor_id, %{
+           "type" => "vibrate",
+           "speed" => speed_float
+         }) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("Buttplug vibrate failed: #{inspect(reason)}")
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("buttplug_rotate", %{"speed" => speed, "sensor-id" => sensor_id}, socket) do
+    speed_float = String.to_integer(speed) / 100.0
+
+    case Sensocto.SimpleSensor.send_command(sensor_id, %{
+           "type" => "rotate",
+           "speed" => speed_float,
+           "clockwise" => true
+         }) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("Buttplug rotate failed: #{inspect(reason)}")
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("buttplug_linear", %{"position" => pos, "sensor-id" => sensor_id}, socket) do
+    position_float = String.to_integer(pos) / 100.0
+
+    case Sensocto.SimpleSensor.send_command(sensor_id, %{
+           "type" => "linear",
+           "position" => position_float,
+           "duration" => 500
+         }) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("Buttplug linear failed: #{inspect(reason)}")
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("buttplug_stop_device", %{"sensor-id" => sensor_id}, socket) do
+    case Sensocto.SimpleSensor.send_command(sensor_id, %{"type" => "stop"}) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("Buttplug stop failed: #{inspect(reason)}")
+    end
+
+    {:noreply, socket}
+  end
+
+  # JS hook pushes status/device updates back to LiveView
+  def handle_event("buttplug_status_changed", params, socket) do
+    {:noreply,
+     assign(socket,
+       buttplug_status: params["status"] || "disconnected",
+       buttplug_error: params["error"]
+     )}
+  end
+
+  def handle_event("buttplug_device_added", params, socket) do
+    device = %{
+      device_index: params["device_index"],
+      sensor_id: params["sensor_id"],
+      name: params["name"],
+      capabilities: %{
+        vibrate: get_in(params, ["capabilities", "vibrate"]) || 0,
+        rotate: get_in(params, ["capabilities", "rotate"]) || 0,
+        linear: get_in(params, ["capabilities", "linear"]) || 0,
+        has_battery: get_in(params, ["capabilities", "has_battery"]) || false
+      }
+    }
+
+    devices = socket.assigns.buttplug_devices ++ [device]
+    {:noreply, assign(socket, :buttplug_devices, devices)}
+  end
+
+  def handle_event("buttplug_device_removed", %{"device_index" => index}, socket) do
+    devices = Enum.reject(socket.assigns.buttplug_devices, &(&1.device_index == index))
+    {:noreply, assign(socket, :buttplug_devices, devices)}
+  end
+
   def handle_event(type, params, socket) do
     Logger.debug("Lobby Unknown event: #{type} #{inspect(params)}")
     {:noreply, socket}
@@ -3374,7 +3445,6 @@ defmodule SensoctoWeb.LobbyLive do
   defp lens_to_path(:users), do: ~p"/lobby/users"
   defp lens_to_path(:graph), do: ~p"/lobby/graph"
   defp lens_to_path(:graph3d), do: ~p"/lobby/graph3d"
-  defp lens_to_path(:hierarchy), do: ~p"/lobby/hierarchy"
   defp lens_to_path(_), do: ~p"/lobby"
 
   # End any stale pending sessions from this guide before creating a new one.

@@ -548,7 +548,7 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
       <div
         id="groove-help-modal"
         class="hidden fixed inset-0 z-50 flex items-start justify-center"
-        style="background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); padding-top: 5vh;"
+        style="background: rgba(0,0,0,0.78); padding-top: 5vh;"
         onclick="if(event.target===this)this.classList.add('hidden')"
       >
         <div
@@ -580,7 +580,7 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
               >
                 <button
                   id="groove-depth-brief"
-                  onclick="grooveSetDepth('brief')"
+                  onclick="['brief','standard','full'].forEach(function(d){var c=document.getElementById('groove-content-'+d);var b=document.getElementById('groove-depth-'+d);if(c)c.style.display=d==='brief'?'':'none';if(b){b.style.background=d==='brief'?'rgba(139,92,246,0.35)':'transparent';b.style.color=d==='brief'?'#e9d5ff':'#7c6a9e'}})"
                   class="px-2.5 py-1 transition-colors"
                   style="background: rgba(139,92,246,0.35); color: #e9d5ff;"
                 >
@@ -588,7 +588,7 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
                 </button>
                 <button
                   id="groove-depth-standard"
-                  onclick="grooveSetDepth('standard')"
+                  onclick="['brief','standard','full'].forEach(function(d){var c=document.getElementById('groove-content-'+d);var b=document.getElementById('groove-depth-'+d);if(c)c.style.display=d==='standard'?'':'none';if(b){b.style.background=d==='standard'?'rgba(139,92,246,0.35)':'transparent';b.style.color=d==='standard'?'#e9d5ff':'#7c6a9e'}})"
                   class="px-2.5 py-1 transition-colors"
                   style="background: transparent; color: #7c6a9e; border-left: 1px solid rgba(139,92,246,0.3);"
                 >
@@ -596,7 +596,7 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
                 </button>
                 <button
                   id="groove-depth-full"
-                  onclick="grooveSetDepth('full')"
+                  onclick="['brief','standard','full'].forEach(function(d){var c=document.getElementById('groove-content-'+d);var b=document.getElementById('groove-depth-'+d);if(c)c.style.display=d==='full'?'':'none';if(b){b.style.background=d==='full'?'rgba(139,92,246,0.35)':'transparent';b.style.color=d==='full'?'#e9d5ff':'#7c6a9e'}})"
                   class="px-2.5 py-1 transition-colors"
                   style="background: transparent; color: #7c6a9e; border-left: 1px solid rgba(139,92,246,0.3);"
                 >
@@ -887,20 +887,6 @@ defmodule SensoctoWeb.LobbyLive.LensComponents do
           </div>
         </div>
       </div>
-
-      <script>
-        function grooveSetDepth(depth) {
-          ['brief','standard','full'].forEach(function(d) {
-            var content = document.getElementById('groove-content-' + d);
-            var btn = document.getElementById('groove-depth-' + d);
-            if (content) content.style.display = d === depth ? '' : 'none';
-            if (btn) {
-              btn.style.background = d === depth ? 'rgba(139,92,246,0.35)' : 'transparent';
-              btn.style.color = d === depth ? '#e9d5ff' : '#7c6a9e';
-            }
-          });
-        }
-      </script>
     </div>
     """
   end

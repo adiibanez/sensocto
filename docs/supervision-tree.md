@@ -2,7 +2,7 @@
 
 This document provides a visual representation of Sensocto's OTP supervision tree architecture.
 
-**Last Updated:** January 2026
+**Last Updated:** March 2026
 
 ## Mermaid Diagram
 
@@ -55,6 +55,11 @@ flowchart TB
             Circadian["CircadianScheduler<br/>(SCN)"]
         end
 
+        subgraph L4b["Layer 4b: Session Layer"]
+            SessionReg["Session.Registry"]
+            SessionSup["Session.Supervisor<br/>(CRDT per-user sync)"]
+        end
+
         subgraph L5["Layer 5: Domain.Supervisor"]
             Attention["AttentionTracker (ETS)"]
             SysLoad["SystemLoadMonitor (ETS)"]
@@ -76,6 +81,10 @@ flowchart TB
             Obj3DSup["Object3DPlayerSupervisor"]
             RepoPool["RepoReplicatorPool (8)"]
             SearchIdx["Search.SearchIndex"]
+        end
+
+        subgraph L5b["Layer 5b: EcoMonitor.Supervisor"]
+            HydroPoller["HydroPoller<br/>(Hydroelectric data)"]
         end
 
         GuestStore["GuestUserStore (2h TTL)"]
@@ -110,6 +119,8 @@ flowchart TB
     class IrohStore,RoomStore,IrohSync,CRDT,RoomPresence storage
     class Novelty,LoadBalancer,Tuner,Arbiter,Circadian bio
     class Attention,SysLoad,SensorsState,CallSup,MediaSup,Obj3DSup,RepoPool,SearchIdx,Sensor1,Attr1,Room1 domain
+    class SessionReg,SessionSup bio
+    class HydroPoller domain
     class GuestStore,Endpoint,Auth endpoint
     class SimMgr,SimConn optional
 ```
@@ -122,8 +133,10 @@ flowchart LR
         A[Infrastructure] --> B[Registry]
         B --> C[Storage]
         C --> D[Bio]
-        D --> E[Domain]
-        E --> F[Endpoint]
+        D --> D2[Session]
+        D2 --> E[Domain]
+        E --> E2[EcoMonitor]
+        E2 --> F[Endpoint]
         F --> G[Auth]
     end
 
@@ -173,7 +186,9 @@ flowchart TD
 | Registry | `one_for_one` | Registries don't depend on each other |
 | Storage | `rest_for_one` | RoomStore depends on Iroh.RoomStore |
 | Bio | `one_for_one` | Observers are independent |
+| Session | `one_for_one` | Per-user CRDT sessions are independent |
 | Domain | `one_for_one` | Dynamic supervisors are independent |
+| EcoMonitor | `one_for_one` | Pollers are independent |
 
 ## Blast Radius
 
@@ -200,9 +215,15 @@ flowchart TD
 
 | Topic Pattern | Publisher | Subscribers |
 |---------------|-----------|-------------|
-| `sensor:SENSOR_ID:data` | SimpleSensor | LiveViews |
+| `data:attention:high` | SimpleSensor | Router, SensorBackground, SignInLive |
+| `data:attention:medium` | SimpleSensor | Router, SensorBackground, SignInLive |
+| `data:attention:low` | SimpleSensor | Router |
+| `lens:priority:SOCKET_ID` | PriorityLens | ViewerDataChannel, LobbyLive |
 | `attention:SENSOR_ID` | AttentionTracker | SimpleSensor |
 | `system:load` | SystemLoadMonitor | AttentionTracker |
 | `rooms:cluster` | RoomsDynamicSupervisor | LiveViews |
-| `sensors:global` | SensorsDynamicSupervisor | LiveViews |
+| `rooms:lobby` | RoomStore | LobbyChannel |
+| `lobby:USER_ID` | RoomStore | LobbyChannel |
+| `lobby:guidance:available` | LobbyLive | LobbyLive (other users) |
+| `sensors:global` | SensorsDynamicSupervisor | LiveViews, SensorBackground |
 | `bio:novelty:SENSOR_ID` | NoveltyDetector | AttentionTracker |

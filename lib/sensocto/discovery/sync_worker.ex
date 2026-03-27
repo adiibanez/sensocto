@@ -191,10 +191,12 @@ defmodule Sensocto.Discovery.SyncWorker do
   defp cleanup_sensors_from_node(departed_node) do
     # Get all cached sensors and remove those from the departed node
     DiscoveryCache.list_sensors()
-    |> Enum.filter(fn {_sensor_id, sensor_data} ->
+    |> Enum.filter(fn sensor_data ->
       Map.get(sensor_data, :node) == departed_node
     end)
-    |> Enum.each(fn {sensor_id, _} ->
+    |> Enum.each(fn sensor_data ->
+      sensor_id = Map.get(sensor_data, :sensor_id)
+
       Logger.debug(
         "[SyncWorker] Removing sensor #{sensor_id} from departed node #{departed_node}"
       )

@@ -974,7 +974,12 @@ defmodule Sensocto.Simulator.DataGenerator do
         "#{config[:burst_number] || 5}"
       ]
 
-      case System.cmd("python3", args, stderr_to_stdout: true) do
+      simulator_dir = Path.join(File.cwd!(), "simulator")
+
+      case System.cmd("uv", ["run", "python3" | args],
+             stderr_to_stdout: true,
+             cd: simulator_dir
+           ) do
         {output, 0} -> {:ok, output}
         {output, code} -> {:error, "Python exited with code #{code}: #{output}"}
       end
@@ -1063,48 +1068,59 @@ defmodule Sensocto.Simulator.DataGenerator do
   end
 
   # Accelerometer - motion detection (m/s²)
-  defp generate_value("accelerometer_x", _config, i, _sampling_rate) do
-    # Walking motion with periodic steps
-    step_cycle = :math.sin(i * 0.5) * 2.0
-    noise = (:rand.uniform() - 0.5) * 0.5
-    step_cycle + noise
+  # activity_level (0.0-1.0) scales amplitude: 0.1=seated calm, 0.5=walking, 1.0=vigorous
+  # Multiple overlapping frequencies create realistic, non-repetitive motion patterns
+  defp generate_value("accelerometer_x", config, i, _sampling_rate) do
+    a = (config[:activity_level] || 0.5) * 12.0
+    step = :math.sin(i * 0.5) * a * 0.5
+    swing = :math.sin(i * 0.17 + 1.2) * a * 0.3
+    burst = if rem(trunc(i), 200) < 20, do: :math.sin(i * 1.5) * a * 0.8, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.2
+    step + swing + burst + noise
   end
 
-  defp generate_value("accelerometer_y", _config, i, _sampling_rate) do
-    # Lateral sway while walking
-    sway = :math.sin(i * 0.25) * 1.0
-    noise = (:rand.uniform() - 0.5) * 0.3
-    sway + noise
+  defp generate_value("accelerometer_y", config, i, _sampling_rate) do
+    a = (config[:activity_level] || 0.5) * 10.0
+    sway = :math.sin(i * 0.25 + 0.7) * a * 0.4
+    drift = :math.sin(i * 0.03) * a * 0.6
+    jolt = if rem(trunc(i), 300) < 10, do: (:rand.uniform() - 0.5) * a * 1.5, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    sway + drift + jolt + noise
   end
 
-  defp generate_value("accelerometer_z", _config, i, _sampling_rate) do
-    # Gravity + vertical bounce while walking
+  defp generate_value("accelerometer_z", config, i, _sampling_rate) do
+    a = (config[:activity_level] || 0.5) * 8.0
     gravity = 9.81
-    bounce = :math.sin(i * 0.5) * 0.5
-    noise = (:rand.uniform() - 0.5) * 0.2
-    gravity + bounce + noise
+    bounce = :math.sin(i * 0.5 + 2.1) * a * 0.4
+    breathing = :math.sin(i * 0.08) * a * 0.2
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    gravity + bounce + breathing + noise
   end
 
   # Gyroscope - rotation rates (rad/s)
-  defp generate_value("gyroscope_x", _config, i, _sampling_rate) do
-    # Pitch rotation (nodding)
-    rotation = :math.sin(i * 0.3) * 0.2
-    noise = (:rand.uniform() - 0.5) * 0.1
-    rotation + noise
+  defp generate_value("gyroscope_x", config, i, _sampling_rate) do
+    a = (config[:activity_level] || 0.5) * 6.0
+    nod = :math.sin(i * 0.15 + 0.5) * a * 0.5
+    micro = :math.sin(i * 0.8) * a * 0.2
+    head_turn = if rem(trunc(i), 250) < 30, do: :math.sin(i * 0.6) * a * 0.8, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    nod + micro + head_turn + noise
   end
 
-  defp generate_value("gyroscope_y", _config, i, _sampling_rate) do
-    # Roll rotation (side-to-side tilt)
-    rotation = :math.sin(i * 0.4) * 0.15
-    noise = (:rand.uniform() - 0.5) * 0.08
-    rotation + noise
+  defp generate_value("gyroscope_y", config, i, _sampling_rate) do
+    a = (config[:activity_level] || 0.5) * 5.0
+    roll = :math.sin(i * 0.2 + 1.8) * a * 0.4
+    wobble = :math.sin(i * 0.55 + 3.0) * a * 0.3
+    noise = (:rand.uniform() - 0.5) * a * 0.12
+    roll + wobble + noise
   end
 
-  defp generate_value("gyroscope_z", _config, i, _sampling_rate) do
-    # Yaw rotation (turning)
-    rotation = :math.sin(i * 0.1) * 0.3
-    noise = (:rand.uniform() - 0.5) * 0.1
-    rotation + noise
+  defp generate_value("gyroscope_z", config, i, _sampling_rate) do
+    a = (config[:activity_level] || 0.5) * 8.0
+    scan = :math.sin(i * 0.06) * a * 0.5
+    turn = if rem(trunc(i), 180) < 25, do: :math.sin(i * 0.4 + 0.3) * a * 1.0, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    scan + turn + noise
   end
 
   # Light sensor (lux)
@@ -1436,6 +1452,28 @@ defmodule Sensocto.Simulator.DataGenerator do
     cycle_position = rem(time_seconds + phase_offset, 300)
 
     if cycle_position < 15, do: 0.0, else: 1.0
+  end
+
+  # Buttplug vibrate/oscillate — smooth wave pattern (0.0–1.0)
+  defp generate_value("buttplug_vibrate", _config, i, _sampling_rate) do
+    # Slow sine wave with gentle randomness, clamped to 0.0–1.0
+    base = (:math.sin(i * 0.05) + 1) / 2
+    noise = (:rand.uniform() - 0.5) * 0.1
+    Float.round(max(0.0, min(1.0, base + noise)), 3)
+  end
+
+  # Buttplug linear position — smooth back-and-forth (0.0–1.0)
+  defp generate_value("buttplug_linear", _config, i, _sampling_rate) do
+    # Triangle wave for linear stroking motion
+    cycle = rem(i, 100) / 100.0
+    position = if cycle < 0.5, do: cycle * 2, else: 2.0 - cycle * 2
+    noise = (:rand.uniform() - 0.5) * 0.05
+    Float.round(max(0.0, min(1.0, position + noise)), 3)
+  end
+
+  # Buttplug device status — always connected
+  defp generate_value("buttplug_status", _config, _i, _sampling_rate) do
+    1.0
   end
 
   # Generic sensor with min/max range

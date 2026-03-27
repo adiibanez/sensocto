@@ -2,7 +2,7 @@
 
 Sensocto is a real-time sensor data platform built with Phoenix/Elixir, using the Ash framework for domain modeling and LiveView for reactive UI. The system features attention-aware back-pressure control, biomimetic resource management, and distributed room coordination via Horde.
 
-**Last Updated:** January 2026
+**Last Updated:** March 2026
 
 ## System Overview
 
@@ -106,6 +106,10 @@ Sensocto.Supervisor (root, :rest_for_one)
 │   ├── ResourceArbiter                # Lateral Inhibition - resource negotiation
 │   └── CircadianScheduler             # SCN - temporal scheduling
 │
+├── Layer 4b: Session Layer
+│   ├── Session.Registry               # Per-user session lookup
+│   └── Session.Supervisor             # CRDT per-user session sync
+│
 ├── Layer 5: Domain.Supervisor (:one_for_one)
 │   ├── AttentionTracker               # Back-pressure control (ETS-backed)
 │   ├── SystemLoadMonitor              # CPU/PubSub/Memory load tracking
@@ -121,6 +125,9 @@ Sensocto.Supervisor (root, :rest_for_one)
 │   ├── Object3DPlayerSupervisor       # 3D object streaming
 │   ├── RepoReplicatorPool             # Database sync pool (8 workers)
 │   └── Search.SearchIndex             # Global search index
+│
+├── Layer 5b: EcoMonitor.Supervisor    # Environmental monitoring
+│   └── HydroPoller                    # Hydroelectric data from external APIs
 │
 ├── Layer 5.5: Accounts.GuestUserStore # In-memory guest user sessions (2h TTL)
 │
@@ -258,6 +265,9 @@ External Device → WebSocket Channel → SimpleSensor → AttributeStore → Li
 - `lib/sensocto/otp/simple_sensor.ex` - Per-sensor GenServer
 - `lib/sensocto/otp/attribute_store.ex` - Per-attribute data cache
 - `lib/sensocto_web/channels/sensor_data_channel.ex` - WebSocket protocol
+- `lib/sensocto_web/channels/lobby_channel.ex` - Read-only lobby channel (room list hydration + live updates)
+- `lib/sensocto_web/channels/viewer_data_channel.ex` - Composite view data delivery (sensor_batch → JS hooks)
+- `lib/sensocto_web/live/helpers/sensor_background.ex` - Shared sensor activity animation helper (sign-in/index pages)
 
 ### 2. Attention System
 
@@ -411,7 +421,7 @@ Key environment variables (see `.env.sample`):
 |-------|------------|
 | Language | Elixir 1.19.4, OTP 27 |
 | Web Framework | Phoenix 1.7 |
-| Real-time UI | Phoenix LiveView 1.0 |
+| Real-time UI | Phoenix LiveView 1.1 |
 | Frontend | Svelte 5 (via live_svelte), Tailwind CSS, DaisyUI |
 | Domain Framework | Ash 3.0 |
 | Database | PostgreSQL 16+ (Neon.tech) with AshPostgres |
@@ -439,13 +449,14 @@ Key environment variables (see `.env.sample`):
 - `docs/attributes.md` - Supported sensor attribute types
 - `docs/letsgobio.md` - Biomimetic layer documentation
 
-**Agent Reports (`.claude/agents/reports/`):**
-- `resilient-systems-architect-report.md` - OTP architecture assessment
-- `security-advisor-report.md` - Security posture analysis
-- `livebook-tester-report.md` - Testing strategy and coverage
-- `interdisciplinary-innovator-report.md` - Biomimetic patterns analysis
-- `api-client-developer-report.md` - API client development guide
-- `elixir-test-accessibility-expert-report.md` - Testing and accessibility audit
+**Agent Reports (`reports/`):**
+- `resilient-systems-architect.md` - OTP architecture assessment
+- `security-advisor.md` - Security posture analysis
+- `livebook-tester.md` - Testing strategy and coverage
+- `interdisciplinary-innovator.md` - Biomimetic patterns analysis
+- `api-client-developer.md` - API client development guide
+- `elixir-test-accessibility-expert.md` - Testing and accessibility audit
+- `iroh-integration-architect.md` - P2P/distributed architecture planning
 
 **External Documentation:**
 - [Ash Framework Docs](https://hexdocs.pm/ash)

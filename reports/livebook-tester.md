@@ -11,12 +11,262 @@ Sensocto is a sophisticated real-time sensor platform built on Phoenix/LiveView 
 - Nx/numerical computing for quaternion calculations
 - Collaborative whiteboard, media player, and 3D object viewer
 - Guided session system for guide/follower coordination
+- Rust and mobile native clients with lobby/room channel support
+- IMU composite visualization for motion sensor data
 
-**Current Testing Status:** Substantial and growing -- **65 test files**, **974 test definitions**, **15,592 total test lines** across unit, integration, E2E (Wallaby), and regression guard tests.
+**Current Testing Status:** Stable at **65 test files**, **971 test definitions**, **~15,600 total test lines** across unit, integration, E2E (Wallaby), and regression guard tests. No new test files since Mar 1.
 
-**Livebook Status:** 16 livebooks totaling 8,713 lines. Livebook count stagnant since Feb 16 (over 3 weeks). No new livebooks created.
+**Livebook Status:** 16 livebooks totaling 8,713 lines. Livebook count stagnant since Feb 16 (over 5 weeks). No new livebooks created.
 
-**Priority Recommendation:** Test the extracted LobbyLive hooks (8 new modules, 2,231 lines, 0% coverage), create tests for the expanded SessionServer (513 lines, 0% coverage), and add simulator DataGenerator/AttributeServer tests. Livebooks for the lobby hook architecture and backpressure pipeline would be high-value additions.
+**Priority Recommendation:** Create tests for the new LobbyChannel and RoomChannel (0% coverage, client-facing contract), expand GuidedSessionHook tests (212 lines, 16 message handlers, 0% coverage), and add DataGenerator property-based tests. The Rust client's lobby.rs and room_session.rs modules depend on the JSON shapes produced by these channels -- contract drift is the top integration risk.
+
+---
+
+## Update: March 25, 2026
+
+### Key Changes Since Mar 1, 2026
+
+The past three weeks brought several new modules and features, but **no new test files were created**. The test count remains flat at 65 files / 971 definitions. The main additions are new channels for mobile/Rust clients, an IMU composite lens, expanded guided session coordination, whiteboard improvements, and a sensor background animation helper. The Rust client also gained lobby and room_session modules that consume the new channel APIs.
+
+#### 1. New Channel: LobbyChannel (0% Test Coverage)
+
+`lib/sensocto_web/channels/lobby_channel.ex` (159 lines) is a new read-only channel providing mobile and Rust clients with live room list updates. Registered in UserSocket as `"lobby:*"`.
+
+**Key behaviors to test:**
+- `join("lobby:<user_id>")` -- authorization check (user_id must match socket assigns)
+- `join` with mismatched user_id returns `{:error, %{reason: "unauthorized"}}`
+- `:after_join` pushes `"lobby_state"` with `my_rooms` and `public_rooms` lists
+- PubSub handlers: `{:lobby_room_created, room}` pushes `"room_added"`, `{:lobby_room_deleted, room_id}` pushes `"room_removed"`, `{:lobby_room_updated, room}` pushes `"room_updated"`, `{:membership_changed, room_id, action, user_id}` pushes `"membership_changed"`
+- `room_to_json/1` serialization: handles MapSet and list sensor_ids, includes member_count
+- Unknown messages are silently dropped
+
+**Integration risk:** The Rust client (`clients/rust/src/lobby.rs`, 173 lines) deserializes `lobby_state`, `room_added`, `room_removed`, `room_updated`, and `membership_changed` events. Any change to the JSON shape in `room_to_json/1` or `sensor_to_json/1` will break the Rust client silently. A regression guard test for the channel event contracts is strongly recommended.
+
+#### 2. New Channel: RoomChannel (0% Test Coverage)
+
+`lib/sensocto_web/channels/room_channel.ex` (157 lines) provides per-room live sensor/member updates for mobile clients. Registered in UserSocket as `"room:*"`.
+
+**Key behaviors to test:**
+- `join("room:<room_id>")` -- validates UUID format via `Ecto.UUID.cast/1`
+- Authorization: `authorized_for_room?/2` checks public flag or membership via RoomStore
+- `:after_join` pushes `"room_state"` with sensors list and member_count
+- PubSub `{:room_update, event}` dispatches: `:sensor_added`, `:sensor_removed`, `:member_joined`, `:member_left`, `:room_closed`
+- `:sensor_measurement` events are intentionally ignored (no push)
+
+**Integration risk:** The Rust client (`clients/rust/src/room_session.rs`, 176 lines) consumes `room_state`, `sensor_added`, `sensor_removed`, `member_joined`, `member_left`, and `room_closed` events. Same contract drift risk as LobbyChannel.
+
+#### 3. Rust Client: New Lobby and RoomSession Modules
+
+Two new Rust modules consume the channel APIs above:
+- `clients/rust/src/lobby.rs` (173 lines) -- `LobbySession` + `handle_lobby_event_sync` event parser
+- `clients/rust/src/room_session.rs` (176 lines) -- `RoomSession` + `handle_room_event_sync` event parser
+
+Both use `serde_json::from_value` deserialization with fallback to empty vecs on parse failure. The `Room` and `RoomSensor` model structs must match the JSON produced by `room_to_json/1` and `sensor_to_json/1` in the Elixir channels.
+
+**Testing recommendation:** Create a regression guard test (`test/sensocto/regression_guards/channel_contract_test.exs`) that verifies the exact JSON shapes returned by `LobbyChannel.room_to_json/1` and `RoomChannel.sensor_to_json/1` against expected Rust-compatible structures. This is the highest-priority testing gap.
+
+#### 4. IMU Composite Lens (New Svelte Component)
+
+`assets/svelte/CompositeIMU.svelte` (359 lines) is a new composite visualization for IMU (Inertial Measurement Unit) sensor data. The lobby routes now include `/lobby/imu` alongside existing composite views (heartrate, ecg, etc.).
+
+In `lobby_live.ex`, IMU sensors are extracted as part of the `extract_composite_data/1` tuple, filtered in `compute_available_lenses`, and dispatched through the standard `process_lens_batch_for_composite` / `process_lens_digest_for_composite` pipeline.
+
+**Testing impact:** The `lobby_graph_regression_test.exs` should be verified to include the `/lobby/imu` route in its mount regression checks. The `extract_composite_data` tuple now includes `imu_sensors` -- all destructuring sites in lobby_live.ex must handle the expanded tuple.
+
+#### 5. Sensor Background Animations
+
+`lib/sensocto_web/live/helpers/sensor_background.ex` (100 lines) is a new shared helper module for sensor-driven background animations. Used by `CustomSignInLive` and `IndexLive` to create ambient visualizations driven by real sensor activity.
+
+**Key functions:** `subscribe/0`, `unsubscribe/0`, `start_bg_tick/0`, `init_activity/0`, `handle_measurement/2`
+
+Subscribes to `["data:attention:high", "data:attention:medium", "sensors:global"]` PubSub topics and accumulates sensor activity with decay for visual effects.
+
+**Testing opportunity:** Pure functions like `handle_measurement/2` and `init_activity/0` are easily unit-testable. The tick/decay logic could benefit from property-based testing.
+
+#### 6. Guided Session Hook Expansion
+
+`lib/sensocto_web/live/lobby_live/hooks/guided_session_hook.ex` grew from 182 to **212 lines** (16% increase). New message handlers added:
+- `{:guided_quality_changed, %{quality: quality}}` -- propagates quality settings to PriorityLens
+- `{:guided_sort_changed, %{sort_by: sort_by}}` -- sorts sensor list per guide preference
+- `{:guided_mode_changed, %{mode: mode}}` -- switches lobby mode (sensors/whiteboard/etc.)
+- `{:guided_panel_changed, %{panel, collapsed}}` -- controls panel visibility
+- `{:guided_layout_changed, %{layout: layout}}` -- switches grid/list layout
+- `{:guidance_available, info}` -- new inline join flow (replaces old invite code page)
+- `{:guidance_unavailable, %{session_id: id}}` -- dismisses available session prompt
+
+The hook now has **16 `on_handle_info/2` clauses** plus a catch-all. Every clause follows the `{:halt, socket}` / `{:cont, socket}` pattern and is testable with mock socket assigns.
+
+**Coverage: still 0%.** This is the most complex hook module with multiple conditional branches (checking `guided_session`, `guided_following`, `guiding_session` assigns). Each conditional path is a test case.
+
+#### 7. Whiteboard Hook Improvements
+
+`lib/sensocto_web/live/lobby_live/hooks/whiteboard_hook.ex` grew to **139 lines** with 12 message handlers:
+- Stroke operations: `stroke_progress`, `strokes_batch`, `stroke_added`
+- Canvas operations: `cleared`, `undo`, `background_changed`
+- Control operations: `controller_changed`, `control_requested`, `control_request_denied`, `control_request_cancelled`
+- Utility: `clear_whiteboard_bump` timer handler
+
+The "bump" animation pattern (assign true, send_after 300ms, assign false) is repeated in 3 handlers -- a potential extraction candidate.
+
+**Coverage: still 0%.** All handlers delegate to `send_update/2` which is easy to verify in tests.
+
+#### 8. Simulator Manager and DataGenerator Changes
+
+`lib/sensocto/simulator/manager.ex` grew to **1,069 lines** (up from ~950). New additions include:
+- Multi-scenario support: `start_scenario/2`, `stop_scenario/1`, `get_running_scenarios/0`
+- Scenario isolation: each scenario tracks its own room_id and connector_ids
+- `get_current_scenario/0` for backwards compatibility
+
+`lib/sensocto/simulator/data_generator.ex` grew to **1,555 lines** (up from ~1,392). New sensor type generators:
+- `fetch_respiration_data` -- breathing rate simulation
+- `fetch_hrv_data` -- heart rate variability
+- `fetch_eye_gaze_data` -- eye tracking
+- `fetch_eye_aperture_data` -- blink detection
+- `fetch_hydro_api_data` -- hydrology API simulation
+
+**Existing coverage:** Manager has 19 tests in `manager_test.exs`. DataGenerator has **0% coverage** despite being 1,555 lines of mostly pure math functions -- ideal for property-based testing with StreamData.
+
+#### 9. LensComponents Extraction
+
+`lib/sensocto_web/live/lobby_live/lens_components.ex` grew to **893 lines** (up from ~412). New additions:
+- `composite_lens/1` -- generic wrapper for all Svelte composite views
+- `midi_panel/1` -- MIDI / GrooveEngine panel for graph views
+- Multiple lens-specific layout components
+
+This module contains only function components (no state, no events) making it testable via `Phoenix.LiveViewTest.render_component/2`.
+
+#### 10. Channel Architecture Overview
+
+UserSocket now registers **6 channel modules**:
+
+| Channel | Topic Pattern | Lines | Test Coverage |
+|---------|--------------|-------|---------------|
+| SensorDataChannel | `sensocto:*` | 717 | 2 tests (ping + broadcast) |
+| RoomChannel | `room:*` | 157 | **0%** |
+| CallChannel | `call:*` | ~100 | **0%** |
+| HydrationChannel | `hydration:room:*` | ~80 | **0%** |
+| ViewerDataChannel | `viewer:*` | ~120 | **0%** |
+| LobbyChannel | `lobby:*` | 159 | **0%** |
+
+Only SensorDataChannel has any test coverage, and even that is minimal (2 tests for ping and basic broadcast). The other 5 channels are completely untested. With the Rust client now consuming LobbyChannel and RoomChannel, this is a significant gap.
+
+### Updated Metrics
+
+| Metric | Mar 1 | Mar 25 | Change |
+|--------|-------|--------|--------|
+| Test Files | 65 | **65** | +0 (stagnant) |
+| Test Definitions | 974 | **971** | -3 (minor cleanup) |
+| Total Test Lines | ~15,592 | **~15,600** | Flat |
+| Channels (total/tested) | 5/1 | **6/1** | +1 untested |
+| Rust Client Modules | ~4 | **6** | +2 (lobby, room_session) |
+| GuidedSessionHook Handlers | ~12 | **16** | +4 new handlers |
+| DataGenerator Lines | ~1,392 | **1,555** | +163 lines, 0% coverage |
+| Simulator Manager Lines | ~950 | **1,069** | +119 lines |
+| LensComponents Lines | ~412 | **893** | +481 lines |
+| Lobby Live Lines | ~3,138 | **3,513** | +375 lines |
+| Livebook Count | 16 | **16** | Stagnant (5+ weeks) |
+| Guidance Test Coverage | 0% | **0%** | Still untested |
+
+---
+
+## Priority Testing Recommendations (Ranked)
+
+### P0: Channel Contract Regression Guards
+
+**Why:** The Rust client directly deserializes JSON from LobbyChannel and RoomChannel. Any drift in field names, types, or structure will cause silent client failures.
+
+**Suggested file:** `test/sensocto_web/channels/lobby_channel_test.exs`
+
+```elixir
+# Test join authorization (matching user_id required)
+# Test join rejection for mismatched user_id
+# Test :after_join pushes lobby_state with my_rooms and public_rooms
+# Test room_to_json/1 output shape matches Rust Room struct fields:
+#   {id, name, description, owner_id, join_code, is_public, created_at, sensors, member_count}
+# Test sensor_to_json/1 output shape matches Rust RoomSensor struct fields:
+#   {sensor_id, sensor_name, sensor_type, connector_id, connector_name, activity_status, attributes}
+# Test PubSub event forwarding: room_added, room_removed, room_updated, membership_changed
+# Test unknown messages are silently dropped
+```
+
+**Suggested file:** `test/sensocto_web/channels/room_channel_test.exs`
+
+```elixir
+# Test join with valid UUID room_id
+# Test join with invalid UUID returns {:error, %{reason: "invalid room id"}}
+# Test authorization: public rooms allow any user, private rooms require membership
+# Test :after_join pushes room_state with sensors and member_count
+# Test room_update events: sensor_added, sensor_removed, member_joined, member_left, room_closed
+# Test sensor_measurement events are silently ignored (no push)
+```
+
+### P1: GuidedSessionHook Unit Tests
+
+**Why:** 16 message handlers, multiple conditional branches, direct PriorityLens integration. The hook is growing fast and has complex state dependencies.
+
+**Suggested file:** `test/sensocto_web/live/hooks/guided_session_hook_test.exs`
+
+```elixir
+# For each of the 16 on_handle_info/2 clauses:
+# - Test with guided_session=nil (should pass through or halt with no change)
+# - Test with guided_following=true (should apply changes)
+# - Test with guided_following=false (should halt without applying)
+# Specific edge cases:
+# - :guided_quality_changed with :auto vs specific quality level
+# - :guidance_available when already in a session (should ignore)
+# - :guidance_unavailable for non-matching session_id (should ignore)
+# - :guided_drift_back calls apply_guided_settings
+# - :guided_ended resets all guided assigns
+```
+
+### P2: DataGenerator Property-Based Tests
+
+**Why:** 1,555 lines of pure math functions generating simulated sensor data. Perfect candidate for StreamData property-based testing.
+
+```elixir
+# Properties to verify:
+# - fetch_sensor_data always returns {:ok, data} or {:error, reason}
+# - Generated heartrate values are within physiological range (30-220 bpm)
+# - Generated battery levels are 0-100
+# - Generated GPS coordinates are valid lat/lng ranges
+# - Skeleton keyframe data has expected joint count
+# - Respiration rate is within 4-60 breaths/min
+# - HRV values are positive
+# - Eye gaze coordinates are normalized 0.0-1.0
+```
+
+### P3: SensorBackground Helper Tests
+
+**Why:** Small (100 lines), pure functions, used on public-facing pages (sign-in, index).
+
+```elixir
+# Test init_activity/0 returns map keyed by sensor_id
+# Test handle_measurement/2 increments hit_count for known sensor
+# Test handle_measurement/2 creates entry for unknown sensor
+# Test decay logic reduces hit_count over time
+```
+
+### P4: WhiteboardHook Tests
+
+**Why:** 12 handlers, all following the same delegation pattern. Easy to test in bulk.
+
+```elixir
+# Test each PubSub message triggers correct send_update to WhiteboardComponent
+# Test whiteboard_bump timer: first event sets true, :clear_whiteboard_bump sets false
+# Test stroke_progress filters out current user's own strokes
+```
+
+### P5: Remaining Extracted Hooks
+
+All lobby hooks remain at 0% coverage:
+
+| Hook Module | Lines | Handlers | Complexity |
+|------------|-------|----------|------------|
+| `guided_session_hook.ex` | 212 | 16 | HIGH (conditionals) |
+| `whiteboard_hook.ex` | 139 | 12 | LOW (delegation) |
+| `media_hook.ex` | ~140 | ~8 | LOW (delegation) |
+| `object3d_hook.ex` | ~156 | ~8 | LOW (delegation) |
+| `call_hook.ex` | ~70 | ~4 | LOW (delegation) |
 
 ---
 
@@ -41,7 +291,7 @@ The monolithic `lobby_live.ex` was refactored into a modular architecture. Eight
 | `sensor_detail_live.ex` | 909 | Sensor detail subview | **0%** |
 | `sensor_compare_live.ex` | 231 | Sensor comparison subview | **0%** |
 
-Despite the extraction, `lobby_live.ex` remains large at 3,138 lines, indicating the core lens/sensor logic is still inline. The hook modules use Phoenix LiveView's `attach_hook` pattern and follow a consistent `on_handle_info/2` callback structure with `{:halt, socket}` returns.
+Despite the extraction, `lobby_live.ex` remains large at 3,513 lines, indicating the core lens/sensor logic is still inline. The hook modules use Phoenix LiveView's `attach_hook` pattern and follow a consistent `on_handle_info/2` callback structure with `{:halt, socket}` returns.
 
 **Testing opportunity:** Each hook module has a small, well-defined interface. They accept a PubSub message tuple and a socket, returning `{:halt, socket}`. These are highly testable with mock sockets.
 
@@ -79,11 +329,11 @@ The `room_store_test.exs` at 447 lines and 43 tests is the most comprehensive ne
 
 `simulator/manager_test.exs` (202 lines, 19 tests) is the first test coverage for the simulator system. Tests startup phase, state queries, and connector management. Uses a defensive `skip_if_unavailable` pattern since the Manager may not be started in the test environment.
 
-**Remaining simulator gaps:** DataGenerator (1,392 lines, pure math functions -- ideal for property-based testing), AttributeServer (406 lines, recently refactored with ~85 lines of churn), SensorServer (408 lines).
+**Remaining simulator gaps:** DataGenerator (1,555 lines, pure math functions -- ideal for property-based testing), AttributeServer (406 lines, recently refactored with ~85 lines of churn), SensorServer (408 lines).
 
 #### 5. Session Server Changes
 
-`SessionServer` grew from ~417 to 513 lines. Changes in commit `2797fa9` include expanded guide/follower coordination. The module still has **0% test coverage** despite being a complex GenServer with timer-based state management.
+`SessionServer` grew from ~417 to 516 lines. Changes include expanded guide/follower coordination with quality, sort, mode, and layout synchronization. The module still has **0% test coverage** despite being a complex GenServer with timer-based state management.
 
 #### 6. Additional New Test Files
 
@@ -108,21 +358,6 @@ The `room_store_test.exs` at 447 lines and 43 tests is the most comprehensive ne
 - `docs/midi-output.md` -- new MIDI output documentation
 - Plans moved to `plans/` directory (5 planning documents)
 - Migration `20260226195225_default_is_public_to_false.exs` -- `is_public` now defaults to false
-
-### Updated Metrics
-
-| Metric | Feb 24 | Mar 1 | Change |
-|--------|--------|-------|--------|
-| Test Files | 65 | **65** | +0 (new files created in the Feb 22-24 batch) |
-| Test Definitions | ~780 | **974** | +194 (+25%) |
-| Total Test Lines | ~9,500 | **15,592** | +6,092 (+64%) |
-| Ecto Schemas | 30 | **30** | No change |
-| Ash Domains | 6 | **6** | No change |
-| Livebook Count | 16 | **16** | Stagnant (3+ weeks) |
-| Docs Count | 20 | **22** | +2 (liveview-architecture.md, midi-output.md) |
-| Lobby Extracted Modules | 0 | **8** | NEW architecture |
-| Guidance Test Coverage | 0% | **0%** | Still untested |
-| Simulator Test Coverage | 0% | **~15%** | Manager only |
 
 ---
 
@@ -279,7 +514,7 @@ The system follows a guide/follower pattern (similar to MediaPlayerServer's take
 
 ---
 
-## Complete Test File Inventory (65 files, 974 tests, 15,592 lines)
+## Complete Test File Inventory (65 files, 971 tests, ~15,600 lines)
 
 **Core OTP / Data Pipeline:**
 - `test/sensocto/otp/simple_sensor_test.exs` (23 tests) -- SimpleSensor GenServer
@@ -361,7 +596,7 @@ The system follows a guide/follower pattern (similar to MediaPlayerServer's take
 - `test/sensocto_web/live/search_live_test.exs` (4 tests)
 - `test/sensocto_web/live/user_directory_live_test.exs` (8 tests)
 - `test/sensocto_web/live/lobby_graph_regression_test.exs` (14 tests)
-- `test/sensocto_web/live/midi_output_regression_test.exs` (10 tests)
+- `test/sensocto_web/live/midi_output_regression_test.exs` (7 tests)
 - `test/sensocto_web/live/lobby_backpressure_test.exs` (19 tests)
 - `test/sensocto_web/live/mount_optimization_test.exs` (20 tests)
 - `test/sensocto_web/components/core_components_test.exs` (10 tests)
@@ -399,7 +634,7 @@ mix test test/sensocto_web/features/      # Feature tests only
 
 ## Notable Test Patterns
 
-**Regression Guards** (`regression_guards_test.exs`, 49 tests): A "honey badger" approach that tests contracts (message shapes, topic formats, API return values) rather than implementation details. These catch silent breakage during refactoring. This pattern is worth expanding to other subsystems.
+**Regression Guards** (`regression_guards_test.exs`, 49 tests): A "honey badger" approach that tests contracts (message shapes, topic formats, API return values) rather than implementation details. These catch silent breakage during refactoring. This pattern is worth expanding to channel event contracts for the Rust client.
 
 **PriorityLens Buffer Tests** (`priority_lens_buffer_test.exs`): Tests the GenServer-free hot data path via ETS direct writes. Verifies `buffer_for_sensor/2`, `buffer_batch_for_sensor/2`, `get_sockets_for_sensor/1`, and flush timer delivery.
 
@@ -434,6 +669,16 @@ mix test test/sensocto_web/features/      # Feature tests only
 
 *Note: `ash_neo4j_demo.livemd` references Neo4j, which has been removed from the project. This livebook should be archived or deleted.
 
+### Recommended New Livebooks
+
+1. **Channel Contract Explorer** -- Interactive notebook that connects to LobbyChannel and RoomChannel, displays JSON shapes, and validates against Rust struct definitions. Would serve as living documentation for the client API contract.
+
+2. **Guided Session Flow** -- Step-by-step notebook demonstrating guide/follower coordination, drift-back timer behavior, and all 16 GuidedSessionHook message types with mock sockets.
+
+3. **DataGenerator Sandbox** -- Interactive exploration of all sensor type generators (heartrate, IMU, skeleton, HRV, eye gaze, etc.) with VegaLite visualizations of generated waveforms.
+
+4. **Backpressure Pipeline E2E** -- End-to-end notebook tracing a measurement from SimpleSensor through PriorityLens to LobbyLive, visualizing buffer states and quality transitions.
+
 ---
 
 ## Ecto Schemas (30 Total)
@@ -447,209 +692,3 @@ The project has 30 Ecto schemas across domains:
 - **Object3D (2):** Object3DPlaylist, Object3DPlaylistItem
 
 ---
-
-## Remaining Gaps and Recommendations
-
-### Critical Gaps
-
-#### 1. Extracted Lobby Hooks -- 0% Coverage (HIGH PRIORITY)
-
-The lobby refactoring created 8 new modules (2,231 lines total) with zero test coverage. These hooks are the integration glue for guided sessions, media, object3D, whiteboard, and calls within the lobby.
-
-| Hook Module | Lines | Testing Strategy |
-|-------------|-------|-----------------|
-| `guided_session_hook.ex` | 182 | Mock socket assigns, verify PubSub message routing and assign updates |
-| `media_hook.ex` | 140 | Test event delegation to MediaPlayerServer |
-| `object3d_hook.ex` | 156 | Test event delegation to Object3DPlayerServer |
-| `whiteboard_hook.ex` | 131 | Test event delegation to WhiteboardComponent |
-| `call_hook.ex` | 70 | Test call initiation/termination events |
-| `components.ex` | 412 | Render tests for extracted function components |
-| `sensor_detail_live.ex` | 909 | Mount and event tests for sensor detail view |
-| `sensor_compare_live.ex` | 231 | Mount and comparison logic tests |
-
-#### 2. Guided Session System -- Still 0%
-
-SessionServer (513 lines), GuidedSession Ash resource, SessionSupervisor, and JoinLive all remain untested. The `guided_session_hook.ex` extraction makes this even more urgent since the hook delegates to SessionServer but neither has tests.
-
-#### 3. Calls System -- Still 0%
-
-CallServer, QualityManager, SnapshotManager, CallChannel remain untested.
-
-#### 4. Simulator DataGenerator and AttributeServer -- 0%
-
-DataGenerator (1,392 lines) contains pure mathematical functions for ECG waveforms, GPS interpolation, and battery curves. AttributeServer (406 lines) was recently refactored. Both are prime candidates for unit testing.
-
-#### 5. New LiveViews Without Tests
-
-- `profile_live.ex` -- significantly expanded with privacy settings
-- `user_settings_live.ex` -- new module
-- `devices_live.ex` -- device management with rename/forget
-- `magic_sign_in_live.ex` -- magic link authentication flow
-- `sensor_detail_live.ex` -- extracted from lobby, 909 lines
-- `sensor_compare_live.ex` -- extracted from lobby, 231 lines
-
-#### 6. Search Index Privacy Filtering
-
-The `search_index.ex` received privacy-related changes. Existing `search_index_test.exs` should be reviewed and extended to cover visibility/privacy filtering logic.
-
-#### 7. Outdated Content
-
-- `ash_neo4j_demo.livemd` references Neo4j, which has been removed from the project
-
-### Priority Recommendations
-
-**Immediate (This Sprint):**
-
-1. **Test extracted lobby hooks** -- Start with `guided_session_hook.ex` (most complex at 182 lines) and `components.ex` (412 lines of function components). These are self-contained modules with clear input/output contracts.
-2. **Test SessionServer** -- 513 lines of complex GenServer logic with timers, now the highest-risk untested module.
-3. **Test DataGenerator pure functions** -- 1,392 lines of mathematical logic. Property-based testing with StreamData would verify ECG waveform bounds, GPS coordinate validity, and battery curve monotonicity.
-4. **Review search_index_test.exs** -- Ensure privacy filtering changes are covered.
-5. **Archive or delete `ash_neo4j_demo.livemd`** -- References removed dependency.
-
-**Short-term (2-4 Weeks):**
-
-1. **Create `backpressure-pipeline.livemd`** -- Interactive notebook tracing data flow from SystemLoadMonitor through PriorityLens quality adjustment to LobbyLive threshold response. Visualize with VegaLite charts showing quality transitions under load.
-2. **Create `lobby-hooks-architecture.livemd`** -- Document the new hook extraction pattern with Mermaid diagrams showing message flow through each hook.
-3. **Test sensor_detail_live.ex and sensor_compare_live.ex** -- Largest extracted modules at 909 and 231 lines.
-4. **End-to-end backpressure test** -- Integration test that applies load via SystemLoadMonitor, verifies PriorityLens quality degradation, and confirms LobbyLive responds with appropriate threshold adjustments.
-
-**Medium-term (1-2 Months):**
-
-1. **CallServer integration tests** -- WebRTC participant lifecycle
-2. **Full E2E for sensor data flow** -- Connect via channel, send measurement, verify it appears in lobby LiveView
-3. **Property-based testing for AttributeServer** -- Test data generation, attribute routing, and cleanup under concurrent load
-4. **Create `guided-session-lifecycle.livemd`** -- Interactive exploration of guide/follower coordination with PubSub observation
-5. **Create `data-generator-waveforms.livemd`** -- Plot ECG, breathing, HRV waveforms with VegaLite for visual verification
-
----
-
-## Testing Infrastructure Quality Assessment
-
-### Strengths
-
-- **Well-structured E2E framework**: Wallaby setup with FeatureCase helpers, multi-user support, device viewport simulation, and proper tag-based execution gating
-- **Regression guard pattern**: The "honey badger" approach in `regression_guards_test.exs` (49 tests) is excellent -- testing contracts rather than implementations
-- **Consistent test isolation**: Most tests use `System.unique_integer([:positive])` for unique IDs, avoiding cross-test interference
-- **Accessibility testing**: Two dedicated test files for ARIA attributes, keyboard navigation, and focus management in modals
-- **Integration tests**: ButtonState visualization tests create real processes and verify the full PubSub pipeline
-- **Backpressure coverage**: New tests for PriorityLens buffer, Router demand-driven subscription, SystemLoadMonitor, and lobby threshold calculation provide strong coverage of the hot data path
-- **Defensive test patterns**: The `skip_if_unavailable` pattern in Manager tests handles optional supervisor-managed processes gracefully
-
-### Areas for Improvement
-
-- **No test factories or shared fixture module**: Each test file creates its own helpers (e.g., `create_user/1` in room_test.exs). A shared factory module would reduce duplication
-- **No property-based testing**: StreamData is not yet used anywhere. DataGenerator is the ideal first candidate
-- **No test coverage tooling**: No excoveralls or similar tool configured
-- **Limited channel tests**: `sensor_data_channel_test.exs` is only 2 tests with basic join/broadcast
-- **Async test ratio**: Many tests use `async: false` -- reviewing which can safely use `async: true` would improve test suite speed
-- **Hook modules untested**: The lobby refactoring created 8 new modules (2,231 lines) with 0% coverage, representing the largest untested surface area in the codebase
-
-### Documentation Ecosystem
-
-The docs/ directory contains 22 markdown files providing comprehensive coverage:
-
-| Category | Files |
-|----------|-------|
-| Architecture | `architecture.md`, `supervision-tree.md`, `attention-system.md`, `liveview-architecture.md` |
-| Operations | `deployment.md`, `beam-vm-tuning.md`, `scalability.md` |
-| Development | `getting-started.md`, `e2e-testing.md`, `attributes.md`, `api-attributes-reference.md` |
-| Integration | `simulator-integration.md`, `membrane-webrtc-integration.md`, `iroh-room-storage-architecture.md` |
-| Planning | `CLUSTERING_PLAN.md`, `VISION.md` + 5 plan docs in `plans/` directory |
-| Features | `room-markdown-format.md`, `modal-accessibility-implementation.md`, `letsgobio.md`, `midi-output.md` |
-| Infrastructure | `tidewave-production.md`, `github-agents.md` |
-
-Combined with 16 livebooks and 65 test files (974 test definitions), the project has a mature documentation and testing foundation.
-
----
-
-## Architecture Notes (Updated)
-
-### Key Changes Since Last Report
-
-1. **Lobby refactored into hook architecture** -- 5 hook modules (`guided_session`, `media`, `object3d`, `whiteboard`, `call`) extracted from LobbyLive, following Phoenix LiveView's `attach_hook` pattern. Each hook has a consistent `on_handle_info/2` interface.
-2. **Sensor detail and compare views extracted** -- `sensor_detail_live.ex` (909 lines) and `sensor_compare_live.ex` (231 lines) separated from LobbyLive.
-3. **Components extracted** -- `lobby_live/components.ex` (412 lines) contains function components previously inline in LobbyLive.
-4. **SystemLoadMonitor** tested -- ETS-based load level reads, memory protection, PubSub broadcasts on transitions.
-5. **SessionServer expanded** -- 513 lines (up from ~417), with additional guide/follower coordination logic.
-6. **Profile and privacy system** -- ProfileLive significantly expanded, `is_public` default changed to false.
-7. **Simulator AttributeServer refactored** -- ~85 lines of churn, simplified data generation flow.
-8. **New docs** -- `liveview-architecture.md` (552 lines) documents the LiveView module structure. `midi-output.md` documents MIDI integration.
-
-### Data Pipeline (Current)
-
-```
-SimpleSensor -> PubSub (data:attention:{level}) -> Router -> PriorityLens ETS -> flush timer -> PubSub (lens:priority:{socket_id}) -> LobbyLive
-```
-
-Hot path is GenServer-free (ETS `:public` tables for direct writes).
-
-### Backpressure Feedback Loop (Updated)
-
-```
-SystemLoadMonitor (ETS) -> load level broadcast -> LobbyLive adjusts thresholds
-                                                -> PriorityLens adjusts quality/flush interval
-LobbyLive mailbox size -> backpressure/critical -> quality downgrade request to PriorityLens
-Consecutive healthy checks (2) + delay (8s) -> quality upgrade request to PriorityLens
-```
-
-Quality levels scale flush intervals: `:high` (32ms) -> `:medium` (50ms) -> `:low` (100ms) -> `:paused` (200ms). All non-paused quality levels use `max_sensors: :unlimited` per project memory.
-
----
-
-## Gamification -- Test Coverage Progress
-
-### Achievements Earned
-
-| Achievement | Status | Details |
-|-------------|--------|---------|
-| **First Blood** | EARNED | Many modules now have first tests |
-| **OTP Guardian** | EARNED | SimpleSensor, throttle, AttentionTracker, PriorityLens+buffer, Router, RoomStore, RoomServer, SystemLoadMonitor, SensorsDynSup all tested |
-| **Room Champion** | PARTIAL | Room Ash resource + RoomStore + RoomServer tested; RoomShowLive not yet |
-| **Bio Master** | EARNED | All 7 bio modules have comprehensive tests (including CorrelationTracker, SyncComputer) |
-| **Accessibility Advocate** | EARNED | Modal and core component ARIA tests |
-| **E2E Pioneer** | EARNED | 7 Wallaby feature test files |
-| **Regression Sentinel** | EARNED | Contract-based regression guards (49 tests) |
-| **Backpressure Guardian** | EARNED | PriorityLens buffer, Router, SystemLoadMonitor, lobby thresholds, mount optimization all tested |
-| **Markdown Master** | EARNED | RoomMarkdown + admin protection: 66 tests |
-| **Simulator Scout** | PARTIAL | Manager tested (19 tests), DataGenerator/AttributeServer/SensorServer still at 0% |
-
-### Remaining Challenges
-
-| Achievement | Criteria | Progress |
-|-------------|----------|----------|
-| **Ash Master** | Test all Ash resource actions | ~5/30 schemas covered |
-| **Guidance Guardian** | Full Guided Session lifecycle tests | 0% |
-| **Hook Hero** | Test all extracted lobby hooks | 0% (8 modules, 2,231 lines) |
-| **Channel Surfer** | Full channel message coverage | ~10% |
-| **Call Expert** | WebRTC integration tests | 0% |
-| **Simulator Sage** | All data generators tested | ~15% (Manager only) |
-| **LiveView Legend** | All LiveViews have tests | ~20% |
-| **Property Prover** | StreamData property tests | 0% |
-
-### Current Coverage Estimate
-
-```
-Core OTP:        |=========.| ~90%
-Backpressure:    |=========.| ~90%
-Bio Layer:       |==========| 100%
-CRDT/Iroh:       |========..| ~80%
-Media/Object3D:  |==========| 100%
-Ash Resources:   |==........| ~17%
-Channels:        |=.........| ~10%
-Call System:     |..........| 0%
-Simulator:       |==........| ~15%
-LiveViews:       |===.......| ~25%
-Lobby Hooks:     |..........| 0%
-Web/Plugs:       |====......| ~35%
-Guidance:        |..........| 0%
-E2E Features:    |=====.....| ~45%
-Room Markdown:   |==========| 100%
-Types/Encoding:  |==========| 100%
-```
-
-Overall estimated module coverage: ~35-40%
-
----
-
-*Report updated: 2026-03-01*
-*Analysis by: Livebook Tester Agent (Claude Opus 4.6)*

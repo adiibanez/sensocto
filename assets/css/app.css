@@ -158,6 +158,35 @@ html[data-theme="light"] body { background: transparent !important; color: #1a2e
 [data-theme="light"] header.bg-gray-800 .bg-gray-800 {
   background-color: rgba(255,255,255,0.08);
 }
+/* Header dropdowns — override header's light-text rule since dropdowns have light bg */
+[data-theme="light"] #mobile-menu-dropdown,
+[data-theme="light"] #user-menu [data-dropdown-menu],
+[data-theme="light"] #lang-menu [data-dropdown-menu] {
+  background-color: #ffffff;
+  border: 1px solid #c8d8e0;
+  box-shadow: 0 8px 24px rgba(26,58,74,0.15);
+}
+[data-theme="light"] #mobile-menu-dropdown a,
+[data-theme="light"] #mobile-menu-dropdown .text-gray-300,
+[data-theme="light"] #user-menu [data-dropdown-menu] a,
+[data-theme="light"] #user-menu [data-dropdown-menu] .text-gray-300,
+[data-theme="light"] #lang-menu [data-dropdown-menu] button,
+[data-theme="light"] #lang-menu [data-dropdown-menu] .text-gray-300 {
+  color: #2a4454 !important;
+}
+[data-theme="light"] #mobile-menu-dropdown a:hover,
+[data-theme="light"] #user-menu [data-dropdown-menu] a:hover,
+[data-theme="light"] #lang-menu [data-dropdown-menu] button:hover {
+  background-color: #e8eef2;
+  color: #1a2e38 !important;
+}
+[data-theme="light"] #user-menu [data-dropdown-menu] hr {
+  border-color: #c8d8e0;
+}
+/* Active language button keeps its indigo style */
+[data-theme="light"] #lang-menu [data-dropdown-menu] button.bg-indigo-600 {
+  color: #ffffff !important;
+}
 
 /* ── Breadcrumb area ── */
 [data-theme="light"] .text-gray-300.hover\:text-white:hover { color: #1a2e38; }
@@ -191,16 +220,22 @@ html[data-theme="light"] body { background: transparent !important; color: #1a2e
 [data-theme="light"] .text-light-gray { color: #1a2e38; }
 [data-theme="light"] .text-off-white  { color: #2a4454; }
 
-/* ── Sensor card tiles — crisp white with ocean border ── */
+/* ── Sensor card tiles — soft blue with ocean border ── */
 [data-theme="light"] .sensor.bg-dark-gray {
-  background-color: #ffffff;
-  border: 1px solid #c8d8e0;
+  background-color: #e8f0fa;
+  border: 1px solid #b8d0e4;
   box-shadow: 0 1px 3px rgba(26,58,74,0.06), 0 1px 2px rgba(26,58,74,0.03);
 }
 [data-theme="light"] .sensor.bg-dark-gray:hover {
+  background-color: #dce8f6;
   box-shadow: 0 4px 8px rgba(26,58,74,0.1), 0 2px 4px rgba(26,58,74,0.05);
-  border-color: #a8c4d0;
+  border-color: #94b8d4;
 }
+
+/* ── Attention badges — darken for readability on light backgrounds ── */
+[data-theme="light"] .sensor .text-green-400  { color: #16803c; }
+[data-theme="light"] .sensor .text-yellow-400 { color: #a16207; }
+[data-theme="light"] .sensor .text-orange-400 { color: #c2410c; }
 
 /* ── Mobile footer tab bar ── */
 [data-theme="light"] .bg-gray-900.border-t {

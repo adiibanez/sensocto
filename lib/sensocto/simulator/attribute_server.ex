@@ -383,8 +383,11 @@ defmodule Sensocto.Simulator.AttributeServer do
   # Slow sensors like HRV (0.2 Hz = 5000ms base) must not be throttled —
   # a 10x multiplier would stretch samples to 50s apart, breaking 15-min graphs.
   defp apply_backpressure_delay(base_delay_ms, attention_level) do
-    # Ensure minimum delay when base is 0 (first message in batch has delay: 0.0)
-    effective_base = if base_delay_ms == 0, do: 50, else: base_delay_ms
+    # For high/medium attention: use minimal delay to maximize responsiveness.
+    # The first sample in each batch has delay=0.0 — don't inflate it unnecessarily.
+    # For low/none attention: apply aggressive multipliers to reduce load.
+    min_delay = if attention_level in [:high, :medium], do: 5, else: 50
+    effective_base = if base_delay_ms == 0, do: min_delay, else: base_delay_ms
 
     # Slow sensors (≤1 Hz) are already low-bandwidth — skip backpressure
     if effective_base >= 1000 do

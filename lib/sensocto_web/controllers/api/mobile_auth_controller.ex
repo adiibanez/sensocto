@@ -336,7 +336,12 @@ defmodule SensoctoWeb.Api.MobileAuthController do
                     {:ok, jwt, user_info} ->
                       conn
                       |> put_status(:ok)
-                      |> json(%{ok: true, token: jwt, socket_token: socket_token, user: user_info})
+                      |> json(%{
+                        ok: true,
+                        token: jwt,
+                        socket_token: socket_token,
+                        user: user_info
+                      })
 
                     {:error, reason} ->
                       conn

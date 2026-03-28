@@ -226,11 +226,28 @@ defmodule SensoctoWeb.SensorDataChannel do
     # Validate measurement keys before processing
     with {:ok, _} <- SafeKeys.validate_measurement_keys(sensor_measurement_data),
          {:ok, safe_data} <- SafeKeys.safe_keys_to_atoms(sensor_measurement_data) do
-      SimpleSensor.put_attribute(socket.assigns.sensor_id, safe_data)
+      # Normalize bundled IMU CSV payloads into individual axis measurements
+      # so all downstream consumers (composite views, tiles, graph) work uniformly
+      case maybe_expand_imu(safe_data) do
+        {:expanded, expanded_measurements} ->
+          sensor_id = socket.assigns.sensor_id
 
-      Logger.debug(
-        "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, SINGLE: #{inspect(sensor_measurement_data)}"
-      )
+          # Auto-register the individual IMU attributes if not already registered
+          maybe_register_imu_attributes(sensor_id, socket)
+
+          SimpleSensor.put_batch_attributes(sensor_id, expanded_measurements)
+
+          Logger.debug(
+            "IMU normalized: sensor_id=#{sensor_id}, expanded #{length(expanded_measurements)} axes"
+          )
+
+        :passthrough ->
+          SimpleSensor.put_attribute(socket.assigns.sensor_id, safe_data)
+
+          Logger.debug(
+            "SimpleSensor data sent sensor_id: #{socket.assigns.sensor_id}, SINGLE: #{inspect(sensor_measurement_data)}"
+          )
+      end
 
       {:noreply, socket}
     else
@@ -613,6 +630,91 @@ defmodule SensoctoWeb.SensorDataChannel do
       :error ->
         Logger.debug("error removing sensor #{sensor_id}")
         # {:error, reason}
+    end
+  end
+
+  # IMU CSV normalization: expand bundled "imu" CSV payload into individual axis measurements.
+  # Mobile/web connectors send: "timestamp,ax,ay,az,rx,ry,rz,qw,qx,qy,qz"
+  # This splits it into accelerometer_x/y/z + gyroscope_x/y/z so all downstream
+  # consumers (composite views, tiles, graph) work uniformly with the Neon simulator format.
+  @imu_axis_ids ~w(accelerometer_x accelerometer_y accelerometer_z gyroscope_x gyroscope_y gyroscope_z)
+
+  defp maybe_expand_imu(%{attribute_id: "imu", payload: payload, timestamp: timestamp})
+       when is_binary(payload) do
+    parts = String.split(payload, ",")
+
+    if length(parts) >= 7 do
+      # CSV format: timestamp,ax,ay,az,rx,ry,rz[,qw,qx,qy,qz]
+      ax = safe_parse_float(Enum.at(parts, 1))
+      ay = safe_parse_float(Enum.at(parts, 2))
+      az = safe_parse_float(Enum.at(parts, 3))
+      rx = safe_parse_float(Enum.at(parts, 4))
+      ry = safe_parse_float(Enum.at(parts, 5))
+      rz = safe_parse_float(Enum.at(parts, 6))
+
+      expanded =
+        Enum.zip(@imu_axis_ids, [ax, ay, az, rx, ry, rz])
+        |> Enum.map(fn {attr_id, value} ->
+          %{attribute_id: attr_id, payload: value, timestamp: timestamp}
+        end)
+
+      {:expanded, expanded}
+    else
+      :passthrough
+    end
+  end
+
+  # Also handle the "number" field format from handleDeviceMotion (rotation angles only)
+  defp maybe_expand_imu(%{attribute_id: "imu", number: number_str, timestamp: timestamp})
+       when is_binary(number_str) do
+    parts = String.split(number_str, ",")
+
+    if length(parts) >= 3 do
+      rx = safe_parse_float(Enum.at(parts, 0))
+      ry = safe_parse_float(Enum.at(parts, 1))
+      rz = safe_parse_float(Enum.at(parts, 2))
+
+      expanded =
+        Enum.zip(~w(gyroscope_x gyroscope_y gyroscope_z), [rx, ry, rz])
+        |> Enum.map(fn {attr_id, value} ->
+          %{attribute_id: attr_id, payload: value, timestamp: timestamp}
+        end)
+
+      {:expanded, expanded}
+    else
+      :passthrough
+    end
+  end
+
+  defp maybe_expand_imu(_), do: :passthrough
+
+  defp safe_parse_float(nil), do: 0.0
+
+  defp safe_parse_float(str) when is_binary(str) do
+    case Float.parse(str) do
+      {val, _} -> val
+      :error -> 0.0
+    end
+  end
+
+  # Auto-register individual IMU axis attributes when we first expand a bundled IMU payload.
+  # Uses Process dictionary to only register once per channel connection.
+  defp maybe_register_imu_attributes(sensor_id, _socket) do
+    unless Process.get(:imu_attrs_registered) do
+      Process.put(:imu_attrs_registered, true)
+
+      for attr_id <- @imu_axis_ids do
+        # Determine attribute type based on prefix
+        attr_type =
+          if String.starts_with?(attr_id, "accel"), do: "accelerometer", else: "gyroscope"
+
+        SimpleSensor.update_attribute_registry(sensor_id, :register, attr_id, %{
+          attribute_type: attr_type,
+          sampling_rate: 25
+        })
+      end
+
+      Logger.debug("Auto-registered IMU axis attributes for sensor #{sensor_id}")
     end
   end
 

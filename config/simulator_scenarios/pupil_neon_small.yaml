@@ -64,6 +64,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.2
+            dummy_data: true
           accelerometer_y:
             attribute_id: "accelerometer_y"
             sensor_type: "accelerometer_y"
@@ -72,6 +73,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.15
+            dummy_data: true
           accelerometer_z:
             attribute_id: "accelerometer_z"
             sensor_type: "accelerometer_z"
@@ -80,6 +82,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.1
+            dummy_data: true
           # IMU — 3 gyroscope axes (calm seated reading)
           gyroscope_x:
             attribute_id: "gyroscope_x"
@@ -89,6 +92,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.15
+            dummy_data: true
           gyroscope_y:
             attribute_id: "gyroscope_y"
             sensor_type: "gyroscope_y"
@@ -97,6 +101,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.1
+            dummy_data: true
           gyroscope_z:
             attribute_id: "gyroscope_z"
             sensor_type: "gyroscope_z"
@@ -105,6 +110,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.1
+            dummy_data: true
           battery:
             attribute_id: "battery"
             sensor_type: "battery"
@@ -161,6 +167,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.9
+            dummy_data: true
           accelerometer_y:
             attribute_id: "accelerometer_y"
             sensor_type: "accelerometer_y"
@@ -169,6 +176,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.7
+            dummy_data: true
           accelerometer_z:
             attribute_id: "accelerometer_z"
             sensor_type: "accelerometer_z"
@@ -177,6 +185,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.5
+            dummy_data: true
           # IMU — 3 gyroscope axes (active head scanning)
           gyroscope_x:
             attribute_id: "gyroscope_x"
@@ -186,6 +195,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.8
+            dummy_data: true
           gyroscope_y:
             attribute_id: "gyroscope_y"
             sensor_type: "gyroscope_y"
@@ -194,6 +204,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 0.6
+            dummy_data: true
           gyroscope_z:
             attribute_id: "gyroscope_z"
             sensor_type: "gyroscope_z"
@@ -202,6 +213,7 @@ connectors:
             duration: 0
             sampling_rate: 110
             activity_level: 1.0
+            dummy_data: true
           battery:
             attribute_id: "battery"
             sensor_type: "battery"

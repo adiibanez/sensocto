@@ -31,6 +31,10 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
 
   alias Sensocto.SimpleSensor
   alias Sensocto.AttentionTracker
+
+  # Individual IMU axis attribute IDs that should be merged into a single "imu" tile
+  @imu_axis_attrs MapSet.new(~w(accelerometer_x accelerometer_y accelerometer_z
+    gyroscope_x gyroscope_y gyroscope_z))
   alias SensoctoWeb.Live.Components.AttributeComponent
 
   # Import render_sensor_header/1 from BaseComponents
@@ -294,8 +298,14 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     current_attributes = get_in(socket_assigns, [:sensor, :attributes]) || %{}
 
     # Check if any measurements are for attributes not currently rendered
-    # If so, we need to refresh sensor state to render the new attribute components
-    incoming_attr_ids = measurements_list |> Enum.map(& &1.attribute_id) |> MapSet.new()
+    # If so, we need to refresh sensor state to render the new attribute components.
+    # Exclude IMU axis IDs — they're merged into a single "imu" attribute.
+    incoming_attr_ids =
+      measurements_list
+      |> Enum.map(& &1.attribute_id)
+      |> Enum.reject(&MapSet.member?(@imu_axis_attrs, &1))
+      |> MapSet.new()
+
     current_attr_ids = current_attributes |> Map.keys() |> MapSet.new()
     new_attr_ids = MapSet.difference(incoming_attr_ids, current_attr_ids)
 
@@ -307,7 +317,7 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
 
         # Fetch fresh sensor state to include new attributes
         try do
-          new_sensor_state = SimpleSensor.get_view_state(sensor_id)
+          new_sensor_state = SimpleSensor.get_view_state(sensor_id) |> merge_imu_axes()
 
           socket
           |> assign(:sensor, new_sensor_state)
@@ -363,7 +373,14 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
       end)
 
     # Update LiveComponents with latest measurement and button state if applicable
-    Enum.each(latest_measurements, fn measurement ->
+    # Group IMU axis measurements to build a single merged update
+    {imu_measurements, other_measurements} =
+      Enum.split_with(latest_measurements, fn m ->
+        MapSet.member?(@imu_axis_attrs, m.attribute_id)
+      end)
+
+    # Send updates for non-IMU attributes
+    Enum.each(other_measurements, fn measurement ->
       update_params =
         if measurement.attribute_id == "button" do
           button_pressed = Map.get(socket.assigns.pressed_buttons, "button", MapSet.new())
@@ -382,6 +399,57 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
 
       send_update(AttributeComponent, update_params)
     end)
+
+    # For IMU axis measurements, update the merged "imu" component
+    socket =
+      if imu_measurements != [] do
+        current_imu = get_in(socket_assigns, [:sensor, :attributes, "imu", :lastvalue])
+
+        current_payload =
+          (current_imu && current_imu[:payload]) ||
+            %{
+              accelerometer: %{x: 0.0, y: 0.0, z: 0.0},
+              gyroscope: %{x: 0.0, y: 0.0, z: 0.0}
+            }
+
+        updated_payload =
+          Enum.reduce(imu_measurements, current_payload, fn m, acc ->
+            case m.attribute_id do
+              "accelerometer_x" -> put_in(acc, [:accelerometer, :x], m.payload * 1.0)
+              "accelerometer_y" -> put_in(acc, [:accelerometer, :y], m.payload * 1.0)
+              "accelerometer_z" -> put_in(acc, [:accelerometer, :z], m.payload * 1.0)
+              "gyroscope_x" -> put_in(acc, [:gyroscope, :x], m.payload * 1.0)
+              "gyroscope_y" -> put_in(acc, [:gyroscope, :y], m.payload * 1.0)
+              "gyroscope_z" -> put_in(acc, [:gyroscope, :z], m.payload * 1.0)
+              _ -> acc
+            end
+          end)
+
+        latest_ts = Enum.max_by(imu_measurements, & &1.timestamp).timestamp
+
+        send_update(AttributeComponent,
+          id: "attribute_#{sensor_id}_imu",
+          lastvalue: %{timestamp: latest_ts, payload: updated_payload}
+        )
+
+        # Update sensor state so the merged payload stays current
+        sensor = socket.assigns[:sensor]
+        imu_attr = get_in(sensor, [:attributes, "imu"])
+
+        if imu_attr do
+          updated_imu = %{
+            imu_attr
+            | lastvalue: %{timestamp: latest_ts, payload: updated_payload}
+          }
+
+          updated_sensor = put_in(sensor, [:attributes, "imu"], updated_imu)
+          assign(socket, :sensor, updated_sensor)
+        else
+          socket
+        end
+      else
+        socket
+      end
 
     # Buffer all measurements
     pending = measurements_list ++ socket_assigns.pending_measurements
@@ -419,7 +487,7 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     sensor_id = socket.assigns.sensor_id
 
     try do
-      new_sensor_state = SimpleSensor.get_view_state(sensor_id)
+      new_sensor_state = SimpleSensor.get_view_state(sensor_id) |> merge_imu_axes()
       assign(socket, :sensor, new_sensor_state)
     catch
       :exit, _ ->
@@ -432,6 +500,9 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
   defp maybe_handle_new_state(socket, _assigns), do: socket
 
   defp assign_sensor_state(socket, %{sensor: sensor}) when is_map(sensor) do
+    # Merge individual IMU axis attributes into a single compact "imu" attribute
+    sensor = merge_imu_axes(sensor)
+
     # Check if attributes have changed (new attributes added)
     old_attrs = get_in(socket.assigns, [:sensor, :attributes]) || %{}
     new_attrs = sensor[:attributes] || %{}
@@ -457,7 +528,7 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
       socket
     else
       # Fetch sensor state if not provided
-      sensor = fetch_sensor_state(sensor_id)
+      sensor = fetch_sensor_state(sensor_id) |> merge_imu_axes()
 
       # Check if sensor has any data (lastvalue in any attribute)
       attrs = sensor[:attributes] || %{}
@@ -485,6 +556,65 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
   end
 
   defp assign_sensor_state(socket, _assigns), do: socket
+
+  # Merge individual IMU axis attributes (accelerometer_x/y/z, gyroscope_x/y/z)
+  # into a single "imu" attribute with an accelerometer/gyroscope object payload.
+  # This gives all IMU sensors the same compact tilt-ball + compass tile.
+  defp merge_imu_axes(%{attributes: attrs} = sensor) when is_map(attrs) do
+    imu_attrs = Map.filter(attrs, fn {id, _} -> MapSet.member?(@imu_axis_attrs, id) end)
+
+    if map_size(imu_attrs) > 0 and not Map.has_key?(attrs, "imu") do
+      # Build accelerometer/gyroscope payload from individual axes
+      ax = get_axis_value(imu_attrs, "accelerometer_x")
+      ay = get_axis_value(imu_attrs, "accelerometer_y")
+      az = get_axis_value(imu_attrs, "accelerometer_z")
+      gx = get_axis_value(imu_attrs, "gyroscope_x")
+      gy = get_axis_value(imu_attrs, "gyroscope_y")
+      gz = get_axis_value(imu_attrs, "gyroscope_z")
+
+      # Use latest timestamp from any axis
+      latest_ts =
+        imu_attrs
+        |> Enum.map(fn {_, attr} -> get_in(attr, [:lastvalue, :timestamp]) || 0 end)
+        |> Enum.max(fn -> 0 end)
+
+      imu_payload = %{
+        accelerometer: %{x: ax, y: ay, z: az},
+        gyroscope: %{x: gx, y: gy, z: gz}
+      }
+
+      synthetic_imu = %{
+        attribute_id: "imu",
+        attribute_type: "imu",
+        sampling_rate: 110,
+        lastvalue:
+          if latest_ts > 0 do
+            %{timestamp: latest_ts, payload: imu_payload}
+          else
+            nil
+          end
+      }
+
+      # Remove individual axes, add merged "imu"
+      merged_attrs =
+        attrs
+        |> Map.drop(MapSet.to_list(@imu_axis_attrs))
+        |> Map.put("imu", synthetic_imu)
+
+      Map.put(sensor, :attributes, merged_attrs)
+    else
+      sensor
+    end
+  end
+
+  defp merge_imu_axes(sensor), do: sensor
+
+  defp get_axis_value(attrs, key) do
+    case get_in(attrs, [key, :lastvalue, :payload]) do
+      v when is_number(v) -> v * 1.0
+      _ -> 0.0
+    end
+  end
 
   # Push attributes_updated event to trigger JS hook to re-observe attribute elements
   defp maybe_push_attributes_updated(socket, true = _attrs_changed) do

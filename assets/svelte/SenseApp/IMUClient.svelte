@@ -122,6 +122,25 @@
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+    // Auto-detect: show a prompt for first-time mobile users who haven't configured IMU yet
+    let showImuPrompt = false;
+    $: if (imuAvailable() && !sensorSettings.isSensorConfigured('imu') && !readingIMU) {
+        showImuPrompt = true;
+    } else {
+        showImuPrompt = false;
+    }
+
+    function dismissImuPrompt() {
+        showImuPrompt = false;
+        // Mark as configured (but not enabled) so the prompt doesn't appear again
+        sensorSettings.setSensorEnabled('imu', false);
+    }
+
+    function acceptImuPrompt() {
+        showImuPrompt = false;
+        enableIMU();
+    }
+
     // Track permission state for UI feedback
     let motionPermissionState = null; // 'granted', 'denied', 'prompt', or null
 
@@ -299,16 +318,20 @@
             imuData.rotationRate.gamma,
         );
 
+        // Build CSV matching handleMobileIMU format: timestamp,ax,ay,az,rx,ry,rz,qw,qx,qy,qz
+        // DeviceMotionEvent provides acceleration (without gravity) and rotation rate
+        const ax = (event.acceleration?.x || 0).toFixed(3);
+        const ay = (event.acceleration?.y || 0).toFixed(3);
+        const az = (event.acceleration?.z || 0).toFixed(3);
+        const rx = imuData.rotationAngles.x;
+        const ry = imuData.rotationAngles.y;
+        const rz = imuData.rotationAngles.z;
+        const now = Math.round(new Date().getTime());
+
         let payload = {
-            // same as before ...
-            number:
-                imuData.rotationAngles.x +
-                "," +
-                imuData.rotationAngles.y +
-                "," +
-                imuData.rotationAngles.z,
-            attribute_id: "imu", // Or some other unique ID for IMU data
-            timestamp: Math.round(new Date().getTime()),
+            payload: `${now},${ax},${ay},${az},${rx},${ry},${rz},1.000,0.000,0.000,0.000`,
+            attribute_id: "imu",
+            timestamp: now,
         };
 
         sensorService.sendChannelMessage(channelIdentifier, payload);
@@ -520,6 +543,17 @@
         sensorService.leaveChannelIfUnused(channelIdentifier);
     });
 </script>
+
+{#if showImuPrompt && !compact}
+    <div class="flex items-center gap-2 bg-indigo-900/50 border border-indigo-700 rounded-lg px-3 py-2 text-xs">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-indigo-400 flex-shrink-0">
+            <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM8.547 4.505a8.25 8.25 0 1011.672 11.672L8.547 4.505z" clip-rule="evenodd"/>
+        </svg>
+        <span class="text-indigo-200">Motion sensors detected</span>
+        <button on:click={acceptImuPrompt} class="btn btn-blue text-xs px-2 py-0.5">Enable</button>
+        <button on:click={dismissImuPrompt} class="text-gray-400 hover:text-gray-200 text-xs">Dismiss</button>
+    </div>
+{/if}
 
 {#if imuAvailable()}
     {#if compact}

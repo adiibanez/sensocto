@@ -138,23 +138,54 @@ function accelColorClass(mag) {
   return 'text-red-400 bg-red-500';
 }
 
+const IMU_AXIS_IDS = new Set([
+  'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
+  'gyroscope_x', 'gyroscope_y', 'gyroscope_z',
+  'imu', 'motion'
+]);
+
 export const ImuTileHook = {
   mounted() {
     this._sensorId = this.el.dataset.sensor_id;
     this._attrId = this.el.dataset.attribute_id;
+    // Accumulated axis values for merging individual axes into one visualization
+    this._axes = { ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 0 };
 
     this._onBatch = (e) => {
       const { sensor_id, attributes } = e.detail;
       if (sensor_id !== this._sensorId) return;
 
-      // Find latest IMU measurement in this batch
-      let latest = null;
-      for (const a of attributes) {
-        if (a.attribute_id === this._attrId) latest = a;
-      }
-      if (!latest) return;
+      // Check for a direct "imu" attribute (bundled CSV or merged payload)
+      let directImu = null;
+      let hasAxisUpdate = false;
 
-      this._updateDom(parseImuPayload(latest.payload));
+      for (const a of attributes) {
+        if (a.attribute_id === 'imu') {
+          directImu = a;
+        } else if (IMU_AXIS_IDS.has(a.attribute_id)) {
+          hasAxisUpdate = true;
+          const v = typeof a.payload === 'number' ? a.payload : 0;
+          switch (a.attribute_id) {
+            case 'accelerometer_x': this._axes.ax = v; break;
+            case 'accelerometer_y': this._axes.ay = v; break;
+            case 'accelerometer_z': this._axes.az = v; break;
+            case 'gyroscope_x': this._axes.gx = v; break;
+            case 'gyroscope_y': this._axes.gy = v; break;
+            case 'gyroscope_z': this._axes.gz = v; break;
+          }
+        }
+      }
+
+      if (directImu) {
+        this._updateDom(parseImuPayload(directImu.payload));
+      } else if (hasAxisUpdate) {
+        // Synthesize accelerometer/gyroscope object from accumulated axes
+        const merged = {
+          accelerometer: { x: this._axes.ax, y: this._axes.ay, z: this._axes.az },
+          gyroscope: { x: this._axes.gx, y: this._axes.gy, z: this._axes.gz },
+        };
+        this._updateDom(parseImuPayload(merged));
+      }
     };
 
     window.addEventListener('measurements-batch-event', this._onBatch);

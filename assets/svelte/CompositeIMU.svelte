@@ -149,6 +149,18 @@
       else if (attributeId.startsWith('gyro')) s.rawY = payload;
       else if (attributeId === 'motion') s.rawZ = payload;
       else s.rawX = payload;
+    } else if (typeof payload === 'string' && payload.includes(',')) {
+      // Fallback: parse bundled IMU CSV payload (timestamp,ax,ay,az,rx,ry,rz,...)
+      const parts = payload.split(',').map(Number);
+      if (parts.length >= 7) {
+        s.rawX = parts[1] || 0; // ax
+        s.rawY = parts[2] || 0; // ay
+        s.rawZ = parts[3] || 0; // az
+      } else if (parts.length >= 3) {
+        s.rawX = parts[0] || 0;
+        s.rawY = parts[1] || 0;
+        s.rawZ = parts[2] || 0;
+      }
     } else if (payload && typeof payload === 'object') {
       if ('x' in payload) s.rawX = payload.x;
       if ('y' in payload) s.rawY = payload.y;

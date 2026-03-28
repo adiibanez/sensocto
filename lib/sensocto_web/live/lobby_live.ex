@@ -37,6 +37,12 @@ defmodule SensoctoWeb.LobbyLive do
   # via send_update to LiveComponents. Channel handles high-freq chart data.
   @text_throttle_ms 2_000
 
+  # IMU attributes that arrive sparsely from the simulator (~1/6s per axis).
+  # These always pass through the per-sensor text throttle to avoid being permanently
+  # dropped when eye/battery data pushes the sensor's throttle timestamp forward.
+  @sparse_passthrough_attrs ~w(accelerometer_x accelerometer_y accelerometer_z
+    gyroscope_x gyroscope_y gyroscope_z imu motion)
+
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
   @grid_cols_xl_default 4
@@ -3187,21 +3193,38 @@ defmodule SensoctoWeb.LobbyLive do
       Enum.reduce(batch_data, {last_pushed, []}, fn {sensor_id, attrs}, {ts_acc, push_acc} ->
         if MapSet.member?(visible_ids, sensor_id) do
           sensor_last = Map.get(ts_acc, sensor_id, now - @text_throttle_ms - 1)
+          throttle_elapsed = now - sensor_last >= @text_throttle_ms
 
-          if now - sensor_last >= @text_throttle_ms do
-            measurements =
-              attrs
-              |> Enum.reject(fn {_attr_id, value} ->
-                is_list(value) or
-                  (is_map(value) and is_map_key(value, :__delta_encoded__))
-              end)
-              |> Enum.map(fn {_attr_id, measurement} -> measurement end)
+          # Extract all measurements, converting lists (high-freq) to latest value
+          all_measurements =
+            attrs
+            |> Enum.reject(fn {_attr_id, value} ->
+              is_map(value) and is_map_key(value, :__delta_encoded__)
+            end)
+            |> Enum.map(fn
+              {_attr_id, values} when is_list(values) ->
+                List.last(List.flatten(values))
 
-            if measurements != [] do
-              {Map.put(ts_acc, sensor_id, now), [{sensor_id, measurements} | push_acc]}
+              {_attr_id, measurement} ->
+                measurement
+            end)
+            |> Enum.reject(&is_nil/1)
+
+          # When throttled, still pass through sparse high-frequency attributes
+          # (IMU, etc.) whose data would otherwise be permanently dropped.
+          # Non-high-freq attributes (eye_gaze, battery, etc.) are throttled normally.
+          measurements =
+            if throttle_elapsed do
+              all_measurements
             else
-              {ts_acc, push_acc}
+              Enum.filter(all_measurements, fn m ->
+                m[:attribute_id] in @sparse_passthrough_attrs
+              end)
             end
+
+          if measurements != [] do
+            ts = if throttle_elapsed, do: now, else: Map.get(ts_acc, sensor_id, now)
+            {Map.put(ts_acc, sensor_id, ts), [{sensor_id, measurements} | push_acc]}
           else
             {ts_acc, push_acc}
           end

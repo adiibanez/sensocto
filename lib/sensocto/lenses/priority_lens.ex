@@ -78,9 +78,10 @@ defmodule Sensocto.Lenses.PriorityLens do
   # Degradation only occurs based on actual backpressure (mailbox depth).
 
   # High-frequency attributes that need all samples preserved
-  @high_frequency_attributes ~w(ecg respiration button buttons
-    accelerometer accelerometer_x accelerometer_y accelerometer_z
-    gyroscope gyroscope_x gyroscope_y gyroscope_z imu motion)
+  # Only attributes that need every sample (waveforms, event streams) use list accumulation.
+  # IMU axes removed: tiles only need latest value, and list accumulation caused them to be
+  # sparse in flushes. "keep latest" mode ensures IMU data appears in every flush cycle.
+  @high_frequency_attributes ~w(ecg respiration button buttons)
 
   # Dead socket cleanup interval (1 minute)
   @gc_interval_ms :timer.minutes(1)

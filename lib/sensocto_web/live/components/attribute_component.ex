@@ -284,8 +284,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
           <div class="w-8 h-2 bg-gray-700 rounded-full overflow-hidden">
             <div
               data-imu="accel-bar"
-              class={"h-full rounded-full #{accel_color(@imu_data.accel_magnitude)}"}
-              style={"width: #{min(100, @imu_data.accel_magnitude * 10)}%"}
+              class="h-full rounded-full"
+              style={"width: #{min(100, @imu_data.accel_magnitude * 10)}%; background-color: #{accel_hsl(@imu_data.accel_magnitude)}"}
             >
             </div>
           </div>
@@ -413,7 +413,8 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
                 <div class="relative w-16 h-16 flex items-center justify-center">
                   <div
                     data-imu="accel-mag"
-                    class={"text-2xl font-bold #{accel_color(@imu_data.accel_magnitude)}"}
+                    class="text-2xl font-bold"
+                    style={"color: #{accel_hsl_light(@imu_data.accel_magnitude)}"}
                   >
                     {Float.round(@imu_data.accel_magnitude, 1)}
                   </div>
@@ -3199,10 +3200,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
   end
 
   # Acceleration color based on magnitude
-  defp accel_color(magnitude) when magnitude < 2, do: "text-green-400 bg-green-500"
-  defp accel_color(magnitude) when magnitude < 5, do: "text-yellow-400 bg-yellow-500"
-  defp accel_color(magnitude) when magnitude < 10, do: "text-orange-400 bg-orange-500"
-  defp accel_color(_), do: "text-red-400 bg-red-500"
+  # Smooth green→yellow→orange→red gradient: maps 0–12 m/s² to hue 120°→0°
+  defp accel_hsl(magnitude) do
+    t = min(magnitude / 12, 1.0)
+    hue = round(120 * (1 - t))
+    "hsl(#{hue}, 80%, 50%)"
+  end
+
+  defp accel_hsl_light(magnitude) do
+    t = min(magnitude / 12, 1.0)
+    hue = round(120 * (1 - t))
+    "hsl(#{hue}, 70%, 65%)"
+  end
 
   defp container(assigns) do
     assigns =

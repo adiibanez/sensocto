@@ -156,6 +156,13 @@ defmodule Sensocto.SensorsDynamicSupervisor do
           :view -> SimpleSensor.get_view_state(sensor_id, values)
           :default -> SimpleSensor.get_state(sensor_id, values)
         end
+      rescue
+        e in RuntimeError ->
+          Logger.debug(
+            "Sensor not found #{sensor_id}, mode: #{mode}, reason: #{Exception.message(e)}"
+          )
+
+          :error
       catch
         :exit, reason ->
           Logger.debug(

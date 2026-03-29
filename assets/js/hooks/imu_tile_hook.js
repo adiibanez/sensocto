@@ -131,11 +131,17 @@ function headingToDir(heading) {
   return DIRECTIONS[idx];
 }
 
-function accelColorClass(mag) {
-  if (mag < 2) return 'text-green-400 bg-green-500';
-  if (mag < 5) return 'text-yellow-400 bg-yellow-500';
-  if (mag < 10) return 'text-orange-400 bg-orange-500';
-  return 'text-red-400 bg-red-500';
+// Smooth green→yellow→orange→red gradient based on acceleration magnitude
+// Maps 0–12 m/s² to hue 120°→0° (green→red)
+function accelHsl(mag) {
+  const t = Math.min(mag / 12, 1);
+  const hue = 120 * (1 - t);
+  return `hsl(${hue}, 80%, 50%)`;
+}
+function accelHslLight(mag) {
+  const t = Math.min(mag / 12, 1);
+  const hue = 120 * (1 - t);
+  return `hsl(${hue}, 70%, 65%)`;
 }
 
 const IMU_AXIS_IDS = new Set([
@@ -202,7 +208,7 @@ export const ImuTileHook = {
     const accelBar = el.querySelector('[data-imu="accel-bar"]');
     if (accelBar) {
       accelBar.style.width = `${Math.min(100, d.accelMagnitude * 10)}%`;
-      accelBar.className = `h-full rounded-full ${accelColorClass(d.accelMagnitude)}`;
+      accelBar.style.backgroundColor = accelHsl(d.accelMagnitude);
     }
 
     // Accel bar title (summary)
@@ -257,7 +263,7 @@ export const ImuTileHook = {
     const accelMag = el.querySelector('[data-imu="accel-mag"]');
     if (accelMag) {
       accelMag.textContent = d.accelMagnitude.toFixed(1);
-      accelMag.className = `text-2xl font-bold ${accelColorClass(d.accelMagnitude)}`;
+      accelMag.style.color = accelHslLight(d.accelMagnitude);
     }
 
     // Euler angles

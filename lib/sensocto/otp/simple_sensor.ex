@@ -133,16 +133,38 @@ defmodule Sensocto.SimpleSensor do
   @call_timeout 3_000
 
   def get_state(sensor_id, values \\ 1) do
-    GenServer.call(
-      via_tuple(sensor_id),
-      {:get_state, values},
-      @call_timeout
-    )
+    # Try local Registry first (fast path)
+    case Registry.lookup(Sensocto.SimpleSensorRegistry, sensor_id) do
+      [{pid, _}] ->
+        GenServer.call(pid, {:get_state, values}, @call_timeout)
+
+      [] ->
+        # Sensor is not local — find it cluster-wide via :pg and RPC to its node
+        case :pg.get_members(:sensocto_sensors, sensor_id) do
+          [pid | _] ->
+            remote_node = node(pid)
+
+            if remote_node == node() do
+              # Process is local but not in Registry (race condition) — try direct call
+              GenServer.call(pid, {:get_state, values}, @call_timeout)
+            else
+              :rpc.call(
+                remote_node,
+                GenServer,
+                :call,
+                [pid, {:get_state, values}, @call_timeout],
+                @call_timeout
+              )
+            end
+
+          [] ->
+            raise "Sensor #{sensor_id} not found in cluster"
+        end
+    end
   end
 
   def get_view_state(sensor_id, values \\ 1) do
     get_state(sensor_id, values) |> transform_state()
-    # |> dbg()
   end
 
   defp transform_state(state) do

@@ -303,29 +303,6 @@
   session: SensoctoWeb.Layouts.chat_session(@socket)
 )}
 
-<%!-- Speed dial: mobile above nav bar (14=56px), desktop bottom-right corner --%>
-<SensoctoWeb.Components.SpeedDial.speed_dial
-  id="quick-actions"
-  icon="hero-plus"
-  icon_animated
-  size="large"
-  color="primary"
-  variant="default"
-  action_position="bottom-end"
-  position_size="bottom-14 md:bottom-4 end-4 z-[60]"
-  wrapper_position="top"
-  clickable
->
-  <:item icon="hero-plus" navigate={~p"/rooms/new"} color="success" variant="default"></:item>
-  <:item
-    icon="hero-globe-alt"
-    navigate={~p"/rooms?tab=public"}
-    color="secondary"
-    variant="default"
-  >
-  </:item>
-</SensoctoWeb.Components.SpeedDial.speed_dial>
-
 <%!-- Sensor Controls Pill (both mobile and desktop) --%>
 <div
   id="footer-toolbar"

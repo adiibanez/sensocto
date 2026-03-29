@@ -35,6 +35,27 @@
   </head>
 
   <body class="h-full text-white font-mono">
+    <script>
+      // Prevent flash of collapsible panels: hide before first paint based on localStorage
+      (function() {
+        var panels = [
+          ["ui:content_panel_collapsed", "content-panel-body"],
+          ["ui:sensor_panel_collapsed", "sensor-panel-body"]
+        ];
+        var css = "";
+        for (var i = 0; i < panels.length; i++) {
+          if (localStorage.getItem(panels[i][0]) === "true") {
+            css += "#" + panels[i][1] + "{display:none!important}";
+          }
+        }
+        if (css) {
+          var s = document.createElement("style");
+          s.id = "panel-flash-guard";
+          s.textContent = css;
+          document.head.appendChild(s);
+        }
+      })();
+    </script>
     <a
       href="#main"
       class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-black focus:px-4 focus:py-2 focus:rounded"

@@ -48,6 +48,9 @@ defmodule Sensocto.Simulator.DataGenerator do
         sensor_type == "hydro_api" ->
           {:ok, fetch_hydro_api_data(config)}
 
+        sensor_type in ["imu", "accelerometer", "gyroscope", "motion"] ->
+          {:ok, fetch_imu_data(config)}
+
         true ->
           result =
             case config[:dummy_data] do
@@ -70,6 +73,94 @@ defmodule Sensocto.Simulator.DataGenerator do
         Logger.error("Error fetching sensor data: #{inspect(e)}")
         {:ok, parse_csv_output(fetch_fake_sensor_data(config))}
     end
+  end
+
+  # Special handler for IMU data that generates structured map payloads
+  # with accelerometer and gyroscope sub-maps instead of CSV strings.
+  defp fetch_imu_data(config) do
+    batch_size = config[:batch_size] || 5
+    sampling_rate = max(config[:sampling_rate] || 110, 0.01)
+    activity = config[:activity_level] || 0.5
+    delay = if sampling_rate > 0, do: 1.0 / sampling_rate, else: 0.1
+
+    now = :os.system_time(:millisecond)
+    interval_ms = round(1000 / sampling_rate)
+
+    # sample_offset keeps waveform phase continuous across batch boundaries
+    sample_offset = config[:sample_offset] || 0
+
+    Enum.map(0..(batch_size - 1), fn i ->
+      idx = i + sample_offset
+
+      %{
+        timestamp: now + i * interval_ms,
+        delay: if(i == 0 and batch_size > 1, do: 0.0, else: delay),
+        payload: %{
+          accelerometer: %{
+            x: generate_imu_accel_x(activity, idx),
+            y: generate_imu_accel_y(activity, idx),
+            z: generate_imu_accel_z(activity, idx)
+          },
+          gyroscope: %{
+            x: generate_imu_gyro_x(activity, idx),
+            y: generate_imu_gyro_y(activity, idx),
+            z: generate_imu_gyro_z(activity, idx)
+          }
+        }
+      }
+    end)
+  end
+
+  defp generate_imu_accel_x(activity, i) do
+    a = activity * 12.0
+    step = :math.sin(i * 0.5) * a * 0.5
+    swing = :math.sin(i * 0.17 + 1.2) * a * 0.3
+    burst = if rem(trunc(i), 200) < 20, do: :math.sin(i * 1.5) * a * 0.8, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.2
+    Float.round(step + swing + burst + noise, 4)
+  end
+
+  defp generate_imu_accel_y(activity, i) do
+    a = activity * 10.0
+    sway = :math.sin(i * 0.25 + 0.7) * a * 0.4
+    drift = :math.sin(i * 0.03) * a * 0.6
+    jolt = if rem(trunc(i), 300) < 10, do: (:rand.uniform() - 0.5) * a * 1.5, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    Float.round(sway + drift + jolt + noise, 4)
+  end
+
+  defp generate_imu_accel_z(activity, i) do
+    a = activity * 8.0
+    gravity = 9.81
+    bounce = :math.sin(i * 0.5 + 2.1) * a * 0.4
+    breathing = :math.sin(i * 0.08) * a * 0.2
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    Float.round(gravity + bounce + breathing + noise, 4)
+  end
+
+  defp generate_imu_gyro_x(activity, i) do
+    a = activity * 6.0
+    nod = :math.sin(i * 0.15 + 0.5) * a * 0.5
+    micro = :math.sin(i * 0.8) * a * 0.2
+    head_turn = if rem(trunc(i), 250) < 30, do: :math.sin(i * 0.6) * a * 0.8, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    Float.round(nod + micro + head_turn + noise, 4)
+  end
+
+  defp generate_imu_gyro_y(activity, i) do
+    a = activity * 5.0
+    roll = :math.sin(i * 0.2 + 1.8) * a * 0.4
+    wobble = :math.sin(i * 0.55 + 3.0) * a * 0.3
+    noise = (:rand.uniform() - 0.5) * a * 0.12
+    Float.round(roll + wobble + noise, 4)
+  end
+
+  defp generate_imu_gyro_z(activity, i) do
+    a = activity * 8.0
+    scan = :math.sin(i * 0.06) * a * 0.5
+    turn = if rem(trunc(i), 180) < 25, do: :math.sin(i * 0.4 + 0.3) * a * 1.0, else: 0.0
+    noise = (:rand.uniform() - 0.5) * a * 0.15
+    Float.round(scan + turn + noise, 4)
   end
 
   # Special handler for battery data that includes charging status in payload

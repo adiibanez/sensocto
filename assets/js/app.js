@@ -1355,6 +1355,13 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 liveSocket.connect()
 liveSocket.disableDebug();
 
+// Remove flash-guard styles once LiveView takes over DOM
+window.addEventListener("phx:page-loading-stop", function _removeGuard() {
+  var guard = document.getElementById("panel-flash-guard");
+  if (guard) guard.remove();
+  window.removeEventListener("phx:page-loading-stop", _removeGuard);
+}, { once: true });
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session

@@ -268,7 +268,7 @@
         >
         </div>
 
-        <div :if={!@content_panel_collapsed} class="p-3">
+        <div id="content-panel-body" class={"p-3 #{if @content_panel_collapsed, do: "hidden"}"}>
           <div class="flex flex-wrap items-center justify-center gap-1.5 mb-3">
             <button
               phx-click="switch_lobby_mode"
@@ -594,7 +594,7 @@
           </svg>
         </button>
 
-        <div :if={!@sensor_panel_collapsed} class="p-3">
+        <div id="sensor-panel-body" class={"p-3 #{if @sensor_panel_collapsed, do: "hidden"}"}>
           <%!-- Lens Selector - styled like rooms --%>
           <div class="mb-2">
             <div class="flex flex-col gap-2">
@@ -604,6 +604,7 @@
                 class="flex flex-wrap items-center gap-2"
                 role="tablist"
               >
+                <%!-- 1. All --%>
                 <.link
                   patch={~p"/lobby"}
                   role="tab"
@@ -615,65 +616,19 @@
                 >
                   <Heroicons.icon name="squares-2x2" type="outline" class="h-3 w-3" /> All
                 </.link>
+                <%!-- 2. Graph --%>
                 <.link
-                  patch={~p"/lobby/users"}
+                  patch={~p"/lobby/graph"}
                   role="tab"
-                  aria-selected={to_string(@live_action == :users)}
+                  aria-selected={to_string(@live_action == :graph)}
                   class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :users,
-              do: "bg-orange text-white",
+            if(@live_action == :graph,
+              do: "bg-cyan-500 text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
                 >
-                  <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
+                  <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
                 </.link>
-                <.link
-                  :if={@favorite_sensors != []}
-                  patch={~p"/lobby/favorites"}
-                  role="tab"
-                  aria-selected={to_string(@live_action == :favorites)}
-                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :favorites,
-              do: "bg-yellow-500 text-white",
-              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                >
-                  <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
-                </.link>
-                <.link
-                  :if={:heartrate in @available_lenses}
-                  patch={~p"/lobby/heartrate"}
-                  role="tab"
-                  aria-selected={to_string(@live_action == :heartrate)}
-                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :heartrate,
-              do: "bg-orange text-white",
-              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                >
-                  <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
-                </.link>
-                <.link
-                  :if={:ecg in @available_lenses}
-                  patch={~p"/lobby/ecg"}
-                  role="tab"
-                  aria-selected={to_string(@live_action == :ecg)}
-                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :ecg,
-              do: "bg-orange text-white",
-              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                >
-                  <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
-                </.link>
-                <.link
-                  :if={:battery in @available_lenses}
-                  patch={~p"/lobby/battery"}
-                  role="tab"
-                  aria-selected={to_string(@live_action == :battery)}
-                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :battery,
-              do: "bg-orange text-white",
-              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                >
-                  <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
-                </.link>
+                <%!-- 3. IMU --%>
                 <.link
                   :if={:imu in @available_lenses}
                   patch={~p"/lobby/imu"}
@@ -686,30 +641,7 @@
                 >
                   <Heroicons.icon name="cube" type="outline" class="h-3 w-3" /> IMU
                 </.link>
-                <.link
-                  :if={:location in @available_lenses}
-                  patch={~p"/lobby/location"}
-                  role="tab"
-                  aria-selected={to_string(@live_action == :location)}
-                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :location,
-              do: "bg-orange text-white",
-              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                >
-                  <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
-                </.link>
-                <.link
-                  :if={:skeleton in @available_lenses}
-                  patch={~p"/lobby/skeleton"}
-                  role="tab"
-                  aria-selected={to_string(@live_action == :skeleton)}
-                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :skeleton,
-              do: "bg-purple-500 text-white",
-              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
-                >
-                  <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
-                </.link>
+                <%!-- 4. Breathing --%>
                 <.link
                   :if={:respiration in @available_lenses}
                   patch={~p"/lobby/breathing"}
@@ -722,6 +654,7 @@
                 >
                   <Heroicons.icon name="signal" type="outline" class="h-3 w-3" /> Breathing
                 </.link>
+                <%!-- 5. HRV --%>
                 <.link
                   :if={:hrv in @available_lenses}
                   patch={~p"/lobby/hrv"}
@@ -734,6 +667,33 @@
                 >
                   <Heroicons.icon name="chart-bar-square" type="outline" class="h-3 w-3" /> HRV
                 </.link>
+                <%!-- 6. Heartrate --%>
+                <.link
+                  :if={:heartrate in @available_lenses}
+                  patch={~p"/lobby/heartrate"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :heartrate)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :heartrate,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  <Heroicons.icon name="heart" type="outline" class="h-3 w-3" /> Heartrate
+                </.link>
+                <%!-- 7. ECG --%>
+                <.link
+                  :if={:ecg in @available_lenses}
+                  patch={~p"/lobby/ecg"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :ecg)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :ecg,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  <Heroicons.icon name="chart-bar" type="outline" class="h-3 w-3" /> ECG
+                </.link>
+                <%!-- 8. Gaze --%>
                 <.link
                   :if={:gaze in @available_lenses}
                   patch={~p"/lobby/gaze"}
@@ -746,17 +706,71 @@
                 >
                   <Heroicons.icon name="eye" type="outline" class="h-3 w-3" /> Gaze
                 </.link>
+                <%!-- 9. Battery --%>
                 <.link
-                  patch={~p"/lobby/graph"}
+                  :if={:battery in @available_lenses}
+                  patch={~p"/lobby/battery"}
                   role="tab"
-                  aria-selected={to_string(@live_action == :graph)}
+                  aria-selected={to_string(@live_action == :battery)}
                   class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
-            if(@live_action == :graph,
-              do: "bg-cyan-500 text-white",
+            if(@live_action == :battery,
+              do: "bg-orange text-white",
               else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
                 >
-                  <Heroicons.icon name="share" type="outline" class="h-3 w-3" /> Graph
+                  <Heroicons.icon name="battery-50" type="outline" class="h-3 w-3" /> Battery
                 </.link>
+                <%!-- 10. Location --%>
+                <.link
+                  :if={:location in @available_lenses}
+                  patch={~p"/lobby/location"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :location)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :location,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  <Heroicons.icon name="map-pin" type="outline" class="h-3 w-3" /> Location
+                </.link>
+                <%!-- 11. Skeleton --%>
+                <.link
+                  :if={:skeleton in @available_lenses}
+                  patch={~p"/lobby/skeleton"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :skeleton)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :skeleton,
+              do: "bg-purple-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  <Heroicons.icon name="user" type="outline" class="h-3 w-3" /> Skeleton
+                </.link>
+                <%!-- 12. By Person --%>
+                <.link
+                  patch={~p"/lobby/users"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :users)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :users,
+              do: "bg-orange text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  <Heroicons.icon name="users" type="outline" class="h-3 w-3" /> By Person
+                </.link>
+                <%!-- 13. Favorites --%>
+                <.link
+                  :if={@favorite_sensors != []}
+                  patch={~p"/lobby/favorites"}
+                  role="tab"
+                  aria-selected={to_string(@live_action == :favorites)}
+                  class={"px-2 py-1 text-xs rounded-full transition-colors flex items-center gap-1 " <>
+            if(@live_action == :favorites,
+              do: "bg-yellow-500 text-white",
+              else: "bg-gray-700 text-gray-300 hover:bg-gray-600")}
+                >
+                  <Heroicons.icon name="star" type="solid" class="h-3 w-3" /> Favorites
+                </.link>
+                <%!-- 14. 3D Graph --%>
                 <.link
                   patch={~p"/lobby/graph3d"}
                   role="tab"

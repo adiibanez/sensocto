@@ -215,6 +215,10 @@ pub struct SensorConfig {
     /// When set, this token is sent as `bearer_token` in the sensor channel
     /// join params instead of the client-level bearer token.
     pub bearer_token: Option<String>,
+
+    /// Optional room ID to auto-associate the sensor with a room on join.
+    /// The server will add the sensor to the room and remove it on disconnect.
+    pub room_id: Option<String>,
 }
 
 impl SensorConfig {
@@ -228,6 +232,7 @@ impl SensorConfig {
             sampling_rate_hz: 10,
             batch_size: 5,
             bearer_token: None,
+            room_id: None,
         }
     }
 
@@ -266,6 +271,12 @@ impl SensorConfig {
     /// in the sensor channel join params.
     pub fn with_bearer_token(mut self, token: impl Into<String>) -> Self {
         self.bearer_token = Some(token.into());
+        self
+    }
+
+    /// Sets the room ID to auto-associate the sensor with on join.
+    pub fn with_room_id(mut self, room_id: impl Into<String>) -> Self {
+        self.room_id = Some(room_id.into());
         self
     }
 }

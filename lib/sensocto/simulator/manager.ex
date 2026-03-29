@@ -28,77 +28,90 @@ defmodule Sensocto.Simulator.Manager do
   # Client API
 
   def start_link(config_path) do
-    GenServer.start_link(__MODULE__, config_path, name: __MODULE__)
+    # Use :global registration so only one simulator runs across the cluster.
+    # If another node already claimed the name, return :ignore so the supervisor
+    # treats this as a normal skip (child already running on another node).
+    case GenServer.start_link(__MODULE__, config_path, name: {:global, __MODULE__}) do
+      {:ok, pid} ->
+        {:ok, pid}
+
+      {:error, {:already_started, _pid}} ->
+        Logger.info("Simulator Manager already running on another node, skipping on #{node()}")
+        :ignore
+
+      error ->
+        error
+    end
   end
 
   @doc """
   Reload configuration from YAML file.
   """
   def reload_config do
-    GenServer.call(__MODULE__, :reload_config)
+    GenServer.call({:global, __MODULE__}, :reload_config)
   end
 
   @doc """
   Get current manager state.
   """
   def get_state do
-    GenServer.call(__MODULE__, :get_state)
+    GenServer.call({:global, __MODULE__}, :get_state)
   end
 
   @doc """
   Get list of active connector IDs.
   """
   def list_connectors do
-    GenServer.call(__MODULE__, :list_connectors)
+    GenServer.call({:global, __MODULE__}, :list_connectors)
   end
 
   @doc """
   Get connectors with their status for UI display.
   """
   def get_connectors do
-    GenServer.call(__MODULE__, :get_connectors)
+    GenServer.call({:global, __MODULE__}, :get_connectors)
   end
 
   @doc """
   Get raw config data.
   """
   def get_config do
-    GenServer.call(__MODULE__, :get_config)
+    GenServer.call({:global, __MODULE__}, :get_config)
   end
 
   @doc """
   Stop a specific connector.
   """
   def stop_connector(connector_id) do
-    GenServer.call(__MODULE__, {:stop_connector, connector_id})
+    GenServer.call({:global, __MODULE__}, {:stop_connector, connector_id})
   end
 
   @doc """
   Start a specific connector from config.
   """
   def start_connector(connector_id) do
-    GenServer.call(__MODULE__, {:start_connector, connector_id})
+    GenServer.call({:global, __MODULE__}, {:start_connector, connector_id})
   end
 
   @doc """
   Start all configured connectors.
   """
   def start_all do
-    GenServer.call(__MODULE__, :start_all)
+    GenServer.call({:global, __MODULE__}, :start_all)
   end
 
   @doc """
   Stop all running connectors.
   """
   def stop_all do
-    GenServer.call(__MODULE__, :stop_all, 30_000)
+    GenServer.call({:global, __MODULE__}, :stop_all, 30_000)
   end
 
   @doc """
   Get list of available scenarios.
   """
   def list_scenarios do
-    GenServer.call(__MODULE__, :list_scenarios)
+    GenServer.call({:global, __MODULE__}, :list_scenarios)
   end
 
   @doc """
@@ -106,7 +119,7 @@ defmodule Sensocto.Simulator.Manager do
   Returns a map of scenario_name => %{room_id: ..., connector_ids: [...]}
   """
   def get_running_scenarios do
-    GenServer.call(__MODULE__, :get_running_scenarios)
+    GenServer.call({:global, __MODULE__}, :get_running_scenarios)
   end
 
   @doc """
@@ -130,14 +143,14 @@ defmodule Sensocto.Simulator.Manager do
   - :room_id - assign all sensors to this room
   """
   def start_scenario(scenario_name, opts \\ []) do
-    GenServer.call(__MODULE__, {:start_scenario, scenario_name, opts})
+    GenServer.call({:global, __MODULE__}, {:start_scenario, scenario_name, opts})
   end
 
   @doc """
   Stop a specific running scenario.
   """
   def stop_scenario(scenario_name) do
-    GenServer.call(__MODULE__, {:stop_scenario, scenario_name}, 30_000)
+    GenServer.call({:global, __MODULE__}, {:stop_scenario, scenario_name}, 30_000)
   end
 
   @doc """
@@ -148,7 +161,7 @@ defmodule Sensocto.Simulator.Manager do
   - :room_id - assign all sensors to this room
   """
   def switch_scenario(scenario_name, opts \\ []) do
-    GenServer.call(__MODULE__, {:switch_scenario, scenario_name, opts}, 30_000)
+    GenServer.call({:global, __MODULE__}, {:switch_scenario, scenario_name, opts}, 30_000)
   end
 
   # Server Callbacks
@@ -158,7 +171,7 @@ defmodule Sensocto.Simulator.Manager do
   Returns the current startup phase: :ready, :loading_config, or :starting_connectors.
   """
   def startup_phase do
-    GenServer.call(__MODULE__, :startup_phase)
+    GenServer.call({:global, __MODULE__}, :startup_phase)
   catch
     :exit, _ -> :loading_config
   end
@@ -448,11 +461,13 @@ defmodule Sensocto.Simulator.Manager do
     Logger.debug("Discovering available simulator scenarios...")
 
     # Run filesystem I/O in a task to avoid blocking GenServer
+    manager_pid = self()
+
     Task.Supervisor.start_child(
       Sensocto.Simulator.DbTaskSupervisor,
       fn ->
         scenarios = do_discover_scenarios()
-        send(__MODULE__, {:scenarios_discovered, scenarios})
+        send(manager_pid, {:scenarios_discovered, scenarios})
       end
     )
 
@@ -479,11 +494,13 @@ defmodule Sensocto.Simulator.Manager do
       end
 
       # Run database query in a task to avoid blocking GenServer
+      manager_pid = self()
+
       Task.Supervisor.start_child(
         Sensocto.Simulator.DbTaskSupervisor,
         fn ->
           result = load_running_scenarios_from_db()
-          send(__MODULE__, {:hydration_result, result})
+          send(manager_pid, {:hydration_result, result})
         end
       )
 

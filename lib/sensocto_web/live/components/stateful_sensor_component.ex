@@ -297,9 +297,10 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
     sensor_id = socket_assigns.sensor_id
     current_attributes = get_in(socket_assigns, [:sensor, :attributes]) || %{}
 
-    # Check if any measurements are for attributes not currently rendered
-    # If so, we need to refresh sensor state to render the new attribute components.
+    # Check if any measurements are for attributes not currently rendered.
+    # If so, refresh sensor state to render new attribute components.
     # Exclude IMU axis IDs — they're merged into a single "imu" attribute.
+    # Debounce: only attempt refresh once (skip if already tried and failed for this sensor).
     incoming_attr_ids =
       measurements_list
       |> Enum.map(& &1.attribute_id)
@@ -308,9 +309,10 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
 
     current_attr_ids = current_attributes |> Map.keys() |> MapSet.new()
     new_attr_ids = MapSet.difference(incoming_attr_ids, current_attr_ids)
+    already_tried_refresh = socket.assigns[:attr_refresh_failed] == true
 
     socket =
-      if MapSet.size(new_attr_ids) > 0 do
+      if MapSet.size(new_attr_ids) > 0 and not already_tried_refresh do
         Logger.debug(
           "StatefulSensorComponent #{sensor_id} detected new attributes: #{inspect(MapSet.to_list(new_attr_ids))} - refreshing sensor state"
         )
@@ -324,9 +326,10 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
           |> push_event("attributes_updated", %{})
         catch
           :exit, _ ->
-            Logger.warning(
-              "Sensor #{sensor_id} process not found during attribute refresh in component"
-            )
+            Logger.debug("Sensor #{sensor_id} process not local, skipping attribute refresh")
+
+            # Mark as failed so we don't retry on every batch (distributed node scenario)
+            assign(socket, :attr_refresh_failed, true)
 
             socket
         end
@@ -405,12 +408,18 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
       if imu_measurements != [] do
         current_imu = get_in(socket_assigns, [:sensor, :attributes, "imu", :lastvalue])
 
+        default_payload = %{
+          accelerometer: %{x: 0.0, y: 0.0, z: 0.0},
+          gyroscope: %{x: 0.0, y: 0.0, z: 0.0}
+        }
+
+        # Guard: current payload might be a CSV string (from bundled IMU) — use default map
+        raw_payload = current_imu && current_imu[:payload]
+
         current_payload =
-          (current_imu && current_imu[:payload]) ||
-            %{
-              accelerometer: %{x: 0.0, y: 0.0, z: 0.0},
-              gyroscope: %{x: 0.0, y: 0.0, z: 0.0}
-            }
+          if is_map(raw_payload) and is_map_key(raw_payload, :accelerometer),
+            do: raw_payload,
+            else: default_payload
 
         updated_payload =
           Enum.reduce(imu_measurements, current_payload, fn m, acc ->
@@ -491,7 +500,7 @@ defmodule SensoctoWeb.Live.Components.StatefulSensorComponent do
       assign(socket, :sensor, new_sensor_state)
     catch
       :exit, _ ->
-        Logger.warning("Sensor #{sensor_id} process not found during state update in component")
+        Logger.debug("Sensor #{sensor_id} process not local, skipping state update")
 
         socket
     end

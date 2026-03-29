@@ -33,15 +33,17 @@ defmodule SensoctoWeb.LobbyLive do
   # Component flush interval - how often to flush measurement buffers to JS
   @component_flush_interval_ms 100
 
-  # Throttle interval for server-rendered text updates (BPM, battery %, etc.)
-  # via send_update to LiveComponents. Channel handles high-freq chart data.
-  @text_throttle_ms 2_000
+  # Attention-aware throttle for server-rendered text updates.
+  # High-attention sensors (user is looking at them) update faster.
+  @text_throttle_by_attention %{
+    high: 250,
+    medium: 500,
+    low: 1500,
+    none: 2000
+  }
 
-  # IMU attributes that arrive sparsely from the simulator (~1/6s per axis).
-  # These always pass through the per-sensor text throttle to avoid being permanently
-  # dropped when eye/battery data pushes the sensor's throttle timestamp forward.
-  @sparse_passthrough_attrs ~w(accelerometer_x accelerometer_y accelerometer_z
-    gyroscope_x gyroscope_y gyroscope_z imu motion)
+  # Attributes that always bypass the per-sensor text throttle
+  @sparse_passthrough_attrs ~w(imu motion button buttons)
 
   @grid_cols_sm_default 2
   @grid_cols_lg_default 3
@@ -3192,8 +3194,10 @@ defmodule SensoctoWeb.LobbyLive do
     {updated_timestamps, sensors_to_push} =
       Enum.reduce(batch_data, {last_pushed, []}, fn {sensor_id, attrs}, {ts_acc, push_acc} ->
         if MapSet.member?(visible_ids, sensor_id) do
-          sensor_last = Map.get(ts_acc, sensor_id, now - @text_throttle_ms - 1)
-          throttle_elapsed = now - sensor_last >= @text_throttle_ms
+          attention = Sensocto.AttentionTracker.get_sensor_attention_level(sensor_id)
+          throttle_ms = Map.get(@text_throttle_by_attention, attention, 2000)
+          sensor_last = Map.get(ts_acc, sensor_id, now - throttle_ms - 1)
+          throttle_elapsed = now - sensor_last >= throttle_ms
 
           # Extract all measurements, converting lists (high-freq) to latest value
           all_measurements =

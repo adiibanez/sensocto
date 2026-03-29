@@ -325,7 +325,7 @@ impl SensoctoClient {
 
         // Send attributes as empty map on join — matches web bluetooth pattern.
         // Attributes auto-register on the server when first measurements arrive.
-        let join_params = serde_json::json!({
+        let mut join_params = serde_json::json!({
             "connector_id": self.config.connector_id,
             "connector_name": self.config.connector_name,
             "sensor_id": sensor_id,
@@ -338,6 +338,10 @@ impl SensoctoClient {
                 .or_else(|| self.config.bearer_token.clone())
                 .unwrap_or_default()
         });
+
+        if let Some(ref room_id) = config.room_id {
+            join_params["room_id"] = serde_json::Value::String(room_id.clone());
+        }
 
         let channel = PhoenixChannel::new(self.socket.clone(), topic.clone(), join_params);
 

@@ -19,6 +19,10 @@
   let mode: VizMode = $state('waves');
   let prevMode: VizMode = 'waves';
 
+  // ── Timeline window (seconds shown in waves view) ──────────────────
+  const TIME_WINDOWS = [2, 4, 8] as const;
+  let timeWindow: number = $state(8);
+
   // ── Three.js state ────────────────────────────────────────────────
   let threeScene: THREE.Scene | null = null;
   let threeCamera: THREE.PerspectiveCamera | null = null;
@@ -162,9 +166,16 @@
         s.rawZ = parts[2] || 0;
       }
     } else if (payload && typeof payload === 'object') {
-      if ('x' in payload) s.rawX = payload.x;
-      if ('y' in payload) s.rawY = payload.y;
-      if ('z' in payload) s.rawZ = payload.z;
+      // Unified IMU format: {accelerometer: {x,y,z}, gyroscope: {x,y,z}}
+      if (payload.accelerometer) {
+        s.rawX = payload.accelerometer.x || 0;
+        s.rawY = payload.accelerometer.y || 0;
+        s.rawZ = payload.accelerometer.z || 0;
+      } else if ('x' in payload) {
+        s.rawX = payload.x;
+        if ('y' in payload) s.rawY = payload.y;
+        if ('z' in payload) s.rawZ = payload.z;
+      }
     }
   }
 
@@ -257,8 +268,9 @@
     const n = sensorList.length;
     if (n === 0) { ctx!.fillStyle='#6b7280'; ctx!.font='12px Inter,system-ui,sans-serif'; ctx!.textAlign='center'; ctx!.fillText('Waiting for IMU data…',W/2,H/2); return; }
     const rowH = Math.min(H / n, 120), labelW = 90, chartW = W - labelW - 16;
-    // Draw up to 1 sample per pixel for crisp waveforms
-    const samples = Math.min(WAVE_LEN, Math.floor(chartW));
+    // Draw samples for selected time window, capped by buffer and pixel width
+    const windowSamples = timeWindow * WAVE_SAMPLES_PER_SEC;
+    const samples = Math.min(windowSamples, WAVE_LEN, Math.floor(chartW));
     for (let i = 0; i < n; i++) {
       const s = sensorList[i]; const stale = now - s.lastUpdate > STALE_MS;
       const y0 = i * rowH, mid = y0 + rowH / 2, amp = rowH * 0.35;
@@ -756,14 +768,25 @@
 
 <div class="imu-container">
   <div class="imu-header">
-    <h2>IMU Visualization</h2>
-    <div class="mode-switcher">
-      <button class:active={mode === 'waves'} onclick={() => mode = 'waves'}>Waves</button>
-      <button class:active={mode === 'field'} onclick={() => mode = 'field'}>Field</button>
-      <button class:active={mode === 'radial'} onclick={() => mode = 'radial'}>Radial</button>
-      <button class:active={mode === 'cubes'} onclick={() => mode = 'cubes'}>3D</button>
+    <div class="imu-header-row">
+      <h2>IMU Visualization</h2>
+      <span class="sensor-count">{sensors.length} sensors</span>
     </div>
-    <span class="sensor-count">{sensors.length} sensors</span>
+    <div class="imu-header-row">
+      <div class="mode-switcher">
+        <button class:active={mode === 'waves'} onclick={() => mode = 'waves'}>Waves</button>
+        <button class:active={mode === 'field'} onclick={() => mode = 'field'}>Field</button>
+        <button class:active={mode === 'radial'} onclick={() => mode = 'radial'}>Radial</button>
+        <button class:active={mode === 'cubes'} onclick={() => mode = 'cubes'}>3D</button>
+      </div>
+      {#if mode === 'waves'}
+        <div class="time-switcher">
+          {#each TIME_WINDOWS as tw}
+            <button class:active={timeWindow === tw} onclick={() => timeWindow = tw}>{tw}s</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </div>
   <div class="canvas-wrapper">
     <canvas bind:this={canvas2d} class:hidden={mode === 'cubes'}></canvas>
@@ -784,12 +807,18 @@
   }
   .imu-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 1rem;
+    flex-direction: column;
+    padding: 0.5rem 1rem;
     border-bottom: 1px solid rgba(75, 85, 99, 0.3);
     flex-shrink: 0;
+    gap: 0.4rem;
+  }
+  .imu-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 0.75rem;
+    flex-wrap: wrap;
   }
   .imu-header h2 {
     font-size: 0.8rem;
@@ -798,13 +827,16 @@
     margin: 0;
     white-space: nowrap;
   }
-  .mode-switcher {
+  .mode-switcher, .time-switcher {
     display: flex;
     border-radius: 6px;
     overflow: hidden;
     border: 1px solid rgba(139, 92, 246, 0.3);
   }
-  .mode-switcher button {
+  .time-switcher {
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  .mode-switcher button, .time-switcher button {
     padding: 3px 10px;
     font-size: 0.65rem;
     font-weight: 500;
@@ -815,15 +847,29 @@
     transition: all 0.15s;
     letter-spacing: 0.02em;
   }
+  .time-switcher button {
+    color: #6a7c9e;
+    padding: 3px 8px;
+  }
   .mode-switcher button:not(:last-child) {
     border-right: 1px solid rgba(139, 92, 246, 0.3);
+  }
+  .time-switcher button:not(:last-child) {
+    border-right: 1px solid rgba(59, 130, 246, 0.3);
   }
   .mode-switcher button.active {
     background: rgba(139, 92, 246, 0.35);
     color: #e9d5ff;
   }
+  .time-switcher button.active {
+    background: rgba(59, 130, 246, 0.35);
+    color: #bfdbfe;
+  }
   .mode-switcher button:hover:not(.active) {
     background: rgba(139, 92, 246, 0.12);
+  }
+  .time-switcher button:hover:not(.active) {
+    background: rgba(59, 130, 246, 0.12);
   }
   .sensor-count {
     font-size: 0.65rem;

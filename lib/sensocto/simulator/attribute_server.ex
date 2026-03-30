@@ -196,7 +196,9 @@ defmodule Sensocto.Simulator.AttributeServer do
     base_delay_ms = round(delay_s * 1000.0)
     effective_delay_ms = apply_backpressure_delay(base_delay_ms, state.attention_level)
 
-    timestamp = :os.system_time(:millisecond)
+    # Prefer data-generator timestamps (correctly spaced) over wall-clock at delivery time.
+    # Wall-clock timestamps create jitter when batch boundary messages process back-to-back.
+    timestamp = message[:timestamp] || message["timestamp"] || :os.system_time(:millisecond)
     new_message = Map.put(message, :timestamp, timestamp)
 
     new_batch = state.batch_push_messages ++ [new_message]

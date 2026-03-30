@@ -126,40 +126,28 @@ Hooks.ImuTileHook = ImuTileHook;
 
 
 // Theme toggle hook — manages light/dark theme with localStorage persistence
-// and OS preference auto-detection
+// Dark is the default; light theme is opt-in via toggle only
 Hooks.ThemeToggle = {
   mounted() {
-    this._updateIcon();
-    // Listen for OS theme changes
-    this._mql = window.matchMedia('(prefers-color-scheme: light)');
-    this._mqlHandler = (e) => {
-      if (!localStorage.getItem('sensocto-theme')) {
-        document.documentElement.setAttribute('data-theme', e.matches ? 'light' : 'dark');
-        this._updateIcon();
-      }
-    };
-    this._mql.addEventListener('change', this._mqlHandler);
+    this._updateAllIcons();
     this.el.addEventListener('click', () => {
       const current = document.documentElement.getAttribute('data-theme');
       const next = current === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('sensocto-theme', next);
-      this._updateIcon();
+      this._updateAllIcons();
     });
   },
-  destroyed() {
-    if (this._mql && this._mqlHandler) {
-      this._mql.removeEventListener('change', this._mqlHandler);
-    }
-  },
-  _updateIcon() {
+  destroyed() {},
+  _updateAllIcons() {
     const theme = document.documentElement.getAttribute('data-theme');
-    const sun = document.getElementById('theme-icon-sun');
-    const moon = document.getElementById('theme-icon-moon');
-    if (sun && moon) {
+    // Update all sun/moon icon pairs across the page (multiple toggles may exist)
+    document.querySelectorAll('[id$="-theme-icon-sun"]').forEach(sun => {
       sun.classList.toggle('hidden', theme === 'light');
+    });
+    document.querySelectorAll('[id$="-theme-icon-moon"]').forEach(moon => {
       moon.classList.toggle('hidden', theme === 'dark');
-    }
+    });
   }
 };
 

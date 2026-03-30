@@ -2,6 +2,9 @@
   import { onMount, onDestroy } from "svelte";
   import Highcharts from "highcharts";
   import * as d3 from "d3";
+  import Graph from "graphology";
+  import Sigma from "sigma";
+  import forceAtlas2 from "graphology-layout-forceatlas2";
 
   let { sensors = [] }: {
     sensors: Array<{ sensor_id: string; sensor_name?: string; value: number }>;
@@ -71,7 +74,7 @@
   const SYNC_SERIES_NAME = 'Phase Sync';
 
   // Pairwise synchronization heatmap
-  let viewMode = $state<'chart' | 'heatmap' | 'tree'>('chart');
+  let viewMode = $state<'chart' | 'heatmap' | 'tree' | 'graph'>('chart');
   let pairwiseSyncMatrix: Map<string, number> = new Map(); // "sensorA|sensorB" -> smoothed PLV [0,1]
   let heatmapSensorIds = $state<string[]>([]);
   let heatmapData = $state<number[][]>([]);
@@ -171,7 +174,7 @@
   // PLV(i,j) = |cos(θ_i - θ_j)| smoothed over time.
   // Result: updates heatmapSensorIds (sorted) and heatmapData (N×N matrix).
   function computePairwiseSync() {
-    if (viewMode !== 'heatmap' && viewMode !== 'tree') return;
+    if (viewMode !== 'heatmap' && viewMode !== 'tree' && viewMode !== 'graph') return;
 
     // Collect sensors with valid phases
     const sensorPhases: Array<{ id: string; phase: number }> = [];
@@ -698,7 +701,204 @@
     if (viewMode === 'tree' && heatmapSensorIds.length >= 2) {
       requestAnimationFrame(() => renderTreeHeatmap());
     }
+    if (viewMode === 'graph' && heatmapSensorIds.length >= 2) {
+      requestAnimationFrame(() => renderSyncGraph());
+    }
   });
+
+  // ── Sigma.js Sync Graph ──────────────────────────────────────────────
+  let graphContainer: HTMLDivElement;
+  let sigmaInstance: Sigma | null = null;
+  let sigmaGraph: Graph | null = null;
+  let graphClusterCount = $state(0);
+  const EDGE_MIN_PLV = 0.15; // Only show edges above this sync threshold
+  const NODE_BASE_SIZE = 8;
+
+  function renderSyncGraph() {
+    if (!graphContainer || heatmapSensorIds.length < 2 || heatmapData.length < 2) return;
+
+    const n = heatmapSensorIds.length;
+    const syncMatrix = heatmapData;
+
+    // Build distance matrix and cluster
+    const distMatrix: number[][] = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => i === j ? 0 : 1 - (syncMatrix[i]?.[j] ?? 0))
+    );
+    const tree = agglomerativeClustering(distMatrix);
+    const maxH = tree.height || 1;
+    const cutDist = treeCutHeight * maxH;
+    const clusterAssignments = cutTree(tree, cutDist);
+    const clusterCount = new Set(clusterAssignments.values()).size;
+    graphClusterCount = clusterCount;
+
+    // Compute mean PLV per sensor for node sizing
+    const meanPlvs = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      let sum = 0, cnt = 0;
+      for (let j = 0; j < n; j++) {
+        if (i !== j) { sum += (syncMatrix[i]?.[j] ?? 0); cnt++; }
+      }
+      meanPlvs.set(i, cnt > 0 ? sum / cnt : 0);
+    }
+
+    // Build or update graphology graph
+    const isNew = !sigmaGraph || !sigmaInstance;
+    const graph = sigmaGraph || new Graph({ type: 'undirected' });
+
+    // Track existing nodes/edges for diff
+    const existingNodes = new Set(graph.nodes());
+    const existingEdges = new Set(graph.edges());
+    const neededNodes = new Set<string>();
+    const neededEdges = new Set<string>();
+
+    // Add/update nodes
+    for (let i = 0; i < n; i++) {
+      const id = heatmapSensorIds[i];
+      neededNodes.add(id);
+      const clusterId = clusterAssignments.get(i) ?? 0;
+      const color = CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+      const stress = getStressCategory(id);
+      const stressColor = STRESS_COLORS[stress];
+      const meanSync = meanPlvs.get(i) ?? 0;
+      const size = NODE_BASE_SIZE + meanSync * 8; // 8-16 range
+      const label = getDisplayName(id);
+
+      if (existingNodes.has(id)) {
+        graph.setNodeAttribute(id, 'color', color);
+        graph.setNodeAttribute(id, 'size', size);
+        graph.setNodeAttribute(id, 'label', label);
+        graph.setNodeAttribute(id, 'borderColor', stressColor);
+        graph.setNodeAttribute(id, 'clusterId', clusterId);
+      } else {
+        // Spread initial positions by cluster for better layout
+        const angle = (clusterId / Math.max(1, clusterCount)) * 2 * Math.PI + (i * 0.3);
+        const radius = 2 + Math.random() * 2;
+        graph.addNode(id, {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+          size,
+          color,
+          label,
+          borderColor: stressColor,
+          clusterId,
+        });
+      }
+    }
+
+    // Add/update edges (only above threshold)
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const plv = syncMatrix[i]?.[j] ?? 0;
+        const idA = heatmapSensorIds[i];
+        const idB = heatmapSensorIds[j];
+        const edgeId = `${idA}|${idB}`;
+        neededEdges.add(edgeId);
+
+        if (plv >= EDGE_MIN_PLV) {
+          const edgeColor = getHeatmapColor(plv);
+          const edgeSize = 0.5 + plv * 4; // 0.5-4.5 range
+          const sameCluster = (clusterAssignments.get(i) ?? -1) === (clusterAssignments.get(j) ?? -2);
+
+          if (existingEdges.has(edgeId)) {
+            graph.setEdgeAttribute(edgeId, 'color', edgeColor);
+            graph.setEdgeAttribute(edgeId, 'size', edgeSize);
+          } else if (graph.hasEdge(edgeId)) {
+            graph.setEdgeAttribute(edgeId, 'color', edgeColor);
+            graph.setEdgeAttribute(edgeId, 'size', edgeSize);
+          } else {
+            try {
+              graph.addEdgeWithKey(edgeId, idA, idB, {
+                color: edgeColor,
+                size: edgeSize,
+                type: sameCluster ? 'line' : 'line',
+              });
+            } catch { /* edge may already exist */ }
+          }
+        } else {
+          // Remove weak edges
+          if (graph.hasEdge(edgeId)) graph.dropEdge(edgeId);
+        }
+      }
+    }
+
+    // Remove stale nodes
+    for (const id of existingNodes) {
+      if (!neededNodes.has(id)) graph.dropNode(id);
+    }
+    // Remove stale edges (not in current sensor set)
+    for (const eid of existingEdges) {
+      if (!neededEdges.has(eid) && graph.hasEdge(eid)) graph.dropEdge(eid);
+    }
+
+    // Apply ForceAtlas2 layout (short burst for positioning)
+    if (graph.order >= 2) {
+      forceAtlas2.assign(graph, {
+        iterations: isNew ? 100 : 30,
+        settings: {
+          gravity: 1.5,
+          scalingRatio: 4,
+          strongGravityMode: true,
+          barnesHutOptimize: graph.order > 50,
+          slowDown: 5,
+        },
+      });
+    }
+
+    if (isNew) {
+      sigmaGraph = graph;
+      sigmaInstance = new Sigma(graph, graphContainer, {
+        defaultEdgeType: 'line',
+        renderLabels: true,
+        labelColor: { color: '#e5e7eb' },
+        labelFont: 'monospace',
+        labelSize: 11,
+        labelWeight: '500',
+        stagePadding: 30,
+        defaultNodeColor: '#f97316',
+        defaultEdgeColor: '#374151',
+        nodeReducer: (node, data) => {
+          const res = { ...data };
+          // Draw border ring via larger hidden node (simulated)
+          if (data.borderColor) {
+            res.borderColor = data.borderColor;
+          }
+          return res;
+        },
+        edgeReducer: (_edge, data) => {
+          return { ...data };
+        },
+      });
+
+      // Hover: highlight connected edges
+      sigmaInstance.on('enterNode', ({ node }) => {
+        const neighbors = new Set(graph.neighbors(node));
+        sigmaInstance!.setSetting('nodeReducer', (n, data) => {
+          if (n === node || neighbors.has(n)) return { ...data };
+          return { ...data, color: '#1e293b', label: '' };
+        });
+        sigmaInstance!.setSetting('edgeReducer', (edge, data) => {
+          const [src, tgt] = graph.extremities(edge);
+          if (src === node || tgt === node) return { ...data, size: data.size * 1.5 };
+          return { ...data, hidden: true };
+        });
+      });
+
+      sigmaInstance.on('leaveNode', () => {
+        sigmaInstance!.setSetting('nodeReducer', (_, data) => ({ ...data }));
+        sigmaInstance!.setSetting('edgeReducer', (_, data) => ({ ...data }));
+      });
+    } else {
+      sigmaInstance!.refresh();
+    }
+  }
+
+  function cleanupSigma() {
+    if (sigmaInstance) {
+      sigmaInstance.kill();
+      sigmaInstance = null;
+      sigmaGraph = null;
+    }
+  }
 
   function getHeatmapColor(value: number): string {
     // 0 = red (desynchronized), 0.5 = yellow, 1 = green (synchronized)
@@ -1271,6 +1471,7 @@
     if (chart) {
       chart.destroy();
     }
+    cleanupSigma();
   });
 </script>
 
@@ -1309,7 +1510,7 @@
         <button
           class="time-btn"
           class:active={viewMode === 'chart'}
-          onclick={() => { viewMode = 'chart'; if (chart) setTimeout(() => chart?.reflow(), 50); }}
+          onclick={() => { cleanupSigma(); viewMode = 'chart'; if (chart) setTimeout(() => chart?.reflow(), 50); }}
           title="Kuramoto time-series chart"
         >
           <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1320,7 +1521,7 @@
         <button
           class="time-btn"
           class:active={viewMode === 'heatmap'}
-          onclick={() => { viewMode = 'heatmap'; }}
+          onclick={() => { cleanupSigma(); viewMode = 'heatmap'; }}
           title="Pairwise synchronization heatmap"
         >
           <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
@@ -1339,7 +1540,7 @@
         <button
           class="time-btn"
           class:active={viewMode === 'tree'}
-          onclick={() => { viewMode = 'tree'; }}
+          onclick={() => { cleanupSigma(); viewMode = 'tree'; }}
           title="Clustered dendrogram heatmap"
         >
           <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2">
@@ -1351,6 +1552,22 @@
             <rect x="10" y="9" width="4" height="5" rx="0.5" fill="currentColor" opacity="0.8"/>
           </svg>
           Tree
+        </button>
+        <button
+          class="time-btn"
+          class:active={viewMode === 'graph'}
+          onclick={() => { viewMode = 'graph'; cleanupSigma(); requestAnimationFrame(() => renderSyncGraph()); }}
+          title="Force-directed sync graph"
+        >
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2">
+            <circle cx="4" cy="4" r="2" fill="currentColor" opacity="0.7"/>
+            <circle cx="12" cy="4" r="2" fill="currentColor" opacity="0.7"/>
+            <circle cx="8" cy="13" r="2" fill="currentColor" opacity="0.7"/>
+            <line x1="5.5" y1="5" x2="10.5" y2="5" opacity="0.6"/>
+            <line x1="4.5" y1="5.5" x2="7.5" y2="11.5" opacity="0.6"/>
+            <line x1="11.5" y1="5.5" x2="8.5" y2="11.5" opacity="0.6"/>
+          </svg>
+          Graph
         </button>
       </div>
       {#if viewMode === 'chart'}
@@ -1376,6 +1593,26 @@
   </div>
   {#if viewMode === 'chart'}
     <div class="chart-wrapper" bind:this={chartContainer}></div>
+  {:else if viewMode === 'graph'}
+    <div class="graph-section">
+      <div class="heatmap-header">
+        <span class="heatmap-title">Sync Network</span>
+        <div class="tree-anno-legend">
+          <span class="anno-key" title="Edge thickness = PLV strength"><span class="anno-dot" style="background:#22c55e"></span>Sync</span>
+          <span class="anno-key" title="Node color = cluster membership"><span class="anno-dot" style="background:#3b82f6"></span>Cluster</span>
+          {#if graphClusterCount > 0}
+            <span class="cluster-badge">{graphClusterCount} clusters</span>
+          {/if}
+        </div>
+      </div>
+      {#if heatmapSensorIds.length >= 2}
+        <div class="graph-canvas" bind:this={graphContainer}></div>
+      {:else}
+        <div class="heatmap-empty">
+          Waiting for ≥2 sensors with HRV phase data...
+        </div>
+      {/if}
+    </div>
   {:else if viewMode === 'tree'}
     <div class="heatmap-section" bind:this={treeContainer}>
       <div class="heatmap-header">
@@ -1862,6 +2099,27 @@
         rgba(249, 115, 22, 0.08) 99px,
         rgba(249, 115, 22, 0.08) 100px
       );
+    border-radius: 0.25rem;
+  }
+
+  .graph-section {
+    flex: 1;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .graph-canvas {
+    flex: 1;
+    min-height: 200px;
+    border-radius: 0.25rem;
+    background: #060a0e;
+    position: relative;
+  }
+
+  /* Sigma renders canvases absolutely positioned — container needs relative */
+  .graph-canvas :global(canvas) {
     border-radius: 0.25rem;
   }
 </style>

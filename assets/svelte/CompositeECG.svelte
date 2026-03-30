@@ -1,13 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import Highcharts from "highcharts";
 
   let { sensors = [] }: {
     sensors: Array<{ sensor_id: string; sensor_name?: string; value: number }>;
   } = $props();
 
-  let chartContainer: HTMLDivElement;
-  let chart: Highcharts.Chart | null = null;
+  let tracesCanvas: HTMLCanvasElement;
 
   const COLORS = [
     '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
@@ -17,7 +15,7 @@
   ];
 
   const MAX_DATA_POINTS = 5000;
-  const UPDATE_INTERVAL_MS = 100;
+  const UPDATE_INTERVAL_MS = 32; // ~30fps for smooth trace rendering
   const PHASE_BUFFER_SIZE = 100; // ECG at 100Hz, ~1s window
 
   const TIME_WINDOWS = [
@@ -39,6 +37,11 @@
   let lastExtremesUpdate = 0;
   let latestDataTimestamp = 0;
   let dirtySeriesIds: Set<string> = new Set();
+
+  // Traces interactivity: highlight + show/hide
+  let hiddenSensors: Set<string> = new Set();
+  let highlightedSensor = $state<string | null>(null);
+  let legendSensorIds = $state<string[]>([]);
 
   // Phase sync (for sync heatmap)
   let phaseBuffers: Map<string, number[]> = new Map();
@@ -397,7 +400,7 @@
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL_MS) {
         const hadData = processPendingUpdates();
         if (viewMode === 'traces') {
-          updateChart(hadData, timestamp);
+          updateTracesCanvas(hadData, timestamp);
         } else if (viewMode === 'grid' && hadData) {
           updateGridView();
         } else if (viewMode === 'morphology' && hadData) {
@@ -409,152 +412,211 @@
       }
     } catch (e) {
       console.warn("[CompositeECG] RAF error, recovering:", e);
-      if (viewMode === 'traces' && !chart && chartContainer) createChart();
     }
     rafId = requestAnimationFrame(rafLoop);
   }
 
-  function createChart() {
-    if (!chartContainer) return;
-    if (chart) chart.destroy();
+  // ── Canvas-based Traces renderer (replaces Highcharts SVG for crisp rendering) ──
+  const TRACES_MARGIN = { top: 10, right: 10, bottom: 20, left: 45 };
 
-    const series: Highcharts.SeriesOptionsType[] = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
-      type: 'line' as const,
-      id: `sensor-${sensorId}`,
-      name: getDisplayName(sensorId),
-      data: data.map(d => [d.x, d.y]),
-      color: sensorColors.get(sensorId) || '#00ff00',
-      lineWidth: 1,
-      marker: { enabled: false },
-      animation: false,
-      states: { hover: { lineWidth: 1.5 } }
-    }));
-
-    chart = Highcharts.chart(chartContainer, {
-      chart: {
-        type: 'line', backgroundColor: '#0a0f14', animation: false,
-        style: { fontFamily: 'monospace' },
-        spacingTop: 5, spacingRight: 5, spacingBottom: 5, spacingLeft: 5,
-        zooming: { type: 'x' }
-      },
-      title: { text: undefined },
-      credits: { enabled: false },
-      xAxis: {
-        type: 'datetime', title: { text: undefined },
-        labels: { style: { color: '#4ade80', fontSize: '9px' }, format: '{value:%H:%M:%S}' },
-        gridLineWidth: 1, gridLineColor: 'rgba(74, 222, 128, 0.15)',
-        lineColor: 'rgba(74, 222, 128, 0.3)', tickColor: 'rgba(74, 222, 128, 0.3)'
-      },
-      yAxis: {
-        title: { text: 'mV', style: { color: '#4ade80', fontSize: '10px' }, margin: 5 },
-        labels: { style: { color: '#4ade80', fontSize: '9px' }, format: '{value:.1f}' },
-        gridLineWidth: 1, gridLineColor: 'rgba(74, 222, 128, 0.15)',
-        minPadding: 0.05, maxPadding: 0.05
-      },
-      legend: {
-        enabled: true, align: 'center', verticalAlign: 'bottom', layout: 'horizontal',
-        backgroundColor: 'transparent', borderWidth: 0, maxHeight: 40,
-        itemStyle: { color: '#9ca3af', fontSize: '9px' },
-        itemHoverStyle: { color: '#ffffff' },
-        margin: 5, padding: 0
-      },
-      tooltip: {
-        backgroundColor: 'rgba(10, 15, 20, 0.95)',
-        borderColor: 'rgba(74, 222, 128, 0.5)', borderWidth: 1,
-        style: { color: '#4ade80', fontSize: '11px' },
-        xDateFormat: '%H:%M:%S.%L', valueDecimals: 3, valueSuffix: ' mV', shared: true
-      },
-      plotOptions: {
-        line: { animation: false, enableMouseTracking: false, lineWidth: 1 },
-        series: { animation: false, turboThreshold: 10000, states: { hover: { enabled: false } } }
-      },
-      series: series
-    });
-  }
-
-  function getFilteredData(data: Array<{ x: number; y: number }>, cutoff: number): Array<[number, number]> {
+  function binarySearchCutoff(data: Array<{ x: number; y: number }>, cutoff: number): number {
     let lo = 0, hi = data.length;
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
       if (data[mid].x < cutoff) lo = mid + 1;
       else hi = mid;
     }
-    const result: Array<[number, number]> = new Array(data.length - lo);
-    for (let i = lo; i < data.length; i++) {
-      result[i - lo] = [data[i].x, data[i].y];
-    }
-    return result;
+    return lo;
   }
 
-  function updateChart(hadData: boolean, timestamp: number) {
-    if (!chart) {
-      if (chartContainer && sensorData.size > 0) createChart();
-      return;
-    }
-    if (!chart.container || !chartContainer?.isConnected) { chart = null; return; }
+  function updateTracesCanvas(hadData: boolean, timestamp: number) {
+    if (!tracesCanvas) return;
+    if (!hadData && timestamp - lastExtremesUpdate < 500) return;
 
-    if (!hadData) {
-      if (timestamp - lastExtremesUpdate >= 500) {
-        const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
-        chart.xAxis[0].setExtremes(now - selectedWindowMs, now, true, false);
-        lastExtremesUpdate = timestamp;
-      }
-      return;
+    const ctx = tracesCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = tracesCanvas.getBoundingClientRect();
+    const cw = rect.width;
+    const ch = rect.height;
+
+    // Resize canvas buffer to match display size (retina-aware)
+    if (tracesCanvas.width !== Math.round(cw * dpr) || tracesCanvas.height !== Math.round(ch * dpr)) {
+      tracesCanvas.width = Math.round(cw * dpr);
+      tracesCanvas.height = Math.round(ch * dpr);
     }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
     const cutoff = now - selectedWindowMs;
-    let needsRedraw = false;
+    const plotW = cw - TRACES_MARGIN.left - TRACES_MARGIN.right;
+    const plotH = ch - TRACES_MARGIN.top - TRACES_MARGIN.bottom;
 
-    dirtySeriesIds.forEach((sensorId) => {
-      const seriesId = `sensor-${sensorId}`;
-      const data = sensorData.get(sensorId);
-      if (!data) return;
+    // Update legend sensor list
+    const currentIds = Array.from(sensorData.keys()).sort();
+    if (currentIds.length !== legendSensorIds.length || currentIds.some((id, i) => id !== legendSensorIds[i])) {
+      legendSensorIds = currentIds;
+    }
 
-      const existingSeries = chart!.get(seriesId) as Highcharts.Series | null;
-      const filteredData = getFilteredData(data, cutoff);
-
-      if (existingSeries) {
-        existingSeries.setData(filteredData, false, false, false);
-        needsRedraw = true;
-      } else {
-        const index = Array.from(sensorData.keys()).indexOf(sensorId);
-        chart!.addSeries({
-          type: 'line', id: seriesId, name: getDisplayName(sensorId),
-          data: filteredData,
-          color: sensorColors.get(sensorId) || COLORS[index % COLORS.length],
-          lineWidth: 1, marker: { enabled: false }, animation: false
-        }, false);
-        needsRedraw = true;
+    // Compute global Y range across visible (non-hidden) sensors
+    let globalMin = Infinity, globalMax = -Infinity;
+    sensorData.forEach((data, sensorId) => {
+      if (hiddenSensors.has(sensorId)) return;
+      const start = binarySearchCutoff(data, cutoff);
+      for (let i = start; i < data.length; i++) {
+        if (data[i].y < globalMin) globalMin = data[i].y;
+        if (data[i].y > globalMax) globalMax = data[i].y;
       }
     });
-    dirtySeriesIds.clear();
+    if (!isFinite(globalMin)) { globalMin = -1; globalMax = 1; }
+    const yRange = globalMax - globalMin || 1;
+    const yPad = yRange * 0.08;
+    const yMin = globalMin - yPad;
+    const yMax = globalMax + yPad;
 
-    if (needsRedraw) {
-      chart.xAxis[0].setExtremes(now - selectedWindowMs, now, false);
-      chart.redraw(false);
-      lastExtremesUpdate = timestamp;
+    // Clear
+    ctx.fillStyle = '#0a0f14';
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.12)';
+    ctx.lineWidth = 0.5;
+
+    // Y grid + labels
+    const yTicks = 5;
+    ctx.fillStyle = 'rgba(74, 222, 128, 0.7)';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= yTicks; i++) {
+      const frac = i / yTicks;
+      const yVal = yMax - frac * (yMax - yMin);
+      const py = TRACES_MARGIN.top + frac * plotH;
+      ctx.beginPath();
+      ctx.moveTo(TRACES_MARGIN.left, py);
+      ctx.lineTo(TRACES_MARGIN.left + plotW, py);
+      ctx.stroke();
+      ctx.fillText(yVal.toFixed(1), TRACES_MARGIN.left - 4, py);
     }
+
+    // X grid + labels
+    const xTickCount = selectedWindowMs <= 3000 ? 6 : selectedWindowMs <= 10000 ? 10 : 6;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let i = 0; i <= xTickCount; i++) {
+      const frac = i / xTickCount;
+      const px = TRACES_MARGIN.left + frac * plotW;
+      const tMs = cutoff + frac * selectedWindowMs;
+      const d = new Date(tMs);
+      const label = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+      ctx.beginPath();
+      ctx.moveTo(px, TRACES_MARGIN.top);
+      ctx.lineTo(px, TRACES_MARGIN.top + plotH);
+      ctx.stroke();
+      ctx.fillText(label, px, TRACES_MARGIN.top + plotH + 4);
+    }
+
+    // Y-axis label
+    ctx.save();
+    ctx.fillStyle = 'rgba(74, 222, 128, 0.7)';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.translate(12, TRACES_MARGIN.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('mV', 0, 0);
+    ctx.restore();
+
+    // Draw traces — each sensor as a canvas path
+    // When a sensor is highlighted, draw others dimmed first, then highlighted on top
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(TRACES_MARGIN.left, TRACES_MARGIN.top, plotW, plotH);
+    ctx.clip();
+
+    const hasHighlight = highlightedSensor !== null;
+
+    // First pass: draw non-highlighted (dimmed if something is highlighted)
+    sensorData.forEach((data, sensorId) => {
+      if (hiddenSensors.has(sensorId)) return;
+      if (sensorId === highlightedSensor) return; // draw on top in second pass
+
+      const start = binarySearchCutoff(data, cutoff);
+      if (start >= data.length) return;
+
+      const color = sensorColors.get(sensorId) || '#4ade80';
+      ctx.globalAlpha = hasHighlight ? 0.2 : 1.0;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+
+      let first = true;
+      for (let i = start; i < data.length; i++) {
+        const px = TRACES_MARGIN.left + ((data[i].x - cutoff) / selectedWindowMs) * plotW;
+        const py = TRACES_MARGIN.top + ((yMax - data[i].y) / (yMax - yMin)) * plotH;
+        if (first) { ctx.moveTo(px, py); first = false; }
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    });
+
+    // Second pass: draw highlighted sensor on top with thick line
+    if (highlightedSensor && !hiddenSensors.has(highlightedSensor)) {
+      const data = sensorData.get(highlightedSensor);
+      if (data) {
+        const start = binarySearchCutoff(data, cutoff);
+        if (start < data.length) {
+          const color = sensorColors.get(highlightedSensor) || '#4ade80';
+          ctx.globalAlpha = 1.0;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+
+          let first = true;
+          for (let i = start; i < data.length; i++) {
+            const px = TRACES_MARGIN.left + ((data[i].x - cutoff) / selectedWindowMs) * plotW;
+            const py = TRACES_MARGIN.top + ((yMax - data[i].y) / (yMax - yMin)) * plotH;
+            if (first) { ctx.moveTo(px, py); first = false; }
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+      }
+    }
+
+    ctx.globalAlpha = 1.0;
+    ctx.restore();
+
+    lastExtremesUpdate = timestamp;
+    dirtySeriesIds.clear();
   }
 
   function setTimeWindow(ms: number) {
     selectedWindowMs = ms;
-    sensorData.forEach((_data, sensorId) => dirtySeriesIds.add(sensorId));
-    updateChart(true, performance.now());
+    // Canvas will redraw on next RAF with new window
+  }
+
+  function toggleSensorVisibility(sensorId: string) {
+    if (hiddenSensors.has(sensorId)) {
+      hiddenSensors.delete(sensorId);
+    } else {
+      hiddenSensors.add(sensorId);
+      // If we hid the highlighted one, clear highlight
+      if (highlightedSensor === sensorId) highlightedSensor = null;
+    }
+    hiddenSensors = new Set(hiddenSensors); // trigger reactivity
+  }
+
+  function toggleHighlight(sensorId: string) {
+    if (hiddenSensors.has(sensorId)) return; // can't highlight a hidden sensor
+    highlightedSensor = highlightedSensor === sensorId ? null : sensorId;
   }
 
   function switchMode(mode: ViewMode) {
-    if (chart && mode !== 'traces') {
-      chart.destroy();
-      chart = null;
-    }
     viewMode = mode;
     if (mode === 'traces') {
-      // Wait for Svelte to render the chart-wrapper div, then create chart
-      setTimeout(() => {
-        if (chartContainer) createChart();
-        else setTimeout(() => { if (chartContainer) createChart(); }, 200);
-      }, 50);
+      // Canvas will be drawn on next RAF
     } else if (mode === 'grid') {
       setTimeout(() => updateGridView(), 150);
     } else if (mode === 'morphology') {
@@ -566,10 +628,7 @@
     initializeSensorData();
     // Start RAF loop immediately — it handles all view modes
     rafId = requestAnimationFrame(rafLoop);
-    // Create chart after short delay to ensure DOM is ready
-    setTimeout(() => {
-      if (viewMode === 'traces' && chartContainer) createChart();
-    }, 100);
+    // Canvas traces will be drawn on first RAF frame
 
     const handleCompositeMeasurement = (e: CustomEvent) => {
       const { sensor_id, attribute_id, payload, timestamp } = e.detail;
@@ -629,7 +688,6 @@
 
   onDestroy(() => {
     if (rafId) cancelAnimationFrame(rafId);
-    if (chart) chart.destroy();
   });
 </script>
 
@@ -670,9 +728,29 @@
     </div>
   </div>
 
-  <!-- TRACES VIEW -->
+  <!-- TRACES VIEW (Canvas-based for crisp rendering) -->
   {#if viewMode === 'traces'}
-    <div class="chart-wrapper" bind:this={chartContainer}></div>
+    <div class="chart-wrapper">
+      <canvas class="traces-canvas" bind:this={tracesCanvas}></canvas>
+    </div>
+    <div class="traces-legend">
+      {#each legendSensorIds as sensorId}
+        {@const color = sensorColors.get(sensorId) || '#4ade80'}
+        {@const isHidden = hiddenSensors.has(sensorId)}
+        {@const isHighlighted = highlightedSensor === sensorId}
+        <button
+          class="legend-item"
+          class:hidden-sensor={isHidden}
+          class:highlighted-sensor={isHighlighted}
+          onclick={() => toggleHighlight(sensorId)}
+          oncontextmenu={(e) => { e.preventDefault(); toggleSensorVisibility(sensorId); }}
+          title="Click: highlight · Right-click: show/hide"
+        >
+          <span class="legend-line" style="background: {isHidden ? '#555' : color}"></span>
+          <span class="legend-name">{getDisplayName(sensorId)}</span>
+        </button>
+      {/each}
+    </div>
 
   <!-- GRID VIEW: Sparkline per person -->
   {:else if viewMode === 'grid'}
@@ -845,12 +923,70 @@
   .chart-wrapper {
     flex: 1;
     min-height: 200px;
-    background:
-      repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(74, 222, 128, 0.03) 19px, rgba(74, 222, 128, 0.03) 20px),
-      repeating-linear-gradient(90deg, transparent, transparent 19px, rgba(74, 222, 128, 0.03) 19px, rgba(74, 222, 128, 0.03) 20px),
-      repeating-linear-gradient(0deg, transparent, transparent 99px, rgba(74, 222, 128, 0.08) 99px, rgba(74, 222, 128, 0.08) 100px),
-      repeating-linear-gradient(90deg, transparent, transparent 99px, rgba(74, 222, 128, 0.08) 99px, rgba(74, 222, 128, 0.08) 100px);
     border-radius: 0.25rem;
+    position: relative;
+  }
+
+  .traces-canvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 0.25rem;
+    display: block;
+  }
+
+  .traces-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 4px;
+    padding: 4px 6px;
+    justify-content: center;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    font-size: 0.6rem;
+    font-family: monospace;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    user-select: none;
+  }
+
+  .legend-item:hover {
+    background: rgba(74, 222, 128, 0.1);
+    border-color: rgba(74, 222, 128, 0.2);
+  }
+
+  .legend-item.highlighted-sensor {
+    background: rgba(74, 222, 128, 0.15);
+    border-color: rgba(74, 222, 128, 0.4);
+    color: #e5e7eb;
+  }
+
+  .legend-item.hidden-sensor {
+    opacity: 0.4;
+    text-decoration: line-through;
+  }
+
+  .legend-line {
+    display: inline-block;
+    width: 14px;
+    height: 2px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .legend-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
   }
 
   /* ── Grid View ── */

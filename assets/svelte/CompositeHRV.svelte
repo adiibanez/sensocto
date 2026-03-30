@@ -235,6 +235,8 @@
   let treeSvgEl: SVGSVGElement;
   let treeContainer: HTMLDivElement;
   let treeNeedsRebuild = $state(false);
+  let treeCutHeight = $state(0.5); // Draggable cluster cut threshold [0, 1] normalized
+  let treeClusterCount = $state(0);
 
   interface ClusterNode {
     id: number;
@@ -242,17 +244,6 @@
     right: ClusterNode | null;
     height: number;
     items: number[]; // leaf indices
-  }
-
-  function euclideanDist(a: number[], b: number[]): number {
-    let sum = 0, count = 0;
-    for (let i = 0; i < a.length; i++) {
-      if (!isNaN(a[i]) && !isNaN(b[i])) {
-        sum += (a[i] - b[i]) ** 2;
-        count++;
-      }
-    }
-    return count > 0 ? Math.sqrt(sum / count) : 1;
   }
 
   function agglomerativeClustering(distMatrix: number[][]): ClusterNode {
@@ -264,8 +255,6 @@
       id: i, left: null, right: null, height: 0, items: [i]
     }));
 
-    // Copy distance matrix
-    const dist = distMatrix.map(row => [...row]);
     let nextId = n;
     const active = new Set<number>(Array.from({ length: n }, (_, i) => i));
 
@@ -275,7 +264,6 @@
       for (let ii = 0; ii < activeArr.length; ii++) {
         for (let jj = ii + 1; jj < activeArr.length; jj++) {
           const a = activeArr[ii], b = activeArr[jj];
-          // Average linkage
           let total = 0, pairCount = 0;
           for (const ai of clusters[a].items) {
             for (const bi of clusters[b].items) {
@@ -315,12 +303,38 @@
     return sum / leaves.length;
   }
 
-  interface DendroSeg { x1: number; y1: number; x2: number; y2: number; }
+  // Assign cluster IDs by cutting the dendrogram at a given height
+  function cutTree(node: ClusterNode, cutDist: number): Map<number, number> {
+    const assignments = new Map<number, number>();
+    let nextCluster = 0;
 
-  function dendrogramSegments(
+    function walk(n: ClusterNode) {
+      if (n.height <= cutDist || (!n.left && !n.right)) {
+        const cid = nextCluster++;
+        for (const leaf of n.items) assignments.set(leaf, cid);
+      } else {
+        if (n.left) walk(n.left);
+        if (n.right) walk(n.right);
+      }
+    }
+    walk(node);
+    return assignments;
+  }
+
+  // Cluster palette — distinct hues for up to 10 clusters
+  const CLUSTER_COLORS = [
+    '#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ef4444',
+    '#06b6d4', '#eab308', '#ec4899', '#14b8a6', '#6366f1'
+  ];
+
+  interface DendroSeg { x1: number; y1: number; x2: number; y2: number; color: string; }
+
+  function dendrogramSegmentsColored(
     node: ClusterNode,
     positions: Map<number, number>,
-    heightScale: (h: number) => number
+    heightScale: (h: number) => number,
+    clusterAssignments: Map<number, number>,
+    cutDist: number
   ): DendroSeg[] {
     if (!node.left || !node.right) return [];
     const leftC = getClusterCenter(node.left, positions);
@@ -328,17 +342,44 @@
     const mergeY = heightScale(node.height);
     const leftY = node.left.left ? heightScale(node.left.height) : heightScale(0);
     const rightY = node.right.left ? heightScale(node.right.height) : heightScale(0);
+
+    // Color: if this merge is below the cut, use the cluster color; else gray
+    function branchColor(child: ClusterNode): string {
+      if (child.height > cutDist) return '#4b556366'; // above cut = gray
+      const leafClusters = child.items.map(i => clusterAssignments.get(i) ?? 0);
+      const cid = leafClusters[0];
+      return CLUSTER_COLORS[cid % CLUSTER_COLORS.length];
+    }
+
+    const leftColor = branchColor(node.left);
+    const rightColor = branchColor(node.right);
+    const horizColor = node.height > cutDist ? '#4b556366' : leftColor;
+
     return [
-      { x1: leftC, y1: leftY, x2: leftC, y2: mergeY },
-      { x1: rightC, y1: rightY, x2: rightC, y2: mergeY },
-      { x1: leftC, y1: mergeY, x2: rightC, y2: mergeY },
-      ...dendrogramSegments(node.left, positions, heightScale),
-      ...dendrogramSegments(node.right, positions, heightScale),
+      { x1: leftC, y1: leftY, x2: leftC, y2: mergeY, color: leftColor },
+      { x1: rightC, y1: rightY, x2: rightC, y2: mergeY, color: rightColor },
+      { x1: leftC, y1: mergeY, x2: rightC, y2: mergeY, color: horizColor },
+      ...dendrogramSegmentsColored(node.left, positions, heightScale, clusterAssignments, cutDist),
+      ...dendrogramSegmentsColored(node.right, positions, heightScale, clusterAssignments, cutDist),
     ];
   }
 
-  // Color scale for tree heatmap: blue → white → red (matching reference image)
-  const treeColorScale = d3.scaleSequential(d3.interpolateRdYlBu).domain([1, 0]);
+  // Sequential color scale: Plasma (colorblind-safe, perceptually uniform)
+  const treeColorScale = d3.scaleSequential(d3.interpolatePlasma).domain([0, 1]);
+  const LOW_PLV_THRESHOLD = 0.3; // opacity gating threshold
+
+  // Get stress category for a sensor
+  function getStressCategory(sensorId: string): 'stressed' | 'moderate' | 'relaxed' | 'unknown' {
+    const val = latestValues.get(sensorId);
+    if (val === undefined) return 'unknown';
+    if (val < 20) return 'stressed';
+    if (val <= 50) return 'moderate';
+    return 'relaxed';
+  }
+
+  const STRESS_COLORS: Record<string, string> = {
+    stressed: '#ef4444', moderate: '#eab308', relaxed: '#22c55e', unknown: '#374151'
+  };
 
   function renderTreeHeatmap() {
     if (!treeSvgEl || !treeContainer) return;
@@ -355,17 +396,36 @@
     const tree = agglomerativeClustering(distMatrix);
     const leafOrder = getLeafOrder(tree);
     const orderedIds = leafOrder.map(i => heatmapSensorIds[i]);
+    const maxH = tree.height || 1;
+
+    // Cut tree at current threshold
+    const cutDist = treeCutHeight * maxH;
+    const clusterAssignments = cutTree(tree, cutDist);
+    const clusterCount = new Set(clusterAssignments.values()).size;
+    treeClusterCount = clusterCount;
+
+    // Compute mean PLV per sensor (for annotation bar)
+    const meanPlvs = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      let sum = 0, cnt = 0;
+      for (let j = 0; j < n; j++) {
+        if (i !== j) { sum += (syncMatrix[i]?.[j] ?? 0); cnt++; }
+      }
+      meanPlvs.set(i, cnt > 0 ? sum / cnt : 0);
+    }
 
     // Layout dimensions
     const DENDRO_H = 50;
     const DENDRO_W = 60;
+    const ANNO_W = 36;  // annotation tracks (3 tracks × 10px + gaps)
     const LABEL_W = 80;
     const LABEL_H = 80;
+    const GAP = 3;      // gap between cluster blocks
     const containerW = treeContainer.clientWidth - 16;
-    const cellSize = Math.max(24, Math.min(48, (containerW - DENDRO_W - LABEL_W) / n));
+    const cellSize = Math.max(24, Math.min(48, (containerW - DENDRO_W - ANNO_W - LABEL_W) / n));
     const gridSize = cellSize * n;
-    const totalW = DENDRO_W + gridSize + LABEL_W + 8;
-    const totalH = DENDRO_H + LABEL_H + gridSize + 8;
+    const totalW = DENDRO_W + ANNO_W + gridSize + LABEL_W + 12;
+    const totalH = DENDRO_H + LABEL_H + gridSize + 12;
 
     const svg = d3.select(treeSvgEl)
       .attr('viewBox', `0 0 ${totalW} ${totalH}`)
@@ -376,26 +436,56 @@
       .style('aspect-ratio', `${totalW} / ${totalH}`);
     svg.selectAll('*').remove();
 
-    const gridX0 = DENDRO_W + 4;
+    const annoX0 = DENDRO_W + 2;
+    const gridX0 = DENDRO_W + ANNO_W + 4;
     const gridY0 = DENDRO_H + LABEL_H;
 
-    // ── Row dendrogram (left side) ──
+    // ── Row dendrogram (left side) with cluster coloring ──
     const rowPositions = new Map<number, number>();
     leafOrder.forEach((origIdx, pos) => {
       rowPositions.set(origIdx, gridY0 + pos * cellSize + cellSize / 2);
     });
 
-    const maxH = tree.height || 1;
     const rowHeightScale = (h: number) => DENDRO_W - 4 - (h / maxH) * (DENDRO_W - 8);
 
-    const rowSegs = dendrogramSegments(tree, rowPositions, rowHeightScale);
+    const rowSegs = dendrogramSegmentsColored(tree, rowPositions, rowHeightScale, clusterAssignments, cutDist);
     const rowG = svg.append('g').attr('class', 'row-dendro');
     rowG.selectAll('line').data(rowSegs).join('line')
       .attr('x1', d => d.y1).attr('y1', d => d.x1)
       .attr('x2', d => d.y2).attr('y2', d => d.x2)
-      .attr('stroke', '#f9731666').attr('stroke-width', 1.5);
+      .attr('stroke', d => d.color).attr('stroke-width', 1.5);
 
-    // ── Column dendrogram (top) — same tree since it's symmetric ──
+    // ── Cluster cut line (row dendrogram) — draggable ──
+    const cutX = rowHeightScale(cutDist);
+    const cutLineG = svg.append('g').attr('class', 'cut-line');
+    cutLineG.append('line')
+      .attr('x1', cutX).attr('y1', gridY0 - 2)
+      .attr('x2', cutX).attr('y2', gridY0 + gridSize + 2)
+      .attr('stroke', '#f97316').attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4,3')
+      .attr('opacity', 0.8);
+    // Cut line drag handle
+    cutLineG.append('rect')
+      .attr('x', cutX - 6).attr('y', gridY0 - 10)
+      .attr('width', 12).attr('height', 8)
+      .attr('rx', 2)
+      .attr('fill', '#f97316').attr('opacity', 0.9)
+      .attr('cursor', 'ew-resize')
+      .call(d3.drag<SVGRectElement, unknown>()
+        .on('drag', (event) => {
+          const newX = Math.max(4, Math.min(DENDRO_W - 4, event.x));
+          const newHeight = (DENDRO_W - 4 - newX) / (DENDRO_W - 8);
+          treeCutHeight = Math.max(0.05, Math.min(0.95, newHeight));
+        })
+      );
+    // Label showing cluster count
+    cutLineG.append('text')
+      .attr('x', cutX).attr('y', gridY0 - 13)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#f97316').attr('font-size', '8px').attr('font-family', 'monospace')
+      .text(`${clusterCount} clusters`);
+
+    // ── Column dendrogram (top) with cluster coloring ──
     const colPositions = new Map<number, number>();
     leafOrder.forEach((origIdx, pos) => {
       colPositions.set(origIdx, gridX0 + pos * cellSize + cellSize / 2);
@@ -403,12 +493,93 @@
 
     const colHeightScale = (h: number) => DENDRO_H + LABEL_H - 4 - (h / maxH) * (DENDRO_H - 8);
 
-    const colSegs = dendrogramSegments(tree, colPositions, colHeightScale);
+    const colSegs = dendrogramSegmentsColored(tree, colPositions, colHeightScale, clusterAssignments, cutDist);
     const colG = svg.append('g').attr('class', 'col-dendro');
     colG.selectAll('line').data(colSegs).join('line')
       .attr('x1', d => d.x1).attr('y1', d => d.y1)
       .attr('x2', d => d.x2).attr('y2', d => d.y2)
-      .attr('stroke', '#f9731666').attr('stroke-width', 1.5);
+      .attr('stroke', d => d.color).attr('stroke-width', 1.5);
+
+    // Column cut line
+    const colCutY = colHeightScale(cutDist);
+    cutLineG.append('line')
+      .attr('x1', gridX0 - 2).attr('y1', colCutY)
+      .attr('x2', gridX0 + gridSize + 2).attr('y2', colCutY)
+      .attr('stroke', '#f97316').attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4,3')
+      .attr('opacity', 0.8);
+
+    // ── Annotation sidebars (left of grid) ──
+    const annoG = svg.append('g').attr('class', 'annotations');
+    const TRACK_W = 10;
+    const TRACK_GAP = 1;
+
+    // Track 1: Cluster membership
+    orderedIds.forEach((id, ri) => {
+      const origIdx = leafOrder[ri];
+      const cid = clusterAssignments.get(origIdx) ?? 0;
+      annoG.append('rect')
+        .attr('x', annoX0)
+        .attr('y', gridY0 + ri * cellSize + 1)
+        .attr('width', TRACK_W)
+        .attr('height', cellSize - 2)
+        .attr('rx', 1)
+        .attr('fill', CLUSTER_COLORS[cid % CLUSTER_COLORS.length])
+        .attr('opacity', 0.9)
+        .append('title').text(`Cluster ${cid + 1}`);
+    });
+
+    // Track 2: Stress state (RMSSD category)
+    orderedIds.forEach((id, ri) => {
+      const stress = getStressCategory(id);
+      annoG.append('rect')
+        .attr('x', annoX0 + TRACK_W + TRACK_GAP)
+        .attr('y', gridY0 + ri * cellSize + 1)
+        .attr('width', TRACK_W)
+        .attr('height', cellSize - 2)
+        .attr('rx', 1)
+        .attr('fill', STRESS_COLORS[stress])
+        .attr('opacity', 0.9)
+        .append('title').text(`HRV: ${stress} (${Math.round(latestValues.get(id) ?? 0)}ms)`);
+    });
+
+    // Track 3: Mean PLV bar
+    const maxMeanPlv = Math.max(...[...meanPlvs.values()], 0.01);
+    orderedIds.forEach((id, ri) => {
+      const origIdx = leafOrder[ri];
+      const mean = meanPlvs.get(origIdx) ?? 0;
+      const barW = (mean / maxMeanPlv) * TRACK_W;
+      annoG.append('rect')
+        .attr('x', annoX0 + 2 * (TRACK_W + TRACK_GAP))
+        .attr('y', gridY0 + ri * cellSize + 1)
+        .attr('width', TRACK_W)
+        .attr('height', cellSize - 2)
+        .attr('rx', 1)
+        .attr('fill', '#1e293b');
+      annoG.append('rect')
+        .attr('x', annoX0 + 2 * (TRACK_W + TRACK_GAP))
+        .attr('y', gridY0 + ri * cellSize + 1)
+        .attr('width', Math.max(1, barW))
+        .attr('height', cellSize - 2)
+        .attr('rx', 1)
+        .attr('fill', '#f97316')
+        .attr('opacity', 0.7)
+        .append('title').text(`Mean PLV: ${Math.round(mean * 100)}%`);
+    });
+
+    // Annotation track labels (top)
+    const annoLabels = [
+      { x: annoX0 + TRACK_W / 2, label: 'C' },
+      { x: annoX0 + TRACK_W + TRACK_GAP + TRACK_W / 2, label: 'S' },
+      { x: annoX0 + 2 * (TRACK_W + TRACK_GAP) + TRACK_W / 2, label: 'P' },
+    ];
+    annoLabels.forEach(({ x, label }) => {
+      annoG.append('text')
+        .attr('x', x).attr('y', gridY0 - 4)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#6b7280').attr('font-size', '7px').attr('font-family', 'monospace')
+        .text(label);
+    });
 
     // ── Column labels (rotated) ──
     const colLabels = svg.append('g');
@@ -424,7 +595,7 @@
         .text(getDisplayName(id));
     });
 
-    // ── Row labels ──
+    // ── Row labels (with cluster color indicator) ──
     const rowLabels = svg.append('g');
     orderedIds.forEach((id, ri) => {
       rowLabels.append('text')
@@ -437,13 +608,23 @@
         .text(getDisplayName(id));
     });
 
-    // ── Heatmap cells ──
+    // ── Determine cluster boundaries for gap lines ──
+    const clusterBoundaries: number[] = [];
+    for (let ri = 1; ri < orderedIds.length; ri++) {
+      const prevCluster = clusterAssignments.get(leafOrder[ri - 1]);
+      const currCluster = clusterAssignments.get(leafOrder[ri]);
+      if (prevCluster !== currCluster) clusterBoundaries.push(ri);
+    }
+
+    // ── Heatmap cells with opacity gating and cluster gaps ──
     const cellsG = svg.append('g');
     for (let ri = 0; ri < orderedIds.length; ri++) {
       const rowOrigIdx = leafOrder[ri];
       for (let ci = 0; ci < orderedIds.length; ci++) {
         const colOrigIdx = leafOrder[ci];
         const val = syncMatrix[rowOrigIdx]?.[colOrigIdx] ?? 0;
+        const isDiag = ri === ci;
+        const isLow = !isDiag && val < LOW_PLV_THRESHOLD;
 
         const rect = cellsG.append('rect')
           .attr('x', gridX0 + ci * cellSize + 1)
@@ -451,29 +632,29 @@
           .attr('width', cellSize - 2)
           .attr('height', cellSize - 2)
           .attr('rx', 2)
-          .attr('fill', ri === ci ? 'rgba(249, 115, 22, 0.15)' : treeColorScale(val))
+          .attr('fill', isDiag ? 'rgba(249, 115, 22, 0.12)' : treeColorScale(val))
+          .attr('opacity', isLow ? 0.25 : 1)
           .attr('stroke', '#0a0f14')
           .attr('stroke-width', 0.5);
 
         rect.append('title')
-          .text(ri === ci
+          .text(isDiag
             ? getDisplayName(orderedIds[ri])
             : `${getDisplayName(orderedIds[ri])} ↔ ${getDisplayName(orderedIds[ci])}: ${Math.round(val * 100)}%`
           );
 
-        // Diagonal: sensor color dot
-        if (ri === ci) {
+        if (isDiag) {
           cellsG.append('circle')
             .attr('cx', gridX0 + ci * cellSize + cellSize / 2)
             .attr('cy', gridY0 + ri * cellSize + cellSize / 2)
             .attr('r', Math.min(7, cellSize / 4))
             .attr('fill', sensorColors.get(orderedIds[ri]) || '#f97316');
-        } else if (cellSize >= 28) {
+        } else if (cellSize >= 28 && !isLow) {
           cellsG.append('text')
             .attr('x', gridX0 + ci * cellSize + cellSize / 2)
             .attr('y', gridY0 + ri * cellSize + cellSize / 2 + 4)
             .attr('text-anchor', 'middle')
-            .attr('fill', 'rgba(255,255,255,0.8)')
+            .attr('fill', val > 0.6 ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.8)')
             .attr('font-size', '10px')
             .attr('font-family', 'monospace')
             .attr('pointer-events', 'none')
@@ -482,13 +663,39 @@
       }
     }
 
-    // Legend is rendered in the HTML header above — no need to duplicate in SVG
+    // ── Cluster gap lines (white separators between cluster blocks) ──
+    const gapG = svg.append('g').attr('class', 'cluster-gaps');
+    for (const boundary of clusterBoundaries) {
+      // Horizontal gap line
+      gapG.append('line')
+        .attr('x1', gridX0 - 1).attr('y1', gridY0 + boundary * cellSize)
+        .attr('x2', gridX0 + gridSize + 1).attr('y2', gridY0 + boundary * cellSize)
+        .attr('stroke', '#f9731644').attr('stroke-width', 2);
+      // Vertical gap line
+      gapG.append('line')
+        .attr('x1', gridX0 + boundary * cellSize).attr('y1', gridY0 - 1)
+        .attr('x2', gridX0 + boundary * cellSize).attr('y2', gridY0 + gridSize + 1)
+        .attr('stroke', '#f9731644').attr('stroke-width', 2);
+    }
+
+    // ── Inline color legend (bottom right) ──
+    const legX = gridX0 + gridSize - 110;
+    const legY = gridY0 + gridSize + 4;
+    const legG = svg.append('g');
+    const defs = svg.append('defs');
+    const grad = defs.append('linearGradient').attr('id', 'tree-plasma-grad');
+    [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+      grad.append('stop').attr('offset', `${t * 100}%`).attr('stop-color', treeColorScale(t));
+    });
+    legG.append('rect').attr('x', legX).attr('y', legY).attr('width', 100).attr('height', 6).attr('rx', 2).attr('fill', 'url(#tree-plasma-grad)');
+    legG.append('text').attr('x', legX).attr('y', legY + 14).attr('fill', '#6b7280').attr('font-size', '7px').attr('font-family', 'monospace').text('0% sync');
+    legG.append('text').attr('x', legX + 100).attr('y', legY + 14).attr('text-anchor', 'end').attr('fill', '#6b7280').attr('font-size', '7px').attr('font-family', 'monospace').text('100% sync');
   }
 
-  // Trigger tree rebuild when heatmap data or view mode changes
+  // Trigger tree rebuild when heatmap data, view mode, or cut height changes
   $effect(() => {
+    const _cut = treeCutHeight; // reactive dependency
     if (viewMode === 'tree' && heatmapSensorIds.length >= 2) {
-      // Small delay to ensure DOM is ready
       requestAnimationFrame(() => renderTreeHeatmap());
     }
   });
@@ -1173,10 +1380,13 @@
     <div class="heatmap-section" bind:this={treeContainer}>
       <div class="heatmap-header">
         <span class="heatmap-title">Clustered HRV Synchronization</span>
-        <div class="heatmap-legend">
-          <span class="legend-label">Desync</span>
-          <div class="legend-gradient-tree"></div>
-          <span class="legend-label">In Sync</span>
+        <div class="tree-anno-legend">
+          <span class="anno-key" title="C = Cluster membership"><span class="anno-dot" style="background:#3b82f6"></span>C</span>
+          <span class="anno-key" title="S = Stress state (RMSSD)"><span class="anno-dot" style="background:#22c55e"></span>S</span>
+          <span class="anno-key" title="P = Mean PLV bar"><span class="anno-dot" style="background:#f97316"></span>P</span>
+          {#if treeClusterCount > 0}
+            <span class="cluster-badge">{treeClusterCount} clusters</span>
+          {/if}
         </div>
       </div>
       {#if heatmapSensorIds.length >= 2}
@@ -1544,7 +1754,40 @@
     width: 60px;
     height: 6px;
     border-radius: 3px;
-    background: linear-gradient(to right, #4575b4, #ffffbf, #d73027);
+    background: linear-gradient(to right, #0d0887, #7e03a8, #cc4778, #f89441, #f0f921);
+  }
+
+  .tree-anno-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .anno-key {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    font-size: 0.6rem;
+    font-family: monospace;
+    color: #9ca3af;
+    cursor: help;
+  }
+
+  .anno-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .cluster-badge {
+    font-size: 0.6rem;
+    font-family: monospace;
+    color: #f97316;
+    background: rgba(249, 115, 22, 0.15);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.2rem;
+    border: 1px solid rgba(249, 115, 22, 0.3);
   }
 
   .heatmap-scroll {

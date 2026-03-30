@@ -560,21 +560,6 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     end
   end
 
-  defp level_tooltip(:spark),
-    do: gettext("The emotional hook — what SensOcto feels like. ~150 words, ~30 sec read")
-
-  defp level_tooltip(:story),
-    do: gettext("The philosophy and backstory. ~500 words, ~2 min read")
-
-  defp level_tooltip(:deep),
-    do: gettext("Technical deep dive — architecture, sensors, data. ~900 words, ~4 min read")
-
-  defp level_tooltip(:research),
-    do: gettext("Academic papers and scientific foundations. ~600 words, ~3 min read")
-
-  defp level_tooltip(:videos),
-    do: gettext("Demo videos and walkthroughs. ~5 min watch time")
-
   attr(:level, :atom, required: true)
   attr(:current, :atom, required: true)
   attr(:patch_base, :string, default: nil)
@@ -585,29 +570,24 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
     assigns =
       assigns
       |> assign(:class, level_button_class(assigns.level, assigns.current))
-      |> assign(:tooltip, level_tooltip(assigns.level))
 
     ~H"""
     <%= if @patch_base do %>
-      <span class="css-tooltip-wrap" data-tooltip={@tooltip}>
-        <.link
-          patch={if @level == :spark, do: @patch_base, else: "#{@patch_base}?tab=#{@level}"}
-          class={@class}
-        >
-          {render_slot(@inner_block)}
-        </.link>
-      </span>
+      <.link
+        patch={if @level == :spark, do: @patch_base, else: "#{@patch_base}?tab=#{@level}"}
+        class={@class}
+      >
+        {render_slot(@inner_block)}
+      </.link>
     <% else %>
-      <span class="css-tooltip-wrap" data-tooltip={@tooltip}>
-        <button
-          phx-click="set_level"
-          phx-value-level={@level}
-          phx-target={@target}
-          class={@class}
-        >
-          {render_slot(@inner_block)}
-        </button>
-      </span>
+      <button
+        phx-click="set_level"
+        phx-value-level={@level}
+        phx-target={@target}
+        class={@class}
+      >
+        {render_slot(@inner_block)}
+      </button>
     <% end %>
     """
   end
@@ -778,7 +758,6 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
                   else
                     "bg-gray-800/50 text-gray-500 hover:text-gray-300 hover:bg-gray-700/50"
                   end}
-                title={info.description}
               >
                 <.icon name={info.icon} class={if info.featured, do: "h-4 w-4", else: "h-3.5 w-3.5"} />
                 <span>{info.name}</span>
@@ -791,7 +770,6 @@ defmodule SensoctoWeb.Components.AboutContentComponent do
             class="text-xl text-gray-400 max-w-2xl mx-auto mb-6 cursor-pointer hover:text-gray-300 transition-colors group"
             phx-click="shuffle_use_cases"
             phx-target={@myself}
-            title={gettext("Click for more examples")}
           >
             <p class="leading-relaxed">
               {gettext("What if you could")}

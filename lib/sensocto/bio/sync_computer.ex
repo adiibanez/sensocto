@@ -463,7 +463,10 @@ defmodule Sensocto.Bio.SyncComputer do
   defp extract_sync_value(payload) when is_number(payload), do: payload * 1.0
 
   defp extract_sync_value(payload) when is_map(payload) do
-    val = payload["value"] || payload["v"] || payload[:value]
+    val =
+      payload["rmssd"] || payload[:rmssd] ||
+        payload["value"] || payload["v"] || payload[:value]
+
     if is_number(val), do: val * 1.0, else: 0.0
   end
 

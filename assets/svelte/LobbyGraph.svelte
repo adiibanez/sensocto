@@ -3206,21 +3206,24 @@
     }
 
     // Pulsation — coalesced into one RAF frame, viewport check happens at flush time
-    if (graph?.hasNode(sensorNodeId)) {
-      schedulePulsation(sensorNodeId);
-      anyVisible = true;
-    }
-    if (attribute_ids && Array.isArray(attribute_ids)) {
-      for (const attrId of attribute_ids) {
-        const attrNodeId = `attr:${sensor_id}:${attrId}`;
-        if (graph?.hasNode(attrNodeId)) {
-          schedulePulsation(attrNodeId);
-          anyVisible = true;
+    // Skip in attention mode: only attention-changed-event should trigger visuals there
+    if (visualMode !== "attention") {
+      if (graph?.hasNode(sensorNodeId)) {
+        schedulePulsation(sensorNodeId);
+        anyVisible = true;
+      }
+      if (attribute_ids && Array.isArray(attribute_ids)) {
+        for (const attrId of attribute_ids) {
+          const attrNodeId = `attr:${sensor_id}:${attrId}`;
+          if (graph?.hasNode(attrNodeId)) {
+            schedulePulsation(attrNodeId);
+            anyVisible = true;
+          }
         }
       }
-    }
 
-    if (anyVisible) playSound();
+      if (anyVisible) playSound();
+    }
   }
 
   // Handle composite measurement events for real-time updates (viewport-aware)
@@ -3259,9 +3262,12 @@
       }
 
       // Pulsation — coalesced into one RAF frame (same Set as handleGraphActivity)
-      schedulePulsation(attrNodeId);
-      const sensorNodeId = `sensor:${sensor_id}`;
-      if (graph.hasNode(sensorNodeId)) schedulePulsation(sensorNodeId);
+      // Skip in attention mode: only attention-changed-event should trigger visuals
+      if (visualMode !== "attention") {
+        schedulePulsation(attrNodeId);
+        const sensorNodeId = `sensor:${sensor_id}`;
+        if (graph.hasNode(sensorNodeId)) schedulePulsation(sensorNodeId);
+      }
     }
   }
 

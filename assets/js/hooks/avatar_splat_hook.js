@@ -120,6 +120,37 @@ const BIO_MUSHROOM_POS = [[-1.0, 0, 0.5], [0.8, 0, -0.5], [-2.0, 0, 2.0], [2.5, 
 const BIO_FLOWER_POS = [[-1.5, 0, 1.5], [0.5, 0, 0.8], [2.0, 0, 0.0], [-0.5, 0, -1.5],
                         [1.0, 0, -2.5], [-2.5, 0, -2.0], [3.5, 0, -0.5], [-1.0, 0, -3.0]];
 
+// Pre-computed distances from center for ripple propagation (normalized 0→1)
+const dist2d = ([x, , z]) => Math.sqrt(x * x + z * z);
+const BIO_MUSHROOM_DIST = BIO_MUSHROOM_POS.map(dist2d);
+const BIO_TREE_DIST = BIO_TREE_POS.map(dist2d);
+const BIO_FLOWER_DIST = BIO_FLOWER_POS.map(dist2d);
+const BIO_MAX_DIST = Math.max(...BIO_MUSHROOM_DIST, ...BIO_TREE_DIST, ...BIO_FLOWER_DIST);
+// Normalize to 0→1 range; ripple travels from center outward over ~0.6s worth of phase
+const BIO_MUSHROOM_PHASE = BIO_MUSHROOM_DIST.map(d => (d / BIO_MAX_DIST) * Math.PI * 1.2);
+const BIO_TREE_PHASE = BIO_TREE_DIST.map(d => (d / BIO_MAX_DIST) * Math.PI * 1.2);
+const BIO_FLOWER_PHASE = BIO_FLOWER_DIST.map(d => (d / BIO_MAX_DIST) * Math.PI * 1.2);
+
+// Mycelium network: connect organisms with glowing filaments
+// Build paths from center to each tree, mushroom, and flower, plus inter-organism links
+const BIO_MYCELIUM_PATHS = (() => {
+  const paths = [];
+  const allPos = [...BIO_TREE_POS, ...BIO_MUSHROOM_POS, ...BIO_FLOWER_POS];
+  // Radial paths from center to each organism
+  for (const [x, , z] of allPos) {
+    paths.push({ from: [0, 0], to: [x, z] });
+  }
+  // Connect nearby organisms (within distance 3)
+  for (let i = 0; i < allPos.length; i++) {
+    for (let j = i + 1; j < allPos.length; j++) {
+      const dx = allPos[i][0] - allPos[j][0], dz = allPos[i][2] - allPos[j][2];
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d < 3.0) paths.push({ from: [allPos[i][0], allPos[i][2]], to: [allPos[j][0], allPos[j][2]] });
+    }
+  }
+  return paths;
+})();
+
 // Scene sample points for curl noise (conceptual center of each scene group)
 const BIO_SAMPLE_PTS = [
   { x: 0, y: 0, z: 0 },       // 0: ground (static)
@@ -127,14 +158,15 @@ const BIO_SAMPLE_PTS = [
   { x: 0, y: 0.3, z: 0 },     // 2: mushrooms (low, subtle)
   { x: 0, y: 0.2, z: 0 },     // 3: flowers (low, gentle)
   { x: 0, y: 2.5, z: 0 },     // 4: spores (high, maximum drift)
+  { x: 0, y: 0.05, z: 0 },    // 5: mycelium (ground-level, minimal wind)
 ];
 
 const bioluminescent = {
   name: 'Bioluminescent',
-  sceneCount: 5,
+  sceneCount: 6,
   samplePoints: BIO_SAMPLE_PTS,
-  // How strongly each scene responds to wind [position_scale, scale_response]
-  windResponse: [0, 0.5, 0.2, 0.3, 1.0],
+  // How strongly each scene responds to wind [ground, trees, mushrooms, flowers, spores, mycelium]
+  windResponse: [0, 0.2, 0.1, 0.15, 0.6, 0.03],
 
   build() {
     const ground = [];
@@ -160,10 +192,10 @@ const bioluminescent = {
       const v = treeVariations[ti % treeVariations.length];
       const h = v.hScale;
       const lx = v.lean[0], lz = v.lean[1];
-      // Trunk — extends from ground to canopy
-      addCluster(trees, tx + lx * 0.3, 1.5 * h, tz + lz * 0.3,
-        0.08 * v.trunkW, 1.5 * h, 0.08 * v.trunkW,
-        BIO_PALETTE.TREE.base, Math.round(100 * h), 0.04 * v.trunkW, 180);
+      // Trunk — extends from below ground to canopy (center lower, taller spread)
+      addCluster(trees, tx + lx * 0.3, 1.2 * h, tz + lz * 0.3,
+        0.08 * v.trunkW, 1.8 * h, 0.08 * v.trunkW,
+        BIO_PALETTE.TREE.base, Math.round(140 * h), 0.04 * v.trunkW, 180);
       // Roots — spread outward at ground level
       const rootCount = 4 + Math.floor(v.trunkW * 3);
       for (let ri = 0; ri < rootCount; ri++) {
@@ -213,7 +245,26 @@ const bioluminescent = {
       ));
     }
 
-    return [ground, trees, mushrooms, flowers, spores];
+    // Mycelium: glowing filaments connecting organisms along the ground
+    const mycelium = [];
+    const MYCELIUM_COLOR = [40, 180, 100]; // dim cyan-green base
+    for (const path of BIO_MYCELIUM_PATHS) {
+      const [fx, fz] = path.from, [tx, tz] = path.to;
+      const steps = Math.max(8, Math.round(Math.sqrt((tx-fx)**2 + (tz-fz)**2) * 5));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const x = fx + (tx - fx) * t + randn() * 0.04;
+        const z = fz + (tz - fz) * t + randn() * 0.04;
+        const y = 0.02 + Math.sin(t * Math.PI) * 0.03; // slight arch
+        mycelium.push(makeSplat(x, y, z, 0.025, 0.008, 0.025,
+          MYCELIUM_COLOR[0] + randn() * 5,
+          MYCELIUM_COLOR[1] + randn() * 10,
+          MYCELIUM_COLOR[2] + randn() * 5,
+          60 + Math.random() * 40)); // semi-transparent
+      }
+    }
+
+    return [ground, trees, mushrooms, flowers, spores, mycelium];
   },
 
   setupLights(scene) {
@@ -239,12 +290,18 @@ const bioluminescent = {
     lights.spore.position.set(0, 2.5, 0);
     scene.add(lights.spore);
 
+    // Mycelium ground glow — moves with traveling pulse
+    lights.mycelium = new THREE.PointLight(0x30e090, 0, 5);
+    lights.mycelium.position.set(0, 0.1, 0);
+    scene.add(lights.mycelium);
+
     return lights;
   },
 
   animate(ctx) {
-    const { mesh, time, smooth, sensorState, lights, wind = 0, pulse = 0, wv } = ctx;
+    const { mesh, time, smooth, sensorState, lights, wind = 0, pulse = 0, wv, hook } = ctx;
     if (!mesh || mesh.scenes.length < 5) return;
+    const hasMycelium = mesh.scenes.length >= 6;
 
     const w = wind;
     const p = pulse;
@@ -256,63 +313,104 @@ const bioluminescent = {
     const breathPhase = Math.sin(time * breathRate * Math.PI * 2);
     const accelNorm = clamp(smooth.accelMag / 15, 0, 1);
 
-    // Mushrooms: heartbeat pulse + curl wind + data glow
+    // Dormancy: organisms fade when their sensor type stops sending data.
+    // If data was never received, show gentle ambient animation (0.7 = idle glow).
+    // After data stops: 3s grace → 2s fade → 0.15 dormant glow.
+    const DORMANT_AFTER = 3, FADE_DUR = 2, DORMANT_GLOW = 0.15, IDLE_GLOW = 0.7;
+    const dormancy = (lastTime) => {
+      if (lastTime === 0) return IDLE_GLOW; // never received → gentle idle
+      const age = time - lastTime;
+      if (age < DORMANT_AFTER) return 1.0;
+      return lerp(1.0, DORMANT_GLOW, clamp((age - DORMANT_AFTER) / FADE_DUR, 0, 1));
+    };
+    const heartAlive = hook ? dormancy(hook._lastHeartData) : 1.0;
+    const breathAlive = hook ? dormancy(hook._lastBreathData) : 1.0;
+    const accelAlive = hook ? dormancy(hook._lastAccelData) : 1.0;
+
+    // Mushrooms: gentle heartbeat scale pulse
     const mushroomScene = mesh.getScene(2);
     if (mushroomScene && wv[2]) {
-      const sc = 1.0 + 0.06 * heartPulse * (0.5 + bpmNorm * 0.5) + w * wv[2].y * 0.1 + p * 0.1;
-      mushroomScene.position.set(wv[2].x * w * 0.2, 0, wv[2].z * w * 0.2);
-      mushroomScene.scale.set(1, sc, 1);
+      const hbPulse = heartPulse * 0.08 * heartAlive;
+      const sc = 1.0 + hbPulse + w * wv[2].y * 0.05 + p * 0.05;
+      mushroomScene.position.set(wv[2].x * w * 0.1, hbPulse * 0.02, wv[2].z * w * 0.1);
+      mushroomScene.scale.set(1.0 + hbPulse * 0.05, sc, 1.0 + hbPulse * 0.05);
     }
 
-    // Spores: IMU drift + curl wind floating + data burst
+    // Spores: slow gentle floating + subtle IMU drift
     const sporeScene = mesh.getScene(4);
     if (sporeScene && wv[4]) {
-      const drift = accelNorm * 0.3;
+      const drift = accelNorm * 0.15 * accelAlive;
+      const idleFloat = 0.06;
       sporeScene.position.set(
-        wv[4].x * w * 1.0 + Math.sin(time * 0.3) * drift,
-        wv[4].y * w * 0.4 + p * 0.15,
-        wv[4].z * w * 1.0 + Math.cos(time * 0.25) * drift
+        wv[4].x * w * 0.5 + Math.sin(time * 0.15) * (drift + idleFloat),
+        wv[4].y * w * 0.2 + Math.sin(time * 0.1) * idleFloat + p * 0.05,
+        wv[4].z * w * 0.5 + Math.cos(time * 0.12) * (drift + idleFloat)
       );
+      const sporeBreath = 1.0 + breathPhase * 0.02 * breathAlive;
+      sporeScene.scale.set(sporeBreath, sporeBreath, sporeBreath);
     }
 
-    // Trees: breathing sway + curl wind sway
+    // Trees: gentle breathing sway + subtle wind (stays grounded)
     const treeScene = mesh.getScene(1);
     if (treeScene && wv[1]) {
-      const breathSway = breathPhase * 0.02;
+      const breathSway = breathPhase * 0.012 * breathAlive;
       treeScene.position.set(
-        breathSway + wv[1].x * w * 0.5,
+        breathSway + wv[1].x * w * 0.2,
         0,
-        breathSway * 0.5 + wv[1].z * w * 0.5
+        breathSway * 0.3 + wv[1].z * w * 0.2
       );
     }
 
-    // Flowers: breathing scale + curl wind bob + data bloom
+    // Flowers: gentle breathing bloom + subtle wind
     const flowerScene = mesh.getScene(3);
     if (flowerScene && wv[3]) {
-      const s = 1.0 + breathPhase * 0.03 + w * Math.abs(wv[3].y) * 0.12 + p * 0.06;
-      flowerScene.position.set(wv[3].x * w * 0.3, 0, wv[3].z * w * 0.3);
+      const bloom = breathPhase * 0.02 * breathAlive;
+      const hbBloom = heartPulse * 0.015 * heartAlive;
+      const s = 1.0 + bloom + hbBloom + w * Math.abs(wv[3].y) * 0.05 + p * 0.03;
+      flowerScene.position.set(wv[3].x * w * 0.15, 0, wv[3].z * w * 0.15);
       flowerScene.scale.set(s, s, s);
     }
 
-    // Mushroom lights: heartrate hue + wind glow + data pulse glow
+    // Mycelium: gentle heartbeat pulse — network subtly swells with each beat
+    if (hasMycelium) {
+      const myceliumScene = mesh.getScene(5);
+      if (myceliumScene) {
+        const beatPulse = heartPulse * 0.3 * heartAlive;
+        const myceliumScale = 0.85 + beatPulse * 0.3;
+        const xzScale = 1.0 + beatPulse * 0.05;
+        myceliumScene.scale.set(xzScale, myceliumScale, xzScale);
+        myceliumScene.position.set(0, beatPulse * 0.01, 0);
+      }
+    }
+
+    // Mushroom lights: heartbeat ripple propagating outward from center
+    // Distance-based phase delay creates a visible wave expanding across the forest floor
     if (lights.mushroom) {
       const hue = lerp(0.75, 0.88, bpmNorm);
-      const [lr, lg, lb] = hslToRgb(hue, 0.9, 0.45 + 0.15 * heartPulse);
-      const baseIntensity = w * 0.3 + bpmNorm * 0.7;
+      const baseIntensity = 0.4 + w * 0.3 + bpmNorm * 0.5;
       for (let i = 0; i < lights.mushroom.length; i++) {
-        const stagger = Math.sin(heartPhase + i * 0.9) * 0.5 + 0.5;
-        lights.mushroom[i].intensity = baseIntensity * (0.4 + 0.6 * stagger) + p * 0.8;
+        // Ripple: heartPhase minus distance-based delay → wave travels center→edge
+        const ripple = Math.sin(heartPhase - BIO_MUSHROOM_PHASE[i]);
+        const rippleNorm = ripple * 0.5 + 0.5; // 0→1
+        // Color shifts brighter at ripple peak
+        const lightness = 0.35 + 0.25 * rippleNorm;
+        const [lr, lg, lb] = hslToRgb(hue, 0.9, lightness);
+        lights.mushroom[i].intensity = (baseIntensity * (0.2 + 0.8 * rippleNorm) + p * 0.8) * heartAlive;
         lights.mushroom[i].color.setRGB(lr / 255, lg / 255, lb / 255);
       }
     }
 
-    // Tree lights: breathing hue + data glow
+    // Tree lights: breathing wave + heartbeat ripple undertone
     if (lights.tree) {
       const breathHue = lerp(0.35, 0.45, clamp(smooth.breathing, 0, 1));
-      const [tr, tg, tb] = hslToRgb(breathHue, 0.7, 0.5);
       for (let i = 0; i < lights.tree.length; i++) {
-        const phase = Math.sin(time * breathRate * Math.PI * 2 + i * 1.2);
-        lights.tree[i].intensity = w * 0.15 + 0.2 + 0.4 * (0.5 + 0.5 * phase) + p * 0.5;
+        // Breathing: primary wave with distance-based delay
+        const breathWave = Math.sin(time * breathRate * Math.PI * 2 - BIO_TREE_PHASE[i] * 0.5);
+        // Heartbeat: subtle undertone ripple through canopy
+        const heartRipple = Math.sin(heartPhase - BIO_TREE_PHASE[i]) * 0.5 + 0.5;
+        const lightness = 0.4 + 0.15 * (breathWave * 0.5 + 0.5) + 0.08 * heartRipple;
+        const [tr, tg, tb] = hslToRgb(breathHue, 0.7, lightness);
+        lights.tree[i].intensity = (w * 0.15 + 0.2 + 0.4 * (0.5 + 0.5 * breathWave) * breathAlive + heartRipple * 0.15 * heartAlive + p * 0.5);
         lights.tree[i].color.setRGB(tr / 255, tg / 255, tb / 255);
       }
     }
@@ -321,7 +419,7 @@ const bioluminescent = {
     if (lights.spore) {
       const moveHue = lerp(0.55, 0.12, accelNorm);
       const [sr, sg, sb] = hslToRgb(moveHue, 0.8, 0.55);
-      lights.spore.intensity = w * 0.2 + 0.15 + accelNorm * 0.6 + p * 0.6;
+      lights.spore.intensity = (w * 0.3 + 0.3 + accelNorm * 0.6 + p * 0.6) * accelAlive;
       lights.spore.color.setRGB(sr / 255, sg / 255, sb / 255);
       if (wv[4]) {
         lights.spore.position.x = wv[4].x * w * 2 + accelNorm * Math.sin(time * 2) * 0.5;
@@ -330,10 +428,30 @@ const bioluminescent = {
       }
     }
 
+    // Mycelium: traveling pulse radiates outward from center with each heartbeat
+    // The pulse position moves from center (0,0) outward along the ground
+    if (lights.mycelium) {
+      // Pulse front: 0→1 maps to center→max radius, resets each heartbeat
+      const beatCycle = (heartPhase / (Math.PI * 2)) % 1; // 0→1 per beat
+      const pulseRadius = beatCycle * BIO_MAX_DIST * 1.2;
+      // Move light along a slowly rotating direction for visual variety
+      const pulseAngle = time * 0.15;
+      lights.mycelium.position.x = Math.cos(pulseAngle) * pulseRadius * 0.5;
+      lights.mycelium.position.z = Math.sin(pulseAngle) * pulseRadius * 0.5;
+      lights.mycelium.position.y = 0.1;
+      // Intensity: bright at start of beat, fades as pulse expands
+      const pulseBright = (1 - beatCycle) * (0.6 + bpmNorm * 0.6);
+      lights.mycelium.intensity = pulseBright * heartAlive + p * 0.3;
+      // Color shifts with heartrate: green at rest → cyan at high BPM
+      const mHue = lerp(0.35, 0.50, bpmNorm);
+      const [mr, mg, mb] = hslToRgb(mHue, 0.8, 0.55);
+      lights.mycelium.color.setRGB(mr / 255, mg / 255, mb / 255);
+    }
+
     // Ambient: sensor presence + wind + data glow
     if (lights.ambient) {
       const presence = clamp(sensorState.sensorCount / 5, 0, 1);
-      lights.ambient.intensity = 0.08 + w * 0.15 + presence * 0.22 + p * 0.3;
+      lights.ambient.intensity = 0.15 + w * 0.2 + presence * 0.25 + p * 0.3;
     }
 
     mesh.updateTransforms();
@@ -718,6 +836,10 @@ const AvatarSplatHook = {
     this._sensorDriven = false;
     this.wind = 0.5;
     this.dataPulse = 0;
+    // Dormancy: track when each data type last arrived (seconds)
+    this._lastHeartData = 0;
+    this._lastBreathData = 0;
+    this._lastAccelData = 0;
     this._dt = 0;
 
     this._onMeasurement = this._handleMeasurementEvent.bind(this);
@@ -966,10 +1088,11 @@ const AvatarSplatHook = {
   _aggregateSensorState() {
     let totalBpm = 0, totalBreathing = 0, totalAccel = 0, count = 0;
     let orientationFound = false;
+    let hasBpm = false, hasBreathing = false, hasAccel = false;
     for (const [, st] of this.sensorStates) {
-      if (st.bpm) { totalBpm += st.bpm; count++; }
-      if (st.breathing !== undefined) totalBreathing += st.breathing;
-      if (st.accelMag) totalAccel += st.accelMag;
+      if (st.bpm) { totalBpm += st.bpm; count++; hasBpm = true; }
+      if (st.breathing !== undefined) { totalBreathing += st.breathing; hasBreathing = true; }
+      if (st.accelMag) { totalAccel += st.accelMag; hasAccel = true; }
       if (st.hasOrientation && !orientationFound) {
         this.sensorState.yaw = st.yaw;
         this.sensorState.pitch = st.pitch;
@@ -982,6 +1105,11 @@ const AvatarSplatHook = {
     this.sensorState.breathing = totalBreathing / n || 0.5;
     this.sensorState.accelMag = totalAccel / n || 0;
     this.sensorState.sensorCount = this.sensorStates.size;
+    // Track last-data timestamps for dormancy
+    const now = performance.now() / 1000;
+    if (hasBpm) this._lastHeartData = now;
+    if (hasBreathing) this._lastBreathData = now;
+    if (hasAccel) this._lastAccelData = now;
   },
 
   _animate() {
@@ -1036,7 +1164,7 @@ const AvatarSplatHook = {
       this._world.animate({
         mesh, time: this.time, smooth: this.smooth,
         sensorState: this.sensorState, lights: this._lights, viewer: this.viewer,
-        wind: effectiveWind, pulse: this.dataPulse, wv,
+        wind: effectiveWind, pulse: this.dataPulse, wv, hook: this,
       });
     }
 

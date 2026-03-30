@@ -587,8 +587,8 @@ defmodule Sensocto.Simulator.DataGenerator do
     end)
   end
 
-  # HRV data using pre-generated NeuroKit2 ECG → RR intervals → windowed RMSSD
-  # Each sensor gets a unique 120s HRV waveform cached in ETS
+  # HRV data using pre-generated physiological RMSSD model cached in ETS.
+  # Payload: %{"rmssd" => ms, "sdnn" => ms} matching ECGSensor.validate_payload/2.
   defp fetch_hrv_data(config) do
     sensor_id = config[:sensor_id] || "unknown"
     batch_size = config[:batch_size] || 1
@@ -605,12 +605,17 @@ defmodule Sensocto.Simulator.DataGenerator do
         delay = if i == 0 and batch_size > 1, do: 0.0, else: 1.0 / sampling_rate
 
         index = rem(buffer.index + i, buffer.total)
-        value = elem(buffer.data, index)
+        rmssd = Float.round(elem(buffer.data, index) * 1.0, 2)
+
+        # SDNN correlates with RMSSD but is typically 1.2–1.8× higher
+        sdnn_ratio = 1.3 + :rand.uniform() * 0.4
+        sdnn = Float.round(rmssd * sdnn_ratio + (:rand.uniform() - 0.5) * 3.0, 2)
+        sdnn = max(5.0, min(200.0, sdnn))
 
         %{
           timestamp: timestamp,
           delay: delay,
-          payload: Float.round(value * 1.0, 2)
+          payload: %{"rmssd" => rmssd, "sdnn" => sdnn}
         }
       end)
 
@@ -635,8 +640,8 @@ defmodule Sensocto.Simulator.DataGenerator do
 
   defp init_hrv_buffer(sensor_id, config) do
     heart_rate = config[:heart_rate] || 70
-    # 10 minutes of unique data at 0.2 Hz = 120 samples before looping
-    duration = 600
+    # 30 minutes of unique data at 0.2 Hz = 360 samples before looping
+    duration = 1800
 
     samples = generate_physiological_hrv_buffer(sensor_id, heart_rate, duration)
 
@@ -679,47 +684,93 @@ defmodule Sensocto.Simulator.DataGenerator do
     rng = np.random.default_rng(seed)
 
     hr = float(#{heart_rate})
-
-    # Baseline RMSSD: anti-correlates with HR.
-    # HR 50 bpm → ~55 ms,  HR 80 bpm → ~38 ms,  HR 100 bpm → ~22 ms
-    hr_factor  = float(np.clip((hr - 40.0) / 70.0, 0.0, 1.0))
-    baseline   = rng.uniform(48.0, 65.0) - hr_factor * rng.uniform(28.0, 38.0)
-
-    # Respiratory Sinus Arrhythmia (dominant RMSSD contributor, HF band)
-    resp_rate  = rng.uniform(12.0, 18.0)          # breaths per minute
-    resp_freq  = resp_rate / 60.0                 # Hz
-    resp_amp   = rng.uniform(9.0, 17.0)           # ms amplitude
-    resp_phase = rng.uniform(0.0, 2.0 * np.pi)
-
-    # Mayer waves / baroreceptor reflex (LF band)
-    mayer_freq  = rng.uniform(0.07, 0.12)
-    mayer_amp   = rng.uniform(4.0, 9.0)
-    mayer_phase = rng.uniform(0.0, 2.0 * np.pi)
-
-    # VLF component
-    vlf_freq  = rng.uniform(0.020, 0.040)
-    vlf_amp   = rng.uniform(2.5, 6.0)
-    vlf_phase = rng.uniform(0.0, 2.0 * np.pi)
-
-    # Ultra-slow non-stationarity (minutes-scale drift, e.g. posture, alertness)
-    drift_freq  = rng.uniform(0.005, 0.010)
-    drift_amp   = rng.uniform(4.0, 11.0)
-    drift_phase = rng.uniform(0.0, 2.0 * np.pi)
-
-    # Measurement / windowed-RMSSD estimation noise
-    noise_sigma = rng.uniform(1.2, 3.0)
-
-    # Generate at 0.2 Hz
     n = int(#{duration} * 0.2)
     t = np.linspace(0.0, float(#{duration}), n)
 
+    # ── Baseline RMSSD (anti-correlates with HR) ──
+    # HR 50→~55ms, HR 80→~38ms, HR 100→~22ms
+    hr_factor = float(np.clip((hr - 40.0) / 70.0, 0.0, 1.0))
+    baseline = rng.uniform(48.0, 65.0) - hr_factor * rng.uniform(28.0, 38.0)
+
+    # ── State transitions: baseline shifts over minutes ──
+    # Simulate autonomic state changes (relax/moderate/stressed periods)
+    # Use 2-3 slow random walk steps smoothed with a wide Gaussian
+    n_states = rng.integers(2, 5)
+    state_times = np.sort(rng.uniform(0, float(#{duration}), n_states))
+    state_shifts = rng.normal(0, 8.0, n_states)  # ±8ms baseline shifts
+    state_signal = np.zeros(n)
+    for st, sv in zip(state_times, state_shifts):
+        state_signal += sv * np.exp(-0.5 * ((t - st) / 90.0) ** 2)  # 90s Gaussian width
+
+    # ── Respiratory Sinus Arrhythmia (HF band) ──
+    # Breathing rate drifts slowly (±1 brpm over minutes)
+    resp_rate_base = rng.uniform(12.0, 18.0)  # breaths/min
+    resp_drift = np.cumsum(rng.normal(0, 0.003, n))  # slow random walk
+    resp_drift = resp_drift - np.mean(resp_drift)
+    resp_freq = (resp_rate_base + resp_drift * 2.0) / 60.0  # Hz, time-varying
+    resp_freq = np.clip(resp_freq, 0.12, 0.40)  # keep in physiological HF band
+
+    resp_amp_base = rng.uniform(9.0, 17.0)
+    # Amplitude modulation: breathing depth varies (e.g. sighs, talking)
+    resp_am = 1.0 + 0.3 * np.sin(2.0 * np.pi * rng.uniform(0.002, 0.008) * t + rng.uniform(0, 6.28))
+    resp_phase = rng.uniform(0.0, 2.0 * np.pi)
+    resp_signal = resp_amp_base * resp_am * np.sin(
+        2.0 * np.pi * np.cumsum(resp_freq) / 0.2 + resp_phase
+    )
+
+    # ── Mayer waves / baroreflex (LF band) ──
+    mayer_freq = rng.uniform(0.07, 0.12)
+    mayer_amp_base = rng.uniform(4.0, 9.0)
+    # Amplitude modulation: blood pressure regulation varies
+    mayer_am = 1.0 + 0.4 * np.sin(2.0 * np.pi * rng.uniform(0.001, 0.005) * t)
+    mayer_phase = rng.uniform(0.0, 2.0 * np.pi)
+    mayer_signal = mayer_amp_base * mayer_am * np.sin(
+        2.0 * np.pi * mayer_freq * t + mayer_phase
+    )
+
+    # ── VLF component (thermoregulation, hormonal) ──
+    vlf_freq = rng.uniform(0.020, 0.040)
+    vlf_amp = rng.uniform(2.5, 6.0)
+    vlf_phase = rng.uniform(0.0, 2.0 * np.pi)
+    vlf_signal = vlf_amp * np.sin(2.0 * np.pi * vlf_freq * t + vlf_phase)
+
+    # ── Ultra-slow drift (posture, alertness, circadian) ──
+    drift_freq = rng.uniform(0.003, 0.010)
+    drift_amp = rng.uniform(4.0, 11.0)
+    drift_phase = rng.uniform(0.0, 2.0 * np.pi)
+    drift_signal = drift_amp * np.sin(2.0 * np.pi * drift_freq * t + drift_phase)
+
+    # ── Shared environment coupling ──
+    # All people in the same room experience a common slow signal
+    # (e.g. shared task, instructor pacing, room temperature)
+    # Use a deterministic "room seed" (same for all sensors)
+    room_rng = np.random.default_rng(42)
+    room_freq = room_rng.uniform(0.004, 0.012)
+    room_amp = room_rng.uniform(3.0, 7.0)
+    coupling_strength = rng.uniform(0.2, 0.6)  # per-person susceptibility
+    room_signal = coupling_strength * room_amp * np.sin(
+        2.0 * np.pi * room_freq * t + room_rng.uniform(0.0, 6.28)
+    )
+
+    # ── Measurement noise (1/f pink-ish + white) ──
+    white_sigma = rng.uniform(1.0, 2.5)
+    white_noise = rng.normal(0.0, white_sigma, n)
+    # Simple 1/f approximation via cumulative-sum filtering
+    pink_raw = np.cumsum(rng.normal(0, 0.3, n))
+    pink_raw = pink_raw - np.linspace(pink_raw[0], pink_raw[-1], n)  # detrend
+    pink_noise = pink_raw * rng.uniform(0.5, 1.5)
+
+    # ── Combine all components ──
     rmssd = (
         baseline
-        + resp_amp   * np.sin(2.0 * np.pi * resp_freq  * t + resp_phase)
-        + mayer_amp  * np.sin(2.0 * np.pi * mayer_freq * t + mayer_phase)
-        + vlf_amp    * np.sin(2.0 * np.pi * vlf_freq   * t + vlf_phase)
-        + drift_amp  * np.sin(2.0 * np.pi * drift_freq * t + drift_phase)
-        + rng.normal(0.0, noise_sigma, n)
+        + state_signal
+        + resp_signal
+        + mayer_signal
+        + vlf_signal
+        + drift_signal
+        + room_signal
+        + white_noise
+        + pink_noise
     )
 
     # Physiological bounds
@@ -739,8 +790,9 @@ defmodule Sensocto.Simulator.DataGenerator do
   end
 
   # Pure-Elixir fallback with the same physiological structure.
+  # Simplified version: has amplitude modulation, state transitions, and room coupling
+  # but omits frequency wobble (requires cumulative sum which is expensive in Enum.map).
   defp generate_fallback_hrv_buffer(sensor_id, heart_rate, duration) do
-    # Deterministic seed per sensor
     seed = :erlang.phash2(sensor_id, 999_983)
     :rand.seed(:exsss, {seed, seed + 1, seed + 2})
 
@@ -748,33 +800,65 @@ defmodule Sensocto.Simulator.DataGenerator do
     hr_factor = min(max((heart_rate - 40) / 70.0, 0.0), 1.0)
     baseline = 50.0 + :rand.uniform() * 14.0 - hr_factor * 30.0
 
+    # Respiratory component with amplitude modulation
     resp_freq = (12.0 + :rand.uniform() * 6.0) / 60.0
     resp_amp = 9.0 + :rand.uniform() * 8.0
     resp_phase = :rand.uniform() * pi2
+    resp_am_freq = 0.002 + :rand.uniform() * 0.006
 
+    # Mayer waves with amplitude modulation
     mayer_freq = 0.07 + :rand.uniform() * 0.05
     mayer_amp = 4.0 + :rand.uniform() * 5.0
     mayer_phase = :rand.uniform() * pi2
+    mayer_am_freq = 0.001 + :rand.uniform() * 0.004
 
     vlf_freq = 0.020 + :rand.uniform() * 0.020
     vlf_amp = 2.5 + :rand.uniform() * 3.5
     vlf_phase = :rand.uniform() * pi2
 
-    drift_freq = 0.005 + :rand.uniform() * 0.005
+    drift_freq = 0.003 + :rand.uniform() * 0.007
     drift_amp = 4.0 + :rand.uniform() * 7.0
     drift_phase = :rand.uniform() * pi2
+
+    # State transitions: 2-4 Gaussian bumps
+    n_states = 2 + :rand.uniform(3) - 1
+    state_times = Enum.map(1..n_states, fn _ -> :rand.uniform() * duration end)
+    state_shifts = Enum.map(1..n_states, fn _ -> (:rand.uniform() - 0.5) * 16.0 end)
+    states = Enum.zip(state_times, state_shifts)
+
+    # Room coupling (deterministic seed=42 for all sensors)
+    :rand.seed(:exsss, {42, 43, 44})
+    room_freq = 0.004 + :rand.uniform() * 0.008
+    room_amp = 3.0 + :rand.uniform() * 4.0
+    room_phase = :rand.uniform() * pi2
+    # Re-seed per sensor for coupling strength
+    :rand.seed(:exsss, {seed, seed + 1, seed + 2})
+    # Advance state past the params we already consumed
+    Enum.each(1..20, fn _ -> :rand.uniform() end)
+    coupling = 0.2 + :rand.uniform() * 0.4
 
     n = trunc(duration * 0.2)
 
     Enum.map(0..(n - 1), fn i ->
       t = i / n * duration
 
+      # State signal (sum of Gaussians)
+      state_val =
+        Enum.reduce(states, 0.0, fn {st, sv}, acc ->
+          acc + sv * :math.exp(-0.5 * :math.pow((t - st) / 90.0, 2))
+        end)
+
+      resp_am = 1.0 + 0.3 * :math.sin(pi2 * resp_am_freq * t)
+      mayer_am = 1.0 + 0.4 * :math.sin(pi2 * mayer_am_freq * t)
+
       value =
         baseline +
-          resp_amp * :math.sin(pi2 * resp_freq * t + resp_phase) +
-          mayer_amp * :math.sin(pi2 * mayer_freq * t + mayer_phase) +
+          state_val +
+          resp_amp * resp_am * :math.sin(pi2 * resp_freq * t + resp_phase) +
+          mayer_amp * mayer_am * :math.sin(pi2 * mayer_freq * t + mayer_phase) +
           vlf_amp * :math.sin(pi2 * vlf_freq * t + vlf_phase) +
           drift_amp * :math.sin(pi2 * drift_freq * t + drift_phase) +
+          coupling * room_amp * :math.sin(pi2 * room_freq * t + room_phase) +
           (:rand.uniform() - 0.5) * 4.5
 
       Float.round(min(150.0, max(5.0, value)), 2)

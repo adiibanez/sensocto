@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import Highcharts from "highcharts";
+  import * as d3 from "d3";
 
   let { sensors = [] }: {
     sensors: Array<{ sensor_id: string; sensor_name?: string; value: number }>;
@@ -37,9 +38,9 @@
   const PHASE_BUFFER_SIZE = 20; // HRV data at ~0.2Hz, 20 samples = ~100s of context
 
   const TIME_WINDOWS = [
-    { label: '5min', ms: 5 * 60 * 1000 },
-    { label: '15min', ms: 15 * 60 * 1000 },
-    { label: '1h', ms: 60 * 60 * 1000 }
+    { label: '30s', ms: 30 * 1000 },
+    { label: '1min', ms: 60 * 1000 },
+    { label: '5min', ms: 5 * 60 * 1000 }
   ];
 
   let selectedWindowMs = $state(TIME_WINDOWS[0].ms);
@@ -68,6 +69,13 @@
   // Sync history for chart visualization
   let syncHistory: Array<{ x: number; y: number }> = [];
   const SYNC_SERIES_NAME = 'Phase Sync';
+
+  // Pairwise synchronization heatmap
+  let viewMode = $state<'chart' | 'heatmap' | 'tree'>('chart');
+  let pairwiseSyncMatrix: Map<string, number> = new Map(); // "sensorA|sensorB" -> smoothed PLV [0,1]
+  let heatmapSensorIds = $state<string[]>([]);
+  let heatmapData = $state<number[][]>([]);
+  const PAIRWISE_SMOOTHING = 0.8; // higher = smoother (slower to react)
 
   function updateHrvStates() {
     let stressed = 0, moderate = 0, relaxed = 0;
@@ -159,6 +167,360 @@
     syncDirty = true;
   }
 
+  // Compute pairwise phase locking value (PLV) between all sensor pairs.
+  // PLV(i,j) = |cos(θ_i - θ_j)| smoothed over time.
+  // Result: updates heatmapSensorIds (sorted) and heatmapData (N×N matrix).
+  function computePairwiseSync() {
+    if (viewMode !== 'heatmap' && viewMode !== 'tree') return;
+
+    // Collect sensors with valid phases
+    const sensorPhases: Array<{ id: string; phase: number }> = [];
+
+    phaseBuffers.forEach((buffer, sensorId) => {
+      if (buffer.length < 8) return;
+
+      const n = buffer.length;
+      let min = buffer[0], max = buffer[0];
+      for (let i = 1; i < n; i++) {
+        if (buffer[i] < min) min = buffer[i];
+        if (buffer[i] > max) max = buffer[i];
+      }
+      const range = max - min;
+      if (range < 2) return;
+
+      const current = buffer[n - 1];
+      const norm = Math.max(0, Math.min(1, (current - min) / range));
+      const lookback = Math.min(5, n - 1);
+      const derivative = buffer[n - 1] - buffer[n - 1 - lookback];
+      const baseAngle = Math.acos(1 - 2 * norm);
+      const phase = derivative >= 0 ? baseAngle : (2 * Math.PI - baseAngle);
+
+      sensorPhases.push({ id: sensorId, phase });
+    });
+
+    if (sensorPhases.length < 2) return;
+
+    // Sort by sensor ID for stable ordering
+    sensorPhases.sort((a, b) => a.id.localeCompare(b.id));
+
+    const ids = sensorPhases.map(s => s.id);
+    const n = ids.length;
+    const matrix: number[][] = Array.from({ length: n }, () => new Array(n).fill(1));
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const phaseDiff = sensorPhases[i].phase - sensorPhases[j].phase;
+        // PLV for single time point: use cosine similarity of phase difference
+        // cos(Δθ) ranges [-1, 1], map to [0, 1]
+        const instantPlv = (Math.cos(phaseDiff) + 1) / 2;
+
+        const key = `${ids[i]}|${ids[j]}`;
+        const prev = pairwiseSyncMatrix.get(key);
+        const smoothed = prev !== undefined
+          ? PAIRWISE_SMOOTHING * prev + (1 - PAIRWISE_SMOOTHING) * instantPlv
+          : instantPlv;
+        pairwiseSyncMatrix.set(key, smoothed);
+
+        matrix[i][j] = smoothed;
+        matrix[j][i] = smoothed;
+      }
+    }
+
+    heatmapSensorIds = ids;
+    heatmapData = matrix;
+  }
+
+  // ── Tree-based clustered heatmap (dendrogram view) ──────────────────
+
+  let treeSvgEl: SVGSVGElement;
+  let treeContainer: HTMLDivElement;
+  let treeNeedsRebuild = $state(false);
+
+  interface ClusterNode {
+    id: number;
+    left: ClusterNode | null;
+    right: ClusterNode | null;
+    height: number;
+    items: number[]; // leaf indices
+  }
+
+  function euclideanDist(a: number[], b: number[]): number {
+    let sum = 0, count = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (!isNaN(a[i]) && !isNaN(b[i])) {
+        sum += (a[i] - b[i]) ** 2;
+        count++;
+      }
+    }
+    return count > 0 ? Math.sqrt(sum / count) : 1;
+  }
+
+  function agglomerativeClustering(distMatrix: number[][]): ClusterNode {
+    const n = distMatrix.length;
+    if (n === 0) return { id: 0, left: null, right: null, height: 0, items: [] };
+    if (n === 1) return { id: 0, left: null, right: null, height: 0, items: [0] };
+
+    let clusters: ClusterNode[] = Array.from({ length: n }, (_, i) => ({
+      id: i, left: null, right: null, height: 0, items: [i]
+    }));
+
+    // Copy distance matrix
+    const dist = distMatrix.map(row => [...row]);
+    let nextId = n;
+    const active = new Set<number>(Array.from({ length: n }, (_, i) => i));
+
+    while (active.size > 1) {
+      let minDist = Infinity, mergeA = -1, mergeB = -1;
+      const activeArr = [...active];
+      for (let ii = 0; ii < activeArr.length; ii++) {
+        for (let jj = ii + 1; jj < activeArr.length; jj++) {
+          const a = activeArr[ii], b = activeArr[jj];
+          // Average linkage
+          let total = 0, pairCount = 0;
+          for (const ai of clusters[a].items) {
+            for (const bi of clusters[b].items) {
+              total += distMatrix[ai][bi];
+              pairCount++;
+            }
+          }
+          const avg = pairCount > 0 ? total / pairCount : 0;
+          if (avg < minDist) { minDist = avg; mergeA = a; mergeB = b; }
+        }
+      }
+
+      const newCluster: ClusterNode = {
+        id: nextId++,
+        left: clusters[mergeA],
+        right: clusters[mergeB],
+        height: minDist,
+        items: [...clusters[mergeA].items, ...clusters[mergeB].items]
+      };
+      clusters.push(newCluster);
+      active.delete(mergeA);
+      active.delete(mergeB);
+      active.add(clusters.length - 1);
+    }
+
+    return clusters[clusters.length - 1];
+  }
+
+  function getLeafOrder(node: ClusterNode): number[] {
+    if (!node.left && !node.right) return node.items;
+    return [...(node.left ? getLeafOrder(node.left) : []), ...(node.right ? getLeafOrder(node.right) : [])];
+  }
+
+  function getClusterCenter(node: ClusterNode, positions: Map<number, number>): number {
+    const leaves = getLeafOrder(node);
+    const sum = leaves.reduce((s, i) => s + (positions.get(i) || 0), 0);
+    return sum / leaves.length;
+  }
+
+  interface DendroSeg { x1: number; y1: number; x2: number; y2: number; }
+
+  function dendrogramSegments(
+    node: ClusterNode,
+    positions: Map<number, number>,
+    heightScale: (h: number) => number
+  ): DendroSeg[] {
+    if (!node.left || !node.right) return [];
+    const leftC = getClusterCenter(node.left, positions);
+    const rightC = getClusterCenter(node.right, positions);
+    const mergeY = heightScale(node.height);
+    const leftY = node.left.left ? heightScale(node.left.height) : heightScale(0);
+    const rightY = node.right.left ? heightScale(node.right.height) : heightScale(0);
+    return [
+      { x1: leftC, y1: leftY, x2: leftC, y2: mergeY },
+      { x1: rightC, y1: rightY, x2: rightC, y2: mergeY },
+      { x1: leftC, y1: mergeY, x2: rightC, y2: mergeY },
+      ...dendrogramSegments(node.left, positions, heightScale),
+      ...dendrogramSegments(node.right, positions, heightScale),
+    ];
+  }
+
+  // Color scale for tree heatmap: blue → white → red (matching reference image)
+  const treeColorScale = d3.scaleSequential(d3.interpolateRdYlBu).domain([1, 0]);
+
+  function renderTreeHeatmap() {
+    if (!treeSvgEl || !treeContainer) return;
+    if (heatmapSensorIds.length < 2 || heatmapData.length < 2) return;
+
+    const n = heatmapSensorIds.length;
+    const syncMatrix = heatmapData;
+
+    // Convert sync matrix (similarity) to distance matrix
+    const distMatrix: number[][] = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => i === j ? 0 : 1 - (syncMatrix[i]?.[j] ?? 0))
+    );
+
+    const tree = agglomerativeClustering(distMatrix);
+    const leafOrder = getLeafOrder(tree);
+    const orderedIds = leafOrder.map(i => heatmapSensorIds[i]);
+
+    // Layout dimensions
+    const DENDRO_H = 50;
+    const DENDRO_W = 60;
+    const LABEL_W = 80;
+    const LABEL_H = 80;
+    const containerW = treeContainer.clientWidth - 16;
+    const cellSize = Math.max(24, Math.min(48, (containerW - DENDRO_W - LABEL_W) / n));
+    const gridSize = cellSize * n;
+    const totalW = DENDRO_W + gridSize + LABEL_W + 8;
+    const totalH = DENDRO_H + LABEL_H + gridSize + 8;
+
+    const svg = d3.select(treeSvgEl)
+      .attr('viewBox', `0 0 ${totalW} ${totalH}`)
+      .attr('width', null)
+      .attr('height', null)
+      .style('width', '100%')
+      .style('max-height', '100%')
+      .style('aspect-ratio', `${totalW} / ${totalH}`);
+    svg.selectAll('*').remove();
+
+    const gridX0 = DENDRO_W + 4;
+    const gridY0 = DENDRO_H + LABEL_H;
+
+    // ── Row dendrogram (left side) ──
+    const rowPositions = new Map<number, number>();
+    leafOrder.forEach((origIdx, pos) => {
+      rowPositions.set(origIdx, gridY0 + pos * cellSize + cellSize / 2);
+    });
+
+    const maxH = tree.height || 1;
+    const rowHeightScale = (h: number) => DENDRO_W - 4 - (h / maxH) * (DENDRO_W - 8);
+
+    const rowSegs = dendrogramSegments(tree, rowPositions, rowHeightScale);
+    const rowG = svg.append('g').attr('class', 'row-dendro');
+    rowG.selectAll('line').data(rowSegs).join('line')
+      .attr('x1', d => d.y1).attr('y1', d => d.x1)
+      .attr('x2', d => d.y2).attr('y2', d => d.x2)
+      .attr('stroke', '#f9731666').attr('stroke-width', 1.5);
+
+    // ── Column dendrogram (top) — same tree since it's symmetric ──
+    const colPositions = new Map<number, number>();
+    leafOrder.forEach((origIdx, pos) => {
+      colPositions.set(origIdx, gridX0 + pos * cellSize + cellSize / 2);
+    });
+
+    const colHeightScale = (h: number) => DENDRO_H + LABEL_H - 4 - (h / maxH) * (DENDRO_H - 8);
+
+    const colSegs = dendrogramSegments(tree, colPositions, colHeightScale);
+    const colG = svg.append('g').attr('class', 'col-dendro');
+    colG.selectAll('line').data(colSegs).join('line')
+      .attr('x1', d => d.x1).attr('y1', d => d.y1)
+      .attr('x2', d => d.x2).attr('y2', d => d.y2)
+      .attr('stroke', '#f9731666').attr('stroke-width', 1.5);
+
+    // ── Column labels (rotated) ──
+    const colLabels = svg.append('g');
+    orderedIds.forEach((id, ci) => {
+      colLabels.append('text')
+        .attr('x', gridX0 + ci * cellSize + cellSize / 2)
+        .attr('y', gridY0 - 4)
+        .attr('text-anchor', 'start')
+        .attr('transform', `rotate(-50, ${gridX0 + ci * cellSize + cellSize / 2}, ${gridY0 - 4})`)
+        .attr('fill', '#9ca3af')
+        .attr('font-size', '10px')
+        .attr('font-family', 'monospace')
+        .text(getDisplayName(id));
+    });
+
+    // ── Row labels ──
+    const rowLabels = svg.append('g');
+    orderedIds.forEach((id, ri) => {
+      rowLabels.append('text')
+        .attr('x', gridX0 + gridSize + 6)
+        .attr('y', gridY0 + ri * cellSize + cellSize / 2 + 3)
+        .attr('text-anchor', 'start')
+        .attr('fill', sensorColors.get(id) || '#9ca3af')
+        .attr('font-size', '10px')
+        .attr('font-family', 'monospace')
+        .text(getDisplayName(id));
+    });
+
+    // ── Heatmap cells ──
+    const cellsG = svg.append('g');
+    for (let ri = 0; ri < orderedIds.length; ri++) {
+      const rowOrigIdx = leafOrder[ri];
+      for (let ci = 0; ci < orderedIds.length; ci++) {
+        const colOrigIdx = leafOrder[ci];
+        const val = syncMatrix[rowOrigIdx]?.[colOrigIdx] ?? 0;
+
+        const rect = cellsG.append('rect')
+          .attr('x', gridX0 + ci * cellSize + 1)
+          .attr('y', gridY0 + ri * cellSize + 1)
+          .attr('width', cellSize - 2)
+          .attr('height', cellSize - 2)
+          .attr('rx', 2)
+          .attr('fill', ri === ci ? 'rgba(249, 115, 22, 0.15)' : treeColorScale(val))
+          .attr('stroke', '#0a0f14')
+          .attr('stroke-width', 0.5);
+
+        rect.append('title')
+          .text(ri === ci
+            ? getDisplayName(orderedIds[ri])
+            : `${getDisplayName(orderedIds[ri])} ↔ ${getDisplayName(orderedIds[ci])}: ${Math.round(val * 100)}%`
+          );
+
+        // Diagonal: sensor color dot
+        if (ri === ci) {
+          cellsG.append('circle')
+            .attr('cx', gridX0 + ci * cellSize + cellSize / 2)
+            .attr('cy', gridY0 + ri * cellSize + cellSize / 2)
+            .attr('r', Math.min(7, cellSize / 4))
+            .attr('fill', sensorColors.get(orderedIds[ri]) || '#f97316');
+        } else if (cellSize >= 28) {
+          cellsG.append('text')
+            .attr('x', gridX0 + ci * cellSize + cellSize / 2)
+            .attr('y', gridY0 + ri * cellSize + cellSize / 2 + 4)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'rgba(255,255,255,0.8)')
+            .attr('font-size', '10px')
+            .attr('font-family', 'monospace')
+            .attr('pointer-events', 'none')
+            .text(Math.round(val * 100));
+        }
+      }
+    }
+
+    // Legend is rendered in the HTML header above — no need to duplicate in SVG
+  }
+
+  // Trigger tree rebuild when heatmap data or view mode changes
+  $effect(() => {
+    if (viewMode === 'tree' && heatmapSensorIds.length >= 2) {
+      // Small delay to ensure DOM is ready
+      requestAnimationFrame(() => renderTreeHeatmap());
+    }
+  });
+
+  function getHeatmapColor(value: number): string {
+    // 0 = red (desynchronized), 0.5 = yellow, 1 = green (synchronized)
+    if (value >= 0.75) {
+      // Green range
+      const t = (value - 0.75) / 0.25;
+      const g = Math.round(180 + t * 17);
+      return `rgb(34, ${g}, 94)`;
+    } else if (value >= 0.5) {
+      // Yellow-green range
+      const t = (value - 0.5) / 0.25;
+      const r = Math.round(234 - t * 200);
+      const g = Math.round(179 + t * 18);
+      return `rgb(${r}, ${g}, ${Math.round(8 + t * 86)})`;
+    } else if (value >= 0.25) {
+      // Orange-yellow range
+      const t = (value - 0.25) / 0.25;
+      const r = Math.round(249 - t * 15);
+      const g = Math.round(115 + t * 64);
+      return `rgb(${r}, ${g}, ${Math.round(22 - t * 14)})`;
+    } else {
+      // Red-orange range
+      const t = value / 0.25;
+      const r = Math.round(239 + t * 10);
+      const g = Math.round(68 + t * 47);
+      return `rgb(${r}, ${g}, ${Math.round(68 - t * 46)})`;
+    }
+  }
+
   function getSyncColor(pct: number): string {
     if (pct >= 80) return '#22c55e';
     if (pct >= 60) return '#84cc16';
@@ -179,6 +541,16 @@
     return sensorNames.get(sensorId) || (sensorId.length > 12 ? sensorId.slice(-8) : sensorId);
   }
 
+  // Extract RMSSD from payload (number or {rmssd: number, sdnn?: number} map)
+  function extractRmssd(payload: any): number | null {
+    if (typeof payload === 'number') return payload;
+    if (payload && typeof payload === 'object') {
+      const v = payload.rmssd ?? payload.value ?? payload.v;
+      return typeof v === 'number' ? v : null;
+    }
+    return null;
+  }
+
   function initializeSensorData() {
     sensors.forEach((sensor, index) => {
       if (!sensorData.has(sensor.sensor_id)) {
@@ -191,11 +563,22 @@
     });
   }
 
+  // Per-sensor EMA state for chart smoothing
+  let emaValues: Map<string, number> = new Map();
+  const EMA_ALPHA = 0.25; // 0 = fully smoothed, 1 = no smoothing
+
   function addDataPoint(sensorId: string, value: number, timestamp?: number) {
+    // Apply EMA smoothing for chart display
+    const prev = emaValues.get(sensorId);
+    const smoothed = prev !== undefined
+      ? EMA_ALPHA * value + (1 - EMA_ALPHA) * prev
+      : value;
+    emaValues.set(sensorId, smoothed);
+
     const pending = pendingUpdates.get(sensorId) || [];
-    pending.push({ x: timestamp || Date.now(), y: value });
+    pending.push({ x: timestamp || Date.now(), y: Math.round(smoothed * 100) / 100 });
     pendingUpdates.set(sensorId, pending);
-    latestValues.set(sensorId, value);
+    latestValues.set(sensorId, smoothed);
     addToPhaseBuffer(sensorId, value);
   }
 
@@ -224,6 +607,7 @@
         if (hadData) {
           updateHrvStates();
           computePhaseSync();
+          computePairwiseSync();
         }
         lastUpdateTime = timestamp;
       }
@@ -241,7 +625,7 @@
     }
 
     const series: Highcharts.SeriesOptionsType[] = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
-      type: 'line' as const,
+      type: 'spline' as const,
       id: `sensor-${sensorId}`,
       name: getDisplayName(sensorId),
       data: data.map(d => [d.x, d.y]),
@@ -286,7 +670,7 @@
 
     chart = Highcharts.chart(chartContainer, {
       chart: {
-        type: 'line',
+        type: 'spline',
         backgroundColor: '#0a0f14',
         animation: false,
         style: {
@@ -407,7 +791,7 @@
         shared: true
       },
       plotOptions: {
-        line: {
+        spline: {
           animation: false,
           lineWidth: 1.5
         },
@@ -477,7 +861,7 @@
       } else {
         const index = Array.from(sensorData.keys()).indexOf(sensorId);
         chart!.addSeries({
-          type: 'line',
+          type: 'spline',
           id: seriesId,
           name: getDisplayName(sensorId),
           data: filteredData,
@@ -557,8 +941,9 @@
           sensorData.set(sid, []);
         }
         event.data.forEach((m: any) => {
-          if (typeof m?.payload === "number") {
-            addDataPoint(sid, m.payload, m.timestamp);
+          const v = extractRmssd(m?.payload);
+          if (v !== null) {
+            addDataPoint(sid, v, m.timestamp);
           }
         });
         consumed++;
@@ -586,7 +971,7 @@
       const { sensor_id, attribute_id, payload, timestamp } = e.detail;
 
       if (attribute_id === "hrv") {
-        const value = typeof payload === "number" ? payload : null;
+        const value = extractRmssd(payload);
 
         if (value !== null) {
           if (!sensorData.has(sensor_id)) {
@@ -612,15 +997,15 @@
             sensorData.set(eventSensorId, []);
           }
           data.forEach((measurement: any) => {
-            const value = measurement?.payload;
+            const value = extractRmssd(measurement?.payload);
             const timestamp = measurement?.timestamp;
-            if (typeof value === "number") {
+            if (value !== null) {
               addDataPoint(eventSensorId, value, timestamp);
             }
           });
         } else if (data?.payload !== undefined) {
-          const value = data.payload;
-          if (typeof value === "number") {
+          const value = extractRmssd(data.payload);
+          if (value !== null) {
             if (!sensorData.has(eventSensorId)) {
               const index = sensorData.size;
               sensorColors.set(eventSensorId, COLORS[index % COLORS.length]);
@@ -712,16 +1097,68 @@
       <span class="stat-divider"></span>
       <span class="sync-value has-tooltip" data-tooltip="Phase Sync (Kuramoto) — how synchronized HRV oscillations are across participants. 0% = random, 100% = perfectly in sync" style="color: {getSyncColor(phaseSync)}">{phaseSync}%</span>
     </div>
-    <div class="time-window-selector">
-      {#each TIME_WINDOWS as window}
+    <div class="header-controls">
+      <div class="view-mode-selector">
         <button
           class="time-btn"
-          class:active={selectedWindowMs === window.ms}
-          onclick={() => setTimeWindow(window.ms)}
+          class:active={viewMode === 'chart'}
+          onclick={() => { viewMode = 'chart'; if (chart) setTimeout(() => chart?.reflow(), 50); }}
+          title="Kuramoto time-series chart"
         >
-          {window.label}
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="1,12 4,8 7,10 10,4 13,6 15,2"/>
+          </svg>
+          Chart
         </button>
-      {/each}
+        <button
+          class="time-btn"
+          class:active={viewMode === 'heatmap'}
+          onclick={() => { viewMode = 'heatmap'; }}
+          title="Pairwise synchronization heatmap"
+        >
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
+            <rect x="1" y="1" width="4" height="4" rx="0.5" opacity="0.9"/>
+            <rect x="6" y="1" width="4" height="4" rx="0.5" opacity="0.5"/>
+            <rect x="11" y="1" width="4" height="4" rx="0.5" opacity="0.2"/>
+            <rect x="1" y="6" width="4" height="4" rx="0.5" opacity="0.5"/>
+            <rect x="6" y="6" width="4" height="4" rx="0.5" opacity="0.9"/>
+            <rect x="11" y="6" width="4" height="4" rx="0.5" opacity="0.4"/>
+            <rect x="1" y="11" width="4" height="4" rx="0.5" opacity="0.2"/>
+            <rect x="6" y="11" width="4" height="4" rx="0.5" opacity="0.4"/>
+            <rect x="11" y="11" width="4" height="4" rx="0.5" opacity="0.9"/>
+          </svg>
+          Heatmap
+        </button>
+        <button
+          class="time-btn"
+          class:active={viewMode === 'tree'}
+          onclick={() => { viewMode = 'tree'; }}
+          title="Clustered dendrogram heatmap"
+        >
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2">
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="4" y1="6" x2="12" y2="6"/>
+            <line x1="4" y1="6" x2="4" y2="9"/>
+            <line x1="12" y1="6" x2="12" y2="9"/>
+            <rect x="2" y="9" width="4" height="5" rx="0.5" fill="currentColor" opacity="0.5"/>
+            <rect x="10" y="9" width="4" height="5" rx="0.5" fill="currentColor" opacity="0.8"/>
+          </svg>
+          Tree
+        </button>
+      </div>
+      {#if viewMode === 'chart'}
+        <div class="time-window-selector">
+          {#each TIME_WINDOWS as window}
+            <button
+              class="time-btn"
+              class:active={selectedWindowMs === window.ms}
+              onclick={() => setTimeWindow(window.ms)}
+            >
+              {window.label}
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
   <div class="sync-bar">
@@ -730,7 +1167,113 @@
       style="width: {phaseSync}%; background: {getSyncColor(phaseSync)}"
     ></div>
   </div>
-  <div class="chart-wrapper" bind:this={chartContainer}></div>
+  {#if viewMode === 'chart'}
+    <div class="chart-wrapper" bind:this={chartContainer}></div>
+  {:else if viewMode === 'tree'}
+    <div class="heatmap-section" bind:this={treeContainer}>
+      <div class="heatmap-header">
+        <span class="heatmap-title">Clustered HRV Synchronization</span>
+        <div class="heatmap-legend">
+          <span class="legend-label">Desync</span>
+          <div class="legend-gradient-tree"></div>
+          <span class="legend-label">In Sync</span>
+        </div>
+      </div>
+      {#if heatmapSensorIds.length >= 2}
+        <div class="heatmap-scroll">
+          <svg bind:this={treeSvgEl} class="heatmap-svg"></svg>
+        </div>
+      {:else}
+        <div class="heatmap-empty">
+          Waiting for ≥2 sensors with HRV phase data...
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <div class="heatmap-section">
+      <div class="heatmap-header">
+        <span class="heatmap-title">Pairwise HRV Synchronization</span>
+        <div class="heatmap-legend">
+          <span class="legend-label">Low</span>
+          <div class="legend-gradient"></div>
+          <span class="legend-label">High</span>
+        </div>
+      </div>
+      {#if heatmapSensorIds.length >= 2}
+        {@const n = heatmapSensorIds.length}
+        {@const cellSize = Math.max(28, Math.min(56, 500 / n))}
+        {@const labelWidth = 80}
+        {@const headerHeight = 100}
+        {@const gridWidth = n * cellSize}
+        {@const svgWidth = labelWidth + gridWidth + 2}
+        {@const svgHeight = headerHeight + gridWidth + 2}
+        <div class="heatmap-scroll">
+          <svg
+            viewBox="0 0 {svgWidth} {svgHeight}"
+            class="heatmap-svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <!-- Column labels (top, rotated -45°) -->
+            {#each heatmapSensorIds as id, i}
+              {@const cx = labelWidth + i * cellSize + cellSize / 2}
+              {@const cy = headerHeight - 6}
+              <text
+                x={cx}
+                y={cy}
+                text-anchor="start"
+                transform="rotate(-45, {cx}, {cy})"
+                class="heatmap-label"
+              >{getDisplayName(id)}</text>
+            {/each}
+
+            <!-- Row labels (left) + cells -->
+            {#each heatmapSensorIds as rowId, i}
+              <text
+                x={labelWidth - 6}
+                y={headerHeight + i * cellSize + cellSize / 2 + 3}
+                text-anchor="end"
+                class="heatmap-label"
+              >{getDisplayName(rowId)}</text>
+
+              {#each heatmapSensorIds as _colId, j}
+                {@const value = heatmapData[i]?.[j] ?? 0}
+                <rect
+                  x={labelWidth + j * cellSize + 1}
+                  y={headerHeight + i * cellSize + 1}
+                  width={cellSize - 2}
+                  height={cellSize - 2}
+                  rx="2"
+                  fill={i === j ? 'rgba(249, 115, 22, 0.15)' : getHeatmapColor(value)}
+                  opacity={i === j ? 1 : 0.85}
+                >
+                  <title>{i === j ? getDisplayName(rowId) : `${getDisplayName(rowId)} ↔ ${getDisplayName(_colId)}: ${Math.round(value * 100)}%`}</title>
+                </rect>
+                {#if i === j}
+                  <circle
+                    cx={labelWidth + j * cellSize + cellSize / 2}
+                    cy={headerHeight + i * cellSize + cellSize / 2}
+                    r={Math.min(8, cellSize / 3.5)}
+                    fill={sensorColors.get(rowId) || '#f97316'}
+                  />
+                {:else if cellSize >= 28}
+                  <text
+                    x={labelWidth + j * cellSize + cellSize / 2}
+                    y={headerHeight + i * cellSize + cellSize / 2 + 4}
+                    text-anchor="middle"
+                    class="cell-value"
+                  >{Math.round(value * 100)}</text>
+                {/if}
+              {/each}
+            {/each}
+          </svg>
+        </div>
+      {:else}
+        <div class="heatmap-empty">
+          Waiting for ≥2 sensors with HRV phase data...
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -887,6 +1430,9 @@
     .sync-bar { height: 2px; margin-bottom: 0.1rem; }
     .time-window-selector { gap: 0.1rem; flex-shrink: 0; }
     .time-btn { padding: 0.1rem 0.2rem; font-size: 0.5rem; }
+    .heatmap-section { min-height: 100px; }
+    .heatmap-title { font-size: 0.55rem; }
+    .view-mode-selector .time-btn svg { display: none; }
   }
 
   .sync-bar {
@@ -931,6 +1477,114 @@
     border-color: #f97316;
     color: #f97316;
     box-shadow: 0 0 8px rgba(249, 115, 22, 0.3);
+  }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .view-mode-selector {
+    display: flex;
+    gap: 0.15rem;
+  }
+
+  .view-mode-selector .time-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .heatmap-section {
+    flex: 1;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .heatmap-title {
+    font-size: 0.65rem;
+    font-family: monospace;
+    color: #f97316;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+  }
+
+  .heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .legend-label {
+    font-size: 0.55rem;
+    font-family: monospace;
+    color: #9ca3af;
+  }
+
+  .legend-gradient {
+    width: 60px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #ef4444, #f97316, #eab308, #84cc16, #22c55e);
+  }
+
+  .legend-gradient-tree {
+    width: 60px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #4575b4, #ffffbf, #d73027);
+  }
+
+  .heatmap-scroll {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5rem;
+  }
+
+  .heatmap-svg {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+  }
+
+  .heatmap-label {
+    font-size: 13px;
+    font-family: monospace;
+    fill: #9ca3af;
+  }
+
+  .cell-value {
+    font-size: 12px;
+    font-family: monospace;
+    fill: rgba(255, 255, 255, 0.85);
+    pointer-events: none;
+  }
+
+  .heatmap-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: #9ca3af;
+    opacity: 0.6;
   }
 
   .chart-wrapper {

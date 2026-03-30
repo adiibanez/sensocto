@@ -69,6 +69,13 @@
   let syncHistory: Array<{ x: number; y: number }> = [];
   const SYNC_SERIES_NAME = 'Phase Sync';
 
+  // Pairwise synchronization heatmap
+  let viewMode = $state<'chart' | 'heatmap'>('chart');
+  let pairwiseSyncMatrix: Map<string, number> = new Map();
+  let heatmapSensorIds = $state<string[]>([]);
+  let heatmapData = $state<number[][]>([]);
+  const PAIRWISE_SMOOTHING = 0.7; // breathing is faster than HRV, react quicker
+
   function updateBreathingStates() {
     let inhaling = 0, exhaling = 0, holding = 0;
 
@@ -177,6 +184,73 @@
     return 'None';
   }
 
+  function computePairwiseSync() {
+    if (viewMode !== 'heatmap') return;
+
+    const sensorPhases: Array<{ id: string; phase: number }> = [];
+
+    phaseBuffers.forEach((buffer, sensorId) => {
+      if (buffer.length < 15) return;
+      const n = buffer.length;
+      let min = buffer[0], max = buffer[0];
+      for (let i = 1; i < n; i++) {
+        if (buffer[i] < min) min = buffer[i];
+        if (buffer[i] > max) max = buffer[i];
+      }
+      const range = max - min;
+      if (range < 2) return;
+
+      const current = buffer[n - 1];
+      const norm = Math.max(0, Math.min(1, (current - min) / range));
+      const lookback = Math.min(5, n - 1);
+      const derivative = buffer[n - 1] - buffer[n - 1 - lookback];
+      const baseAngle = Math.acos(1 - 2 * norm);
+      const phase = derivative >= 0 ? baseAngle : (2 * Math.PI - baseAngle);
+      sensorPhases.push({ id: sensorId, phase });
+    });
+
+    if (sensorPhases.length < 2) return;
+    sensorPhases.sort((a, b) => a.id.localeCompare(b.id));
+
+    const ids = sensorPhases.map(s => s.id);
+    const n = ids.length;
+    const matrix: number[][] = Array.from({ length: n }, () => new Array(n).fill(1));
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const phaseDiff = sensorPhases[i].phase - sensorPhases[j].phase;
+        const instantPlv = (Math.cos(phaseDiff) + 1) / 2;
+        const key = `${ids[i]}|${ids[j]}`;
+        const prev = pairwiseSyncMatrix.get(key);
+        const smoothed = prev !== undefined
+          ? PAIRWISE_SMOOTHING * prev + (1 - PAIRWISE_SMOOTHING) * instantPlv
+          : instantPlv;
+        pairwiseSyncMatrix.set(key, smoothed);
+        matrix[i][j] = smoothed;
+        matrix[j][i] = smoothed;
+      }
+    }
+
+    heatmapSensorIds = ids;
+    heatmapData = matrix;
+  }
+
+  function getHeatmapColor(value: number): string {
+    if (value >= 0.75) {
+      const t = (value - 0.75) / 0.25;
+      return `rgb(34, ${Math.round(180 + t * 17)}, 94)`;
+    } else if (value >= 0.5) {
+      const t = (value - 0.5) / 0.25;
+      return `rgb(${Math.round(234 - t * 200)}, ${Math.round(179 + t * 18)}, ${Math.round(8 + t * 86)})`;
+    } else if (value >= 0.25) {
+      const t = (value - 0.25) / 0.25;
+      return `rgb(${Math.round(249 - t * 15)}, ${Math.round(115 + t * 64)}, ${Math.round(22 - t * 14)})`;
+    } else {
+      const t = value / 0.25;
+      return `rgb(${Math.round(239 + t * 10)}, ${Math.round(68 + t * 47)}, ${Math.round(68 - t * 46)})`;
+    }
+  }
+
   function getDisplayName(sensorId: string): string {
     return sensorNames.get(sensorId) || (sensorId.length > 12 ? sensorId.slice(-8) : sensorId);
   }
@@ -228,6 +302,7 @@
         if (hadData) {
           updateBreathingStates();
           computePhaseSync();
+          computePairwiseSync();
         }
         lastUpdateTime = timestamp;
       }
@@ -722,16 +797,52 @@
       <span class="stat-divider"></span>
       <span class="sync-value has-tooltip" data-tooltip="Phase Sync (Kuramoto) — how synchronized breathing is across participants. 0% = random, 100% = perfectly in sync" style="color: {getSyncColor(phaseSync)}">{phaseSync}%</span>
     </div>
-    <div class="time-window-selector">
-      {#each TIME_WINDOWS as window}
+    <div class="header-controls">
+      <div class="view-mode-selector">
         <button
           class="time-btn"
-          class:active={selectedWindowMs === window.ms}
-          onclick={() => setTimeWindow(window.ms)}
+          class:active={viewMode === 'chart'}
+          onclick={() => { viewMode = 'chart'; if (chart) setTimeout(() => chart?.reflow(), 50); }}
+          title="Kuramoto time-series chart"
         >
-          {window.label}
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="1,12 4,8 7,10 10,4 13,6 15,2"/>
+          </svg>
+          Chart
         </button>
-      {/each}
+        <button
+          class="time-btn"
+          class:active={viewMode === 'heatmap'}
+          onclick={() => { viewMode = 'heatmap'; }}
+          title="Pairwise synchronization heatmap"
+        >
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
+            <rect x="1" y="1" width="4" height="4" rx="0.5" opacity="0.9"/>
+            <rect x="6" y="1" width="4" height="4" rx="0.5" opacity="0.5"/>
+            <rect x="11" y="1" width="4" height="4" rx="0.5" opacity="0.2"/>
+            <rect x="1" y="6" width="4" height="4" rx="0.5" opacity="0.5"/>
+            <rect x="6" y="6" width="4" height="4" rx="0.5" opacity="0.9"/>
+            <rect x="11" y="6" width="4" height="4" rx="0.5" opacity="0.4"/>
+            <rect x="1" y="11" width="4" height="4" rx="0.5" opacity="0.2"/>
+            <rect x="6" y="11" width="4" height="4" rx="0.5" opacity="0.4"/>
+            <rect x="11" y="11" width="4" height="4" rx="0.5" opacity="0.9"/>
+          </svg>
+          Heatmap
+        </button>
+      </div>
+      {#if viewMode === 'chart'}
+        <div class="time-window-selector">
+          {#each TIME_WINDOWS as window}
+            <button
+              class="time-btn"
+              class:active={selectedWindowMs === window.ms}
+              onclick={() => setTimeWindow(window.ms)}
+            >
+              {window.label}
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
   <div class="sync-bar">
@@ -740,7 +851,91 @@
       style="width: {phaseSync}%; background: {getSyncColor(phaseSync)}"
     ></div>
   </div>
-  <div class="chart-wrapper" bind:this={chartContainer}></div>
+  {#if viewMode === 'chart'}
+    <div class="chart-wrapper" bind:this={chartContainer}></div>
+  {:else}
+    <div class="heatmap-section">
+      <div class="heatmap-header">
+        <span class="heatmap-title">Pairwise Breathing Synchronization</span>
+        <div class="heatmap-legend">
+          <span class="legend-label">Low</span>
+          <div class="legend-gradient"></div>
+          <span class="legend-label">High</span>
+        </div>
+      </div>
+      {#if heatmapSensorIds.length >= 2}
+        {@const n = heatmapSensorIds.length}
+        {@const cellSize = Math.max(28, Math.min(56, 500 / n))}
+        {@const labelWidth = 80}
+        {@const headerHeight = 100}
+        {@const gridWidth = n * cellSize}
+        {@const svgWidth = labelWidth + gridWidth + 2}
+        {@const svgHeight = headerHeight + gridWidth + 2}
+        <div class="heatmap-scroll">
+          <svg
+            viewBox="0 0 {svgWidth} {svgHeight}"
+            class="heatmap-svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {#each heatmapSensorIds as id, i}
+              {@const cx = labelWidth + i * cellSize + cellSize / 2}
+              {@const cy = headerHeight - 6}
+              <text
+                x={cx}
+                y={cy}
+                text-anchor="start"
+                transform="rotate(-45, {cx}, {cy})"
+                class="heatmap-label"
+              >{getDisplayName(id)}</text>
+            {/each}
+
+            {#each heatmapSensorIds as rowId, i}
+              <text
+                x={labelWidth - 6}
+                y={headerHeight + i * cellSize + cellSize / 2 + 3}
+                text-anchor="end"
+                class="heatmap-label"
+              >{getDisplayName(rowId)}</text>
+
+              {#each heatmapSensorIds as _colId, j}
+                {@const value = heatmapData[i]?.[j] ?? 0}
+                <rect
+                  x={labelWidth + j * cellSize + 1}
+                  y={headerHeight + i * cellSize + 1}
+                  width={cellSize - 2}
+                  height={cellSize - 2}
+                  rx="2"
+                  fill={i === j ? 'rgba(34, 211, 238, 0.15)' : getHeatmapColor(value)}
+                  opacity={i === j ? 1 : 0.85}
+                >
+                  <title>{i === j ? getDisplayName(rowId) : `${getDisplayName(rowId)} ↔ ${getDisplayName(_colId)}: ${Math.round(value * 100)}%`}</title>
+                </rect>
+                {#if i === j}
+                  <circle
+                    cx={labelWidth + j * cellSize + cellSize / 2}
+                    cy={headerHeight + i * cellSize + cellSize / 2}
+                    r={Math.min(8, cellSize / 3.5)}
+                    fill={sensorColors.get(rowId) || '#22d3ee'}
+                  />
+                {:else if cellSize >= 28}
+                  <text
+                    x={labelWidth + j * cellSize + cellSize / 2}
+                    y={headerHeight + i * cellSize + cellSize / 2 + 4}
+                    text-anchor="middle"
+                    class="cell-value"
+                  >{Math.round(value * 100)}</text>
+                {/if}
+              {/each}
+            {/each}
+          </svg>
+        </div>
+      {:else}
+        <div class="heatmap-empty">
+          Waiting for ≥2 sensors with breathing phase data...
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -882,6 +1077,9 @@
     .sync-bar { height: 2px; margin-bottom: 0.1rem; }
     .time-window-selector { gap: 0.1rem; flex-shrink: 0; }
     .time-btn { padding: 0.1rem 0.2rem; font-size: 0.5rem; }
+    .heatmap-section { min-height: 100px; }
+    .heatmap-title { font-size: 0.55rem; }
+    .view-mode-selector .time-btn svg { display: none; }
   }
 
   .sync-bar {
@@ -926,6 +1124,107 @@
     border-color: #22d3ee;
     color: #22d3ee;
     box-shadow: 0 0 8px rgba(34, 211, 238, 0.3);
+  }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .view-mode-selector {
+    display: flex;
+    gap: 0.15rem;
+  }
+
+  .view-mode-selector .time-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .heatmap-section {
+    flex: 1;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .heatmap-title {
+    font-size: 0.65rem;
+    font-family: monospace;
+    color: #22d3ee;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+  }
+
+  .heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .legend-label {
+    font-size: 0.55rem;
+    font-family: monospace;
+    color: #9ca3af;
+  }
+
+  .legend-gradient {
+    width: 60px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #ef4444, #f97316, #eab308, #84cc16, #22c55e);
+  }
+
+  .heatmap-scroll {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5rem;
+  }
+
+  .heatmap-svg {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+  }
+
+  .heatmap-label {
+    font-size: 13px;
+    font-family: monospace;
+    fill: #9ca3af;
+  }
+
+  .cell-value {
+    font-size: 12px;
+    font-family: monospace;
+    fill: rgba(255, 255, 255, 0.85);
+    pointer-events: none;
+  }
+
+  .heatmap-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: #9ca3af;
+    opacity: 0.6;
   }
 
   .chart-wrapper {

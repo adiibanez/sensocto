@@ -64,8 +64,10 @@
         sensorService.sendChannelMessage(channelIdentifier, payload);
     };
 
-    // Keyboard handling - number keys work directly (no Space modifier needed)
+    // Keyboard handling - Ctrl+number keys trigger buttons
     const handleKeyDown = (event) => {
+        // Require Ctrl modifier
+        if (!event.ctrlKey) return;
         // Don't capture when typing in inputs
         if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
             return;
@@ -75,6 +77,7 @@
 
         const buttonId = keyToButtonId[event.key];
         if (buttonId && !pressedButtons.has(buttonId)) {
+            event.preventDefault();
             pressedButtons.add(buttonId);
             pressedButtons = pressedButtons;
             sendButtonPress(buttonId);

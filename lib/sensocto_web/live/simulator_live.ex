@@ -232,20 +232,25 @@ defmodule SensoctoWeb.SimulatorLive do
   defp assign_status(socket) do
     {connectors, config, scenarios, running_scenarios, startup_phase} =
       if SimSupervisor.enabled?() do
-        try do
-          phase = Manager.startup_phase()
+        phase = Manager.startup_phase()
 
-          {
-            Manager.get_connectors(),
-            Manager.get_config(),
-            Manager.list_scenarios(),
-            Manager.get_running_scenarios(),
-            phase
-          }
-        catch
-          :exit, _ ->
-            Logger.warning("Simulator Manager busy during startup, will retry on next refresh")
-            {%{}, %{}, [], %{}, :loading_config}
+        if phase == :ready do
+          try do
+            {
+              Manager.get_connectors(),
+              Manager.get_config(),
+              Manager.list_scenarios(),
+              Manager.get_running_scenarios(),
+              :ready
+            }
+          catch
+            :exit, _ ->
+              Logger.warning("Simulator Manager busy, will retry on next refresh")
+              {%{}, %{}, [], %{}, :loading_config}
+          end
+        else
+          # Manager still starting up — don't block on further calls
+          {%{}, %{}, [], %{}, phase}
         end
       else
         {%{}, %{}, [], %{}, :ready}
@@ -368,7 +373,9 @@ defmodule SensoctoWeb.SimulatorLive do
             <% end %>
           </div>
         <% else %>
-          <p class="text-gray-400">No scenarios found in config/simulator_scenarios/</p>
+          <%= if @startup_phase == :ready do %>
+            <p class="text-gray-400">No scenarios found in config/simulator_scenarios/</p>
+          <% end %>
         <% end %>
       </div>
     </div>

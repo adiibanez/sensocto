@@ -285,7 +285,7 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
             <div
               data-imu="accel-bar"
               class="h-full rounded-full"
-              style={"width: #{min(100, @imu_data.accel_magnitude * 10)}%; background-color: #{accel_hsl(@imu_data.accel_magnitude)}"}
+              style={"width: #{min(100, max(0, @imu_data.accel_magnitude - 9.0) / 15.0 * 100)}%; background-color: #{accel_hsl(@imu_data.accel_magnitude)}"}
             >
             </div>
           </div>
@@ -3201,14 +3201,18 @@ defmodule SensoctoWeb.Live.Components.AttributeComponent do
 
   # Acceleration color based on magnitude
   # Smooth green→yellow→orange→red gradient: maps 0–12 m/s² to hue 120°→0°
+  # Maps acceleration magnitude to a gradual green→yellow→orange→red color.
+  # Gravity (~9.8 m/s²) sits in the green zone; vigorous motion (>20) goes red.
   defp accel_hsl(magnitude) do
-    t = min(magnitude / 12, 1.0)
+    excess = max(magnitude - 9.0, 0.0)
+    t = min(excess / 15.0, 1.0)
     hue = round(120 * (1 - t))
     "hsl(#{hue}, 80%, 50%)"
   end
 
   defp accel_hsl_light(magnitude) do
-    t = min(magnitude / 12, 1.0)
+    excess = max(magnitude - 9.0, 0.0)
+    t = min(excess / 15.0, 1.0)
     hue = round(120 * (1 - t))
     "hsl(#{hue}, 70%, 65%)"
   end

@@ -18,11 +18,14 @@
   const UPDATE_INTERVAL_MS = 32; // ~30fps for smooth trace rendering
   const PHASE_BUFFER_SIZE = 100; // ECG at 100Hz, ~1s window
 
+  // Time windows — also define sample budget for continuous strip chart
+  // At 100Hz: 3s=300, 10s=1000, 30s=3000 samples
   const TIME_WINDOWS = [
-    { label: '3s', ms: 3 * 1000 },
-    { label: '10s', ms: 10 * 1000 },
-    { label: '30s', ms: 30 * 1000 }
+    { label: '3s', ms: 3 * 1000, samples: 300 },
+    { label: '10s', ms: 10 * 1000, samples: 1000 },
+    { label: '30s', ms: 30 * 1000, samples: 3000 }
   ];
+  let selectedSamples = $state(TIME_WINDOWS[0].samples);
 
   type ViewMode = 'traces' | 'grid' | 'morphology' | 'sync';
   let viewMode = $state<ViewMode>('traces');
@@ -449,10 +452,9 @@
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const now = latestDataTimestamp > 0 ? latestDataTimestamp : Date.now();
-    const cutoff = now - selectedWindowMs;
     const plotW = cw - TRACES_MARGIN.left - TRACES_MARGIN.right;
     const plotH = ch - TRACES_MARGIN.top - TRACES_MARGIN.bottom;
+    const N = selectedSamples; // number of samples to show
 
     // Update legend sensor list
     const currentIds = Array.from(sensorData.keys()).sort();
@@ -460,11 +462,12 @@
       legendSensorIds = currentIds;
     }
 
-    // Compute global Y range across visible (non-hidden) sensors
+    // Take the last N samples per sensor (sequential strip chart — no time gaps)
+    // Compute global Y range across visible sensors
     let globalMin = Infinity, globalMax = -Infinity;
     sensorData.forEach((data, sensorId) => {
       if (hiddenSensors.has(sensorId)) return;
-      const start = binarySearchCutoff(data, cutoff);
+      const start = Math.max(0, data.length - N);
       for (let i = start; i < data.length; i++) {
         if (data[i].y < globalMin) globalMin = data[i].y;
         if (data[i].y > globalMax) globalMax = data[i].y;
@@ -501,16 +504,16 @@
       ctx.fillText(yVal.toFixed(1), TRACES_MARGIN.left - 4, py);
     }
 
-    // X grid + labels
+    // X grid — show elapsed seconds (strip chart style)
+    const windowSec = selectedWindowMs / 1000;
     const xTickCount = selectedWindowMs <= 3000 ? 6 : selectedWindowMs <= 10000 ? 10 : 6;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     for (let i = 0; i <= xTickCount; i++) {
       const frac = i / xTickCount;
       const px = TRACES_MARGIN.left + frac * plotW;
-      const tMs = cutoff + frac * selectedWindowMs;
-      const d = new Date(tMs);
-      const label = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+      const secAgo = windowSec * (1 - frac);
+      const label = secAgo === 0 ? 'now' : `-${secAgo.toFixed(1)}s`;
       ctx.beginPath();
       ctx.moveTo(px, TRACES_MARGIN.top);
       ctx.lineTo(px, TRACES_MARGIN.top + plotH);
@@ -528,8 +531,8 @@
     ctx.fillText('mV', 0, 0);
     ctx.restore();
 
-    // Draw traces — each sensor as a canvas path
-    // When a sensor is highlighted, draw others dimmed first, then highlighted on top
+    // Draw traces — sequential strip chart (x = sample index, not timestamp)
+    // Each sample maps to an evenly-spaced x position → no gaps ever
     ctx.save();
     ctx.beginPath();
     ctx.rect(TRACES_MARGIN.left, TRACES_MARGIN.top, plotW, plotH);
@@ -537,51 +540,43 @@
 
     const hasHighlight = highlightedSensor !== null;
 
+    function drawSensorTrace(data: Array<{ x: number; y: number }>, color: string, lineWidth: number, alpha: number) {
+      const count = Math.min(data.length, N);
+      if (count < 2) return;
+      const start = data.length - count;
+      const xStep = plotW / (N - 1); // evenly spaced across the plot width
+
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      ctx.moveTo(
+        TRACES_MARGIN.left + 0 * xStep,
+        TRACES_MARGIN.top + ((yMax - data[start].y) / (yMax - yMin)) * plotH
+      );
+      for (let i = 1; i < count; i++) {
+        ctx.lineTo(
+          TRACES_MARGIN.left + i * xStep,
+          TRACES_MARGIN.top + ((yMax - data[start + i].y) / (yMax - yMin)) * plotH
+        );
+      }
+      ctx.stroke();
+    }
+
     // First pass: draw non-highlighted (dimmed if something is highlighted)
     sensorData.forEach((data, sensorId) => {
       if (hiddenSensors.has(sensorId)) return;
-      if (sensorId === highlightedSensor) return; // draw on top in second pass
-
-      const start = binarySearchCutoff(data, cutoff);
-      if (start >= data.length) return;
-
+      if (sensorId === highlightedSensor) return;
       const color = sensorColors.get(sensorId) || '#4ade80';
-      ctx.globalAlpha = hasHighlight ? 0.2 : 1.0;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.0;
-      ctx.beginPath();
-
-      let first = true;
-      for (let i = start; i < data.length; i++) {
-        const px = TRACES_MARGIN.left + ((data[i].x - cutoff) / selectedWindowMs) * plotW;
-        const py = TRACES_MARGIN.top + ((yMax - data[i].y) / (yMax - yMin)) * plotH;
-        if (first) { ctx.moveTo(px, py); first = false; }
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
+      drawSensorTrace(data, color, 1.0, hasHighlight ? 0.2 : 1.0);
     });
 
-    // Second pass: draw highlighted sensor on top with thick line
+    // Second pass: draw highlighted sensor on top
     if (highlightedSensor && !hiddenSensors.has(highlightedSensor)) {
       const data = sensorData.get(highlightedSensor);
       if (data) {
-        const start = binarySearchCutoff(data, cutoff);
-        if (start < data.length) {
-          const color = sensorColors.get(highlightedSensor) || '#4ade80';
-          ctx.globalAlpha = 1.0;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-
-          let first = true;
-          for (let i = start; i < data.length; i++) {
-            const px = TRACES_MARGIN.left + ((data[i].x - cutoff) / selectedWindowMs) * plotW;
-            const py = TRACES_MARGIN.top + ((yMax - data[i].y) / (yMax - yMin)) * plotH;
-            if (first) { ctx.moveTo(px, py); first = false; }
-            else ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-        }
+        const color = sensorColors.get(highlightedSensor) || '#4ade80';
+        drawSensorTrace(data, color, 2.5, 1.0);
       }
     }
 
@@ -592,8 +587,9 @@
     dirtySeriesIds.clear();
   }
 
-  function setTimeWindow(ms: number) {
-    selectedWindowMs = ms;
+  function setTimeWindow(window: { ms: number; samples: number }) {
+    selectedWindowMs = window.ms;
+    selectedSamples = window.samples;
     // Canvas will redraw on next RAF with new window
   }
 
@@ -719,7 +715,7 @@
       {#if viewMode === 'traces'}
         <div class="time-window-selector">
           {#each TIME_WINDOWS as window}
-            <button class="mode-btn" class:active={selectedWindowMs === window.ms} onclick={() => setTimeWindow(window.ms)}>
+            <button class="mode-btn" class:active={selectedWindowMs === window.ms} onclick={() => setTimeWindow(window)}>
               {window.label}
             </button>
           {/each}
@@ -793,14 +789,14 @@
       </div>
       {#if heatmapSensorIds.length >= 2}
         {@const n = heatmapSensorIds.length}
-        {@const cellSize = Math.max(28, Math.min(56, 500 / n))}
-        {@const labelWidth = 80}
-        {@const headerHeight = 100}
+        {@const cellSize = Math.max(18, Math.min(32, 300 / n))}
+        {@const labelWidth = 56}
+        {@const headerHeight = 60}
         {@const gridWidth = n * cellSize}
         {@const svgWidth = labelWidth + gridWidth + 2}
         {@const svgHeight = headerHeight + gridWidth + 2}
         <div class="heatmap-scroll">
-          <svg viewBox="0 0 {svgWidth} {svgHeight}" class="heatmap-svg" preserveAspectRatio="xMidYMid meet">
+          <svg width={svgWidth} height={svgHeight} viewBox="0 0 {svgWidth} {svgHeight}" class="heatmap-svg">
             {#each heatmapSensorIds as id, i}
               {@const cx = labelWidth + i * cellSize + cellSize / 2}
               {@const cy = headerHeight - 6}
@@ -816,8 +812,8 @@
                 </rect>
                 {#if i === j}
                   <circle cx={labelWidth + j * cellSize + cellSize / 2} cy={headerHeight + i * cellSize + cellSize / 2} r={Math.min(8, cellSize / 3.5)} fill={sensorColors.get(rowId) || '#4ade80'} />
-                {:else if cellSize >= 28}
-                  <text x={labelWidth + j * cellSize + cellSize / 2} y={headerHeight + i * cellSize + cellSize / 2 + 4} text-anchor="middle" class="cell-value">{Math.round(value * 100)}</text>
+                {:else if cellSize >= 20}
+                  <text x={labelWidth + j * cellSize + cellSize / 2} y={headerHeight + i * cellSize + cellSize / 2 + 3} text-anchor="middle" class="cell-value">{Math.round(value * 100)}</text>
                 {/if}
               {/each}
             {/each}
@@ -1070,7 +1066,7 @@
   /* ── Sync Heatmap ── */
   .heatmap-section {
     flex: 1;
-    min-height: 200px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1122,18 +1118,17 @@
   }
 
   .heatmap-svg {
-    max-width: 100%;
-    max-height: 100%;
+    flex-shrink: 0;
   }
 
   .heatmap-label {
-    font-size: 13px;
+    font-size: 10px;
     font-family: monospace;
     fill: #9ca3af;
   }
 
   .cell-value {
-    font-size: 12px;
+    font-size: 9px;
     font-family: monospace;
     fill: rgba(255, 255, 255, 0.85);
     pointer-events: none;

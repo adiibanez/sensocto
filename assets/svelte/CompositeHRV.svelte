@@ -54,6 +54,8 @@
   let rafId: number | null = null;
   let lastUpdateTime = 0;
   let lastExtremesUpdate = 0;
+  let lastTrimTime = 0;
+  let lastSyncCompute = 0;
   let dirtySeriesIds: Set<string> = new Set();
   let syncDirty = false;
 
@@ -240,6 +242,15 @@
   let treeNeedsRebuild = $state(false);
   let treeCutHeight = $state(0.5); // Draggable cluster cut threshold [0, 1] normalized
   let treeClusterCount = $state(0);
+  let focusedCluster = $state<number | null>(null); // Click-to-focus cluster
+  interface ClusterSummary {
+    id: number;
+    color: string;
+    members: string[];
+    meanPlv: number;
+    stressCounts: Record<string, number>;
+  }
+  let clusterSummaries = $state<ClusterSummary[]>([]);
 
   interface ClusterNode {
     id: number;
@@ -370,6 +381,7 @@
   // Sequential color scale: Plasma (colorblind-safe, perceptually uniform)
   const treeColorScale = d3.scaleSequential(d3.interpolatePlasma).domain([0, 1]);
   const LOW_PLV_THRESHOLD = 0.3; // opacity gating threshold
+  const HIGH_PLV_THRESHOLD = 0.8; // pulse animation threshold
 
   // Get stress category for a sensor
   function getStressCategory(sensorId: string): 'stressed' | 'moderate' | 'relaxed' | 'unknown' {
@@ -417,9 +429,40 @@
       meanPlvs.set(i, cnt > 0 ? sum / cnt : 0);
     }
 
-    // Layout dimensions
-    const DENDRO_H = 50;
-    const DENDRO_W = 60;
+    // ── Build cluster summaries for cards below SVG ──
+    const clusterMap = new Map<number, number[]>(); // cid → original indices
+    for (const [origIdx, cid] of clusterAssignments) {
+      if (!clusterMap.has(cid)) clusterMap.set(cid, []);
+      clusterMap.get(cid)!.push(origIdx);
+    }
+    const summaries: ClusterSummary[] = [];
+    for (const [cid, members] of [...clusterMap.entries()].sort((a, b) => a[0] - b[0])) {
+      const memberIds = members.map(i => heatmapSensorIds[i]);
+      // Mean intra-cluster PLV
+      let plvSum = 0, plvCnt = 0;
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          plvSum += syncMatrix[members[i]]?.[members[j]] ?? 0;
+          plvCnt++;
+        }
+      }
+      const stressCounts: Record<string, number> = { stressed: 0, moderate: 0, relaxed: 0, unknown: 0 };
+      for (const id of memberIds) {
+        stressCounts[getStressCategory(id)]++;
+      }
+      summaries.push({
+        id: cid,
+        color: CLUSTER_COLORS[cid % CLUSTER_COLORS.length],
+        members: memberIds,
+        meanPlv: plvCnt > 0 ? plvSum / plvCnt : 0,
+        stressCounts,
+      });
+    }
+    clusterSummaries = summaries;
+
+    // Layout dimensions — amplified dendrograms
+    const DENDRO_H = 70;
+    const DENDRO_W = 80;
     const ANNO_W = 36;  // annotation tracks (3 tracks × 10px + gaps)
     const LABEL_W = 80;
     const LABEL_H = 80;
@@ -443,6 +486,9 @@
     const gridX0 = DENDRO_W + ANNO_W + 4;
     const gridY0 = DENDRO_H + LABEL_H;
 
+    // ── Hover crosshair group (rendered on top later) ──
+    const crosshairG = svg.append('g').attr('class', 'crosshairs').style('pointer-events', 'none');
+
     // ── Row dendrogram (left side) with cluster coloring ──
     const rowPositions = new Map<number, number>();
     leafOrder.forEach((origIdx, pos) => {
@@ -456,24 +502,27 @@
     rowG.selectAll('line').data(rowSegs).join('line')
       .attr('x1', d => d.y1).attr('y1', d => d.x1)
       .attr('x2', d => d.y2).attr('y2', d => d.x2)
-      .attr('stroke', d => d.color).attr('stroke-width', 1.5);
+      .attr('stroke', d => d.color).attr('stroke-width', 1.8)
+      .attr('stroke-linecap', 'round');
 
-    // ── Cluster cut line (row dendrogram) — draggable ──
+    // ── Cluster cut line (row dendrogram) — draggable with bigger handle ──
     const cutX = rowHeightScale(cutDist);
     const cutLineG = svg.append('g').attr('class', 'cut-line');
     cutLineG.append('line')
       .attr('x1', cutX).attr('y1', gridY0 - 2)
       .attr('x2', cutX).attr('y2', gridY0 + gridSize + 2)
-      .attr('stroke', '#f97316').attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,3')
-      .attr('opacity', 0.8);
-    // Cut line drag handle
+      .attr('stroke', '#f97316').attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '6,4')
+      .attr('opacity', 0.9);
+    // Bigger drag handle with visual affordance
+    const handleW = 16, handleH = 14;
     cutLineG.append('rect')
-      .attr('x', cutX - 6).attr('y', gridY0 - 10)
-      .attr('width', 12).attr('height', 8)
-      .attr('rx', 2)
-      .attr('fill', '#f97316').attr('opacity', 0.9)
+      .attr('x', cutX - handleW / 2).attr('y', gridY0 - handleH - 4)
+      .attr('width', handleW).attr('height', handleH)
+      .attr('rx', 3)
+      .attr('fill', '#f97316').attr('opacity', 0.95)
       .attr('cursor', 'ew-resize')
+      .attr('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))')
       .call(d3.drag<SVGRectElement, unknown>()
         .on('drag', (event) => {
           const newX = Math.max(4, Math.min(DENDRO_W - 4, event.x));
@@ -481,12 +530,20 @@
           treeCutHeight = Math.max(0.05, Math.min(0.95, newHeight));
         })
       );
+    // Grip lines on drag handle
+    for (let gy = -3; gy <= 3; gy += 3) {
+      cutLineG.append('line')
+        .attr('x1', cutX - 4).attr('y1', gridY0 - handleH / 2 - 4 + gy)
+        .attr('x2', cutX + 4).attr('y2', gridY0 - handleH / 2 - 4 + gy)
+        .attr('stroke', 'rgba(0,0,0,0.3)').attr('stroke-width', 1)
+        .attr('pointer-events', 'none');
+    }
     // Label showing cluster count
     cutLineG.append('text')
-      .attr('x', cutX).attr('y', gridY0 - 13)
+      .attr('x', cutX).attr('y', gridY0 - handleH - 8)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#f97316').attr('font-size', '8px').attr('font-family', 'monospace')
-      .text(`${clusterCount} clusters`);
+      .attr('fill', '#f97316').attr('font-size', '9px').attr('font-weight', 'bold').attr('font-family', 'monospace')
+      .text(`${clusterCount}`);
 
     // ── Column dendrogram (top) with cluster coloring ──
     const colPositions = new Map<number, number>();
@@ -501,26 +558,28 @@
     colG.selectAll('line').data(colSegs).join('line')
       .attr('x1', d => d.x1).attr('y1', d => d.y1)
       .attr('x2', d => d.x2).attr('y2', d => d.y2)
-      .attr('stroke', d => d.color).attr('stroke-width', 1.5);
+      .attr('stroke', d => d.color).attr('stroke-width', 1.8)
+      .attr('stroke-linecap', 'round');
 
     // Column cut line
     const colCutY = colHeightScale(cutDist);
     cutLineG.append('line')
       .attr('x1', gridX0 - 2).attr('y1', colCutY)
       .attr('x2', gridX0 + gridSize + 2).attr('y2', colCutY)
-      .attr('stroke', '#f97316').attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,3')
-      .attr('opacity', 0.8);
+      .attr('stroke', '#f97316').attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '6,4')
+      .attr('opacity', 0.9);
 
     // ── Annotation sidebars (left of grid) ──
     const annoG = svg.append('g').attr('class', 'annotations');
     const TRACK_W = 10;
     const TRACK_GAP = 1;
 
-    // Track 1: Cluster membership
+    // Track 1: Cluster membership (clickable for focus)
     orderedIds.forEach((id, ri) => {
       const origIdx = leafOrder[ri];
       const cid = clusterAssignments.get(origIdx) ?? 0;
+      const isFocused = focusedCluster === null || focusedCluster === cid;
       annoG.append('rect')
         .attr('x', annoX0)
         .attr('y', gridY0 + ri * cellSize + 1)
@@ -528,12 +587,17 @@
         .attr('height', cellSize - 2)
         .attr('rx', 1)
         .attr('fill', CLUSTER_COLORS[cid % CLUSTER_COLORS.length])
-        .attr('opacity', 0.9)
-        .append('title').text(`Cluster ${cid + 1}`);
+        .attr('opacity', isFocused ? 0.9 : 0.25)
+        .attr('cursor', 'pointer')
+        .on('click', () => { focusedCluster = focusedCluster === cid ? null : cid; requestAnimationFrame(() => renderTreeHeatmap()); })
+        .append('title').text(`Cluster ${cid + 1} — click to focus`);
     });
 
     // Track 2: Stress state (RMSSD category)
     orderedIds.forEach((id, ri) => {
+      const origIdx = leafOrder[ri];
+      const cid = clusterAssignments.get(origIdx) ?? 0;
+      const isFocused = focusedCluster === null || focusedCluster === cid;
       const stress = getStressCategory(id);
       annoG.append('rect')
         .attr('x', annoX0 + TRACK_W + TRACK_GAP)
@@ -542,7 +606,7 @@
         .attr('height', cellSize - 2)
         .attr('rx', 1)
         .attr('fill', STRESS_COLORS[stress])
-        .attr('opacity', 0.9)
+        .attr('opacity', isFocused ? 0.9 : 0.25)
         .append('title').text(`HRV: ${stress} (${Math.round(latestValues.get(id) ?? 0)}ms)`);
     });
 
@@ -550,6 +614,8 @@
     const maxMeanPlv = Math.max(...[...meanPlvs.values()], 0.01);
     orderedIds.forEach((id, ri) => {
       const origIdx = leafOrder[ri];
+      const cid = clusterAssignments.get(origIdx) ?? 0;
+      const isFocused = focusedCluster === null || focusedCluster === cid;
       const mean = meanPlvs.get(origIdx) ?? 0;
       const barW = (mean / maxMeanPlv) * TRACK_W;
       annoG.append('rect')
@@ -566,7 +632,7 @@
         .attr('height', cellSize - 2)
         .attr('rx', 1)
         .attr('fill', '#f97316')
-        .attr('opacity', 0.7)
+        .attr('opacity', isFocused ? 0.7 : 0.15)
         .append('title').text(`Mean PLV: ${Math.round(mean * 100)}%`);
     });
 
@@ -587,12 +653,15 @@
     // ── Column labels (rotated) ──
     const colLabels = svg.append('g');
     orderedIds.forEach((id, ci) => {
+      const origIdx = leafOrder[ci];
+      const cid = clusterAssignments.get(origIdx) ?? 0;
+      const isFocused = focusedCluster === null || focusedCluster === cid;
       colLabels.append('text')
         .attr('x', gridX0 + ci * cellSize + cellSize / 2)
         .attr('y', gridY0 - 4)
         .attr('text-anchor', 'start')
         .attr('transform', `rotate(-50, ${gridX0 + ci * cellSize + cellSize / 2}, ${gridY0 - 4})`)
-        .attr('fill', '#9ca3af')
+        .attr('fill', isFocused ? '#9ca3af' : '#9ca3af44')
         .attr('font-size', '10px')
         .attr('font-family', 'monospace')
         .text(getDisplayName(id));
@@ -601,11 +670,15 @@
     // ── Row labels (with cluster color indicator) ──
     const rowLabels = svg.append('g');
     orderedIds.forEach((id, ri) => {
+      const origIdx = leafOrder[ri];
+      const cid = clusterAssignments.get(origIdx) ?? 0;
+      const isFocused = focusedCluster === null || focusedCluster === cid;
+      const baseColor = sensorColors.get(id) || '#9ca3af';
       rowLabels.append('text')
         .attr('x', gridX0 + gridSize + 6)
         .attr('y', gridY0 + ri * cellSize + cellSize / 2 + 3)
         .attr('text-anchor', 'start')
-        .attr('fill', sensorColors.get(id) || '#9ca3af')
+        .attr('fill', isFocused ? baseColor : baseColor + '44')
         .attr('font-size', '10px')
         .attr('font-family', 'monospace')
         .text(getDisplayName(id));
@@ -619,15 +692,21 @@
       if (prevCluster !== currCluster) clusterBoundaries.push(ri);
     }
 
-    // ── Heatmap cells with opacity gating and cluster gaps ──
+    // ── Heatmap cells with opacity gating, cluster focus, and hover crosshairs ──
     const cellsG = svg.append('g');
     for (let ri = 0; ri < orderedIds.length; ri++) {
       const rowOrigIdx = leafOrder[ri];
+      const rowCid = clusterAssignments.get(rowOrigIdx) ?? 0;
       for (let ci = 0; ci < orderedIds.length; ci++) {
         const colOrigIdx = leafOrder[ci];
+        const colCid = clusterAssignments.get(colOrigIdx) ?? 0;
         const val = syncMatrix[rowOrigIdx]?.[colOrigIdx] ?? 0;
         const isDiag = ri === ci;
         const isLow = !isDiag && val < LOW_PLV_THRESHOLD;
+
+        // Cluster focus dimming
+        const inFocus = focusedCluster === null || (focusedCluster === rowCid && focusedCluster === colCid);
+        const dimFactor = inFocus ? 1 : 0.15;
 
         const rect = cellsG.append('rect')
           .attr('x', gridX0 + ci * cellSize + 1)
@@ -636,9 +715,54 @@
           .attr('height', cellSize - 2)
           .attr('rx', 2)
           .attr('fill', isDiag ? 'rgba(249, 115, 22, 0.12)' : treeColorScale(val))
-          .attr('opacity', isLow ? 0.25 : 1)
+          .attr('opacity', (isLow ? 0.25 : 1) * dimFactor)
           .attr('stroke', '#0a0f14')
-          .attr('stroke-width', 0.5);
+          .attr('stroke-width', 0.5)
+          .attr('cursor', 'crosshair');
+
+        // Pulse glow on high-sync pairs
+        const isHighSync = !isDiag && val >= HIGH_PLV_THRESHOLD && inFocus;
+        if (isHighSync) {
+          cellsG.append('rect')
+            .attr('x', gridX0 + ci * cellSize + 1)
+            .attr('y', gridY0 + ri * cellSize + 1)
+            .attr('width', cellSize - 2)
+            .attr('height', cellSize - 2)
+            .attr('rx', 2)
+            .attr('fill', 'none')
+            .attr('stroke', treeColorScale(val))
+            .attr('stroke-width', 2)
+            .attr('pointer-events', 'none')
+            .attr('class', 'high-sync-pulse');
+        }
+
+        // Hover crosshairs
+        rect.on('mouseenter', () => {
+          crosshairG.selectAll('*').remove();
+          // Horizontal highlight bar
+          crosshairG.append('rect')
+            .attr('x', gridX0).attr('y', gridY0 + ri * cellSize)
+            .attr('width', gridSize).attr('height', cellSize)
+            .attr('fill', 'rgba(249, 115, 22, 0.06)')
+            .attr('pointer-events', 'none');
+          // Vertical highlight bar
+          crosshairG.append('rect')
+            .attr('x', gridX0 + ci * cellSize).attr('y', gridY0)
+            .attr('width', cellSize).attr('height', gridSize)
+            .attr('fill', 'rgba(249, 115, 22, 0.06)')
+            .attr('pointer-events', 'none');
+          // Highlight border on hovered cell
+          crosshairG.append('rect')
+            .attr('x', gridX0 + ci * cellSize + 1)
+            .attr('y', gridY0 + ri * cellSize + 1)
+            .attr('width', cellSize - 2).attr('height', cellSize - 2)
+            .attr('rx', 2)
+            .attr('fill', 'none')
+            .attr('stroke', '#f97316').attr('stroke-width', 2)
+            .attr('pointer-events', 'none');
+        }).on('mouseleave', () => {
+          crosshairG.selectAll('*').remove();
+        });
 
         rect.append('title')
           .text(isDiag
@@ -651,8 +775,10 @@
             .attr('cx', gridX0 + ci * cellSize + cellSize / 2)
             .attr('cy', gridY0 + ri * cellSize + cellSize / 2)
             .attr('r', Math.min(7, cellSize / 4))
-            .attr('fill', sensorColors.get(orderedIds[ri]) || '#f97316');
-        } else if (cellSize >= 28 && !isLow) {
+            .attr('fill', sensorColors.get(orderedIds[ri]) || '#f97316')
+            .attr('opacity', dimFactor)
+            .attr('pointer-events', 'none');
+        } else if (cellSize >= 28 && !isLow && inFocus) {
           cellsG.append('text')
             .attr('x', gridX0 + ci * cellSize + cellSize / 2)
             .attr('y', gridY0 + ri * cellSize + cellSize / 2 + 4)
@@ -666,20 +792,21 @@
       }
     }
 
-    // ── Cluster gap lines (white separators between cluster blocks) ──
+    // ── Cluster gap lines (orange separators between cluster blocks) ──
     const gapG = svg.append('g').attr('class', 'cluster-gaps');
     for (const boundary of clusterBoundaries) {
-      // Horizontal gap line
       gapG.append('line')
         .attr('x1', gridX0 - 1).attr('y1', gridY0 + boundary * cellSize)
         .attr('x2', gridX0 + gridSize + 1).attr('y2', gridY0 + boundary * cellSize)
-        .attr('stroke', '#f9731644').attr('stroke-width', 2);
-      // Vertical gap line
+        .attr('stroke', '#f9731666').attr('stroke-width', 2);
       gapG.append('line')
         .attr('x1', gridX0 + boundary * cellSize).attr('y1', gridY0 - 1)
         .attr('x2', gridX0 + boundary * cellSize).attr('y2', gridY0 + gridSize + 1)
-        .attr('stroke', '#f9731644').attr('stroke-width', 2);
+        .attr('stroke', '#f9731666').attr('stroke-width', 2);
     }
+
+    // Move crosshairs to top of SVG for proper layering
+    treeSvgEl.appendChild(crosshairG.node()!);
 
     // ── Inline color legend (bottom right) ──
     const legX = gridX0 + gridSize - 110;
@@ -751,14 +878,14 @@
     const neededNodes = new Set<string>();
     const neededEdges = new Set<string>();
 
-    // Add/update nodes
+    // Add/update nodes — use stable per-sensor color for identification,
+    // cluster membership shown via border color
     for (let i = 0; i < n; i++) {
       const id = heatmapSensorIds[i];
       neededNodes.add(id);
       const clusterId = clusterAssignments.get(i) ?? 0;
-      const color = CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
-      const stress = getStressCategory(id);
-      const stressColor = STRESS_COLORS[stress];
+      const clusterColor = CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+      const color = sensorColors.get(id) || COLORS[i % COLORS.length];
       const meanSync = meanPlvs.get(i) ?? 0;
       const size = NODE_BASE_SIZE + meanSync * 8; // 8-16 range
       const label = getDisplayName(id);
@@ -767,7 +894,7 @@
         graph.setNodeAttribute(id, 'color', color);
         graph.setNodeAttribute(id, 'size', size);
         graph.setNodeAttribute(id, 'label', label);
-        graph.setNodeAttribute(id, 'borderColor', stressColor);
+        graph.setNodeAttribute(id, 'borderColor', clusterColor);
         graph.setNodeAttribute(id, 'clusterId', clusterId);
       } else {
         // Spread initial positions by cluster for better layout
@@ -779,7 +906,7 @@
           size,
           color,
           label,
-          borderColor: stressColor,
+          borderColor: clusterColor,
           clusterId,
         });
       }
@@ -989,6 +1116,9 @@
     addToPhaseBuffer(sensorId, value);
   }
 
+  // Track new points per sensor for incremental chart updates
+  let incrementalPoints: Map<string, Array<{ x: number; y: number }>> = new Map();
+
   function processPendingUpdates(): boolean {
     if (pendingUpdates.size === 0) return false;
 
@@ -1000,6 +1130,11 @@
       }
       sensorData.set(sensorId, data);
       dirtySeriesIds.add(sensorId);
+
+      // Accumulate for incremental chart update
+      const inc = incrementalPoints.get(sensorId) || [];
+      inc.push(...points);
+      incrementalPoints.set(sensorId, inc);
     });
 
     pendingUpdates.clear();
@@ -1013,8 +1148,12 @@
         updateChart(hadData, timestamp);
         if (hadData) {
           updateHrvStates();
-          computePhaseSync();
-          computePairwiseSync();
+          // Sync computation every 500ms (not every 100ms) — HRV data is slow anyway
+          if (timestamp - lastSyncCompute >= 500) {
+            computePhaseSync();
+            computePairwiseSync();
+            lastSyncCompute = timestamp;
+          }
         }
         lastUpdateTime = timestamp;
       }
@@ -1253,20 +1392,27 @@
     const now = Date.now();
     const cutoff = now - selectedWindowMs;
     let needsRedraw = false;
+    let needsFullRedraw = false;
 
     dirtySeriesIds.forEach((sensorId) => {
       const seriesId = `sensor-${sensorId}`;
-      const data = sensorData.get(sensorId);
-      if (!data) return;
-
       const existingSeries = chart!.get(seriesId) as Highcharts.Series | null;
-      const filteredData = getFilteredData(data, cutoff);
 
       if (existingSeries) {
-        existingSeries.setData(filteredData, false, false, false);
-        needsRedraw = true;
+        // Incremental: add only new points (much faster than setData)
+        const newPts = incrementalPoints.get(sensorId);
+        if (newPts && newPts.length > 0) {
+          for (const pt of newPts) {
+            existingSeries.addPoint([pt.x, pt.y], false, false, false);
+          }
+          needsRedraw = true;
+        }
       } else {
+        // New series — full data needed
+        const data = sensorData.get(sensorId);
+        if (!data) return;
         const index = Array.from(sensorData.keys()).indexOf(sensorId);
+        const filteredData = getFilteredData(data, cutoff);
         chart!.addSeries({
           type: 'spline',
           id: seriesId,
@@ -1279,17 +1425,23 @@
           animation: false
         }, false);
         needsRedraw = true;
+        needsFullRedraw = true;
       }
     });
     dirtySeriesIds.clear();
+    incrementalPoints.clear();
 
     if (syncDirty) {
       const syncSeries = chart.series.find(s => s.name === SYNC_SERIES_NAME);
-      const filteredSync = getFilteredData(syncHistory, cutoff);
       if (syncSeries) {
-        syncSeries.setData(filteredSync, false, false, false);
-        needsRedraw = true;
-      } else if (filteredSync.length > 0) {
+        // Incremental: add only last sync point
+        const last = syncHistory[syncHistory.length - 1];
+        if (last) {
+          syncSeries.addPoint([last.x, last.y], false, false, false);
+          needsRedraw = true;
+        }
+      } else if (syncHistory.length > 0) {
+        const filteredSync = getFilteredData(syncHistory, cutoff);
         chart.addSeries({
           type: 'area',
           name: SYNC_SERIES_NAME,
@@ -1324,14 +1476,28 @@
       chart.xAxis[0].setExtremes(now - selectedWindowMs, now, false);
       chart.redraw(false);
       lastExtremesUpdate = timestamp;
+
+      // Periodically trim old points from series to prevent unbounded growth
+      // Only do this every 5s to avoid overhead
+      if (needsFullRedraw || timestamp - lastTrimTime > 5000) {
+        lastTrimTime = timestamp;
+        chart.series.forEach(s => {
+          while (s.data.length > 0 && (s.data[0] as any).x < cutoff) {
+            s.data[0].remove(false, false);
+          }
+        });
+      }
     }
   }
 
   function setTimeWindow(ms: number) {
     selectedWindowMs = ms;
-    sensorData.forEach((_data, sensorId) => dirtySeriesIds.add(sensorId));
-    syncDirty = true;
-    updateChart(true, performance.now());
+    // Recreate chart with new window — full setData needed
+    if (chart) {
+      chart.destroy();
+      chart = null;
+    }
+    createChart();
   }
 
   function consumeSeedBuffer(): boolean {
@@ -1599,7 +1765,7 @@
         <span class="heatmap-title">Sync Network</span>
         <div class="tree-anno-legend">
           <span class="anno-key" title="Edge thickness = PLV strength"><span class="anno-dot" style="background:#22c55e"></span>Sync</span>
-          <span class="anno-key" title="Node color = cluster membership"><span class="anno-dot" style="background:#3b82f6"></span>Cluster</span>
+          <span class="anno-key" title="Border color = cluster membership"><span class="anno-dot" style="background:#3b82f6"></span>Cluster</span>
           {#if graphClusterCount > 0}
             <span class="cluster-badge">{graphClusterCount} clusters</span>
           {/if}
@@ -1624,12 +1790,51 @@
           {#if treeClusterCount > 0}
             <span class="cluster-badge">{treeClusterCount} clusters</span>
           {/if}
+          {#if focusedCluster !== null}
+            <button class="focus-reset-btn" onclick={() => { focusedCluster = null; requestAnimationFrame(() => renderTreeHeatmap()); }}>
+              Show all
+            </button>
+          {/if}
         </div>
       </div>
       {#if heatmapSensorIds.length >= 2}
         <div class="heatmap-scroll">
           <svg bind:this={treeSvgEl} class="heatmap-svg"></svg>
         </div>
+        {#if clusterSummaries.length > 1}
+          <div class="cluster-cards">
+            {#each clusterSummaries as cluster}
+              <button
+                class="cluster-card"
+                class:focused={focusedCluster === cluster.id}
+                class:dimmed={focusedCluster !== null && focusedCluster !== cluster.id}
+                onclick={() => { focusedCluster = focusedCluster === cluster.id ? null : cluster.id; requestAnimationFrame(() => renderTreeHeatmap()); }}
+                style="--cluster-color: {cluster.color}"
+              >
+                <div class="cluster-card-header">
+                  <span class="cluster-card-dot" style="background: {cluster.color}"></span>
+                  <span class="cluster-card-label">C{cluster.id + 1}</span>
+                  <span class="cluster-card-count">{cluster.members.length}</span>
+                </div>
+                <div class="cluster-card-plv" title="Mean intra-cluster PLV">
+                  <div class="cluster-plv-bar" style="width: {Math.round(cluster.meanPlv * 100)}%; background: {cluster.color}"></div>
+                  <span class="cluster-plv-val">{Math.round(cluster.meanPlv * 100)}%</span>
+                </div>
+                <div class="cluster-card-stress">
+                  {#if cluster.stressCounts.relaxed > 0}
+                    <span class="stress-pip" style="background: #22c55e" title="{cluster.stressCounts.relaxed} relaxed">{cluster.stressCounts.relaxed}</span>
+                  {/if}
+                  {#if cluster.stressCounts.moderate > 0}
+                    <span class="stress-pip" style="background: #eab308" title="{cluster.stressCounts.moderate} moderate">{cluster.stressCounts.moderate}</span>
+                  {/if}
+                  {#if cluster.stressCounts.stressed > 0}
+                    <span class="stress-pip" style="background: #ef4444" title="{cluster.stressCounts.stressed} stressed">{cluster.stressCounts.stressed}</span>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
       {:else}
         <div class="heatmap-empty">
           Waiting for ≥2 sensors with HRV phase data...
@@ -2025,6 +2230,121 @@
     padding: 0.1rem 0.3rem;
     border-radius: 0.2rem;
     border: 1px solid rgba(249, 115, 22, 0.3);
+  }
+
+  .focus-reset-btn {
+    font-size: 0.55rem;
+    font-family: monospace;
+    color: #9ca3af;
+    background: rgba(156, 163, 175, 0.1);
+    border: 1px solid rgba(156, 163, 175, 0.2);
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.2rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .focus-reset-btn:hover {
+    color: #f97316;
+    border-color: rgba(249, 115, 22, 0.4);
+  }
+
+  .cluster-cards {
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.35rem 0.5rem;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .cluster-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 70px;
+    padding: 0.3rem 0.4rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(100, 116, 139, 0.15);
+    border-radius: 0.35rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: monospace;
+  }
+  .cluster-card:hover {
+    border-color: var(--cluster-color, #f97316);
+    background: rgba(15, 23, 42, 0.8);
+  }
+  .cluster-card.focused {
+    border-color: var(--cluster-color, #f97316);
+    box-shadow: 0 0 6px rgba(249, 115, 22, 0.2);
+  }
+  .cluster-card.dimmed {
+    opacity: 0.35;
+  }
+
+  .cluster-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .cluster-card-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .cluster-card-label {
+    font-size: 0.6rem;
+    color: #e2e8f0;
+    font-weight: bold;
+  }
+  .cluster-card-count {
+    font-size: 0.5rem;
+    color: #64748b;
+    margin-left: auto;
+  }
+
+  .cluster-card-plv {
+    position: relative;
+    height: 4px;
+    background: rgba(30, 41, 59, 0.8);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .cluster-plv-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  .cluster-plv-val {
+    position: absolute;
+    right: 0;
+    top: -10px;
+    font-size: 0.45rem;
+    color: #94a3b8;
+  }
+
+  .cluster-card-stress {
+    display: flex;
+    gap: 0.15rem;
+  }
+  .stress-pip {
+    font-size: 0.45rem;
+    color: #0f172a;
+    font-weight: bold;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  @keyframes sync-pulse {
+    0%, 100% { opacity: 0; stroke-width: 1.5; }
+    50% { opacity: 0.8; stroke-width: 3; }
+  }
+  :global(.high-sync-pulse) {
+    animation: sync-pulse 2.5s ease-in-out infinite;
   }
 
   .heatmap-scroll {

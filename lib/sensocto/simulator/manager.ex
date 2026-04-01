@@ -451,7 +451,18 @@ defmodule Sensocto.Simulator.Manager do
   # Async config loading — non-blocking, keeps mailbox responsive
   @impl true
   def handle_info(:load_config, state) do
-    new_state = load_config(%{state | startup_phase: :loading_config})
+    new_state =
+      try do
+        load_config(%{state | startup_phase: :loading_config})
+      rescue
+        e ->
+          Logger.error(
+            "[Manager] load_config crashed: #{Exception.format(:error, e, __STACKTRACE__)}"
+          )
+
+          state
+      end
+
     {:noreply, %{new_state | startup_phase: :ready}}
   end
 
@@ -862,13 +873,22 @@ defmodule Sensocto.Simulator.Manager do
       Path.join(File.cwd!(), @scenarios_dir)
     ]
 
-    Enum.find(possible_paths, fn path ->
-      expanded = Path.expand(path)
-      File.exists?(expanded) && File.dir?(expanded)
-    end)
-    |> case do
-      nil -> nil
-      path -> Path.expand(path)
+    result =
+      Enum.find(possible_paths, fn path ->
+        expanded = Path.expand(path)
+        File.exists?(expanded) && File.dir?(expanded)
+      end)
+
+    case result do
+      nil ->
+        Logger.warning(
+          "Scenarios directory not found in any of: #{inspect(Enum.map(possible_paths, &Path.expand/1))}"
+        )
+
+        nil
+
+      path ->
+        Path.expand(path)
     end
   end
 

@@ -372,7 +372,7 @@ msgstr "Date blybe uf dine Grät. Privatsphäre durech Struktur."
 #: lib/sensocto_web/live/components/about_content_component.ex:1363
 #, elixir-autogen, elixir-format
 msgid "Deep Dive (~1800 words)"
-msgstr "Tüüfi Tauch (~1800 Wörter)"
+msgstr "Tüüf itauche (~1800 Wörter)"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:203
 #, elixir-autogen, elixir-format
@@ -688,7 +688,7 @@ msgstr "Systematischi Übersicht über Peer-Support Effektivität i de mentale G
 #: lib/sensocto_web/live/components/about_content_component.ex:1126
 #, elixir-autogen, elixir-format
 msgid "THE DEEP DIVE"
-msgstr "D TÜÜFI TAUCH"
+msgstr "TÜÜF ITAUCHE"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:753
 #, elixir-autogen, elixir-format
@@ -718,7 +718,7 @@ msgstr "Technisch"
 #: lib/sensocto_web/live/components/about_content_component.ex:716
 #, elixir-autogen, elixir-format
 msgid "The Deep Dive"
-msgstr "D Tüüfi Tauch"
+msgstr "Tüüf itauche"
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1101
 #, elixir-autogen, elixir-format
@@ -819,7 +819,7 @@ msgstr "Wüsseschaftlichi **Grundlage** für mänschlechi Verbindig"
 #: lib/sensocto_web/live/components/about_content_component.ex:758
 #, elixir-autogen, elixir-format
 msgid "Technology promised connection and delivered **performance**."
-msgstr "Technologii het Verbindig verspoche und **Performance** gliferet."
+msgstr "Technologii het Verbindig versproche und **Performance** gliferet."
 
 #: lib/sensocto_web/live/components/about_content_component.ex:1109
 #, elixir-autogen, elixir-format

@@ -131,15 +131,17 @@ function headingToDir(heading) {
   return DIRECTIONS[idx];
 }
 
-// Smooth green→yellow→orange→red gradient based on acceleration magnitude
-// Maps 0–12 m/s² to hue 120°→0° (green→red)
+// Smooth green→yellow→orange→red gradient based on acceleration magnitude.
+// Subtracts gravity (~9 m/s²) so stationary = green, vigorous motion = red.
 function accelHsl(mag) {
-  const t = Math.min(mag / 12, 1);
+  const excess = Math.max(mag - 9.0, 0);
+  const t = Math.min(excess / 15.0, 1);
   const hue = 120 * (1 - t);
   return `hsl(${hue}, 80%, 50%)`;
 }
 function accelHslLight(mag) {
-  const t = Math.min(mag / 12, 1);
+  const excess = Math.max(mag - 9.0, 0);
+  const t = Math.min(excess / 15.0, 1);
   const hue = 120 * (1 - t);
   return `hsl(${hue}, 70%, 65%)`;
 }
@@ -207,7 +209,7 @@ export const ImuTileHook = {
     // Acceleration bar (summary)
     const accelBar = el.querySelector('[data-imu="accel-bar"]');
     if (accelBar) {
-      accelBar.style.width = `${Math.min(100, d.accelMagnitude * 10)}%`;
+      accelBar.style.width = `${Math.min(100, Math.max(0, d.accelMagnitude - 9.0) / 15.0 * 100)}%`;
       accelBar.style.backgroundColor = accelHsl(d.accelMagnitude);
     }
 

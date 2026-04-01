@@ -2,6 +2,14 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* Prevent empty SVGs (Heroicons with data-phx-skip before hydration)
+   from expanding to the browser default 300×150px */
+svg[data-phx-skip]:empty {
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
 /* ============================================================
    Light / Dark theme overrides
    Remaps hardcoded gray-* Tailwind classes so existing dark-first

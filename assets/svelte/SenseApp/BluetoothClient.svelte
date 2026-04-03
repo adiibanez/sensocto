@@ -39,32 +39,33 @@
 
   const dispatch = createEventDispatcher();
 
+  // The channel identifier for all BLE data — the user's own device sensor
+  const userChannelId = sensorService.getDeviceId();
+
   // On mount, restore connections and re-register attributes for existing devices
   onMount(() => {
     const globalDevices = bleDevices.getGlobal();
     if (globalDevices.length > 0) {
       logger.log(loggerCtxName, "Restoring BLE state from previous session", globalDevices.length, "devices");
 
-      // Re-register attributes for all connected devices
+      // Ensure the user's channel is set up
+      sensorService.setupChannel(userChannelId);
+
+      // Re-register attributes for all connected devices on the user's sensor
       globalDevices.forEach(device => {
         if (device.gatt?.connected) {
-          const deviceId = getUniqueDeviceId(device);
-          const characteristics = bleCharacteristics.getGlobal()[deviceId] || [];
+          const characteristics = bleCharacteristics.getGlobal()[getUniqueDeviceId(device)] || [];
 
-          // Re-register the sensor channel
-          sensorService.setupChannel(deviceId);
-
-          // Re-register each characteristic as an attribute
           characteristics.forEach(characteristic => {
             const normalizedType = BluetoothUtils.normalizedType(characteristic.uuid);
-            sensorService.registerAttribute(deviceId, {
-              attribute_id: normalizedType,
+            sensorService.registerAttribute(userChannelId, {
+              attribute_id: bleAttributeId(device, normalizedType),
               attribute_type: normalizedType,
               sampling_rate: 1,
             });
           });
 
-          logger.log(loggerCtxName, "Restored device", deviceId, "with", characteristics.length, "characteristics");
+          logger.log(loggerCtxName, "Restored device", device.name, "with", characteristics.length, "characteristics");
         }
       });
     }
@@ -144,18 +145,8 @@
         bleDevices.add(device);
         device.addEventListener("gattserverdisconnected", onDisconnected);
 
-        const sensorIdentifier = getUniqueDeviceId(device);
-        const sensorType = getDeviceSensorType(device);
-        const sensorSamplingRate = getDeviceSamplingRate(device);
-
-        const metadata = {
-          sensor_name: getUniqueDeviceName(device),
-          sensor_id: getUniqueDeviceId(device),
-          sensor_type: sensorType,
-          sampling_rate: sensorSamplingRate,
-        };
-
-        sensorService.setupChannel(sensorIdentifier, metadata);
+        // Register BLE device attributes on the user's own sensor channel
+        sensorService.setupChannel(userChannelId);
 
         logger.log(loggerCtxName, "Connecting to GATT Server...");
         return device.gatt.connect();
@@ -279,9 +270,9 @@
     const normalizedType = BluetoothUtils.normalizedType(characteristic.uuid);
 
     sensorService.registerAttribute(
-      getUniqueDeviceId(characteristic.service.device),
+      userChannelId,
       {
-        attribute_id: normalizedType,
+        attribute_id: bleAttributeId(characteristic.service.device, normalizedType),
         attribute_type: normalizedType,
         sampling_rate: 1,
       }
@@ -395,11 +386,11 @@
           const normalizedAttrId = BluetoothUtils.normalizedType(characteristic.uuid);
           var payLoad = {
             payload: characteristicValue,
-            attribute_id: normalizedAttrId,
+            attribute_id: bleAttributeId(characteristic.service.device, normalizedAttrId),
             timestamp: Math.round(new Date().getTime()),
           };
           sensorService.sendChannelMessage(
-            getUniqueDeviceId(characteristic.service.device),
+            userChannelId,
             payLoad
           );
         })
@@ -419,7 +410,7 @@
 
   // Start polling a read-only characteristic (used for IMU when notify not available)
   function startPollingCharacteristic(characteristic) {
-    const deviceId = getUniqueDeviceId(characteristic.service.device);
+    const deviceId = getUniqueDeviceId(characteristic.service.device); // still used for polling key
     const charKey = `${deviceId}:${characteristic.uuid}`;
 
     if (pollingIntervals.has(charKey)) {
@@ -446,10 +437,10 @@
           const normalizedAttrId = BluetoothUtils.normalizedType(characteristic.uuid);
           const payLoad = {
             payload: decodedValue,
-            attribute_id: normalizedAttrId,
+            attribute_id: bleAttributeId(characteristic.service.device, normalizedAttrId),
             timestamp: Math.round(new Date().getTime()),
           };
-          sensorService.sendChannelMessage(deviceId, payLoad);
+          sensorService.sendChannelMessage(userChannelId, payLoad);
         }
       } catch (error) {
         logger.log(loggerCtxName, "Poll error for", BluetoothUtils.name(characteristic.uuid), error.message);
@@ -515,7 +506,7 @@
 
       var payLoad = {
         payload: sensorValue,
-        attribute_id: normalizedAttrId,
+        attribute_id: bleAttributeId(event.target.service.device, normalizedAttrId),
         timestamp: Math.round(new Date().getTime()),
       };
       /*live.pushEvent("ingest", );*/
@@ -524,7 +515,7 @@
         sensorValue != characteristicValues[event.target.uuid]
       ) {
         sensorService.sendChannelMessage(
-          getUniqueDeviceId(event.target.service.device),
+          userChannelId,
           payLoad
         );
       } else {
@@ -570,10 +561,12 @@
                 "characteristicvaluechanged",
                 handleCharacteristicChanged
               );
-              //await characteristic.stopNotifications();
+              // Unregister this BLE attribute from the user's sensor
+              const normalizedType = BluetoothUtils.normalizedType(characteristic.uuid);
+              sensorService.unregisterAttribute(userChannelId, bleAttributeId(device, normalizedType));
               logger.log(
                 loggerCtxName,
-                "Notifications stopped and listener removed."
+                "Notifications stopped and attribute unregistered."
               );
             }
           }
@@ -585,9 +578,10 @@
         });
       }
 
-      var channelName = deviceId;
-      logger.log(loggerCtxName, "Leaving channel", channelName);
-      sensorService.leaveChannel(channelName);
+      // Release attribute name claims for this device
+      releaseBleAttributeClaims(device);
+
+      // Don't leave the user's channel — other sensors (IMU, geo, etc.) still use it
 
       bleDevices.remove(device);
       logger.log(
@@ -629,6 +623,49 @@
     let name = getUniqueDeviceName(device);
 
     return name.replace(" ", "_");
+  }
+
+  // Track which attribute_ids are claimed by which BLE device.
+  // Key: normalizedType (e.g. "heart_rate"), Value: BLE device id
+  // This allows first device to claim the clean name, subsequent devices get a suffix.
+  const bleAttrOwners = new Map();
+
+  // Resolve a collision-safe attribute_id for a BLE characteristic.
+  // First device claiming "heart_rate" keeps it. Second gets "heart_rate_2", etc.
+  function bleAttributeId(device, normalizedType) {
+    const bleId = device?.id || device?.name || "unknown";
+
+    if (!bleAttrOwners.has(normalizedType)) {
+      // First device to claim this type — use the clean name
+      bleAttrOwners.set(normalizedType, [bleId]);
+      return normalizedType;
+    }
+
+    const owners = bleAttrOwners.get(normalizedType);
+    const idx = owners.indexOf(bleId);
+    if (idx === 0) {
+      // This device already owns the clean name
+      return normalizedType;
+    } else if (idx > 0) {
+      // This device already has a suffixed name
+      return normalizedType + "_" + (idx + 1);
+    } else {
+      // New device — assign next suffix
+      owners.push(bleId);
+      return normalizedType + "_" + owners.length;
+    }
+  }
+
+  // Remove a BLE device's claims when it disconnects
+  function releaseBleAttributeClaims(device) {
+    const bleId = device?.id || device?.name || "unknown";
+    for (const [type, owners] of bleAttrOwners.entries()) {
+      const idx = owners.indexOf(bleId);
+      if (idx >= 0) {
+        owners.splice(idx, 1);
+        if (owners.length === 0) bleAttrOwners.delete(type);
+      }
+    }
   }
 
   function getDeviceSamplingRate(device) {

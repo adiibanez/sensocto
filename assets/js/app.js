@@ -142,10 +142,10 @@ Hooks.ThemeToggle = {
   _updateAllIcons() {
     const theme = document.documentElement.getAttribute('data-theme');
     // Update all sun/moon icon pairs across the page (multiple toggles may exist)
-    document.querySelectorAll('[id$="-theme-icon-sun"]').forEach(sun => {
+    document.querySelectorAll('[id$="theme-icon-sun"]').forEach(sun => {
       sun.classList.toggle('hidden', theme === 'light');
     });
-    document.querySelectorAll('[id$="-theme-icon-moon"]').forEach(moon => {
+    document.querySelectorAll('[id$="theme-icon-moon"]').forEach(moon => {
       moon.classList.toggle('hidden', theme === 'dark');
     });
   }
@@ -1216,6 +1216,15 @@ Hooks.SensorDataAccumulator = {
       }
     };
     window.addEventListener("measurements-batch-event", this._onMeasurementsBatch);
+
+    // Bridge LiveView push_event("measurements_batch") to the same window event.
+    // On the sensor detail page, data flows through LiveView (not ViewerDataChannel),
+    // so we need to re-dispatch it as a window event for Svelte components and ImuTileHook.
+    this.handleEvent("measurements_batch", (event) => {
+      window.dispatchEvent(new CustomEvent("measurements-batch-event", {
+        detail: { sensor_id: event.sensor_id, attributes: event.attributes }
+      }));
+    });
 
     resizeElements();
   },

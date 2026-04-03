@@ -424,7 +424,10 @@ defmodule Sensocto.SystemLoadMonitor do
   end
 
   defp calculate_message_queue_pressure do
-    # Sample message queue lengths from key processes
+    # Only sample key infrastructure processes that indicate real system pressure.
+    # Random process sampling was removed because any single LiveView, Channel,
+    # or cowboy handler can transiently spike to 200+ msgs during normal operation,
+    # causing false 100% readings that cascade into unnecessary PriorityLens degradation.
     key_processes = [
       Sensocto.AttentionTracker,
       Sensocto.SensorsDynamicSupervisor,
@@ -448,24 +451,11 @@ defmodule Sensocto.SystemLoadMonitor do
         end
       end)
 
-    # Also sample some random processes from the system
-    random_samples =
-      Process.list()
-      |> Enum.take_random(20)
-      |> Enum.map(fn pid ->
-        case Process.info(pid, :message_queue_len) do
-          {:message_queue_len, len} -> len
-          nil -> 0
-        end
-      end)
+    max_queue = Enum.max(queue_lengths, fn -> 0 end)
+    avg_queue = Enum.sum(queue_lengths) / max(length(queue_lengths), 1)
 
-    all_lengths = queue_lengths ++ random_samples
-    max_queue = Enum.max(all_lengths, fn -> 0 end)
-    avg_queue = Enum.sum(all_lengths) / max(length(all_lengths), 1)
-
-    # Normalize: lower thresholds to detect backpressure earlier
-    # LobbyLive backpressure triggers at 50 msgs, so any key process with
-    # 50+ msgs means the system is under real pressure
+    # Thresholds tuned to key infrastructure processes only.
+    # These processes should have near-zero queues under normal load.
     cond do
       max_queue > 200 -> 1.0
       max_queue > 100 -> 0.9

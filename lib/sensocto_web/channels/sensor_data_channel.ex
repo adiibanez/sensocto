@@ -624,7 +624,13 @@ defmodule SensoctoWeb.SensorDataChannel do
 
     # Check if there are other active connections for this sensor
     # Only remove the sensor if no other connections exist
-    presence_list = Presence.list("presence:all")
+    presence_list =
+      try do
+        Presence.list("presence:all")
+      catch
+        :exit, _ -> %{}
+      end
+
     other_connections = Map.get(presence_list, sensor_id, %{metas: []})
 
     case other_connections do

@@ -90,7 +90,7 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
   end
 
   def handle_params(_params, _uri, socket) do
-    {:noreply, socket}
+    {:noreply, assign(socket, :active_tab, :overview)}
   end
 
   # ============================================================================
@@ -377,7 +377,13 @@ defmodule SensoctoWeb.LobbyLive.SensorDetailLive do
     <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
       <%= if @imu_attribute do %>
         <h2 class="text-lg font-semibold mb-4">IMU Visualization</h2>
-        <div class="h-96">
+        <div
+          id={"imu-accumulator-#{@sensor_id}"}
+          phx-hook="SensorDataAccumulator"
+          data-sensor_id={@sensor_id}
+          data-attribute_id="imu"
+          class="h-96"
+        >
           <.svelte
             name="ImuVisualization"
             props={

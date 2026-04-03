@@ -164,7 +164,13 @@ defmodule Sensocto.SimpleSensor do
   end
 
   def get_view_state(sensor_id, values \\ 1) do
-    get_state(sensor_id, values) |> transform_state()
+    case get_state(sensor_id, values) do
+      {:badrpc, reason} ->
+        raise "RPC call failed for sensor #{sensor_id}: #{inspect(reason)}"
+
+      state ->
+        transform_state(state)
+    end
   end
 
   defp transform_state(state) do

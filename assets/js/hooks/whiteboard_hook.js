@@ -62,6 +62,11 @@ const WhiteboardHook = {
         this.currentUserId = this.el.dataset.currentUserId;
         this.controllerUserId = this.el.dataset.controllerUserId;
 
+        // Pending draw segments accumulated during mousemove, flushed each rAF
+        this._pendingSegments = [];
+        this._drawRaf = null;
+        this._progressRaf = null;
+
         this.log('Mounted, initializing canvas');
         this.initCanvas();
         this.setupEventHandlers();
@@ -89,6 +94,7 @@ const WhiteboardHook = {
 
     destroyed() {
         this.log('Destroyed, cleaning up');
+        if (this._drawRaf) cancelAnimationFrame(this._drawRaf);
         this.removeEventListeners();
     },
 
@@ -457,18 +463,66 @@ const WhiteboardHook = {
             const dist = this.distance(this.lastPoint, point);
             if (dist >= CONFIG.MIN_DISTANCE) {
                 this.currentStroke.points.push(point);
-                this.applyViewport();
-                this.drawLine(this.lastPoint, point, this.currentStroke.color, this.currentStroke.width);
-                this.sendStrokeProgress();
+                // Queue the segment; actual drawing happens in rAF so Safari
+                // doesn't defer the canvas present behind DOM patches.
+                this._pendingSegments.push({
+                    from: this.lastPoint,
+                    to: point,
+                    color: this.currentStroke.color,
+                    width: this.currentStroke.width,
+                });
                 this.lastPoint = point;
+                this._scheduleDrawFlush();
             }
         } else if (this.currentTool === 'line' || this.currentTool === 'rect') {
-            this.redrawCanvas();
-            this.applyViewport();
-            this.drawShapePreview(this.currentStroke.points[0], point);
+            this._pendingShapePreview = {
+                start: this.currentStroke.points[0],
+                end: point,
+            };
             this.currentStroke.points[1] = point;
-            this.sendStrokeProgress();
+            this._scheduleDrawFlush();
         }
+    },
+
+    // Flush all pending draw operations in a single rAF callback.
+    // This decouples canvas rendering from input events so Safari's
+    // compositor can present frames without waiting for LiveView patches.
+    _scheduleDrawFlush() {
+        if (this._drawRaf) return;
+        this._drawRaf = requestAnimationFrame(() => {
+            this._drawRaf = null;
+
+            // Freehand segments — draw incrementally (no full redraw needed)
+            if (this._pendingSegments.length > 0) {
+                this.applyViewport();
+                for (const seg of this._pendingSegments) {
+                    this.drawLine(seg.from, seg.to, seg.color, seg.width);
+                }
+                this._pendingSegments.length = 0;
+            }
+
+            // Shape preview — requires full redraw
+            if (this._pendingShapePreview) {
+                const { start, end } = this._pendingShapePreview;
+                this._pendingShapePreview = null;
+                this.redrawCanvas();
+                this.applyViewport();
+                this.drawShapePreview(start, end);
+            }
+
+            // Send progress to other users after paint
+            this._sendStrokeProgressNow();
+        });
+    },
+
+    _sendStrokeProgressNow() {
+        if (!this.currentStroke) return;
+        const now = Date.now();
+        if (this._lastProgressSent && (now - this._lastProgressSent) < 50) {
+            return;
+        }
+        this._lastProgressSent = now;
+        this.pushEventTo(this.el, 'stroke_progress', { stroke: this.currentStroke });
     },
 
     sendStrokeProgress() {
@@ -485,6 +539,20 @@ const WhiteboardHook = {
         if (!this.isDrawing || !this.currentStroke) {
             this.isDrawing = false;
             return;
+        }
+
+        // Flush any pending segments immediately before completing
+        if (this._pendingSegments.length > 0) {
+            this.applyViewport();
+            for (const seg of this._pendingSegments) {
+                this.drawLine(seg.from, seg.to, seg.color, seg.width);
+            }
+            this._pendingSegments.length = 0;
+        }
+        this._pendingShapePreview = null;
+        if (this._drawRaf) {
+            cancelAnimationFrame(this._drawRaf);
+            this._drawRaf = null;
         }
 
         if (this.currentTool === 'line' || this.currentTool === 'rect') {

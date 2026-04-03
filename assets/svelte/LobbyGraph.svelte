@@ -3455,11 +3455,14 @@
         }
       }
 
-      // Re-run layout to integrate new nodes, respecting the current view mode
+      // Re-run layout to integrate new nodes, respecting the current view mode.
+      // animate: true preserves existing positions and smoothly transitions to the
+      // new layout — without it, all nodes jump in a single frame (visible flash).
       if (addedSensors.length > 0 || addedUsers.length > 0) {
-        applyLayout(layoutMode);
+        applyLayout(layoutMode, true);
+      } else {
+        sigma?.refresh();
       }
-      sigma?.refresh();
     }, 150);
   });
 

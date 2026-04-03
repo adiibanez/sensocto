@@ -214,15 +214,21 @@ defmodule Sensocto.AttentionTracker do
   Uses ETS for fast concurrent reads - no GenServer bottleneck.
   """
   def get_attention_level(sensor_id, attribute_id) do
-    case :ets.lookup(@attention_levels_table, {sensor_id, attribute_id}) do
-      [{_, level}] ->
-        level
+    attr_level =
+      case :ets.lookup(@attention_levels_table, {sensor_id, attribute_id}) do
+        [{_, level}] -> level
+        [] -> :none
+      end
 
-      [] ->
-        # Fall back to sensor-level attention so that composite views
-        # (which register under "composite_<type>" keys) still benefit
-        # all AttributeServers for that sensor
-        get_sensor_attention_level(sensor_id)
+    # When the attribute-specific level is :none, fall back to sensor-level attention.
+    # Composite views register focus under keys like "composite_ecg" which sets sensor-level
+    # attention to :high, but the original attribute key ("ecg") stays :none in the ETS cache.
+    # Without this fallback, AttributeServers see :none and throttle data 10x.
+    if attr_level == :none do
+      sensor_level = get_sensor_attention_level(sensor_id)
+      if sensor_level != :none, do: sensor_level, else: :none
+    else
+      attr_level
     end
   end
 

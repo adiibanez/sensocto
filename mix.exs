@@ -264,7 +264,7 @@ defmodule Sensocto.MixProject do
       # },
 
       {:rustler, "~> 0.36 or ~> 0.37", optional: true},
-      {:usage_rules, "~> 0.1", only: :dev},
+      {:usage_rules, "~> 1.2", only: :dev},
       # Tidewave - can be enabled in production with ENABLE_TIDEWAVE=true
       # Protected by Basic Auth via AuthenticatedTidewave plug
       {:tidewave, "~> 0.5"},

@@ -32,7 +32,7 @@ jobs:
       threejs: ${{ steps.filter.outputs.threejs }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check for changes
         uses: dorny/paths-filter@v4
@@ -66,7 +66,7 @@ jobs:
         working-directory: clients/unity/SensoctoSDK
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate package.json
         run: python3 -c "import json; json.load(open('package.json')); print('Valid package.json')"
@@ -104,7 +104,7 @@ jobs:
         working-directory: clients/rust
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -145,7 +145,7 @@ jobs:
         working-directory: clients/python
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -190,7 +190,7 @@ jobs:
         working-directory: clients/threejs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

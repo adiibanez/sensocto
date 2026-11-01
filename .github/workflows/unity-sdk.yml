@@ -31,7 +31,7 @@ jobs:
         working-directory: clients/unity/SensoctoSDK
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -104,7 +104,7 @@ jobs:
           - 2023.2.20f1  # 2023.x latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache Unity Library
         uses: actions/cache@v5
@@ -175,7 +175,7 @@ jobs:
           - 2022.3.56f1
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache Unity Library
         uses: actions/cache@v5
@@ -217,7 +217,7 @@ jobs:
         working-directory: clients/unity/SensoctoSDK
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate package.json schema
         run: |
